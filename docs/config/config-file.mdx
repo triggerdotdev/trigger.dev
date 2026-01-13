@@ -448,9 +448,25 @@ export default defineConfig({
 });
 ```
 
+#### WebAssembly (WASM) packages
+
+Packages that use WebAssembly (WASM) must be added to the `external` array. WASM files are binary modules that need to be loaded at runtime and cannot be bundled into JavaScript code. When you add a WASM package to `external`, the package will be installed as a dependency in the runtime environment, ensuring the WASM files are available at their expected paths.
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    external: ["your-wasm-package-name"],
+  },
+});
+```
+
 <Note>
-  Any packages that install or build a native binary should be added to external, as native binaries
-  cannot be bundled. For example, `re2`, `sharp`, and `sqlite3` should be added to external.
+  Any packages that install or build a native binary or use WebAssembly (WASM) should be added to external, as they
+  cannot be bundled. For example, `re2`, `sharp`, `sqlite3`, and WASM packages should be added to external.
 </Note>
 
 ### JSX
