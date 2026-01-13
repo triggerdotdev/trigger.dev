@@ -18,7 +18,7 @@ import {
   ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
-} from "~/components/primitives/Chart";
+} from "~/components/primitives/charts/Chart";
 import { Paragraph } from "../primitives/Paragraph";
 import type { AggregationType, ChartConfiguration } from "./ChartConfigPanel";
 
