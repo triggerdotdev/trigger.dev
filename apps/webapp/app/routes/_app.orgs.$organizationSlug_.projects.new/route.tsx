@@ -31,6 +31,7 @@ import {
   organizationPath,
   selectPlanPath,
   v3ProjectPath,
+  v3ProjectSettingsPath,
 } from "~/utils/pathBuilder";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
@@ -122,6 +123,8 @@ export const action: ActionFunction = async ({ request, params }) => {
       const params = new URLSearchParams({
         code,
         configurationId,
+        organizationId: project.organization.id,
+        projectId: project.id,
       });
       if (next) {
         params.set("next", next);

@@ -62,6 +62,8 @@ const VercelCallbackSchema = z
     configurationId: z.string().optional(),
     teamId: z.string().nullable().optional(),
     next: z.string().optional(),
+    organizationId: z.string().optional(),
+    projectId: z.string().optional(),
   })
   .passthrough();
 
@@ -296,6 +298,7 @@ async function handleMarketplaceInvokedFlow(params: {
       code,
       configurationId,
       integration: "vercel",
+      fromMarketplace: "true",
     });
     if (nextUrl) {
       onboardingParams.set("next", nextUrl);
@@ -303,7 +306,7 @@ async function handleMarketplaceInvokedFlow(params: {
     return redirect(`${confirmBasicDetailsPath()}?${onboardingParams.toString()}`);
   }
 
-  // Has organizations but no projects - redirect to project creation
+// Check if user has organizations with projects
   const hasProjects = userOrganizations.some((org) => org.projects.length > 0);
   if (!hasProjects) {
     const firstOrg = userOrganizations[0];
@@ -311,6 +314,7 @@ async function handleMarketplaceInvokedFlow(params: {
       code,
       configurationId,
       integration: "vercel",
+      fromMarketplace: "true",
     });
     if (nextUrl) {
       projectParams.set("next", nextUrl);
@@ -318,45 +322,48 @@ async function handleMarketplaceInvokedFlow(params: {
     return redirect(`${newProjectPath({ slug: firstOrg.slug })}?${projectParams.toString()}`);
   }
 
-  // User has orgs and projects - complete the installation
+  // Multiple organizations - redirect to onboarding
+  if (userOrganizations.length > 1) {
+    const selectionParams = new URLSearchParams({
+      code,
+      configurationId,
+    });
+    if (nextUrl) {
+      selectionParams.set("next", nextUrl);
+    }
+    return redirect(`/onboarding/vercel?${selectionParams.toString()}`);
+  }
+
+  // Single organization - check project count
+  const singleOrg = userOrganizations[0];
+
+  if (singleOrg.projects.length > 1) {
+    const projectParams = new URLSearchParams({
+      organizationId: singleOrg.id,
+      code,
+      configurationId,
+    });
+    if (nextUrl) {
+      projectParams.set("next", nextUrl);
+    }
+    return redirect(`/onboarding/vercel?${projectParams.toString()}`);
+  }
+
+  // Single org with single project - complete installation directly
   const tokenResponse = await exchangeCodeForToken(code);
   if (!tokenResponse) {
     return redirectWithErrorMessage(
       "/",
       request,
-      "Failed to connect to Vercel. Please try again."
+      "Failed to connect to Vercel. Your session may have expired. Please try again from Vercel."
     );
   }
 
-  const config = await VercelIntegrationRepository.getVercelIntegrationConfiguration(
-    tokenResponse.accessToken,
-    configurationId,
-    tokenResponse.teamId ?? null
-  );
-
-  if (!config) {
-    return redirectWithErrorMessage(
-      "/",
-      request,
-      "Failed to fetch Vercel integration configuration. Please try again."
-    );
-  }
-
-  const userOrg = userOrganizations[0];
-  const userProject = userOrg.projects[0];
-
-  if (!userProject) {
-    const projectParams = new URLSearchParams({
-      code,
-      configurationId,
-      integration: "vercel",
-    });
-    return redirect(`${newProjectPath({ slug: userOrg.slug })}?${projectParams.toString()}`);
-  }
+  const singleProject = singleOrg.projects[0];
 
   const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
-      projectId: userProject.id,
+      projectId: singleProject.id,
       slug: "prod",
       archivedAt: null,
     },
@@ -371,11 +378,11 @@ async function handleMarketplaceInvokedFlow(params: {
   }
 
   const stateData: StateData = {
-    organizationId: userOrg.id,
-    projectId: userProject.id,
+    organizationId: singleOrg.id,
+    projectId: singleProject.id,
     environmentSlug: environment.slug,
-    organizationSlug: userOrg.slug,
-    projectSlug: userProject.slug,
+    organizationSlug: singleOrg.slug,
+    projectSlug: singleProject.slug,
   };
 
   const project = await fetchProjectWithAccess(stateData.projectId, stateData.organizationId, userId);
@@ -420,7 +427,21 @@ async function handleSelfInvokedFlow(params: {
     logger.error("Invalid Vercel OAuth state JWT", {
       error: validationResult.error,
     });
-    throw new Response("Invalid state parameter", { status: 400 });
+    
+      // Check if JWT has expired
+      if (validationResult.error?.includes("expired") || validationResult.error?.includes("Token has expired")) {
+        return redirectWithErrorMessage(
+          "/",
+          request,
+          "Your installation session has expired. Please start the installation again."
+        );
+      }
+    
+      return redirectWithErrorMessage(
+        "/",
+        request,
+        "Invalid installation session. Please try again."
+      );
   }
 
   const stateData = validationResult.state;
@@ -500,6 +521,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     error_description,
     configurationId,
     next: nextUrl,
+    organizationId,
+    projectId,
   } = parsedParams.data;
 
   // Handle errors from Vercel
@@ -512,6 +535,67 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (!code) {
     logger.error("Missing authorization code from Vercel callback");
     throw new Response("Missing authorization code", { status: 400 });
+  }
+
+  // Handle return from project creation with org and project IDs
+  if (organizationId && projectId && configurationId && !state) {
+    const project = await fetchProjectWithAccess(projectId, organizationId, authenticatedUserId);
+
+    if (!project) {
+      logger.error("Project not found or user does not have access", {
+        projectId,
+        organizationId,
+        userId: authenticatedUserId,
+      });
+      return redirectWithErrorMessage(
+        "/",
+        request,
+        "Project not found. Please try again."
+      );
+    }
+
+    const tokenResponse = await exchangeCodeForToken(code);
+    if (!tokenResponse) {
+      return redirectWithErrorMessage(
+        "/",
+        request,
+        "Failed to connect to Vercel. Your session may have expired. Please try again from Vercel."
+      );
+    }
+
+    const environment = await prisma.runtimeEnvironment.findFirst({
+      where: {
+        projectId: project.id,
+        slug: "prod",
+        archivedAt: null,
+      },
+    });
+
+    if (!environment) {
+      return redirectWithErrorMessage(
+        "/",
+        request,
+        "Failed to find project environment. Please try again."
+      );
+    }
+
+    const stateData: StateData = {
+      organizationId: project.organizationId,
+      projectId: project.id,
+      environmentSlug: environment.slug,
+      organizationSlug: project.organization.slug,
+      projectSlug: project.slug,
+    };
+
+    return completeIntegrationSetup({
+      tokenResponse,
+      project,
+      stateData,
+      configurationId,
+      nextUrl,
+      request,
+      logContext: "after project creation",
+    });
   }
 
   // Route to appropriate handler based on presence of state parameter

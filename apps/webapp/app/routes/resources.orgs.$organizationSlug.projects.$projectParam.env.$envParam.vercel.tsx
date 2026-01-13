@@ -1043,6 +1043,8 @@ function VercelOnboardingModal({
   const envMappingFetcher = useFetcher();
   const completeOnboardingFetcher = useFetcher();
   const { Form: CompleteOnboardingForm } = completeOnboardingFetcher;
+  const [searchParams] = useSearchParams();
+  const fromMarketplaceContext = searchParams.get("fromMarketplace") === "true";
 
   const availableProjects = onboardingData?.availableProjects || [];
   const hasProjectSelected = onboardingData?.hasProjectSelected ?? false;
@@ -1250,9 +1252,12 @@ function VercelOnboardingModal({
     });
   }, [selectedVercelProject, fetcher, actionUrl]);
 
-
   const handleSkipOnboarding = useCallback(() => {
     onClose();
+
+    if (fromMarketplaceContext) {
+      return window.close();
+    }
 
     const formData = new FormData();
     formData.append("action", "skip-onboarding");
@@ -1260,7 +1265,12 @@ function VercelOnboardingModal({
       method: "post",
       action: actionUrl,
     });
-  }, [actionUrl, fetcher, onClose]);
+  }, [actionUrl, fetcher, onClose, nextUrl, fromMarketplaceContext]);
+
+  const handleSkipEnvMapping = useCallback(() => {
+    // Skip the env mapping step and go directly to loading env vars
+    setState("loading-env-vars");
+  }, []);
 
   const handleUpdateEnvMapping = useCallback(() => {
     const formData = new FormData();
@@ -1323,6 +1333,26 @@ function VercelOnboardingModal({
       setState("loading-env-vars");
     }
   }, [envMappingFetcher.data, envMappingFetcher.state]);
+
+  // Preselect environment in env-mapping state
+  useEffect(() => {
+    if (state === "env-mapping" && customEnvironments.length > 0 && !vercelStagingEnvironment) {
+      let selectedId = "";
+      
+      if (customEnvironments.length === 1) {
+        // Only one environment, preselect it
+        selectedId = customEnvironments[0].id;
+      } else {
+        // Multiple environments, check for 'staging' (case-insensitive)
+        const stagingEnv = customEnvironments.find(
+          (env) => env.slug.toLowerCase() === "staging"
+        );
+        selectedId = stagingEnv ? stagingEnv.id : customEnvironments[0].id;
+      }
+      
+      setVercelStagingEnvironment(selectedId);
+    }
+  }, [state, customEnvironments, vercelStagingEnvironment]);
 
   if (!isOpen || onboardingData?.authInvalid) {
     return null;
@@ -1451,31 +1481,36 @@ function VercelOnboardingModal({
                     setVercelStagingEnvironment(value);
                   }
                 }}
-                items={[{ id: "", slug: "None (skip)" }, ...customEnvironments]}
+                items={customEnvironments}
                 variant="tertiary/medium"
                 placeholder="Select environment"
                 dropdownIcon
                 text={
-                  vercelStagingEnvironment
-                    ? customEnvironments.find((e) => e.id === vercelStagingEnvironment)?.slug ||
-                      "None"
-                    : "None (skip)"
+                  customEnvironments.find((e) => e.id === vercelStagingEnvironment)?.slug ||
+                  "Select environment"
                 }
               >
-                {[
-                  <SelectItem key="" value="">
-                    None (skip)
-                  </SelectItem>,
-                  ...customEnvironments.map((env) => (
-                    <SelectItem key={env.id} value={env.id}>
-                      {env.slug}
-                    </SelectItem>
-                  )),
-                ]}
+                {customEnvironments.map((env) => (
+                  <SelectItem key={env.id} value={env.id}>
+                    {env.slug}
+                  </SelectItem>
+                ))}
               </Select>
 
-              <FormButtons
-                confirmButton={
+              <div className="flex items-center justify-between gap-2">
+                <Button
+                  variant="tertiary/medium"
+                  onClick={handleSkipOnboarding}
+                >
+                  Cancel
+                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="tertiary/medium"
+                    onClick={handleSkipEnvMapping}
+                  >
+                    Skip
+                  </Button>
                   <Button
                     variant="primary/medium"
                     onClick={handleUpdateEnvMapping}
@@ -1484,16 +1519,8 @@ function VercelOnboardingModal({
                   >
                     Next
                   </Button>
-                }
-                cancelButton={
-                  <Button
-                    variant="tertiary/medium"
-                    onClick={handleSkipOnboarding}
-                  >
-                    Cancel
-                  </Button>
-                }
-              />
+                </div>
+              </div>
             </div>
           )}
 
