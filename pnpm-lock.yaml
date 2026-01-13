@@ -2715,6 +2715,40 @@ importers:
         specifier: ^5
         version: 5.5.4
 
+  references/seed:
+    dependencies:
+      '@sinclair/typebox':
+        specifier: ^0.34.3
+        version: 0.34.38
+      '@trigger.dev/build':
+        specifier: workspace:*
+        version: link:../../packages/build
+      '@trigger.dev/sdk':
+        specifier: workspace:*
+        version: link:../../packages/trigger-sdk
+      arktype:
+        specifier: ^2.0.0
+        version: 2.1.20
+      openai:
+        specifier: ^4.97.0
+        version: 4.97.0(encoding@0.1.13)(ws@8.18.3(bufferutil@4.0.9))(zod@3.25.76)
+      puppeteer-core:
+        specifier: ^24.15.0
+        version: 24.15.0(bufferutil@4.0.9)
+      replicate:
+        specifier: ^1.0.1
+        version: 1.0.1
+      yup:
+        specifier: ^1.6.1
+        version: 1.7.0
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
+    devDependencies:
+      trigger.dev:
+        specifier: workspace:*
+        version: link:../../packages/cli-v3
+
   references/telemetry:
     dependencies:
       '@opentelemetry/resources':
@@ -11586,9 +11620,6 @@ packages:
 
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
-
-  bare-events@2.5.4:
-    resolution: {integrity: sha512-+gFfDkR8pj4/TrWCGUGWmJIkBwuxPS5F+a5yWjOHQt2hHvNZd5YLzadjmDUtFmMM4y429bnKLa8bYBMHcYdnQA==}
 
   bare-events@2.8.2:
     resolution: {integrity: sha512-riJjyv1/mHLIPX4RwiK+oW9/4c3TEUeORHKefKAKnZ5kyslbN+HXowtbaVEqt4IMUB7OXlfixcs6gsFeo/jhiQ==}
@@ -23623,7 +23654,7 @@ snapshots:
   '@hono/node-ws@1.0.4(@hono/node-server@1.12.2(hono@4.5.11))(bufferutil@4.0.9)':
     dependencies:
       '@hono/node-server': 1.12.2(hono@4.5.11)
-      ws: 8.18.0(bufferutil@4.0.9)
+      ws: 8.18.3(bufferutil@4.0.9)
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -32012,17 +32043,14 @@ snapshots:
 
   balanced-match@1.0.2: {}
 
-  bare-events@2.5.4:
-    optional: true
-
   bare-events@2.8.2:
     optional: true
 
   bare-fs@4.5.1:
     dependencies:
-      bare-events: 2.5.4
+      bare-events: 2.8.2
       bare-path: 3.0.0
-      bare-stream: 2.6.5(bare-events@2.5.4)
+      bare-stream: 2.6.5(bare-events@2.8.2)
       bare-url: 2.3.2
       fast-fifo: 1.3.2
     transitivePeerDependencies:
@@ -32037,11 +32065,11 @@ snapshots:
       bare-os: 3.6.1
     optional: true
 
-  bare-stream@2.6.5(bare-events@2.5.4):
+  bare-stream@2.6.5(bare-events@2.8.2):
     dependencies:
       streamx: 2.22.0
     optionalDependencies:
-      bare-events: 2.5.4
+      bare-events: 2.8.2
     transitivePeerDependencies:
       - bare-abort-controller
     optional: true
@@ -32094,7 +32122,7 @@ snapshots:
     dependencies:
       buffer: 5.7.1
       inherits: 2.0.4
-      readable-stream: 3.6.0
+      readable-stream: 3.6.2
 
   body-parser@1.20.3:
     dependencies:
@@ -40724,7 +40752,7 @@ snapshots:
       end-of-stream: 1.4.4
       fs-constants: 1.0.0
       inherits: 2.0.4
-      readable-stream: 3.6.0
+      readable-stream: 3.6.2
 
   tar-stream@3.1.7:
     dependencies:

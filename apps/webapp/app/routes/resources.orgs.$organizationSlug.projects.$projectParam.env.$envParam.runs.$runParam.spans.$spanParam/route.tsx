@@ -71,6 +71,7 @@ import {
   docsPath,
   v3BatchPath,
   v3DeploymentVersionPath,
+  v3LogsPath,
   v3RunDownloadLogsPath,
   v3RunIdempotencyKeyResetPath,
   v3RunPath,
@@ -572,7 +573,11 @@ function RunBody({
                   <Property.Value>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
-                        <div className="break-all">{run.idempotencyKey ? run.idempotencyKey : "–"}</div>
+                        {run.idempotencyKey ? (
+                          <CopyableText value={run.idempotencyKey} copyValue={run.idempotencyKey} asChild />
+                        ) : (
+                          <div className="break-all">–</div>
+                        )}
                         {run.idempotencyKey && (
                           <div>
                             Expires:{" "}
@@ -587,7 +592,9 @@ function RunBody({
                       {run.idempotencyKey && (
                         <resetFetcher.Form
                           method="post"
-                          action={v3RunIdempotencyKeyResetPath(organization, project, environment, { friendlyId: runParam })}
+                          action={v3RunIdempotencyKeyResetPath(organization, project, environment, {
+                            friendlyId: runParam,
+                          })}
                         >
                           <input type="hidden" name="taskIdentifier" value={run.taskIdentifier} />
                           <Button
@@ -942,17 +949,27 @@ function RunBody({
         </div>
         <div className="flex items-center gap-4">
           {run.logsDeletedAt === null ? (
-            <LinkButton
-              to={v3RunDownloadLogsPath({ friendlyId: runParam })}
-              LeadingIcon={CloudArrowDownIcon}
-              leadingIconClassName="text-indigo-400"
-              variant="secondary/medium"
-              target="_blank"
-              download
-            >
-              Download logs
-            </LinkButton>
+            <>
+              <LinkButton
+                to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${new Date(run.createdAt).getTime() - 60000}`}
+                variant="secondary/medium"
+              >
+                View logs
+              </LinkButton>
+              <LinkButton
+                to={v3RunDownloadLogsPath({ friendlyId: runParam })}
+                LeadingIcon={CloudArrowDownIcon}
+                leadingIconClassName="text-indigo-400"
+                variant="secondary/medium"
+                target="_blank"
+                download
+              >
+                Download logs
+              </LinkButton>
+            </>
           ) : null}
+
+
         </div>
       </div>
     </div>
