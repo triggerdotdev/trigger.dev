@@ -160,7 +160,7 @@ function CurrentPlanSection({ planName, billingPath }: { planName: string; billi
       <Table variant="bright/no-hover">
         <TableBody>
           <TableRow>
-            <TableCell className="w-full text-sm text-text-bright">{planName}</TableCell>
+            <TableCell className="w-full text-sm">{planName}</TableCell>
             <TableCell alignment="right">
               {isPro ? (
                 <Feedback
@@ -185,12 +185,15 @@ function ConcurrencySection({ concurrencyPath }: { concurrencyPath: string }) {
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1">
         Concurrency limits
-        <InfoIconTooltip content="Concurrency limits control how many runs execute at the same time." />
+        <InfoIconTooltip
+          content="Concurrency limits control how many runs execute at the same time."
+          disableHoverableContent
+        />
       </Header2>
       <Table variant="bright/no-hover">
         <TableBody>
           <TableRow>
-            <TableCell className="w-full text-sm text-text-bright">Concurrency</TableCell>
+            <TableCell className="w-full text-sm">Concurrency</TableCell>
             <TableCell alignment="right">
               <LinkButton to={concurrencyPath} variant="secondary/small">
                 Manage concurrency
@@ -212,13 +215,14 @@ function RateLimitsSection({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <div className="border-b border-grid-dimmed pb-1">
-        <Header2>Rate Limits</Header2>
-      </div>
+      <Header2 className="flex items-center gap-1">
+        Rate Limits
+        <InfoIconTooltip
+          content="Rate limits control how many API requests can be made within a time window."
+          disableHoverableContent
+        />
+      </Header2>
       <div className="flex flex-col gap-2">
-        <Paragraph variant="small">
-          Rate limits control how many API requests can be made within a time window.
-        </Paragraph>
         <div className="flex items-center gap-2 rounded-md border border-charcoal-700 bg-charcoal-850 px-3 py-2">
           <EnvironmentCombo environment={{ type: environmentType }} className="text-xs" />
           <Paragraph variant="extra-small" className="text-text-dimmed">
@@ -235,8 +239,11 @@ function RateLimitsSection({
             <TableHeaderCell alignment="right">Configuration</TableHeaderCell>
             <TableHeaderCell alignment="right">
               <span className="flex items-center justify-end gap-x-1">
-                Current
-                <InfoIconTooltip content="Current available tokens for this environment's API key" />
+                Available
+                <InfoIconTooltip
+                  content="Current available tokens for this environment's API key"
+                  disableHoverableContent
+                />
               </span>
             </TableHeaderCell>
             <TableHeaderCell alignment="right">Source</TableHeaderCell>
@@ -307,7 +314,7 @@ function RateLimitTypeBadge({ config }: { config: RateLimitInfo["config"] }) {
       return (
         <span className="inline-flex items-center gap-1">
           <Badge variant="extra-small">Token bucket</Badge>
-          <InfoIconTooltip content={tooltip} />
+          <InfoIconTooltip content={tooltip} disableHoverableContent />
         </span>
       );
     }
@@ -318,7 +325,7 @@ function RateLimitTypeBadge({ config }: { config: RateLimitInfo["config"] }) {
       return (
         <span className="inline-flex items-center gap-1">
           <Badge variant="extra-small">Fixed window</Badge>
-          <InfoIconTooltip content={tooltip} />
+          <InfoIconTooltip content={tooltip} disableHoverableContent />
         </span>
       );
     }
@@ -329,7 +336,7 @@ function RateLimitTypeBadge({ config }: { config: RateLimitInfo["config"] }) {
       return (
         <span className="inline-flex items-center gap-1">
           <Badge variant="extra-small">Sliding window</Badge>
-          <InfoIconTooltip content={tooltip} />
+          <InfoIconTooltip content={tooltip} disableHoverableContent />
         </span>
       );
     }
@@ -401,7 +408,10 @@ function QuotasSection({
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1">
         Quotas
-        <InfoIconTooltip content="Quotas define the maximum resources available to your organization." />
+        <InfoIconTooltip
+          content="Quotas define the maximum resources available to your organization."
+          disableHoverableContent
+        />
       </Header2>
       <Table variant="bright/no-hover">
         <TableHeader>
@@ -417,13 +427,12 @@ function QuotasSection({
             <QuotaRow key={quota.name} quota={quota} />
           ))}
           <TableRow>
-            <TableCell>
-              <div className="flex flex-col">
-                <span className="font-medium text-text-bright">Batch processing concurrency</span>
-                <span className="text-xs text-text-dimmed">
-                  Concurrent batch items being processed
-                </span>
-              </div>
+            <TableCell className="flex w-full items-center gap-1">
+              <span className="text-sm">Batch processing concurrency</span>
+              <InfoIconTooltip
+                content="Controls how many batch items can be processed simultaneously."
+                disableHoverableContent
+              />
             </TableCell>
             <TableCell alignment="right" className="font-medium tabular-nums">
               {formatNumber(batchConcurrency.limit)}
@@ -449,11 +458,9 @@ function QuotaRow({ quota }: { quota: QuotaInfo }) {
 
   return (
     <TableRow>
-      <TableCell>
-        <div className="flex flex-col">
-          <span className="font-medium text-text-bright">{quota.name}</span>
-          <span className="text-xs text-text-dimmed">{quota.description}</span>
-        </div>
+      <TableCell className="flex w-full items-center gap-1">
+        <span className="text-sm">{quota.name}</span>
+        <InfoIconTooltip content={quota.description} disableHoverableContent />
       </TableCell>
       <TableCell alignment="right" className="font-medium tabular-nums">
         {quota.limit !== null
@@ -520,10 +527,7 @@ function FeatureRow({ feature }: { feature: FeatureInfo }) {
         Enabled
       </span>
     ) : (
-      <span className="inline-flex items-center gap-1 text-text-dimmed">
-        <XMarkIcon className="h-4 w-4" />
-        Not available
-      </span>
+      <span className="inline-flex items-center gap-1 text-text-dimmed">Not available</span>
     );
   };
 
