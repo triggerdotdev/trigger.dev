@@ -1,18 +1,16 @@
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { tryCatch } from "@trigger.dev/core";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentSelector } from "~/components/navigation/EnvironmentSelector";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Feedback } from "~/components/Feedback";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
   Table,
@@ -124,12 +122,12 @@ export default function Page() {
         <div className="mx-auto max-w-3xl p-4">
           <div className="flex flex-col gap-8">
             {/* Current Plan Section */}
-            {/* {data.planName && ( */}
-            <CurrentPlanSection
-              planName={`${data.planName}Pro`}
-              billingPath={organizationBillingPath(organization)}
-            />
-            {/* )} */}
+            {data.planName && (
+              <CurrentPlanSection
+                planName={`${data.planName}Pro`}
+                billingPath={organizationBillingPath(organization)}
+              />
+            )}
 
             {/* Concurrency Section */}
             <ConcurrencySection
@@ -137,13 +135,27 @@ export default function Page() {
             />
 
             {/* Rate Limits Section */}
-            <RateLimitsSection rateLimits={data.rateLimits} environmentType={environment.type} />
+            <RateLimitsSection
+              rateLimits={data.rateLimits}
+              organization={organization}
+              project={project}
+              environment={environment}
+            />
 
             {/* Quotas Section */}
-            <QuotasSection quotas={data.quotas} batchConcurrency={data.batchConcurrency} />
+            <QuotasSection
+              quotas={data.quotas}
+              batchConcurrency={data.batchConcurrency}
+              planName={data.planName}
+              billingPath={organizationBillingPath(organization)}
+            />
 
             {/* Features Section */}
-            <FeaturesSection features={data.features} />
+            <FeaturesSection
+              features={data.features}
+              planName={data.planName}
+              billingPath={organizationBillingPath(organization)}
+            />
           </div>
         </div>
       </PageBody>
@@ -208,34 +220,69 @@ function ConcurrencySection({ concurrencyPath }: { concurrencyPath: string }) {
 
 function RateLimitsSection({
   rateLimits,
-  environmentType,
+  organization,
+  project,
+  environment,
 }: {
   rateLimits: LimitsResult["rateLimits"];
-  environmentType: RuntimeEnvironmentType;
+  organization: ReturnType<typeof useOrganization>;
+  project: ReturnType<typeof useProject>;
+  environment: ReturnType<typeof useEnvironment>;
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <Header2 className="flex items-center gap-1">
-        Rate Limits
-        <InfoIconTooltip
-          content="Rate limits control how many API requests can be made within a time window."
-          disableHoverableContent
+      <div className="flex items-center justify-between">
+        <Header2 className="flex items-center gap-1">
+          Rate Limits
+          <InfoIconTooltip
+            content="Rate limits control how many API requests can be made within a time window. They are tracked per API key."
+            disableHoverableContent
+          />
+        </Header2>
+        <EnvironmentSelector
+          organization={organization}
+          project={project}
+          environment={environment}
+          className="w-auto"
         />
-      </Header2>
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-2 rounded-md border border-charcoal-700 bg-charcoal-850 px-3 py-2">
-          <EnvironmentCombo environment={{ type: environmentType }} className="text-xs" />
-          <Paragraph variant="extra-small" className="text-text-dimmed">
-            Showing current tokens for this environment's API key. Rate limits are tracked per API
-            key.
-          </Paragraph>
-        </div>
       </div>
       <Table variant="bright/no-hover">
         <TableHeader>
           <TableRow>
             <TableHeaderCell>Rate Limit</TableHeaderCell>
-            <TableHeaderCell>Type</TableHeaderCell>
+            <TableHeaderCell alignment="right">
+              <span className="flex items-center justify-end gap-x-1">
+                Type
+                <InfoIconTooltip
+                  content={
+                    <div className="flex max-w-xs flex-col gap-3 py-1">
+                      <div className="flex flex-col items-start gap-1">
+                        <Badge variant="small">Token bucket</Badge>
+                        <span className="text-text-bright">
+                          Requests consume tokens from a bucket that refills over time. When empty,
+                          requests are rate limited.
+                        </span>
+                      </div>
+                      <div className="flex flex-col items-start gap-1">
+                        <Badge variant="small">Fixed window</Badge>
+                        <span className="text-text-bright">
+                          Allows a set number of requests per time window. The window resets at
+                          fixed intervals.
+                        </span>
+                      </div>
+                      <div className="flex flex-col items-start gap-1">
+                        <Badge variant="small">Sliding window</Badge>
+                        <span className="text-text-bright">
+                          Allows a set number of requests per rolling time window. The limit is
+                          continuously evaluated.
+                        </span>
+                      </div>
+                    </div>
+                  }
+                  disableHoverableContent
+                />
+              </span>
+            </TableHeaderCell>
             <TableHeaderCell alignment="right">Configuration</TableHeaderCell>
             <TableHeaderCell alignment="right">
               <span className="flex items-center justify-end gap-x-1">
@@ -247,6 +294,7 @@ function RateLimitsSection({
               </span>
             </TableHeaderCell>
             <TableHeaderCell alignment="right">Source</TableHeaderCell>
+            <TableHeaderCell alignment="right">Upgrade</TableHeaderCell>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -266,13 +314,15 @@ function RateLimitRow({ info }: { info: RateLimitInfo }) {
   return (
     <TableRow>
       <TableCell>
-        <div className="flex flex-col">
-          <span className="font-medium text-text-bright">{info.name}</span>
-          <span className="text-xs text-text-dimmed">{info.description}</span>
-        </div>
+        <span className="flex items-center gap-1 text-sm">
+          {info.name}
+          <InfoIconTooltip content={info.description} disableHoverableContent />
+        </span>
       </TableCell>
-      <TableCell>
-        <RateLimitTypeBadge config={info.config} />
+      <TableCell alignment="right">
+        <div className="flex justify-end">
+          <RateLimitTypeBadge config={info.config} />
+        </div>
       </TableCell>
       <TableCell alignment="right">
         <RateLimitConfigDisplay config={info.config} />
@@ -299,47 +349,38 @@ function RateLimitRow({ info }: { info: RateLimitInfo }) {
       <TableCell alignment="right">
         <SourceBadge source={info.source} />
       </TableCell>
+      <TableCell alignment="right">
+        <div className="flex justify-end">
+          <Feedback
+            button={<Button variant="tertiary/small">Contact us</Button>}
+            defaultValue="help"
+          />
+        </div>
+      </TableCell>
     </TableRow>
   );
 }
 
 function RateLimitTypeBadge({ config }: { config: RateLimitInfo["config"] }) {
   switch (config.type) {
-    case "tokenBucket": {
-      const tooltip = `Requests consume tokens from a bucket. The bucket refills at ${formatNumber(
-        config.refillRate
-      )} tokens per ${config.interval} up to a maximum of ${formatNumber(
-        config.maxTokens
-      )} tokens. When the bucket is empty, requests are rate limited until tokens refill.`;
+    case "tokenBucket":
       return (
-        <span className="inline-flex items-center gap-1">
-          <Badge variant="extra-small">Token bucket</Badge>
-          <InfoIconTooltip content={tooltip} disableHoverableContent />
-        </span>
+        <Badge variant="small" className="w-fit">
+          Token bucket
+        </Badge>
       );
-    }
-    case "fixedWindow": {
-      const tooltip = `Allows ${formatNumber(config.tokens)} requests per ${
-        config.window
-      } time window. The window resets at fixed intervals.`;
+    case "fixedWindow":
       return (
-        <span className="inline-flex items-center gap-1">
-          <Badge variant="extra-small">Fixed window</Badge>
-          <InfoIconTooltip content={tooltip} disableHoverableContent />
-        </span>
+        <Badge variant="small" className="w-fit">
+          Fixed window
+        </Badge>
       );
-    }
-    case "slidingWindow": {
-      const tooltip = `Allows ${formatNumber(config.tokens)} requests per ${
-        config.window
-      } rolling time window. The limit is continuously evaluated.`;
+    case "slidingWindow":
       return (
-        <span className="inline-flex items-center gap-1">
-          <Badge variant="extra-small">Sliding window</Badge>
-          <InfoIconTooltip content={tooltip} disableHoverableContent />
-        </span>
+        <Badge variant="small" className="w-fit">
+          Sliding window
+        </Badge>
       );
-    }
   }
 }
 
@@ -382,10 +423,15 @@ function RateLimitConfigDisplay({ config }: { config: RateLimitInfo["config"] })
 function QuotasSection({
   quotas,
   batchConcurrency,
+  planName,
+  billingPath,
 }: {
   quotas: LimitsResult["quotas"];
   batchConcurrency: LimitsResult["batchConcurrency"];
+  planName: string | null;
+  billingPath: string;
 }) {
+  const isPro = planName === "Pro";
   // Collect all quotas that should be shown
   const quotaRows: QuotaInfo[] = [];
 
@@ -420,11 +466,18 @@ function QuotasSection({
             <TableHeaderCell alignment="right">Limit</TableHeaderCell>
             <TableHeaderCell alignment="right">Current</TableHeaderCell>
             <TableHeaderCell alignment="right">Source</TableHeaderCell>
+            <TableHeaderCell alignment="right">Upgrade</TableHeaderCell>
           </TableRow>
         </TableHeader>
         <TableBody>
           {quotaRows.map((quota) => (
-            <QuotaRow key={quota.name} quota={quota} />
+            <QuotaRow
+              key={quota.name}
+              quota={quota}
+              showUpgrade={quota.name === "Projects"}
+              isPro={isPro}
+              billingPath={billingPath}
+            />
           ))}
           <TableRow>
             <TableCell className="flex w-full items-center gap-1">
@@ -443,6 +496,20 @@ function QuotasSection({
             <TableCell alignment="right">
               <SourceBadge source={batchConcurrency.source} />
             </TableCell>
+            <TableCell alignment="right">
+              <div className="flex justify-end">
+                {isPro ? (
+                  <Feedback
+                    button={<Button variant="tertiary/small">Contact us</Button>}
+                    defaultValue="help"
+                  />
+                ) : (
+                  <LinkButton to={billingPath} variant="tertiary/small">
+                    View plans
+                  </LinkButton>
+                )}
+              </div>
+            </TableCell>
           </TableRow>
         </TableBody>
       </Table>
@@ -450,7 +517,17 @@ function QuotasSection({
   );
 }
 
-function QuotaRow({ quota }: { quota: QuotaInfo }) {
+function QuotaRow({
+  quota,
+  showUpgrade,
+  isPro,
+  billingPath,
+}: {
+  quota: QuotaInfo;
+  showUpgrade: boolean;
+  isPro: boolean;
+  billingPath: string;
+}) {
   // For log retention, we don't show current usage as it's a duration, not a count
   const isRetentionQuota = quota.name === "Log retention";
   const percentage =
@@ -481,11 +558,38 @@ function QuotaRow({ quota }: { quota: QuotaInfo }) {
       <TableCell alignment="right">
         <SourceBadge source={quota.source} />
       </TableCell>
+      <TableCell alignment="right">
+        {showUpgrade ? (
+          <div className="flex justify-end">
+            {isPro ? (
+              <Feedback
+                button={<Button variant="tertiary/small">Contact us</Button>}
+                defaultValue="help"
+              />
+            ) : (
+              <LinkButton to={billingPath} variant="tertiary/small">
+                View plans
+              </LinkButton>
+            )}
+          </div>
+        ) : null}
+      </TableCell>
     </TableRow>
   );
 }
 
-function FeaturesSection({ features }: { features: LimitsResult["features"] }) {
+function FeaturesSection({
+  features,
+  planName,
+  billingPath,
+}: {
+  features: LimitsResult["features"];
+  planName: string | null;
+  billingPath: string;
+}) {
+  const isPro = planName === "Pro";
+  const isFree = planName === "Free" || planName === null;
+
   return (
     <div className="flex flex-col gap-3">
       <Header2>Plan Features</Header2>
@@ -494,19 +598,40 @@ function FeaturesSection({ features }: { features: LimitsResult["features"] }) {
           <TableRow>
             <TableHeaderCell>Feature</TableHeaderCell>
             <TableHeaderCell alignment="right">Status</TableHeaderCell>
+            <TableHeaderCell alignment="right">Upgrade</TableHeaderCell>
           </TableRow>
         </TableHeader>
         <TableBody>
-          <FeatureRow feature={features.hasStagingEnvironment} />
-          <FeatureRow feature={features.support} />
-          <FeatureRow feature={features.includedUsage} />
+          <FeatureRow
+            feature={features.hasStagingEnvironment}
+            upgradeType={isFree ? "view-plans" : "none"}
+            billingPath={billingPath}
+          />
+          <FeatureRow
+            feature={features.support}
+            upgradeType={isPro ? "contact-us" : "view-plans"}
+            billingPath={billingPath}
+          />
+          <FeatureRow
+            feature={features.includedUsage}
+            upgradeType={isPro ? "contact-us" : "view-plans"}
+            billingPath={billingPath}
+          />
         </TableBody>
       </Table>
     </div>
   );
 }
 
-function FeatureRow({ feature }: { feature: FeatureInfo }) {
+function FeatureRow({
+  feature,
+  upgradeType,
+  billingPath,
+}: {
+  feature: FeatureInfo;
+  upgradeType: "view-plans" | "contact-us" | "none";
+  billingPath: string;
+}) {
   const displayValue = () => {
     if (feature.name === "Included compute" && typeof feature.value === "number") {
       if (!feature.enabled || feature.value === 0) {
@@ -531,6 +656,30 @@ function FeatureRow({ feature }: { feature: FeatureInfo }) {
     );
   };
 
+  const renderUpgrade = () => {
+    switch (upgradeType) {
+      case "view-plans":
+        return (
+          <div className="flex justify-end">
+            <LinkButton to={billingPath} variant="tertiary/small">
+              View plans
+            </LinkButton>
+          </div>
+        );
+      case "contact-us":
+        return (
+          <div className="flex justify-end">
+            <Feedback
+              button={<Button variant="tertiary/small">Contact us</Button>}
+              defaultValue="help"
+            />
+          </div>
+        );
+      case "none":
+        return null;
+    }
+  };
+
   return (
     <TableRow>
       <TableCell className="flex w-full items-center gap-1">
@@ -538,6 +687,7 @@ function FeatureRow({ feature }: { feature: FeatureInfo }) {
         <InfoIconTooltip content={feature.description} disableHoverableContent />
       </TableCell>
       <TableCell alignment="right">{displayValue()}</TableCell>
+      <TableCell alignment="right">{renderUpgrade()}</TableCell>
     </TableRow>
   );
 }
