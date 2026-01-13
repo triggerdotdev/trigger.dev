@@ -126,6 +126,17 @@ export class ClickHousePrinter {
    * These are populated from tableSchema.tenantColumns when processing joins.
    */
   private allowedInternalColumns: Set<string> = new Set();
+  /**
+   * Set of internal-only column names that are NOT user-queryable.
+   * These are tenant columns and required filter columns that are not exposed in tableSchema.columns.
+   * Used to block user queries from accessing internal columns in SELECT, ORDER BY, GROUP BY, HAVING.
+   */
+  private internalOnlyColumns: Set<string> = new Set();
+  /**
+   * Whether we're currently processing user projection clauses (SELECT, ORDER BY, GROUP BY, HAVING).
+   * When true, internal-only columns will be rejected.
+   */
+  private inProjectionContext = false;
 
   constructor(
     private context: PrinterContext,
@@ -324,14 +335,17 @@ export class ClickHousePrinter {
     // Top-level queries clear contexts; subqueries save parent context and create fresh context
     const savedTableContexts = new Map(this.tableContexts);
     const savedInternalColumns = new Set(this.allowedInternalColumns);
+    const savedInternalOnlyColumns = new Set(this.internalOnlyColumns);
     if (isTopLevelQuery) {
       this.tableContexts.clear();
       this.allowedInternalColumns.clear();
+      this.internalOnlyColumns.clear();
     } else {
       // Subqueries get fresh contexts - they don't inherit parent tables
       // (the parent will restore its context after the subquery is processed)
       this.tableContexts = new Map();
       this.allowedInternalColumns = new Set();
+      this.internalOnlyColumns = new Set();
     }
 
     // Build WHERE clause starting with any existing where
@@ -380,15 +394,18 @@ export class ClickHousePrinter {
 
     // Process SELECT columns and collect metadata
     // Using flatMap because asterisk expansion can return multiple columns
+    // Set inProjectionContext to block internal-only columns in user projections
     let columns: string[];
     if (node.select && node.select.length > 0) {
       // Only collect metadata for top-level queries (not subqueries)
       if (isTopLevelQuery) {
         this.outputColumns = [];
       }
+      this.inProjectionContext = true;
       columns = node.select.flatMap((col) =>
         this.visitSelectColumnWithMetadata(col, isTopLevelQuery)
       );
+      this.inProjectionContext = false;
     } else {
       columns = ["1"];
     }
@@ -406,16 +423,33 @@ export class ClickHousePrinter {
     const prewhere = node.prewhere ? this.visit(node.prewhere) : null;
     const whereStr = where ? this.visit(where) : null;
 
-    // Process GROUP BY with context flag to use raw columns for whereTransform columns
+    // Process GROUP BY with context flags:
+    // - inGroupByContext: use raw columns for whereTransform columns
+    // - inProjectionContext: block internal-only columns
     let groupBy: string[] | null = null;
     if (node.group_by) {
       this.inGroupByContext = true;
+      this.inProjectionContext = true;
       groupBy = node.group_by.map((col) => this.visit(col));
+      this.inProjectionContext = false;
       this.inGroupByContext = false;
     }
 
-    const having = node.having ? this.visit(node.having) : null;
-    const orderBy = node.order_by ? node.order_by.map((col) => this.visit(col)) : null;
+    // Process HAVING with inProjectionContext to block internal-only columns
+    let having: string | null = null;
+    if (node.having) {
+      this.inProjectionContext = true;
+      having = this.visit(node.having);
+      this.inProjectionContext = false;
+    }
+
+    // Process ORDER BY with inProjectionContext to block internal-only columns
+    let orderBy: string[] | null = null;
+    if (node.order_by) {
+      this.inProjectionContext = true;
+      orderBy = node.order_by.map((col) => this.visit(col));
+      this.inProjectionContext = false;
+    }
 
     // Process ARRAY JOIN
     let arrayJoin = "";
@@ -511,6 +545,7 @@ export class ClickHousePrinter {
     this.selectAliases = savedAliases;
     this.tableContexts = savedTableContexts;
     this.allowedInternalColumns = savedInternalColumns;
+    this.internalOnlyColumns = savedInternalOnlyColumns;
 
     return response;
   }
@@ -1416,18 +1451,38 @@ export class ClickHousePrinter {
 
         // Register tenant columns as allowed internal columns
         // These are ClickHouse column names used for tenant isolation
+        // Also mark them as internal-only if they're not exposed in tableSchema.columns
         if (tableSchema.tenantColumns) {
           const { organizationId, projectId, environmentId } = tableSchema.tenantColumns;
-          if (organizationId) this.allowedInternalColumns.add(organizationId);
-          if (projectId) this.allowedInternalColumns.add(projectId);
-          if (environmentId) this.allowedInternalColumns.add(environmentId);
+          if (organizationId) {
+            this.allowedInternalColumns.add(organizationId);
+            if (!this.isColumnExposedInSchema(tableSchema, organizationId)) {
+              this.internalOnlyColumns.add(organizationId);
+            }
+          }
+          if (projectId) {
+            this.allowedInternalColumns.add(projectId);
+            if (!this.isColumnExposedInSchema(tableSchema, projectId)) {
+              this.internalOnlyColumns.add(projectId);
+            }
+          }
+          if (environmentId) {
+            this.allowedInternalColumns.add(environmentId);
+            if (!this.isColumnExposedInSchema(tableSchema, environmentId)) {
+              this.internalOnlyColumns.add(environmentId);
+            }
+          }
         }
 
         // Register required filter columns as allowed internal columns
         // These are ClickHouse columns used for internal filtering (e.g., engine = 'V2')
+        // Also mark them as internal-only if they're not exposed in tableSchema.columns
         if (tableSchema.requiredFilters) {
           for (const filter of tableSchema.requiredFilters) {
             this.allowedInternalColumns.add(filter.column);
+            if (!this.isColumnExposedInSchema(tableSchema, filter.column)) {
+              this.internalOnlyColumns.add(filter.column);
+            }
           }
         }
 
@@ -2219,8 +2274,19 @@ export class ClickHousePrinter {
       return chain; // Valid alias reference
     }
 
+    // Check if this is an internal-only column being accessed in a user projection context
+    // (SELECT, ORDER BY, GROUP BY, HAVING). These columns are used internally for
+    // tenant isolation but should not be user-queryable unless explicitly exposed.
+    if (this.inProjectionContext && this.internalOnlyColumns.has(columnName)) {
+      const availableColumns = this.getAvailableColumnNames();
+      throw new QueryError(
+        `Column "${columnName}" is not available for querying. Available columns: ${availableColumns.join(", ")}`
+      );
+    }
+
     // Check if this is an allowed internal column (e.g., tenant columns)
     // These are ClickHouse column names that are allowed for internal use only
+    // (e.g., in WHERE clauses for tenant isolation)
     if (this.allowedInternalColumns.has(columnName)) {
       return chain;
     }
@@ -2254,6 +2320,29 @@ export class ClickHousePrinter {
       columns.push(...Object.keys(tableSchema.columns));
     }
     return [...new Set(columns)].sort();
+  }
+
+  /**
+   * Check if a ClickHouse column name is exposed in the table schema's public columns.
+   * A column is considered exposed if:
+   * - It exists as a column name in tableSchema.columns, OR
+   * - It is the clickhouseName of a column in tableSchema.columns
+   *
+   * @param tableSchema The table schema to check
+   * @param clickhouseColumnName The ClickHouse column name to check
+   * @returns true if the column is exposed to users, false if it's internal-only
+   */
+  private isColumnExposedInSchema(tableSchema: TableSchema, clickhouseColumnName: string): boolean {
+    for (const [tsqlName, columnSchema] of Object.entries(tableSchema.columns)) {
+      // Check if the ClickHouse column name matches either:
+      // 1. The TSQL name (if no clickhouseName mapping exists)
+      // 2. The explicit clickhouseName mapping
+      const actualClickhouseName = columnSchema.clickhouseName || tsqlName;
+      if (actualClickhouseName === clickhouseColumnName) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
