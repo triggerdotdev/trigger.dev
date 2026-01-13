@@ -220,16 +220,6 @@ export class RunPresenter {
         let nDuration = n.data.duration;
         let nIsError = n.data.isError;
 
-        // NOTE: Clickhouse trace ingestion is eventually consistent.
-        // When a run is marked finished in Postgres, we reconcile the
-        // root span to reflect completion even if telemetry is still partial.
-        // This is a deliberate UI-layer tradeoff to prevent stale or "stuck"
-        // run states in the dashboard.
-        if (isRoot && runData.isFinished && nIsPartial) {
-          nIsPartial = false;
-          nDuration = Math.max(nDuration ?? 0, postgresRunDuration);
-          nIsError = isFailedRunStatus(runData.status);
-        }
 
         //only let non-debug events extend the total duration
         if (!n.data.isDebug) {
