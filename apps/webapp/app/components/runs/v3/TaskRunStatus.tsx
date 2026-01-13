@@ -236,43 +236,71 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
   }
 }
 
-export function runStatusTitle(status: TaskRunStatus): string {
-  switch (status) {
-    case "DELAYED":
-      return "Delayed";
-    case "PENDING":
-      return "Queued";
-    case "PENDING_VERSION":
-    case "WAITING_FOR_DEPLOY":
-      return "Pending version";
-    case "DEQUEUED":
-      return "Dequeued";
-    case "EXECUTING":
-      return "Executing";
-    case "WAITING_TO_RESUME":
-      return "Waiting";
-    case "RETRYING_AFTER_FAILURE":
-      return "Reattempting";
-    case "PAUSED":
-      return "Paused";
-    case "CANCELED":
-      return "Canceled";
-    case "INTERRUPTED":
-      return "Interrupted";
-    case "COMPLETED_SUCCESSFULLY":
-      return "Completed";
-    case "COMPLETED_WITH_ERRORS":
-      return "Failed";
-    case "SYSTEM_FAILURE":
-      return "System failure";
-    case "CRASHED":
-      return "Crashed";
-    case "EXPIRED":
-      return "Expired";
-    case "TIMED_OUT":
-      return "Timed out";
-    default: {
-      assertNever(status);
-    }
-  }
+export function runStatusTitle(status: TaskRunStatus): RunFriendlyStatus {
+  return runStatusTitleFromStatus[status];
 }
+
+export function runStatusFromFriendlyTitle(friendly: RunFriendlyStatus): TaskRunStatus {
+  const result = titlesStatusesArray.find(([_, f]) => f === friendly);
+  if (!result) {
+    throw new Error(`Unknown friendly status: ${friendly}`);
+  }
+  return result[0] as TaskRunStatus;
+}
+
+export const runFriendlyStatus = [
+  "Delayed",
+  "Queued",
+  "Pending version",
+  "Dequeued",
+  "Executing",
+  "Waiting",
+  "Reattempting",
+  "Paused",
+  "Canceled",
+  "Interrupted",
+  "Completed",
+  "Failed",
+  "System failure",
+  "Crashed",
+  "Expired",
+  "Timed out",
+] as const;
+
+export type RunFriendlyStatus = (typeof runFriendlyStatus)[number];
+
+/**
+ * Check if a value is a valid TaskRunStatus
+ */
+export function isTaskRunStatus(value: unknown): value is TaskRunStatus {
+  return typeof value === "string" && allTaskRunStatuses.includes(value as TaskRunStatus);
+}
+
+/**
+ * Check if a value is a valid RunFriendlyStatus
+ */
+export function isRunFriendlyStatus(value: unknown): value is RunFriendlyStatus {
+  return typeof value === "string" && runFriendlyStatus.includes(value as RunFriendlyStatus);
+}
+
+export const runStatusTitleFromStatus: Record<TaskRunStatus, RunFriendlyStatus> = {
+  DELAYED: "Delayed",
+  PENDING: "Queued",
+  PENDING_VERSION: "Pending version",
+  WAITING_FOR_DEPLOY: "Pending version",
+  DEQUEUED: "Dequeued",
+  EXECUTING: "Executing",
+  WAITING_TO_RESUME: "Waiting",
+  RETRYING_AFTER_FAILURE: "Reattempting",
+  PAUSED: "Paused",
+  CANCELED: "Canceled",
+  INTERRUPTED: "Interrupted",
+  COMPLETED_SUCCESSFULLY: "Completed",
+  COMPLETED_WITH_ERRORS: "Failed",
+  SYSTEM_FAILURE: "System failure",
+  CRASHED: "Crashed",
+  EXPIRED: "Expired",
+  TIMED_OUT: "Timed out",
+};
+
+const titlesStatusesArray = Object.entries(runStatusTitleFromStatus);

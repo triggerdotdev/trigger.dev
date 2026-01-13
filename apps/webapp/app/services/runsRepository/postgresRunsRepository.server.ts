@@ -31,6 +31,18 @@ export class PostgresRunsRepository implements IRunsRepository {
     return runs.map((run) => run.id);
   }
 
+  async listFriendlyRunIds(options: ListRunsOptions) {
+    const filterOptions = await convertRunListInputOptionsToFilterRunsOptions(
+      options,
+      this.options.prisma
+    );
+
+    const query = this.#buildFriendlyRunIdsQuery(filterOptions, options.page);
+    const runs = await this.options.prisma.$queryRaw<{ friendlyId: string }[]>(query);
+
+    return runs.map((run) => run.friendlyId);
+  }
+
   async listRuns(options: ListRunsOptions) {
     const filterOptions = await convertRunListInputOptionsToFilterRunsOptions(
       options,
@@ -139,6 +151,21 @@ export class PostgresRunsRepository implements IRunsRepository {
 
     return Prisma.sql`
       SELECT tr.id
+      FROM ${sqlDatabaseSchema}."TaskRun" tr
+      WHERE ${whereConditions}
+      ORDER BY ${page.direction === "backward" ? Prisma.sql`tr.id ASC` : Prisma.sql`tr.id DESC`}
+      LIMIT ${page.size + 1}
+    `;
+  }
+
+  #buildFriendlyRunIdsQuery(
+    filterOptions: FilterRunsOptions,
+    page: { size: number; cursor?: string; direction?: "forward" | "backward" }
+  ) {
+    const whereConditions = this.#buildWhereConditions(filterOptions, page.cursor, page.direction);
+
+    return Prisma.sql`
+      SELECT tr."friendlyId"
       FROM ${sqlDatabaseSchema}."TaskRun" tr
       WHERE ${whereConditions}
       ORDER BY ${page.direction === "backward" ? Prisma.sql`tr.id ASC` : Prisma.sql`tr.id DESC`}

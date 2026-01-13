@@ -521,6 +521,7 @@ const EnvironmentSchema = z
     PROD_USAGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
     CENTS_PER_RUN: z.coerce.number().default(0),
+    CENTS_PER_QUERY_BYTE_SECOND: z.coerce.number().default(0),
 
     EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
     RESOURCE_MONITOR_ENABLED: z.string().default("0"),
@@ -1173,6 +1174,30 @@ const EnvironmentSchema = z
     CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
     CLICKHOUSE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
     CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+
+    // Logs List Query Settings (for paginated log views)
+    CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE: z.coerce.number().int().default(256_000_000),
+    CLICKHOUSE_LOGS_LIST_MAX_BYTES_BEFORE_EXTERNAL_SORT: z.coerce.number().int().default(256_000_000),
+    CLICKHOUSE_LOGS_LIST_MAX_THREADS: z.coerce.number().int().default(2),
+    CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ: z.coerce.number().int().default(10_000_000),
+    CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME: z.coerce.number().int().default(120),
+
+    // Logs Detail Query Settings (for single log views)
+    CLICKHOUSE_LOGS_DETAIL_MAX_MEMORY_USAGE: z.coerce.number().int().default(64_000_000),
+    CLICKHOUSE_LOGS_DETAIL_MAX_THREADS: z.coerce.number().int().default(2),
+    CLICKHOUSE_LOGS_DETAIL_MAX_EXECUTION_TIME: z.coerce.number().int().default(60),
+
+
+    // Query page ClickHouse limits (for TSQL queries)
+    QUERY_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().default(10),
+    QUERY_CLICKHOUSE_MAX_MEMORY_USAGE: z.coerce.number().int().default(1_073_741_824), // 1GB in bytes
+    QUERY_CLICKHOUSE_MAX_AST_ELEMENTS: z.coerce.number().int().default(4_000_000),
+    QUERY_CLICKHOUSE_MAX_EXPANDED_AST_ELEMENTS: z.coerce.number().int().default(4_000_000),
+    QUERY_CLICKHOUSE_MAX_BYTES_BEFORE_EXTERNAL_GROUP_BY: z.coerce.number().int().default(0),
+
+    // Query page concurrency limits
+    QUERY_DEFAULT_ORG_CONCURRENCY_LIMIT: z.coerce.number().int().default(3),
+    QUERY_GLOBAL_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
 
     EVENTS_CLICKHOUSE_URL: z
       .string()
