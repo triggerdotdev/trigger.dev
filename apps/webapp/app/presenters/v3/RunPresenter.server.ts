@@ -6,7 +6,7 @@ import { getUsername } from "~/utils/username";
 import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
-import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
+import { isFinalRunStatus } from "~/v3/taskStatus";
 import { env } from "~/env.server";
 import { reconcileTraceWithRunLifecycle } from "./reconcileTrace.server";
 
