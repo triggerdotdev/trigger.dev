@@ -6,7 +6,7 @@ import { getUsername } from "~/utils/username";
 import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
-import { isFinalRunStatus } from "~/v3/taskStatus";
+import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { env } from "~/env.server";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
@@ -215,55 +215,53 @@ export class RunPresenter {
 
     const events = tree
       ? flattenTree(tree).map((n) => {
-          const offset = millisecondsToNanoseconds(
-            n.data.startTime.getTime() - treeRootStartTimeMs
-          );
-          //only let non-debug events extend the total duration
-          if (!n.data.isDebug) {
-            totalDuration = Math.max(totalDuration, offset + n.data.duration);
-          }
+        const offset = millisecondsToNanoseconds(
+          n.data.startTime.getTime() - treeRootStartTimeMs
+        );
+        //only let non-debug events extend the total duration
+        if (!n.data.isDebug) {
+          totalDuration = Math.max(totalDuration, offset + n.data.duration);
+        }
 
-          // For cached spans, store the mapping from spanId to the linked run's ID
-          if (n.data.style?.icon === "task-cached" && n.runId) {
-            linkedRunIdBySpanId[n.id] = n.runId;
-          }
+        // For cached spans, store the mapping from spanId to the linked run's ID
+        if (n.data.style?.icon === "task-cached" && n.runId) {
+          linkedRunIdBySpanId[n.id] = n.runId;
+        }
 
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              timelineEvents: createTimelineSpanEventsFromSpanEvents(
-                n.data.events,
-                user?.admin ?? false,
-                treeRootStartTimeMs
-              ),
-              //set partial nodes to null duration
-              duration: n.data.isPartial ? null : n.data.duration,
-              offset,
-              isRoot: n.id === traceSummary.rootSpan.id,
-            },
-          };
-        })
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            timelineEvents: createTimelineSpanEventsFromSpanEvents(
+              n.data.events,
+              user?.admin ?? false,
+              treeRootStartTimeMs
+            ),
+            //set partial nodes to null duration
+            duration: n.data.isPartial ? null : n.data.duration,
+            offset,
+            isRoot: n.id === traceSummary.rootSpan.id,
+          },
+        };
+      })
       : [];
 
     //total duration should be a minimum of 1ms
     totalDuration = Math.max(totalDuration, millisecondsToNanoseconds(1));
 
-    let rootSpanStatus: "executing" | "completed" | "failed" = "executing";
-    if (events[0]) {
-      if (events[0].data.isError) {
-        rootSpanStatus = "failed";
-      } else if (!events[0].data.isPartial) {
-        rootSpanStatus = "completed";
-      }
-    }
+    const reconciled = reconcileTraceWithRunLifecycle(
+      runData,
+      traceSummary.rootSpan.id,
+      events,
+      totalDuration
+    );
 
     return {
       run: runData,
       trace: {
-        rootSpanStatus,
-        events: events,
-        duration: totalDuration,
+        rootSpanStatus: reconciled.rootSpanStatus,
+        events: reconciled.events,
+        duration: reconciled.totalDuration,
         rootStartedAt: tree?.data.startTime,
         startedAt: run.startedAt,
         queuedDuration: run.startedAt
@@ -275,4 +273,67 @@ export class RunPresenter {
       maximumLiveReloadingSetting: eventRepository.maximumLiveReloadingSetting,
     };
   }
+}
+
+// NOTE: Clickhouse trace ingestion is eventually consistent.
+// When a run is marked finished in Postgres, we reconcile the
+// root span to reflect completion even if telemetry is still partial.
+// This is a deliberate UI-layer tradeoff to prevent stale or "stuck"
+// run states in the dashboard.
+export function reconcileTraceWithRunLifecycle(
+  runData: {
+    isFinished: boolean;
+    status: Run["status"];
+    createdAt: Date;
+    completedAt: Date | null;
+    rootTaskRun: { createdAt: Date } | null;
+  },
+  rootSpanId: string,
+  events: RunEvent[],
+  totalDuration: number
+): {
+  events: RunEvent[];
+  totalDuration: number;
+  rootSpanStatus: "executing" | "completed" | "failed";
+} {
+  const currentStatus: "executing" | "completed" | "failed" = events[0]
+    ? events[0].data.isError
+      ? "failed"
+      : !events[0].data.isPartial
+        ? "completed"
+        : "executing"
+    : "executing";
+
+  if (!runData.isFinished) {
+    return { events, totalDuration, rootSpanStatus: currentStatus };
+  }
+
+  const postgresRunDuration = runData.completedAt
+    ? millisecondsToNanoseconds(
+      runData.completedAt.getTime() - (runData.rootTaskRun?.createdAt ?? runData.createdAt).getTime()
+    )
+    : 0;
+
+  const updatedTotalDuration = Math.max(totalDuration, postgresRunDuration);
+
+  const updatedEvents = events.map((e) => {
+    if (e.id === rootSpanId && e.data.isPartial) {
+      return {
+        ...e,
+        data: {
+          ...e.data,
+          isPartial: false,
+          duration: Math.max(e.data.duration ?? 0, postgresRunDuration),
+          isError: isFailedRunStatus(runData.status),
+        },
+      };
+    }
+    return e;
+  });
+
+  return {
+    events: updatedEvents,
+    totalDuration: updatedTotalDuration,
+    rootSpanStatus: isFailedRunStatus(runData.status) ? "failed" : "completed",
+  };
 }
