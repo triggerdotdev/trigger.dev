@@ -285,10 +285,11 @@ export function reconcileTraceWithRunLifecycle(
   totalDuration: number;
   rootSpanStatus: "executing" | "completed" | "failed";
 } {
-  const currentStatus: "executing" | "completed" | "failed" = events[0]
-    ? events[0].data.isError
+  const rootEvent = events.find((e) => e.id === rootSpanId);
+  const currentStatus: "executing" | "completed" | "failed" = rootEvent
+    ? rootEvent.data.isError
       ? "failed"
-      : !events[0].data.isPartial
+      : !rootEvent.data.isPartial
         ? "completed"
         : "executing"
     : "executing";
