@@ -1,4 +1,6 @@
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { IconCrown, IconTallymark4 } from "@tabler/icons-react";
+import { Gauge, Gem } from "lucide-react";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
@@ -176,7 +178,10 @@ function CurrentPlanSection({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <Header2>Current plan</Header2>
+      <Header2 className="flex items-center gap-1">
+        <IconCrown className="size-6 text-amber-400" />
+        Current plan
+      </Header2>
       <Table variant="bright/no-hover">
         <TableBody>
           <TableRow>
@@ -203,7 +208,8 @@ function CurrentPlanSection({
 function ConcurrencySection({ concurrencyPath }: { concurrencyPath: string }) {
   return (
     <div className="flex flex-col gap-3">
-      <Header2 className="flex items-center gap-1">
+      <Header2 className="flex items-center gap-1.5">
+        <ConcurrencyIcon className="size-5 text-orange-500" />
         Concurrency limits
         <InfoIconTooltip
           content="Concurrency limits control how many runs execute at the same time."
@@ -215,12 +221,7 @@ function ConcurrencySection({ concurrencyPath }: { concurrencyPath: string }) {
           <TableRow>
             <TableCell className="w-full text-sm">Concurrency</TableCell>
             <TableCell alignment="right">
-              <LinkButton
-                to={concurrencyPath}
-                variant="secondary/small"
-                LeadingIcon={ConcurrencyIcon}
-                leadingIconClassName="text-orange-500"
-              >
+              <LinkButton to={concurrencyPath} variant="secondary/small">
                 Manage concurrency
               </LinkButton>
             </TableCell>
@@ -245,8 +246,9 @@ function RateLimitsSection({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <Header2 className="flex items-center gap-1">
-          Rate Limits
+        <Header2 className="flex items-center gap-1.5">
+          <Gauge className="size-5 text-indigo-500" />
+          Rate limits
           <InfoIconTooltip
             content="Rate limits control how many API requests can be made within a time window. They are tracked per API key."
             disableHoverableContent
@@ -262,7 +264,7 @@ function RateLimitsSection({
       <Table variant="bright/no-hover">
         <TableHeader>
           <TableRow>
-            <TableHeaderCell>Rate Limit</TableHeaderCell>
+            <TableHeaderCell>Rate limit</TableHeaderCell>
             <TableHeaderCell alignment="right">
               <span className="flex items-center justify-end gap-x-1">
                 Type
@@ -465,6 +467,7 @@ function QuotasSection({
   return (
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1">
+        <IconTallymark4 className="size-6 text-blue-500" />
         Quotas
         <InfoIconTooltip
           content="Quotas define the maximum resources available to your organization."
@@ -630,7 +633,10 @@ function FeaturesSection({
 
   return (
     <div className="flex flex-col gap-3">
-      <Header2>Plan Features</Header2>
+      <Header2 className="flex items-center gap-1.5">
+        <Gem className="size-5 text-emerald-500" />
+        Plan features
+      </Header2>
       <Table variant="bright/no-hover">
         <TableHeader>
           <TableRow>
@@ -759,11 +765,11 @@ function SourceBadge({ source }: { source: "default" | "plan" | "override" }) {
   const variants: Record<typeof source, { label: string; className: string }> = {
     default: {
       label: "Default",
-      className: "bg-charcoal-700 text-text-dimmed",
+      className: "bg-indigo-500/20 text-indigo-400",
     },
     plan: {
       label: "Plan",
-      className: "bg-indigo-500/20 text-indigo-400",
+      className: "bg-purple-500/20 text-purple-400",
     },
     override: {
       label: "Override",
