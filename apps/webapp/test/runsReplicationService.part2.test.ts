@@ -18,6 +18,7 @@ describe("RunsReplicationService (part 2/2)", () => {
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
         name: "runs-replication-shutdown-handover",
+        logLevel: "warn",
       });
 
       // Service A
@@ -35,7 +36,7 @@ describe("RunsReplicationService (part 2/2)", () => {
         leaderLockExtendIntervalMs: 1000,
         leaderLockAcquireAdditionalTimeMs: 10_000,
         ackIntervalSeconds: 5,
-        logger: new Logger("runs-replication-shutdown-handover-a", "debug"),
+        logger: new Logger("runs-replication-shutdown-handover-a", "warn"),
       });
 
       await runsReplicationServiceA.start();
@@ -55,7 +56,7 @@ describe("RunsReplicationService (part 2/2)", () => {
         leaderLockExtendIntervalMs: 1000,
         leaderLockAcquireAdditionalTimeMs: 10_000,
         ackIntervalSeconds: 5,
-        logger: new Logger("runs-replication-shutdown-handover-b", "debug"),
+        logger: new Logger("runs-replication-shutdown-handover-b", "warn"),
       });
 
       // Now we need to initiate starting the second service, and after 6 seconds, we need to shutdown the first service
@@ -147,6 +148,7 @@ describe("RunsReplicationService (part 2/2)", () => {
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
         name: "runs-replication-stress-bulk-insert",
+        logLevel: "warn",
       });
 
       const runsReplicationService = new RunsReplicationService({
@@ -162,7 +164,7 @@ describe("RunsReplicationService (part 2/2)", () => {
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
-        logger: new Logger("runs-replication-stress-bulk-insert", "info"),
+        logLevel: "warn",
       });
 
       await runsReplicationService.start();
@@ -261,6 +263,7 @@ describe("RunsReplicationService (part 2/2)", () => {
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
         name: "runs-replication-stress-bulk-insert",
+        logLevel: "warn",
       });
 
       const runsReplicationService = new RunsReplicationService({
@@ -276,7 +279,7 @@ describe("RunsReplicationService (part 2/2)", () => {
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
-        logger: new Logger("runs-replication-stress-bulk-insert", "info"),
+        logLevel: "warn",
       });
 
       await runsReplicationService.start();
@@ -381,6 +384,7 @@ describe("RunsReplicationService (part 2/2)", () => {
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
         name: "runs-replication-multi-event-tx",
+        logLevel: "warn",
       });
 
       const runsReplicationService = new RunsReplicationService({
@@ -396,6 +400,7 @@ describe("RunsReplicationService (part 2/2)", () => {
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
+        logLevel: "warn",
       });
 
       await runsReplicationService.start();
@@ -513,6 +518,7 @@ describe("RunsReplicationService (part 2/2)", () => {
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
         name: "runs-replication-long-tx",
+        logLevel: "warn",
       });
 
       const runsReplicationService = new RunsReplicationService({
@@ -528,7 +534,7 @@ describe("RunsReplicationService (part 2/2)", () => {
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
-        logger: new Logger("runs-replication-long-tx", "info"),
+        logLevel: "warn",
       });
 
       await runsReplicationService.start();
@@ -619,6 +625,7 @@ describe("RunsReplicationService (part 2/2)", () => {
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
         name: "runs-replication-stress-bulk-insert",
+        logLevel: "warn",
       });
 
       const runsReplicationService = new RunsReplicationService({
@@ -634,7 +641,7 @@ describe("RunsReplicationService (part 2/2)", () => {
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
-        logger: new Logger("runs-replication-stress-bulk-insert", "info"),
+        logLevel: "warn",
       });
 
       await runsReplicationService.start();
@@ -787,6 +794,7 @@ describe("RunsReplicationService (part 2/2)", () => {
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
         name: "runs-replication-merge-batch",
+        logLevel: "warn",
       });
 
       const runsReplicationService = new RunsReplicationService({
@@ -802,7 +810,7 @@ describe("RunsReplicationService (part 2/2)", () => {
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
-        logger: new Logger("runs-replication-merge-batch", "info"),
+        logLevel: "warn",
       });
 
       // Listen to batchFlushed events to verify merging
@@ -911,6 +919,7 @@ describe("RunsReplicationService (part 2/2)", () => {
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
         name: "runs-replication-sorting",
+        logLevel: "warn",
       });
 
       const runsReplicationService = new RunsReplicationService({
@@ -926,7 +935,7 @@ describe("RunsReplicationService (part 2/2)", () => {
         leaderLockTimeoutMs: 5000,
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
-        logger: new Logger("runs-replication-sorting", "info"),
+        logLevel: "warn",
       });
 
       // Listen to batchFlushed events to verify sorting
