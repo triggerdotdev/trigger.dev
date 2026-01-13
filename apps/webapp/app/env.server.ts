@@ -1177,7 +1177,10 @@ const EnvironmentSchema = z
 
     // Logs List Query Settings (for paginated log views)
     CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE: z.coerce.number().int().default(256_000_000),
-    CLICKHOUSE_LOGS_LIST_MAX_BYTES_BEFORE_EXTERNAL_SORT: z.coerce.number().int().default(256_000_000),
+    CLICKHOUSE_LOGS_LIST_MAX_BYTES_BEFORE_EXTERNAL_SORT: z.coerce
+      .number()
+      .int()
+      .default(256_000_000),
     CLICKHOUSE_LOGS_LIST_MAX_THREADS: z.coerce.number().int().default(2),
     CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ: z.coerce.number().int().default(10_000_000),
     CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME: z.coerce.number().int().default(120),
@@ -1186,7 +1189,6 @@ const EnvironmentSchema = z
     CLICKHOUSE_LOGS_DETAIL_MAX_MEMORY_USAGE: z.coerce.number().int().default(64_000_000),
     CLICKHOUSE_LOGS_DETAIL_MAX_THREADS: z.coerce.number().int().default(2),
     CLICKHOUSE_LOGS_DETAIL_MAX_EXECUTION_TIME: z.coerce.number().int().default(60),
-
 
     // Query page ClickHouse limits (for TSQL queries)
     QUERY_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().default(10),
@@ -1221,7 +1223,7 @@ const EnvironmentSchema = z
     EVENT_REPOSITORY_CLICKHOUSE_ROLLOUT_PERCENT: z.coerce.number().optional(),
     EVENT_REPOSITORY_DEFAULT_STORE: z
       .enum(["postgres", "clickhouse", "clickhouse_v2"])
-      .default("postgres"),
+      .default("clickhouse_v2"),
     EVENT_REPOSITORY_DEBUG_LOGS_DISABLED: BoolEnv.default(false),
     EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
