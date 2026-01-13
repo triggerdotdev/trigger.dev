@@ -24,7 +24,7 @@ vi.mock("../app/utils/username", () => ({
     getUsername: vi.fn(),
 }));
 
-import { reconcileTraceWithRunLifecycle } from "../app/presenters/v3/RunPresenter.server";
+import { reconcileTraceWithRunLifecycle } from "../app/presenters/v3/reconcileTrace.server";
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 
 describe("reconcileTraceWithRunLifecycle", () => {
