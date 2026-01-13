@@ -8,12 +8,16 @@ import {
   ReferenceLine,
   XAxis,
   YAxis,
+  type XAxisProps,
+  type YAxisProps,
 } from "recharts";
 import {
   ChartContainer,
   ChartLegend,
+  ChartLegendContent,
   ChartLegendContentRows,
   ChartTooltip,
+  ChartTooltipContent,
   type ChartConfig,
   type ChartState,
 } from "~/components/primitives/charts/Chart";
@@ -40,6 +44,22 @@ type ChartBarProps = {
   useGlobalDateRange?: boolean;
   minHeight?: string;
   stackId?: string;
+  /** Series keys to render (if not provided, derived from config keys) */
+  series?: string[];
+  /** Custom X-axis props to merge with defaults */
+  xAxisProps?: Partial<XAxisProps>;
+  /** Custom Y-axis props to merge with defaults */
+  yAxisProps?: Partial<YAxisProps>;
+  /** Show legend (default true) */
+  showLegend?: boolean;
+  /** Enable zoom selection (default true) */
+  enableZoom?: boolean;
+  /** Custom tooltip label formatter */
+  tooltipLabelFormatter?: (label: string, payload: any[]) => string;
+  /** Use simple inline legend instead of row-based legend */
+  simpleLegend?: boolean;
+  /** Additional className for the container */
+  className?: string;
 };
 
 type TooltipProps = {
@@ -70,6 +90,14 @@ export function ChartBar({
   useGlobalDateRange = false,
   minHeight,
   stackId,
+  series: seriesProp,
+  xAxisProps: xAxisPropsProp,
+  yAxisProps: yAxisPropsProp,
+  showLegend = true,
+  enableZoom = true,
+  tooltipLabelFormatter,
+  simpleLegend = false,
+  className,
 }: ChartBarProps) {
   const globalDateRange = useDateRange();
   const [activePayload, setActivePayload] = React.useState<any[] | null>(null);
@@ -99,7 +127,7 @@ export function ChartBar({
 
   // Compute the visible data based on the zoom settings
   const data = useMemo(() => {
-    if (useGlobalDateRange) {
+    if (useGlobalDateRange && globalDateRange) {
       // Filter data based on global date range
       // Check if we have valid chart data
       if (initialData.length === 0) return [];
@@ -137,8 +165,8 @@ export function ChartBar({
   }, [
     initialData,
     useGlobalDateRange,
-    globalDateRange.startDate,
-    globalDateRange.endDate,
+    globalDateRange?.startDate,
+    globalDateRange?.endDate,
     localOriginalData,
     localStartIndex,
     localEndIndex,
@@ -175,10 +203,10 @@ export function ChartBar({
     }, {} as Record<string, number>);
   }, [data, dataKey]);
 
-  // Get all data keys except the x-axis key
+  // Get all data keys except the x-axis key (use series prop if provided)
   const dataKeys = useMemo(
-    () => Object.keys(config).filter((k) => k !== dataKey),
-    [config, dataKey]
+    () => seriesProp ?? Object.keys(config).filter((k) => k !== dataKey),
+    [seriesProp, config, dataKey]
   );
 
   // Get current data for the legend based on hover state
@@ -247,16 +275,21 @@ export function ChartBar({
   }, [config, dataKeys, maxLegendItems, activeBarKey]);
 
   // Handle mouse down for drag zooming
-  const handleMouseDown = useCallback((e: any) => {
-    if (e.activeLabel) {
-      setRefAreaLeft(e.activeLabel);
-      setIsSelecting(true);
-    }
-  }, []);
+  const handleMouseDown = useCallback(
+    (e: any) => {
+      if (!enableZoom) return;
+      if (e.activeLabel) {
+        setRefAreaLeft(e.activeLabel);
+        setIsSelecting(true);
+      }
+    },
+    [enableZoom]
+  );
 
   // Handle click on the chart area
   const handleChartClick = useCallback(
     (e: any) => {
+      if (!enableZoom) return;
       // Only process if we're not in selection mode and have a valid click position
       if (!isSelecting && e?.activeLabel) {
         // Toggle the inspection line - if clicking the same point, remove it; otherwise, set a new one
@@ -267,7 +300,7 @@ export function ChartBar({
         }
       }
     },
-    [isSelecting, inspectionLine]
+    [enableZoom, isSelecting, inspectionLine]
   );
 
   // Handle mouse move for drag zooming
@@ -329,7 +362,7 @@ export function ChartBar({
             const endDate = allDays[end];
 
             // Set the global date range using these ordered dates
-            globalDateRange.setDateRange(startDate, endDate);
+            globalDateRange?.setDateRange(startDate, endDate);
           }
         }
       } else {
@@ -370,6 +403,7 @@ export function ChartBar({
   // Handle bar stack click for inspection line
   const handleBarClick = useCallback(
     (barData: any, e: React.MouseEvent) => {
+      if (!enableZoom) return;
       // Prevent the event from propagating to the chart's onClick handler
       e.stopPropagation();
 
@@ -383,7 +417,7 @@ export function ChartBar({
         }
       }
     },
-    [isSelecting, inspectionLine, dataKey]
+    [enableZoom, isSelecting, inspectionLine, dataKey]
   );
 
   // Render appropriate content based on displayState
@@ -429,6 +463,7 @@ export function ChartBar({
             fontSize: 11,
             style: { fontVariantNumeric: "tabular-nums" },
           }}
+          {...xAxisPropsProp}
         />
         <YAxis
           axisLine={false}
@@ -440,17 +475,23 @@ export function ChartBar({
             style: { fontVariantNumeric: "tabular-nums" },
           }}
           domain={["auto", (dataMax: number) => dataMax * 1.15]}
+          {...yAxisPropsProp}
         />
         <ChartTooltip
           cursor={{ fill: "#2C3034" }}
           content={
-            <XAxisTooltip
-              isSelecting={isSelecting}
-              refAreaLeft={refAreaLeft}
-              refAreaRight={refAreaRight}
-              invalidSelection={invalidSelection}
-            />
+            tooltipLabelFormatter ? (
+              <ChartTooltipContent />
+            ) : (
+              <XAxisTooltip
+                isSelecting={isSelecting}
+                refAreaLeft={refAreaLeft}
+                refAreaRight={refAreaRight}
+                invalidSelection={invalidSelection}
+              />
+            )
           }
+          labelFormatter={tooltipLabelFormatter}
           allowEscapeViewBox={{ x: false, y: true }}
         />
         {dataKeys.map((key, index, array) => {
@@ -528,7 +569,7 @@ export function ChartBar({
           />
         )}
 
-        {inspectionLine && (
+        {enableZoom && inspectionLine && (
           <ReferenceLine
             x={inspectionLine}
             stroke="#D7D9DD"
@@ -541,7 +582,7 @@ export function ChartBar({
           />
         )}
 
-        {refAreaLeft && refAreaRight && (
+        {enableZoom && refAreaLeft && refAreaRight && (
           <ReferenceArea
             x1={refAreaLeft}
             x2={refAreaRight}
@@ -551,25 +592,30 @@ export function ChartBar({
           />
         )}
 
-        <ChartLegend
-          content={
-            <ChartLegendContentRows
-              onMouseEnter={(data) => {
-                if (data.dataKey === "view-more") return;
-                setActiveBarKey(data.dataKey);
-                setActiveDataPointIndex(null); // Reset this when hovering over legend
-              }}
-              onMouseLeave={resetHighlightState}
-              data={currentData}
-              activeKey={activeBarKey}
+        {showLegend &&
+          (simpleLegend ? (
+            <ChartLegend content={<ChartLegendContent />} />
+          ) : (
+            <ChartLegend
+              content={
+                <ChartLegendContentRows
+                  onMouseEnter={(data) => {
+                    if (data.dataKey === "view-more") return;
+                    setActiveBarKey(data.dataKey);
+                    setActiveDataPointIndex(null); // Reset this when hovering over legend
+                  }}
+                  onMouseLeave={resetHighlightState}
+                  data={currentData}
+                  activeKey={activeBarKey}
+                  payload={legendPayload}
+                  renderViewMore={(remainingCount: number) => (
+                    <ViewAllDataRow key="view-more" remainingCount={remainingCount} />
+                  )}
+                />
+              }
               payload={legendPayload}
-              renderViewMore={(remainingCount: number) => (
-                <ViewAllDataRow key="view-more" remainingCount={remainingCount} />
-              )}
             />
-          }
-          payload={legendPayload}
-        />
+          ))}
       </BarChart>
     );
   }, [
@@ -597,19 +643,27 @@ export function ChartBar({
     refAreaRight,
     legendPayload,
     currentData,
+    xAxisPropsProp,
+    yAxisPropsProp,
+    tooltipLabelFormatter,
+    showLegend,
+    simpleLegend,
+    enableZoom,
   ]);
 
   return (
-    <div className="relative flex w-full flex-col">
+    <div className={cn("relative flex w-full flex-col", className)}>
       <div
         ref={containerRef}
-        className="mt-8 h-full w-full cursor-crosshair"
+        className={cn("h-full w-full", enableZoom && "mt-8 cursor-crosshair")}
         style={{ touchAction: "none", userSelect: "none" }}
       >
         <ChartContainer
           config={config}
           className={cn(
-            "h-full w-full [&_.recharts-surface]:cursor-crosshair [&_.recharts-wrapper]:cursor-crosshair"
+            "h-full w-full",
+            enableZoom &&
+              "[&_.recharts-surface]:cursor-crosshair [&_.recharts-wrapper]:cursor-crosshair"
           )}
           style={minHeight ? { minHeight } : undefined}
         >

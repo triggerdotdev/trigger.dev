@@ -2,18 +2,13 @@ import { InformationCircleIcon } from "@heroicons/react/20/solid";
 import { Await, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
-import { Suspense } from "react";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { Suspense, useMemo } from "react";
 import { redirect, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { URL } from "url";
 import { UsageBar } from "~/components/billing/UsageBar";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import {
-  type ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "~/components/primitives/charts/Chart";
+import type { ChartConfig } from "~/components/primitives/charts/Chart";
+import { ChartBar } from "~/components/primitives/charts/ChartBar";
 import { Header2 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
@@ -298,44 +293,43 @@ function UsageChart({ data }: { data: UsageSeriesData }) {
   const maxDollar = Math.max(...data.map((d) => d.dollars));
   const decimalPlaces = maxDollar < 1 ? 4 : 2;
 
-  return (
-    <ChartContainer config={chartConfig} className="max-h-96 min-h-40 w-full">
-      <BarChart accessibilityLayer data={data}>
-        <CartesianGrid vertical={false} />
-        <XAxis
-          fontSize={12}
-          tickLine={false}
-          tickMargin={10}
-          axisLine={false}
-          dataKey="date"
-          tickFormatter={(value) => {
-            if (!value) return "";
-            const date = new Date(value);
-            return `${date.getDate()}`;
-          }}
-          className="text-xs"
-        />
-        <YAxis
-          fontSize={12}
-          tickLine={false}
-          tickMargin={10}
-          axisLine={false}
-          allowDecimals={true}
-          tickFormatter={(value) => `$${value.toFixed(decimalPlaces)}`}
-        />
-        <ChartTooltip
-          content={<ChartTooltipContent />}
-          labelFormatter={(value, data) => {
-            const dateString = data.at(0)?.payload.date;
-            if (!dateString) {
-              return "";
-            }
+  const xAxisTickFormatter = useMemo(
+    () => (value: string) => {
+      if (!value) return "";
+      const date = new Date(value);
+      return `${date.getDate()}`;
+    },
+    []
+  );
 
-            return tooltipDateFormatter.format(new Date(dateString));
-          }}
-        />
-        <Bar dataKey="dollars" fill="var(--color-dollars)" radius={[4, 4, 0, 0]} />
-      </BarChart>
-    </ChartContainer>
+  const yAxisTickFormatter = useMemo(
+    () => (value: number) => `$${value.toFixed(decimalPlaces)}`,
+    [decimalPlaces]
+  );
+
+  const tooltipLabelFormatter = useMemo(
+    () => (_label: string, payload: Array<{ payload?: Record<string, unknown> }>) => {
+      const dateString = payload.at(0)?.payload?.date as string | undefined;
+      if (!dateString) {
+        return "";
+      }
+      return tooltipDateFormatter.format(new Date(dateString));
+    },
+    []
+  );
+
+  return (
+    <ChartBar
+      config={chartConfig}
+      data={data}
+      dataKey="date"
+      showLegend={false}
+      enableZoom={false}
+      xAxisProps={{ tickFormatter: xAxisTickFormatter }}
+      yAxisProps={{ tickFormatter: yAxisTickFormatter, allowDecimals: true }}
+      tooltipLabelFormatter={tooltipLabelFormatter}
+      minHeight="160px"
+      className="max-h-96"
+    />
   );
 }

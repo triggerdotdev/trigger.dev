@@ -45,8 +45,8 @@ function ChartsDashboard() {
           </RadioGroup>
         </div>
         <div className="flex w-fit items-center gap-4">
-          <Paragraph variant="small/bright">{`Selected range: ${dateRange.startDate} - ${dateRange.endDate}`}</Paragraph>
-          <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
+          <Paragraph variant="small/bright">{`Selected range: ${dateRange?.startDate} - ${dateRange?.endDate}`}</Paragraph>
+          <Button variant="secondary/small" onClick={dateRange?.resetDateRange}>
             Reset Zoom
           </Button>
         </div>
