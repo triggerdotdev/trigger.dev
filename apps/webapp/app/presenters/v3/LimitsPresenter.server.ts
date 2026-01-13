@@ -198,14 +198,14 @@ export class LimitsPresenter extends BasePresenter {
       isOnTopPlan,
       rateLimits: {
         api: {
-          name: "API Rate Limit",
+          name: "API rate limit",
           description: "Rate limit for API requests (trigger, batch, etc.)",
           config: apiRateLimitConfig,
           source: apiRateLimitSource,
           currentTokens: apiRateLimitTokens,
         },
         batch: {
-          name: "Batch Rate Limit",
+          name: "Batch rate limit",
           description: "Rate limit for batch trigger operations",
           config: batchRateLimitConfig,
           source: batchRateLimitSource,
