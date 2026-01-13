@@ -523,7 +523,7 @@ function FeatureRow({ feature }: { feature: FeatureInfo }) {
 
     return feature.enabled ? (
       <span className="inline-flex items-center gap-1 text-success">
-        <CheckIcon className="h-4 w-4" />
+        <CheckIcon className="size-4" />
         Enabled
       </span>
     ) : (
@@ -533,11 +533,9 @@ function FeatureRow({ feature }: { feature: FeatureInfo }) {
 
   return (
     <TableRow>
-      <TableCell>
-        <div className="flex flex-col">
-          <span className="font-medium text-text-bright">{feature.name}</span>
-          <span className="text-xs text-text-dimmed">{feature.description}</span>
-        </div>
+      <TableCell className="flex w-full items-center gap-1">
+        <span className="text-sm">{feature.name}</span>
+        <InfoIconTooltip content={feature.description} disableHoverableContent />
       </TableCell>
       <TableCell alignment="right">{displayValue()}</TableCell>
     </TableRow>
