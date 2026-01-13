@@ -310,7 +310,8 @@ export function reconcileTraceWithRunLifecycle(
 
   const postgresRunDuration = runData.completedAt
     ? millisecondsToNanoseconds(
-      runData.completedAt.getTime() - (runData.rootTaskRun?.createdAt ?? runData.createdAt).getTime()
+      runData.completedAt.getTime() -
+      (runData.rootTaskRun?.createdAt ?? runData.createdAt).getTime()
     )
     : 0;
 
