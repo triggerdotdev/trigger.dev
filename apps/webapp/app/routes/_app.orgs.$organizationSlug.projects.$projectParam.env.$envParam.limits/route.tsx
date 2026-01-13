@@ -1,18 +1,15 @@
-import { InformationCircleIcon } from "@heroicons/react/20/solid";
+import { AdjustmentsHorizontalIcon, CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { tryCatch } from "@trigger.dev/core";
-import { motion, useMotionValue, useTransform } from "framer-motion";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
-import {
-  MainHorizontallyCenteredContainer,
-  PageBody,
-  PageContainer,
-} from "~/components/layout/AppLayout";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Callout } from "~/components/primitives/Callout";
+import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
@@ -26,18 +23,22 @@ import {
 } from "~/components/primitives/Table";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   LimitsPresenter,
+  type FeatureInfo,
   type LimitsResult,
-  type RateLimitInfo,
-  type ConcurrencyLimitInfo,
   type QuotaInfo,
+  type RateLimitInfo,
 } from "~/presenters/v3/LimitsPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { formatNumber } from "~/utils/numberFormatter";
+import { concurrencyPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [
@@ -49,7 +50,7 @@ export const meta: MetaFunction = () => {
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam } = EnvironmentParamSchema.parse(params);
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
@@ -59,12 +60,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    throw new Response(undefined, {
+      status: 404,
+      statusText: "Environment not found",
+    });
+  }
+
   const presenter = new LimitsPresenter();
   const [error, result] = await tryCatch(
     presenter.call({
       userId,
       projectId: project.id,
       organizationId: project.organizationId,
+      environmentApiKey: environment.apiKey,
     })
   );
 
@@ -79,8 +89,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function Page() {
   const data = useTypedLoaderData<typeof loader>();
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
 
-  // Auto-revalidate every 5 seconds to get fresh concurrency data
+  // Auto-revalidate every 5 seconds to get fresh rate limit data
   useAutoRevalidate({ interval: 5000 });
 
   return (
@@ -94,12 +107,16 @@ export default function Page() {
                 <Property.Label>Plan</Property.Label>
                 <Property.Value>{data.planName ?? "No plan"}</Property.Value>
               </Property.Item>
+              <Property.Item>
+                <Property.Label>Organization ID</Property.Label>
+                <Property.Value>{data.organizationId}</Property.Value>
+              </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={true}>
-        <MainHorizontallyCenteredContainer>
+        <div className="mx-auto max-w-4xl p-4">
           <div className="flex flex-col gap-8">
             {/* Plan info */}
             {data.planName && (
@@ -108,114 +125,72 @@ export default function Page() {
                   Current plan:
                 </Paragraph>
                 <Badge variant="small">{data.planName}</Badge>
-                <Paragraph variant="extra-small" className="text-text-dimmed">
-                  (Limits refresh automatically every 5 seconds)
-                </Paragraph>
               </div>
             )}
 
-            {/* Concurrency Limits Section */}
-            <ConcurrencyLimitsSection limits={data.concurrencyLimits} />
+            {/* Concurrency Link Section */}
+            <Callout
+              variant="info"
+              icon={<AdjustmentsHorizontalIcon className="h-5 w-5 text-text-dimmed" />}
+              to={concurrencyPath(organization, project, environment)}
+            >
+              <Paragraph variant="small" className="text-text-bright">
+                <span className="font-medium">Concurrency limits</span> are managed on a dedicated
+                page where you can view and adjust limits for each environment.
+              </Paragraph>
+            </Callout>
 
             {/* Rate Limits Section */}
-            <RateLimitsSection rateLimits={data.rateLimits} />
+            <RateLimitsSection rateLimits={data.rateLimits} environmentType={environment.type} />
 
             {/* Quotas Section */}
             <QuotasSection quotas={data.quotas} batchConcurrency={data.batchConcurrency} />
+
+            {/* Features Section */}
+            <FeaturesSection features={data.features} />
           </div>
-        </MainHorizontallyCenteredContainer>
+        </div>
       </PageBody>
     </PageContainer>
   );
 }
 
-function ConcurrencyLimitsSection({ limits }: { limits: ConcurrencyLimitInfo[] }) {
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="border-b border-grid-dimmed pb-1">
-        <Header2>Concurrency Limits</Header2>
-      </div>
-      <Paragraph variant="small">
-        Concurrency limits determine how many runs can execute at the same time in each environment.
-        The current usage updates in real-time.
-      </Paragraph>
-      <Table variant="bright/no-hover">
-        <TableHeader>
-          <TableRow>
-            <TableHeaderCell>Environment</TableHeaderCell>
-            <TableHeaderCell alignment="right">
-              <span className="flex items-center justify-end gap-x-1">
-                Limit
-                <InfoIconTooltip content="Maximum concurrent runs allowed in this environment" />
-              </span>
-            </TableHeaderCell>
-            <TableHeaderCell alignment="right">
-              <span className="flex items-center justify-end gap-x-1">
-                Current
-                <InfoIconTooltip content="Number of runs currently executing" />
-              </span>
-            </TableHeaderCell>
-            <TableHeaderCell>Usage</TableHeaderCell>
-            <TableHeaderCell alignment="right">Source</TableHeaderCell>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {limits.map((limit) => (
-            <ConcurrencyLimitRow key={limit.environmentId} limit={limit} />
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
-
-function ConcurrencyLimitRow({ limit }: { limit: ConcurrencyLimitInfo }) {
-  const percentage = limit.limit > 0 ? limit.currentUsage / limit.limit : 0;
-  const cappedPercentage = Math.min(percentage, 1);
-
-  return (
-    <TableRow>
-      <TableCell>
-        <EnvironmentCombo
-          environment={{
-            type: limit.environmentType,
-            branchName: limit.branchName,
-          }}
-          className="max-w-[18ch]"
-        />
-      </TableCell>
-      <TableCell alignment="right" className="tabular-nums font-medium">
-        {formatNumber(limit.limit)}
-      </TableCell>
-      <TableCell alignment="right" className="tabular-nums">
-        {formatNumber(limit.currentUsage)}
-      </TableCell>
-      <TableCell className="min-w-[120px]">
-        <UsageBar percentage={cappedPercentage} />
-      </TableCell>
-      <TableCell alignment="right">
-        <SourceBadge source={limit.source} />
-      </TableCell>
-    </TableRow>
-  );
-}
-
-function RateLimitsSection({ rateLimits }: { rateLimits: LimitsResult["rateLimits"] }) {
+function RateLimitsSection({
+  rateLimits,
+  environmentType,
+}: {
+  rateLimits: LimitsResult["rateLimits"];
+  environmentType: RuntimeEnvironmentType;
+}) {
   return (
     <div className="flex flex-col gap-3">
       <div className="border-b border-grid-dimmed pb-1">
         <Header2>Rate Limits</Header2>
       </div>
-      <Paragraph variant="small">
-        Rate limits control how many API requests can be made within a time window. These use a
-        token bucket algorithm that refills tokens over time.
-      </Paragraph>
+      <div className="flex flex-col gap-2">
+        <Paragraph variant="small">
+          Rate limits control how many API requests can be made within a time window.
+        </Paragraph>
+        <div className="flex items-center gap-2 rounded-md border border-charcoal-700 bg-charcoal-850 px-3 py-2">
+          <EnvironmentCombo environment={{ type: environmentType }} className="text-xs" />
+          <Paragraph variant="extra-small" className="text-text-dimmed">
+            Showing current tokens for this environment's API key. Rate limits are tracked per API
+            key.
+          </Paragraph>
+        </div>
+      </div>
       <Table variant="bright/no-hover">
         <TableHeader>
           <TableRow>
             <TableHeaderCell>Rate Limit</TableHeaderCell>
             <TableHeaderCell>Type</TableHeaderCell>
             <TableHeaderCell alignment="right">Configuration</TableHeaderCell>
+            <TableHeaderCell alignment="right">
+              <span className="flex items-center justify-end gap-x-1">
+                Current
+                <InfoIconTooltip content="Current available tokens for this environment's API key" />
+              </span>
+            </TableHeaderCell>
             <TableHeaderCell alignment="right">Source</TableHeaderCell>
           </TableRow>
         </TableHeader>
@@ -229,6 +204,10 @@ function RateLimitsSection({ rateLimits }: { rateLimits: LimitsResult["rateLimit
 }
 
 function RateLimitRow({ info }: { info: RateLimitInfo }) {
+  const maxTokens = info.config.type === "tokenBucket" ? info.config.maxTokens : info.config.tokens;
+  const percentage =
+    info.currentTokens !== null && maxTokens > 0 ? info.currentTokens / maxTokens : null;
+
   return (
     <TableRow>
       <TableCell>
@@ -238,16 +217,75 @@ function RateLimitRow({ info }: { info: RateLimitInfo }) {
         </div>
       </TableCell>
       <TableCell>
-        <Badge variant="extra-small">{info.config.type}</Badge>
+        <RateLimitTypeBadge config={info.config} />
       </TableCell>
       <TableCell alignment="right">
         <RateLimitConfigDisplay config={info.config} />
+      </TableCell>
+      <TableCell alignment="right">
+        {info.currentTokens !== null ? (
+          <div className="flex flex-col items-end gap-0.5">
+            <span
+              className={cn(
+                "font-medium tabular-nums",
+                getUsageColorClass(percentage, "remaining")
+              )}
+            >
+              {formatNumber(info.currentTokens)}
+            </span>
+            <span className="text-xs tabular-nums text-text-dimmed">
+              of {formatNumber(maxTokens)}
+            </span>
+          </div>
+        ) : (
+          <span className="text-text-dimmed">–</span>
+        )}
       </TableCell>
       <TableCell alignment="right">
         <SourceBadge source={info.source} />
       </TableCell>
     </TableRow>
   );
+}
+
+function RateLimitTypeBadge({ config }: { config: RateLimitInfo["config"] }) {
+  switch (config.type) {
+    case "tokenBucket": {
+      const tooltip = `Requests consume tokens from a bucket. The bucket refills at ${formatNumber(
+        config.refillRate
+      )} tokens per ${config.interval} up to a maximum of ${formatNumber(
+        config.maxTokens
+      )} tokens. When the bucket is empty, requests are rate limited until tokens refill.`;
+      return (
+        <span className="inline-flex items-center gap-1">
+          <Badge variant="extra-small">Token bucket</Badge>
+          <InfoIconTooltip content={tooltip} />
+        </span>
+      );
+    }
+    case "fixedWindow": {
+      const tooltip = `Allows ${formatNumber(config.tokens)} requests per ${
+        config.window
+      } time window. The window resets at fixed intervals.`;
+      return (
+        <span className="inline-flex items-center gap-1">
+          <Badge variant="extra-small">Fixed window</Badge>
+          <InfoIconTooltip content={tooltip} />
+        </span>
+      );
+    }
+    case "slidingWindow": {
+      const tooltip = `Allows ${formatNumber(config.tokens)} requests per ${
+        config.window
+      } rolling time window. The limit is continuously evaluated.`;
+      return (
+        <span className="inline-flex items-center gap-1">
+          <Badge variant="extra-small">Sliding window</Badge>
+          <InfoIconTooltip content={tooltip} />
+        </span>
+      );
+    }
+  }
 }
 
 function RateLimitConfigDisplay({ config }: { config: RateLimitInfo["config"] }) {
@@ -293,6 +331,24 @@ function QuotasSection({
   quotas: LimitsResult["quotas"];
   batchConcurrency: LimitsResult["batchConcurrency"];
 }) {
+  // Collect all quotas that should be shown
+  const quotaRows: QuotaInfo[] = [];
+
+  // Always show projects
+  quotaRows.push(quotas.projects);
+
+  // Add plan-based quotas if they exist
+  if (quotas.teamMembers) quotaRows.push(quotas.teamMembers);
+  if (quotas.schedules) quotaRows.push(quotas.schedules);
+  if (quotas.alerts) quotaRows.push(quotas.alerts);
+  if (quotas.branches) quotaRows.push(quotas.branches);
+  if (quotas.realtimeConnections) quotaRows.push(quotas.realtimeConnections);
+  if (quotas.logRetentionDays) quotaRows.push(quotas.logRetentionDays);
+
+  // Add queue size quotas if set
+  if (quotas.devQueueSize.limit !== null) quotaRows.push(quotas.devQueueSize);
+  if (quotas.deployedQueueSize.limit !== null) quotaRows.push(quotas.deployedQueueSize);
+
   return (
     <div className="flex flex-col gap-3">
       <div className="border-b border-grid-dimmed pb-1">
@@ -311,18 +367,19 @@ function QuotasSection({
           </TableRow>
         </TableHeader>
         <TableBody>
-          <QuotaRow quota={quotas.projects} />
-          {quotas.schedules && <QuotaRow quota={quotas.schedules} />}
+          {quotaRows.map((quota) => (
+            <QuotaRow key={quota.name} quota={quota} />
+          ))}
           <TableRow>
             <TableCell>
               <div className="flex flex-col">
-                <span className="font-medium text-text-bright">Batch Processing Concurrency</span>
+                <span className="font-medium text-text-bright">Batch processing concurrency</span>
                 <span className="text-xs text-text-dimmed">
                   Concurrent batch items being processed
                 </span>
               </div>
             </TableCell>
-            <TableCell alignment="right" className="tabular-nums font-medium">
+            <TableCell alignment="right" className="font-medium tabular-nums">
               {formatNumber(batchConcurrency.limit)}
             </TableCell>
             <TableCell alignment="right" className="tabular-nums text-text-dimmed">
@@ -332,10 +389,6 @@ function QuotasSection({
               <SourceBadge source={batchConcurrency.source} />
             </TableCell>
           </TableRow>
-          {quotas.devQueueSize.limit !== null && <QuotaRow quota={quotas.devQueueSize} />}
-          {quotas.deployedQueueSize.limit !== null && (
-            <QuotaRow quota={quotas.deployedQueueSize} />
-          )}
         </TableBody>
       </Table>
     </div>
@@ -343,8 +396,10 @@ function QuotasSection({
 }
 
 function QuotaRow({ quota }: { quota: QuotaInfo }) {
-  const percentage = quota.limit && quota.limit > 0 ? quota.currentUsage / quota.limit : 0;
-  const isAtLimit = percentage >= 1;
+  // For log retention, we don't show current usage as it's a duration, not a count
+  const isRetentionQuota = quota.name === "Log retention";
+  const percentage =
+    !isRetentionQuota && quota.limit && quota.limit > 0 ? quota.currentUsage / quota.limit : null;
 
   return (
     <TableRow>
@@ -354,14 +409,21 @@ function QuotaRow({ quota }: { quota: QuotaInfo }) {
           <span className="text-xs text-text-dimmed">{quota.description}</span>
         </div>
       </TableCell>
-      <TableCell alignment="right" className="tabular-nums font-medium">
-        {quota.limit !== null ? formatNumber(quota.limit) : "Unlimited"}
+      <TableCell alignment="right" className="font-medium tabular-nums">
+        {quota.limit !== null
+          ? isRetentionQuota
+            ? `${formatNumber(quota.limit)} days`
+            : formatNumber(quota.limit)
+          : "Unlimited"}
       </TableCell>
       <TableCell
         alignment="right"
-        className={cn("tabular-nums", isAtLimit ? "text-error" : "text-text-bright")}
+        className={cn(
+          "tabular-nums",
+          isRetentionQuota ? "text-text-dimmed" : getUsageColorClass(percentage, "usage")
+        )}
       >
-        {formatNumber(quota.currentUsage)}
+        {isRetentionQuota ? "–" : formatNumber(quota.currentUsage)}
       </TableCell>
       <TableCell alignment="right">
         <SourceBadge source={quota.source} />
@@ -370,30 +432,94 @@ function QuotaRow({ quota }: { quota: QuotaInfo }) {
   );
 }
 
-function UsageBar({ percentage }: { percentage: number }) {
-  const widthProgress = useMotionValue(percentage * 100);
-  const color = useTransform(
-    widthProgress,
-    [0, 74, 75, 95, 100],
-    ["#22C55E", "#22C55E", "#F59E0B", "#F43F5E", "#F43F5E"]
-  );
-
+function FeaturesSection({ features }: { features: LimitsResult["features"] }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="relative h-2 w-20 rounded-full bg-charcoal-700">
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: percentage * 100 + "%" }}
-          style={{ backgroundColor: color }}
-          transition={{ duration: 0.5, type: "spring" }}
-          className="absolute left-0 top-0 h-full rounded-full"
-        />
+    <div className="flex flex-col gap-3">
+      <div className="border-b border-grid-dimmed pb-1">
+        <Header2>Plan Features</Header2>
       </div>
-      <span className="text-xs tabular-nums text-text-dimmed">
-        {Math.round(percentage * 100)}%
-      </span>
+      <Paragraph variant="small">Features and capabilities included with your plan.</Paragraph>
+      <Table variant="bright/no-hover">
+        <TableHeader>
+          <TableRow>
+            <TableHeaderCell>Feature</TableHeaderCell>
+            <TableHeaderCell alignment="right">Status</TableHeaderCell>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <FeatureRow feature={features.hasStagingEnvironment} />
+          <FeatureRow feature={features.support} />
+          <FeatureRow feature={features.includedUsage} />
+        </TableBody>
+      </Table>
     </div>
   );
+}
+
+function FeatureRow({ feature }: { feature: FeatureInfo }) {
+  const displayValue = () => {
+    if (feature.name === "Included compute" && typeof feature.value === "number") {
+      if (!feature.enabled || feature.value === 0) {
+        return <span className="text-text-dimmed">None</span>;
+      }
+      return (
+        <span className="font-medium text-text-bright">${formatNumber(feature.value / 100)}</span>
+      );
+    }
+
+    if (feature.value !== undefined) {
+      return <span className="font-medium text-text-bright">{feature.value}</span>;
+    }
+
+    return feature.enabled ? (
+      <span className="inline-flex items-center gap-1 text-success">
+        <CheckIcon className="h-4 w-4" />
+        Enabled
+      </span>
+    ) : (
+      <span className="inline-flex items-center gap-1 text-text-dimmed">
+        <XMarkIcon className="h-4 w-4" />
+        Not available
+      </span>
+    );
+  };
+
+  return (
+    <TableRow>
+      <TableCell>
+        <div className="flex flex-col">
+          <span className="font-medium text-text-bright">{feature.name}</span>
+          <span className="text-xs text-text-dimmed">{feature.description}</span>
+        </div>
+      </TableCell>
+      <TableCell alignment="right">{displayValue()}</TableCell>
+    </TableRow>
+  );
+}
+
+/**
+ * Returns the appropriate color class based on usage percentage.
+ * @param percentage - The usage percentage (0-1 scale)
+ * @param mode - "usage" means higher is worse (quotas), "remaining" means lower is worse (rate limits)
+ * @returns Tailwind color class
+ */
+function getUsageColorClass(
+  percentage: number | null,
+  mode: "usage" | "remaining" = "usage"
+): string {
+  if (percentage === null) return "text-text-dimmed";
+
+  if (mode === "remaining") {
+    // For remaining tokens: 0 = bad (red), <=10% = warning (orange)
+    if (percentage <= 0) return "text-error";
+    if (percentage <= 0.1) return "text-warning";
+    return "text-text-bright";
+  } else {
+    // For usage: 100% = bad (red), >=90% = warning (orange)
+    if (percentage >= 1) return "text-error";
+    if (percentage >= 0.9) return "text-warning";
+    return "text-text-bright";
+  }
 }
 
 function SourceBadge({ source }: { source: "default" | "plan" | "override" }) {
@@ -425,4 +551,3 @@ function SourceBadge({ source }: { source: "default" | "plan" | "override" }) {
     </span>
   );
 }
-

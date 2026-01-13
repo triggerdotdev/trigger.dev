@@ -2280,7 +2280,9 @@ export class ClickHousePrinter {
     if (this.inProjectionContext && this.internalOnlyColumns.has(columnName)) {
       const availableColumns = this.getAvailableColumnNames();
       throw new QueryError(
-        `Column "${columnName}" is not available for querying. Available columns: ${availableColumns.join(", ")}`
+        `Column "${columnName}" is not available for querying. Available columns: ${availableColumns.join(
+          ", "
+        )}`
       );
     }
 

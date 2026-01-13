@@ -2612,3 +2612,150 @@ describe("Internal-only column blocking", () => {
     });
   });
 });
+
+describe("Required Filters", () => {
+  /**
+   * Tests for tables with requiredFilters, which inject internal ClickHouse
+   * column conditions (like engine = 'V2') that aren't exposed in the schema.
+   */
+
+  const schemaWithRequiredFilters: TableSchema = {
+    name: "runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    description: "Task runs table with required filters",
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+    requiredFilters: [{ column: "engine", value: "V2" }],
+    columns: {
+      run_id: {
+        name: "run_id",
+        clickhouseName: "friendly_id",
+        ...column("String", { description: "Run ID", coreColumn: true }),
+      },
+      status: {
+        name: "status",
+        ...column("String", { description: "Status" }),
+      },
+      triggered_at: {
+        name: "triggered_at",
+        clickhouseName: "created_at",
+        ...column("DateTime64", { description: "When the run was triggered", coreColumn: true }),
+      },
+      total_cost: {
+        name: "total_cost",
+        ...column("Float64", { description: "Total cost" }),
+        expression: "(cost_in_cents + base_cost_in_cents) / 100.0",
+      },
+    },
+  };
+
+  function createRequiredFiltersContext(): PrinterContext {
+    const schemaRegistry = createSchemaRegistry([schemaWithRequiredFilters]);
+    return createPrinterContext({
+      organizationId: "org_test123",
+      projectId: "proj_test456",
+      environmentId: "env_test789",
+      schema: schemaRegistry,
+    });
+  }
+
+  function printQueryWithFilters(query: string): PrintResult {
+    const ctx = createRequiredFiltersContext();
+    const ast = parseTSQLSelect(query);
+    const printer = new ClickHousePrinter(ctx);
+    return printer.print(ast);
+  }
+
+  it("should NOT throw for internal engine column from requiredFilters", () => {
+    // This query should work even though 'engine' is not in the schema
+    // because it's automatically injected by requiredFilters
+    const { sql, params } = printQueryWithFilters("SELECT run_id, status FROM runs LIMIT 10");
+
+    // The engine filter should be in the WHERE clause
+    expect(sql).toContain("engine");
+    // The V2 value is parameterized, so check the params
+    expect(Object.values(params)).toContain("V2");
+  });
+
+  it("should allow TSQL column names that map to different ClickHouse names", () => {
+    // User writes 'triggered_at' but it maps to 'created_at' in ClickHouse
+    const { sql } = printQueryWithFilters(`
+      SELECT run_id, status, triggered_at
+      FROM runs
+      WHERE triggered_at > now() - INTERVAL 14 DAY
+      ORDER BY triggered_at DESC
+      LIMIT 100
+    `);
+
+    // The ClickHouse SQL should use 'created_at' instead of 'triggered_at'
+    expect(sql).toContain("created_at");
+    // The result should still have the alias for the user-friendly name
+    expect(sql).toContain("AS triggered_at");
+  });
+
+  it("should allow filtering by mapped column name", () => {
+    const { sql } = printQueryWithFilters(`
+      SELECT run_id FROM runs WHERE triggered_at > '2024-01-01' LIMIT 10
+    `);
+
+    // Should use the ClickHouse column name in the WHERE clause
+    expect(sql).toContain("created_at");
+  });
+
+  it("should allow ORDER BY on mapped column name", () => {
+    const { sql } = printQueryWithFilters(`
+      SELECT run_id FROM runs ORDER BY triggered_at DESC LIMIT 10
+    `);
+
+    // ORDER BY should use the ClickHouse column name
+    expect(sql).toContain("ORDER BY");
+    expect(sql).toContain("created_at");
+  });
+
+  it("should handle virtual columns with expressions", () => {
+    const { sql } = printQueryWithFilters(`
+      SELECT run_id, total_cost FROM runs ORDER BY total_cost DESC LIMIT 10
+    `);
+
+    // Virtual column should be expanded to its expression with an alias
+    expect(sql).toContain("cost_in_cents");
+    expect(sql).toContain("base_cost_in_cents");
+    expect(sql).toContain("AS total_cost");
+  });
+
+  it("should combine tenant guards with required filters", () => {
+    const { sql, params } = printQueryWithFilters("SELECT run_id FROM runs LIMIT 10");
+
+    // Should have all tenant columns AND the engine filter
+    expect(sql).toContain("organization_id");
+    expect(sql).toContain("project_id");
+    expect(sql).toContain("environment_id");
+    expect(sql).toContain("engine");
+    // The V2 value is parameterized, so check the params
+    expect(Object.values(params)).toContain("V2");
+  });
+
+  it("should allow complex queries with mapped columns", () => {
+    // This query is similar to what a user might write
+    const { sql } = printQueryWithFilters(`
+      SELECT
+        run_id,
+        status,
+        total_cost,
+        triggered_at
+      FROM runs
+      WHERE triggered_at > now() - INTERVAL 14 DAY
+      ORDER BY total_cost DESC
+      LIMIT 100
+    `);
+
+    // All should work without errors
+    expect(sql).toContain("friendly_id");  // run_id maps to friendly_id
+    expect(sql).toContain("status");
+    expect(sql).toContain("created_at");   // triggered_at maps to created_at
+    expect(sql).toContain("cost_in_cents"); // total_cost is a virtual column
+  });
+});
