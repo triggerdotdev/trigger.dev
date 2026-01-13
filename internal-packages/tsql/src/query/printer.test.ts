@@ -429,15 +429,15 @@ describe("ClickHousePrinter", () => {
     });
 
     it("should handle IS NULL syntax", () => {
-      const { sql } = printQuery("SELECT * FROM task_runs WHERE error IS NULL");
+      const { sql } = printQuery("SELECT * FROM task_runs WHERE started_at IS NULL");
 
-      expect(sql).toContain("isNull(error)");
+      expect(sql).toContain("isNull(started_at)");
     });
 
     it("should handle IS NOT NULL syntax", () => {
-      const { sql } = printQuery("SELECT * FROM task_runs WHERE error IS NOT NULL");
+      const { sql } = printQuery("SELECT * FROM task_runs WHERE started_at IS NOT NULL");
 
-      expect(sql).toContain("isNotNull(error)");
+      expect(sql).toContain("isNotNull(started_at)");
     });
   });
 
@@ -2168,6 +2168,138 @@ describe("Column metadata", () => {
       expect(columns[0].name).toBe("count");
       expect(columns[1].name).toBe("sum");
       expect(columns[2].name).toBe("avg");
+    });
+  });
+});
+
+describe("Unknown column blocking", () => {
+  /**
+   * These tests verify that unknown columns are blocked at compile time,
+   * preventing access to internal ClickHouse columns that aren't exposed in the schema.
+   */
+
+  describe("should block unknown columns in SELECT", () => {
+    it("should throw error for unknown column in SELECT list", () => {
+      expect(() => {
+        printQuery("SELECT id, unknown_column FROM task_runs");
+      }).toThrow(QueryError);
+      expect(() => {
+        printQuery("SELECT id, unknown_column FROM task_runs");
+      }).toThrow(/unknown.*column.*unknown_column/i);
+    });
+
+    it("should throw error for internal ClickHouse column name not in schema", () => {
+      // The schema exposes 'created' but the internal ClickHouse column is 'created_at'
+      // Using the internal name directly should be blocked
+      const schema = createSchemaRegistry([runsSchema]);
+      const ctx = createPrinterContext({
+        organizationId: "org_test",
+        projectId: "proj_test",
+        environmentId: "env_test",
+        schema,
+      });
+
+      // 'created_at' is not in runsSchema - only 'created' which maps to 'created_at'
+      expect(() => {
+        printQuery("SELECT id, created_at FROM runs", ctx);
+      }).toThrow(QueryError);
+    });
+
+    it("should throw error for unknown qualified column (table.column)", () => {
+      expect(() => {
+        printQuery("SELECT task_runs.unknown_column FROM task_runs");
+      }).toThrow(QueryError);
+    });
+  });
+
+  describe("should block unknown columns in WHERE", () => {
+    it("should throw error for unknown column in WHERE clause", () => {
+      expect(() => {
+        printQuery("SELECT id FROM task_runs WHERE unknown_column = 'test'");
+      }).toThrow(QueryError);
+    });
+
+    it("should throw error for unknown column in complex WHERE", () => {
+      expect(() => {
+        printQuery(
+          "SELECT id FROM task_runs WHERE status = 'completed' AND unknown_column > 10"
+        );
+      }).toThrow(QueryError);
+    });
+  });
+
+  describe("should block unknown columns in ORDER BY", () => {
+    it("should throw error for unknown column in ORDER BY", () => {
+      expect(() => {
+        printQuery("SELECT id, status FROM task_runs ORDER BY unknown_column DESC");
+      }).toThrow(QueryError);
+    });
+  });
+
+  describe("should block unknown columns in GROUP BY", () => {
+    it("should throw error for unknown column in GROUP BY", () => {
+      expect(() => {
+        printQuery("SELECT count(*) FROM task_runs GROUP BY unknown_column");
+      }).toThrow(QueryError);
+    });
+  });
+
+  describe("should allow SELECT aliases", () => {
+    it("should allow ORDER BY to reference aliased columns", () => {
+      // This should NOT throw - 'cnt' is a valid alias from SELECT
+      const { sql } = printQuery(
+        "SELECT status, count(*) AS cnt FROM task_runs GROUP BY status ORDER BY cnt DESC"
+      );
+      expect(sql).toContain("ORDER BY cnt DESC");
+    });
+
+    it("should allow HAVING to reference aliased columns", () => {
+      const { sql } = printQuery(
+        "SELECT status, count(*) AS cnt FROM task_runs GROUP BY status HAVING cnt > 10"
+      );
+      expect(sql).toContain("HAVING");
+    });
+
+    it("should allow ORDER BY to reference implicit aggregation names", () => {
+      // COUNT() without alias gets implicit name 'count'
+      const { sql } = printQuery(
+        "SELECT status, count() FROM task_runs GROUP BY status ORDER BY count DESC"
+      );
+      expect(sql).toContain("ORDER BY count DESC");
+    });
+  });
+
+  // Note: CTE support is limited - CTEs are not added to the table context,
+  // so CTE column references are treated as unknown. This is a pre-existing limitation.
+  // The tests below verify that unknown column blocking doesn't break existing behavior.
+
+  describe("should allow subquery alias references", () => {
+    it("should allow referencing columns from subquery in FROM clause", () => {
+      const { sql } = printQuery(`
+        SELECT sub.status_name, sub.total
+        FROM (
+          SELECT status AS status_name, count(*) AS total
+          FROM task_runs
+          GROUP BY status
+        ) AS sub
+        ORDER BY sub.total DESC
+      `);
+      expect(sql).toContain("status_name");
+      expect(sql).toContain("total");
+    });
+
+    it("should allow unqualified references to subquery columns", () => {
+      const { sql } = printQuery(`
+        SELECT status_name, total
+        FROM (
+          SELECT status AS status_name, count(*) AS total
+          FROM task_runs
+          GROUP BY status
+        )
+        WHERE total > 10
+      `);
+      expect(sql).toContain("status_name");
+      expect(sql).toContain("total");
     });
   });
 });

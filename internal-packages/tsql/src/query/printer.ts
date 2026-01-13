@@ -116,6 +116,16 @@ export class ClickHousePrinter {
   private inGroupByContext = false;
   /** Columns hidden when SELECT * is expanded to core columns only */
   private hiddenColumns: string[] = [];
+  /**
+   * Set of column aliases defined in the current SELECT clause.
+   * Used to allow ORDER BY/HAVING to reference aliased columns.
+   */
+  private selectAliases: Set<string> = new Set();
+  /**
+   * Set of internal ClickHouse column names that are allowed (e.g., tenant columns).
+   * These are populated from tableSchema.tenantColumns when processing joins.
+   */
+  private allowedInternalColumns: Set<string> = new Set();
 
   constructor(
     private context: PrinterContext,
@@ -310,9 +320,18 @@ export class ClickHousePrinter {
     const isTopLevelQuery =
       this.stack.length <= 1 || (this.stack.length === 2 && partOfSelectUnion);
 
-    // Clear table contexts for top-level queries (subqueries inherit parent context)
+    // Save and clear table contexts
+    // Top-level queries clear contexts; subqueries save parent context and create fresh context
+    const savedTableContexts = new Map(this.tableContexts);
+    const savedInternalColumns = new Set(this.allowedInternalColumns);
     if (isTopLevelQuery) {
       this.tableContexts.clear();
+      this.allowedInternalColumns.clear();
+    } else {
+      // Subqueries get fresh contexts - they don't inherit parent tables
+      // (the parent will restore its context after the subquery is processed)
+      this.tableContexts = new Map();
+      this.allowedInternalColumns = new Set();
     }
 
     // Build WHERE clause starting with any existing where
@@ -347,6 +366,16 @@ export class ClickHousePrinter {
       }
 
       nextJoin = nextJoin.next_join;
+    }
+
+    // Extract SELECT column aliases BEFORE visiting columns
+    // This allows ORDER BY/HAVING to reference aliased columns
+    const savedAliases = this.selectAliases;
+    this.selectAliases = new Set();
+    if (node.select) {
+      for (const col of node.select) {
+        this.extractSelectAlias(col);
+      }
     }
 
     // Process SELECT columns and collect metadata
@@ -478,7 +507,54 @@ export class ClickHousePrinter {
       response = this.pretty ? `(${response.trim()})` : `(${response})`;
     }
 
+    // Restore saved contexts (for nested queries)
+    this.selectAliases = savedAliases;
+    this.tableContexts = savedTableContexts;
+    this.allowedInternalColumns = savedInternalColumns;
+
     return response;
+  }
+
+  /**
+   * Extract column aliases from a SELECT expression.
+   * Handles explicit aliases (AS name) and implicit names from aggregations/functions.
+   *
+   * NOTE: We intentionally do NOT add field names as aliases here.
+   * Field names (e.g., SELECT status) are columns from the table, not aliases.
+   * Only explicit aliases (SELECT x AS name) and implicit function names
+   * (SELECT COUNT() → 'count') should be added.
+   */
+  private extractSelectAlias(expr: Expression): void {
+    // Handle explicit Alias: SELECT ... AS name
+    if ((expr as Alias).expression_type === "alias") {
+      this.selectAliases.add((expr as Alias).alias);
+      return;
+    }
+
+    // Handle implicit names from function calls (e.g., COUNT() → 'count')
+    if ((expr as Call).expression_type === "call") {
+      const call = expr as Call;
+      // Aggregations and functions get implicit lowercase names
+      this.selectAliases.add(call.name.toLowerCase());
+      return;
+    }
+
+    // Handle implicit names from arithmetic operations (e.g., a + b → 'plus')
+    if ((expr as ArithmeticOperation).expression_type === "arithmetic_operation") {
+      const op = expr as ArithmeticOperation;
+      const opNames: Record<ArithmeticOperationOp, string> = {
+        [ArithmeticOperationOp.Add]: "plus",
+        [ArithmeticOperationOp.Sub]: "minus",
+        [ArithmeticOperationOp.Mult]: "multiply",
+        [ArithmeticOperationOp.Div]: "divide",
+        [ArithmeticOperationOp.Mod]: "modulo",
+      };
+      this.selectAliases.add(opNames[op.op]);
+      return;
+    }
+
+    // Field references (e.g., SELECT status) are NOT aliases - they're columns
+    // that will be validated against the table schema. Don't add them here.
   }
 
   /**
@@ -1338,6 +1414,15 @@ export class ClickHousePrinter {
         // Register this table context for column name resolution
         this.tableContexts.set(effectiveAlias, tableSchema);
 
+        // Register tenant columns as allowed internal columns
+        // These are ClickHouse column names used for tenant isolation
+        if (tableSchema.tenantColumns) {
+          const { organizationId, projectId, environmentId } = tableSchema.tenantColumns;
+          if (organizationId) this.allowedInternalColumns.add(organizationId);
+          if (projectId) this.allowedInternalColumns.add(projectId);
+          if (environmentId) this.allowedInternalColumns.add(environmentId);
+        }
+
         // Add tenant isolation guard
         extraWhere = this.createTenantGuard(tableSchema, effectiveAlias);
       } else if (
@@ -2081,6 +2166,8 @@ export class ClickHousePrinter {
   /**
    * Resolve field chain to use ClickHouse column names where applicable
    * Handles both qualified (table.column) and unqualified (column) references
+   *
+   * @throws QueryError if the column is not found in any table schema and is not a SELECT alias
    */
   private resolveFieldChain(chain: Array<string | number>): Array<string | number> {
     if (chain.length === 0) {
@@ -2101,11 +2188,11 @@ export class ClickHousePrinter {
         // This is a table.column reference
         const columnName = chain[1];
         if (typeof columnName === "string") {
-          const resolvedColumn = this.resolveColumnName(tableSchema, columnName);
+          const resolvedColumn = this.resolveColumnName(tableSchema, columnName, tableAlias);
           return [tableAlias, resolvedColumn, ...chain.slice(2)];
         }
       }
-      // Not a known table alias, might be a nested field - return as-is
+      // Not a known table alias, might be a nested field or JSON path - return as-is
       return chain;
     }
 
@@ -2119,20 +2206,59 @@ export class ClickHousePrinter {
       }
     }
 
-    // Column not found in any table context - return as-is (might be a function, subquery alias, etc.)
+    // Check if it's a SELECT alias (e.g., from COUNT() or explicit AS)
+    if (this.selectAliases.has(columnName)) {
+      return chain; // Valid alias reference
+    }
+
+    // Check if this is an allowed internal column (e.g., tenant columns)
+    // These are ClickHouse column names that are allowed for internal use only
+    if (this.allowedInternalColumns.has(columnName)) {
+      return chain;
+    }
+
+    // Column not found in any table context and not a SELECT alias
+    // This is a security issue - block access to unknown columns
+    if (this.tableContexts.size > 0) {
+      // Only throw if we have tables in context (otherwise might be subquery)
+      const availableColumns = this.getAvailableColumnNames();
+      throw new QueryError(
+        `Unknown column "${columnName}". Available columns: ${availableColumns.join(", ")}`
+      );
+    }
+
+    // No tables in context (might be FROM subquery without alias) - return as-is
     return chain;
   }
 
   /**
-   * Resolve a column name to its ClickHouse name using the table schema
+   * Get list of available column names from all tables in context
    */
-  private resolveColumnName(tableSchema: TableSchema, columnName: string): string {
+  private getAvailableColumnNames(): string[] {
+    const columns: string[] = [];
+    for (const tableSchema of this.tableContexts.values()) {
+      columns.push(...Object.keys(tableSchema.columns));
+    }
+    return [...new Set(columns)].sort();
+  }
+
+  /**
+   * Resolve a column name to its ClickHouse name using the table schema
+   *
+   * @throws QueryError if the column is not found in the table schema
+   */
+  private resolveColumnName(tableSchema: TableSchema, columnName: string, tableAlias?: string): string {
     const columnSchema = tableSchema.columns[columnName];
     if (columnSchema) {
       return columnSchema.clickhouseName || columnSchema.name;
     }
-    // Column not in schema - return as-is (might be a computed column, etc.)
-    return columnName;
+
+    // Column not in schema - this is a security issue, block access
+    const availableColumns = Object.keys(tableSchema.columns).sort().join(", ");
+    const tableName = tableAlias || tableSchema.name;
+    throw new QueryError(
+      `Unknown column "${columnName}" on table "${tableName}". Available columns: ${availableColumns}`
+    );
   }
 
   private visitPlaceholder(node: Placeholder): string {
