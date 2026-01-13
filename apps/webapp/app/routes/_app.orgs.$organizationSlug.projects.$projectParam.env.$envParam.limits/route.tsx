@@ -399,12 +399,10 @@ function QuotasSection({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="border-b border-grid-dimmed pb-1">
-        <Header2>Quotas</Header2>
-      </div>
-      <Paragraph variant="small">
-        Quotas define the maximum resources available to your organization.
-      </Paragraph>
+      <Header2 className="flex items-center gap-1">
+        Quotas
+        <InfoIconTooltip content="Quotas define the maximum resources available to your organization." />
+      </Header2>
       <Table variant="bright/no-hover">
         <TableHeader>
           <TableRow>
@@ -483,10 +481,7 @@ function QuotaRow({ quota }: { quota: QuotaInfo }) {
 function FeaturesSection({ features }: { features: LimitsResult["features"] }) {
   return (
     <div className="flex flex-col gap-3">
-      <div className="border-b border-grid-dimmed pb-1">
-        <Header2>Plan Features</Header2>
-      </div>
-      <Paragraph variant="small">Features and capabilities included with your plan.</Paragraph>
+      <Header2>Plan Features</Header2>
       <Table variant="bright/no-hover">
         <TableHeader>
           <TableRow>
