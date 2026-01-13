@@ -2205,6 +2205,22 @@ describe("Unknown column blocking", () => {
       }).toThrow(QueryError);
     });
 
+    it("should suggest TSQL column name when user types ClickHouse column name", () => {
+      // The schema exposes 'created' but the internal ClickHouse column is 'created_at'
+      // When user types 'created_at', we should suggest 'created'
+      const schema = createSchemaRegistry([runsSchema]);
+      const ctx = createPrinterContext({
+        organizationId: "org_test",
+        projectId: "proj_test",
+        environmentId: "env_test",
+        schema,
+      });
+
+      expect(() => {
+        printQuery("SELECT id, created_at FROM runs", ctx);
+      }).toThrow(/Did you mean "created"/);
+    });
+
     it("should throw error for unknown qualified column (table.column)", () => {
       expect(() => {
         printQuery("SELECT task_runs.unknown_column FROM task_runs");
@@ -2221,9 +2237,7 @@ describe("Unknown column blocking", () => {
 
     it("should throw error for unknown column in complex WHERE", () => {
       expect(() => {
-        printQuery(
-          "SELECT id FROM task_runs WHERE status = 'completed' AND unknown_column > 10"
-        );
+        printQuery("SELECT id FROM task_runs WHERE status = 'completed' AND unknown_column > 10");
       }).toThrow(QueryError);
     });
   });

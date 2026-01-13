@@ -2221,6 +2221,12 @@ export class ClickHousePrinter {
     // This is a security issue - block access to unknown columns
     if (this.tableContexts.size > 0) {
       // Only throw if we have tables in context (otherwise might be subquery)
+      // Check if the user typed a ClickHouse column name instead of the TSQL name
+      const suggestion = this.findTSQLNameForClickHouseName(columnName);
+      if (suggestion) {
+        throw new QueryError(`Unknown column "${columnName}". Did you mean "${suggestion}"?`);
+      }
+
       const availableColumns = this.getAvailableColumnNames();
       throw new QueryError(
         `Unknown column "${columnName}". Available columns: ${availableColumns.join(", ")}`
@@ -2243,17 +2249,46 @@ export class ClickHousePrinter {
   }
 
   /**
+   * Find the TSQL column name for a given ClickHouse column name.
+   * This is used to provide helpful suggestions when users accidentally
+   * use internal ClickHouse column names instead of TSQL names.
+   *
+   * @returns The TSQL column name if found, null otherwise
+   */
+  private findTSQLNameForClickHouseName(clickhouseName: string): string | null {
+    for (const tableSchema of this.tableContexts.values()) {
+      for (const [tsqlName, columnSchema] of Object.entries(tableSchema.columns)) {
+        if (columnSchema.clickhouseName === clickhouseName) {
+          return tsqlName;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
    * Resolve a column name to its ClickHouse name using the table schema
    *
    * @throws QueryError if the column is not found in the table schema
    */
-  private resolveColumnName(tableSchema: TableSchema, columnName: string, tableAlias?: string): string {
+  private resolveColumnName(
+    tableSchema: TableSchema,
+    columnName: string,
+    tableAlias?: string
+  ): string {
     const columnSchema = tableSchema.columns[columnName];
     if (columnSchema) {
       return columnSchema.clickhouseName || columnSchema.name;
     }
 
     // Column not in schema - this is a security issue, block access
+    // Check if the user typed a ClickHouse column name instead of the TSQL name
+    for (const [tsqlName, colSchema] of Object.entries(tableSchema.columns)) {
+      if (colSchema.clickhouseName === columnName) {
+        throw new QueryError(`Unknown column "${columnName}". Did you mean "${tsqlName}"?`);
+      }
+    }
+
     const availableColumns = Object.keys(tableSchema.columns).sort().join(", ");
     const tableName = tableAlias || tableSchema.name;
     throw new QueryError(
