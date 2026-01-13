@@ -39,6 +39,7 @@ export type QuotaInfo = {
   limit: number | null;
   currentUsage: number;
   source: "default" | "plan" | "override";
+  canExceed?: boolean;
 };
 
 // Types for feature flags
@@ -76,6 +77,7 @@ export type LimitsResult = {
   };
   planName: string | null;
   organizationId: string;
+  isOnTopPlan: boolean;
 };
 
 export class LimitsPresenter extends BasePresenter {
@@ -116,6 +118,7 @@ export class LimitsPresenter extends BasePresenter {
     // Get current plan from billing service
     const currentPlan = await getCurrentPlan(organizationId);
     const limits = currentPlan?.v3Subscription?.plan?.limits;
+    const isOnTopPlan = currentPlan?.v3Subscription?.plan?.code === "v3_pro_1";
 
     // Resolve API rate limit config
     const apiRateLimitConfig = resolveApiRateLimitConfig(organization.apiRateLimiterConfig);
@@ -192,6 +195,7 @@ export class LimitsPresenter extends BasePresenter {
     const supportLevel = limits?.support ?? "community";
 
     return {
+      isOnTopPlan,
       rateLimits: {
         api: {
           name: "API Rate Limit",
@@ -224,6 +228,7 @@ export class LimitsPresenter extends BasePresenter {
                 limit: schedulesLimit,
                 currentUsage: scheduleCount,
                 source: "plan",
+                canExceed: limits?.schedules?.canExceed,
               }
             : null,
         teamMembers:
@@ -234,6 +239,7 @@ export class LimitsPresenter extends BasePresenter {
                 limit: teamMembersLimit,
                 currentUsage: organization._count.members,
                 source: "plan",
+                canExceed: limits?.teamMembers?.canExceed,
               }
             : null,
         alerts:
@@ -244,6 +250,7 @@ export class LimitsPresenter extends BasePresenter {
                 limit: alertsLimit,
                 currentUsage: alertChannelCount,
                 source: "plan",
+                canExceed: limits?.alerts?.canExceed,
               }
             : null,
         branches:
@@ -254,6 +261,7 @@ export class LimitsPresenter extends BasePresenter {
                 limit: branchesLimit,
                 currentUsage: activeBranchCount,
                 source: "plan",
+                canExceed: limits?.branches?.canExceed,
               }
             : null,
         logRetentionDays:
@@ -270,10 +278,11 @@ export class LimitsPresenter extends BasePresenter {
           realtimeConnectionsLimit !== null
             ? {
                 name: "Realtime connections",
-                description: "Maximum concurrent realtime connections",
+                description: "Maximum concurrent Realtime connections",
                 limit: realtimeConnectionsLimit,
                 currentUsage: 0, // Would need to query realtime service for this
                 source: "plan",
+                canExceed: limits?.realtimeConcurrentConnections?.canExceed,
               }
             : null,
         devQueueSize: {
