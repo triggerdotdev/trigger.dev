@@ -4,8 +4,8 @@ import { ClickhouseClient } from "./client/client.js";
 import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 import { NoopClient } from "./client/noop.js";
 import {
-  insertTaskRuns,
-  insertRawTaskRunPayloads,
+  insertTaskRunsCompactArrays,
+  insertRawTaskRunPayloadsCompactArrays,
   getTaskRunsQueryBuilder,
   getTaskActivityQueryBuilder,
   getCurrentRunningStats,
@@ -33,6 +33,16 @@ import type { Agent as HttpsAgent } from "https";
 export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
 export type * from "./client/queryBuilder.js";
+
+// Re-export column constants, indices, and type-safe accessors
+export {
+  TASK_RUN_COLUMNS,
+  TASK_RUN_INDEX,
+  PAYLOAD_COLUMNS,
+  PAYLOAD_INDEX,
+  getTaskRunField,
+  getPayloadField,
+} from "./taskRuns.js";
 
 // TSQL query execution
 export {
@@ -182,8 +192,8 @@ export class ClickHouse {
 
   get taskRuns() {
     return {
-      insert: insertTaskRuns(this.writer),
-      insertPayloads: insertRawTaskRunPayloads(this.writer),
+      insertCompactArrays: insertTaskRunsCompactArrays(this.writer),
+      insertPayloadsCompactArrays: insertRawTaskRunPayloadsCompactArrays(this.writer),
       queryBuilder: getTaskRunsQueryBuilder(this.reader),
       countQueryBuilder: getTaskRunsCountQueryBuilder(this.reader),
       tagQueryBuilder: getTaskRunTagsQueryBuilder(this.reader),
