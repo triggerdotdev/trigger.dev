@@ -82,7 +82,7 @@ type TaskRunInsert = {
 export type RunsReplicationServiceEvents = {
   message: [{ lsn: string; message: PgoutputMessage; service: RunsReplicationService }];
   batchFlushed: [
-    { flushId: string; taskRunInserts: TaskRunInsertArray[]; payloadInserts: PayloadInsertArray[] },
+    { flushId: string; taskRunInserts: TaskRunInsertArray[]; payloadInserts: PayloadInsertArray[] }
   ];
 };
 
@@ -214,34 +214,14 @@ export class RunsReplicationService {
       flushInterval: options.flushIntervalMs ?? 100,
       maxConcurrency: options.maxFlushConcurrency ?? 100,
       callback: this.#flushBatch.bind(this),
-      // we can do some pre-merging to reduce the amount of data we need to send to clickhouse
-      mergeBatch: (existingBatch: TaskRunInsert[], newBatch: TaskRunInsert[]) => {
-        const merged = new Map<string, TaskRunInsert>();
-
-        for (const item of existingBatch) {
-          const key = `${item.event}_${item.run.id}`;
-          merged.set(key, item);
-        }
-
-        for (const item of newBatch) {
-          if (!item?.run?.id) {
-            this.logger.warn("Skipping replication event with null run", { event: item });
-            continue;
-          }
-
-          const key = `${item.event}_${item.run.id}`;
-          const existingItem = merged.get(key);
-
-          // Keep the run with the higher version (latest)
-          // and take the last occurrence for that version.
-          // Items originating from the same DB transaction have the same version.
-          if (!existingItem || item._version >= existingItem._version) {
-            merged.set(key, item);
-          }
-        }
-
-        return Array.from(merged.values());
+      // Key-based deduplication to reduce duplicates sent to ClickHouse
+      getKey: (item) => {
+        return `${item.event}_${item.run.id}`;
       },
+      // Keep the run with the higher version (latest)
+      // and take the last occurrence for that version.
+      // Items originating from the same DB transaction have the same version.
+      shouldReplace: (existing, incoming) => incoming._version >= existing._version,
       logger: new Logger("ConcurrentFlushScheduler", options.logLevel ?? "info"),
       tracer: options.tracer,
     });
@@ -504,7 +484,7 @@ export class RunsReplicationService {
       this._eventsProcessedCounter.add(1, { event_type: event.tag });
     }
 
-    this.logger.info("handle_transaction", {
+    this.logger.debug("handle_transaction", {
       transaction: {
         xid: transaction.xid,
         commitLsn: transaction.commitLsn,
@@ -974,13 +954,16 @@ export type ConcurrentFlushSchedulerConfig<T> = {
   flushInterval: number;
   maxConcurrency?: number;
   callback: (flushId: string, batch: T[]) => Promise<void>;
-  mergeBatch?: (existingBatch: T[], newBatch: T[]) => T[];
+  /** Key-based deduplication. Return null to skip the item. */
+  getKey: (item: T) => string | null;
+  /** Determine if incoming item should replace existing. */
+  shouldReplace: (existing: T, incoming: T) => boolean;
   tracer?: Tracer;
   logger?: Logger;
 };
 
 export class ConcurrentFlushScheduler<T> {
-  private currentBatch: T[];
+  private batch = new Map<string, T>();
   private readonly BATCH_SIZE: number;
   private readonly flushInterval: number;
   private readonly MAX_CONCURRENCY: number;
@@ -995,7 +978,6 @@ export class ConcurrentFlushScheduler<T> {
     this.logger = config.logger ?? new Logger("ConcurrentFlushScheduler", "info");
     this._tracer = config.tracer ?? trace.getTracer("concurrent-flush-scheduler");
 
-    this.currentBatch = [];
     this.BATCH_SIZE = config.batchSize;
     this.flushInterval = config.flushInterval;
     this.MAX_CONCURRENCY = config.maxConcurrency || 1;
@@ -1005,9 +987,17 @@ export class ConcurrentFlushScheduler<T> {
   }
 
   addToBatch(items: T[]): void {
-    this.currentBatch = this.config.mergeBatch
-      ? this.config.mergeBatch(this.currentBatch, items)
-      : this.currentBatch.concat(items);
+    for (const item of items) {
+      const key = this.config.getKey(item);
+      if (key === null) {
+        continue;
+      }
+
+      const existing = this.batch.get(key);
+      if (!existing || this.config.shouldReplace(existing, item)) {
+        this.batch.set(key, item);
+      }
+    }
 
     this.#flushNextBatchIfNeeded();
   }
@@ -1031,11 +1021,16 @@ export class ConcurrentFlushScheduler<T> {
     this.#flushNextBatchIfNeeded();
   }
 
+  #getBatchSize(): number {
+    return this.batch.size;
+  }
+
   #flushNextBatchIfNeeded(): void {
-    if (this.currentBatch.length >= this.BATCH_SIZE || this._isShutDown) {
+    const currentSize = this.#getBatchSize();
+    if (currentSize >= this.BATCH_SIZE || this._isShutDown) {
       this.logger.debug("Batch size threshold reached, initiating flush", {
         batchSize: this.BATCH_SIZE,
-        currentSize: this.currentBatch.length,
+        currentSize,
         isShutDown: this._isShutDown,
       });
 
@@ -1060,19 +1055,20 @@ export class ConcurrentFlushScheduler<T> {
   }
 
   async #checkAndFlush(): Promise<void> {
-    if (this.currentBatch.length > 0) {
+    const currentSize = this.#getBatchSize();
+    if (currentSize > 0) {
       this.logger.debug("Periodic flush check triggered", {
-        currentBatchSize: this.currentBatch.length,
+        currentBatchSize: currentSize,
       });
       await this.#flushNextBatch();
     }
   }
 
   async #flushNextBatch(): Promise<void> {
-    if (this.currentBatch.length === 0) return;
+    if (this.batch.size === 0) return;
 
-    const batch = this.currentBatch;
-    this.currentBatch = [];
+    const batch = Array.from(this.batch.values());
+    this.batch.clear();
 
     const callback = this.config.callback;
 
