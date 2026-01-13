@@ -42,6 +42,7 @@ import {
   EnvironmentParamSchema,
   organizationBillingPath,
 } from "~/utils/pathBuilder";
+import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 
 export const meta: MetaFunction = () => {
   return [
@@ -207,7 +208,12 @@ function ConcurrencySection({ concurrencyPath }: { concurrencyPath: string }) {
           <TableRow>
             <TableCell className="w-full text-sm">Concurrency</TableCell>
             <TableCell alignment="right">
-              <LinkButton to={concurrencyPath} variant="secondary/small">
+              <LinkButton
+                to={concurrencyPath}
+                variant="secondary/small"
+                LeadingIcon={ConcurrencyIcon}
+                leadingIconClassName="text-orange-500"
+              >
                 Manage concurrency
               </LinkButton>
             </TableCell>
