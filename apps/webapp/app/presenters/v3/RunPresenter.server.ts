@@ -124,7 +124,6 @@ export class RunPresenter {
       isFinished: isFinalRunStatus(run.status),
       startedAt: run.startedAt,
       completedAt: run.completedAt,
-      createdAt: run.createdAt,
       logsDeletedAt: showDeletedLogs ? null : run.logsDeletedAt,
       rootTaskRun: run.rootTaskRun,
       parentTaskRun: run.parentTaskRun,
@@ -209,43 +208,19 @@ export class RunPresenter {
 
     //we need the start offset for each item, and the total duration of the entire tree
     const treeRootStartTimeMs = tree ? tree?.data.startTime.getTime() : 0;
-
-    const postgresRunDuration =
-      runData.isFinished && run.completedAt
-        ? millisecondsToNanoseconds(
-          run.completedAt.getTime() -
-          (run.rootTaskRun?.createdAt ?? run.createdAt).getTime()
-        )
-        : 0;
-
     let totalDuration = tree?.data.duration ?? 0;
 
     // Build the linkedRunIdBySpanId map during the same walk
     const linkedRunIdBySpanId: Record<string, string> = {};
 
     const events = tree
-      ? flattenTree(tree).map((n, index) => {
-        const isRoot = index === 0;
-        const offset = millisecondsToNanoseconds(n.data.startTime.getTime() - treeRootStartTimeMs);
-
-        let nIsPartial = n.data.isPartial;
-        let nDuration = n.data.duration;
-        let nIsError = n.data.isError;
-
-        // NOTE: Clickhouse trace ingestion is eventually consistent.
-        // When a run is marked finished in Postgres, we reconcile the
-        // root span to reflect completion even if telemetry is still partial.
-        // This is a deliberate UI-layer tradeoff to prevent stale or "stuck"
-        // run states in the dashboard.
-        if (isRoot && runData.isFinished && nIsPartial) {
-          nIsPartial = false;
-          nDuration = Math.max(nDuration ?? 0, postgresRunDuration);
-          nIsError = isFailedRunStatus(runData.status);
-        }
-
+      ? flattenTree(tree).map((n) => {
+        const offset = millisecondsToNanoseconds(
+          n.data.startTime.getTime() - treeRootStartTimeMs
+        );
         //only let non-debug events extend the total duration
         if (!n.data.isDebug) {
-          totalDuration = Math.max(totalDuration, offset + (nIsPartial ? 0 : nDuration));
+          totalDuration = Math.max(totalDuration, offset + n.data.duration);
         }
 
         // For cached spans, store the mapping from spanId to the linked run's ID
@@ -263,24 +238,23 @@ export class RunPresenter {
               treeRootStartTimeMs
             ),
             //set partial nodes to null duration
-            duration: nIsPartial ? null : nDuration,
-            isPartial: nIsPartial,
-            isError: nIsError,
+            duration: n.data.isPartial ? null : n.data.duration,
             offset,
-            isRoot,
+            isRoot: n.id === traceSummary.rootSpan.id,
           },
         };
       })
       : [];
 
-    if (runData.isFinished) {
-      totalDuration = Math.max(totalDuration, postgresRunDuration);
-    }
-
     //total duration should be a minimum of 1ms
     totalDuration = Math.max(totalDuration, millisecondsToNanoseconds(1));
 
-    const reconciled = reconcileTraceWithRunLifecycle(runData, traceSummary.rootSpan.id, events, totalDuration);
+    const reconciled = reconcileTraceWithRunLifecycle(
+      runData,
+      traceSummary.rootSpan.id,
+      events,
+      totalDuration
+    );
 
     return {
       run: runData,
@@ -322,17 +296,14 @@ export function reconcileTraceWithRunLifecycle(
   totalDuration: number;
   rootSpanStatus: "executing" | "completed" | "failed";
 } {
-  const rootEvent = events[0];
-  const isActualRoot = rootEvent?.id === rootSpanId;
-
-  const currentStatus: "executing" | "completed" | "failed" =
-    isActualRoot && rootEvent
-      ? rootEvent.data.isError
-        ? "failed"
-        : !rootEvent.data.isPartial
-          ? "completed"
-          : "executing"
-      : "executing";
+  const rootEvent = events.find((e) => e.id === rootSpanId);
+  const currentStatus: "executing" | "completed" | "failed" = rootEvent
+    ? rootEvent.data.isError
+      ? "failed"
+      : !rootEvent.data.isPartial
+        ? "completed"
+        : "executing"
+    : "executing";
 
   if (!runData.isFinished) {
     return { events, totalDuration, rootSpanStatus: currentStatus };
@@ -347,28 +318,23 @@ export function reconcileTraceWithRunLifecycle(
 
   const updatedTotalDuration = Math.max(totalDuration, postgresRunDuration);
 
-  // We only need to potentially update the root event (the first one) if it matches our ID
-  if (isActualRoot && rootEvent && rootEvent.data.isPartial) {
-    const updatedEvents = [...events];
-    updatedEvents[0] = {
-      ...rootEvent,
-      data: {
-        ...rootEvent.data,
-        isPartial: false,
-        duration: Math.max(rootEvent.data.duration ?? 0, postgresRunDuration),
-        isError: isFailedRunStatus(runData.status),
-      },
-    };
-
-    return {
-      events: updatedEvents,
-      totalDuration: updatedTotalDuration,
-      rootSpanStatus: isFailedRunStatus(runData.status) ? "failed" : "completed",
-    };
-  }
+  const updatedEvents = events.map((e) => {
+    if (e.id === rootSpanId && e.data.isPartial) {
+      return {
+        ...e,
+        data: {
+          ...e.data,
+          isPartial: false,
+          duration: Math.max(e.data.duration ?? 0, postgresRunDuration),
+          isError: isFailedRunStatus(runData.status),
+        },
+      };
+    }
+    return e;
+  });
 
   return {
-    events,
+    events: updatedEvents,
     totalDuration: updatedTotalDuration,
     rootSpanStatus: isFailedRunStatus(runData.status) ? "failed" : "completed",
   };
