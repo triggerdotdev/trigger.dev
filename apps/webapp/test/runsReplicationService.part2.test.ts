@@ -1,4 +1,4 @@
-import { ClickHouse, TASK_RUN_INDEX, PAYLOAD_INDEX } from "@internal/clickhouse";
+import { ClickHouse, getTaskRunField, getPayloadField } from "@internal/clickhouse";
 import { containerTest } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
 import { readFile } from "node:fs/promises";
@@ -889,13 +889,13 @@ describe("RunsReplicationService (part 2/2)", () => {
       await setTimeout(1000);
 
       expect(batchFlushedEvents?.[0].taskRunInserts).toHaveLength(2);
-      // Use TASK_RUN_INDEX for type-safe array access
-      expect(batchFlushedEvents?.[0].taskRunInserts[0][TASK_RUN_INDEX.run_id]).toEqual(run.id);
-      expect(batchFlushedEvents?.[0].taskRunInserts[0][TASK_RUN_INDEX.status]).toEqual(
+      // Use getTaskRunField for type-safe array access
+      expect(getTaskRunField(batchFlushedEvents![0].taskRunInserts[0], "run_id")).toEqual(run.id);
+      expect(getTaskRunField(batchFlushedEvents![0].taskRunInserts[0], "status")).toEqual(
         "PENDING_VERSION"
       );
-      expect(batchFlushedEvents?.[0].taskRunInserts[1][TASK_RUN_INDEX.run_id]).toEqual(run.id);
-      expect(batchFlushedEvents?.[0].taskRunInserts[1][TASK_RUN_INDEX.status]).toEqual(
+      expect(getTaskRunField(batchFlushedEvents![0].taskRunInserts[1], "run_id")).toEqual(run.id);
+      expect(getTaskRunField(batchFlushedEvents![0].taskRunInserts[1], "status")).toEqual(
         "COMPLETED_SUCCESSFULLY"
       );
 
@@ -1063,22 +1063,22 @@ describe("RunsReplicationService (part 2/2)", () => {
 
       // Verify sorting order: organization_id, project_id, environment_id, created_at, run_id
       for (let i = 1; i < batchFlushedEvents[0]?.taskRunInserts.length; i++) {
-        const prev = batchFlushedEvents[0]?.taskRunInserts[i - 1];
-        const curr = batchFlushedEvents[0]?.taskRunInserts[i];
+        const prev = batchFlushedEvents[0]!.taskRunInserts[i - 1];
+        const curr = batchFlushedEvents[0]!.taskRunInserts[i];
 
         const prevKey = [
-          prev[TASK_RUN_INDEX.organization_id],
-          prev[TASK_RUN_INDEX.project_id],
-          prev[TASK_RUN_INDEX.environment_id],
-          prev[TASK_RUN_INDEX.created_at],
-          prev[TASK_RUN_INDEX.run_id],
+          getTaskRunField(prev, "organization_id"),
+          getTaskRunField(prev, "project_id"),
+          getTaskRunField(prev, "environment_id"),
+          getTaskRunField(prev, "created_at"),
+          getTaskRunField(prev, "run_id"),
         ];
         const currKey = [
-          curr[TASK_RUN_INDEX.organization_id],
-          curr[TASK_RUN_INDEX.project_id],
-          curr[TASK_RUN_INDEX.environment_id],
-          curr[TASK_RUN_INDEX.created_at],
-          curr[TASK_RUN_INDEX.run_id],
+          getTaskRunField(curr, "organization_id"),
+          getTaskRunField(curr, "project_id"),
+          getTaskRunField(curr, "environment_id"),
+          getTaskRunField(curr, "created_at"),
+          getTaskRunField(curr, "run_id"),
         ];
 
         const keysAreEqual = prevKey.every((val, idx) => val === currKey[idx]);
@@ -1106,9 +1106,9 @@ describe("RunsReplicationService (part 2/2)", () => {
 
       // Verify payloadInserts are also sorted by run_id
       for (let i = 1; i < batchFlushedEvents[0]?.payloadInserts.length; i++) {
-        const prev = batchFlushedEvents[0]?.payloadInserts[i - 1];
-        const curr = batchFlushedEvents[0]?.payloadInserts[i];
-        expect(prev[PAYLOAD_INDEX.run_id] <= curr[PAYLOAD_INDEX.run_id]).toBeTruthy();
+        const prev = batchFlushedEvents[0]!.payloadInserts[i - 1];
+        const curr = batchFlushedEvents[0]!.payloadInserts[i];
+        expect(getPayloadField(prev, "run_id") <= getPayloadField(curr, "run_id")).toBeTruthy();
       }
 
       await runsReplicationService.stop();

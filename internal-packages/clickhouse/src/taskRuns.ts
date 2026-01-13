@@ -109,6 +109,73 @@ export const TASK_RUN_INDEX = Object.fromEntries(
   TASK_RUN_COLUMNS.map((col, idx) => [col, idx])
 ) as { readonly [K in TaskRunColumnName]: number };
 
+/**
+ * Type mapping from column name to its type in TaskRunInsertArray.
+ * This enables type-safe field access without manual casting.
+ */
+export type TaskRunFieldTypes = {
+  environment_id: string;
+  organization_id: string;
+  project_id: string;
+  run_id: string;
+  updated_at: number;
+  created_at: number;
+  status: string;
+  environment_type: string;
+  friendly_id: string;
+  attempt: number;
+  engine: string;
+  task_identifier: string;
+  queue: string;
+  schedule_id: string;
+  batch_id: string;
+  completed_at: number | null;
+  started_at: number | null;
+  executed_at: number | null;
+  delay_until: number | null;
+  queued_at: number | null;
+  expired_at: number | null;
+  usage_duration_ms: number;
+  cost_in_cents: number;
+  base_cost_in_cents: number;
+  output: { data: unknown };
+  error: { data: unknown };
+  tags: string[];
+  task_version: string;
+  sdk_version: string;
+  cli_version: string;
+  machine_preset: string;
+  root_run_id: string;
+  parent_run_id: string;
+  depth: number;
+  span_id: string;
+  trace_id: string;
+  idempotency_key: string;
+  expiration_ttl: string;
+  is_test: boolean;
+  _version: string;
+  _is_deleted: number;
+  concurrency_key: string;
+  bulk_action_group_ids: string[];
+  worker_queue: string;
+  max_duration_in_seconds: number | null;
+};
+
+/**
+ * Type-safe accessor for TaskRunInsertArray fields.
+ * Returns the correct type for each field without manual casting.
+ *
+ * @example
+ * const orgId = getTaskRunField(run, "organization_id"); // type: string
+ * const createdAt = getTaskRunField(run, "created_at"); // type: number
+ */
+export function getTaskRunField<K extends TaskRunColumnName>(
+  run: TaskRunInsertArray,
+  field: K
+): TaskRunFieldTypes[K] {
+  return run[TASK_RUN_INDEX[field]] as TaskRunFieldTypes[K];
+}
+
 export function insertTaskRunsCompactArrays(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
   return ch.insertCompactRaw({
     name: "insertTaskRunsCompactArrays",
@@ -149,9 +216,29 @@ export const PAYLOAD_COLUMNS = ["run_id", "created_at", "payload"] as const;
 export type PayloadColumnName = (typeof PAYLOAD_COLUMNS)[number];
 
 // Type-safe column indices generated from PAYLOAD_COLUMNS
-export const PAYLOAD_INDEX = Object.fromEntries(
-  PAYLOAD_COLUMNS.map((col, idx) => [col, idx])
-) as { readonly [K in PayloadColumnName]: number };
+export const PAYLOAD_INDEX = Object.fromEntries(PAYLOAD_COLUMNS.map((col, idx) => [col, idx])) as {
+  readonly [K in PayloadColumnName]: number;
+};
+
+/**
+ * Type mapping from column name to its type in PayloadInsertArray.
+ */
+export type PayloadFieldTypes = {
+  run_id: string;
+  created_at: number;
+  payload: { data: unknown };
+};
+
+/**
+ * Type-safe accessor for PayloadInsertArray fields.
+ * Returns the correct type for each field without manual casting.
+ */
+export function getPayloadField<K extends PayloadColumnName>(
+  payload: PayloadInsertArray,
+  field: K
+): PayloadFieldTypes[K] {
+  return payload[PAYLOAD_INDEX[field]] as PayloadFieldTypes[K];
+}
 
 /**
  * Type-safe tuple representing a task run insert array.
@@ -209,11 +296,7 @@ export type TaskRunInsertArray = [
  * Type-safe tuple representing a payload insert array.
  * Order matches PAYLOAD_COLUMNS exactly.
  */
-export type PayloadInsertArray = [
-  run_id: string,
-  created_at: number,
-  payload: { data: unknown },
-];
+export type PayloadInsertArray = [run_id: string, created_at: number, payload: { data: unknown }];
 
 export function insertRawTaskRunPayloadsCompactArrays(
   ch: ClickhouseWriter,

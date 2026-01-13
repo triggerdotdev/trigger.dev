@@ -1,5 +1,5 @@
 import type { ClickHouse, TaskRunInsertArray, PayloadInsertArray } from "@internal/clickhouse";
-import { TASK_RUN_INDEX, PAYLOAD_INDEX } from "@internal/clickhouse";
+import { getTaskRunField, getPayloadField } from "@internal/clickhouse";
 import { type RedisOptions } from "@internal/redis";
 import {
   LogicalReplicationClient,
@@ -580,28 +580,28 @@ export class RunsReplicationService {
         // batch inserts in clickhouse are more performant if the items
         // are pre-sorted by the primary key
         .sort((a, b) => {
-          const aOrgId = a[TASK_RUN_INDEX.organization_id] as string;
-          const bOrgId = b[TASK_RUN_INDEX.organization_id] as string;
+          const aOrgId = getTaskRunField(a, "organization_id");
+          const bOrgId = getTaskRunField(b, "organization_id");
           if (aOrgId !== bOrgId) {
             return aOrgId < bOrgId ? -1 : 1;
           }
-          const aProjId = a[TASK_RUN_INDEX.project_id] as string;
-          const bProjId = b[TASK_RUN_INDEX.project_id] as string;
+          const aProjId = getTaskRunField(a, "project_id");
+          const bProjId = getTaskRunField(b, "project_id");
           if (aProjId !== bProjId) {
             return aProjId < bProjId ? -1 : 1;
           }
-          const aEnvId = a[TASK_RUN_INDEX.environment_id] as string;
-          const bEnvId = b[TASK_RUN_INDEX.environment_id] as string;
+          const aEnvId = getTaskRunField(a, "environment_id");
+          const bEnvId = getTaskRunField(b, "environment_id");
           if (aEnvId !== bEnvId) {
             return aEnvId < bEnvId ? -1 : 1;
           }
-          const aCreatedAt = a[TASK_RUN_INDEX.created_at] as number;
-          const bCreatedAt = b[TASK_RUN_INDEX.created_at] as number;
+          const aCreatedAt = getTaskRunField(a, "created_at");
+          const bCreatedAt = getTaskRunField(b, "created_at");
           if (aCreatedAt !== bCreatedAt) {
             return aCreatedAt - bCreatedAt;
           }
-          const aRunId = a[TASK_RUN_INDEX.run_id] as string;
-          const bRunId = b[TASK_RUN_INDEX.run_id] as string;
+          const aRunId = getTaskRunField(a, "run_id");
+          const bRunId = getTaskRunField(b, "run_id");
           if (aRunId === bRunId) return 0;
           return aRunId < bRunId ? -1 : 1;
         });
@@ -612,8 +612,8 @@ export class RunsReplicationService {
         // batch inserts in clickhouse are more performant if the items
         // are pre-sorted by the primary key
         .sort((a, b) => {
-          const aRunId = a[PAYLOAD_INDEX.run_id] as string;
-          const bRunId = b[PAYLOAD_INDEX.run_id] as string;
+          const aRunId = getPayloadField(a, "run_id");
+          const bRunId = getPayloadField(b, "run_id");
           if (aRunId === bRunId) return 0;
           return aRunId < bRunId ? -1 : 1;
         });

@@ -708,7 +708,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             table: req.table,
           });
 
-          recordSpanError(span, clickhouseError);
+          recordClickhouseError(span, clickhouseError);
           return [new InsertError(clickhouseError.message), null];
         }
 

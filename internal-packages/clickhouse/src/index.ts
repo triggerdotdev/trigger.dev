@@ -31,12 +31,14 @@ export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
 export type * from "./client/queryBuilder.js";
 
-// Re-export column constants and indices for type-safe array access
+// Re-export column constants, indices, and type-safe accessors
 export {
   TASK_RUN_COLUMNS,
   TASK_RUN_INDEX,
   PAYLOAD_COLUMNS,
   PAYLOAD_INDEX,
+  getTaskRunField,
+  getPayloadField,
 } from "./taskRuns.js";
 
 // TSQL query execution
