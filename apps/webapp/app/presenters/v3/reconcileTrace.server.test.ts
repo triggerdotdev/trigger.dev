@@ -1,30 +1,5 @@
-import { vi, describe, it, expect } from "vitest";
-
-vi.mock("../app/env.server", () => ({
-    env: {
-        MAXIMUM_LIVE_RELOADING_EVENTS: 1000,
-    },
-}));
-
-vi.mock("../app/db.server", () => ({
-    prisma: {},
-    $replica: {},
-    $transaction: vi.fn(),
-}));
-
-vi.mock("../app/v3/eventRepository/index.server", () => ({
-    resolveEventRepositoryForStore: vi.fn(),
-}));
-
-vi.mock("../app/v3/taskEventStore.server", () => ({
-    getTaskEventStoreTableForRun: vi.fn(),
-}));
-
-vi.mock("../app/utils/username", () => ({
-    getUsername: vi.fn(),
-}));
-
-import { reconcileTraceWithRunLifecycle } from "../app/presenters/v3/reconcileTrace.server";
+import { describe, it, expect } from "vitest";
+import { reconcileTraceWithRunLifecycle } from "./reconcileTrace.server";
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 
 describe("reconcileTraceWithRunLifecycle", () => {
