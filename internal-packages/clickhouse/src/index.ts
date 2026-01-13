@@ -1,4 +1,5 @@
-import { ClickHouseSettings } from "@clickhouse/client";
+import type { ClickHouseSettings } from "@clickhouse/client";
+export type { ClickHouseSettings };
 import { ClickhouseClient } from "./client/client.js";
 import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 import { NoopClient } from "./client/noop.js";
@@ -43,6 +44,9 @@ export {
   type FieldMappings,
 } from "./client/tsql.js";
 export type { OutputColumnMetadata } from "@internal/tsql";
+
+// Errors
+export { QueryError } from "./client/errors.js";
 
 export type ClickhouseCommonConfig = {
   keepAlive?: {

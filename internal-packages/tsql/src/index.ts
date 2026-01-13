@@ -64,6 +64,8 @@ export {
   findColumn,
   findTable,
   getAllowedUserValues,
+  // Core column utilities
+  getCoreColumns,
   getExternalValue,
   getInternalValue,
   getInternalValueFromMapping,
@@ -76,6 +78,8 @@ export {
   isValidUserValue,
   // Virtual column utilities
   isVirtualColumn,
+  // Error message sanitization
+  sanitizeErrorMessage,
   validateFilterColumn,
   validateGroupColumn,
   validateSelectColumn,

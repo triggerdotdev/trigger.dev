@@ -70,6 +70,11 @@ export interface PrintResult {
   params: Record<string, unknown>;
   /** Metadata for each column in the SELECT clause, in order */
   columns: OutputColumnMetadata[];
+  /**
+   * Columns that were hidden when SELECT * was used.
+   * Only populated when SELECT * is transformed to core columns only.
+   */
+  hiddenColumns?: string[];
 }
 
 /**
@@ -109,6 +114,8 @@ export class ClickHousePrinter {
   private outputColumns: OutputColumnMetadata[] = [];
   /** Whether we're currently processing GROUP BY expressions */
   private inGroupByContext = false;
+  /** Columns hidden when SELECT * is expanded to core columns only */
+  private hiddenColumns: string[] = [];
 
   constructor(
     private context: PrinterContext,
@@ -122,12 +129,17 @@ export class ClickHousePrinter {
    */
   print(node: SelectQuery | SelectSetQuery): PrintResult {
     this.outputColumns = [];
+    this.hiddenColumns = [];
     const sql = this.visit(node);
-    return {
+    const result: PrintResult = {
       sql,
       params: this.context.getParams(),
       columns: this.outputColumns,
     };
+    if (this.hiddenColumns.length > 0) {
+      result.hiddenColumns = this.hiddenColumns;
+    }
+    return result;
   }
 
   /**
@@ -605,7 +617,8 @@ export class ClickHousePrinter {
   }
 
   /**
-   * Expand SELECT * to all selectable columns from all tables in context
+   * Expand SELECT * to core columns only from all tables in context.
+   * Non-core columns are tracked in hiddenColumns for user notification.
    */
   private expandAllTableColumns(collectMetadata: boolean): string[] {
     const results: string[] = [];
@@ -615,7 +628,8 @@ export class ClickHousePrinter {
       const tableColumns = this.getSelectableColumnsFromSchema(
         tableSchema,
         tableAlias,
-        collectMetadata
+        collectMetadata,
+        true // onlyCoreColumns - SELECT * only returns core columns
       );
       results.push(...tableColumns);
     }
@@ -629,7 +643,8 @@ export class ClickHousePrinter {
   }
 
   /**
-   * Expand table.* to all selectable columns from a specific table
+   * Expand table.* to core columns only from a specific table.
+   * Non-core columns are tracked in hiddenColumns for user notification.
    */
   private expandTableColumns(tableAlias: string, collectMetadata: boolean): string[] {
     const tableSchema = this.tableContexts.get(tableAlias);
@@ -639,27 +654,48 @@ export class ClickHousePrinter {
       return [`${this.printIdentifier(tableAlias)}.*`];
     }
 
-    return this.getSelectableColumnsFromSchema(tableSchema, tableAlias, collectMetadata);
+    return this.getSelectableColumnsFromSchema(
+      tableSchema,
+      tableAlias,
+      collectMetadata,
+      true // onlyCoreColumns - table.* only returns core columns
+    );
   }
 
   /**
-   * Get all selectable columns from a table schema as SQL strings
+   * Get selectable columns from a table schema as SQL strings
    *
    * @param tableSchema - The table schema
    * @param tableAlias - The alias used for the table in the query (for table-qualified columns)
    * @param collectMetadata - Whether to collect column metadata
+   * @param onlyCoreColumns - If true, only return core columns and track hidden columns (but falls back to all columns if no core columns are defined)
    * @returns Array of SQL column strings
    */
   private getSelectableColumnsFromSchema(
     tableSchema: TableSchema,
     tableAlias: string,
-    collectMetadata: boolean
+    collectMetadata: boolean,
+    onlyCoreColumns = false
   ): string[] {
     const results: string[] = [];
+
+    // Check if any core columns exist - if not, we'll return all columns as a fallback
+    const hasCoreColumns = Object.values(tableSchema.columns).some(
+      (col) => col.coreColumn === true && col.selectable !== false
+    );
+
+    // Only filter to core columns if the schema defines some core columns
+    const shouldFilterToCoreOnly = onlyCoreColumns && hasCoreColumns;
 
     for (const [columnName, columnSchema] of Object.entries(tableSchema.columns)) {
       // Skip non-selectable columns
       if (columnSchema.selectable === false) {
+        continue;
+      }
+
+      // If filtering to core columns only, skip non-core and track them
+      if (shouldFilterToCoreOnly && !columnSchema.coreColumn) {
+        this.hiddenColumns.push(columnName);
         continue;
       }
 
