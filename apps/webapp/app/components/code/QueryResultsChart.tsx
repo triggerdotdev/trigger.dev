@@ -1,24 +1,8 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { memo, useMemo } from "react";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  XAxis,
-  YAxis,
-} from "recharts";
-import {
-  type ChartConfig,
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "~/components/primitives/charts/Chart";
+import type { ChartConfig } from "~/components/primitives/charts/Chart";
+import { ChartBar } from "~/components/primitives/charts/ChartBar";
+import { ChartLine } from "~/components/primitives/charts/ChartLine";
 import { Paragraph } from "../primitives/Paragraph";
 import type { AggregationType, ChartConfiguration } from "./ChartConfigPanel";
 
@@ -806,11 +790,6 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     return <EmptyState message="Unable to transform data for chart" />;
   }
 
-  const commonProps = {
-    data,
-    margin: { top: 10, right: 10, left: 10, bottom: 10 },
-  };
-
   // Determine appropriate angle for X-axis labels based on granularity
   const xAxisAngle = timeGranularity === "hours" || timeGranularity === "seconds" ? -45 : 0;
   const xAxisHeight = xAxisAngle !== 0 ? 60 : undefined;
@@ -818,110 +797,60 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   // Build xAxisProps - different config for date-based (continuous) vs categorical axes
   const xAxisProps = isDateBased
     ? {
-        dataKey: xDataKey,
         type: "number" as const,
-        domain: timeDomain ?? ["auto", "auto"],
+        domain: timeDomain ?? (["auto", "auto"] as [string, string]),
         scale: "time" as const,
         // Explicitly specify tick positions so labels appear across the entire range
         ticks: timeTicks ?? undefined,
-        fontSize: 12,
-        tickLine: false,
-        tickMargin: 8,
-        axisLine: false,
-        tick: { fill: "var(--color-text-dimmed)" },
         tickFormatter: xAxisTickFormatter,
         angle: xAxisAngle,
         textAnchor: xAxisAngle !== 0 ? ("end" as const) : ("middle" as const),
         height: xAxisHeight,
       }
     : {
-        dataKey: xDataKey,
-        fontSize: 12,
-        tickLine: false,
-        tickMargin: 8,
-        axisLine: false,
-        tick: { fill: "var(--color-text-dimmed)" },
         angle: xAxisAngle,
         textAnchor: xAxisAngle !== 0 ? ("end" as const) : ("middle" as const),
         height: xAxisHeight,
       };
 
   const yAxisProps = {
-    fontSize: 12,
-    tickLine: false,
-    tickMargin: 8,
-    axisLine: false,
-    tick: { fill: "var(--color-text-dimmed)" },
     tickFormatter: yAxisFormatter,
   };
 
+  if (chartType === "bar") {
+    return (
+      <ChartBar
+        config={chartConfig}
+        data={data}
+        dataKey={xDataKey}
+        series={series}
+        xAxisProps={xAxisProps}
+        yAxisProps={yAxisProps}
+        stackId={stacked ? "stack" : undefined}
+        showLegend={series.length > 1}
+        simpleLegend={true}
+        enableZoom={false}
+        tooltipLabelFormatter={tooltipLabelFormatter}
+        minHeight="300px"
+      />
+    );
+  }
+
+  // Line or stacked area chart
   return (
-    <ChartContainer config={chartConfig} className="h-full min-h-[300px] w-full">
-      {chartType === "bar" ? (
-        <BarChart {...commonProps}>
-          <CartesianGrid vertical={false} strokeDasharray="3 3" />
-          <XAxis {...xAxisProps} />
-          <YAxis {...yAxisProps} />
-          <ChartTooltip
-            content={<ChartTooltipContent />}
-            labelFormatter={tooltipLabelFormatter}
-            cursor={{ fill: "var(--color-charcoal-800)", opacity: 0.5 }}
-          />
-          {series.length > 1 && <ChartLegend content={<ChartLegendContent />} />}
-          {series.map((s, i) => (
-            <Bar
-              key={s}
-              dataKey={s}
-              fill={getSeriesColor(i)}
-              stackId={stacked ? "stack" : undefined}
-              radius={stacked ? [0, 0, 0, 0] : [4, 4, 0, 0]}
-            />
-          ))}
-        </BarChart>
-      ) : stacked && series.length > 1 ? (
-        <AreaChart {...commonProps} stackOffset="none">
-          <CartesianGrid vertical={false} strokeDasharray="3 3" />
-          <XAxis {...xAxisProps} />
-          <YAxis {...yAxisProps} />
-          <ChartTooltip
-            content={<ChartTooltipContent indicator="line" />}
-            labelFormatter={tooltipLabelFormatter}
-          />
-          <ChartLegend content={<ChartLegendContent />} />
-          {series.map((s, i) => (
-            <Area
-              key={s}
-              type="linear"
-              dataKey={s}
-              stroke={getSeriesColor(i)}
-              fill={getSeriesColor(i)}
-              fillOpacity={0.6}
-              strokeWidth={2}
-              stackId="stack"
-            />
-          ))}
-        </AreaChart>
-      ) : (
-        <LineChart {...commonProps}>
-          <CartesianGrid vertical={false} strokeDasharray="3 3" />
-          <XAxis {...xAxisProps} />
-          <YAxis {...yAxisProps} />
-          <ChartTooltip content={<ChartTooltipContent />} labelFormatter={tooltipLabelFormatter} />
-          {series.length > 1 && <ChartLegend content={<ChartLegendContent />} />}
-          {series.map((s, i) => (
-            <Line
-              key={s}
-              type="linear"
-              dataKey={s}
-              stroke={getSeriesColor(i)}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 4 }}
-            />
-          ))}
-        </LineChart>
-      )}
-    </ChartContainer>
+    <ChartLine
+      config={chartConfig}
+      data={data}
+      dataKey={xDataKey}
+      series={series}
+      xAxisProps={xAxisProps}
+      yAxisProps={yAxisProps}
+      stacked={stacked && series.length > 1}
+      showLegend={series.length > 1}
+      tooltipLabelFormatter={tooltipLabelFormatter}
+      lineType="linear"
+      minHeight="300px"
+    />
   );
 });
 

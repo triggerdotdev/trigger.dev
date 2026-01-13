@@ -58,10 +58,10 @@ export function DateRangeProvider({
   );
 }
 
-export function useDateRange() {
+export function useDateRange(): DateRangeContextType | null {
   const context = useContext(DateRangeContext);
   if (!context) {
-    throw new Error("useDateRange must be used within a DateRangeProvider");
+    return null;
   }
   return context;
 }
