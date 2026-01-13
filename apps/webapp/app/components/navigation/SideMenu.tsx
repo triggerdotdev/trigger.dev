@@ -1,4 +1,5 @@
 import {
+  AdjustmentsHorizontalIcon,
   ArrowPathRoundedSquareIcon,
   ArrowRightOnRectangleIcon,
   BeakerIcon,
@@ -50,6 +51,7 @@ import {
   adminPath,
   branchesPath,
   concurrencyPath,
+  limitsPath,
   logoutPath,
   newOrganizationPath,
   newProjectPath,
@@ -361,6 +363,13 @@ export function SideMenu({
               to={regionsPath(organization, project, environment)}
               data-action="regions"
               badge={<V4Badge />}
+            />
+            <SideMenuItem
+              name="Limits"
+              icon={AdjustmentsHorizontalIcon}
+              activeIconColor="text-purple-500"
+              to={limitsPath(organization, project, environment)}
+              data-action="limits"
             />
             <SideMenuItem
               name="Project settings"
