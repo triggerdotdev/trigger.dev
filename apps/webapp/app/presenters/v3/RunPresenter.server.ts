@@ -124,6 +124,7 @@ export class RunPresenter {
       isFinished: isFinalRunStatus(run.status),
       startedAt: run.startedAt,
       completedAt: run.completedAt,
+      createdAt: run.createdAt,
       logsDeletedAt: showDeletedLogs ? null : run.logsDeletedAt,
       rootTaskRun: run.rootTaskRun,
       parentTaskRun: run.parentTaskRun,
