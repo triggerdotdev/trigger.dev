@@ -125,7 +125,8 @@ export default function Page() {
             {/* Current Plan Section */}
             {data.planName && (
               <CurrentPlanSection
-                planName={`${data.planName}Pro`}
+                planName={data.planName}
+                isOnTopPlan={data.isOnTopPlan}
                 billingPath={organizationBillingPath(organization)}
               />
             )}
@@ -147,14 +148,14 @@ export default function Page() {
             <QuotasSection
               quotas={data.quotas}
               batchConcurrency={data.batchConcurrency}
-              planName={data.planName}
+              isOnTopPlan={data.isOnTopPlan}
               billingPath={organizationBillingPath(organization)}
             />
 
             {/* Features Section */}
             <FeaturesSection
               features={data.features}
-              planName={data.planName}
+              isOnTopPlan={data.isOnTopPlan}
               billingPath={organizationBillingPath(organization)}
             />
           </div>
@@ -164,9 +165,15 @@ export default function Page() {
   );
 }
 
-function CurrentPlanSection({ planName, billingPath }: { planName: string; billingPath: string }) {
-  const isPro = planName === "Pro";
-
+function CurrentPlanSection({
+  planName,
+  isOnTopPlan,
+  billingPath,
+}: {
+  planName: string;
+  isOnTopPlan: boolean;
+  billingPath: string;
+}) {
   return (
     <div className="flex flex-col gap-3">
       <Header2>Current plan</Header2>
@@ -175,7 +182,7 @@ function CurrentPlanSection({ planName, billingPath }: { planName: string; billi
           <TableRow>
             <TableCell className="w-full text-sm">{planName}</TableCell>
             <TableCell alignment="right">
-              {isPro ? (
+              {isOnTopPlan ? (
                 <Feedback
                   button={<Button variant="secondary/small">Request Enterprise</Button>}
                   defaultValue="help"
@@ -429,15 +436,14 @@ function RateLimitConfigDisplay({ config }: { config: RateLimitInfo["config"] })
 function QuotasSection({
   quotas,
   batchConcurrency,
-  planName,
+  isOnTopPlan,
   billingPath,
 }: {
   quotas: LimitsResult["quotas"];
   batchConcurrency: LimitsResult["batchConcurrency"];
-  planName: string | null;
+  isOnTopPlan: boolean;
   billingPath: string;
 }) {
-  const isPro = planName === "Pro";
   // Collect all quotas that should be shown
   const quotaRows: QuotaInfo[] = [];
 
@@ -480,8 +486,7 @@ function QuotasSection({
             <QuotaRow
               key={quota.name}
               quota={quota}
-              showUpgrade={quota.name === "Projects"}
-              isPro={isPro}
+              isOnTopPlan={isOnTopPlan}
               billingPath={billingPath}
             />
           ))}
@@ -504,7 +509,7 @@ function QuotasSection({
             </TableCell>
             <TableCell alignment="right">
               <div className="flex justify-end">
-                {isPro ? (
+                {isOnTopPlan ? (
                   <Feedback
                     button={<Button variant="tertiary/small">Contact us</Button>}
                     defaultValue="help"
@@ -525,19 +530,61 @@ function QuotasSection({
 
 function QuotaRow({
   quota,
-  showUpgrade,
-  isPro,
+  isOnTopPlan,
   billingPath,
 }: {
   quota: QuotaInfo;
-  showUpgrade: boolean;
-  isPro: boolean;
+  isOnTopPlan: boolean;
   billingPath: string;
 }) {
   // For log retention, we don't show current usage as it's a duration, not a count
   const isRetentionQuota = quota.name === "Log retention";
   const percentage =
     !isRetentionQuota && quota.limit && quota.limit > 0 ? quota.currentUsage / quota.limit : null;
+
+  // Quotas that support upgrade options
+  const upgradableQuotas = [
+    "Projects",
+    "Schedules",
+    "Team members",
+    "Alert channels",
+    "Preview branches",
+    "Realtime connections",
+  ];
+
+  const isUpgradable = upgradableQuotas.includes(quota.name);
+
+  const renderUpgrade = () => {
+    if (!isUpgradable) {
+      return null;
+    }
+
+    // Not on top plan - show View plans
+    if (!isOnTopPlan) {
+      return (
+        <div className="flex justify-end">
+          <LinkButton to={billingPath} variant="tertiary/small">
+            View plans
+          </LinkButton>
+        </div>
+      );
+    }
+
+    // On top plan - show Contact us if canExceed is true (or for Projects which is always exceedable)
+    if (quota.canExceed || quota.name === "Projects") {
+      return (
+        <div className="flex justify-end">
+          <Feedback
+            button={<Button variant="tertiary/small">Contact us</Button>}
+            defaultValue="help"
+          />
+        </div>
+      );
+    }
+
+    // On top plan but cannot exceed - no upgrade option
+    return null;
+  };
 
   return (
     <TableRow>
@@ -564,37 +611,22 @@ function QuotaRow({
       <TableCell alignment="right">
         <SourceBadge source={quota.source} />
       </TableCell>
-      <TableCell alignment="right">
-        {showUpgrade ? (
-          <div className="flex justify-end">
-            {isPro ? (
-              <Feedback
-                button={<Button variant="tertiary/small">Contact us</Button>}
-                defaultValue="help"
-              />
-            ) : (
-              <LinkButton to={billingPath} variant="tertiary/small">
-                View plans
-              </LinkButton>
-            )}
-          </div>
-        ) : null}
-      </TableCell>
+      <TableCell alignment="right">{renderUpgrade()}</TableCell>
     </TableRow>
   );
 }
 
 function FeaturesSection({
   features,
-  planName,
+  isOnTopPlan,
   billingPath,
 }: {
   features: LimitsResult["features"];
-  planName: string | null;
+  isOnTopPlan: boolean;
   billingPath: string;
 }) {
-  const isPro = planName === "Pro";
-  const isFree = planName === "Free" || planName === null;
+  // For staging environment: show View plans if not enabled (i.e., on Free plan)
+  const stagingUpgradeType = features.hasStagingEnvironment.enabled ? "none" : "view-plans";
 
   return (
     <div className="flex flex-col gap-3">
@@ -610,17 +642,17 @@ function FeaturesSection({
         <TableBody>
           <FeatureRow
             feature={features.hasStagingEnvironment}
-            upgradeType={isFree ? "view-plans" : "none"}
+            upgradeType={stagingUpgradeType}
             billingPath={billingPath}
           />
           <FeatureRow
             feature={features.support}
-            upgradeType={isPro ? "contact-us" : "view-plans"}
+            upgradeType={isOnTopPlan ? "contact-us" : "view-plans"}
             billingPath={billingPath}
           />
           <FeatureRow
             feature={features.includedUsage}
-            upgradeType={isPro ? "contact-us" : "view-plans"}
+            upgradeType={isOnTopPlan ? "contact-us" : "view-plans"}
             billingPath={billingPath}
           />
         </TableBody>
