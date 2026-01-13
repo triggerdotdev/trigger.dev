@@ -1,28 +1,20 @@
-/** A throttle that fires the first call immediately and ensures the last call during the duration is also fired. */
+//From: https://kettanaito.com/blog/debounce-vs-throttle
+
+/** A very simple throttle. Will execute the function at the end of each period and discard any other calls during that period. */
 export function throttle(
   func: (...args: any[]) => void,
   durationMs: number
 ): (...args: any[]) => void {
-  let timeoutId: NodeJS.Timeout | null = null;
-  let nextArgs: any[] | null = null;
+  let isPrimedToFire = false;
 
-  const wrapped = (...args: any[]) => {
-    if (timeoutId) {
-      nextArgs = args;
-      return;
+  return (...args: any[]) => {
+    if (!isPrimedToFire) {
+      isPrimedToFire = true;
+
+      setTimeout(() => {
+        func(...args);
+        isPrimedToFire = false;
+      }, durationMs);
     }
-
-    func(...args);
-
-    timeoutId = setTimeout(() => {
-      timeoutId = null;
-      if (nextArgs) {
-        const argsToUse = nextArgs;
-        nextArgs = null;
-        wrapped(...argsToUse);
-      }
-    }, durationMs);
   };
-
-  return wrapped;
 }
