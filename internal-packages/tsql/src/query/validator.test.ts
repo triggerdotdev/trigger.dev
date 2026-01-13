@@ -108,13 +108,15 @@ describe("validateQuery", () => {
 
   describe("enum validation", () => {
     it("should validate enum values", () => {
-      const result = validateSQL("SELECT * FROM runs WHERE status = 'COMPLETED' LIMIT 10");
+      const result = validateSQL("SELECT id, status FROM runs WHERE status = 'COMPLETED' LIMIT 10");
       expect(result.valid).toBe(true);
       expect(result.issues).toHaveLength(0);
     });
 
     it("should error on invalid enum values", () => {
-      const result = validateSQL("SELECT * FROM runs WHERE status = 'INVALID_STATUS' LIMIT 10");
+      const result = validateSQL(
+        "SELECT id, status FROM runs WHERE status = 'INVALID_STATUS' LIMIT 10"
+      );
       expect(result.valid).toBe(false);
       expect(result.issues).toHaveLength(1);
       expect(result.issues[0].type).toBe("invalid_enum_value");
