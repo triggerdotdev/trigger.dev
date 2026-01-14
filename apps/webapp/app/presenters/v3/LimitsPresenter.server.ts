@@ -1,19 +1,20 @@
+import { Ratelimit } from "@upstash/ratelimit";
 import { createHash } from "node:crypto";
 import { env } from "~/env.server";
-import { createRedisClient } from "~/redis.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 import {
   RateLimiterConfig,
+  createLimiterFromConfig,
   type RateLimitTokenBucketConfig,
 } from "~/services/authorizationRateLimitMiddleware.server";
-import type { Duration } from "~/services/rateLimiter.server";
+import { createRedisRateLimitClient, type Duration } from "~/services/rateLimiter.server";
 import { BasePresenter } from "./basePresenter.server";
 import { singleton } from "~/utils/singleton";
 import { logger } from "~/services/logger.server";
 
 // Create a singleton Redis client for rate limit queries
-const rateLimitRedis = singleton("rateLimitQueryRedis", () =>
-  createRedisClient("trigger:rateLimitQuery", {
+const rateLimitRedisClient = singleton("rateLimitQueryRedisClient", () =>
+  createRedisRateLimitClient({
     port: env.RATE_LIMIT_REDIS_PORT,
     host: env.RATE_LIMIT_REDIS_HOST,
     username: env.RATE_LIMIT_REDIS_USERNAME,
@@ -391,11 +392,8 @@ function resolveBatchConcurrencyConfig(batchConcurrencyConfig?: unknown): {
 }
 
 /**
- * Query Redis for the current remaining tokens for a rate limiter.
- * The @upstash/ratelimit library stores token bucket state in Redis.
- * Key format: ratelimit:{prefix}:{hashedIdentifier}
- *
- * For token bucket, the value is stored as: "tokens:lastRefillTime"
+ * Query the current remaining tokens for a rate limiter using the Upstash getRemaining method.
+ * This uses the same configuration and hashing logic as the rate limit middleware.
  */
 async function getRateLimitRemainingTokens(
   keyPrefix: string,
@@ -409,78 +407,25 @@ async function getRateLimitRemainingTokens(
     hash.update(authorizationValue);
     const hashedKey = hash.digest("hex");
 
-    const redis = rateLimitRedis;
-    const redisKey = `ratelimit:${keyPrefix}:${hashedKey}`;
+    // Create a Ratelimit instance with the same configuration
+    const limiter = createLimiterFromConfig(config);
+    const ratelimit = new Ratelimit({
+      redis: rateLimitRedisClient,
+      limiter,
+      ephemeralCache: new Map(),
+      analytics: false,
+      prefix: `ratelimit:${keyPrefix}`,
+    });
 
-    // Get the stored value from Redis
-    const value = await redis.get(redisKey);
-
-    if (!value) {
-      // No rate limit data yet - return max tokens (bucket is full)
-      if (config.type === "tokenBucket") {
-        return config.maxTokens;
-      } else if (config.type === "fixedWindow" || config.type === "slidingWindow") {
-        return config.tokens;
-      }
-      return null;
-    }
-
-    // For token bucket, the @upstash/ratelimit library stores: "tokens:timestamp"
-    // Parse the value to get remaining tokens
-    if (typeof value === "string") {
-      const parts = value.split(":");
-      if (parts.length >= 1) {
-        const tokens = parseInt(parts[0], 10);
-        if (!isNaN(tokens)) {
-          // For token bucket, we need to calculate current tokens based on refill
-          if (config.type === "tokenBucket" && parts.length >= 2) {
-            const lastRefillTime = parseInt(parts[1], 10);
-            if (!isNaN(lastRefillTime)) {
-              const now = Date.now();
-              const elapsed = now - lastRefillTime;
-              const intervalMs = durationToMs(config.interval);
-              const tokensToAdd = Math.floor(elapsed / intervalMs) * config.refillRate;
-              const currentTokens = Math.min(tokens + tokensToAdd, config.maxTokens);
-              return Math.max(0, currentTokens);
-            }
-          }
-          return Math.max(0, tokens);
-        }
-      }
-    }
-
-    return null;
+    // Use the getRemaining method to get the current remaining tokens
+    // getRemaining returns a Promise<number>
+    const remaining = await ratelimit.getRemaining(hashedKey);
+    return remaining;
   } catch (error) {
     logger.warn("Failed to get rate limit remaining tokens", {
       keyPrefix,
       error: error instanceof Error ? error.message : String(error),
     });
     return null;
-  }
-}
-
-/**
- * Convert a duration string (e.g., "1s", "10s", "1m") to milliseconds
- */
-function durationToMs(duration: Duration): number {
-  const match = duration.match(/^(\d+)(ms|s|m|h|d)$/);
-  if (!match) return 1000; // default to 1 second
-
-  const value = parseInt(match[1], 10);
-  const unit = match[2];
-
-  switch (unit) {
-    case "ms":
-      return value;
-    case "s":
-      return value * 1000;
-    case "m":
-      return value * 60 * 1000;
-    case "h":
-      return value * 60 * 60 * 1000;
-    case "d":
-      return value * 24 * 60 * 60 * 1000;
-    default:
-      return 1000;
   }
 }
