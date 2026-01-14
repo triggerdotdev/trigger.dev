@@ -86,7 +86,7 @@ jobs:
       - name: Setup node
         uses: buildjet/setup-node@v4
         with:
-          node-version: 20.19.0
+          node-version: 20.20.0
           cache: "pnpm"
 
       # npm v11.5.1 or newer is required for OIDC support
@@ -154,7 +154,7 @@ jobs:
       - name: Setup node
         uses: buildjet/setup-node@v4
         with:
-          node-version: 20.19.0
+          node-version: 20.20.0
           cache: "pnpm"
 
       # npm v11.5.1 or newer is required for OIDC support
