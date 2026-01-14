@@ -16,6 +16,7 @@ import type {
   AsyncIterableStream,
   ApiPromise,
   RealtimeRunSkipColumns,
+  TriggerApiRequestOptions,
 } from "@trigger.dev/core/v3";
 import {
   CanceledRunResponse,
@@ -167,9 +168,9 @@ type RunId<TRunId> = TRunId extends AnyRunHandle | AnyBatchedRunHandle
 
 function retrieveRun<TRunId extends AnyRunHandle | AnyBatchedRunHandle | AnyTask | string>(
   runId: RunId<TRunId>,
-  requestOptions?: ApiRequestOptions
+  requestOptions?: TriggerApiRequestOptions
 ): ApiPromise<RetrieveRunResult<TRunId>> {
-  const apiClient = apiClientManager.clientOrThrow();
+  const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   const $requestOptions = mergeRequestOptions(
     {
@@ -316,7 +317,7 @@ const MAX_POLL_ATTEMPTS = 500;
 async function poll<TRunId extends AnyRunHandle | AnyTask | string>(
   runId: RunId<TRunId>,
   options?: { pollIntervalMs?: number },
-  requestOptions?: ApiRequestOptions
+  requestOptions?: TriggerApiRequestOptions
 ) {
   let attempts = 0;
 
