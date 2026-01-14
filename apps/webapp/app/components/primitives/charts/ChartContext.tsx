@@ -7,6 +7,9 @@ import {
   type ZoomRange,
 } from "./hooks/useZoomSelection";
 
+/** Function to format the x-axis label for display */
+export type LabelFormatter = (value: string) => string;
+
 export type ChartContextValue = {
   // Core data
   config: ChartConfig;
@@ -17,6 +20,10 @@ export type ChartContextValue = {
 
   // Display state
   state?: ChartState;
+
+  // Formatters
+  /** Function to format the x-axis label (used in legend, tooltips, etc.) */
+  labelFormatter?: LabelFormatter;
 
   // Highlight state
   highlight: UseHighlightStateReturn;
@@ -45,6 +52,8 @@ export type ChartProviderProps = {
   /** Series keys to render (if not provided, derived from config keys) */
   series?: string[];
   state?: ChartState;
+  /** Function to format the x-axis label (used in legend, tooltips, etc.) */
+  labelFormatter?: LabelFormatter;
   /** Enable zoom functionality */
   enableZoom?: boolean;
   /** Callback when zoom range changes */
@@ -58,6 +67,7 @@ export function ChartProvider({
   dataKey,
   series,
   state,
+  labelFormatter,
   enableZoom = false,
   onZoomChange,
   children,
@@ -78,11 +88,12 @@ export function ChartProvider({
       dataKey,
       dataKeys,
       state,
+      labelFormatter,
       highlight,
       zoom: enableZoom ? zoomState : null,
       onZoomChange: enableZoom ? onZoomChange : undefined,
     }),
-    [config, data, dataKey, dataKeys, state, highlight, zoomState, enableZoom, onZoomChange]
+    [config, data, dataKey, dataKeys, state, labelFormatter, highlight, zoomState, enableZoom, onZoomChange]
   );
 
   return <ChartCompoundContext.Provider value={value}>{children}</ChartCompoundContext.Provider>;
