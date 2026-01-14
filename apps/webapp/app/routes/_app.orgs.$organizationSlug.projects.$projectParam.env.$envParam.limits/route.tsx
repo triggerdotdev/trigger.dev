@@ -287,23 +287,23 @@ function RateLimitsSection({
                 <InfoIconTooltip
                   content={
                     <div className="flex max-w-xs flex-col gap-3 py-1">
-                      <div className="flex flex-col items-start gap-1">
-                        <Badge variant="small">Token bucket</Badge>
-                        <span className="text-text-bright">
+                      <div className="flex flex-col items-start gap-1.5">
+                        <RateLimitTypeBadge type="tokenBucket" />
+                        <span className="pl-0.5 text-text-bright">
                           Requests consume tokens from a bucket that refills over time. When empty,
                           requests are rate limited.
                         </span>
                       </div>
-                      <div className="flex flex-col items-start gap-1">
-                        <Badge variant="small">Fixed window</Badge>
-                        <span className="text-text-bright">
+                      <div className="flex flex-col items-start gap-1.5">
+                        <RateLimitTypeBadge type="fixedWindow" />
+                        <span className="pl-0.5 text-text-bright">
                           Allows a set number of requests per time window. The window resets at
                           fixed intervals.
                         </span>
                       </div>
-                      <div className="flex flex-col items-start gap-1">
-                        <Badge variant="small">Sliding window</Badge>
-                        <span className="text-text-bright">
+                      <div className="flex flex-col items-start gap-1.5">
+                        <RateLimitTypeBadge type="slidingWindow" />
+                        <span className="pl-0.5 text-text-bright">
                           Allows a set number of requests per rolling time window. The limit is
                           continuously evaluated.
                         </span>
@@ -413,26 +413,35 @@ function RateLimitRow({
   );
 }
 
-function RateLimitTypeBadge({ config }: { config: RateLimitInfo["config"] }) {
-  switch (config.type) {
+function RateLimitTypeBadge({
+  config,
+  type,
+}: {
+  config?: RateLimitInfo["config"];
+  type?: "tokenBucket" | "fixedWindow" | "slidingWindow";
+}) {
+  const rateLimitType = type ?? config?.type;
+  switch (rateLimitType) {
     case "tokenBucket":
       return (
-        <Badge variant="small" className="w-fit">
+        <Badge variant="small" className="w-fit bg-blue-500/20 text-blue-400">
           Token bucket
         </Badge>
       );
     case "fixedWindow":
       return (
-        <Badge variant="small" className="w-fit">
+        <Badge variant="small" className="w-fit bg-purple-500/20 text-purple-400">
           Fixed window
         </Badge>
       );
     case "slidingWindow":
       return (
-        <Badge variant="small" className="w-fit">
+        <Badge variant="small" className="w-fit bg-green-500/20 text-green-400">
           Sliding window
         </Badge>
       );
+    default:
+      return null;
   }
 }
 
