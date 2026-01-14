@@ -1,5 +1,6 @@
 import { type LoaderFunctionArgs , redirect} from "@remix-run/server-runtime";
 import { type MetaFunction, useFetcher, useNavigation, useLocation } from "@remix-run/react";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
   TypedAwait,
   typeddefer,
@@ -86,7 +87,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const showDebug = url.searchParams.get("showDebug") === "true";
 
   const presenter = new LogsListPresenter($replica, clickhouseClient);
-  const list = presenter.call(project.organizationId, environment.id, {
+
+  const listPromise = presenter.call(project.organizationId, environment.id, {
     userId,
     projectId: project.id,
     ...filters,
@@ -94,6 +96,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     levels,
     includeDebugLogs: isAdmin && showDebug,
     defaultPeriod: "1h",
+  }).catch((error) => {
+    if (error instanceof ServiceValidationError) {
+      return { error: error.message };
+    }
+    throw error;
   });
 
   const session = await setRootOnlyFilterPreference(filters.rootOnly, request);
@@ -101,7 +108,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typeddefer(
     {
-      data: list,
+      data: listPromise,
       rootOnlyDefault: filters.rootOnly,
       filters,
       isAdmin,
@@ -149,10 +156,20 @@ export default function Page() {
               </div>
             }
           >
-            {(list) => {
+            {(result) => {
+              // Check if result contains an error
+              if ("error" in result) {
+                return (
+                  <div className="flex items-center justify-center px-3 py-12">
+                    <Callout variant="error" className="max-w-fit">
+                      {result.error}
+                    </Callout>
+                  </div>
+                );
+              }
               return (
                 <LogsList
-                  list={list}
+                  list={result}
                   rootOnlyDefault={rootOnlyDefault}
                   isAdmin={isAdmin}
                   showDebug={showDebug}
@@ -307,7 +324,6 @@ function LogsList({
           {/* Table */}
           <LogsTable
             logs={accumulatedLogs}
-            hasFilters={list.hasFilters}
             searchTerm={list.searchTerm}
             isLoading={isLoading}
             isLoadingMore={fetcher.state === "loading"}

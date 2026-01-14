@@ -24,6 +24,42 @@ export function resolveEventRepositoryForStore(store: string | undefined): IEven
   return eventRepository;
 }
 
+export async function getConfiguredEventRepository(
+  organizationId: string
+): Promise<{ repository: IEventRepository; store: string }> {
+  const organization = await prisma.organization.findFirst({
+    select: {
+      id: true,
+      featureFlags: true,
+    },
+    where: {
+      id: organizationId,
+    },
+  });
+
+  if (!organization) {
+    throw new Error('Organization not found when configuring event repository');
+  }
+
+  // resolveTaskEventRepositoryFlag checks:
+  // 1. organization.featureFlags (highest priority)
+  // 2. global feature flags (via flags() function)
+  // 3. env.EVENT_REPOSITORY_DEFAULT_STORE (fallback)
+  const taskEventStore = await resolveTaskEventRepositoryFlag(
+    (organization.featureFlags as Record<string, unknown> | null) ?? undefined
+  );
+
+  if (taskEventStore === "clickhouse_v2") {
+    return { repository: clickhouseEventRepositoryV2, store: "clickhouse_v2" };
+  }
+
+  if (taskEventStore === "clickhouse") {
+    return { repository: clickhouseEventRepository, store: "clickhouse" };
+  }
+
+  return { repository: eventRepository, store: 'postgres' };
+}
+
 export async function getEventRepository(
   featureFlags: Record<string, unknown> | undefined,
   parentStore: string | undefined
@@ -90,20 +126,6 @@ async function resolveTaskEventRepositoryFlag(
 
   if (flag === "clickhouse") {
     return "clickhouse";
-  }
-
-  if (env.EVENT_REPOSITORY_CLICKHOUSE_ROLLOUT_PERCENT) {
-    const rolloutPercent = env.EVENT_REPOSITORY_CLICKHOUSE_ROLLOUT_PERCENT;
-
-    const randomNumber = Math.random();
-
-    if (randomNumber < rolloutPercent) {
-      // Use the default store when rolling out (could be clickhouse or clickhouse_v2)
-      if (env.EVENT_REPOSITORY_DEFAULT_STORE === "clickhouse_v2") {
-        return "clickhouse_v2";
-      }
-      return "clickhouse";
-    }
   }
 
   return flag;

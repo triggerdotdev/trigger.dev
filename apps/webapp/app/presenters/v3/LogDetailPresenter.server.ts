@@ -2,6 +2,8 @@ import { type ClickHouse } from "@internal/clickhouse";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { convertClickhouseDateTime64ToJsDate } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { kindToLevel } from "~/utils/logUtils";
+import { getConfiguredEventRepository } from "~/v3/eventRepository/index.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 export type LogDetailOptions = {
   environmentId: string;
@@ -24,8 +26,28 @@ export class LogDetailPresenter {
   public async call(options: LogDetailOptions) {
     const { environmentId, organizationId, projectId, spanId, traceId, startTime } = options;
 
-    // Build ClickHouse query
-    const queryBuilder = this.clickhouse.taskEventsV2.logDetailQueryBuilder();
+    // Determine which store to use based on organization configuration
+    const { store } = await getConfiguredEventRepository(organizationId);
+
+    // Throw error if postgres is detected
+    if (store === "postgres") {
+      throw new ServiceValidationError(
+        "Log details are not available for PostgreSQL event store. Please contact support."
+      );
+    }
+
+    // Throw error if clickhouse v1 is detected (not supported)
+    if (store === "postgres") {
+      throw new ServiceValidationError(
+        "Log details are not available for postgres event store. Please contact support."
+      );
+    }
+
+    // Build ClickHouse query - only v2 is supported for log details
+    const isClickhouseV2 = store === "clickhouse_v2";
+    const queryBuilder = isClickhouseV2
+      ? this.clickhouse.taskEventsV2.logDetailQueryBuilder()
+      : this.clickhouse.taskEvents.logDetailQueryBuilder();
 
     // Required filters - spanId, traceId, and startTime uniquely identify the log
     // Multiple events can share the same spanId (span, span events, logs), so startTime is needed

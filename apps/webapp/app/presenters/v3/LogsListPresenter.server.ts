@@ -8,6 +8,7 @@ import {
   TaskRunStatus as TaskRunStatusEnum,
   TaskTriggerSource,
 } from "@trigger.dev/database";
+import { getConfiguredEventRepository } from "~/v3/eventRepository/index.server";
 
 // Create a schema that validates TaskRunStatus enum values
 const TaskRunStatusSchema = z.array(z.nativeEnum(TaskRunStatusEnum));
@@ -23,6 +24,8 @@ import {
   convertClickhouseDateTime64ToJsDate,
 } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { kindToLevel, type LogLevel, LogLevelSchema } from "~/utils/logUtils";
+import { BasePresenter } from "~/presenters/v3/basePresenter.server";
+
 
 export type { LogLevel };
 
@@ -131,9 +134,7 @@ function decodeCursor(cursor: string): LogCursor | null {
 }
 
 // Convert display level to ClickHouse kinds and statuses
-function levelToKindsAndStatuses(
-  level: LogLevel
-): { kinds?: string[]; statuses?: string[] } {
+function levelToKindsAndStatuses(level: LogLevel): { kinds?: string[]; statuses?: string[] } {
   switch (level) {
     case "DEBUG":
       return { kinds: ["DEBUG_EVENT", "LOG_DEBUG"] };
@@ -149,7 +150,6 @@ function levelToKindsAndStatuses(
       return { kinds: ["SPAN", "ANCESTOR_OVERRIDE", "SPAN_EVENT"] };
   }
 }
-
 
 function convertDateToNanoseconds(date: Date): bigint {
   return BigInt(date.getTime()) * 1_000_000n;
@@ -168,11 +168,13 @@ function formatNanosecondsForClickhouse(ns: bigint): string {
   return padded.slice(0, 10) + "." + padded.slice(10);
 }
 
-export class LogsListPresenter {
+export class LogsListPresenter extends BasePresenter {
   constructor(
     private readonly replica: PrismaClientOrTransaction,
     private readonly clickhouse: ClickHouse
-  ) {}
+  ) {
+    super();
+  }
 
   public async call(
     organizationId: string,
@@ -242,10 +244,7 @@ export class LogsListPresenter {
       (search !== undefined && search !== "") ||
       !time.isDefault;
 
-    const possibleTasksAsync = getAllTaskIdentifiers(
-      this.replica,
-      environmentId
-    );
+    const possibleTasksAsync = getAllTaskIdentifiers(this.replica, environmentId);
 
     const bulkActionsAsync = this.replica.bulkActionGroup.findMany({
       select: {
@@ -264,31 +263,26 @@ export class LogsListPresenter {
       take: 20,
     });
 
-    const [possibleTasks, bulkActions, displayableEnvironment] =
-      await Promise.all([
-        possibleTasksAsync,
-        bulkActionsAsync,
-        findDisplayableEnvironment(environmentId, userId),
-      ]);
+    const [possibleTasks, bulkActions, displayableEnvironment] = await Promise.all([
+      possibleTasksAsync,
+      bulkActionsAsync,
+      findDisplayableEnvironment(environmentId, userId),
+    ]);
 
-    if (
-      bulkId &&
-      !bulkActions.some((bulkAction) => bulkAction.friendlyId === bulkId)
-    ) {
-      const selectedBulkAction =
-        await this.replica.bulkActionGroup.findFirst({
-          select: {
-            friendlyId: true,
-            type: true,
-            createdAt: true,
-            name: true,
-          },
-          where: {
-            friendlyId: bulkId,
-            projectId,
-            environmentId,
-          },
-        });
+    if (bulkId && !bulkActions.some((bulkAction) => bulkAction.friendlyId === bulkId)) {
+      const selectedBulkAction = await this.replica.bulkActionGroup.findFirst({
+        select: {
+          friendlyId: true,
+          type: true,
+          createdAt: true,
+          name: true,
+        },
+        where: {
+          friendlyId: bulkId,
+          projectId,
+          environmentId,
+        },
+      });
 
       if (selectedBulkAction) {
         bulkActions.push(selectedBulkAction);
@@ -371,7 +365,29 @@ export class LogsListPresenter {
       }
     }
 
-    const queryBuilder = this.clickhouse.taskEventsV2.logsListQueryBuilder();
+    // Determine which store to use based on organization configuration
+    const { store } = await getConfiguredEventRepository(organizationId);
+
+    // Throw error if postgres is detected
+    if (store === "postgres") {
+      throw new ServiceValidationError(
+        "Logs are not available for PostgreSQL event store. Please contact support."
+      );
+    }
+
+    // Throw error if clickhouse v1 is detected (not supported)
+    if (store === "postgres") {
+      throw new ServiceValidationError(
+        "Logs are not available for Postgres event store. Please contact support."
+      );
+    }
+
+    // Get the appropriate query builder based on store type
+    const isClickhouseV2 = store === "clickhouse_v2";
+
+    const queryBuilder = isClickhouseV2
+      ? this.clickhouse.taskEventsV2.logsListQueryBuilder()
+      : this.clickhouse.taskEvents.logsListQueryBuilder();
 
     queryBuilder.prewhere("environment_id = {environmentId: String}", {
       environmentId,
@@ -382,12 +398,17 @@ export class LogsListPresenter {
     });
     queryBuilder.where("project_id = {projectId: String}", { projectId });
 
-    // Time filters - inserted_at in PREWHERE for partition pruning, start_time in WHERE
+    // Time filters - inserted_at in PREWHERE only for v2, start_time in WHERE for both
     if (effectiveFrom) {
       const fromNs = convertDateToNanoseconds(effectiveFrom);
-      queryBuilder.prewhere("inserted_at >= {insertedAtStart: DateTime64(3)}", {
-        insertedAtStart: convertDateToClickhouseDateTime(effectiveFrom),
-      });
+
+      // Only use inserted_at for partition pruning if v2
+      if (isClickhouseV2) {
+        queryBuilder.prewhere("inserted_at >= {insertedAtStart: DateTime64(3)}", {
+          insertedAtStart: convertDateToClickhouseDateTime(effectiveFrom),
+        });
+      }
+
       queryBuilder.where("start_time >= {fromTime: String}", {
         fromTime: formatNanosecondsForClickhouse(fromNs),
       });
@@ -396,9 +417,14 @@ export class LogsListPresenter {
     if (effectiveTo) {
       const clampedTo = effectiveTo > new Date() ? new Date() : effectiveTo;
       const toNs = convertDateToNanoseconds(clampedTo);
-      queryBuilder.prewhere("inserted_at <= {insertedAtEnd: DateTime64(3)}", {
-        insertedAtEnd: convertDateToClickhouseDateTime(clampedTo),
-      });
+
+      // Only use inserted_at for partition pruning if v2
+      if (isClickhouseV2) {
+        queryBuilder.prewhere("inserted_at <= {insertedAtEnd: DateTime64(3)}", {
+          insertedAtEnd: convertDateToClickhouseDateTime(clampedTo),
+        });
+      }
+
       queryBuilder.where("start_time <= {toTime: String}", {
         toTime: formatNanosecondsForClickhouse(toNs),
       });
@@ -427,7 +453,6 @@ export class LogsListPresenter {
         }
       );
     }
-
 
     if (levels && levels.length > 0) {
       const conditions: string[] = [];
@@ -476,7 +501,6 @@ export class LogsListPresenter {
     }
 
     queryBuilder.where("NOT (kind = 'SPAN' AND status = 'PARTIAL')");
-
 
     // Cursor pagination
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
@@ -529,7 +553,7 @@ export class LogsListPresenter {
         try {
           let attributes = log.attributes as ErrorAttributes;
 
-          if (attributes?.error?.message && typeof attributes.error.message === 'string') {
+          if (attributes?.error?.message && typeof attributes.error.message === "string") {
             displayMessage = attributes.error.message;
           }
         } catch {

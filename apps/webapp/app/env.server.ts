@@ -1220,7 +1220,6 @@ const EnvironmentSchema = z
       .number()
       .int()
       .default(60_000 * 5), // 5 minutes
-    EVENT_REPOSITORY_CLICKHOUSE_ROLLOUT_PERCENT: z.coerce.number().optional(),
     EVENT_REPOSITORY_DEFAULT_STORE: z
       .enum(["postgres", "clickhouse", "clickhouse_v2"])
       .default("postgres"),
