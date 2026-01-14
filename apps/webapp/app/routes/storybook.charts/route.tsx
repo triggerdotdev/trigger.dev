@@ -9,14 +9,23 @@ import { Card } from "~/components/primitives/charts/Card";
 import { type ChartState, type ChartConfig } from "~/components/primitives/charts/Chart";
 import { ChartBar } from "~/components/primitives/charts/ChartBar";
 import { ChartLine } from "~/components/primitives/charts/ChartLine";
+import { Chart } from "~/components/primitives/charts/ChartCompound";
 import { DateRangeProvider, useDateRange } from "~/components/primitives/charts/DateRangeContext";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
+import type { ZoomRange } from "~/components/primitives/charts/hooks/useZoomSelection";
 
 function ChartsDashboard() {
   const dateRange = useDateRange();
   const [chartState, setChartState] = useState<ChartState>("loaded");
+  const [zoomRange, setZoomRange] = useState<ZoomRange | null>(null);
+
+  const handleZoomChange = (range: ZoomRange) => {
+    console.log("Zoom changed:", range);
+    setZoomRange(range);
+    // In a real app, you would fetch new data here based on the range
+  };
 
   return (
     <div className="grid">
@@ -45,23 +54,34 @@ function ChartsDashboard() {
           </RadioGroup>
         </div>
         <div className="flex w-fit items-center gap-4">
-          <Paragraph variant="small/bright">{`Selected range: ${dateRange?.startDate} - ${dateRange?.endDate}`}</Paragraph>
-          <Button variant="secondary/small" onClick={dateRange?.resetDateRange}>
+          <Paragraph variant="small/bright">
+            {zoomRange
+              ? `Zoomed: ${zoomRange.start} - ${zoomRange.end}`
+              : `Selected range: ${dateRange?.startDate} - ${dateRange?.endDate}`}
+          </Paragraph>
+          <Button
+            variant="secondary/small"
+            onClick={() => {
+              dateRange?.resetDateRange();
+              setZoomRange(null);
+            }}
+          >
             Reset Zoom
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 p-3">
+        {/* Compound Component API Example */}
         <Card>
           <Card.Header>
             <div className="flex items-center gap-1.5">
               <ArrowTrendingUpIcon className="size-5 text-indigo-500" />
-              Runs total
+              Compound API <span className="font-normal text-text-dimmed">(with zoom)</span>
             </div>
             <Card.Accessory>
               <SegmentedControl
-                name="runsByStatus"
+                name="compoundByStatus"
                 options={[
                   { label: "By status", value: "status" },
                   { label: "By task", value: "task" },
@@ -69,34 +89,37 @@ function ChartsDashboard() {
                 defaultValue="status"
                 variant="secondary/small"
               />
-              <Button
-                variant="secondary/small"
-                TrailingIcon={<ArrowTopRightBottomLeftIcon className="size-4" />}
-                className="px-1"
-              />
             </Card.Accessory>
           </Card.Header>
           <Card.Content>
-            <ChartBar
+            <Chart.Root
               config={barChartBigDatasetConfig}
               data={API_DATA.barChartBigDatasetData}
               dataKey="day"
-              stackId="a"
-              useGlobalDateRange={true}
-              referenceLine={{
-                value: 45000,
-                label: "Max concurrency",
-              }}
+              enableZoom
+              onZoomChange={handleZoomChange}
               state={chartState === "loaded" ? undefined : chartState}
               minHeight="400px"
-            />
+            >
+              <Chart.Bar
+                stackId="a"
+                referenceLine={{
+                  value: 45000,
+                  label: "Max concurrency",
+                }}
+                showLegend
+                maxLegendItems={5}
+              />
+            </Chart.Root>
           </Card.Content>
         </Card>
+
+        {/* Legacy API Example (still works) */}
         <Card>
           <Card.Header>
             <div className="flex items-center gap-1.5">
               <AbacusIcon className="size-5 text-indigo-500" />
-              Run count <span className="font-normal text-text-dimmed">by status</span>
+              Legacy API <span className="font-normal text-text-dimmed">by status</span>
             </div>
             <Card.Accessory>
               <SegmentedControl
@@ -121,7 +144,8 @@ function ChartsDashboard() {
               data={API_DATA.barChartData}
               dataKey="day"
               stackId="a"
-              useGlobalDateRange={true}
+              enableZoom
+              onZoomChange={handleZoomChange}
               referenceLine={{
                 value: 30000,
                 label: "Max concurrency",
@@ -131,39 +155,70 @@ function ChartsDashboard() {
             />
           </Card.Content>
         </Card>
+
+        {/* Simple Line Chart (no zoom) */}
         <Card>
           <Card.Header>
             <div className="flex items-center gap-1.5">
               <IconTimeline className="size-5 text-indigo-500" />
-              Success rate <span className="font-normal text-text-dimmed">by status</span>
+              Simple Line <span className="font-normal text-text-dimmed">(no zoom)</span>
             </div>
-            <Card.Accessory>
-              <SegmentedControl
-                name="runCountByStatus"
-                options={[
-                  { label: "By status", value: "status" },
-                  { label: "By task", value: "task" },
-                ]}
-                defaultValue="status"
-                variant="secondary/small"
-              />
-              <Button
-                variant="secondary/small"
-                TrailingIcon={<ArrowTopRightBottomLeftIcon className="size-4" />}
-                className="px-1"
-              />
-            </Card.Accessory>
           </Card.Header>
           <Card.Content>
-            <ChartLine
+            <Chart.Root
               config={lineChartConfig}
               data={API_DATA.lineChartData}
               dataKey="day"
-              useGlobalDateRange={true}
               state={chartState === "loaded" ? undefined : chartState}
-            />
+            >
+              <Chart.Line lineType="step" showLegend />
+            </Chart.Root>
           </Card.Content>
         </Card>
+
+        {/* Line Chart with Zoom */}
+        <Card>
+          <Card.Header>
+            <div className="flex items-center gap-1.5">
+              <IconTimeline className="size-5 text-green-500" />
+              Line with Zoom
+            </div>
+          </Card.Header>
+          <Card.Content>
+            <Chart.Root
+              config={lineChartConfig}
+              data={API_DATA.lineChartData}
+              dataKey="day"
+              enableZoom
+              onZoomChange={handleZoomChange}
+              state={chartState === "loaded" ? undefined : chartState}
+            >
+              <Chart.Line lineType="natural" showLegend />
+            </Chart.Root>
+          </Card.Content>
+        </Card>
+
+        {/* Stacked Area Chart */}
+        <Card>
+          <Card.Header>
+            <div className="flex items-center gap-1.5">
+              <IconTimeline className="size-5 text-purple-500" />
+              Stacked Area
+            </div>
+          </Card.Header>
+          <Card.Content>
+            <Chart.Root
+              config={lineChartConfig}
+              data={API_DATA.lineChartData}
+              dataKey="day"
+              state={chartState === "loaded" ? undefined : chartState}
+            >
+              <Chart.Line stacked lineType="monotone" showLegend />
+            </Chart.Root>
+          </Card.Content>
+        </Card>
+
+        {/* Big Number */}
         <Card>
           <Card.Header>
             Big Number
