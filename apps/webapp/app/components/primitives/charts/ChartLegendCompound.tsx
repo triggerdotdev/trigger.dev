@@ -35,7 +35,7 @@ export function ChartLegendCompound({
   className,
   totalLabel = "Total",
 }: ChartLegendCompoundProps) {
-  const { config, dataKeys, highlight } = useChartContext();
+  const { config, dataKey, dataKeys, highlight } = useChartContext();
   const totals = useSeriesTotal();
 
   // Calculate grand total (sum of all series totals)
@@ -55,6 +55,17 @@ export function ChartLegendCompound({
       return sum;
     }, 0);
   }, [highlight.activePayload, grandTotal, dataKeys]);
+
+  // Get the label for the total row - x-axis value when hovering, totalLabel otherwise
+  const currentTotalLabel = useMemo(() => {
+    if (!highlight.activePayload?.length) return totalLabel;
+
+    // Get the x-axis label from the payload's original data
+    const firstPayloadItem = highlight.activePayload[0];
+    const xAxisValue = firstPayloadItem?.payload?.[dataKey];
+
+    return xAxisValue !== undefined ? String(xAxisValue) : totalLabel;
+  }, [highlight.activePayload, dataKey, totalLabel]);
 
   // Get current data for the legend based on hover state
   const currentData = useMemo(() => {
@@ -120,7 +131,7 @@ export function ChartLegendCompound({
           isHovering ? "text-text-bright" : "text-text-dimmed"
         )}
       >
-        <span className="font-medium">{totalLabel}</span>
+        <span className="font-medium">{currentTotalLabel}</span>
         <span className="font-medium tabular-nums">
           <AnimatedNumber value={currentTotal} duration={0.25} />
         </span>
