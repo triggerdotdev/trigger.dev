@@ -1,0 +1,138 @@
+name: 🧭 Helm Chart PR Prerelease
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "hosting/k8s/helm/**"
+
+concurrency:
+  group: helm-prerelease-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  CHART_NAME: trigger
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.18.3"
+
+      - name: Build dependencies
+        run: helm dependency build ./hosting/k8s/helm/
+
+      - name: Extract dependency charts
+        run: |
+          cd ./hosting/k8s/helm/
+          for file in ./charts/*.tgz; do echo "Extracting $file"; tar -xzf "$file" -C ./charts; done
+
+      - name: Lint Helm Chart
+        run: |
+          helm lint ./hosting/k8s/helm/
+
+      - name: Render templates
+        run: |
+          helm template test-release ./hosting/k8s/helm/ \
+            --values ./hosting/k8s/helm/values.yaml \
+            --output-dir ./helm-output
+
+      - name: Validate manifests
+        uses: docker://ghcr.io/yannh/kubeconform:v0.7.0
+        with:
+          entrypoint: "/kubeconform"
+          args: "-summary -output json ./helm-output"
+
+  prerelease:
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.18.3"
+
+      - name: Build dependencies
+        run: helm dependency build ./hosting/k8s/helm/
+
+      - name: Extract dependency charts
+        run: |
+          cd ./hosting/k8s/helm/
+          for file in ./charts/*.tgz; do echo "Extracting $file"; tar -xzf "$file" -C ./charts; done
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate prerelease version
+        id: version
+        run: |
+          BASE_VERSION=$(grep '^version:' ./hosting/k8s/helm/Chart.yaml | awk '{print $2}')
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
+          PRERELEASE_VERSION="${BASE_VERSION}-pr${PR_NUMBER}.${SHORT_SHA}"
+          echo "version=$PRERELEASE_VERSION" >> $GITHUB_OUTPUT
+          echo "Prerelease version: $PRERELEASE_VERSION"
+
+      - name: Update Chart.yaml with prerelease version
+        run: |
+          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" ./hosting/k8s/helm/Chart.yaml
+
+      - name: Package Helm Chart
+        run: |
+          helm package ./hosting/k8s/helm/ --destination /tmp/
+
+      - name: Push Helm Chart to GHCR
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          CHART_PACKAGE="/tmp/${{ env.CHART_NAME }}-${VERSION}.tgz"
+
+          # Push to GHCR OCI registry
+          helm push "$CHART_PACKAGE" "oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts"
+
+      - name: Find existing comment
+        uses: peter-evans/find-comment@v3
+        id: find-comment
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: "github-actions[bot]"
+          body-includes: "Helm Chart Prerelease Published"
+
+      - name: Create or update PR comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ### 🧭 Helm Chart Prerelease Published
+
+            **Version:** `${{ steps.version.outputs.version }}`
+
+            **Install:**
+            ```bash
+            helm upgrade --install trigger \
+              oci://ghcr.io/${{ github.repository_owner }}/charts/trigger \
+              --version "${{ steps.version.outputs.version }}"
+            ```
+
+            > ⚠️ This is a prerelease for testing. Do not use in production.
+          edit-mode: replace
