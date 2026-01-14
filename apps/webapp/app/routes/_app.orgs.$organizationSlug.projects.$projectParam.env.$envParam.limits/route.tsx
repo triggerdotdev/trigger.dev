@@ -90,7 +90,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
-  return typedjson(result);
+  // Match the queues page pattern: pass a poll interval from the loader
+  const autoReloadPollIntervalMs = 5000;
+
+  return typedjson({
+    ...result,
+    autoReloadPollIntervalMs,
+  });
 };
 
 export default function Page() {
@@ -99,8 +105,8 @@ export default function Page() {
   const project = useProject();
   const environment = useEnvironment();
 
-  // Auto-revalidate every 5 seconds to get fresh rate limit data
-  useAutoRevalidate({ interval: 5000 });
+  // Auto-revalidate using the loader-provided interval and refresh on focus
+  useAutoRevalidate({ interval: data.autoReloadPollIntervalMs, onFocus: true });
 
   return (
     <PageContainer>
