@@ -505,6 +505,7 @@ function QuotasSection({
     currentUsage: 0,
     source: batchConcurrency.source,
     canExceed: true, // Allow contact us on top plan, view plans otherwise
+    isUpgradable: true,
   });
 
   // Add queue size quotas if set
@@ -593,19 +594,6 @@ function QuotaRow({
     );
   }
 
-  // Quotas that support upgrade options
-  const upgradableQuotas = [
-    "Projects",
-    "Schedules",
-    "Team members",
-    "Alert channels",
-    "Preview branches",
-    "Realtime connections",
-    "Batch processing concurrency",
-  ];
-
-  const isUpgradable = upgradableQuotas.includes(quota.name);
-
   const renderUpgrade = () => {
     // Projects always show Contact us (regardless of upgrade flags)
     if (quota.name === "Projects") {
@@ -619,7 +607,7 @@ function QuotaRow({
       );
     }
 
-    if (!isUpgradable) {
+    if (!quota.isUpgradable) {
       return null;
     }
 
