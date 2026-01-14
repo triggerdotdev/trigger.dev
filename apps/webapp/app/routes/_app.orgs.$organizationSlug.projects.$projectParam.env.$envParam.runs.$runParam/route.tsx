@@ -476,6 +476,12 @@ function TraceView({
 
   const spanOverrides = selectedSpanId ? overridesBySpanId?.[selectedSpanId] : undefined;
 
+  // Get the linked run ID for cached spans (map built during RunPresenter walk)
+  const { linkedRunIdBySpanId } = trace;
+  const selectedSpanLinkedRunId = selectedSpanId
+    ? linkedRunIdBySpanId?.[selectedSpanId]
+    : undefined;
+
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
       <ResizablePanelGroup
@@ -526,6 +532,7 @@ function TraceView({
               spanId={selectedSpanId}
               spanOverrides={spanOverrides as SpanOverride | undefined}
               closePanel={() => replaceSearchParam("span")}
+              linkedRunId={selectedSpanLinkedRunId}
             />
           </ResizablePanel>
         )}

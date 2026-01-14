@@ -93,6 +93,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, envParam, runParam, spanParam } =
     v3SpanParamsSchema.parse(params);
 
+  const url = new URL(request.url);
+  const linkedRunId = url.searchParams.get("linkedRunId") ?? undefined;
+
   const presenter = new SpanPresenter();
 
   try {
@@ -101,6 +104,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       spanId: spanParam,
       runFriendlyId: runParam,
       userId,
+      linkedRunId,
     });
 
     return typedjson(result);
@@ -130,11 +134,13 @@ export function SpanView({
   spanId,
   spanOverrides,
   closePanel,
+  linkedRunId,
 }: {
   runParam: string;
   spanId: string | undefined;
   spanOverrides?: SpanOverride;
   closePanel?: () => void;
+  linkedRunId?: string;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -143,10 +149,11 @@ export function SpanView({
 
   useEffect(() => {
     if (spanId === undefined) return;
-    fetcher.load(
-      `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/${runParam}/spans/${spanId}`
-    );
-  }, [organization.slug, project.slug, environment.slug, runParam, spanId]);
+    const url = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
+      environment.slug
+    }/runs/${runParam}/spans/${spanId}${linkedRunId ? `?linkedRunId=${linkedRunId}` : ""}`;
+    fetcher.load(url);
+  }, [organization.slug, project.slug, environment.slug, runParam, spanId, linkedRunId]);
 
   if (spanId === undefined) {
     return null;
@@ -305,7 +312,12 @@ function RunBody({
   useEffect(() => {
     if (resetFetcher.data && resetFetcher.state === "idle") {
       // Check if the response indicates success
-      if (resetFetcher.data && typeof resetFetcher.data === "object" && "success" in resetFetcher.data && resetFetcher.data.success === true) {
+      if (
+        resetFetcher.data &&
+        typeof resetFetcher.data === "object" &&
+        "success" in resetFetcher.data &&
+        resetFetcher.data.success === true
+      ) {
         toast.custom(
           (t) => (
             <ToastUI
@@ -574,7 +586,11 @@ function RunBody({
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
                         {run.idempotencyKey ? (
-                          <CopyableText value={run.idempotencyKey} copyValue={run.idempotencyKey} asChild />
+                          <CopyableText
+                            value={run.idempotencyKey}
+                            copyValue={run.idempotencyKey}
+                            asChild
+                          />
                         ) : (
                           <div className="break-all">–</div>
                         )}
@@ -951,7 +967,9 @@ function RunBody({
           {run.logsDeletedAt === null ? (
             <>
               <LinkButton
-                to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${new Date(run.createdAt).getTime() - 60000}`}
+                to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${
+                  new Date(run.createdAt).getTime() - 60000
+                }`}
                 variant="secondary/medium"
               >
                 View logs
@@ -968,8 +986,6 @@ function RunBody({
               </LinkButton>
             </>
           ) : null}
-
-
         </div>
       </div>
     </div>
