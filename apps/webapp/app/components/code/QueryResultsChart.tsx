@@ -1,8 +1,7 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { memo, useMemo } from "react";
 import type { ChartConfig } from "~/components/primitives/charts/Chart";
-import { ChartBar } from "~/components/primitives/charts/ChartBar";
-import { ChartLine } from "~/components/primitives/charts/ChartLine";
+import { Chart } from "~/components/primitives/charts/ChartCompound";
 import { Paragraph } from "../primitives/Paragraph";
 import type { AggregationType, ChartConfiguration } from "./ChartConfigPanel";
 
@@ -773,6 +772,20 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     };
   }, []);
 
+  // Label formatter for the legend (formats x-axis values)
+  const legendLabelFormatter = useMemo(() => {
+    if (!isDateBased || !timeGranularity) return undefined;
+    return (value: string) => {
+      // For date-based axes, the value is a timestamp
+      const timestamp = Number(value);
+      if (!isNaN(timestamp)) {
+        const date = new Date(timestamp);
+        return formatDateForTooltip(date, timeGranularity);
+      }
+      return value;
+    };
+  }, [isDateBased, timeGranularity]);
+
   // Validation
   if (!xAxisColumn) {
     return <EmptyState message="Select an X-axis column to display the chart" />;
@@ -817,40 +830,50 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     tickFormatter: yAxisFormatter,
   };
 
+  const showLegend = series.length > 0;
+
   if (chartType === "bar") {
     return (
-      <ChartBar
+      <Chart.Root
         config={chartConfig}
         data={data}
         dataKey={xDataKey}
         series={series}
-        xAxisProps={xAxisProps}
-        yAxisProps={yAxisProps}
-        stackId={stacked ? "stack" : undefined}
-        showLegend={series.length > 1}
-        simpleLegend={true}
-        enableZoom={false}
-        tooltipLabelFormatter={tooltipLabelFormatter}
+        labelFormatter={legendLabelFormatter}
+        showLegend={showLegend}
+        maxLegendItems={8}
         minHeight="300px"
-      />
+      >
+        <Chart.Bar
+          xAxisProps={xAxisProps}
+          yAxisProps={yAxisProps}
+          stackId={stacked ? "stack" : undefined}
+          tooltipLabelFormatter={tooltipLabelFormatter}
+        />
+      </Chart.Root>
     );
   }
 
   // Line or stacked area chart
   return (
-    <ChartLine
+    <Chart.Root
       config={chartConfig}
       data={data}
       dataKey={xDataKey}
       series={series}
-      xAxisProps={xAxisProps}
-      yAxisProps={yAxisProps}
-      stacked={stacked && series.length > 1}
-      showLegend={series.length > 1}
-      tooltipLabelFormatter={tooltipLabelFormatter}
-      lineType="linear"
+      labelFormatter={legendLabelFormatter}
+      showLegend={showLegend}
+      maxLegendItems={8}
       minHeight="300px"
-    />
+    >
+      <Chart.Line
+        xAxisProps={xAxisProps}
+        yAxisProps={yAxisProps}
+        stacked={stacked && series.length > 1}
+        tooltipLabelFormatter={tooltipLabelFormatter}
+        lineType="linear"
+      />
+    </Chart.Root>
   );
 });
 
