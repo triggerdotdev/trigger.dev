@@ -12,8 +12,6 @@ import {
 } from "recharts";
 import {
   type ChartConfig,
-  ChartLegend,
-  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
   type ChartState,
@@ -21,7 +19,7 @@ import {
 import { ChartLineLoading, ChartLineNoData, ChartLineInvalid } from "./ChartLoading";
 import { useChartContext } from "./ChartContext";
 import { ChartRoot, useHasNoData } from "./ChartRoot";
-import { ChartLegendCompound } from "./ChartLegendCompound";
+// Legend is now rendered by ChartRoot outside the chart container
 import type { ZoomRange } from "./hooks/useZoomSelection";
 
 type CurveType =
@@ -53,7 +51,7 @@ export type ChartLineRendererProps = {
   stacked?: boolean;
   /** Custom tooltip label formatter */
   tooltipLabelFormatter?: (label: string, payload: any[]) => string;
-  /** Show built-in legend (for compound API, prefer Chart.Legend instead) */
+  /** @deprecated Legend is now controlled via Chart.Root showLegend prop */
   showLegend?: boolean;
   /** Width injected by ResponsiveContainer */
   width?: number;
@@ -79,7 +77,8 @@ export function ChartLineRenderer({
   yAxisProps: yAxisPropsProp,
   stacked = false,
   tooltipLabelFormatter,
-  showLegend = false,
+  // Deprecated: legend is now controlled via Chart.Root
+  showLegend: _showLegend,
   width,
   height,
 }: ChartLineRendererProps) {
@@ -151,7 +150,7 @@ export function ChartLineRenderer({
           content={<ChartTooltipContent indicator="line" />}
           labelFormatter={tooltipLabelFormatter}
         />
-        {showLegend && <ChartLegend content={<ChartLegendContent />} />}
+        {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
         {dataKeys.map((key) => (
           <Area
             key={key}
@@ -190,7 +189,7 @@ export function ChartLineRenderer({
         content={<ChartTooltipContent />}
         labelFormatter={tooltipLabelFormatter}
       />
-      {showLegend && <ChartLegend content={<ChartLegendContent />} />}
+      {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
       {dataKeys.map((key) => (
         <Line
           key={key}
@@ -282,6 +281,7 @@ export function ChartLine({
       onZoomChange={onZoomChange}
       minHeight={minHeight}
       className={className}
+      showLegend={showLegend}
     >
       <ChartLineRenderer
         lineType={lineType}
@@ -289,7 +289,6 @@ export function ChartLine({
         yAxisProps={yAxisProps}
         stacked={stacked}
         tooltipLabelFormatter={tooltipLabelFormatter}
-        showLegend={showLegend}
       />
     </ChartRoot>
   );

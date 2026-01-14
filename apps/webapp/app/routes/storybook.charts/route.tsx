@@ -100,6 +100,8 @@ function ChartsDashboard() {
               onZoomChange={handleZoomChange}
               state={chartState === "loaded" ? undefined : chartState}
               minHeight="400px"
+              showLegend
+              maxLegendItems={5}
             >
               <Chart.Bar
                 stackId="a"
@@ -107,8 +109,6 @@ function ChartsDashboard() {
                   value: 45000,
                   label: "Max concurrency",
                 }}
-                showLegend
-                maxLegendItems={5}
               />
             </Chart.Root>
           </Card.Content>
@@ -170,8 +170,9 @@ function ChartsDashboard() {
               data={API_DATA.lineChartData}
               dataKey="day"
               state={chartState === "loaded" ? undefined : chartState}
+              showLegend
             >
-              <Chart.Line lineType="step" showLegend />
+              <Chart.Line lineType="step" />
             </Chart.Root>
           </Card.Content>
         </Card>
@@ -192,8 +193,9 @@ function ChartsDashboard() {
               enableZoom
               onZoomChange={handleZoomChange}
               state={chartState === "loaded" ? undefined : chartState}
+              showLegend
             >
-              <Chart.Line lineType="natural" showLegend />
+              <Chart.Line lineType="natural" />
             </Chart.Root>
           </Card.Content>
         </Card>
@@ -212,8 +214,9 @@ function ChartsDashboard() {
               data={API_DATA.lineChartData}
               dataKey="day"
               state={chartState === "loaded" ? undefined : chartState}
+              showLegend
             >
-              <Chart.Line stacked lineType="monotone" showLegend />
+              <Chart.Line stacked lineType="monotone" />
             </Chart.Root>
           </Card.Content>
         </Card>

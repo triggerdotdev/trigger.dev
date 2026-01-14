@@ -21,7 +21,7 @@ import { cn } from "~/utils/cn";
 import { ChartBarLoading, ChartBarInvalid, ChartBarNoData } from "./ChartLoading";
 import { useChartContext } from "./ChartContext";
 import { ChartRoot, useHasNoData } from "./ChartRoot";
-import { ChartLegendCompound } from "./ChartLegendCompound";
+// Legend is now rendered by ChartRoot outside the chart container
 import { ChartZoom, ZoomTooltip, useZoomHandlers } from "./ChartZoom";
 import { getBarOpacity } from "./hooks/useHighlightState";
 import type { ZoomRange } from "./hooks/useZoomSelection";
@@ -48,11 +48,11 @@ export type ChartBarRendererProps = {
   referenceLine?: ReferenceLineProps;
   /** Custom tooltip label formatter */
   tooltipLabelFormatter?: (label: string, payload: any[]) => string;
-  /** Show legend (default false) */
+  /** @deprecated Legend is now controlled via Chart.Root showLegend prop */
   showLegend?: boolean;
-  /** Maximum legend items before collapsing */
+  /** @deprecated Legend is now controlled via Chart.Root maxLegendItems prop */
   maxLegendItems?: number;
-  /** Use simple inline legend */
+  /** @deprecated No longer used */
   simpleLegend?: boolean;
   /** Width injected by ResponsiveContainer */
   width?: number;
@@ -78,9 +78,10 @@ export function ChartBarRenderer({
   yAxisProps: yAxisPropsProp,
   referenceLine,
   tooltipLabelFormatter,
-  showLegend = false,
-  maxLegendItems = 5,
-  simpleLegend = false,
+  // Deprecated: legend is now controlled via Chart.Root
+  showLegend: _showLegend,
+  maxLegendItems: _maxLegendItems,
+  simpleLegend: _simpleLegend,
   width,
   height,
 }: ChartBarRendererProps) {
@@ -250,8 +251,7 @@ export function ChartBarRenderer({
       {/* Zoom components */}
       {enableZoom && <ChartZoom />}
 
-      {/* Legend */}
-      {showLegend && <ChartLegendCompound maxItems={maxLegendItems} simple={simpleLegend} />}
+      {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
     </BarChart>
   );
 }
@@ -337,6 +337,8 @@ export function ChartBar({
       onZoomChange={onZoomChange}
       minHeight={minHeight}
       className={className}
+      showLegend={showLegend}
+      maxLegendItems={maxLegendItems}
     >
       <ChartBarRenderer
         stackId={stackId}
@@ -344,9 +346,6 @@ export function ChartBar({
         yAxisProps={yAxisProps}
         referenceLine={referenceLine}
         tooltipLabelFormatter={tooltipLabelFormatter}
-        showLegend={showLegend}
-        maxLegendItems={maxLegendItems}
-        simpleLegend={simpleLegend}
       />
     </ChartRoot>
   );
