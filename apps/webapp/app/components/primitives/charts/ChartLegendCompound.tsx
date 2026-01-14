@@ -28,7 +28,7 @@ export type ChartLegendCompoundProps = {
  * ```
  */
 export function ChartLegendCompound({
-  maxItems = 5,
+  maxItems = Infinity,
   hidden = false,
   className,
 }: ChartLegendCompoundProps) {
@@ -89,7 +89,7 @@ export function ChartLegendCompound({
   }
 
   return (
-    <div className={cn("flex flex-col pt-4", className)}>
+    <div className={cn("flex flex-col pt-4 text-sm", className)}>
       {legendItems.visible.map((item) => {
         const total = currentData[item.dataKey] ?? 0;
         const isActive = highlight.activeBarKey === item.dataKey;
