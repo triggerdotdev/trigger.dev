@@ -470,6 +470,16 @@ function QuotasSection({
   if (quotas.realtimeConnections) quotaRows.push(quotas.realtimeConnections);
   if (quotas.logRetentionDays) quotaRows.push(quotas.logRetentionDays);
 
+  // Include batch processing concurrency as a quota row
+  quotaRows.push({
+    name: "Batch processing concurrency",
+    description: "Controls how many batch items can be processed simultaneously.",
+    limit: batchConcurrency.limit,
+    currentUsage: 0,
+    source: batchConcurrency.source,
+    canExceed: true, // Allow contact us on top plan, view plans otherwise
+  });
+
   // Add queue size quotas if set
   if (quotas.devQueueSize.limit !== null) quotaRows.push(quotas.devQueueSize);
   if (quotas.deployedQueueSize.limit !== null) quotaRows.push(quotas.deployedQueueSize);
@@ -503,38 +513,6 @@ function QuotasSection({
               billingPath={billingPath}
             />
           ))}
-          <TableRow>
-            <TableCell className="flex w-full items-center gap-1">
-              <span className="text-sm">Batch processing concurrency</span>
-              <InfoIconTooltip
-                content="Controls how many batch items can be processed simultaneously."
-                disableHoverableContent
-              />
-            </TableCell>
-            <TableCell alignment="right" className="font-medium tabular-nums">
-              {formatNumber(batchConcurrency.limit)}
-            </TableCell>
-            <TableCell alignment="right" className="tabular-nums text-text-dimmed">
-              –
-            </TableCell>
-            <TableCell alignment="right">
-              <SourceBadge source={batchConcurrency.source} />
-            </TableCell>
-            <TableCell alignment="right">
-              <div className="flex justify-end">
-                {isOnTopPlan ? (
-                  <Feedback
-                    button={<Button variant="tertiary/small">Contact us</Button>}
-                    defaultValue="help"
-                  />
-                ) : (
-                  <LinkButton to={billingPath} variant="tertiary/small">
-                    View plans
-                  </LinkButton>
-                )}
-              </div>
-            </TableCell>
-          </TableRow>
         </TableBody>
       </Table>
     </div>
@@ -596,6 +574,7 @@ function QuotaRow({
     "Alert channels",
     "Preview branches",
     "Realtime connections",
+    "Batch processing concurrency",
   ];
 
   const isUpgradable = upgradableQuotas.includes(quota.name);
