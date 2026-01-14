@@ -55,6 +55,10 @@ export type ChartLineRendererProps = {
   tooltipLabelFormatter?: (label: string, payload: any[]) => string;
   /** Show built-in legend (for compound API, prefer Chart.Legend instead) */
   showLegend?: boolean;
+  /** Width injected by ResponsiveContainer */
+  width?: number;
+  /** Height injected by ResponsiveContainer */
+  height?: number;
 };
 
 /**
@@ -76,6 +80,8 @@ export function ChartLineRenderer({
   stacked = false,
   tooltipLabelFormatter,
   showLegend = false,
+  width,
+  height,
 }: ChartLineRendererProps) {
   const { config, data, dataKey, dataKeys, state, highlight } = useChartContext();
   const hasNoData = useHasNoData();
@@ -127,6 +133,8 @@ export function ChartLineRenderer({
     return (
       <AreaChart
         data={data}
+        width={width}
+        height={height}
         stackOffset="none"
         margin={{
           left: 12,
@@ -165,6 +173,8 @@ export function ChartLineRenderer({
     <LineChart
       accessibilityLayer
       data={data}
+      width={width}
+      height={height}
       margin={{
         left: 12,
         right: 12,

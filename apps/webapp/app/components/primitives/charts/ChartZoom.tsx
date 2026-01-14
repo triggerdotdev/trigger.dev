@@ -79,6 +79,9 @@ export function ChartZoom({ syncWithDateRange = false, minDataPoints = 3 }: Char
 /**
  * Tooltip component for showing zoom selection feedback.
  * Can be used inside ChartTooltip content prop.
+ *
+ * Note: This component receives zoom state as props because recharts
+ * may render tooltips outside the normal React tree where context isn't available.
  */
 export type ZoomTooltipProps = {
   active?: boolean;
@@ -92,24 +95,37 @@ export type ZoomTooltipProps = {
     x: number;
     y: number;
   };
+  // Zoom state passed as props (since context might not be available in tooltip)
+  isSelecting?: boolean;
+  refAreaLeft?: string | null;
+  refAreaRight?: string | null;
+  invalidSelection?: boolean;
 };
 
-export function ZoomTooltip({ active, payload, label, viewBox, coordinate }: ZoomTooltipProps) {
-  const { zoom } = useChartContext();
-
+export function ZoomTooltip({
+  active,
+  payload,
+  label,
+  viewBox,
+  coordinate,
+  isSelecting,
+  refAreaLeft,
+  refAreaRight,
+  invalidSelection,
+}: ZoomTooltipProps) {
   if (!active) return null;
 
   // Show zoom range when selecting
-  if (zoom?.isSelecting && zoom.refAreaLeft && zoom.refAreaRight) {
-    const message = zoom.invalidSelection
+  if (isSelecting && refAreaLeft && refAreaRight) {
+    const message = invalidSelection
       ? "Zoom: Drag a wider range"
-      : `Zoom: ${zoom.refAreaLeft} to ${zoom.refAreaRight}`;
+      : `Zoom: ${refAreaLeft} to ${refAreaRight}`;
 
     return (
       <div
         className={cn(
           "absolute whitespace-nowrap rounded border px-2 py-1 text-xxs tabular-nums",
-          zoom.invalidSelection
+          invalidSelection
             ? "border-amber-800 bg-amber-950 text-amber-400"
             : "border-blue-800 bg-[#1B2334] text-blue-400"
         )}
@@ -123,7 +139,7 @@ export function ZoomTooltip({ active, payload, label, viewBox, coordinate }: Zoo
         <div
           className={cn(
             "absolute -top-[5px] left-1/2 h-2 w-2 -translate-x-1/2 rotate-45",
-            zoom.invalidSelection
+            invalidSelection
               ? "border-l border-t border-amber-800 bg-amber-950"
               : "border-l border-t border-blue-800 bg-[#1B2334]"
           )}
