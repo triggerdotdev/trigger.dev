@@ -1,14 +1,15 @@
-import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { IconCrown, IconTallymark4 } from "@tabler/icons-react";
-import { Gauge, Gem } from "lucide-react";
+import { CheckIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { IconCardsFilled, IconDiamondFilled, IconTallymark4 } from "@tabler/icons-react";
 import { tryCatch } from "@trigger.dev/core";
+import { Gauge } from "lucide-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { EnvironmentSelector } from "~/components/navigation/EnvironmentSelector";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Feedback } from "~/components/Feedback";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { EnvironmentSelector } from "~/components/navigation/EnvironmentSelector";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
@@ -44,7 +45,6 @@ import {
   EnvironmentParamSchema,
   organizationBillingPath,
 } from "~/utils/pathBuilder";
-import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 
 export const meta: MetaFunction = () => {
   return [
@@ -179,7 +179,7 @@ function CurrentPlanSection({
   return (
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1">
-        <IconCrown className="size-6 text-amber-400" />
+        <IconCardsFilled className="size-5 text-amber-400" />
         Current plan
       </Header2>
       <Table variant="bright/no-hover">
@@ -194,7 +194,7 @@ function CurrentPlanSection({
                 />
               ) : (
                 <LinkButton to={billingPath} variant="secondary/small">
-                  View plans to upgrade
+                  View plans
                 </LinkButton>
               )}
             </TableCell>
@@ -634,7 +634,7 @@ function FeaturesSection({
   return (
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1.5">
-        <Gem className="size-5 text-emerald-500" />
+        <IconDiamondFilled className="size-5 text-green-600" />
         Plan features
       </Header2>
       <Table variant="bright/no-hover">
