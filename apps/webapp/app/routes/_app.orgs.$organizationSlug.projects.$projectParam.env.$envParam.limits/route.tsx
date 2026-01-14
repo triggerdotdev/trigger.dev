@@ -151,6 +151,8 @@ export default function Page() {
             {/* Rate Limits Section */}
             <RateLimitsSection
               rateLimits={data.rateLimits}
+              isOnTopPlan={data.isOnTopPlan}
+              billingPath={organizationBillingPath(organization)}
               organization={organization}
               project={project}
               environment={environment}
@@ -244,11 +246,15 @@ function ConcurrencySection({ concurrencyPath }: { concurrencyPath: string }) {
 
 function RateLimitsSection({
   rateLimits,
+  isOnTopPlan,
+  billingPath,
   organization,
   project,
   environment,
 }: {
   rateLimits: LimitsResult["rateLimits"];
+  isOnTopPlan: boolean;
+  billingPath: string;
   organization: ReturnType<typeof useOrganization>;
   project: ReturnType<typeof useProject>;
   environment: ReturnType<typeof useEnvironment>;
@@ -322,15 +328,27 @@ function RateLimitsSection({
           </TableRow>
         </TableHeader>
         <TableBody>
-          <RateLimitRow info={rateLimits.api} />
-          <RateLimitRow info={rateLimits.batch} />
+          <RateLimitRow info={rateLimits.api} isOnTopPlan={isOnTopPlan} billingPath={billingPath} />
+          <RateLimitRow
+            info={rateLimits.batch}
+            isOnTopPlan={isOnTopPlan}
+            billingPath={billingPath}
+          />
         </TableBody>
       </Table>
     </div>
   );
 }
 
-function RateLimitRow({ info }: { info: RateLimitInfo }) {
+function RateLimitRow({
+  info,
+  isOnTopPlan,
+  billingPath,
+}: {
+  info: RateLimitInfo;
+  isOnTopPlan: boolean;
+  billingPath: string;
+}) {
   const maxTokens = info.config.type === "tokenBucket" ? info.config.maxTokens : info.config.tokens;
   const percentage =
     info.currentTokens !== null && maxTokens > 0 ? info.currentTokens / maxTokens : null;
@@ -372,10 +390,23 @@ function RateLimitRow({ info }: { info: RateLimitInfo }) {
       </TableCell>
       <TableCell alignment="right">
         <div className="flex justify-end">
-          <Feedback
-            button={<Button variant="secondary/small">Contact us</Button>}
-            defaultValue="help"
-          />
+          {info.name === "Batch rate limit" ? (
+            isOnTopPlan ? (
+              <Feedback
+                button={<Button variant="secondary/small">Contact us</Button>}
+                defaultValue="help"
+              />
+            ) : (
+              <LinkButton to={billingPath} variant="secondary/small">
+                View plans
+              </LinkButton>
+            )
+          ) : (
+            <Feedback
+              button={<Button variant="secondary/small">Contact us</Button>}
+              defaultValue="help"
+            />
+          )}
         </div>
       </TableCell>
     </TableRow>
