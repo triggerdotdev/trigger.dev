@@ -39,6 +39,7 @@ export type QuotaInfo = {
   currentUsage: number;
   source: "default" | "plan" | "override";
   canExceed?: boolean;
+  isUpgradable?: boolean;
 };
 
 // Types for feature flags
@@ -212,6 +213,7 @@ export class LimitsPresenter extends BasePresenter {
           limit: organization.maximumProjectCount,
           currentUsage: organization._count.projects,
           source: "default",
+          isUpgradable: true,
         },
         schedules:
           schedulesLimit !== null
@@ -222,6 +224,7 @@ export class LimitsPresenter extends BasePresenter {
                 currentUsage: scheduleCount,
                 source: "plan",
                 canExceed: limits?.schedules?.canExceed,
+                isUpgradable: true,
               }
             : null,
         teamMembers:
@@ -233,6 +236,7 @@ export class LimitsPresenter extends BasePresenter {
                 currentUsage: organization._count.members,
                 source: "plan",
                 canExceed: limits?.teamMembers?.canExceed,
+                isUpgradable: true,
               }
             : null,
         alerts:
@@ -244,6 +248,7 @@ export class LimitsPresenter extends BasePresenter {
                 currentUsage: alertChannelCount,
                 source: "plan",
                 canExceed: limits?.alerts?.canExceed,
+                isUpgradable: true,
               }
             : null,
         branches:
@@ -255,6 +260,7 @@ export class LimitsPresenter extends BasePresenter {
                 currentUsage: activeBranchCount,
                 source: "plan",
                 canExceed: limits?.branches?.canExceed,
+                isUpgradable: true,
               }
             : null,
         logRetentionDays:
@@ -276,6 +282,7 @@ export class LimitsPresenter extends BasePresenter {
                 currentUsage: 0, // Would need to query realtime service for this
                 source: "plan",
                 canExceed: limits?.realtimeConcurrentConnections?.canExceed,
+                isUpgradable: true,
               }
             : null,
         devQueueSize: {
