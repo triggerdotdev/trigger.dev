@@ -58,41 +58,46 @@ export function useZoomSelection(): UseZoomSelectionReturn {
   stateRef.current = state;
 
   const startSelection = useCallback((label: string) => {
-    setState((prev) => ({
-      ...prev,
+    const next = {
+      ...stateRef.current,
       refAreaLeft: label,
       refAreaRight: null,
       isSelecting: true,
       invalidSelection: false,
-    }));
+    };
+    // Update ref synchronously first
+    stateRef.current = next;
+    setState(next);
   }, []);
 
   const updateSelection = useCallback(
     (label: string, data: any[], dataKey: string, minDataPoints = 3) => {
-      setState((prev) => {
-        if (!prev.isSelecting || !prev.refAreaLeft) {
-          return prev;
-        }
+      const prev = stateRef.current;
+      if (!prev.isSelecting || !prev.refAreaLeft) {
+        return;
+      }
 
-        // Check if selection is valid (has enough data points)
-        const allLabels = data.map((item) => item[dataKey] as string).filter(Boolean);
-        const leftIndex = allLabels.indexOf(prev.refAreaLeft);
-        const rightIndex = allLabels.indexOf(label);
+      // Check if selection is valid (has enough data points)
+      const allLabels = data.map((item) => item[dataKey] as string).filter(Boolean);
+      const leftIndex = allLabels.indexOf(prev.refAreaLeft);
+      const rightIndex = allLabels.indexOf(label);
 
-        let invalidSelection = false;
-        if (leftIndex !== -1 && rightIndex !== -1) {
-          const [start, end] = [leftIndex, rightIndex].sort((a, b) => a - b);
-          invalidSelection = end - start < minDataPoints - 1;
-        } else {
-          invalidSelection = true;
-        }
+      let invalidSelection = false;
+      if (leftIndex !== -1 && rightIndex !== -1) {
+        const [start, end] = [leftIndex, rightIndex].sort((a, b) => a - b);
+        invalidSelection = end - start < minDataPoints - 1;
+      } else {
+        invalidSelection = true;
+      }
 
-        return {
-          ...prev,
-          refAreaRight: label,
-          invalidSelection,
-        };
-      });
+      const next = {
+        ...prev,
+        refAreaRight: label,
+        invalidSelection,
+      };
+      // Update ref synchronously first
+      stateRef.current = next;
+      setState(next);
     },
     []
   );
@@ -100,11 +105,12 @@ export function useZoomSelection(): UseZoomSelectionReturn {
   const finishSelection = useCallback(
     (data: any[], dataKey: string, minDataPoints = 3): ZoomRange | null => {
       // Get current state synchronously to calculate result
-      // (We can't rely on setState callback return value as it's async)
       const currentState = stateRef.current;
 
       if (!currentState.refAreaLeft || !currentState.refAreaRight) {
-        setState((prev) => ({ ...initialState, inspectionLine: prev.inspectionLine }));
+        const next = { ...initialState, inspectionLine: currentState.inspectionLine };
+        stateRef.current = next;
+        setState(next);
         return null;
       }
 
@@ -126,8 +132,10 @@ export function useZoomSelection(): UseZoomSelectionReturn {
         }
       }
 
-      // Reset the state
-      setState((prev) => ({ ...initialState, inspectionLine: prev.inspectionLine }));
+      // Reset the state (preserve inspection line)
+      const next = { ...initialState, inspectionLine: currentState.inspectionLine };
+      stateRef.current = next;
+      setState(next);
 
       return result;
     },
@@ -135,27 +143,35 @@ export function useZoomSelection(): UseZoomSelectionReturn {
   );
 
   const cancelSelection = useCallback(() => {
-    setState((prev) => ({
+    const next = {
       ...initialState,
-      inspectionLine: prev.inspectionLine,
-    }));
+      inspectionLine: stateRef.current.inspectionLine,
+    };
+    stateRef.current = next;
+    setState(next);
   }, []);
 
   const toggleInspectionLine = useCallback((label: string) => {
-    setState((prev) => ({
+    const prev = stateRef.current;
+    const next = {
       ...prev,
       inspectionLine: prev.inspectionLine === label ? null : label,
-    }));
+    };
+    stateRef.current = next;
+    setState(next);
   }, []);
 
   const clearInspectionLine = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
+    const next = {
+      ...stateRef.current,
       inspectionLine: null,
-    }));
+    };
+    stateRef.current = next;
+    setState(next);
   }, []);
 
   const reset = useCallback(() => {
+    stateRef.current = initialState;
     setState(initialState);
   }, []);
 
