@@ -10,6 +10,7 @@ import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { EnvironmentSelector } from "~/components/navigation/EnvironmentSelector";
+import { AnimatedNumber } from "~/components/primitives/AnimatedNumber";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
@@ -378,7 +379,7 @@ function RateLimitRow({
                 getUsageColorClass(percentage, "remaining")
               )}
             >
-              {formatNumber(info.currentTokens)}
+              <AnimatedNumber value={info.currentTokens} />
             </span>
             <span className="text-xs tabular-nums text-text-dimmed">
               of {formatNumber(maxTokens)}
