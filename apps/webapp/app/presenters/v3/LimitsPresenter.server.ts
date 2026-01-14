@@ -147,12 +147,10 @@ export class LimitsPresenter extends BasePresenter {
       },
     });
 
-    // Get active branches count for this org
+    // Get active branches count for this org (uses @@index([organizationId]))
     const activeBranchCount = await this._replica.runtimeEnvironment.count({
       where: {
-        project: {
-          organizationId,
-        },
+        organizationId,
         branchName: {
           not: null,
         },
