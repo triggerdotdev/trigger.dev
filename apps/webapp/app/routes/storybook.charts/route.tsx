@@ -1,6 +1,6 @@
 import { ArrowTrendingUpIcon } from "@heroicons/react/20/solid";
 import { IconTimeline } from "@tabler/icons-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AbacusIcon } from "~/assets/icons/AbacusIcon";
 import { ArrowTopRightBottomLeftIcon } from "~/assets/icons/ArrowTopRightBottomLeftIcon";
 import { Button } from "~/components/primitives/Buttons";
@@ -10,22 +10,84 @@ import { type ChartState, type ChartConfig } from "~/components/primitives/chart
 import { ChartBar } from "~/components/primitives/charts/ChartBar";
 import { ChartLine } from "~/components/primitives/charts/ChartLine";
 import { Chart } from "~/components/primitives/charts/ChartCompound";
-import { DateRangeProvider, useDateRange } from "~/components/primitives/charts/DateRangeContext";
+import {
+  DateRangeProvider,
+  useDateRange,
+  formatISODate,
+  formatISODateLong,
+} from "~/components/primitives/charts/DateRangeContext";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import type { ZoomRange } from "~/components/primitives/charts/hooks/useZoomSelection";
 
+// Date formatters for chart display
+const xAxisTickFormatter = (value: string) => formatISODate(value);
+const tooltipLabelFormatter = (label: string) => formatISODateLong(label);
+
+/**
+ * Helper function to filter chart data by date range.
+ * In a real app, this would typically be handled server-side.
+ */
+function filterDataByDateRange<T extends Record<string, any>>(
+  data: T[],
+  dataKey: string,
+  startDate: string | undefined,
+  endDate: string | undefined
+): T[] {
+  if (!startDate || !endDate) return data;
+
+  const startIndex = data.findIndex((item) => item[dataKey] === startDate);
+  const endIndex = data.findIndex((item) => item[dataKey] === endDate);
+
+  if (startIndex === -1 || endIndex === -1) return data;
+
+  const [start, end] = [startIndex, endIndex].sort((a, b) => a - b);
+  return data.slice(start, end + 1);
+}
+
 function ChartsDashboard() {
   const dateRange = useDateRange();
   const [chartState, setChartState] = useState<ChartState>("loaded");
-  const [zoomRange, setZoomRange] = useState<ZoomRange | null>(null);
 
+  // Handle zoom change - updates the shared DateRangeContext
+  // In a real app, this would also trigger a server fetch for more granular data
   const handleZoomChange = (range: ZoomRange) => {
     console.log("Zoom changed:", range);
-    setZoomRange(range);
-    // In a real app, you would fetch new data here based on the range
+    // Update the shared date range context so all charts sync
+    // dateRange?.setDateRange(range.start, range.end);
+    // In a real app, you would fetch new data here based on the range:
+    // fetchChartData(range.start, range.end).then(setData);
   };
+
+  // Filter data based on the current date range from context
+  const filteredBarData = useMemo(
+    () =>
+      filterDataByDateRange(
+        API_DATA.barChartBigDatasetData,
+        "day",
+        dateRange?.startDate,
+        dateRange?.endDate
+      ),
+    [dateRange?.startDate, dateRange?.endDate]
+  );
+
+  const filteredBarData2 = useMemo(
+    () =>
+      filterDataByDateRange(API_DATA.barChartData, "day", dateRange?.startDate, dateRange?.endDate),
+    [dateRange?.startDate, dateRange?.endDate]
+  );
+
+  const filteredLineData = useMemo(
+    () =>
+      filterDataByDateRange(
+        API_DATA.lineChartData,
+        "day",
+        dateRange?.startDate,
+        dateRange?.endDate
+      ),
+    [dateRange?.startDate, dateRange?.endDate]
+  );
 
   return (
     <div className="grid">
@@ -152,27 +214,33 @@ function ChartsDashboard() {
               }}
               state={chartState === "loaded" ? undefined : chartState}
               minHeight="400px"
+              xAxisProps={{ tickFormatter: xAxisTickFormatter }}
+              tooltipLabelFormatter={tooltipLabelFormatter}
             />
           </Card.Content>
         </Card>
 
-        {/* Simple Line Chart (no zoom) */}
+        {/* Simple Line Chart (no zoom, but synced with date range) */}
         <Card>
           <Card.Header>
             <div className="flex items-center gap-1.5">
               <IconTimeline className="size-5 text-indigo-500" />
-              Simple Line <span className="font-normal text-text-dimmed">(no zoom)</span>
+              Simple Line <span className="font-normal text-text-dimmed">(synced, no zoom)</span>
             </div>
           </Card.Header>
           <Card.Content>
             <Chart.Root
               config={lineChartConfig}
-              data={API_DATA.lineChartData}
+              data={filteredLineData}
               dataKey="day"
               state={chartState === "loaded" ? undefined : chartState}
               showLegend
             >
-              <Chart.Line lineType="step" />
+              <Chart.Line
+                lineType="step"
+                xAxisProps={{ tickFormatter: xAxisTickFormatter }}
+                tooltipLabelFormatter={tooltipLabelFormatter}
+              />
             </Chart.Root>
           </Card.Content>
         </Card>
@@ -188,35 +256,44 @@ function ChartsDashboard() {
           <Card.Content>
             <Chart.Root
               config={lineChartConfig}
-              data={API_DATA.lineChartData}
+              data={filteredLineData}
               dataKey="day"
               enableZoom
               onZoomChange={handleZoomChange}
               state={chartState === "loaded" ? undefined : chartState}
               showLegend
             >
-              <Chart.Line lineType="natural" />
+              <Chart.Line
+                lineType="natural"
+                xAxisProps={{ tickFormatter: xAxisTickFormatter }}
+                tooltipLabelFormatter={tooltipLabelFormatter}
+              />
             </Chart.Root>
           </Card.Content>
         </Card>
 
-        {/* Stacked Area Chart */}
+        {/* Stacked Area Chart (synced with date range) */}
         <Card>
           <Card.Header>
             <div className="flex items-center gap-1.5">
               <IconTimeline className="size-5 text-purple-500" />
-              Stacked Area
+              Stacked Area <span className="font-normal text-text-dimmed">(synced)</span>
             </div>
           </Card.Header>
           <Card.Content>
             <Chart.Root
               config={lineChartConfig}
-              data={API_DATA.lineChartData}
+              data={filteredLineData}
               dataKey="day"
               state={chartState === "loaded" ? undefined : chartState}
               showLegend
             >
-              <Chart.Line stacked lineType="monotone" />
+              <Chart.Line
+                stacked
+                lineType="monotone"
+                xAxisProps={{ tickFormatter: xAxisTickFormatter }}
+                tooltipLabelFormatter={tooltipLabelFormatter}
+              />
             </Chart.Root>
           </Card.Content>
         </Card>
