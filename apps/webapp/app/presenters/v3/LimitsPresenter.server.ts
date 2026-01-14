@@ -83,18 +83,14 @@ export type LimitsResult = {
 
 export class LimitsPresenter extends BasePresenter {
   public async call({
-    userId,
-    projectId,
     organizationId,
     environmentApiKey,
   }: {
-    userId: string;
-    projectId: string;
     organizationId: string;
     environmentApiKey: string;
   }): Promise<LimitsResult> {
     // Get organization with all limit-related fields
-    const organization = await this._replica.organization.findUniqueOrThrow({
+    const organization = await this._replica.organization.findFirstOrThrow({
       where: { id: organizationId },
       select: {
         id: true,
