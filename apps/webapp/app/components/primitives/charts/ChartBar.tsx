@@ -22,7 +22,7 @@ import { ChartBarLoading, ChartBarInvalid, ChartBarNoData } from "./ChartLoading
 import { useChartContext } from "./ChartContext";
 import { ChartRoot, useHasNoData } from "./ChartRoot";
 // Legend is now rendered by ChartRoot outside the chart container
-import { ChartZoom, ZoomTooltip, useZoomHandlers } from "./ChartZoom";
+import { ZoomTooltip, useZoomHandlers } from "./ChartZoom";
 import { getBarOpacity } from "./hooks/useHighlightState";
 import type { ZoomRange } from "./hooks/useZoomSelection";
 
@@ -188,6 +188,18 @@ export function ChartBarRenderer({
         labelFormatter={tooltipLabelFormatter}
         allowEscapeViewBox={{ x: false, y: true }}
       />
+
+      {/* Zoom selection area - rendered before bars to appear behind them */}
+      {enableZoom && zoom?.refAreaLeft && zoom?.refAreaRight && (
+        <ReferenceArea
+          x1={zoom.refAreaLeft}
+          x2={zoom.refAreaRight}
+          strokeOpacity={0.4}
+          fill="#3B82F6"
+          fillOpacity={0.3}
+        />
+      )}
+
       {dataKeys.map((key, index, array) => {
         return (
           <Bar
@@ -248,8 +260,19 @@ export function ChartBarRenderer({
         />
       )}
 
-      {/* Zoom components */}
-      {enableZoom && <ChartZoom />}
+      {/* Zoom inspection line - rendered after bars to appear on top */}
+      {enableZoom && zoom?.inspectionLine && (
+        <ReferenceLine
+          x={zoom.inspectionLine}
+          stroke="#D7D9DD"
+          strokeWidth={2}
+          isFront={true}
+          onClick={(e: any) => {
+            e?.stopPropagation?.();
+            zoom.clearInspectionLine();
+          }}
+        />
+      )}
 
       {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
     </BarChart>

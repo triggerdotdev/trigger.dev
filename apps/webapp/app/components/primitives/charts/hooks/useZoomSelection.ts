@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 export type ZoomRange = {
   start: string;
@@ -51,6 +51,11 @@ const initialState: ZoomSelectionState = {
  */
 export function useZoomSelection(): UseZoomSelectionReturn {
   const [state, setState] = useState<ZoomSelectionState>(initialState);
+  // Ref to track current state synchronously (needed for finishSelection)
+  const stateRef = useRef<ZoomSelectionState>(state);
+
+  // Keep ref in sync with state
+  stateRef.current = state;
 
   const startSelection = useCallback((label: string) => {
     setState((prev) => ({
@@ -94,31 +99,35 @@ export function useZoomSelection(): UseZoomSelectionReturn {
 
   const finishSelection = useCallback(
     (data: any[], dataKey: string, minDataPoints = 3): ZoomRange | null => {
+      // Get current state synchronously to calculate result
+      // (We can't rely on setState callback return value as it's async)
+      const currentState = stateRef.current;
+
+      if (!currentState.refAreaLeft || !currentState.refAreaRight) {
+        setState((prev) => ({ ...initialState, inspectionLine: prev.inspectionLine }));
+        return null;
+      }
+
+      const allLabels = data.map((item) => item[dataKey] as string).filter(Boolean);
+      const leftIndex = allLabels.indexOf(currentState.refAreaLeft);
+      const rightIndex = allLabels.indexOf(currentState.refAreaRight);
+
       let result: ZoomRange | null = null;
 
-      setState((prev) => {
-        if (!prev.refAreaLeft || !prev.refAreaRight) {
-          return { ...initialState, inspectionLine: prev.inspectionLine };
+      if (leftIndex !== -1 && rightIndex !== -1) {
+        const [startIdx, endIdx] = [leftIndex, rightIndex].sort((a, b) => a - b);
+
+        // Only create a valid range if we have enough data points
+        if (endIdx - startIdx >= minDataPoints - 1) {
+          result = {
+            start: allLabels[startIdx],
+            end: allLabels[endIdx],
+          };
         }
+      }
 
-        const allLabels = data.map((item) => item[dataKey] as string).filter(Boolean);
-        const leftIndex = allLabels.indexOf(prev.refAreaLeft);
-        const rightIndex = allLabels.indexOf(prev.refAreaRight);
-
-        if (leftIndex !== -1 && rightIndex !== -1) {
-          const [startIdx, endIdx] = [leftIndex, rightIndex].sort((a, b) => a - b);
-
-          // Only create a valid range if we have enough data points
-          if (endIdx - startIdx >= minDataPoints - 1) {
-            result = {
-              start: allLabels[startIdx],
-              end: allLabels[endIdx],
-            };
-          }
-        }
-
-        return { ...initialState, inspectionLine: prev.inspectionLine };
-      });
+      // Reset the state
+      setState((prev) => ({ ...initialState, inspectionLine: prev.inspectionLine }));
 
       return result;
     },
