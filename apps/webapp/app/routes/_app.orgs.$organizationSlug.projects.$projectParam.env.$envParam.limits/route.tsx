@@ -551,6 +551,39 @@ function QuotaRow({
   const percentage =
     !isRetentionQuota && quota.limit && quota.limit > 0 ? quota.currentUsage / quota.limit : null;
 
+  // Special handling for Log retention
+  if (quota.name === "Log retention") {
+    const canUpgrade = !isOnTopPlan;
+    return (
+      <TableRow>
+        <TableCell className="flex w-full items-center gap-1">
+          <span className="text-sm">{quota.name}</span>
+          <InfoIconTooltip content={quota.description} disableHoverableContent />
+        </TableCell>
+        <TableCell alignment="right" className="font-medium tabular-nums">
+          {quota.limit !== null ? `${formatNumber(quota.limit)} days` : "Unlimited"}
+        </TableCell>
+        <TableCell alignment="right" className="tabular-nums text-text-dimmed">
+          –
+        </TableCell>
+        <TableCell alignment="right">
+          <SourceBadge source={quota.source} />
+        </TableCell>
+        <TableCell alignment="right">
+          <div className="flex justify-end">
+            {canUpgrade ? (
+              <LinkButton to={billingPath} variant="tertiary/small">
+                View plans
+              </LinkButton>
+            ) : (
+              <span className="text-xs text-text-dimmed">Max reached</span>
+            )}
+          </div>
+        </TableCell>
+      </TableRow>
+    );
+  }
+
   // Quotas that support upgrade options
   const upgradableQuotas = [
     "Projects",
