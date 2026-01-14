@@ -13,6 +13,8 @@ export type ChartLegendCompoundProps = {
   hidden?: boolean;
   /** Additional className */
   className?: string;
+  /** Label for the total row */
+  totalLabel?: string;
 };
 
 /**
@@ -31,9 +33,28 @@ export function ChartLegendCompound({
   maxItems = Infinity,
   hidden = false,
   className,
+  totalLabel = "Total",
 }: ChartLegendCompoundProps) {
   const { config, dataKeys, highlight } = useChartContext();
   const totals = useSeriesTotal();
+
+  // Calculate grand total (sum of all series totals)
+  const grandTotal = useMemo(() => {
+    return dataKeys.reduce((sum, key) => sum + (totals[key] || 0), 0);
+  }, [totals, dataKeys]);
+
+  // Calculate current total based on hover state
+  const currentTotal = useMemo(() => {
+    if (!highlight.activePayload?.length) return grandTotal;
+
+    // Sum all values from the hovered data point
+    return highlight.activePayload.reduce((sum, item) => {
+      if (item.value !== undefined && dataKeys.includes(item.dataKey as string)) {
+        return sum + (Number(item.value) || 0);
+      }
+      return sum;
+    }, 0);
+  }, [highlight.activePayload, grandTotal, dataKeys]);
 
   // Get current data for the legend based on hover state
   const currentData = useMemo(() => {
@@ -88,8 +109,26 @@ export function ChartLegendCompound({
     return null;
   }
 
+  const isHovering = (highlight.activePayload?.length ?? 0) > 0;
+
   return (
     <div className={cn("flex flex-col pt-4 text-sm", className)}>
+      {/* Total row */}
+      <div
+        className={cn(
+          "flex w-full items-center justify-between gap-2 rounded px-2 py-1 transition",
+          isHovering ? "text-text-bright" : "text-text-dimmed"
+        )}
+      >
+        <span className="font-medium">{totalLabel}</span>
+        <span className="font-medium tabular-nums">
+          <AnimatedNumber value={currentTotal} duration={0.25} />
+        </span>
+      </div>
+
+      {/* Separator */}
+      <div className="mx-2 my-1 border-t border-charcoal-750" />
+
       {legendItems.visible.map((item) => {
         const total = currentData[item.dataKey] ?? 0;
         const isActive = highlight.activeBarKey === item.dataKey;
