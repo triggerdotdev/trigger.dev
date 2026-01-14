@@ -586,7 +586,10 @@ function QuotaRow({
                 View plans
               </LinkButton>
             ) : (
-              <span className="text-xs text-text-dimmed">Max reached</span>
+              <Feedback
+                button={<Button variant="secondary/small">Contact us</Button>}
+                defaultValue="help"
+              />
             )}
           </div>
         </TableCell>
