@@ -132,7 +132,7 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={true}>
-        <div className="mx-auto mt-10 max-w-3xl p-4">
+        <div className="mx-auto mt-10 max-w-2xl p-4">
           <div className="flex flex-col gap-8">
             {/* Current Plan Section */}
             {data.planName && (
@@ -607,6 +607,18 @@ function QuotaRow({
   const isUpgradable = upgradableQuotas.includes(quota.name);
 
   const renderUpgrade = () => {
+    // Projects always show Contact us (regardless of upgrade flags)
+    if (quota.name === "Projects") {
+      return (
+        <div className="flex justify-end">
+          <Feedback
+            button={<Button variant="secondary/small">Contact us</Button>}
+            defaultValue="help"
+          />
+        </div>
+      );
+    }
+
     if (!isUpgradable) {
       return null;
     }
@@ -622,8 +634,8 @@ function QuotaRow({
       );
     }
 
-    // On top plan - show Contact us if canExceed is true (or for Projects which is always exceedable)
-    if (quota.canExceed || quota.name === "Projects") {
+    // On top plan - show Contact us if canExceed is true
+    if (quota.canExceed) {
       return (
         <div className="flex justify-end">
           <Feedback
