@@ -6,6 +6,7 @@ export const FEATURE_FLAG = {
   runsListRepository: "runsListRepository",
   taskEventRepository: "taskEventRepository",
   hasQueryAccess: "hasQueryAccess",
+  hasLogsPageAccess: "hasLogsPageAccess",
 } as const;
 
 const FeatureFlagCatalog = {
@@ -13,6 +14,7 @@ const FeatureFlagCatalog = {
   [FEATURE_FLAG.runsListRepository]: z.enum(["clickhouse", "postgres"]),
   [FEATURE_FLAG.taskEventRepository]: z.enum(["clickhouse", "clickhouse_v2", "postgres"]),
   [FEATURE_FLAG.hasQueryAccess]: z.coerce.boolean(),
+  [FEATURE_FLAG.hasLogsPageAccess]: z.coerce.boolean(),
 };
 
 type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

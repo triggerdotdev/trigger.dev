@@ -36,13 +36,6 @@ export class LogDetailPresenter {
       );
     }
 
-    // Throw error if clickhouse v1 is detected (not supported)
-    if (store === "postgres") {
-      throw new ServiceValidationError(
-        "Log details are not available for postgres event store. Please contact support."
-      );
-    }
-
     // Build ClickHouse query - only v2 is supported for log details
     const isClickhouseV2 = store === "clickhouse_v2";
     const queryBuilder = isClickhouseV2

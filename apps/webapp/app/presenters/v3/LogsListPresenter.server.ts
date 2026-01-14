@@ -375,13 +375,6 @@ export class LogsListPresenter extends BasePresenter {
       );
     }
 
-    // Throw error if clickhouse v1 is detected (not supported)
-    if (store === "postgres") {
-      throw new ServiceValidationError(
-        "Logs are not available for Postgres event store. Please contact support."
-      );
-    }
-
     // Get the appropriate query builder based on store type
     const isClickhouseV2 = store === "clickhouse_v2";
 

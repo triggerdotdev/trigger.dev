@@ -15,7 +15,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { LogsListPresenter } from "~/presenters/v3/LogsListPresenter.server";
 import type { LogLevel } from "~/utils/logUtils";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import {
   setRootOnlyFilterPreference,
@@ -39,6 +39,7 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { Switch } from "~/components/primitives/Switch";
+import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags.server";
 
 // Valid log levels for filtering
 const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "CANCELLED"];
@@ -56,6 +57,41 @@ export const meta: MetaFunction = () => {
     },
   ];
 };
+
+async function hasLogsPageAccess(
+  userId: string,
+  isAdmin: boolean,
+  isImpersonating: boolean,
+  organizationSlug: string
+): Promise<boolean> {
+  if (isAdmin || isImpersonating) {
+    return true;
+  }
+
+  // Check organization feature flags
+  const organization = await prisma.organization.findFirst({
+    where: {
+      slug: organizationSlug,
+      members: { some: { userId } },
+    },
+    select: {
+      featureFlags: true,
+    },
+  });
+
+  if (!organization?.featureFlags) {
+    return false;
+  }
+
+  const flags = organization.featureFlags as Record<string, unknown>;
+  const hasLogsPageAccessResult = validateFeatureFlagValue(
+    FEATURE_FLAG.hasLogsPageAccess,
+    flags.hasLogsPageAccess
+  );
+
+  return hasLogsPageAccessResult.success && hasLogsPageAccessResult.data === true;
+}
+
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
