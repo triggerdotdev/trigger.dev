@@ -128,7 +128,7 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={true}>
-        <div className="mx-auto max-w-3xl p-4">
+        <div className="mx-auto mt-10 max-w-3xl p-4">
           <div className="flex flex-col gap-8">
             {/* Current Plan Section */}
             {data.planName && (
