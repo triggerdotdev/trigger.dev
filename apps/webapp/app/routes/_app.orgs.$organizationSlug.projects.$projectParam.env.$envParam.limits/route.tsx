@@ -79,8 +79,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const presenter = new LimitsPresenter();
   const [error, result] = await tryCatch(
     presenter.call({
-      userId,
-      projectId: project.id,
       organizationId: project.organizationId,
       environmentApiKey: environment.apiKey,
     })
