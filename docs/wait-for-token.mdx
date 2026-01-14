@@ -177,7 +177,7 @@ You can complete a token using a raw HTTP request or from another language.
 curl -X POST "https://api.trigger.dev/api/v1/waitpoints/tokens/{tokenId}/complete" \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
-  -d '{"output": { "status": "approved"}}'
+  -d '{"data": { "status": "approved"}}'
 ```
 
 ```python python
@@ -186,7 +186,7 @@ import requests
 response = requests.post(
   "https://api.trigger.dev/api/v1/waitpoints/tokens/{tokenId}/complete",
   headers={"Authorization": f"Bearer {token}"},
-  json={"output": { "status": "approved"}}
+  json={"data": { "status": "approved"}}
 )
 ```
 
@@ -199,7 +199,7 @@ http = Net::HTTP.new(uri.host, uri.port)
 request = Net::HTTP::Post.new(uri)
 request["Authorization"] = "Bearer {token}"
 request["Content-Type"] = "application/json"
-request.body = JSON.generate({ output: { status: "approved" } })
+request.body = JSON.generate({ data: { status: "approved" } })
 
 response = http.request(request)
 ```
@@ -218,7 +218,7 @@ func main() {
 	url := "https://api.trigger.dev/api/v1/waitpoints/tokens/{tokenId}/complete"
 
 	payload := map[string]interface{}{
-		"output": map[string]interface{}{
+		"data": map[string]interface{}{
 			"status": "approved",
 		},
 	}
