@@ -373,7 +373,7 @@ function RateLimitRow({ info }: { info: RateLimitInfo }) {
       <TableCell alignment="right">
         <div className="flex justify-end">
           <Feedback
-            button={<Button variant="tertiary/small">Contact us</Button>}
+            button={<Button variant="secondary/small">Contact us</Button>}
             defaultValue="help"
           />
         </div>
@@ -550,7 +550,7 @@ function QuotaRow({
         <TableCell alignment="right">
           <div className="flex justify-end">
             {canUpgrade ? (
-              <LinkButton to={billingPath} variant="tertiary/small">
+              <LinkButton to={billingPath} variant="secondary/small">
                 View plans
               </LinkButton>
             ) : (
@@ -584,7 +584,7 @@ function QuotaRow({
     if (!isOnTopPlan) {
       return (
         <div className="flex justify-end">
-          <LinkButton to={billingPath} variant="tertiary/small">
+          <LinkButton to={billingPath} variant="secondary/small">
             View plans
           </LinkButton>
         </div>
@@ -596,7 +596,7 @@ function QuotaRow({
       return (
         <div className="flex justify-end">
           <Feedback
-            button={<Button variant="tertiary/small">Contact us</Button>}
+            button={<Button variant="secondary/small">Contact us</Button>}
             defaultValue="help"
           />
         </div>
@@ -723,7 +723,7 @@ function FeatureRow({
       case "view-plans":
         return (
           <div className="flex justify-end">
-            <LinkButton to={billingPath} variant="tertiary/small">
+            <LinkButton to={billingPath} variant="secondary/small">
               View plans
             </LinkButton>
           </div>
@@ -732,7 +732,7 @@ function FeatureRow({
         return (
           <div className="flex justify-end">
             <Feedback
-              button={<Button variant="tertiary/small">Contact us</Button>}
+              button={<Button variant="secondary/small">Contact us</Button>}
               defaultValue="help"
             />
           </div>
