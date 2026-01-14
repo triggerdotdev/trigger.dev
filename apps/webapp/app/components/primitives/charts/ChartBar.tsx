@@ -54,6 +54,10 @@ export type ChartBarRendererProps = {
   maxLegendItems?: number;
   /** Use simple inline legend */
   simpleLegend?: boolean;
+  /** Width injected by ResponsiveContainer */
+  width?: number;
+  /** Height injected by ResponsiveContainer */
+  height?: number;
 };
 
 /**
@@ -77,6 +81,8 @@ export function ChartBarRenderer({
   showLegend = false,
   maxLegendItems = 5,
   simpleLegend = false,
+  width,
+  height,
 }: ChartBarRendererProps) {
   const { config, data, dataKey, dataKeys, state, highlight, zoom } = useChartContext();
   const hasNoData = useHasNoData();
@@ -119,6 +125,8 @@ export function ChartBarRenderer({
   return (
     <BarChart
       data={data}
+      width={width}
+      height={height}
       barCategoryGap={1}
       onMouseDown={zoomHandlers.onMouseDown}
       onMouseMove={(e: any) => {
@@ -164,7 +172,18 @@ export function ChartBarRenderer({
       />
       <ChartTooltip
         cursor={{ fill: "#2C3034" }}
-        content={tooltipLabelFormatter ? <ChartTooltipContent /> : <ZoomTooltip />}
+        content={
+          tooltipLabelFormatter ? (
+            <ChartTooltipContent />
+          ) : (
+            <ZoomTooltip
+              isSelecting={zoom?.isSelecting}
+              refAreaLeft={zoom?.refAreaLeft}
+              refAreaRight={zoom?.refAreaRight}
+              invalidSelection={zoom?.invalidSelection}
+            />
+          )
+        }
         labelFormatter={tooltipLabelFormatter}
         allowEscapeViewBox={{ x: false, y: true }}
       />
