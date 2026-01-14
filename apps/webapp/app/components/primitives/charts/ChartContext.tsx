@@ -1,0 +1,89 @@
+import React, { createContext, useContext, useMemo } from "react";
+import type { ChartConfig, ChartState } from "./Chart";
+import { useHighlightState, type UseHighlightStateReturn } from "./hooks/useHighlightState";
+import {
+  useZoomSelection,
+  type UseZoomSelectionReturn,
+  type ZoomRange,
+} from "./hooks/useZoomSelection";
+
+export type ChartContextValue = {
+  // Core data
+  config: ChartConfig;
+  data: any[];
+  dataKey: string;
+  /** Computed series keys (all config keys except dataKey) */
+  dataKeys: string[];
+
+  // Display state
+  state?: ChartState;
+
+  // Highlight state
+  highlight: UseHighlightStateReturn;
+
+  // Zoom state (only present when zoom is enabled)
+  zoom: UseZoomSelectionReturn | null;
+
+  // Zoom callback (only present when zoom is enabled)
+  onZoomChange?: (range: ZoomRange) => void;
+};
+
+const ChartCompoundContext = createContext<ChartContextValue | null>(null);
+
+export function useChartContext(): ChartContextValue {
+  const context = useContext(ChartCompoundContext);
+  if (!context) {
+    throw new Error("useChartContext must be used within a Chart.Root component");
+  }
+  return context;
+}
+
+export type ChartProviderProps = {
+  config: ChartConfig;
+  data: any[];
+  dataKey: string;
+  /** Series keys to render (if not provided, derived from config keys) */
+  series?: string[];
+  state?: ChartState;
+  /** Enable zoom functionality */
+  enableZoom?: boolean;
+  /** Callback when zoom range changes */
+  onZoomChange?: (range: ZoomRange) => void;
+  children: React.ReactNode;
+};
+
+export function ChartProvider({
+  config,
+  data,
+  dataKey,
+  series,
+  state,
+  enableZoom = false,
+  onZoomChange,
+  children,
+}: ChartProviderProps) {
+  const highlight = useHighlightState();
+  const zoomState = useZoomSelection();
+
+  // Compute series keys (use provided series or derive from config)
+  const dataKeys = useMemo(
+    () => series ?? Object.keys(config).filter((k) => k !== dataKey),
+    [series, config, dataKey]
+  );
+
+  const value = useMemo<ChartContextValue>(
+    () => ({
+      config,
+      data,
+      dataKey,
+      dataKeys,
+      state,
+      highlight,
+      zoom: enableZoom ? zoomState : null,
+      onZoomChange: enableZoom ? onZoomChange : undefined,
+    }),
+    [config, data, dataKey, dataKeys, state, highlight, zoomState, enableZoom, onZoomChange]
+  );
+
+  return <ChartCompoundContext.Provider value={value}>{children}</ChartCompoundContext.Provider>;
+}
