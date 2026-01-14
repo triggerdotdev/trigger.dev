@@ -117,17 +117,10 @@ function ChartsDashboard() {
         </div>
         <div className="flex w-fit items-center gap-4">
           <Paragraph variant="small/bright">
-            {zoomRange
-              ? `Zoomed: ${zoomRange.start} - ${zoomRange.end}`
-              : `Selected range: ${dateRange?.startDate} - ${dateRange?.endDate}`}
+            Current range: {dateRange?.startDate ? formatISODate(dateRange.startDate) : ""} -{" "}
+            {dateRange?.endDate ? formatISODate(dateRange.endDate) : ""}
           </Paragraph>
-          <Button
-            variant="secondary/small"
-            onClick={() => {
-              dateRange?.resetDateRange();
-              setZoomRange(null);
-            }}
-          >
+          <Button variant="secondary/small" onClick={() => dateRange?.resetDateRange()}>
             Reset Zoom
           </Button>
         </div>
@@ -156,7 +149,7 @@ function ChartsDashboard() {
           <Card.Content>
             <Chart.Root
               config={barChartBigDatasetConfig}
-              data={API_DATA.barChartBigDatasetData}
+              data={filteredBarData}
               dataKey="day"
               enableZoom
               onZoomChange={handleZoomChange}
@@ -171,6 +164,8 @@ function ChartsDashboard() {
                   value: 45000,
                   label: "Max concurrency",
                 }}
+                xAxisProps={{ tickFormatter: xAxisTickFormatter }}
+                tooltipLabelFormatter={tooltipLabelFormatter}
               />
             </Chart.Root>
           </Card.Content>
@@ -203,7 +198,7 @@ function ChartsDashboard() {
           <Card.Content>
             <ChartBar
               config={barChartConfig}
-              data={API_DATA.barChartData}
+              data={filteredBarData2}
               dataKey="day"
               stackId="a"
               enableZoom
@@ -334,72 +329,72 @@ const API_DATA = {
     endDate: new Date(2023, 10, 30), // November 30, 2023
   },
   lineChartData: [
-    { day: "Nov 1", "success-rate": 96.8, "failure-rate": 3.2 },
-    { day: "Nov 2", "success-rate": 95.3, "failure-rate": 4.7 },
-    { day: "Nov 3", "success-rate": 97.1, "failure-rate": 2.9 },
-    { day: "Nov 4", "success-rate": 94.5, "failure-rate": 5.5 },
-    { day: "Nov 5", "success-rate": 98.6, "failure-rate": 1.4 },
-    { day: "Nov 6", "success-rate": 97.8, "failure-rate": 2.2 },
-    { day: "Nov 7", "success-rate": 93.9, "failure-rate": 6.1 },
-    { day: "Nov 8", "success-rate": 95.7, "failure-rate": 4.3 },
-    { day: "Nov 9", "success-rate": 98.2, "failure-rate": 1.8 },
-    { day: "Nov 10", "success-rate": 96.5, "failure-rate": 3.5 },
-    { day: "Nov 11", "success-rate": 94.8, "failure-rate": 5.2 },
-    { day: "Nov 12", "success-rate": 99.1, "failure-rate": 0.9 },
-    { day: "Nov 13", "success-rate": 97.3, "failure-rate": 2.7 },
-    { day: "Nov 14", "success-rate": 95.9, "failure-rate": 4.1 },
-    { day: "Nov 15", "success-rate": 98.4, "failure-rate": 1.6 },
-    { day: "Nov 16", "success-rate": 96.2, "failure-rate": 3.8 },
-    { day: "Nov 17", "success-rate": 94.3, "failure-rate": 5.7 },
-    { day: "Nov 18", "success-rate": 97.5, "failure-rate": 2.5 },
-    { day: "Nov 19", "success-rate": 95.6, "failure-rate": 4.4 },
-    { day: "Nov 20", "success-rate": 98.9, "failure-rate": 1.1 },
-    { day: "Nov 21", "success-rate": 96.7, "failure-rate": 3.3 },
-    { day: "Nov 22", "success-rate": 95.1, "failure-rate": 4.9 },
-    { day: "Nov 23", "success-rate": 97.9, "failure-rate": 2.1 },
-    { day: "Nov 24", "success-rate": 94.7, "failure-rate": 5.3 },
-    { day: "Nov 25", "success-rate": 98.3, "failure-rate": 1.7 },
-    { day: "Nov 26", "success-rate": 96.4, "failure-rate": 3.6 },
-    { day: "Nov 27", "success-rate": 94.9, "failure-rate": 5.1 },
-    { day: "Nov 28", "success-rate": 97.7, "failure-rate": 2.3 },
-    { day: "Nov 29", "success-rate": 95.4, "failure-rate": 4.6 },
-    { day: "Nov 30", "success-rate": 98.8, "failure-rate": 1.2 },
+    { day: "2023-11-01", "success-rate": 96.8, "failure-rate": 3.2 },
+    { day: "2023-11-02", "success-rate": 95.3, "failure-rate": 4.7 },
+    { day: "2023-11-03", "success-rate": 97.1, "failure-rate": 2.9 },
+    { day: "2023-11-04", "success-rate": 94.5, "failure-rate": 5.5 },
+    { day: "2023-11-05", "success-rate": 98.6, "failure-rate": 1.4 },
+    { day: "2023-11-06", "success-rate": 97.8, "failure-rate": 2.2 },
+    { day: "2023-11-07", "success-rate": 93.9, "failure-rate": 6.1 },
+    { day: "2023-11-08", "success-rate": 95.7, "failure-rate": 4.3 },
+    { day: "2023-11-09", "success-rate": 98.2, "failure-rate": 1.8 },
+    { day: "2023-11-10", "success-rate": 96.5, "failure-rate": 3.5 },
+    { day: "2023-11-11", "success-rate": 94.8, "failure-rate": 5.2 },
+    { day: "2023-11-12", "success-rate": 99.1, "failure-rate": 0.9 },
+    { day: "2023-11-13", "success-rate": 97.3, "failure-rate": 2.7 },
+    { day: "2023-11-14", "success-rate": 95.9, "failure-rate": 4.1 },
+    { day: "2023-11-15", "success-rate": 98.4, "failure-rate": 1.6 },
+    { day: "2023-11-16", "success-rate": 96.2, "failure-rate": 3.8 },
+    { day: "2023-11-17", "success-rate": 94.3, "failure-rate": 5.7 },
+    { day: "2023-11-18", "success-rate": 97.5, "failure-rate": 2.5 },
+    { day: "2023-11-19", "success-rate": 95.6, "failure-rate": 4.4 },
+    { day: "2023-11-20", "success-rate": 98.9, "failure-rate": 1.1 },
+    { day: "2023-11-21", "success-rate": 96.7, "failure-rate": 3.3 },
+    { day: "2023-11-22", "success-rate": 95.1, "failure-rate": 4.9 },
+    { day: "2023-11-23", "success-rate": 97.9, "failure-rate": 2.1 },
+    { day: "2023-11-24", "success-rate": 94.7, "failure-rate": 5.3 },
+    { day: "2023-11-25", "success-rate": 98.3, "failure-rate": 1.7 },
+    { day: "2023-11-26", "success-rate": 96.4, "failure-rate": 3.6 },
+    { day: "2023-11-27", "success-rate": 94.9, "failure-rate": 5.1 },
+    { day: "2023-11-28", "success-rate": 97.7, "failure-rate": 2.3 },
+    { day: "2023-11-29", "success-rate": 95.4, "failure-rate": 4.6 },
+    { day: "2023-11-30", "success-rate": 98.8, "failure-rate": 1.2 },
   ],
   barChartData: [
-    { day: "Nov 1", completed: 3245, "in-progress": 4321, canceled: 657, failed: 2987 },
-    { day: "Nov 2", completed: 4567, "in-progress": 3789, canceled: 879, failed: 3456 },
-    { day: "Nov 3", completed: 5432, "in-progress": 4567, canceled: 1234, failed: 2345 },
-    { day: "Nov 4", completed: 0, "in-progress": 5678, canceled: 0, failed: 3678 },
-    { day: "Nov 5", completed: 6789, "in-progress": 3456, canceled: 2345, failed: 4321 },
-    { day: "Nov 6", completed: 3456, "in-progress": 6543, canceled: 1567, failed: 2987 },
-    { day: "Nov 7", completed: 6543, "in-progress": 3456, canceled: 2345, failed: 3456 },
-    { day: "Nov 8", completed: 0, "in-progress": 7654, canceled: 0, failed: 4567 },
-    { day: "Nov 9", completed: 8765, "in-progress": 3245, canceled: 3456, failed: 2109 },
-    { day: "Nov 10", completed: 5432, "in-progress": 6543, canceled: 2109, failed: 3456 },
-    { day: "Nov 11", completed: 3245, "in-progress": 5432, canceled: 1234, failed: 3987 },
-    { day: "Nov 12", completed: 0, "in-progress": 6543, canceled: 0, failed: 3456 },
-    { day: "Nov 13", completed: 7654, "in-progress": 3456, canceled: 2345, failed: 2987 },
-    { day: "Nov 14", completed: 5432, "in-progress": 5432, canceled: 3456, failed: 3421 },
-    { day: "Nov 15", completed: 6543, "in-progress": 4321, canceled: 2109, failed: 2345 },
-    { day: "Nov 16", completed: 0, "in-progress": 7654, canceled: 0, failed: 4567 },
-    { day: "Nov 17", completed: 8765, "in-progress": 3456, canceled: 3421, failed: 2987 },
-    { day: "Nov 18", completed: 5432, "in-progress": 5432, canceled: 2345, failed: 3456 },
-    { day: "Nov 19", completed: 4321, "in-progress": 6543, canceled: 1567, failed: 2987 },
-    { day: "Nov 20", completed: 0, "in-progress": 7654, canceled: 0, failed: 3678 },
-    { day: "Nov 21", completed: 4532, "in-progress": 3456, canceled: 1200, failed: 2876 },
-    { day: "Nov 22", completed: 6789, "in-progress": 4567, canceled: 2345, failed: 3456 },
-    { day: "Nov 23", completed: 5432, "in-progress": 6543, canceled: 0, failed: 2109 },
-    { day: "Nov 24", completed: 6543, "in-progress": 0, canceled: 2345, failed: 0 },
-    { day: "Nov 25", completed: 5432, "in-progress": 0, canceled: 0, failed: 2345 },
-    { day: "Nov 26", completed: 6543, "in-progress": 6543, canceled: 0, failed: 0 },
-    { day: "Nov 27", completed: 8765, "in-progress": 3456, canceled: 0, failed: 5678 },
-    { day: "Nov 28", completed: 5432, "in-progress": 5678, canceled: 4567, failed: 2345 },
-    { day: "Nov 29", completed: 0, "in-progress": 4567, canceled: 2345, failed: 3456 },
-    { day: "Nov 30", completed: 7654, "in-progress": 3456, canceled: 5678, failed: 2345 },
+    { day: "2023-11-01", completed: 3245, "in-progress": 4321, canceled: 657, failed: 2987 },
+    { day: "2023-11-02", completed: 4567, "in-progress": 3789, canceled: 879, failed: 3456 },
+    { day: "2023-11-03", completed: 5432, "in-progress": 4567, canceled: 1234, failed: 2345 },
+    { day: "2023-11-04", completed: 0, "in-progress": 5678, canceled: 0, failed: 3678 },
+    { day: "2023-11-05", completed: 6789, "in-progress": 3456, canceled: 2345, failed: 4321 },
+    { day: "2023-11-06", completed: 3456, "in-progress": 6543, canceled: 1567, failed: 2987 },
+    { day: "2023-11-07", completed: 6543, "in-progress": 3456, canceled: 2345, failed: 3456 },
+    { day: "2023-11-08", completed: 0, "in-progress": 7654, canceled: 0, failed: 4567 },
+    { day: "2023-11-09", completed: 8765, "in-progress": 3245, canceled: 3456, failed: 2109 },
+    { day: "2023-11-10", completed: 5432, "in-progress": 6543, canceled: 2109, failed: 3456 },
+    { day: "2023-11-11", completed: 3245, "in-progress": 5432, canceled: 1234, failed: 3987 },
+    { day: "2023-11-12", completed: 0, "in-progress": 6543, canceled: 0, failed: 3456 },
+    { day: "2023-11-13", completed: 7654, "in-progress": 3456, canceled: 2345, failed: 2987 },
+    { day: "2023-11-14", completed: 5432, "in-progress": 5432, canceled: 3456, failed: 3421 },
+    { day: "2023-11-15", completed: 6543, "in-progress": 4321, canceled: 2109, failed: 2345 },
+    { day: "2023-11-16", completed: 0, "in-progress": 7654, canceled: 0, failed: 4567 },
+    { day: "2023-11-17", completed: 8765, "in-progress": 3456, canceled: 3421, failed: 2987 },
+    { day: "2023-11-18", completed: 5432, "in-progress": 5432, canceled: 2345, failed: 3456 },
+    { day: "2023-11-19", completed: 4321, "in-progress": 6543, canceled: 1567, failed: 2987 },
+    { day: "2023-11-20", completed: 0, "in-progress": 7654, canceled: 0, failed: 3678 },
+    { day: "2023-11-21", completed: 4532, "in-progress": 3456, canceled: 1200, failed: 2876 },
+    { day: "2023-11-22", completed: 6789, "in-progress": 4567, canceled: 2345, failed: 3456 },
+    { day: "2023-11-23", completed: 5432, "in-progress": 6543, canceled: 0, failed: 2109 },
+    { day: "2023-11-24", completed: 6543, "in-progress": 0, canceled: 2345, failed: 0 },
+    { day: "2023-11-25", completed: 5432, "in-progress": 0, canceled: 0, failed: 2345 },
+    { day: "2023-11-26", completed: 6543, "in-progress": 6543, canceled: 0, failed: 0 },
+    { day: "2023-11-27", completed: 8765, "in-progress": 3456, canceled: 0, failed: 5678 },
+    { day: "2023-11-28", completed: 5432, "in-progress": 5678, canceled: 4567, failed: 2345 },
+    { day: "2023-11-29", completed: 0, "in-progress": 4567, canceled: 2345, failed: 3456 },
+    { day: "2023-11-30", completed: 7654, "in-progress": 3456, canceled: 5678, failed: 2345 },
   ],
   barChartBigDatasetData: [
     {
-      day: "Nov 1",
+      day: "2023-11-01",
       "sync-data": 6543,
       "process-image": 3245,
       "upload-file": 8765,
@@ -410,7 +405,7 @@ const API_DATA = {
       "analyze-document": 3245,
     },
     {
-      day: "Nov 2",
+      day: "2023-11-02",
       "sync-data": 5432,
       "process-image": 0,
       "upload-file": 6789,
@@ -421,7 +416,7 @@ const API_DATA = {
       "analyze-document": 2345,
     },
     {
-      day: "Nov 3",
+      day: "2023-11-03",
       "sync-data": 7654,
       "process-image": 5432,
       "upload-file": 0,
@@ -432,7 +427,7 @@ const API_DATA = {
       "analyze-document": 6543,
     },
     {
-      day: "Nov 4",
+      day: "2023-11-04",
       "sync-data": 3456,
       "process-image": 6543,
       "upload-file": 7654,
@@ -443,7 +438,7 @@ const API_DATA = {
       "analyze-document": 4567,
     },
     {
-      day: "Nov 5",
+      day: "2023-11-05",
       "sync-data": 0,
       "process-image": 8765,
       "upload-file": 4567,
@@ -454,7 +449,7 @@ const API_DATA = {
       "analyze-document": 7654,
     },
     {
-      day: "Nov 6",
+      day: "2023-11-06",
       "sync-data": 6789,
       "process-image": 4321,
       "upload-file": 5432,
@@ -465,7 +460,7 @@ const API_DATA = {
       "analyze-document": 3456,
     },
     {
-      day: "Nov 7",
+      day: "2023-11-07",
       "sync-data": 7654,
       "process-image": 0,
       "upload-file": 6789,
@@ -476,7 +471,7 @@ const API_DATA = {
       "analyze-document": 0,
     },
     {
-      day: "Nov 8",
+      day: "2023-11-08",
       "sync-data": 5678,
       "process-image": 6543,
       "upload-file": 0,
@@ -487,7 +482,7 @@ const API_DATA = {
       "analyze-document": 7654,
     },
     {
-      day: "Nov 9",
+      day: "2023-11-09",
       "sync-data": 0,
       "process-image": 7654,
       "upload-file": 5432,
@@ -498,7 +493,7 @@ const API_DATA = {
       "analyze-document": 5432,
     },
     {
-      day: "Nov 10",
+      day: "2023-11-10",
       "sync-data": 8765,
       "process-image": 5432,
       "upload-file": 7654,
@@ -509,7 +504,7 @@ const API_DATA = {
       "analyze-document": 6543,
     },
     {
-      day: "Nov 11",
+      day: "2023-11-11",
       "sync-data": 6543,
       "process-image": 0,
       "upload-file": 8765,
@@ -520,7 +515,7 @@ const API_DATA = {
       "analyze-document": 8765,
     },
     {
-      day: "Nov 12",
+      day: "2023-11-12",
       "sync-data": 5432,
       "process-image": 7654,
       "upload-file": 0,
@@ -531,7 +526,7 @@ const API_DATA = {
       "analyze-document": 5432,
     },
     {
-      day: "Nov 13",
+      day: "2023-11-13",
       "sync-data": 0,
       "process-image": 6543,
       "upload-file": 7654,
@@ -542,7 +537,7 @@ const API_DATA = {
       "analyze-document": 7654,
     },
     {
-      day: "Nov 14",
+      day: "2023-11-14",
       "sync-data": 7654,
       "process-image": 5432,
       "upload-file": 6543,
@@ -553,7 +548,7 @@ const API_DATA = {
       "analyze-document": 0,
     },
     {
-      day: "Nov 15",
+      day: "2023-11-15",
       "sync-data": 6543,
       "process-image": 0,
       "upload-file": 8765,
@@ -564,7 +559,7 @@ const API_DATA = {
       "analyze-document": 7654,
     },
     {
-      day: "Nov 16",
+      day: "2023-11-16",
       "sync-data": 5432,
       "process-image": 7654,
       "upload-file": 0,
@@ -575,7 +570,7 @@ const API_DATA = {
       "analyze-document": 5432,
     },
     {
-      day: "Nov 17",
+      day: "2023-11-17",
       "sync-data": 0,
       "process-image": 6543,
       "upload-file": 7654,
@@ -586,7 +581,7 @@ const API_DATA = {
       "analyze-document": 0,
     },
     {
-      day: "Nov 18",
+      day: "2023-11-18",
       "sync-data": 8765,
       "process-image": 0,
       "upload-file": 6543,
@@ -597,7 +592,7 @@ const API_DATA = {
       "analyze-document": 7654,
     },
     {
-      day: "Nov 19",
+      day: "2023-11-19",
       "sync-data": 5432,
       "process-image": 7654,
       "upload-file": 0,
@@ -608,7 +603,7 @@ const API_DATA = {
       "analyze-document": 5432,
     },
     {
-      day: "Nov 20",
+      day: "2023-11-20",
       "sync-data": 6543,
       "process-image": 5432,
       "upload-file": 7654,
@@ -619,7 +614,7 @@ const API_DATA = {
       "analyze-document": 0,
     },
     {
-      day: "Nov 21",
+      day: "2023-11-21",
       "sync-data": 8765,
       "process-image": 4532,
       "upload-file": 0,
@@ -630,7 +625,7 @@ const API_DATA = {
       "analyze-document": 7654,
     },
     {
-      day: "Nov 22",
+      day: "2023-11-22",
       "sync-data": 5432,
       "process-image": 0,
       "upload-file": 6789,
@@ -641,7 +636,7 @@ const API_DATA = {
       "analyze-document": 5678,
     },
     {
-      day: "Nov 23",
+      day: "2023-11-23",
       "sync-data": 0,
       "process-image": 6789,
       "upload-file": 4567,
@@ -652,7 +647,7 @@ const API_DATA = {
       "analyze-document": 5432,
     },
     {
-      day: "Nov 24",
+      day: "2023-11-24",
       "sync-data": 9876,
       "process-image": 3456,
       "upload-file": 5678,
@@ -663,7 +658,7 @@ const API_DATA = {
       "analyze-document": 0,
     },
     {
-      day: "Nov 25",
+      day: "2023-11-25",
       "sync-data": 5432,
       "process-image": 0,
       "upload-file": 8765,
@@ -674,7 +669,7 @@ const API_DATA = {
       "analyze-document": 7654,
     },
     {
-      day: "Nov 26",
+      day: "2023-11-26",
       "sync-data": 0,
       "process-image": 7654,
       "upload-file": 3456,
@@ -685,7 +680,7 @@ const API_DATA = {
       "analyze-document": 5678,
     },
     {
-      day: "Nov 27",
+      day: "2023-11-27",
       "sync-data": 8765,
       "process-image": 3456,
       "upload-file": 0,
@@ -696,7 +691,7 @@ const API_DATA = {
       "analyze-document": 6789,
     },
     {
-      day: "Nov 28",
+      day: "2023-11-28",
       "sync-data": 5678,
       "process-image": 0,
       "upload-file": 7654,
@@ -707,7 +702,7 @@ const API_DATA = {
       "analyze-document": 0,
     },
     {
-      day: "Nov 29",
+      day: "2023-11-29",
       "sync-data": 0,
       "process-image": 8765,
       "upload-file": 3456,
@@ -718,7 +713,7 @@ const API_DATA = {
       "analyze-document": 7654,
     },
     {
-      day: "Nov 30",
+      day: "2023-11-30",
       "sync-data": 7654,
       "process-image": 3456,
       "upload-file": 5678,
