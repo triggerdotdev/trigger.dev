@@ -129,15 +129,11 @@ export class LimitsPresenter extends BasePresenter {
       ? "override"
       : "default";
 
-    // Get schedule count for this org
+    // Get schedule count for this org (via project relation which has an index)
     const scheduleCount = await this._replica.taskSchedule.count({
       where: {
-        instances: {
-          some: {
-            environment: {
-              organizationId,
-            },
-          },
+        project: {
+          organizationId,
         },
       },
     });
