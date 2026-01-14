@@ -5,24 +5,24 @@ import { z } from "zod";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
 import { Button } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormTitle } from "~/components/primitives/FormTitle";
-import { Select, SelectItem, SelectGroup, SelectGroupLabel } from "~/components/primitives/Select";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { confirmBasicDetailsPath, v3ProjectSettingsPath, newProjectPath } from "~/utils/pathBuilder";
+import { confirmBasicDetailsPath, newProjectPath } from "~/utils/pathBuilder";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
-import { env } from "~/env.server";
-
+import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 
 const LoaderParamsSchema = z.object({
   organizationId: z.string().optional().nullable(),
   code: z.string(),
-  configurationId: z.string(),
+  configurationId: z.string().optional().nullable(),
   next: z.string().optional().nullable(),
+  error: z.string().optional().nullable(),
 });
 
 const SelectOrgActionSchema = z.object({
@@ -47,67 +47,6 @@ const ActionSchema = z.discriminatedUnion("action", [
   SelectProjectActionSchema,
 ]);
 
-type TokenResponse = {
-  accessToken: string;
-  tokenType: string;
-  teamId?: string;
-  userId?: string;
-  raw: Record<string, unknown>;
-};
-
-async function exchangeCodeForToken(code: string): Promise<TokenResponse | null> {
-  const clientId = env.VERCEL_INTEGRATION_CLIENT_ID;
-  const clientSecret = env.VERCEL_INTEGRATION_CLIENT_SECRET;
-  const redirectUri = `${env.APP_ORIGIN}/callback/vercel`;
-
-  if (!clientId || !clientSecret) {
-    logger.error("Vercel integration not configured");
-    return null;
-  }
-
-  try {
-    const response = await fetch("https://api.vercel.com/v2/oauth/access_token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        code,
-        redirect_uri: redirectUri,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      logger.error("Failed to exchange Vercel OAuth code", {
-        status: response.status,
-        error: errorText,
-      });
-      return null;
-    }
-
-    const data = (await response.json()) as {
-      access_token: string;
-      token_type: string;
-      team_id?: string;
-      user_id?: string;
-    };
-
-    return {
-      accessToken: data.access_token,
-      tokenType: data.token_type,
-      teamId: data.team_id,
-      userId: data.user_id,
-      raw: data as Record<string, unknown>,
-    };
-  } catch (error) {
-    logger.error("Error exchanging Vercel OAuth code", { error });
-    return null;
-  }
-}
-
 export async function loader({ request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
   const url = new URL(request.url);
@@ -117,6 +56,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     code: url.searchParams.get("code"),
     configurationId: url.searchParams.get("configurationId"),
     next: url.searchParams.get("next"),
+    error: url.searchParams.get("error"),
   });
 
   if (!params.success) {
@@ -126,6 +66,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
       request,
       "Invalid installation parameters. Please try again from Vercel."
     );
+  }
+
+  const { error } = params.data;
+  if (error === "expired") {
+    return json({
+      step: "error" as const,
+      error: "Your installation session has expired. Please start the installation again.",
+      code: params.data.code,
+      configurationId: params.data.configurationId,
+      next: params.data.next,
+    });
   }
 
   const organizations = await prisma.organization.findMany({
@@ -158,6 +109,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     },
   });
 
+  // New user: no organizations
   if (organizations.length === 0) {
     const onboardingParams = new URLSearchParams({
       code: params.data.code,
@@ -196,21 +148,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
     });
   }
 
-  // Single org - automatically move to project selection
-  if (organizations.length === 1) {
-    const singleOrg = organizations[0];
-    const projectParams = new URLSearchParams({
-      organizationId: singleOrg.id,
-      code: params.data.code,
-      configurationId: params.data.configurationId,
-    });
-    if (params.data.next) {
-      projectParams.set("next", params.data.next);
-    }
-    return redirect(`/onboarding/vercel?${projectParams.toString()}`);
-  }
-
-  // Multiple orgs - show org selection
   return json({
     step: "org" as const,
     organizations,
@@ -252,13 +189,12 @@ export async function action({ request }: ActionFunctionArgs) {
       projectParams.set("next", next);
     }
 
-    return redirect(`/onboarding/vercel?${projectParams.toString()}`);
+    return redirect(`/vercel/onboarding?${projectParams.toString()}`);
   }
 
   // Handle project selection
   const { projectId, organizationId } = submission.data;
 
-  // Install integration with selected project
   const project = await prisma.project.findFirst({
     where: {
       id: projectId,
@@ -275,16 +211,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (!project) {
     logger.error("Project not found or access denied", { projectId, userId });
-    return redirectWithErrorMessage("/", request, "Project not found.");
-  }
-
-  const tokenResponse = await exchangeCodeForToken(code);
-  if (!tokenResponse) {
-    return redirectWithErrorMessage(
-      "/",
-      request,
-      "Failed to connect to Vercel. Your session may have expired. Please try again from Vercel."
-    );
+    return json({ error: "Project not found" }, { status: 404 });
   }
 
   const environment = await prisma.runtimeEnvironment.findFirst({
@@ -296,80 +223,33 @@ export async function action({ request }: ActionFunctionArgs) {
   });
 
   if (!environment) {
-    return redirectWithErrorMessage(
-      "/",
-      request,
-      "Failed to find project environment. Please try again."
-    );
+    logger.error("Environment not found", { projectId: project.id });
+    return json({ error: "Environment not found" }, { status: 404 });
   }
 
   try {
-    let orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationByTeamId(
-      project.organizationId,
-      tokenResponse.teamId ?? null
-    );
-
-    if (orgIntegration) {
-      await VercelIntegrationRepository.updateVercelOrgIntegrationToken({
-        integrationId: orgIntegration.id,
-        accessToken: tokenResponse.accessToken,
-        tokenType: tokenResponse.tokenType,
-        teamId: tokenResponse.teamId ?? null,
-        userId: tokenResponse.userId,
-        installationId: configurationId,
-        raw: tokenResponse.raw,
-      });
-
-      orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationByTeamId(
-        project.organizationId,
-        tokenResponse.teamId ?? null
-      );
-    } else {
-      await VercelIntegrationRepository.createVercelOrgIntegration({
-        accessToken: tokenResponse.accessToken,
-        tokenType: tokenResponse.tokenType,
-        teamId: tokenResponse.teamId ?? null,
-        userId: tokenResponse.userId,
-        installationId: configurationId,
-        organization: project.organization,
-        raw: tokenResponse.raw,
-      });
-
-      orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationByTeamId(
-        project.organizationId,
-        tokenResponse.teamId ?? null
-      );
-    }
-
-    if (!orgIntegration) {
-      throw new Error("Failed to create or find Vercel organization integration");
-    }
-
-    logger.info("Vercel organization integration created successfully", {
+    const state = await generateVercelOAuthState({
       organizationId: project.organizationId,
       projectId: project.id,
-      teamId: tokenResponse.teamId,
+      environmentSlug: environment.slug,
+      organizationSlug: project.organization.slug,
+      projectSlug: project.slug,
     });
 
-    const settingsPath = v3ProjectSettingsPath(
-      { slug: project.organization.slug },
-      { slug: project.slug },
-      { slug: environment.slug }
-    );
-
-    const params = new URLSearchParams({ vercelOnboarding: "true", fromMarketplace: "true" });
+    const params = new URLSearchParams({
+      state,
+      code,
+      configurationId,
+      origin: "marketplace",
+    });
     if (next) {
       params.set("next", next);
     }
 
-    return redirect(`${settingsPath}?${params.toString()}`);
+    return redirect(`/vercel/connect?${params.toString()}`);
   } catch (error) {
-    logger.error("Failed to create Vercel integration", { error });
-    return redirectWithErrorMessage(
-      "/",
-      request,
-      "Failed to create Vercel integration. Please try again."
-    );
+    logger.error("Failed to generate Vercel OAuth state", { error });
+    return json({ error: "Failed to generate installation state" }, { status: 500 });
   }
 }
 
@@ -377,6 +257,25 @@ export default function VercelOnboardingPage() {
   const data = useLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
+
+  if (data.step === "error") {
+    return (
+      <AppContainer className="bg-charcoal-900">
+        <BackgroundWrapper>
+          <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+            <FormTitle title="Installation Expired" description={data.error} />
+            <Button
+              variant="primary/medium"
+              onClick={() => window.close()}
+              className="w-full"
+            >
+              Close
+            </Button>
+          </MainCenteredContainer>
+        </BackgroundWrapper>
+      </AppContainer>
+    );
+  }
 
   if (data.step === "org") {
     return (
@@ -439,7 +338,6 @@ export default function VercelOnboardingPage() {
                       Continue
                     </Button>
                   </div>
-                    
                 </div>
               </Fieldset>
             </Form>
@@ -449,7 +347,6 @@ export default function VercelOnboardingPage() {
     );
   }
 
-  // Project selection step
   return (
     <AppContainer className="bg-charcoal-900">
       <BackgroundWrapper>

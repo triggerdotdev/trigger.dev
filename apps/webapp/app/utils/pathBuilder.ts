@@ -164,7 +164,7 @@ export function vercelAppInstallPath(organizationSlug: string, projectSlug: stri
 }
 
 export function vercelCallbackPath() {
-  return `/callback/vercel`;
+  return `/vercel/callback`;
 }
 
 export function vercelResourcePath(

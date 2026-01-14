@@ -90,7 +90,7 @@ export class OrgIntegrationRepository {
     !!env.ORG_SLACK_INTEGRATION_CLIENT_ID && !!env.ORG_SLACK_INTEGRATION_CLIENT_SECRET;
 
   static isVercelSupported =
-    !!env.VERCEL_INTEGRATION_CLIENT_ID && !!env.VERCEL_INTEGRATION_CLIENT_SECRET;
+    !!env.VERCEL_INTEGRATION_CLIENT_ID && !!env.VERCEL_INTEGRATION_CLIENT_SECRET && !!env.VERCEL_INTEGRATION_APP_SLUG;
 
   /**
    * Generate the URL to install the Vercel integration.
@@ -101,8 +101,8 @@ export class OrgIntegrationRepository {
   static vercelInstallUrl(state: string): string {
     // The user goes to Vercel's marketplace to install the integration
     // After installation, Vercel redirects to our callback with the authorization code
-    const redirectUri = encodeURIComponent(`${env.APP_ORIGIN}/callback/vercel`);
-    return `https://vercel.com/integrations/trigger/new?state=${state}&redirect_uri=${redirectUri}`;
+    const redirectUri = encodeURIComponent(`${env.APP_ORIGIN}/vercel/callback`);
+    return `https://vercel.com/integrations/${env.VERCEL_INTEGRATION_APP_SLUG}/new?state=${state}&redirect_uri=${redirectUri}`;
   }
 
   static slackAuthorizationUrl(

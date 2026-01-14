@@ -676,6 +676,7 @@ export class VercelIntegrationRepository {
     installationId?: string;
     organization: Pick<Organization, "id">;
     raw?: Record<string, any>;
+    origin: 'marketplace' | 'dashboard';
   }): Promise<OrganizationIntegration> {
     const result = await $transaction(prisma, async (tx) => {
       const secretStore = getSecretStore("DATABASE", {
@@ -718,6 +719,7 @@ export class VercelIntegrationRepository {
             teamId: params.teamId,
             userId: params.userId,
             installationId: params.installationId,
+            origin: params.origin,
           } as any,
         },
       });

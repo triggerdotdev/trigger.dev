@@ -8,6 +8,9 @@ const SearchParamsSchema = z.object({
   configurationId: z.string(),
 });
 
+/**
+ * Endpoint to handle Vercel integration configuration request coming from marketplace
+ */
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const searchParams = Object.fromEntries(url.searchParams);

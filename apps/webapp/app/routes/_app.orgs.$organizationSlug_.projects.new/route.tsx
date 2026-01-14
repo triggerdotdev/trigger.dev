@@ -33,6 +33,7 @@ import {
   v3ProjectPath,
   v3ProjectSettingsPath,
 } from "~/utils/pathBuilder";
+import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -118,19 +119,42 @@ export const action: ActionFunction = async ({ request, params }) => {
       version: submission.value.projectVersion,
     });
 
-    // If this is a Vercel integration flow, redirect back to callback
+    // If this is a Vercel integration flow, generate state and redirect to connect
     if (code && configurationId) {
-      const params = new URLSearchParams({
-        code,
-        configurationId,
+      const environment = await prisma.runtimeEnvironment.findFirst({
+        where: {
+          projectId: project.id,
+          slug: "prod",
+          archivedAt: null,
+        },
+      });
+
+      if (!environment) {
+        return redirectWithErrorMessage(
+          newProjectPath({ slug: organizationSlug }),
+          request,
+          "Failed to find project environment."
+        );
+      }
+
+      const state = await generateVercelOAuthState({
         organizationId: project.organization.id,
         projectId: project.id,
+        environmentSlug: environment.slug,
+        organizationSlug: project.organization.slug,
+        projectSlug: project.slug,
+      });
+
+      const params = new URLSearchParams({
+        state,
+        code,
+        configurationId,
+        origin: "marketplace",
       });
       if (next) {
         params.set("next", next);
       }
-      const callbackUrl = `/callback/vercel?${params.toString()}`;
-      return redirect(callbackUrl);
+      return redirect(`/vercel/connect?${params.toString()}`);
     }
 
     return redirectWithSuccessMessage(

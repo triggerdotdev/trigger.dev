@@ -1,4 +1,4 @@
-import { conform, useForm } from "@conform-to/react";
+import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import {
   CheckCircleIcon,
@@ -39,21 +39,23 @@ import { Switch } from "~/components/primitives/Switch";
 import { TextLink } from "~/components/primitives/TextLink";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider
+} from "~/components/primitives/Tooltip";
+import {
   redirectBackWithErrorMessage,
-  redirectBackWithSuccessMessage,
   redirectWithSuccessMessage,
   redirectWithErrorMessage,
 } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema, v3ProjectSettingsPath, vercelAppInstallPath } from "~/utils/pathBuilder";
-import { cn } from "~/utils/cn";
 import {
   VercelSettingsPresenter,
-  type VercelSettingsResult,
   type VercelOnboardingData,
 } from "~/presenters/v3/VercelSettingsPresenter.server";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
@@ -67,6 +69,20 @@ import {
   shouldSyncEnvVarForAnyEnvironment,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { useEffect, useState, useCallback, useRef } from "react";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
+
+function shortEnvironmentLabel(environment: RuntimeEnvironmentType) {
+  switch (environment) {
+    case "PRODUCTION":
+      return "Prod";
+    case "STAGING":
+      return "Staging";
+    case "DEVELOPMENT":
+      return "Dev";
+    case "PREVIEW":
+      return "Preview";
+  }
+}
 
 export type ConnectedVercelProject = {
   id: string;
@@ -275,6 +291,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json(submission);
   }
 
+  const settingsPath = v3ProjectSettingsPath(
+    { slug: organizationSlug },
+    { slug: projectParam },
+    { slug: envParam }
+  );
+
   const vercelService = new VercelIntegrationService();
   const { action: actionType } = submission.value;
 
@@ -302,12 +324,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
       vercelStagingName: stagingName,
     });
 
-    const settingsPath = v3ProjectSettingsPath(
-      { slug: organizationSlug },
-      { slug: projectParam },
-      { slug: envParam }
-    );
-
     if (result) {
       return redirectWithSuccessMessage(settingsPath, request, "Vercel settings updated successfully");
     }
@@ -318,12 +334,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // Handle disconnect action
   if (actionType === "disconnect") {
     const success = await vercelService.disconnectVercelProject(project.id);
-
-    const settingsPath = v3ProjectSettingsPath(
-      { slug: organizationSlug },
-      { slug: projectParam },
-      { slug: envParam }
-    );
 
     if (success) {
       return redirectWithSuccessMessage(settingsPath, request, "Vercel project disconnected");
@@ -382,20 +392,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
       }
 
       // Default redirect to settings page without the vercelOnboarding param to close the modal
-      const settingsPath = v3ProjectSettingsPath(
-        { slug: organizationSlug },
-        { slug: projectParam },
-        { slug: envParam }
-      );
       // Return JSON with redirect URL for fetcher to handle
       return json({ success: true, redirectTo: settingsPath });
     }
 
-    const settingsPath = v3ProjectSettingsPath(
-      { slug: organizationSlug },
-      { slug: projectParam },
-      { slug: envParam }
-    );
     return redirectWithErrorMessage(settingsPath, request, "Failed to complete Vercel setup");
   }
 
@@ -423,11 +423,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   // Handle skip-onboarding action
   if (actionType === "skip-onboarding") {
-    const settingsPath = v3ProjectSettingsPath(
-      { slug: organizationSlug },
-      { slug: projectParam },
-      { slug: envParam }
-    );
     return redirectWithSuccessMessage(settingsPath, request, "Vercel integration setup skipped");
   }
 
@@ -1044,12 +1039,13 @@ function VercelOnboardingModal({
   const completeOnboardingFetcher = useFetcher();
   const { Form: CompleteOnboardingForm } = completeOnboardingFetcher;
   const [searchParams] = useSearchParams();
-  const fromMarketplaceContext = searchParams.get("fromMarketplace") === "true";
+  const fromMarketplaceContext = searchParams.get("origin") === "marketplace";
 
   const availableProjects = onboardingData?.availableProjects || [];
   const hasProjectSelected = onboardingData?.hasProjectSelected ?? false;
   const customEnvironments = onboardingData?.customEnvironments || [];
   const envVars = onboardingData?.environmentVariables || [];
+  const existingVars = onboardingData?.existingVariables || {};
   const hasCustomEnvs = customEnvironments.length > 0 && hasStagingEnvironment;
 
   const computeInitialState = useCallback((): OnboardingState => {
@@ -1196,6 +1192,8 @@ function VercelOnboardingModal({
   const enabledEnvVars = syncableEnvVars.filter(
     (v) => shouldSyncEnvVarForAnyEnvironment(syncEnvVarsMapping, v.key)
   );
+
+  const overlappingEnvVarsCount = enabledEnvVars.filter((v) => existingVars[v.key]).length;
 
   const isSubmitting =
     navigation.state === "submitting" || navigation.state === "loading";
@@ -1546,7 +1544,7 @@ function VercelOnboardingModal({
                 name="syncEnvVarsMapping"
                 value={JSON.stringify(syncEnvVarsMapping)}
               />
-              {nextUrl && (
+              {nextUrl && !fromMarketplaceContext && (
                 <input
                   type="hidden"
                   name="next"
@@ -1584,6 +1582,18 @@ function VercelOnboardingModal({
                     onCheckedChange={handleToggleAll}
                   />
                 </div>
+                {overlappingEnvVarsCount > 0 && (
+                  <div className="flex items-center gap-2">
+                    <ExclamationTriangleIcon className="h-4 w-4 text-amber-500" />
+                    <span className="text-xs text-text-dimmed">
+                      {overlappingEnvVarsCount} env vars are going to be updated (marked with{" "}
+                      <span className="underline decoration-yellow-500 decoration-dotted underline-offset-2">
+                        underline
+                      </span>
+                      )
+                    </span>
+                  </div>
+                )}
 
                 {/* Expandable env var list */}
                 {pullEnvVarsFromVercel && envVars.length > 0 && (
@@ -1611,7 +1621,26 @@ function VercelOnboardingModal({
                             className="flex items-center justify-between gap-2 border-b px-3 py-2 last:border-b-0"
                           >
                             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                              <span className="truncate font-mono text-xs">{envVar.key}</span>
+                              {existingVars[envVar.key] ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger className="min-w-0 max-w-full cursor-default text-left">
+                                      <div className="truncate font-mono text-xs underline decoration-yellow-500 decoration-dotted underline-offset-2">
+                                        {envVar.key}
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="flex items-center gap-1 text-xs">
+                                      {`This variable is going to be replaced in: ${existingVars[
+                                        envVar.key
+                                      ].environments
+                                        .map((e) => shortEnvironmentLabel(e))
+                                        .join(", ")}`}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : (
+                                <span className="truncate font-mono text-xs">{envVar.key}</span>
+                              )}
                               {envVar.target && envVar.target.length > 0 && (
                                 <span className="text-xs text-text-dimmed">
                                   {formatVercelTargets(envVar.target)}

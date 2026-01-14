@@ -1,4 +1,4 @@
-import { type PrismaClient } from "@trigger.dev/database";
+import { type PrismaClient, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { fromPromise, ok, ResultAsync } from "neverthrow";
 import { env } from "~/env.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
@@ -7,6 +7,7 @@ import {
   VercelCustomEnvironment,
   VercelEnvironmentVariable,
 } from "~/models/vercelIntegration.server";
+import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import {
   VercelProjectIntegrationDataSchema,
   VercelProjectIntegrationData,
@@ -44,7 +45,9 @@ export type VercelOnboardingData = {
   environmentVariables: VercelEnvironmentVariable[];
   availableProjects: VercelAvailableProject[];
   hasProjectSelected: boolean;
+  hasProjectSelected: boolean;
   authInvalid?: boolean;
+  existingVariables: Record<string, { environments: RuntimeEnvironmentType[] }>;
 };
 
 export class VercelSettingsPresenter extends BasePresenter {
@@ -255,7 +258,9 @@ export class VercelSettingsPresenter extends BasePresenter {
           environmentVariables: [],
           availableProjects: [],
           hasProjectSelected: false,
+          hasProjectSelected: false,
           authInvalid: true,
+          existingVariables: {},
         };
       }
 
@@ -283,7 +288,9 @@ export class VercelSettingsPresenter extends BasePresenter {
         environmentVariables: [],
         availableProjects: [],
         hasProjectSelected: false,
+        hasProjectSelected: false,
         authInvalid: availableProjectsResult.authInvalid,
+        existingVariables: {},
       };
     }
 
@@ -293,7 +300,9 @@ export class VercelSettingsPresenter extends BasePresenter {
         customEnvironments: [],
         environmentVariables: [],
         availableProjects: availableProjectsResult.data,
+        availableProjects: availableProjectsResult.data,
         hasProjectSelected: false,
+        existingVariables: {},
       };
     }
 
@@ -330,7 +339,10 @@ export class VercelSettingsPresenter extends BasePresenter {
         environmentVariables: [],
         availableProjects: availableProjectsResult.data,
         hasProjectSelected: true,
+        availableProjects: availableProjectsResult.data,
+        hasProjectSelected: true,
         authInvalid: true,
+        existingVariables: {},
       };
     }
 
@@ -361,11 +373,22 @@ export class VercelSettingsPresenter extends BasePresenter {
       a.key.localeCompare(b.key)
     );
 
+    // Get existing environment variables in Trigger.dev
+    const envVarRepository = new EnvironmentVariablesRepository(this._replica as PrismaClient);
+    const existingVariables = await envVarRepository.getProject(projectId);
+    const existingVariablesRecord: Record<string, { environments: RuntimeEnvironmentType[] }> = {};
+    for (const v of existingVariables) {
+      existingVariablesRecord[v.key] = {
+        environments: v.values.map((val) => val.environment.type),
+      };
+    }
+
     return {
       customEnvironments,
       environmentVariables: sortedEnvVars,
       availableProjects: availableProjectsResult.data,
       hasProjectSelected: true,
+      existingVariables: existingVariablesRecord,
     };
     } catch (error) {
       // Log the error and return null to indicate failure
