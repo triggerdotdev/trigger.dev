@@ -1,4 +1,4 @@
-import { CheckIcon } from "@heroicons/react/20/solid";
+import { CheckIcon, BookOpenIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { IconCardsFilled, IconDiamondFilled, IconTallymark4 } from "@tabler/icons-react";
@@ -42,6 +42,7 @@ import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
 import {
   concurrencyPath,
+  docsPath,
   EnvironmentParamSchema,
   organizationBillingPath,
 } from "~/utils/pathBuilder";
@@ -125,6 +126,9 @@ export default function Page() {
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
+          <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/limits")}>
+            Limits docs
+          </LinkButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={true}>
