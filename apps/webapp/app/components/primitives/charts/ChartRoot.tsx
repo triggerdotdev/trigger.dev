@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import type * as RechartsPrimitive from "recharts";
 import { ChartContainer, type ChartConfig, type ChartState } from "./Chart";
-import { ChartProvider, useChartContext } from "./ChartContext";
+import { ChartProvider, useChartContext, type LabelFormatter } from "./ChartContext";
 import { ChartLegendCompound } from "./ChartLegendCompound";
 import type { ZoomRange } from "./hooks/useZoomSelection";
 import { cn } from "~/utils/cn";
@@ -13,6 +13,8 @@ export type ChartRootProps = {
   /** Series keys to render (if not provided, derived from config keys) */
   series?: string[];
   state?: ChartState;
+  /** Function to format the x-axis label (used in legend, tooltips, etc.) */
+  labelFormatter?: LabelFormatter;
   /** Enable zoom functionality */
   enableZoom?: boolean;
   /** Callback when zoom range changes */
@@ -57,6 +59,7 @@ export function ChartRoot({
   dataKey,
   series,
   state,
+  labelFormatter,
   enableZoom = false,
   onZoomChange,
   minHeight,
@@ -73,6 +76,7 @@ export function ChartRoot({
       dataKey={dataKey}
       series={series}
       state={state}
+      labelFormatter={labelFormatter}
       enableZoom={enableZoom}
       onZoomChange={onZoomChange}
     >

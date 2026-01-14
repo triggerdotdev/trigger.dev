@@ -151,6 +151,7 @@ function ChartsDashboard() {
               config={barChartBigDatasetConfig}
               data={filteredBarData}
               dataKey="day"
+              labelFormatter={tooltipLabelFormatter}
               enableZoom
               onZoomChange={handleZoomChange}
               state={chartState === "loaded" ? undefined : chartState}

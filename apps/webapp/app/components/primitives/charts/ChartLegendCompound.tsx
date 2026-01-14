@@ -35,7 +35,7 @@ export function ChartLegendCompound({
   className,
   totalLabel = "Total",
 }: ChartLegendCompoundProps) {
-  const { config, dataKey, dataKeys, highlight } = useChartContext();
+  const { config, dataKey, dataKeys, highlight, labelFormatter } = useChartContext();
   const totals = useSeriesTotal();
 
   // Calculate grand total (sum of all series totals)
@@ -64,8 +64,12 @@ export function ChartLegendCompound({
     const firstPayloadItem = highlight.activePayload[0];
     const xAxisValue = firstPayloadItem?.payload?.[dataKey];
 
-    return xAxisValue !== undefined ? String(xAxisValue) : totalLabel;
-  }, [highlight.activePayload, dataKey, totalLabel]);
+    if (xAxisValue === undefined) return totalLabel;
+
+    // Apply the formatter if provided, otherwise just stringify the value
+    const stringValue = String(xAxisValue);
+    return labelFormatter ? labelFormatter(stringValue) : stringValue;
+  }, [highlight.activePayload, dataKey, totalLabel, labelFormatter]);
 
   // Get current data for the legend based on hover state
   const currentData = useMemo(() => {
