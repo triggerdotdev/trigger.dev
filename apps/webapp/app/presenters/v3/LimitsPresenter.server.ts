@@ -28,7 +28,6 @@ export type RateLimitInfo = {
   name: string;
   description: string;
   config: RateLimiterConfig;
-  source: "default" | "plan" | "override";
   currentTokens: number | null;
 };
 
@@ -120,13 +119,9 @@ export class LimitsPresenter extends BasePresenter {
     const limits = currentPlan?.v3Subscription?.plan?.limits;
     const isOnTopPlan = currentPlan?.v3Subscription?.plan?.code === "v3_pro_1";
 
-    // Resolve API rate limit config
+    // Resolve rate limit configs (org override or default)
     const apiRateLimitConfig = resolveApiRateLimitConfig(organization.apiRateLimiterConfig);
-    const apiRateLimitSource = organization.apiRateLimiterConfig ? "override" : "default";
-
-    // Resolve batch rate limit config
     const batchRateLimitConfig = resolveBatchRateLimitConfig(organization.batchRateLimitConfig);
-    const batchRateLimitSource = organization.batchRateLimitConfig ? "override" : "default";
 
     // Resolve batch concurrency config
     const batchConcurrencyConfig = resolveBatchConcurrencyConfig(
@@ -201,14 +196,12 @@ export class LimitsPresenter extends BasePresenter {
           name: "API rate limit",
           description: "Rate limit for API requests (trigger, batch, etc.)",
           config: apiRateLimitConfig,
-          source: apiRateLimitSource,
           currentTokens: apiRateLimitTokens,
         },
         batch: {
           name: "Batch rate limit",
           description: "Rate limit for batch trigger operations",
           config: batchRateLimitConfig,
-          source: batchRateLimitSource,
           currentTokens: batchRateLimitTokens,
         },
       },

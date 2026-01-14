@@ -318,7 +318,6 @@ function RateLimitsSection({
                 />
               </span>
             </TableHeaderCell>
-            <TableHeaderCell alignment="right">Source</TableHeaderCell>
             <TableHeaderCell alignment="right">Upgrade</TableHeaderCell>
           </TableRow>
         </TableHeader>
@@ -370,9 +369,6 @@ function RateLimitRow({ info }: { info: RateLimitInfo }) {
         ) : (
           <span className="text-text-dimmed">–</span>
         )}
-      </TableCell>
-      <TableCell alignment="right">
-        <SourceBadge source={info.source} />
       </TableCell>
       <TableCell alignment="right">
         <div className="flex justify-end">
