@@ -1,44 +1,36 @@
 import React, { useMemo } from "react";
-import { Legend } from "recharts";
-import { ChartLegendContent, ChartLegendContentRows } from "./Chart";
 import { useChartContext } from "./ChartContext";
 import { useSeriesTotal } from "./ChartRoot";
 import { Button } from "../Buttons";
 import { Paragraph } from "../Paragraph";
+import { cn } from "~/utils/cn";
+import { AnimatedNumber } from "../AnimatedNumber";
 
 export type ChartLegendCompoundProps = {
   /** Maximum number of legend items to show before collapsing */
   maxItems?: number;
-  /** Use simple inline legend instead of row-based legend */
-  simple?: boolean;
   /** Hide the legend entirely (useful for conditional rendering) */
   hidden?: boolean;
+  /** Additional className */
+  className?: string;
 };
 
 /**
  * Legend component for the chart compound system.
+ * Renders as a permanent element below the chart (not inside recharts).
  * Automatically connects to chart context for highlighting.
  *
- * @example Simple legend
+ * @example Using via Chart.Root showLegend prop (recommended)
  * ```tsx
- * <Chart.Root config={config} data={data} dataKey="day">
+ * <Chart.Root config={config} data={data} dataKey="day" showLegend maxLegendItems={5}>
  *   <Chart.Bar />
- *   <Chart.Legend />
- * </Chart.Root>
- * ```
- *
- * @example Row legend with max items
- * ```tsx
- * <Chart.Root config={config} data={data} dataKey="day">
- *   <Chart.Bar />
- *   <Chart.Legend maxItems={5} />
  * </Chart.Root>
  * ```
  */
 export function ChartLegendCompound({
   maxItems = 5,
-  simple = false,
   hidden = false,
+  className,
 }: ChartLegendCompoundProps) {
   const { config, dataKeys, highlight } = useChartContext();
   const totals = useSeriesTotal();
@@ -62,75 +54,88 @@ export function ChartLegendCompound({
     };
   }, [highlight.activePayload, totals]);
 
-  // Prepare legend payload with capped items
-  const legendPayload = useMemo(() => {
-    const allPayload = dataKeys.map((key) => ({
+  // Prepare legend items with capped display
+  const legendItems = useMemo(() => {
+    const allItems = dataKeys.map((key) => ({
       dataKey: key,
-      type: "rect" as const,
       color: config[key]?.color,
-      value: key,
-      payload: {} as any,
+      label: config[key]?.label ?? key,
     }));
 
-    if (allPayload.length <= maxItems) {
-      return allPayload;
+    if (allItems.length <= maxItems) {
+      return { visible: allItems, remaining: 0 };
     }
 
-    const visiblePayload = allPayload.slice(0, maxItems);
-    const remainingCount = allPayload.length - maxItems;
+    const visibleItems = allItems.slice(0, maxItems);
+    const remainingCount = allItems.length - maxItems;
 
     // If we're hovering over an item that's not visible in the legend,
     // add it as an extra item instead of showing the "view more" row
     if (
       highlight.activeBarKey &&
-      !visiblePayload.some((item) => item.dataKey === highlight.activeBarKey)
+      !visibleItems.some((item) => item.dataKey === highlight.activeBarKey)
     ) {
-      const hoveredItem = allPayload.find((item) => item.dataKey === highlight.activeBarKey);
+      const hoveredItem = allItems.find((item) => item.dataKey === highlight.activeBarKey);
       if (hoveredItem) {
-        return [...visiblePayload, hoveredItem];
+        return { visible: [...visibleItems, hoveredItem], remaining: remainingCount - 1 };
       }
     }
 
-    // Otherwise show the "view more" row
-    return [
-      ...visiblePayload,
-      {
-        dataKey: "view-more",
-        type: "rect" as const,
-        color: "transparent",
-        value: "view-more",
-        payload: { remainingCount },
-      },
-    ];
+    return { visible: visibleItems, remaining: remainingCount };
   }, [config, dataKeys, maxItems, highlight.activeBarKey]);
 
-  if (hidden) {
+  if (hidden || dataKeys.length === 0) {
     return null;
   }
 
-  if (simple) {
-    return <Legend content={<ChartLegendContent />} />;
-  }
-
   return (
-    <Legend
-      content={
-        <ChartLegendContentRows
-          onMouseEnter={(data) => {
-            if (data.dataKey === "view-more") return;
-            highlight.setHoveredLegendItem(data.dataKey);
-          }}
-          onMouseLeave={highlight.reset}
-          data={currentData}
-          activeKey={highlight.activeBarKey}
-          payload={legendPayload}
-          renderViewMore={(remainingCount: number) => (
-            <ViewAllDataRow key="view-more" remainingCount={remainingCount} />
-          )}
-        />
-      }
-      payload={legendPayload}
-    />
+    <div className={cn("flex flex-col pt-4", className)}>
+      {legendItems.visible.map((item) => {
+        const total = currentData[item.dataKey] ?? 0;
+        const isActive = highlight.activeBarKey === item.dataKey;
+
+        return (
+          <div
+            key={item.dataKey}
+            className={cn(
+              "relative flex w-full cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 transition",
+              total === 0 && "opacity-50"
+            )}
+            onMouseEnter={() => highlight.setHoveredLegendItem(item.dataKey)}
+            onMouseLeave={() => highlight.reset()}
+          >
+            {/* Active highlight background */}
+            {isActive && item.color && (
+              <div
+                className="absolute inset-0 rounded opacity-10"
+                style={{ backgroundColor: item.color }}
+              />
+            )}
+            <div className="relative flex w-full items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                {item.color && (
+                  <div
+                    className="h-3 w-1 shrink-0 rounded-[2px]"
+                    style={{ backgroundColor: item.color }}
+                  />
+                )}
+                <span className={isActive ? "text-text-bright" : "text-text-dimmed"}>
+                  {item.label}
+                </span>
+              </div>
+              <span
+                className={cn("tabular-nums", isActive ? "text-text-bright" : "text-text-dimmed")}
+              >
+                <AnimatedNumber value={total} duration={0.25} />
+              </span>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* View more row */}
+      {legendItems.remaining > 0 && <ViewAllDataRow remainingCount={legendItems.remaining} />}
+    </div>
   );
 }
 

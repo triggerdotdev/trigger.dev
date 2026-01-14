@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import type * as RechartsPrimitive from "recharts";
 import { ChartContainer, type ChartConfig, type ChartState } from "./Chart";
 import { ChartProvider, useChartContext } from "./ChartContext";
+import { ChartLegendCompound } from "./ChartLegendCompound";
 import type { ZoomRange } from "./hooks/useZoomSelection";
 import { cn } from "~/utils/cn";
 
@@ -20,6 +21,10 @@ export type ChartRootProps = {
   minHeight?: string;
   /** Additional className for the container */
   className?: string;
+  /** Show the compound legend below the chart */
+  showLegend?: boolean;
+  /** Maximum items in the legend before showing "view more" */
+  maxLegendItems?: number;
   children: React.ComponentProps<typeof RechartsPrimitive.ResponsiveContainer>["children"];
 };
 
@@ -54,6 +59,8 @@ export function ChartRoot({
   onZoomChange,
   minHeight,
   className,
+  showLegend = false,
+  maxLegendItems = 5,
   children,
 }: ChartRootProps) {
   return (
@@ -66,7 +73,12 @@ export function ChartRoot({
       enableZoom={enableZoom}
       onZoomChange={onZoomChange}
     >
-      <ChartRootInner minHeight={minHeight} className={className}>
+      <ChartRootInner
+        minHeight={minHeight}
+        className={className}
+        showLegend={showLegend}
+        maxLegendItems={maxLegendItems}
+      >
         {children}
       </ChartRootInner>
     </ChartProvider>
@@ -76,10 +88,18 @@ export function ChartRoot({
 type ChartRootInnerProps = {
   minHeight?: string;
   className?: string;
+  showLegend?: boolean;
+  maxLegendItems?: number;
   children: React.ComponentProps<typeof RechartsPrimitive.ResponsiveContainer>["children"];
 };
 
-function ChartRootInner({ minHeight, className, children }: ChartRootInnerProps) {
+function ChartRootInner({
+  minHeight,
+  className,
+  showLegend = false,
+  maxLegendItems = 5,
+  children,
+}: ChartRootInnerProps) {
   const { config, zoom } = useChartContext();
   const enableZoom = zoom !== null;
 
@@ -101,6 +121,8 @@ function ChartRootInner({ minHeight, className, children }: ChartRootInnerProps)
           {children}
         </ChartContainer>
       </div>
+      {/* Legend rendered outside the chart container */}
+      {showLegend && <ChartLegendCompound maxItems={maxLegendItems} />}
     </div>
   );
 }
