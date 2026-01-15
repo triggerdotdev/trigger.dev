@@ -14,7 +14,7 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
-import { ClipboardCheckIcon, ClipboardIcon, FilterIcon } from "lucide-react";
+import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
@@ -36,6 +36,7 @@ import { Paragraph } from "../primitives/Paragraph";
 import { TextLink } from "../primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "../primitives/Tooltip";
 import { QueueName } from "../runs/v3/QueueName";
+import { FunnelIcon } from "@heroicons/react/20/solid";
 
 const MAX_STRING_DISPLAY_LENGTH = 64;
 const ROW_HEIGHT = 33; // Estimated row height in pixels
@@ -801,13 +802,11 @@ function HeaderCellContent({
           className={cn(
             "flex-shrink-0 rounded p-0.5 transition-colors",
             "hover:bg-charcoal-700",
-            showFilters || hasActiveFilter
-              ? "text-primary"
-              : "text-text-dimmed hover:text-text-bright"
+            "text-text-dimmed hover:text-text-bright"
           )}
           title="Toggle column filters"
         >
-          <FilterIcon className="size-3.5" />
+          <FunnelIcon className="size-3.5" />
         </button>
       )}
     </div>
@@ -821,7 +820,7 @@ function FilterCell({ column, width }: { column: Column<RowData, unknown>; width
   const columnFilterValue = column.getFilterValue() as string;
 
   return (
-    <div className="flex items-center bg-background-dimmed px-1.5 py-1" style={{ width }}>
+    <div className="flex items-center bg-background-dimmed px-1.5 pb-1" style={{ width }}>
       <DebouncedInput
         value={columnFilterValue ?? ""}
         onChange={(value) => column.setFilterValue(value)}
@@ -829,7 +828,7 @@ function FilterCell({ column, width }: { column: Column<RowData, unknown>; width
         className={cn(
           "w-full rounded border border-charcoal-700 bg-charcoal-800 px-2 py-1",
           "text-xs text-text-bright placeholder:text-text-dimmed",
-          "focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+          "focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
         )}
       />
     </div>
