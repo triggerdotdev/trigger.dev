@@ -133,6 +133,15 @@ For testable code, **never import env.server.ts** in test files. Pass configurat
 
 The codebase is transitioning from the "legacy run engine" (spread across codebase) to "Run Engine 2.0" (`@internal/run-engine`). Focus on Run Engine 2.0 for new work.
 
+## Docker Image Guidelines
+
+When updating Docker image references in `docker/Dockerfile` or other container files:
+
+- **Always use multiplatform/index digests**, not architecture-specific digests
+- Architecture-specific digests (e.g., for `linux/amd64` only) will cause CI failures on different build environments
+- On Docker Hub, the multiplatform digest is shown on the main image page, while architecture-specific digests are listed under "OS/ARCH"
+- Example: Use `node:20.20-bullseye-slim@sha256:abc123...` where the digest is from the multiplatform index, not from a specific OS/ARCH variant
+
 ## Database Migrations (PostgreSQL)
 
 1. Edit `internal-packages/database/prisma/schema.prisma`
