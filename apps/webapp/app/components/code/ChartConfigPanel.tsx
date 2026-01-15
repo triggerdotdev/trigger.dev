@@ -241,7 +241,7 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
   return (
     <div className={cn("flex flex-col gap-2 px-3 py-2", className)}>
       {/* Chart Type */}
-      <div className="flex items-center gap-1">
+      <div className="flex flex-col gap-3">
         <ConfigField label="Type">
           <div className="flex items-center">
             <Button
@@ -286,7 +286,7 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
         </ConfigField>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col gap-2">
         {/* X-Axis */}
         <ConfigField label="X-Axis">
           <Select
@@ -399,10 +399,9 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
 
         {/* Stacked toggle (only when grouped) */}
         {config.groupByColumn && (
-          <ConfigField label="">
+          <ConfigField label="Stack groups">
             <Switch
-              variant="small"
-              label="Stacked"
+              variant="medium"
               checked={config.stacked}
               onCheckedChange={(checked) => updateConfig({ stacked: checked })}
             />
@@ -438,7 +437,7 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
 
         {/* Sort Direction (only when sorting) */}
         {config.sortByColumn && (
-          <ConfigField label="">
+          <ConfigField label="Sort direction">
             <SortDirectionToggle
               direction={config.sortDirection}
               onChange={(direction) => updateConfig({ sortDirection: direction })}
@@ -452,7 +451,7 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
 
 function ConfigField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-1">
       {label && <span className="text-xs text-text-dimmed">{label}</span>}
       {children}
     </div>
