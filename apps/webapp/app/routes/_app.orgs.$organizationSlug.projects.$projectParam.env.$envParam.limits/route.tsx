@@ -80,6 +80,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const [error, result] = await tryCatch(
     presenter.call({
       organizationId: project.organizationId,
+      projectId: project.id,
       environmentApiKey: environment.apiKey,
     })
   );

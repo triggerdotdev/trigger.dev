@@ -84,9 +84,11 @@ export type LimitsResult = {
 export class LimitsPresenter extends BasePresenter {
   public async call({
     organizationId,
+    projectId,
     environmentApiKey,
   }: {
     organizationId: string;
+    projectId: string;
     environmentApiKey: string;
   }): Promise<LimitsResult> {
     // Get organization with all limit-related fields
@@ -130,6 +132,7 @@ export class LimitsPresenter extends BasePresenter {
       : "default";
 
     // Get schedule count for this org (via project relation which has an index)
+    //TODO we should change the way we count these and use the ScheduleListPresenter method
     const scheduleCount = await this._replica.taskSchedule.count({
       where: {
         project: {
@@ -141,16 +144,14 @@ export class LimitsPresenter extends BasePresenter {
     // Get alert channel count for this org
     const alertChannelCount = await this._replica.projectAlertChannel.count({
       where: {
-        project: {
-          organizationId,
-        },
+        projectId,
       },
     });
 
     // Get active branches count for this org (uses @@index([organizationId]))
     const activeBranchCount = await this._replica.runtimeEnvironment.count({
       where: {
-        organizationId,
+        projectId,
         branchName: {
           not: null,
         },
