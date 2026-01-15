@@ -470,32 +470,7 @@ export default function Page() {
                 isAdmin={isAdmin}
               />
               {/* Results */}
-              <div className="grid max-h-full grid-rows-[2rem_1fr] overflow-hidden border-t border-grid-dimmed bg-charcoal-800">
-                <div className="flex items-center justify-between border-b border-grid-dimmed pl-3 pr-1">
-                  <div className="flex items-center gap-2">
-                    <Header3>
-                      {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
-                    </Header3>
-                    {results?.stats && (
-                      <span className="text-xs text-text-dimmed">
-                        {formatQueryStats(results.stats)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {results?.rows && results?.columns && results.rows.length > 0 && (
-                      <ExportResultsButton rows={results.rows} columns={results.columns} />
-                    )}
-                    {resultsView === "table" && (
-                      <Switch
-                        variant="small"
-                        label="Pretty formatting"
-                        checked={prettyFormatting}
-                        onCheckedChange={setPrettyFormatting}
-                      />
-                    )}
-                  </div>
-                </div>
+              <div className="grid max-h-full grid-rows-[1fr] overflow-hidden border-t border-grid-dimmed bg-charcoal-800">
                 <ClientTabs
                   value={resultsView}
                   onValueChange={(v) => setResultsView(v as "table" | "graph")}
@@ -513,6 +488,33 @@ export default function Page() {
                     >
                       Graph
                     </ClientTabsTrigger>
+                    {results?.rows ? (
+                      <div className="flex flex-1 items-center justify-end border-b border-grid-dimmed pl-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-text-dimmed">
+                            {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
+                          </span>
+                          {results?.stats && (
+                            <span className="text-xs text-text-dimmed">
+                              {formatQueryStats(results.stats)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {results?.rows && results?.columns && results.rows.length > 0 && (
+                            <ExportResultsButton rows={results.rows} columns={results.columns} />
+                          )}
+                          {resultsView === "table" && (
+                            <Switch
+                              variant="small"
+                              label="Pretty formatting"
+                              checked={prettyFormatting}
+                              onCheckedChange={setPrettyFormatting}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
                   </ClientTabsList>
                   <ClientTabsContent value="table" className="min-h-0 overflow-y-hidden">
                     {isLoading ? (
