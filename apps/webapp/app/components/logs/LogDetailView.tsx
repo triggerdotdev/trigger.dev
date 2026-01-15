@@ -207,12 +207,25 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
 function DetailsTab({ log, runPath, searchTerm }: { log: LogEntry; runPath: string; searchTerm?: string }) {
   const logWithExtras = log as LogEntry & {
     attributes?: LogAttributes;
+    rawAttributes?: string;
   };
 
 
   let beautifiedAttributes: string | null = null;
 
-  if (logWithExtras.attributes) {
+  if (logWithExtras.rawAttributes) {
+    try {
+      // It's a string, so we need to parse it first to be able to re-stringify it with indentation
+      const parsed = JSON.parse(logWithExtras.rawAttributes);
+      beautifiedAttributes = JSON.stringify(parsed, null, 2);
+    } catch (e) {
+      beautifiedAttributes = logWithExtras.rawAttributes;
+    }
+    // We already have the raw string, so we don't need to format it again
+    if (beautifiedAttributes) {
+      beautifiedAttributes = formatStringJSON(beautifiedAttributes);
+    }
+  } else if (logWithExtras.attributes) {
     beautifiedAttributes = JSON.stringify(logWithExtras.attributes, null, 2);
     beautifiedAttributes = formatStringJSON(beautifiedAttributes);
   }
