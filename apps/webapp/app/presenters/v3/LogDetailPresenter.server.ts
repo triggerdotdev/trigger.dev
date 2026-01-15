@@ -2,6 +2,8 @@ import { type ClickHouse } from "@internal/clickhouse";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { convertClickhouseDateTime64ToJsDate } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { kindToLevel } from "~/utils/logUtils";
+import { getConfiguredEventRepository } from "~/v3/eventRepository/index.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 export type LogDetailOptions = {
   environmentId: string;
@@ -24,8 +26,20 @@ export class LogDetailPresenter {
   public async call(options: LogDetailOptions) {
     const { environmentId, organizationId, projectId, spanId, traceId, startTime } = options;
 
-    // Build ClickHouse query
-    const queryBuilder = this.clickhouse.taskEventsV2.logDetailQueryBuilder();
+    // Determine which store to use based on organization configuration
+    const { store } = await getConfiguredEventRepository(organizationId);
+
+    // Throw error if postgres is detected
+    if (store === "postgres") {
+      throw new ServiceValidationError(
+        "Log details are not available for PostgreSQL event store. Please contact support."
+      );
+    }
+
+    const isClickhouseV2 = store === "clickhouse_v2";
+    const queryBuilder = isClickhouseV2
+      ? this.clickhouse.taskEventsV2.logDetailQueryBuilder()
+      : this.clickhouse.taskEvents.logDetailQueryBuilder();
 
     // Required filters - spanId, traceId, and startTime uniquely identify the log
     // Multiple events can share the same spanId (span, span events, logs), so startTime is needed
@@ -55,29 +69,16 @@ export class LogDetailPresenter {
 
     const log = records[0];
 
-    // Parse metadata and attributes
-    let parsedMetadata: Record<string, unknown> = {};
+
     let parsedAttributes: Record<string, unknown> = {};
     let rawAttributesString = "";
 
-    try {
-      if (log.metadata) {
-        parsedMetadata = JSON.parse(log.metadata) as Record<string, unknown>;
-      }
-    } catch {
-      // Ignore parse errors
-    }
 
     try {
-      // Handle attributes which could be a JSON object or string
-      if (log.attributes) {
-        if (typeof log.attributes === "string") {
-          parsedAttributes = JSON.parse(log.attributes) as Record<string, unknown>;
-          rawAttributesString = log.attributes;
-        } else if (typeof log.attributes === "object") {
-          parsedAttributes = log.attributes as Record<string, unknown>;
-          rawAttributesString = JSON.stringify(log.attributes);
-        }
+      // Handle attributes_text which is a string
+      if (log.attributes_text) {
+        parsedAttributes = JSON.parse(log.attributes_text) as Record<string, unknown>;
+        rawAttributesString = log.attributes_text;
       }
     } catch {
       // Ignore parse errors
@@ -97,10 +98,8 @@ export class LogDetailPresenter {
       status: log.status,
       duration: typeof log.duration === "number" ? log.duration : Number(log.duration),
       level: kindToLevel(log.kind, log.status),
-      metadata: parsedMetadata,
       attributes: parsedAttributes,
       // Raw strings for display
-      rawMetadata: log.metadata,
       rawAttributes: rawAttributesString,
     };
   }
