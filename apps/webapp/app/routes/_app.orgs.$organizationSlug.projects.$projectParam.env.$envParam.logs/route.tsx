@@ -1,5 +1,6 @@
 import { type LoaderFunctionArgs , redirect} from "@remix-run/server-runtime";
 import { type MetaFunction, useFetcher, useNavigation, useLocation } from "@remix-run/react";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
   TypedAwait,
   typeddefer,
@@ -14,7 +15,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { LogsListPresenter } from "~/presenters/v3/LogsListPresenter.server";
 import type { LogLevel } from "~/utils/logUtils";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import {
   setRootOnlyFilterPreference,
@@ -38,6 +39,7 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { Switch } from "~/components/primitives/Switch";
+import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags.server";
 
 // Valid log levels for filtering
 const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "CANCELLED"];
@@ -56,16 +58,58 @@ export const meta: MetaFunction = () => {
   ];
 };
 
+async function hasLogsPageAccess(
+  userId: string,
+  isAdmin: boolean,
+  isImpersonating: boolean,
+  organizationSlug: string
+): Promise<boolean> {
+  if (isAdmin || isImpersonating) {
+    return true;
+  }
+
+  // Check organization feature flags
+  const organization = await prisma.organization.findFirst({
+    where: {
+      slug: organizationSlug,
+      members: { some: { userId } },
+    },
+    select: {
+      featureFlags: true,
+    },
+  });
+
+  if (!organization?.featureFlags) {
+    return false;
+  }
+
+  const flags = organization.featureFlags as Record<string, unknown>;
+  const hasLogsPageAccessResult = validateFeatureFlagValue(
+    FEATURE_FLAG.hasLogsPageAccess,
+    flags.hasLogsPageAccess
+  );
+
+  return hasLogsPageAccessResult.success && hasLogsPageAccessResult.data === true;
+}
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
   const isAdmin = user.admin || user.isImpersonating;
 
-  if (!isAdmin) {
-    throw redirect("/");
-  }
 
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
+
+  const canAccess = await hasLogsPageAccess(
+    userId,
+    user.admin,
+    user.isImpersonating,
+    organizationSlug
+  );
+
+  if (!canAccess) {
+    throw redirect("/");
+  }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
@@ -86,7 +130,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const showDebug = url.searchParams.get("showDebug") === "true";
 
   const presenter = new LogsListPresenter($replica, clickhouseClient);
-  const list = presenter.call(project.organizationId, environment.id, {
+
+  const listPromise = presenter.call(project.organizationId, environment.id, {
     userId,
     projectId: project.id,
     ...filters,
@@ -94,6 +139,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     levels,
     includeDebugLogs: isAdmin && showDebug,
     defaultPeriod: "1h",
+  }).catch((error) => {
+    if (error instanceof ServiceValidationError) {
+      return { error: "Failed to load logs. Please refresh and try again." };
+    }
+    throw error;
   });
 
   const session = await setRootOnlyFilterPreference(filters.rootOnly, request);
@@ -101,7 +151,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typeddefer(
     {
-      data: list,
+      data: listPromise,
       rootOnlyDefault: filters.rootOnly,
       filters,
       isAdmin,
@@ -149,10 +199,20 @@ export default function Page() {
               </div>
             }
           >
-            {(list) => {
+            {(result) => {
+              // Check if result contains an error
+              if ("error" in result) {
+                return (
+                  <div className="flex items-center justify-center px-3 py-12">
+                    <Callout variant="error" className="max-w-fit">
+                      {result.error}
+                    </Callout>
+                  </div>
+                );
+              }
               return (
                 <LogsList
-                  list={list}
+                  list={result}
                   rootOnlyDefault={rootOnlyDefault}
                   isAdmin={isAdmin}
                   showDebug={showDebug}
@@ -174,7 +234,7 @@ function LogsList({
   showDebug,
   defaultPeriod,
 }: {
-  list: Awaited<UseDataFunctionReturn<typeof loader>["data"]>;
+  list: Exclude<Awaited<UseDataFunctionReturn<typeof loader>["data"]>, { error: string }>; //exclude error, it is handled
   rootOnlyDefault: boolean;
   isAdmin: boolean;
   showDebug: boolean;
@@ -307,7 +367,6 @@ function LogsList({
           {/* Table */}
           <LogsTable
             logs={accumulatedLogs}
-            hasFilters={list.hasFilters}
             searchTerm={list.searchTerm}
             isLoading={isLoading}
             isLoadingMore={fetcher.state === "loading"}

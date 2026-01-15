@@ -269,7 +269,7 @@ export function SideMenu({
               to={v3DeploymentsPath(organization, project, environment)}
               data-action="deployments"
             />
-            {(isAdmin || user.isImpersonating) && (
+            {(user.admin || user.isImpersonating || featureFlags.hasLogsPageAccess) && (
               <SideMenuItem
                 name="Logs"
                 icon={LogsIcon}
