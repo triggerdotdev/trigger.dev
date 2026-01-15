@@ -249,7 +249,6 @@ export const LogsListResult = z.object({
   kind: z.string(),
   status: z.string(),
   duration: z.number().or(z.string()),
-  metadata: z.string(),
   attributes_text: z.string(),
 });
 
@@ -273,7 +272,6 @@ export function getLogsListQueryBuilderV2(ch: ClickhouseReader, settings?: Click
       "kind",
       "status",
       "duration",
-      "metadata",
       "attributes_text"
     ],
     settings,
@@ -295,7 +293,6 @@ export const LogDetailV2Result = z.object({
   kind: z.string(),
   status: z.string(),
   duration: z.number().or(z.string()),
-  metadata: z.string(),
   attributes_text: z.string()
 });
 
@@ -319,7 +316,6 @@ export function getLogDetailQueryBuilderV2(ch: ClickhouseReader, settings?: Clic
       "kind",
       "status",
       "duration",
-      "metadata",
       "attributes_text",
     ],
     settings,
@@ -348,7 +344,6 @@ export function getLogsListQueryBuilderV1(ch: ClickhouseReader, settings?: Click
       "kind",
       "status",
       "duration",
-      "metadata",
       "attributes_text"
     ],
     settings,
@@ -373,7 +368,6 @@ export function getLogDetailQueryBuilderV1(ch: ClickhouseReader, settings?: Clic
       "kind",
       "status",
       "duration",
-      "metadata",
       "attributes_text",
     ],
     settings,
