@@ -1,4 +1,5 @@
 import {
+  AdjustmentsHorizontalIcon,
   ArrowPathRoundedSquareIcon,
   ArrowRightOnRectangleIcon,
   BeakerIcon,
@@ -50,6 +51,7 @@ import {
   adminPath,
   branchesPath,
   concurrencyPath,
+  limitsPath,
   logoutPath,
   newOrganizationPath,
   newProjectPath,
@@ -349,7 +351,7 @@ export function SideMenu({
               <SideMenuItem
                 name="Concurrency"
                 icon={ConcurrencyIcon}
-                activeIconColor="text-amber-500"
+                activeIconColor="text-concurrency"
                 to={concurrencyPath(organization, project, environment)}
                 data-action="concurrency"
               />
@@ -357,10 +359,17 @@ export function SideMenu({
             <SideMenuItem
               name="Regions"
               icon={GlobeAmericasIcon}
-              activeIconColor="text-green-500"
+              activeIconColor="text-regions"
               to={regionsPath(organization, project, environment)}
               data-action="regions"
               badge={<V4Badge />}
+            />
+            <SideMenuItem
+              name="Limits"
+              icon={AdjustmentsHorizontalIcon}
+              activeIconColor="text-limits"
+              to={limitsPath(organization, project, environment)}
+              data-action="limits"
             />
             <SideMenuItem
               name="Project settings"

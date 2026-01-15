@@ -96,7 +96,7 @@ export class ScheduleListPresenter extends BasePresenter {
 
     const schedulesCount = await CheckScheduleService.getUsedSchedulesCount({
       prisma: this._replica,
-      environments: project.environments,
+      projectId,
     });
 
     const limit = await getLimit(project.organizationId, "schedules", 100_000_000);
