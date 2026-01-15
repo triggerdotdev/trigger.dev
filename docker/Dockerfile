@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:20.20.0-bullseye-slim@sha256:f52726bba3d47831859be141b4a57d3f7b93323f8fddfbd8375386e2c3b72319
+ARG NODE_IMAGE=node:20.20-bullseye-slim@sha256:d6c3903e556d4161f63af4550e76244908b6668e1a7d2983eff4873a0c2b0413
 
 FROM golang:1.23-alpine AS goose_builder
 RUN go install github.com/pressly/goose/v3/cmd/goose@latest
