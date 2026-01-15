@@ -1,18 +1,18 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
+import {
+  useReactTable,
+  getCoreRowModel,
+  flexRender,
+  type ColumnDef,
+  type CellContext,
+} from "@tanstack/react-table";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
-import { memo, useState } from "react";
+import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
+import { memo, useMemo, useRef, useState } from "react";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
-import {
-  CopyableTableCell,
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-} from "~/components/primitives/Table";
 import {
   descriptionForTaskRunStatus,
   isRunFriendlyStatus,
@@ -20,16 +20,29 @@ import {
   runStatusFromFriendlyTitle,
   TaskRunStatusCombo,
 } from "~/components/runs/v3/TaskRunStatus";
+import { useCopy } from "~/hooks/useCopy";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { v3ProjectPath, v3RunPathFromFriendlyId } from "~/utils/pathBuilder";
 import { Paragraph } from "../primitives/Paragraph";
 import { TextLink } from "../primitives/TextLink";
-import { SimpleTooltip } from "../primitives/Tooltip";
+import { InfoIconTooltip, SimpleTooltip } from "../primitives/Tooltip";
 import { QueueName } from "../runs/v3/QueueName";
 
 const MAX_STRING_DISPLAY_LENGTH = 64;
+const ROW_HEIGHT = 33; // Estimated row height in pixels
+const DEFAULT_COLUMN_SIZE = 150; // Default column width
+
+// Type for row data
+type RowData = Record<string, unknown>;
+
+// Extended column meta to store OutputColumnMetadata
+interface ColumnMeta {
+  outputColumn: OutputColumnMetadata;
+  alignment: "left" | "right";
+}
 
 /**
  * Truncate a string for display, adding ellipsis if it exceeds max length
@@ -85,6 +98,21 @@ function isNumericType(type: string): boolean {
  */
 function isBooleanType(type: string): boolean {
   return type === "Bool" || type === "Nullable(Bool)";
+}
+
+/**
+ * Check if a column should be right-aligned (numeric columns, duration, cost)
+ */
+function isRightAlignedColumn(column: OutputColumnMetadata): boolean {
+  if (
+    column.customRenderType === "duration" ||
+    column.customRenderType === "durationSeconds" ||
+    column.customRenderType === "cost" ||
+    column.customRenderType === "costInDollars"
+  ) {
+    return true;
+  }
+  return isNumericType(column.type);
 }
 
 /**
@@ -175,7 +203,6 @@ function CellValue({
         break;
       }
       case "runStatus": {
-        // We have mapped the status to a friendly status so we need to map back to render the normal component
         const status = isTaskRunStatus(value)
           ? value
           : isRunFriendlyStatus(value)
@@ -191,7 +218,6 @@ function CellValue({
               />
             );
           }
-
           return <TaskRunStatusCombo status={status} />;
         }
         break;
@@ -216,13 +242,11 @@ function CellValue({
         return <span>{String(value)}</span>;
       case "cost":
         if (typeof value === "number") {
-          // Assume cost values are in cents
           return <span className="tabular-nums">{formatCurrencyAccurate(value / 100)}</span>;
         }
         return <span>{String(value)}</span>;
       case "costInDollars":
         if (typeof value === "number") {
-          // Value is already in dollars, no conversion needed
           return <span className="tabular-nums">{formatCurrencyAccurate(value)}</span>;
         }
         return <span>{String(value)}</span>;
@@ -271,7 +295,6 @@ function CellValue({
   // Fall back to rendering based on ClickHouse type
   const { type } = column;
 
-  // DateTime types
   if (isDateTimeType(type)) {
     if (typeof value === "string") {
       return <DateTimeAccurate date={value} showTooltip={hovered} />;
@@ -279,12 +302,10 @@ function CellValue({
     return <span>{String(value)}</span>;
   }
 
-  // JSON type
   if (type === "JSON") {
     return <JSONCellValue value={value} />;
   }
 
-  // Array types
   if (type.startsWith("Array")) {
     const arrayString = JSON.stringify(value);
     const isTruncated = arrayString.length > MAX_STRING_DISPLAY_LENGTH;
@@ -308,7 +329,6 @@ function CellValue({
     return <span className="font-mono text-xs text-text-dimmed">{arrayString}</span>;
   }
 
-  // Boolean types
   if (isBooleanType(type)) {
     if (typeof value === "boolean") {
       return <span className="text-text-dimmed">{value ? "true" : "false"}</span>;
@@ -319,7 +339,6 @@ function CellValue({
     return <span>{String(value)}</span>;
   }
 
-  // Numeric types
   if (isNumericType(type)) {
     if (typeof value === "number") {
       return <span className="tabular-nums">{formatNumber(value)}</span>;
@@ -327,7 +346,6 @@ function CellValue({
     return <span>{String(value)}</span>;
   }
 
-  // Default to string rendering with truncation for long values
   const stringValue = String(value);
   const isTruncated = stringValue.length > MAX_STRING_DISPLAY_LENGTH;
 
@@ -369,7 +387,7 @@ function EnvironmentCellValue({ value }: { value: string }) {
   return <EnvironmentLabel environment={environment} />;
 }
 
-function JSONCellValue({ value }: { value: any }) {
+function JSONCellValue({ value }: { value: unknown }) {
   const jsonString = JSON.stringify(value);
   const isTruncated = jsonString.length > MAX_STRING_DISPLAY_LENGTH;
 
@@ -392,20 +410,108 @@ function JSONCellValue({ value }: { value: any }) {
 }
 
 /**
- * Check if a column should be right-aligned (numeric columns, duration, cost)
+ * Copyable cell component for virtualized rows
  */
-function isRightAlignedColumn(column: OutputColumnMetadata): boolean {
-  // Check for custom render types that display numeric values
-  if (
-    column.customRenderType === "duration" ||
-    column.customRenderType === "durationSeconds" ||
-    column.customRenderType === "cost" ||
-    column.customRenderType === "costInDollars"
-  ) {
-    return true;
-  }
+function CopyableCell({
+  value,
+  alignment,
+  children,
+}: {
+  value: string;
+  alignment: "left" | "right";
+  children: React.ReactNode;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const { copy, copied } = useCopy(value);
 
-  return isNumericType(column.type);
+  return (
+    <div
+      className={cn(
+        "relative flex items-center px-2 py-1.5",
+        "font-mono text-xs text-text-dimmed group-hover/row:text-text-bright",
+        alignment === "right" && "justify-end"
+      )}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {children}
+      {isHovered && (
+        <span
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            copy();
+          }}
+          className="absolute right-0 top-1/2 z-10 flex -translate-y-1/2 cursor-pointer"
+        >
+          <SimpleTooltip
+            button={
+              <span
+                className={cn(
+                  "flex size-6 items-center justify-center rounded border border-charcoal-650 bg-charcoal-750",
+                  copied
+                    ? "text-green-500"
+                    : "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-text-bright"
+                )}
+              >
+                {copied ? (
+                  <ClipboardCheckIcon className="size-3.5" />
+                ) : (
+                  <ClipboardIcon className="size-3.5" />
+                )}
+              </span>
+            }
+            content={copied ? "Copied!" : "Copy"}
+            disableHoverableContent
+          />
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Header cell component with tooltip support
+ */
+function HeaderCellContent({
+  alignment,
+  tooltip,
+  children,
+}: {
+  alignment: "left" | "right";
+  tooltip?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <div
+      className={cn(
+        "flex items-center px-2 py-1.5",
+        "text-sm font-medium text-text-bright",
+        alignment === "right" && "justify-end"
+      )}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {tooltip ? (
+        <div
+          className={cn("flex items-center gap-1", {
+            "justify-end": alignment === "right",
+          })}
+        >
+          {children}
+          <InfoIconTooltip
+            content={tooltip}
+            contentClassName="normal-case tracking-normal"
+            enabled={isHovered}
+          />
+        </div>
+      ) : (
+        children
+      )}
+    </div>
+  );
 }
 
 export const TSQLResultsTable = memo(function TSQLResultsTable({
@@ -417,52 +523,190 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   columns: OutputColumnMetadata[];
   prettyFormatting?: boolean;
 }) {
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  // Create TanStack Table column definitions from OutputColumnMetadata
+  const columnDefs = useMemo<ColumnDef<RowData, unknown>[]>(
+    () =>
+      columns.map((col) => ({
+        id: col.name,
+        accessorKey: col.name,
+        header: () => col.name,
+        cell: (info: CellContext<RowData, unknown>) => (
+          <CellValueWrapper
+            value={info.getValue()}
+            column={col}
+            prettyFormatting={prettyFormatting}
+          />
+        ),
+        meta: {
+          outputColumn: col,
+          alignment: isRightAlignedColumn(col) ? "right" : "left",
+        } as ColumnMeta,
+        size: DEFAULT_COLUMN_SIZE,
+      })),
+    [columns, prettyFormatting]
+  );
+
+  // Initialize TanStack Table
+  const table = useReactTable({
+    data: rows,
+    columns: columnDefs,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  const { rows: tableRows } = table.getRowModel();
+
+  // Set up the virtualizer
+  const rowVirtualizer = useVirtualizer({
+    count: tableRows.length,
+    estimateSize: () => ROW_HEIGHT,
+    getScrollElement: () => tableContainerRef.current,
+    overscan: 5,
+  });
+
   if (!columns.length) return null;
 
+  // Empty state
+  if (rows.length === 0) {
+    return (
+      <div
+        className="h-full w-full overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        style={{ position: "relative" }}
+      >
+        <table style={{ display: "grid" }}>
+          <thead
+            className="bg-background-dimmed"
+            style={{
+              display: "grid",
+              position: "sticky",
+              top: 0,
+              zIndex: 1,
+            }}
+          >
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id} style={{ display: "flex", width: "100%" }}>
+                {headerGroup.headers.map((header) => {
+                  const meta = header.column.columnDef.meta as ColumnMeta | undefined;
+                  return (
+                    <th
+                      key={header.id}
+                      style={{
+                        display: "flex",
+                        width: header.getSize(),
+                      }}
+                    >
+                      <HeaderCellContent
+                        alignment={meta?.alignment ?? "left"}
+                        tooltip={meta?.outputColumn.description}
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </HeaderCellContent>
+                    </th>
+                  );
+                })}
+              </tr>
+            ))}
+          </thead>
+          <tbody style={{ display: "grid" }}>
+            <tr style={{ display: "flex" }}>
+              <td>
+                <Paragraph variant="extra-small" className="p-4 text-text-dimmed">
+                  No results
+                </Paragraph>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   return (
-    <Table variant="compact/mono" fullWidth containerClassName="h-full overflow-y-auto border-t-0">
-      <TableHeader>
-        <TableRow>
-          {columns.map((col) => (
-            <TableHeaderCell
-              key={col.name}
-              alignment={isRightAlignedColumn(col) ? "right" : "left"}
-              tooltip={col.description}
-            >
-              {col.name}
-            </TableHeaderCell>
+    <div
+      ref={tableContainerRef}
+      className="h-full w-full overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+      style={{ position: "relative" }}
+    >
+      <table style={{ display: "grid" }}>
+        <thead
+          className="bg-background-dimmed after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright"
+          style={{
+            display: "grid",
+            position: "sticky",
+            top: 0,
+            zIndex: 1,
+          }}
+        >
+          {table.getHeaderGroups().map((headerGroup) => (
+            <tr key={headerGroup.id} style={{ display: "flex", width: "100%" }}>
+              {headerGroup.headers.map((header) => {
+                const meta = header.column.columnDef.meta as ColumnMeta | undefined;
+                return (
+                  <th
+                    key={header.id}
+                    style={{
+                      display: "flex",
+                      width: header.getSize(),
+                    }}
+                  >
+                    <HeaderCellContent
+                      alignment={meta?.alignment ?? "left"}
+                      tooltip={meta?.outputColumn.description}
+                    >
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                    </HeaderCellContent>
+                  </th>
+                );
+              })}
+            </tr>
           ))}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={columns.length}>
-              <Paragraph variant="extra-small" className="p-2 text-text-dimmed">
-                No results
-              </Paragraph>
-            </TableCell>
-          </TableRow>
-        ) : (
-          rows.map((row, i) => (
-            <TableRow key={i}>
-              {columns.map((col) => (
-                <CopyableTableCell
-                  key={col.name}
-                  alignment={isRightAlignedColumn(col) ? "right" : "left"}
-                  value={valueToString(row[col.name])}
-                >
-                  <CellValueWrapper
-                    value={row[col.name]}
-                    column={col}
-                    prettyFormatting={prettyFormatting}
-                  />
-                </CopyableTableCell>
-              ))}
-            </TableRow>
-          ))
-        )}
-      </TableBody>
-    </Table>
+        </thead>
+        <tbody
+          style={{
+            display: "grid",
+            height: `${rowVirtualizer.getTotalSize()}px`,
+            position: "relative",
+          }}
+        >
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const row = tableRows[virtualRow.index];
+            return (
+              <tr
+                key={row.id}
+                data-index={virtualRow.index}
+                className="group/row hover:bg-charcoal-800"
+                style={{
+                  display: "flex",
+                  position: "absolute",
+                  transform: `translateY(${virtualRow.start}px)`,
+                  width: "100%",
+                }}
+              >
+                {row.getVisibleCells().map((cell) => {
+                  const meta = cell.column.columnDef.meta as ColumnMeta | undefined;
+                  return (
+                    <td
+                      key={cell.id}
+                      style={{
+                        display: "flex",
+                        width: cell.column.getSize(),
+                      }}
+                    >
+                      <CopyableCell
+                        alignment={meta?.alignment ?? "left"}
+                        value={valueToString(cell.getValue())}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </CopyableCell>
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 });
