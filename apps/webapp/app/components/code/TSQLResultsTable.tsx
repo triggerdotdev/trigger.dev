@@ -541,14 +541,15 @@ function CopyableCell({
   return (
     <div
       className={cn(
-        "relative flex w-full items-center px-2 py-1.5",
+        "relative flex w-full items-center overflow-hidden px-2 py-1.5",
+        "bg-background-dimmed group-hover/row:bg-charcoal-800",
         "font-mono text-xs text-text-dimmed group-hover/row:text-text-bright",
         alignment === "right" && "justify-end"
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {children}
+      <span className="truncate">{children}</span>
       {isHovered && (
         <span
           onClick={(e) => {
@@ -601,7 +602,7 @@ function HeaderCellContent({
   return (
     <div
       className={cn(
-        "flex items-center px-2 py-1.5",
+        "flex w-full items-center overflow-hidden bg-background-dimmed px-2 py-1.5",
         "text-sm font-medium text-text-bright",
         alignment === "right" && "justify-end"
       )}
@@ -610,11 +611,11 @@ function HeaderCellContent({
     >
       {tooltip ? (
         <div
-          className={cn("flex items-center gap-1", {
+          className={cn("flex items-center gap-1 truncate", {
             "justify-end": alignment === "right",
           })}
         >
-          {children}
+          <span className="truncate">{children}</span>
           <InfoIconTooltip
             content={tooltip}
             contentClassName="normal-case tracking-normal"
@@ -622,7 +623,7 @@ function HeaderCellContent({
           />
         </div>
       ) : (
-        children
+        <span className="truncate">{children}</span>
       )}
     </div>
   );
