@@ -53,16 +53,103 @@ type RowData = Record<string, unknown>;
 /**
  * Fuzzy filter function using match-sorter ranking
  */
+/**
+ * Get the formatted display string for a value based on its column type
+ * This mirrors the formatting logic in CellValue component
+ */
+function getFormattedValue(value: unknown, column: OutputColumnMetadata): string {
+  if (value === null) return "NULL";
+  if (value === undefined) return "";
+
+  // Handle custom render types
+  if (column.customRenderType) {
+    switch (column.customRenderType) {
+      case "duration":
+        if (typeof value === "number") {
+          return formatDurationMilliseconds(value, { style: "short" });
+        }
+        break;
+      case "durationSeconds":
+        if (typeof value === "number") {
+          return formatDurationMilliseconds(value * 1000, { style: "short" });
+        }
+        break;
+      case "cost":
+        if (typeof value === "number") {
+          return formatCurrencyAccurate(value / 100);
+        }
+        break;
+      case "costInDollars":
+        if (typeof value === "number") {
+          return formatCurrencyAccurate(value);
+        }
+        break;
+      case "runStatus":
+        // Include friendly status names for searching
+        if (typeof value === "string") {
+          return value;
+        }
+        break;
+    }
+  }
+
+  // Handle DateTime types - format for display
+  if (isDateTimeType(column.type)) {
+    if (typeof value === "string") {
+      try {
+        const date = new Date(value);
+        // Format as a searchable string: "15 Jan 2026 12:34:56"
+        return date.toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+      } catch {
+        return String(value);
+      }
+    }
+  }
+
+  // Handle numeric types - format with separators
+  if (isNumericType(column.type) && typeof value === "number") {
+    return formatNumber(value);
+  }
+
+  // Handle booleans
+  if (isBooleanType(column.type)) {
+    if (typeof value === "boolean") {
+      return value ? "true" : "false";
+    }
+    if (typeof value === "number") {
+      return value === 1 ? "true" : "false";
+    }
+  }
+
+  // Handle objects/arrays
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+
+  return String(value);
+}
+
 const fuzzyFilter: FilterFn<RowData> = (row, columnId, value, addMeta) => {
-  // Get the cell value and convert to string for matching
+  // Get the cell value
   const cellValue = row.getValue(columnId);
-  const searchValue = String(value);
+  const searchValue = String(value).toLowerCase();
 
   // Handle empty search
   if (!searchValue) return true;
 
-  // Convert cell value to string for ranking
-  const itemValue =
+  // Get the column metadata from the cell
+  const cell = row.getAllCells().find((c) => c.column.id === columnId);
+  const meta = cell?.column.columnDef.meta as ColumnMeta | undefined;
+
+  // Build searchable strings - raw value
+  const rawValue =
     cellValue === null
       ? "NULL"
       : cellValue === undefined
@@ -71,8 +158,16 @@ const fuzzyFilter: FilterFn<RowData> = (row, columnId, value, addMeta) => {
       ? JSON.stringify(cellValue)
       : String(cellValue);
 
-  // Rank the item
-  const itemRank = rankItem(itemValue, searchValue);
+  // Build searchable strings - formatted value (if we have column metadata)
+  const formattedValue = meta?.outputColumn
+    ? getFormattedValue(cellValue, meta.outputColumn)
+    : rawValue;
+
+  // Combine both values for searching (separated by space to allow matching either)
+  const combinedSearchText = `${rawValue} ${formattedValue}`.toLowerCase();
+
+  // Rank against the combined text
+  const itemRank = rankItem(combinedSearchText, searchValue);
 
   // Store the ranking info
   addMeta({ itemRank });
