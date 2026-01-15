@@ -47,13 +47,14 @@ describe("validateQuery", () => {
       expect(result.issues).toHaveLength(0);
     });
 
-    it("should still report unknown columns that are not aliases", () => {
+    it("should report unknown columns that are not aliases as errors", () => {
       const result = validateSQL(
         "SELECT status, count(*) as count FROM runs GROUP BY status ORDER BY unknown_col DESC"
       );
-      expect(result.valid).toBe(true); // unknown column is a warning, not error
+      expect(result.valid).toBe(false); // unknown column is now an error
       expect(result.issues).toHaveLength(1);
       expect(result.issues[0].type).toBe("unknown_column");
+      expect(result.issues[0].severity).toBe("error");
       expect(result.issues[0].columnName).toBe("unknown_col");
     });
 
@@ -97,24 +98,27 @@ describe("validateQuery", () => {
       expect(result.issues).toHaveLength(0);
     });
 
-    it("should warn about unknown columns", () => {
+    it("should error on unknown columns", () => {
       const result = validateSQL("SELECT id, unknown_column FROM runs LIMIT 10");
-      expect(result.valid).toBe(true); // warnings don't affect validity
+      expect(result.valid).toBe(false); // unknown columns are now errors
       expect(result.issues).toHaveLength(1);
       expect(result.issues[0].type).toBe("unknown_column");
+      expect(result.issues[0].severity).toBe("error");
       expect(result.issues[0].columnName).toBe("unknown_column");
     });
   });
 
   describe("enum validation", () => {
     it("should validate enum values", () => {
-      const result = validateSQL("SELECT * FROM runs WHERE status = 'COMPLETED' LIMIT 10");
+      const result = validateSQL("SELECT id, status FROM runs WHERE status = 'COMPLETED' LIMIT 10");
       expect(result.valid).toBe(true);
       expect(result.issues).toHaveLength(0);
     });
 
     it("should error on invalid enum values", () => {
-      const result = validateSQL("SELECT * FROM runs WHERE status = 'INVALID_STATUS' LIMIT 10");
+      const result = validateSQL(
+        "SELECT id, status FROM runs WHERE status = 'INVALID_STATUS' LIMIT 10"
+      );
       expect(result.valid).toBe(false);
       expect(result.issues).toHaveLength(1);
       expect(result.issues[0].type).toBe("invalid_enum_value");

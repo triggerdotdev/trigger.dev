@@ -5,6 +5,7 @@ import { Highlight, Prism } from "prism-react-renderer";
 import { forwardRef, ReactNode, useCallback, useEffect, useState } from "react";
 import { TextWrapIcon } from "~/assets/icons/TextWrapIcon";
 import { cn } from "~/utils/cn";
+import { highlightSearchText } from "~/utils/logUtils";
 import { Button } from "../primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
@@ -64,6 +65,9 @@ type CodeBlockProps = {
 
   /** Whether to show the open in modal button */
   showOpenInModal?: boolean;
+
+  /** Search term to highlight in the code */
+  searchTerm?: string;
 };
 
 const dimAmount = 0.5;
@@ -202,6 +206,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       showChrome = false,
       fileName,
       rowTitle,
+      searchTerm,
       ...props
     }: CodeBlockProps,
     ref
@@ -238,7 +243,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       [code]
     );
 
-    code = code.trim();
+    code = code?.trim() ?? "";
     const lineCount = code.split("\n").length;
     const maxLineWidth = lineCount.toString().length;
     let maxHeight: string | undefined = undefined;
@@ -340,6 +345,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
               className="px-2 py-3"
               preClassName="text-xs"
               isWrapped={isWrapped}
+              searchTerm={searchTerm}
             />
           ) : (
             <div
@@ -360,7 +366,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 )}
                 dir="ltr"
               >
-                {code}
+                {highlightSearchText(code, searchTerm)}
               </pre>
             </div>
           )}
@@ -402,7 +408,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 className="overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
               >
                 <pre className="relative mr-2 p-2 font-mono text-base leading-relaxed" dir="ltr">
-                  {code}
+                  {highlightSearchText(code, searchTerm)}
                 </pre>
               </div>
             )}
@@ -451,6 +457,7 @@ type HighlightCodeProps = {
   className?: string;
   preClassName?: string;
   isWrapped: boolean;
+  searchTerm?: string;
 };
 
 function HighlightCode({
@@ -463,6 +470,7 @@ function HighlightCode({
   className,
   preClassName,
   isWrapped,
+  searchTerm,
 }: HighlightCodeProps) {
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -556,6 +564,10 @@ function HighlightCode({
                     <div className="flex-1">
                       {line.map((token, key) => {
                         const tokenProps = getTokenProps({ token, key });
+
+                        // Highlight search term matches in token
+                        const content = highlightSearchText(token.content, searchTerm);
+
                         return (
                           <span
                             key={key}
@@ -564,7 +576,9 @@ function HighlightCode({
                               color: tokenProps?.style?.color as string,
                               ...tokenProps.style,
                             }}
-                          />
+                          >
+                            {content}
+                          </span>
                         );
                       })}
                     </div>

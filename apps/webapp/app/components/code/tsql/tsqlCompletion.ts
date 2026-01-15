@@ -1,6 +1,7 @@
 import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
-import type { TableSchema, ColumnSchema } from "@internal/tsql";
 import {
+  type TableSchema,
+  type ColumnSchema,
   TSQL_CLICKHOUSE_FUNCTIONS,
   TSQL_AGGREGATIONS,
 } from "@internal/tsql";
@@ -88,7 +89,11 @@ function createFunctionCompletions(): Completion[] {
     if (name.startsWith("_")) continue;
 
     const argsHint =
-      meta.maxArgs === 0 ? "()" : meta.minArgs === meta.maxArgs ? `(${meta.minArgs} args)` : `(${meta.minArgs}${meta.maxArgs ? `-${meta.maxArgs}` : "+"} args)`;
+      meta.maxArgs === 0
+        ? "()"
+        : meta.minArgs === meta.maxArgs
+        ? `(${meta.minArgs} args)`
+        : `(${meta.minArgs}${meta.maxArgs ? `-${meta.maxArgs}` : "+"} args)`;
 
     functions.push({
       label: name,
@@ -103,7 +108,11 @@ function createFunctionCompletions(): Completion[] {
     if (name.startsWith("_")) continue;
 
     const argsHint =
-      meta.maxArgs === 0 ? "()" : meta.minArgs === meta.maxArgs ? `(${meta.minArgs} args)` : `(${meta.minArgs}${meta.maxArgs ? `-${meta.maxArgs}` : "+"} args)`;
+      meta.maxArgs === 0
+        ? "()"
+        : meta.minArgs === meta.maxArgs
+        ? `(${meta.minArgs} args)`
+        : `(${meta.minArgs}${meta.maxArgs ? `-${meta.maxArgs}` : "+"} args)`;
 
     functions.push({
       label: name,
@@ -157,8 +166,7 @@ function extractTablesFromQuery(doc: string, schema: TableSchema[]): Map<string,
 
   // Simple regex to find table references in FROM and JOIN clauses
   // Handles: FROM table_name, FROM table_name AS alias, FROM table_name alias
-  const tablePattern =
-    /(?:FROM|JOIN)\s+(\w+)(?:\s+(?:AS\s+)?(\w+))?/gi;
+  const tablePattern = /(?:FROM|JOIN)\s+(\w+)(?:\s+(?:AS\s+)?(\w+))?/gi;
 
   let match;
   while ((match = tablePattern.exec(doc)) !== null) {
@@ -166,9 +174,7 @@ function extractTablesFromQuery(doc: string, schema: TableSchema[]): Map<string,
     const alias = match[2] || tableName;
 
     // Find the table schema if it exists
-    const tableSchema = schema.find(
-      (t) => t.name.toLowerCase() === tableName.toLowerCase()
-    );
+    const tableSchema = schema.find((t) => t.name.toLowerCase() === tableName.toLowerCase());
 
     if (tableSchema) {
       tableMap.set(alias.toLowerCase(), tableSchema);
@@ -202,21 +208,24 @@ interface ContextResult {
 
 /**
  * Extract column name from text before a comparison operator
- * Handles: "column =", "table.column =", "column IN", etc.
+ * Handles: "column =", "table.column =", "column IN", "column = 'partial", etc.
  */
-function extractColumnBeforeOperator(textBefore: string): { columnName: string; tableAlias?: string } | null {
+function extractColumnBeforeOperator(
+  textBefore: string
+): { columnName: string; tableAlias?: string } | null {
   // Match patterns like: column =, column !=, column IN, table.column =, etc.
   // We need to capture the column (and optional table prefix) before the operator
+  // Also match when user is typing a partial string value like: column = 'val
   const patterns = [
-    // column = or column != or column <> (with optional whitespace)
-    /(\w+)\.(\w+)\s*(?:=|!=|<>)\s*$/i,
-    /(\w+)\s*(?:=|!=|<>)\s*$/i,
-    // column IN ( or column NOT IN (
-    /(\w+)\.(\w+)\s+(?:NOT\s+)?IN\s*\(\s*$/i,
-    /(\w+)\s+(?:NOT\s+)?IN\s*\(\s*$/i,
-    // After a comma in IN clause - need to find the column before IN
-    /(\w+)\.(\w+)\s+(?:NOT\s+)?IN\s*\([^)]*,\s*$/i,
-    /(\w+)\s+(?:NOT\s+)?IN\s*\([^)]*,\s*$/i,
+    // column = or column != or column <> (with optional whitespace and optional partial string value)
+    /(\w+)\.(\w+)\s*(?:=|!=|<>)\s*(?:'[^']*)?$/i,
+    /(\w+)\s*(?:=|!=|<>)\s*(?:'[^']*)?$/i,
+    // column IN ( or column NOT IN ( (with optional partial string value)
+    /(\w+)\.(\w+)\s+(?:NOT\s+)?IN\s*\(\s*(?:'[^']*)?$/i,
+    /(\w+)\s+(?:NOT\s+)?IN\s*\(\s*(?:'[^']*)?$/i,
+    // After a comma in IN clause (with optional partial string value)
+    /(\w+)\.(\w+)\s+(?:NOT\s+)?IN\s*\([^)]*,\s*(?:'[^']*)?$/i,
+    /(\w+)\s+(?:NOT\s+)?IN\s*\([^)]*,\s*(?:'[^']*)?$/i,
   ];
 
   for (const pattern of patterns) {
@@ -235,10 +244,7 @@ function extractColumnBeforeOperator(textBefore: string): { columnName: string; 
   return null;
 }
 
-function determineContext(
-  doc: string,
-  pos: number
-): ContextResult {
+function determineContext(doc: string, pos: number): ContextResult {
   // Get text before cursor
   const textBefore = doc.slice(0, pos);
 
@@ -320,21 +326,9 @@ function findColumnSchema(
 }
 
 /**
- * Create completions for enum values
- * Uses user-friendly values from valueMap when available, showing internal value as detail
+ * Create completions for enum values from allowedValues
  */
 function createEnumValueCompletions(columnSchema: ColumnSchema): Completion[] {
-  // Prefer valueMap over allowedValues if available
-  if (columnSchema.valueMap && Object.keys(columnSchema.valueMap).length > 0) {
-    return Object.entries(columnSchema.valueMap).map(([internalValue, userFriendlyValue]) => ({
-      label: `'${userFriendlyValue}'`,
-      type: "enum",
-      detail: `→ ${internalValue}`,
-      boost: 3, // Highest priority for enum values in value context
-    }));
-  }
-
-  // Fall back to allowedValues
   if (!columnSchema.allowedValues || columnSchema.allowedValues.length === 0) {
     return [];
   }
@@ -375,6 +369,8 @@ export function createTSQLCompletion(
     const queryContext = determineContext(doc, context.pos);
 
     let options: Completion[] = [];
+    // Track if we need to extend replacement range (e.g., to consume auto-paired closing quote)
+    let to: number | undefined = undefined;
 
     switch (queryContext.type) {
       case "table":
@@ -406,6 +402,12 @@ export function createTSQLCompletion(
 
           if (columnSchema) {
             options = createEnumValueCompletions(columnSchema);
+            // Check if there's a closing quote right after cursor (from auto-pairing)
+            // If so, extend replacement range to include it to avoid 'Completed''
+            const charAfterCursor = context.state.doc.sliceString(context.pos, context.pos + 1);
+            if (charAfterCursor === "'") {
+              to = context.pos + 1;
+            }
           }
         }
         break;
@@ -426,9 +428,23 @@ export function createTSQLCompletion(
           options.push(...functionCompletions);
           options.push(
             ...keywordCompletions.filter((k) =>
-              ["AND", "OR", "NOT", "IN", "LIKE", "ILIKE", "BETWEEN", "IS", "NULL", "AS", "CASE", "WHEN", "THEN", "ELSE", "END"].includes(
-                k.label as string
-              )
+              [
+                "AND",
+                "OR",
+                "NOT",
+                "IN",
+                "LIKE",
+                "ILIKE",
+                "BETWEEN",
+                "IS",
+                "NULL",
+                "AS",
+                "CASE",
+                "WHEN",
+                "THEN",
+                "ELSE",
+                "END",
+              ].includes(k.label as string)
             )
           );
         }
@@ -437,11 +453,7 @@ export function createTSQLCompletion(
       case "general":
       default:
         // Show everything
-        options = [
-          ...tableCompletions,
-          ...functionCompletions,
-          ...keywordCompletions,
-        ];
+        options = [...tableCompletions, ...functionCompletions, ...keywordCompletions];
 
         // Also add columns from tables in query
         {
@@ -454,11 +466,15 @@ export function createTSQLCompletion(
         break;
     }
 
-    return {
+    const result: CompletionResult = {
       from,
       options,
       validFor: /^[\w.']*$/,
     };
+    // Only set 'to' if we need to extend the replacement range
+    if (to !== undefined) {
+      result.to = to;
+    }
+    return result;
   };
 }
-

@@ -32,6 +32,8 @@ interface AIQueryInputProps {
   onQueryGenerated: (query: string) => void;
   /** Set this to a prompt to auto-populate and immediately submit */
   autoSubmitPrompt?: string;
+  /** Change this to force re-submission even if prompt is the same */
+  autoSubmitKey?: number;
   /** Get the current query in the editor (used for edit mode) */
   getCurrentQuery?: () => string;
 }
@@ -39,6 +41,7 @@ interface AIQueryInputProps {
 export function AIQueryInput({
   onQueryGenerated,
   autoSubmitPrompt,
+  autoSubmitKey,
   getCurrentQuery,
 }: AIQueryInputProps) {
   const [prompt, setPrompt] = useState("");
@@ -50,7 +53,7 @@ export function AIQueryInput({
   const [lastResult, setLastResult] = useState<"success" | "error" | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const lastAutoSubmitRef = useRef<string | null>(null);
+  const lastAutoSubmitRef = useRef<{ prompt: string; key?: number } | null>(null);
 
   const organization = useOrganization();
   const project = useProject();
@@ -197,19 +200,22 @@ export function AIQueryInput({
     [prompt, submitQuery]
   );
 
-  // Auto-submit when autoSubmitPrompt changes
+  // Auto-submit when autoSubmitPrompt or autoSubmitKey changes
   useEffect(() => {
-    if (
-      autoSubmitPrompt &&
-      autoSubmitPrompt.trim() &&
-      autoSubmitPrompt !== lastAutoSubmitRef.current &&
-      !isLoading
-    ) {
-      lastAutoSubmitRef.current = autoSubmitPrompt;
+    if (!autoSubmitPrompt || !autoSubmitPrompt.trim() || isLoading) {
+      return;
+    }
+
+    const last = lastAutoSubmitRef.current;
+    const isDifferent =
+      last === null || autoSubmitPrompt !== last.prompt || autoSubmitKey !== last.key;
+
+    if (isDifferent) {
+      lastAutoSubmitRef.current = { prompt: autoSubmitPrompt, key: autoSubmitKey };
       setPrompt(autoSubmitPrompt);
       submitQuery(autoSubmitPrompt);
     }
-  }, [autoSubmitPrompt, isLoading, submitQuery]);
+  }, [autoSubmitPrompt, autoSubmitKey, isLoading, submitQuery]);
 
   // Cleanup on unmount
   useEffect(() => {

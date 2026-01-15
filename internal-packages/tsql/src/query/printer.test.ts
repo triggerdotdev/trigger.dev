@@ -429,15 +429,15 @@ describe("ClickHousePrinter", () => {
     });
 
     it("should handle IS NULL syntax", () => {
-      const { sql } = printQuery("SELECT * FROM task_runs WHERE error IS NULL");
+      const { sql } = printQuery("SELECT * FROM task_runs WHERE started_at IS NULL");
 
-      expect(sql).toContain("isNull(error)");
+      expect(sql).toContain("isNull(started_at)");
     });
 
     it("should handle IS NOT NULL syntax", () => {
-      const { sql } = printQuery("SELECT * FROM task_runs WHERE error IS NOT NULL");
+      const { sql } = printQuery("SELECT * FROM task_runs WHERE started_at IS NOT NULL");
 
-      expect(sql).toContain("isNotNull(error)");
+      expect(sql).toContain("isNotNull(started_at)");
     });
   });
 
@@ -2172,6 +2172,152 @@ describe("Column metadata", () => {
   });
 });
 
+describe("Unknown column blocking", () => {
+  /**
+   * These tests verify that unknown columns are blocked at compile time,
+   * preventing access to internal ClickHouse columns that aren't exposed in the schema.
+   */
+
+  describe("should block unknown columns in SELECT", () => {
+    it("should throw error for unknown column in SELECT list", () => {
+      expect(() => {
+        printQuery("SELECT id, unknown_column FROM task_runs");
+      }).toThrow(QueryError);
+      expect(() => {
+        printQuery("SELECT id, unknown_column FROM task_runs");
+      }).toThrow(/unknown.*column.*unknown_column/i);
+    });
+
+    it("should throw error for internal ClickHouse column name not in schema", () => {
+      // The schema exposes 'created' but the internal ClickHouse column is 'created_at'
+      // Using the internal name directly should be blocked
+      const schema = createSchemaRegistry([runsSchema]);
+      const ctx = createPrinterContext({
+        organizationId: "org_test",
+        projectId: "proj_test",
+        environmentId: "env_test",
+        schema,
+      });
+
+      // 'created_at' is not in runsSchema - only 'created' which maps to 'created_at'
+      expect(() => {
+        printQuery("SELECT id, created_at FROM runs", ctx);
+      }).toThrow(QueryError);
+    });
+
+    it("should suggest TSQL column name when user types ClickHouse column name", () => {
+      // The schema exposes 'created' but the internal ClickHouse column is 'created_at'
+      // When user types 'created_at', we should suggest 'created'
+      const schema = createSchemaRegistry([runsSchema]);
+      const ctx = createPrinterContext({
+        organizationId: "org_test",
+        projectId: "proj_test",
+        environmentId: "env_test",
+        schema,
+      });
+
+      expect(() => {
+        printQuery("SELECT id, created_at FROM runs", ctx);
+      }).toThrow(/Did you mean "created"/);
+    });
+
+    it("should throw error for unknown qualified column (table.column)", () => {
+      expect(() => {
+        printQuery("SELECT task_runs.unknown_column FROM task_runs");
+      }).toThrow(QueryError);
+    });
+  });
+
+  describe("should block unknown columns in WHERE", () => {
+    it("should throw error for unknown column in WHERE clause", () => {
+      expect(() => {
+        printQuery("SELECT id FROM task_runs WHERE unknown_column = 'test'");
+      }).toThrow(QueryError);
+    });
+
+    it("should throw error for unknown column in complex WHERE", () => {
+      expect(() => {
+        printQuery("SELECT id FROM task_runs WHERE status = 'completed' AND unknown_column > 10");
+      }).toThrow(QueryError);
+    });
+  });
+
+  describe("should block unknown columns in ORDER BY", () => {
+    it("should throw error for unknown column in ORDER BY", () => {
+      expect(() => {
+        printQuery("SELECT id, status FROM task_runs ORDER BY unknown_column DESC");
+      }).toThrow(QueryError);
+    });
+  });
+
+  describe("should block unknown columns in GROUP BY", () => {
+    it("should throw error for unknown column in GROUP BY", () => {
+      expect(() => {
+        printQuery("SELECT count(*) FROM task_runs GROUP BY unknown_column");
+      }).toThrow(QueryError);
+    });
+  });
+
+  describe("should allow SELECT aliases", () => {
+    it("should allow ORDER BY to reference aliased columns", () => {
+      // This should NOT throw - 'cnt' is a valid alias from SELECT
+      const { sql } = printQuery(
+        "SELECT status, count(*) AS cnt FROM task_runs GROUP BY status ORDER BY cnt DESC"
+      );
+      expect(sql).toContain("ORDER BY cnt DESC");
+    });
+
+    it("should allow HAVING to reference aliased columns", () => {
+      const { sql } = printQuery(
+        "SELECT status, count(*) AS cnt FROM task_runs GROUP BY status HAVING cnt > 10"
+      );
+      expect(sql).toContain("HAVING");
+    });
+
+    it("should allow ORDER BY to reference implicit aggregation names", () => {
+      // COUNT() without alias gets implicit name 'count'
+      const { sql } = printQuery(
+        "SELECT status, count() FROM task_runs GROUP BY status ORDER BY count DESC"
+      );
+      expect(sql).toContain("ORDER BY count DESC");
+    });
+  });
+
+  // Note: CTE support is limited - CTEs are not added to the table context,
+  // so CTE column references are treated as unknown. This is a pre-existing limitation.
+  // The tests below verify that unknown column blocking doesn't break existing behavior.
+
+  describe("should allow subquery alias references", () => {
+    it("should allow referencing columns from subquery in FROM clause", () => {
+      const { sql } = printQuery(`
+        SELECT sub.status_name, sub.total
+        FROM (
+          SELECT status AS status_name, count(*) AS total
+          FROM task_runs
+          GROUP BY status
+        ) AS sub
+        ORDER BY sub.total DESC
+      `);
+      expect(sql).toContain("status_name");
+      expect(sql).toContain("total");
+    });
+
+    it("should allow unqualified references to subquery columns", () => {
+      const { sql } = printQuery(`
+        SELECT status_name, total
+        FROM (
+          SELECT status AS status_name, count(*) AS total
+          FROM task_runs
+          GROUP BY status
+        )
+        WHERE total > 10
+      `);
+      expect(sql).toContain("status_name");
+      expect(sql).toContain("total");
+    });
+  });
+});
+
 describe("Field Mapping Value Transformation", () => {
   // Test schema with a field mapping column
   const fieldMappingSchema: TableSchema = {
@@ -2276,5 +2422,193 @@ describe("Field Mapping Value Transformation", () => {
     // Should use the actual ClickHouse column name (project_id) in the SQL
     expect(sql).toContain("project_id");
     // But the column metadata should use the exposed name
+  });
+});
+
+describe("Internal-only column blocking", () => {
+  /**
+   * These tests verify that internal columns (tenant columns, required filter columns)
+   * that are NOT exposed in tableSchema.columns are blocked from user queries in
+   * SELECT, ORDER BY, GROUP BY, and HAVING clauses, but allowed in system-generated
+   * tenant isolation guards.
+   */
+
+  // Schema with hidden tenant columns (not exposed in public columns)
+  const hiddenTenantSchema: TableSchema = {
+    name: "hidden_tenant_runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    columns: {
+      // Public columns - these are exposed to users
+      id: { name: "id", ...column("String") },
+      status: { name: "status", ...column("String") },
+      task_identifier: { name: "task_identifier", ...column("String") },
+      created_at: { name: "created_at", ...column("DateTime64") },
+    },
+    // Tenant columns are NOT in the public columns above
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  // Schema with hidden required filter column
+  const hiddenFilterSchema: TableSchema = {
+    name: "hidden_filter_runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    columns: {
+      id: { name: "id", ...column("String") },
+      status: { name: "status", ...column("String") },
+      created_at: { name: "created_at", ...column("DateTime64") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+    requiredFilters: [
+      { column: "engine", value: "V2" }, // 'engine' is not in public columns
+    ],
+  };
+
+  function createHiddenTenantContext(): PrinterContext {
+    const schema = createSchemaRegistry([hiddenTenantSchema]);
+    return createPrinterContext({
+      organizationId: "org_test",
+      projectId: "proj_test",
+      environmentId: "env_test",
+      schema,
+    });
+  }
+
+  function createHiddenFilterContext(): PrinterContext {
+    const schema = createSchemaRegistry([hiddenFilterSchema]);
+    return createPrinterContext({
+      organizationId: "org_test",
+      projectId: "proj_test",
+      environmentId: "env_test",
+      schema,
+    });
+  }
+
+  describe("should block internal-only columns in SELECT", () => {
+    it("should throw error when selecting hidden tenant column (organization_id)", () => {
+      const ctx = createHiddenTenantContext();
+      expect(() => {
+        printQuery("SELECT id, organization_id FROM hidden_tenant_runs", ctx);
+      }).toThrow(QueryError);
+      expect(() => {
+        printQuery("SELECT id, organization_id FROM hidden_tenant_runs", ctx);
+      }).toThrow(/not available for querying/i);
+    });
+
+    it("should throw error when selecting hidden tenant column (project_id)", () => {
+      const ctx = createHiddenTenantContext();
+      expect(() => {
+        printQuery("SELECT project_id FROM hidden_tenant_runs", ctx);
+      }).toThrow(/not available for querying/i);
+    });
+
+    it("should throw error when selecting hidden tenant column (environment_id)", () => {
+      const ctx = createHiddenTenantContext();
+      expect(() => {
+        printQuery("SELECT environment_id FROM hidden_tenant_runs", ctx);
+      }).toThrow(/not available for querying/i);
+    });
+
+    it("should throw error when selecting hidden required filter column", () => {
+      const ctx = createHiddenFilterContext();
+      expect(() => {
+        printQuery("SELECT id, engine FROM hidden_filter_runs", ctx);
+      }).toThrow(/not available for querying/i);
+    });
+  });
+
+  describe("should block internal-only columns in ORDER BY", () => {
+    it("should throw error when ordering by hidden tenant column", () => {
+      const ctx = createHiddenTenantContext();
+      expect(() => {
+        printQuery("SELECT id, status FROM hidden_tenant_runs ORDER BY organization_id", ctx);
+      }).toThrow(/not available for querying/i);
+    });
+
+    it("should throw error when ordering by hidden required filter column", () => {
+      const ctx = createHiddenFilterContext();
+      expect(() => {
+        printQuery("SELECT id, status FROM hidden_filter_runs ORDER BY engine", ctx);
+      }).toThrow(/not available for querying/i);
+    });
+  });
+
+  describe("should block internal-only columns in GROUP BY", () => {
+    it("should throw error when grouping by hidden tenant column", () => {
+      const ctx = createHiddenTenantContext();
+      expect(() => {
+        printQuery("SELECT count(*) FROM hidden_tenant_runs GROUP BY organization_id", ctx);
+      }).toThrow(/not available for querying/i);
+    });
+
+    it("should throw error when grouping by hidden required filter column", () => {
+      const ctx = createHiddenFilterContext();
+      expect(() => {
+        printQuery("SELECT count(*) FROM hidden_filter_runs GROUP BY engine", ctx);
+      }).toThrow(/not available for querying/i);
+    });
+  });
+
+  describe("should block internal-only columns in HAVING", () => {
+    it("should throw error when using hidden column in HAVING", () => {
+      const ctx = createHiddenTenantContext();
+      expect(() => {
+        printQuery(
+          "SELECT status, count(*) as cnt FROM hidden_tenant_runs GROUP BY status HAVING organization_id = 'x'",
+          ctx
+        );
+      }).toThrow(/not available for querying/i);
+    });
+  });
+
+  describe("should allow tenant guard in WHERE clause", () => {
+    it("should successfully execute query with tenant isolation (hidden tenant columns work internally)", () => {
+      const ctx = createHiddenTenantContext();
+      // This should succeed - the tenant guard is injected internally and should work
+      const { sql } = printQuery("SELECT id, status FROM hidden_tenant_runs", ctx);
+
+      // Verify tenant guards are present in WHERE clause
+      expect(sql).toContain("organization_id");
+      expect(sql).toContain("project_id");
+      expect(sql).toContain("environment_id");
+      // But NOT in SELECT
+      expect(sql).toMatch(/SELECT\s+id,\s*status\s+FROM/i);
+    });
+
+    it("should successfully execute query with required filter (hidden filter columns work internally)", () => {
+      const ctx = createHiddenFilterContext();
+      const { sql, params } = printQuery("SELECT id, status FROM hidden_filter_runs", ctx);
+
+      // Verify required filter is present in WHERE clause
+      expect(sql).toContain("engine");
+      // The value V2 is parameterized, check that it's in the params
+      expect(Object.values(params)).toContain("V2");
+    });
+  });
+
+  describe("should allow exposed tenant columns", () => {
+    // In task_runs schema, tenant columns ARE exposed in the public columns
+    it("should allow selecting exposed tenant column", () => {
+      // task_runs schema exposes organization_id in its columns
+      const { sql } = printQuery("SELECT id, organization_id FROM task_runs");
+      expect(sql).toContain("SELECT id, organization_id");
+    });
+
+    it("should allow ordering by exposed tenant column", () => {
+      const { sql } = printQuery("SELECT id, status FROM task_runs ORDER BY organization_id");
+      expect(sql).toContain("ORDER BY organization_id");
+    });
+
+    it("should allow grouping by exposed tenant column", () => {
+      const { sql } = printQuery("SELECT organization_id, count(*) FROM task_runs GROUP BY organization_id");
+      expect(sql).toContain("GROUP BY organization_id");
+    });
   });
 });

@@ -7,7 +7,7 @@ import { type Prisma, TaskRunStatus } from "@trigger.dev/database";
 import parseDuration from "parse-duration";
 import { z } from "zod";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
-import { type PrismaClient } from "~/db.server";
+import { type PrismaClient, type PrismaClientOrTransaction } from "~/db.server";
 import { FEATURE_FLAG, makeFlags } from "~/v3/featureFlags.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 import { logger } from "../logger.server";
@@ -16,7 +16,7 @@ import { PostgresRunsRepository } from "./postgresRunsRepository.server";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
-  prisma: PrismaClient;
+  prisma: PrismaClientOrTransaction;
   logger?: Logger;
   logLevel?: LogLevel;
   tracer?: Tracer;
@@ -127,6 +127,8 @@ export type TagList = {
 export interface IRunsRepository {
   name: string;
   listRunIds(options: ListRunsOptions): Promise<string[]>;
+  /** Returns friendly IDs (e.g., run_xxx) instead of internal UUIDs. Used for ClickHouse task_events queries. */
+  listFriendlyRunIds(options: ListRunsOptions): Promise<string[]>;
   listRuns(options: ListRunsOptions): Promise<{
     runs: ListedRun[];
     pagination: {
@@ -196,6 +198,48 @@ export class RunsRepository implements IRunsRepository {
               "runsRepository.listRunIds.fallback",
               async () => {
                 return await this.postgresRunsRepository.listRunIds(options);
+              },
+              {
+                attributes: {
+                  "repository.name": "postgres",
+                  "fallback.reason": "clickhouse_error",
+                  "fallback.error": error instanceof Error ? error.message : String(error),
+                  organizationId: options.organizationId,
+                  projectId: options.projectId,
+                  environmentId: options.environmentId,
+                },
+              }
+            );
+          }
+          throw error;
+        }
+      },
+      {
+        attributes: {
+          "repository.name": repository.name,
+          organizationId: options.organizationId,
+          projectId: options.projectId,
+          environmentId: options.environmentId,
+        },
+      }
+    );
+  }
+
+  async listFriendlyRunIds(options: ListRunsOptions): Promise<string[]> {
+    const repository = await this.#getRepository();
+    return startActiveSpan(
+      "runsRepository.listFriendlyRunIds",
+      async () => {
+        try {
+          return await repository.listFriendlyRunIds(options);
+        } catch (error) {
+          // If ClickHouse fails, retry with Postgres
+          if (repository.name === "clickhouse") {
+            this.logger?.warn("ClickHouse failed, retrying with Postgres", { error });
+            return startActiveSpan(
+              "runsRepository.listFriendlyRunIds.fallback",
+              async () => {
+                return await this.postgresRunsRepository.listFriendlyRunIds(options);
               },
               {
                 attributes: {

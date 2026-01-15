@@ -40,6 +40,7 @@ import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
@@ -118,7 +119,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
-  const canAccess = await hasQueryAccess(user.id, user.admin, user.isImpersonating, organizationSlug);
+  const canAccess = await hasQueryAccess(
+    user.id,
+    user.admin,
+    user.isImpersonating,
+    organizationSlug
+  );
   if (!canAccess) {
     throw redirect("/");
   }
@@ -144,25 +150,43 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     organizationId: project.organizationId,
   });
 
+  // Admins and impersonating users can use EXPLAIN
+  const isAdmin = user.admin || user.isImpersonating;
+
   return typedjson({
     defaultQuery,
     history,
+    isAdmin,
   });
 };
 
 const ActionSchema = z.object({
   query: z.string().min(1, "Query is required"),
   scope: z.enum(["environment", "project", "organization"]),
+  explain: z.enum(["true", "false"]).nullable().optional(),
 });
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const user = await requireUser(request);
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
-  const canAccess = await hasQueryAccess(user.id, user.admin, user.isImpersonating, organizationSlug);
+  const canAccess = await hasQueryAccess(
+    user.id,
+    user.admin,
+    user.isImpersonating,
+    organizationSlug
+  );
   if (!canAccess) {
     return typedjson(
-      { error: "Unauthorized", rows: null, columns: null, stats: null },
+      {
+        error: "Unauthorized",
+        rows: null,
+        columns: null,
+        stats: null,
+        hiddenColumns: null,
+        explainOutput: null,
+        generatedSql: null,
+      },
       { status: 403 }
     );
   }
@@ -170,7 +194,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) {
     return typedjson(
-      { error: "Project not found", rows: null, columns: null, stats: null },
+      {
+        error: "Project not found",
+        rows: null,
+        columns: null,
+        stats: null,
+        hiddenColumns: null,
+        explainOutput: null,
+        generatedSql: null,
+      },
       { status: 404 }
     );
   }
@@ -178,7 +210,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
   if (!environment) {
     return typedjson(
-      { error: "Environment not found", rows: null, columns: null, stats: null },
+      {
+        error: "Environment not found",
+        rows: null,
+        columns: null,
+        stats: null,
+        hiddenColumns: null,
+        explainOutput: null,
+        generatedSql: null,
+      },
       { status: 404 }
     );
   }
@@ -187,6 +227,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const parsed = ActionSchema.safeParse({
     query: formData.get("query"),
     scope: formData.get("scope"),
+    explain: formData.get("explain"),
   });
 
   if (!parsed.success) {
@@ -196,12 +237,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         rows: null,
         columns: null,
         stats: null,
+        hiddenColumns: null,
+        explainOutput: null,
+        generatedSql: null,
       },
       { status: 400 }
     );
   }
 
-  const { query, scope } = parsed.data;
+  const { query, scope, explain: explainParam } = parsed.data;
+  // Only allow explain for admins/impersonating users
+  const isAdmin = user.admin || user.isImpersonating;
+  const explain = explainParam === "true" && isAdmin;
 
   try {
     const [error, result] = await executeQuery({
@@ -214,15 +261,25 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       organizationId: project.organizationId,
       projectId: project.id,
       environmentId: environment.id,
+      explain,
       history: {
         source: "DASHBOARD",
         userId: user.id,
+        skip: user.isImpersonating,
       },
     });
 
     if (error) {
       return typedjson(
-        { error: error.message, rows: null, columns: null, stats: null },
+        {
+          error: error.message,
+          rows: null,
+          columns: null,
+          stats: null,
+          hiddenColumns: null,
+          explainOutput: null,
+          generatedSql: null,
+        },
         { status: 400 }
       );
     }
@@ -232,11 +289,22 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       rows: result.rows,
       columns: result.columns,
       stats: result.stats,
+      hiddenColumns: result.hiddenColumns ?? null,
+      explainOutput: result.explainOutput ?? null,
+      generatedSql: result.generatedSql ?? null,
     });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error executing query";
     return typedjson(
-      { error: errorMessage, rows: null, columns: null, stats: null },
+      {
+        error: errorMessage,
+        rows: null,
+        columns: null,
+        stats: null,
+        hiddenColumns: null,
+        explainOutput: null,
+        generatedSql: null,
+      },
       { status: 500 }
     );
   }
@@ -257,8 +325,9 @@ const QueryEditorForm = forwardRef<
     defaultScope: QueryScope;
     history: QueryHistoryItem[];
     isLoading: boolean;
+    isAdmin: boolean;
   }
->(function QueryEditorForm({ defaultQuery, defaultScope, history, isLoading }, ref) {
+>(function QueryEditorForm({ defaultQuery, defaultScope, history, isLoading, isAdmin }, ref) {
   const [query, setQuery] = useState(defaultQuery);
   const [scope, setScope] = useState<QueryScope>(defaultScope);
 
@@ -313,6 +382,17 @@ const QueryEditorForm = forwardRef<
               ))
             }
           </Select>
+          {isAdmin && (
+            <Button
+              type="submit"
+              name="explain"
+              value="true"
+              variant="tertiary/small"
+              disabled={isLoading || !query.trim()}
+            >
+              Explain
+            </Button>
+          )}
           <Button
             type="submit"
             variant="primary/small"
@@ -329,7 +409,7 @@ const QueryEditorForm = forwardRef<
 });
 
 export default function Page() {
-  const { defaultQuery, history } = useTypedLoaderData<typeof loader>();
+  const { defaultQuery, history, isAdmin } = useTypedLoaderData<typeof loader>();
   const results = useTypedActionData<typeof action>();
   const navigation = useNavigation();
 
@@ -341,6 +421,16 @@ export default function Page() {
   const [prettyFormatting, setPrettyFormatting] = useState(true);
   const [resultsView, setResultsView] = useState<"table" | "graph">("table");
   const [chartConfig, setChartConfig] = useState<ChartConfiguration>(defaultChartConfig);
+  const [sidebarTab, setSidebarTab] = useState<string>("ai");
+  const [aiFixRequest, setAiFixRequest] = useState<{ prompt: string; key: number } | null>(null);
+
+  const handleTryFixError = useCallback((errorMessage: string) => {
+    setSidebarTab("ai");
+    setAiFixRequest((prev) => ({
+      prompt: `Fix this query error: ${errorMessage}`,
+      key: (prev?.key ?? 0) + 1,
+    }));
+  }, []);
 
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
@@ -377,6 +467,7 @@ export default function Page() {
                 defaultScope={initialScope}
                 history={history}
                 isLoading={isLoading}
+                isAdmin={isAdmin}
               />
               {/* Results */}
               <div className="grid max-h-full grid-rows-[2rem_1fr] overflow-hidden border-t border-grid-dimmed bg-charcoal-800">
@@ -430,15 +521,60 @@ export default function Page() {
                         <span>Executing query...</span>
                       </div>
                     ) : results?.error ? (
-                      <pre className="whitespace-pre-wrap p-4 text-sm text-red-400">
-                        {results.error}
-                      </pre>
+                      <div className="p-4">
+                        <pre className="whitespace-pre-wrap text-sm text-red-400">
+                          {results.error}
+                        </pre>
+                        <Button
+                          variant="tertiary/small"
+                          className="mt-3"
+                          LeadingIcon={AISparkleIcon}
+                          onClick={() => handleTryFixError(results.error!)}
+                        >
+                          Try fix error
+                        </Button>
+                      </div>
+                    ) : results?.explainOutput ? (
+                      <div className="flex h-full flex-col gap-4 overflow-auto p-3">
+                        {results.generatedSql && (
+                          <div>
+                            <Header3 className="mb-2">Generated ClickHouse SQL</Header3>
+                            <div className="overflow-auto rounded border border-grid-dimmed bg-charcoal-900 p-3">
+                              <pre className="whitespace-pre font-mono text-xs text-text-bright">
+                                {results.generatedSql}
+                              </pre>
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex min-h-0 flex-1 flex-col">
+                          <Header3 className="mb-2">Query Execution Plan</Header3>
+                          <div className="min-h-0 flex-1 overflow-auto rounded border border-grid-dimmed bg-charcoal-900 p-3">
+                            <pre className="whitespace-pre font-mono text-xs text-text-bright">
+                              {results.explainOutput}
+                            </pre>
+                          </div>
+                        </div>
+                      </div>
                     ) : results?.rows && results?.columns ? (
-                      <TSQLResultsTable
-                        rows={results.rows}
-                        columns={results.columns}
-                        prettyFormatting={prettyFormatting}
-                      />
+                      <div className="flex h-full flex-col overflow-hidden">
+                        {results.hiddenColumns && results.hiddenColumns.length > 0 && (
+                          <Callout variant="warning" className="m-2 shrink-0 text-sm">
+                            <code>SELECT *</code> doesn't return all columns because it's slow. The
+                            following columns are not shown:{" "}
+                            <span className="font-mono text-xs">
+                              {results.hiddenColumns.join(", ")}
+                            </span>
+                            . Specify them explicitly to include them.
+                          </Callout>
+                        )}
+                        <div className="min-h-0 flex-1 overflow-hidden">
+                          <TSQLResultsTable
+                            rows={results.rows}
+                            columns={results.columns}
+                            prettyFormatting={prettyFormatting}
+                          />
+                        </div>
+                      </div>
                     ) : (
                       <Paragraph variant="small" className="p-4 text-text-dimmed">
                         Run a query to see results here.
@@ -493,6 +629,9 @@ export default function Page() {
                 editorRef.current?.setQuery(formatted);
               }}
               getCurrentQuery={() => editorRef.current?.getQuery() ?? ""}
+              activeTab={sidebarTab}
+              onTabChange={setSidebarTab}
+              aiFixRequest={aiFixRequest}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -613,14 +752,24 @@ function QueryHelpSidebar({
   onTryExample,
   onQueryGenerated,
   getCurrentQuery,
+  activeTab,
+  onTabChange,
+  aiFixRequest,
 }: {
   onTryExample: (query: string, scope: QueryScope) => void;
   onQueryGenerated: (query: string) => void;
   getCurrentQuery: () => string;
+  activeTab: string;
+  onTabChange: (tab: string) => void;
+  aiFixRequest: { prompt: string; key: number } | null;
 }) {
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <ClientTabs defaultValue="ai" className="flex min-h-0 flex-col overflow-hidden pt-1">
+      <ClientTabs
+        value={activeTab}
+        onValueChange={onTabChange}
+        className="flex min-h-0 flex-col overflow-hidden pt-1"
+      >
         <ClientTabsList variant="underline" className="mx-3 shrink-0">
           <ClientTabsTrigger value="ai" variant="underline" layoutId="query-help-tabs">
             <div className="flex items-center gap-0.5">
@@ -641,7 +790,11 @@ function QueryHelpSidebar({
           value="ai"
           className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
-          <AITabContent onQueryGenerated={onQueryGenerated} getCurrentQuery={getCurrentQuery} />
+          <AITabContent
+            onQueryGenerated={onQueryGenerated}
+            getCurrentQuery={getCurrentQuery}
+            aiFixRequest={aiFixRequest}
+          />
         </ClientTabsContent>
         <ClientTabsContent
           value="guide"
@@ -669,11 +822,19 @@ function QueryHelpSidebar({
 function AITabContent({
   onQueryGenerated,
   getCurrentQuery,
+  aiFixRequest,
 }: {
   onQueryGenerated: (query: string) => void;
   getCurrentQuery: () => string;
+  aiFixRequest: { prompt: string; key: number } | null;
 }) {
-  const [autoSubmitPrompt, setAutoSubmitPrompt] = useState<string | undefined>();
+  const [examplePromptRequest, setExamplePromptRequest] = useState<{
+    prompt: string;
+    key: number;
+  } | null>(null);
+
+  // Use aiFixRequest if present, otherwise use example prompt request
+  const activeRequest = aiFixRequest ?? examplePromptRequest;
 
   const examplePrompts = [
     "Show me failed runs by hour for the past 7 days",
@@ -687,7 +848,8 @@ function AITabContent({
     <div className="space-y-2">
       <AIQueryInput
         onQueryGenerated={onQueryGenerated}
-        autoSubmitPrompt={autoSubmitPrompt}
+        autoSubmitPrompt={activeRequest?.prompt}
+        autoSubmitKey={activeRequest?.key}
         getCurrentQuery={getCurrentQuery}
       />
 
@@ -699,9 +861,10 @@ function AITabContent({
               key={example}
               type="button"
               onClick={() => {
-                // Use a unique key to ensure re-trigger even if same prompt clicked twice
-                setAutoSubmitPrompt(undefined);
-                setTimeout(() => setAutoSubmitPrompt(example), 0);
+                setExamplePromptRequest((prev) => ({
+                  prompt: example,
+                  key: (prev?.key ?? 0) + 1,
+                }));
               }}
               className="block w-full rounded-md border border-grid-dimmed bg-charcoal-800 px-3 py-2 text-left text-sm text-text-dimmed transition-colors hover:border-grid-bright hover:bg-charcoal-750 hover:text-text-bright"
             >
