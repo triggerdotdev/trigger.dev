@@ -353,7 +353,7 @@ const QueryEditorForm = forwardRef<
         <input type="hidden" name="query" value={query} />
         <input type="hidden" name="scope" value={scope} />
         <QueryHistoryPopover history={history} onQuerySelected={handleHistorySelected} />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <Select
             value={scope}
             setValue={(value) => setScope(value as QueryScope)}
