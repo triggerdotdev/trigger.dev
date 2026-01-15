@@ -84,15 +84,10 @@ export class LogDetailPresenter {
     }
 
     try {
-      // Handle attributes which could be a JSON object or string
-      if (log.attributes) {
-        if (typeof log.attributes === "string") {
-          parsedAttributes = JSON.parse(log.attributes) as Record<string, unknown>;
-          rawAttributesString = log.attributes;
-        } else if (typeof log.attributes === "object") {
-          parsedAttributes = log.attributes as Record<string, unknown>;
-          rawAttributesString = JSON.stringify(log.attributes);
-        }
+      // Handle attributes_text which is a string
+      if (log.attributes_text) {
+        parsedAttributes = JSON.parse(log.attributes_text) as Record<string, unknown>;
+        rawAttributesString = log.attributes_text;
       }
     } catch {
       // Ignore parse errors

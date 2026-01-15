@@ -250,7 +250,7 @@ export const LogsListResult = z.object({
   status: z.string(),
   duration: z.number().or(z.string()),
   metadata: z.string(),
-  attributes: z.any(),
+  attributes_text: z.string(),
 });
 
 export type LogsListResult = z.output<typeof LogsListResult>;
@@ -274,7 +274,7 @@ export function getLogsListQueryBuilderV2(ch: ClickhouseReader, settings?: Click
       "status",
       "duration",
       "metadata",
-      "attributes"
+      "attributes_text"
     ],
     settings,
   });
@@ -296,7 +296,7 @@ export const LogDetailV2Result = z.object({
   status: z.string(),
   duration: z.number().or(z.string()),
   metadata: z.string(),
-  attributes: z.any()
+  attributes_text: z.string()
 });
 
 export type LogDetailV2Result = z.output<typeof LogDetailV2Result>;
@@ -320,7 +320,7 @@ export function getLogDetailQueryBuilderV2(ch: ClickhouseReader, settings?: Clic
       "status",
       "duration",
       "metadata",
-      "attributes",
+      "attributes_text",
     ],
     settings,
   });
@@ -349,7 +349,7 @@ export function getLogsListQueryBuilderV1(ch: ClickhouseReader, settings?: Click
       "status",
       "duration",
       "metadata",
-      "attributes"
+      "attributes_text"
     ],
     settings,
   });
@@ -374,7 +374,7 @@ export function getLogDetailQueryBuilderV1(ch: ClickhouseReader, settings?: Clic
       "status",
       "duration",
       "metadata",
-      "attributes",
+      "attributes_text",
     ],
     settings,
   });

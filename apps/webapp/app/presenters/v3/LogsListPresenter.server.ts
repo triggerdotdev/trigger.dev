@@ -19,12 +19,12 @@ import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { kindToLevel, type LogLevel, LogLevelSchema } from "~/utils/logUtils";
+import { BasePresenter } from "~/presenters/v3/basePresenter.server";
 import {
   convertDateToClickhouseDateTime,
   convertClickhouseDateTime64ToJsDate,
 } from "~/v3/eventRepository/clickhouseEventRepository.server";
-import { kindToLevel, type LogLevel, LogLevelSchema } from "~/utils/logUtils";
-import { BasePresenter } from "~/presenters/v3/basePresenter.server";
 
 
 export type { LogLevel };
@@ -542,9 +542,9 @@ export class LogsListPresenter extends BasePresenter {
       let displayMessage = log.message;
 
       // For error logs with status ERROR, try to extract error message from attributes
-      if (log.status === "ERROR" && log.attributes) {
+      if (log.status === "ERROR" && log.attributes_text) {
         try {
-          let attributes = log.attributes as ErrorAttributes;
+          let attributes = JSON.parse(log.attributes_text) as ErrorAttributes;
 
           if (attributes?.error?.message && typeof attributes.error.message === "string") {
             displayMessage = attributes.error.message;

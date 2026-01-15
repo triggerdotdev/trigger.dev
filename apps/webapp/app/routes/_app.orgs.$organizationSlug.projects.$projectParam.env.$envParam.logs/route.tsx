@@ -227,7 +227,7 @@ function LogsList({
   showDebug,
   defaultPeriod,
 }: {
-  list: Awaited<UseDataFunctionReturn<typeof loader>["data"]>;
+  list: Exclude<Awaited<UseDataFunctionReturn<typeof loader>["data"]>, { error: string }>; //exclude error, it is handled
   rootOnlyDefault: boolean;
   isAdmin: boolean;
   showDebug: boolean;
