@@ -457,9 +457,9 @@ export default function Page() {
         <PageTitle title={<AlphaTitle>Query</AlphaTitle>} />
       </NavBar>
       <PageBody scrollable={false}>
-        <ResizablePanelGroup orientation="horizontal" className="max-h-full bg-charcoal-800">
-          <ResizablePanel id="query-main" className="max-h-full">
-            <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
+        <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full bg-charcoal-800">
+          <ResizablePanel id="query-main" className="h-full">
+            <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
               {/* Query editor - isolated component to prevent re-renders */}
               <QueryEditorForm
                 ref={editorRef}
@@ -518,7 +518,7 @@ export default function Page() {
                   </ClientTabsList>
                   <ClientTabsContent value="table" className="min-h-0 overflow-y-hidden">
                     {isLoading ? (
-                      <div className="flex items-center gap-2 p-4 text-text-dimmed">
+                      <div className="flex items-center gap-2 p-4 text-sm text-text-dimmed">
                         <Spinner className="size-4" />
                         <span>Executing query...</span>
                       </div>
@@ -585,24 +585,28 @@ export default function Page() {
                   </ClientTabsContent>
                   <ClientTabsContent
                     value="graph"
-                    className="flex min-h-0 flex-col overflow-hidden"
+                    className="grid min-h-0 grid-rows-[1fr] overflow-hidden"
                   >
                     {results?.rows && results?.columns && results.rows.length > 0 ? (
-                      <>
-                        <ChartConfigPanel
-                          columns={results.columns}
-                          config={chartConfig}
-                          onChange={handleChartConfigChange}
-                          className="shrink-0 border-b border-grid-dimmed"
-                        />
-                        <div className="min-h-0 flex-1 overflow-auto p-3">
-                          <QueryResultsChart
-                            rows={results.rows}
+                      <ResizablePanelGroup className="h-full overflow-hidden">
+                        <ResizablePanel id="chart-results">
+                          <div className="h-full bg-background-dimmed p-3">
+                            <QueryResultsChart
+                              rows={results.rows}
+                              columns={results.columns}
+                              config={chartConfig}
+                            />
+                          </div>
+                        </ResizablePanel>
+                        <ResizableHandle id="chart-split" />
+                        <ResizablePanel id="chart-config" min="50px" default="200px">
+                          <ChartConfigPanel
                             columns={results.columns}
                             config={chartConfig}
+                            onChange={handleChartConfigChange}
                           />
-                        </div>
-                      </>
+                        </ResizablePanel>
+                      </ResizablePanelGroup>
                     ) : (
                       <Paragraph variant="small" className="p-4 text-text-dimmed">
                         Run a query to visualize results.
