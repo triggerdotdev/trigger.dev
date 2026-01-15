@@ -14,7 +14,7 @@ branch are tagged into a release periodically.
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/en) version 20.11.1
+- [Node.js](https://nodejs.org/en) version 20.20.0
 - [pnpm package manager](https://pnpm.io/installation) version 10.23.0
 - [Docker](https://www.docker.com/get-started/)
 - [protobuf](https://github.com/protocolbuffers/protobuf)
@@ -34,7 +34,7 @@ branch are tagged into a release periodically.
    ```
    cd trigger.dev
    ```
-3. Ensure you are on the correct version of Node.js (20.11.1). If you are using `nvm`, there is an `.nvmrc` file that will automatically select the correct version of Node.js when you navigate to the repository.
+3. Ensure you are on the correct version of Node.js (20.20.0). If you are using `nvm`, there is an `.nvmrc` file that will automatically select the correct version of Node.js when you navigate to the repository.
 
 4. Run `corepack enable` to use the correct version of pnpm (`10.23.0`) as specified in the root `package.json` file.
 
