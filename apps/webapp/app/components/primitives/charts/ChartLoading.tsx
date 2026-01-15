@@ -28,9 +28,11 @@ export function ChartBarNoData() {
         <Paragraph variant="small" spacing>
           There's no data available for the filters you've set.
         </Paragraph>
-        <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
-          Clear filters
-        </Button>
+        {dateRange && (
+          <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
+            Clear filters
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -47,9 +49,11 @@ export function ChartBarInvalid() {
         <Paragraph variant="small" spacing>
           Your current filter settings don't apply to this chart's data type.
         </Paragraph>
-        <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
-          Clear filters
-        </Button>
+        {dateRange && (
+          <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
+            Clear filters
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -78,9 +82,11 @@ export function ChartLineNoData() {
         <Paragraph variant="small" spacing>
           There's no data available for the filters you've set.
         </Paragraph>
-        <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
-          Clear filters
-        </Button>
+        {dateRange && (
+          <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
+            Clear filters
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -97,9 +103,11 @@ export function ChartLineInvalid() {
         <Paragraph variant="small" spacing>
           Your current filter settings don't apply to this chart's data type.
         </Paragraph>
-        <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
-          Clear filters
-        </Button>
+        {dateRange && (
+          <Button variant="secondary/small" onClick={dateRange.resetDateRange}>
+            Clear filters
+          </Button>
+        )}
       </div>
     </div>
   );
