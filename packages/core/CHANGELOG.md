@@ -1,5 +1,11 @@
 # internal-platform
 
+## 4.3.3
+
+### Patch Changes
+
+- Add a maxDepth to flatten/unflattenAttributes to prevent possible issues ([#2890](https://github.com/triggerdotdev/trigger.dev/pull/2890))
+
 ## 4.3.2
 
 ## 4.3.1
