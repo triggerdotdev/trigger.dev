@@ -242,6 +242,14 @@ export function v3TestPath(
   return `${v3EnvironmentPath(organization, project, environment)}/test`;
 }
 
+export function queryPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/query`;
+}
+
 export function v3TestTaskPath(
   organization: OrgForPath,
   project: ProjectForPath,
@@ -298,9 +306,13 @@ export function v3RunPath(
 export function v3RunRedirectPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  run: v3RunForPath,
+  run: v3RunForPath
 ) {
   return `${v3ProjectPath(organization, project)}/runs/${run.friendlyId}`;
+}
+
+export function v3RunPathFromFriendlyId(runId: string) {
+  return `/runs/${runId}`;
 }
 
 export function v3RunDownloadLogsPath(run: v3RunForPath) {
@@ -441,6 +453,14 @@ export function v3ProjectSettingsPath(
   environment: EnvironmentForPath
 ) {
   return `${v3EnvironmentPath(organization, project, environment)}/settings`;
+}
+
+export function v3LogsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/logs`;
 }
 
 export function v3DeploymentsPath(

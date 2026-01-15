@@ -30,6 +30,23 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: ⎔ Setup node
+        uses: buildjet/setup-node@v4
+        with:
+          node-version: 20.20.0
+          cache: "pnpm"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: 📀 Generate Prisma Client
+        run: pnpm run generate
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -42,6 +59,7 @@ jobs:
 
           claude_args: |
             --model claude-opus-4-5-20251101
+            --allowedTools "Bash(pnpm:*),Bash(turbo:*),Bash(git:*),Bash(gh:*),Bash(npx:*),Bash(docker:*),Edit,MultiEdit,Read,Write,Glob,Grep,LS,Task"
 
           # Optional: Give a custom prompt to Claude. If this is not specified, Claude will perform the instructions specified in the comment that tagged it.
           # prompt: 'Update the pull request description to include a summary of changes.'
@@ -50,4 +68,3 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
           # claude_args: '--allowed-tools Bash(gh pr:*)'
-

@@ -209,6 +209,10 @@ export class RunPresenter {
     //we need the start offset for each item, and the total duration of the entire tree
     const treeRootStartTimeMs = tree ? tree?.data.startTime.getTime() : 0;
     let totalDuration = tree?.data.duration ?? 0;
+
+    // Build the linkedRunIdBySpanId map during the same walk
+    const linkedRunIdBySpanId: Record<string, string> = {};
+
     const events = tree
       ? flattenTree(tree).map((n) => {
           const offset = millisecondsToNanoseconds(
@@ -218,6 +222,12 @@ export class RunPresenter {
           if (!n.data.isDebug) {
             totalDuration = Math.max(totalDuration, offset + n.data.duration);
           }
+
+          // For cached spans, store the mapping from spanId to the linked run's ID
+          if (n.data.style?.icon === "task-cached" && n.runId) {
+            linkedRunIdBySpanId[n.id] = n.runId;
+          }
+
           return {
             ...n,
             data: {
@@ -260,6 +270,7 @@ export class RunPresenter {
           ? millisecondsToNanoseconds(run.startedAt.getTime() - run.createdAt.getTime())
           : undefined,
         overridesBySpanId: traceSummary.overridesBySpanId,
+        linkedRunIdBySpanId,
       },
       maximumLiveReloadingSetting: eventRepository.maximumLiveReloadingSetting,
     };

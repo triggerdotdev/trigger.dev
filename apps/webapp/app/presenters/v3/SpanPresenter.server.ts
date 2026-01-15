@@ -35,11 +35,13 @@ export class SpanPresenter extends BasePresenter {
     projectSlug,
     spanId,
     runFriendlyId,
+    linkedRunId,
   }: {
     userId: string;
     projectSlug: string;
     spanId: string;
     runFriendlyId: string;
+    linkedRunId?: string;
   }) {
     const project = await this._replica.project.findFirst({
       where: {
@@ -88,6 +90,7 @@ export class SpanPresenter extends BasePresenter {
       traceId,
       eventRepository,
       spanId,
+      linkedRunId,
       createdAt: parentRun.createdAt,
       completedAt: parentRun.completedAt,
       environmentId: parentRun.runtimeEnvironmentId,
@@ -126,6 +129,7 @@ export class SpanPresenter extends BasePresenter {
     traceId,
     eventRepository,
     spanId,
+    linkedRunId,
     createdAt,
     completedAt,
   }: {
@@ -134,19 +138,12 @@ export class SpanPresenter extends BasePresenter {
     traceId: string;
     eventRepository: IEventRepository;
     spanId: string;
+    linkedRunId?: string;
     createdAt: Date;
     completedAt: Date | null;
   }) {
-    const originalRunId = await eventRepository.getSpanOriginalRunId(
-      eventStore,
-      environmentId,
-      spanId,
-      traceId,
-      createdAt,
-      completedAt ?? undefined
-    );
-
-    const run = await this.findRun({ originalRunId, spanId, environmentId });
+    // Use linkedRunId if provided (for cached spans), otherwise look up by spanId
+    const run = await this.findRun({ originalRunId: linkedRunId, spanId, environmentId });
 
     if (!run) {
       return;
@@ -272,7 +269,7 @@ export class SpanPresenter extends BasePresenter {
       workerQueue: run.workerQueue,
       traceId: run.traceId,
       spanId: run.spanId,
-      isCached: !!originalRunId,
+      isCached: !!linkedRunId,
       machinePreset: machine?.name,
       taskEventStore: run.taskEventStore,
       externalTraceId,

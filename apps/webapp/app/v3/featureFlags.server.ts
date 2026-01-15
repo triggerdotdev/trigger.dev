@@ -5,12 +5,16 @@ export const FEATURE_FLAG = {
   defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
   runsListRepository: "runsListRepository",
   taskEventRepository: "taskEventRepository",
+  hasQueryAccess: "hasQueryAccess",
+  hasLogsPageAccess: "hasLogsPageAccess",
 } as const;
 
 const FeatureFlagCatalog = {
   [FEATURE_FLAG.defaultWorkerInstanceGroupId]: z.string(),
   [FEATURE_FLAG.runsListRepository]: z.enum(["clickhouse", "postgres"]),
   [FEATURE_FLAG.taskEventRepository]: z.enum(["clickhouse", "clickhouse_v2", "postgres"]),
+  [FEATURE_FLAG.hasQueryAccess]: z.coerce.boolean(),
+  [FEATURE_FLAG.hasLogsPageAccess]: z.coerce.boolean(),
 };
 
 type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
@@ -83,6 +87,7 @@ export const setFlags = makeSetFlags();
 
 // Create a Zod schema from the existing catalog
 export const FeatureFlagCatalogSchema = z.object(FeatureFlagCatalog);
+export type FeatureFlagCatalog = z.infer<typeof FeatureFlagCatalogSchema>;
 
 // Utility function to validate a feature flag value
 export function validateFeatureFlagValue<T extends FeatureFlagKey>(
