@@ -1,16 +1,21 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
+import { rankItem } from "@tanstack/match-sorter-utils";
 import {
   useReactTable,
   getCoreRowModel,
+  getFilteredRowModel,
   flexRender,
   type ColumnDef,
   type CellContext,
   type ColumnResizeMode,
+  type ColumnFiltersState,
+  type FilterFn,
+  type Column,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
-import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
-import { memo, useMemo, useRef, useState } from "react";
+import { ClipboardCheckIcon, ClipboardIcon, FilterIcon } from "lucide-react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
@@ -44,6 +49,67 @@ const SAMPLE_SIZE = 100; // Number of rows to sample for width calculation
 
 // Type for row data
 type RowData = Record<string, unknown>;
+
+/**
+ * Fuzzy filter function using match-sorter ranking
+ */
+const fuzzyFilter: FilterFn<RowData> = (row, columnId, value, addMeta) => {
+  // Get the cell value and convert to string for matching
+  const cellValue = row.getValue(columnId);
+  const searchValue = String(value);
+
+  // Handle empty search
+  if (!searchValue) return true;
+
+  // Convert cell value to string for ranking
+  const itemValue =
+    cellValue === null
+      ? "NULL"
+      : cellValue === undefined
+      ? ""
+      : typeof cellValue === "object"
+      ? JSON.stringify(cellValue)
+      : String(cellValue);
+
+  // Rank the item
+  const itemRank = rankItem(itemValue, searchValue);
+
+  // Store the ranking info
+  addMeta({ itemRank });
+
+  // Return if the item should be filtered in/out
+  return itemRank.passed;
+};
+
+/**
+ * Debounced input component for filter inputs
+ */
+function DebouncedInput({
+  value: initialValue,
+  onChange,
+  debounce = 300,
+  ...props
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  debounce?: number;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange">) {
+  const [value, setValue] = useState(initialValue);
+
+  useEffect(() => {
+    setValue(initialValue);
+  }, [initialValue]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      onChange(value);
+    }, debounce);
+
+    return () => clearTimeout(timeout);
+  }, [value, debounce, onChange]);
+
+  return <input {...props} value={value} onChange={(e) => setValue(e.target.value)} />;
+}
 
 // Extended column meta to store OutputColumnMetadata
 interface ColumnMeta {
@@ -586,23 +652,29 @@ function CopyableCell({
 }
 
 /**
- * Header cell component with tooltip support
+ * Header cell component with tooltip support and filter toggle
  */
 function HeaderCellContent({
   alignment,
   tooltip,
   children,
+  onFilterClick,
+  showFilters,
+  hasActiveFilter,
 }: {
   alignment: "left" | "right";
   tooltip?: React.ReactNode;
   children: React.ReactNode;
+  onFilterClick?: () => void;
+  showFilters?: boolean;
+  hasActiveFilter?: boolean;
 }) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
     <div
       className={cn(
-        "flex w-full items-center overflow-hidden bg-background-dimmed px-2 py-1.5",
+        "flex w-full items-center gap-1 overflow-hidden bg-background-dimmed px-2 py-1.5",
         "text-sm font-medium text-text-bright",
         alignment === "right" && "justify-end"
       )}
@@ -611,7 +683,7 @@ function HeaderCellContent({
     >
       {tooltip ? (
         <div
-          className={cn("flex items-center gap-1 truncate", {
+          className={cn("flex min-w-0 flex-1 items-center gap-1 truncate", {
             "justify-end": alignment === "right",
           })}
         >
@@ -623,8 +695,48 @@ function HeaderCellContent({
           />
         </div>
       ) : (
-        <span className="truncate">{children}</span>
+        <span className="min-w-0 flex-1 truncate">{children}</span>
       )}
+      {onFilterClick && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onFilterClick();
+          }}
+          className={cn(
+            "flex-shrink-0 rounded p-0.5 transition-colors",
+            "hover:bg-charcoal-700",
+            showFilters || hasActiveFilter
+              ? "text-primary"
+              : "text-text-dimmed hover:text-text-bright"
+          )}
+          title="Toggle column filters"
+        >
+          <FilterIcon className="size-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Filter input cell for the filter row
+ */
+function FilterCell({ column, width }: { column: Column<RowData, unknown>; width: number }) {
+  const columnFilterValue = column.getFilterValue() as string;
+
+  return (
+    <div className="flex items-center bg-background-dimmed px-1.5 py-1" style={{ width }}>
+      <DebouncedInput
+        value={columnFilterValue ?? ""}
+        onChange={(value) => column.setFilterValue(value)}
+        placeholder="Filter..."
+        className={cn(
+          "w-full rounded border border-charcoal-700 bg-charcoal-800 px-2 py-1",
+          "text-xs text-text-bright placeholder:text-text-dimmed",
+          "focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+        )}
+      />
     </div>
   );
 }
@@ -639,6 +751,10 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   prettyFormatting?: boolean;
 }) {
   const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  // State for column filters and filter row visibility
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [showFilters, setShowFilters] = useState(false);
 
   // Create TanStack Table column definitions from OutputColumnMetadata
   // Calculate column widths based on content
@@ -660,6 +776,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
           alignment: isRightAlignedColumn(col) ? "right" : "left",
         } as ColumnMeta,
         size: calculateColumnWidth(col.name, rows, col),
+        filterFn: fuzzyFilter,
       })),
     [columns, rows, prettyFormatting]
   );
@@ -672,7 +789,12 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
     data: rows,
     columns: columnDefs,
     columnResizeMode,
+    state: {
+      columnFilters,
+    },
+    onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
   });
 
   const { rows: tableRows } = table.getRowModel();
@@ -720,6 +842,9 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                       <HeaderCellContent
                         alignment={meta?.alignment ?? "left"}
                         tooltip={meta?.outputColumn.description}
+                        onFilterClick={() => setShowFilters(!showFilters)}
+                        showFilters={showFilters}
+                        hasActiveFilter={!!header.column.getFilterValue()}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
                       </HeaderCellContent>
@@ -740,6 +865,18 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                 })}
               </tr>
             ))}
+            {/* Filter row - shown when filters are toggled */}
+            {showFilters && (
+              <tr style={{ display: "flex", width: "100%" }}>
+                {table.getHeaderGroups()[0]?.headers.map((header) => (
+                  <FilterCell
+                    key={`filter-${header.id}`}
+                    column={header.column}
+                    width={header.getSize()}
+                  />
+                ))}
+              </tr>
+            )}
           </thead>
           <tbody style={{ display: "grid" }}>
             <tr style={{ display: "flex" }}>
@@ -771,6 +908,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
             zIndex: 1,
           }}
         >
+          {/* Main header row */}
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id} style={{ display: "flex", width: "100%" }}>
               {headerGroup.headers.map((header) => {
@@ -787,6 +925,9 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                     <HeaderCellContent
                       alignment={meta?.alignment ?? "left"}
                       tooltip={meta?.outputColumn.description}
+                      onFilterClick={() => setShowFilters(!showFilters)}
+                      showFilters={showFilters}
+                      hasActiveFilter={!!header.column.getFilterValue()}
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
                     </HeaderCellContent>
@@ -807,6 +948,18 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
               })}
             </tr>
           ))}
+          {/* Filter row - shown when filters are toggled */}
+          {showFilters && (
+            <tr style={{ display: "flex", width: "100%" }}>
+              {table.getHeaderGroups()[0]?.headers.map((header) => (
+                <FilterCell
+                  key={`filter-${header.id}`}
+                  column={header.column}
+                  width={header.getSize()}
+                />
+              ))}
+            </tr>
+          )}
         </thead>
         <tbody
           style={{
