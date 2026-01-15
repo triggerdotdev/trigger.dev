@@ -33,7 +33,13 @@ import { QueueName } from "../runs/v3/QueueName";
 
 const MAX_STRING_DISPLAY_LENGTH = 64;
 const ROW_HEIGHT = 33; // Estimated row height in pixels
-const DEFAULT_COLUMN_SIZE = 150; // Default column width
+
+// Column width calculation constants
+const MIN_COLUMN_WIDTH = 60;
+const MAX_COLUMN_WIDTH = 400;
+const CHAR_WIDTH_PX = 7.5; // Approximate width of a monospace character at text-xs (12px)
+const CELL_PADDING_PX = 40; // px-2 (8px) on each side + buffer for copy button
+const SAMPLE_SIZE = 100; // Number of rows to sample for width calculation
 
 // Type for row data
 type RowData = Record<string, unknown>;
@@ -42,6 +48,113 @@ type RowData = Record<string, unknown>;
 interface ColumnMeta {
   outputColumn: OutputColumnMetadata;
   alignment: "left" | "right";
+}
+
+/**
+ * Get the approximate display length (in characters) of a value based on its type and formatting
+ */
+function getDisplayLength(value: unknown, column: OutputColumnMetadata): number {
+  if (value === null) return 4; // "NULL"
+  if (value === undefined) return 9; // "UNDEFINED"
+
+  // Handle custom render types - estimate their rendered width
+  if (column.customRenderType) {
+    switch (column.customRenderType) {
+      case "runId":
+        // Run IDs are typically like "run_abc123xyz"
+        return typeof value === "string" ? Math.min(value.length, MAX_STRING_DISPLAY_LENGTH) : 15;
+      case "runStatus":
+        // Status badges have icon + text, approximate width
+        return 12;
+      case "duration":
+        if (typeof value === "number") {
+          // Format and measure: "1h 23m 45s" style
+          const formatted = formatDurationMilliseconds(value, { style: "short" });
+          return formatted.length;
+        }
+        return 10;
+      case "durationSeconds":
+        if (typeof value === "number") {
+          const formatted = formatDurationMilliseconds(value * 1000, { style: "short" });
+          return formatted.length;
+        }
+        return 10;
+      case "cost":
+      case "costInDollars":
+        // Currency format: "$1,234.56"
+        if (typeof value === "number") {
+          const amount = column.customRenderType === "cost" ? value / 100 : value;
+          return formatCurrencyAccurate(amount).length;
+        }
+        return 12;
+      case "machine":
+        // Machine preset names like "small-1x"
+        return typeof value === "string" ? value.length : 10;
+      case "environmentType":
+        // Environment labels: "PRODUCTION", "STAGING", etc.
+        return 12;
+      case "project":
+      case "environment":
+        return typeof value === "string" ? Math.min(value.length, 20) : 12;
+      case "queue":
+        return typeof value === "string" ? Math.min(value.length, 25) : 15;
+    }
+  }
+
+  // Handle by ClickHouse type
+  if (isDateTimeType(column.type)) {
+    // DateTime format: "Jan 15, 2026, 12:34:56 PM"
+    return 24;
+  }
+
+  if (column.type === "JSON" || column.type.startsWith("Array")) {
+    if (typeof value === "object") {
+      const jsonStr = JSON.stringify(value);
+      return Math.min(jsonStr.length, MAX_STRING_DISPLAY_LENGTH);
+    }
+  }
+
+  if (isBooleanType(column.type)) {
+    return 5; // "true" or "false"
+  }
+
+  if (isNumericType(column.type)) {
+    if (typeof value === "number") {
+      return formatNumber(value).length;
+    }
+  }
+
+  // Default: string length capped at max display length
+  const strValue = String(value);
+  return Math.min(strValue.length, MAX_STRING_DISPLAY_LENGTH);
+}
+
+/**
+ * Calculate the optimal width for a column based on its content
+ */
+function calculateColumnWidth(
+  columnName: string,
+  rows: RowData[],
+  column: OutputColumnMetadata
+): number {
+  // Start with header length
+  let maxLength = columnName.length;
+
+  // Sample rows to find max content length
+  const sampleRows = rows.slice(0, SAMPLE_SIZE);
+  for (const row of sampleRows) {
+    const value = row[columnName];
+    const displayLength = getDisplayLength(value, column);
+    if (displayLength > maxLength) {
+      maxLength = displayLength;
+    }
+  }
+
+  // Calculate pixel width: characters * char width + padding
+  const calculatedWidth = Math.ceil(maxLength * CHAR_WIDTH_PX + CELL_PADDING_PX);
+
+  // Apply min/max bounds
+  return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, calculatedWidth));
 }
 
 /**
@@ -526,6 +639,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
   // Create TanStack Table column definitions from OutputColumnMetadata
+  // Calculate column widths based on content
   const columnDefs = useMemo<ColumnDef<RowData, unknown>[]>(
     () =>
       columns.map((col) => ({
@@ -543,9 +657,9 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
           outputColumn: col,
           alignment: isRightAlignedColumn(col) ? "right" : "left",
         } as ColumnMeta,
-        size: DEFAULT_COLUMN_SIZE,
+        size: calculateColumnWidth(col.name, rows, col),
       })),
-    [columns, prettyFormatting]
+    [columns, rows, prettyFormatting]
   );
 
   // Initialize TanStack Table
