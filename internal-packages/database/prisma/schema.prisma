@@ -2418,6 +2418,7 @@ model ImpersonationAuditLog {
 
   @@index([adminId])
   @@index([targetId])
+  @@index([createdAt])
 
 }
 
