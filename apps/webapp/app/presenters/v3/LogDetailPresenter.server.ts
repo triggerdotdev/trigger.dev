@@ -36,7 +36,6 @@ export class LogDetailPresenter {
       );
     }
 
-    // Build ClickHouse query - only v2 is supported for log details
     const isClickhouseV2 = store === "clickhouse_v2";
     const queryBuilder = isClickhouseV2
       ? this.clickhouse.taskEventsV2.logDetailQueryBuilder()

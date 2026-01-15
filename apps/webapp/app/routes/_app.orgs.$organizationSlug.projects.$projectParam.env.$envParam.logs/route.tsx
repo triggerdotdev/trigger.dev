@@ -108,7 +108,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     organizationSlug
   );
 
-  if(!canAccess) {
+  if (!canAccess) {
     throw redirect("/");
   }
 
