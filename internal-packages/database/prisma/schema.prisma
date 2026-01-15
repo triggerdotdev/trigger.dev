@@ -1960,6 +1960,7 @@ model TaskScheduleInstance {
   //you can only have a schedule attached to each environment once
   @@unique([taskScheduleId, environmentId])
   @@index([environmentId])
+  @@index([projectId, active])
 }
 
 model RuntimeEnvironmentSession {
