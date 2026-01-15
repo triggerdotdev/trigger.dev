@@ -239,7 +239,7 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
   }
 
   return (
-    <div className={cn("flex flex-col gap-2 px-3 py-2", className)}>
+    <div className={cn("flex flex-col gap-2 p-2", className)}>
       {/* Chart Type */}
       <div className="flex flex-col gap-3">
         <ConfigField label="Type">

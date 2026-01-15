@@ -1,10 +1,10 @@
-import { ArrowDownTrayIcon, ClipboardIcon, PlayIcon } from "@heroicons/react/20/solid";
+import { ArrowDownTrayIcon, ClipboardIcon } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { Form, useNavigation } from "@remix-run/react";
 import {
+  redirect,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
-  redirect,
 } from "@remix-run/server-runtime";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
@@ -19,16 +19,17 @@ import {
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";
 import { autoFormatSQL, TSQLEditor } from "~/components/code/TSQLEditor";
 import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
+import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Button } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
+import { Card } from "~/components/primitives/charts/Card";
 import {
   ClientTabs,
   ClientTabsContent,
   ClientTabsList,
   ClientTabsTrigger,
 } from "~/components/primitives/ClientTabs";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
 import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -46,10 +47,10 @@ import {
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
+import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueryPresenter, type QueryHistoryItem } from "~/presenters/v3/QueryPresenter.server";
@@ -574,17 +575,21 @@ export default function Page() {
                   </ClientTabsContent>
                   <ClientTabsContent
                     value="graph"
-                    className="grid min-h-0 grid-rows-[1fr] overflow-hidden"
+                    className="m-0 grid min-h-0 grid-rows-[1fr] overflow-hidden"
                   >
                     {results?.rows && results?.columns && results.rows.length > 0 ? (
                       <ResizablePanelGroup className="h-full overflow-hidden">
                         <ResizablePanel id="chart-results">
-                          <div className="h-full bg-background-dimmed p-3">
-                            <QueryResultsChart
-                              rows={results.rows}
-                              columns={results.columns}
-                              config={chartConfig}
-                            />
+                          <div className="h-full bg-charcoal-900 p-2">
+                            <Card>
+                              <Card.Content>
+                                <QueryResultsChart
+                                  rows={results.rows}
+                                  columns={results.columns}
+                                  config={chartConfig}
+                                />
+                              </Card.Content>
+                            </Card>
                           </div>
                         </ResizablePanel>
                         <ResizableHandle id="chart-split" />
