@@ -161,7 +161,6 @@ export default function Page() {
             {/* Quotas Section */}
             <QuotasSection
               quotas={data.quotas}
-              batchConcurrency={data.batchConcurrency}
               isOnTopPlan={data.isOnTopPlan}
               billingPath={organizationBillingPath(organization)}
             />
@@ -483,12 +482,10 @@ function RateLimitConfigDisplay({ config }: { config: RateLimitInfo["config"] })
 
 function QuotasSection({
   quotas,
-  batchConcurrency,
   isOnTopPlan,
   billingPath,
 }: {
   quotas: LimitsResult["quotas"];
-  batchConcurrency: LimitsResult["batchConcurrency"];
   isOnTopPlan: boolean;
   billingPath: string;
 }) {
@@ -506,16 +503,8 @@ function QuotasSection({
   if (quotas.realtimeConnections) quotaRows.push(quotas.realtimeConnections);
   if (quotas.logRetentionDays) quotaRows.push(quotas.logRetentionDays);
 
-  // Include batch processing concurrency as a quota row
-  quotaRows.push({
-    name: "Batch processing concurrency",
-    description: "Controls how many batch items can be processed simultaneously.",
-    limit: batchConcurrency.limit,
-    currentUsage: 0,
-    source: batchConcurrency.source,
-    canExceed: true, // Allow contact us on top plan, view plans otherwise
-    isUpgradable: true,
-  });
+  // Include batch processing concurrency
+  quotaRows.push(quotas.batchProcessingConcurrency);
 
   // Add queue size quotas if set
   if (quotas.devQueueSize.limit !== null) quotaRows.push(quotas.devQueueSize);

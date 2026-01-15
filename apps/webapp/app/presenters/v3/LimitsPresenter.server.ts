@@ -11,6 +11,7 @@ import { createRedisRateLimitClient, type Duration } from "~/services/rateLimite
 import { BasePresenter } from "./basePresenter.server";
 import { singleton } from "~/utils/singleton";
 import { logger } from "~/services/logger.server";
+import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
 
 // Create a singleton Redis client for rate limit queries
 const rateLimitRedisClient = singleton("rateLimitQueryRedisClient", () =>
@@ -64,12 +65,9 @@ export type LimitsResult = {
     branches: QuotaInfo | null;
     logRetentionDays: QuotaInfo | null;
     realtimeConnections: QuotaInfo | null;
+    batchProcessingConcurrency: QuotaInfo;
     devQueueSize: QuotaInfo;
     deployedQueueSize: QuotaInfo;
-  };
-  batchConcurrency: {
-    limit: number;
-    source: "default" | "override";
   };
   features: {
     hasStagingEnvironment: FeatureInfo;
@@ -131,14 +129,10 @@ export class LimitsPresenter extends BasePresenter {
       ? "override"
       : "default";
 
-    // Get schedule count for this org (via project relation which has an index)
-    //TODO we should change the way we count these and use the ScheduleListPresenter method
-    const scheduleCount = await this._replica.taskSchedule.count({
-      where: {
-        project: {
-          organizationId,
-        },
-      },
+    // Get schedule count for this org
+    const scheduleCount = await CheckScheduleService.getUsedSchedulesCount({
+      prisma: this._replica,
+      projectId,
     });
 
     // Get alert channel count for this org
@@ -277,6 +271,15 @@ export class LimitsPresenter extends BasePresenter {
                 isUpgradable: true,
               }
             : null,
+        batchProcessingConcurrency: {
+          name: "Batch processing concurrency",
+          description: "Controls how many batch items can be processed simultaneously.",
+          limit: batchConcurrencyConfig.processingConcurrency,
+          currentUsage: 0,
+          source: batchConcurrencySource,
+          canExceed: true,
+          isUpgradable: true,
+        },
         devQueueSize: {
           name: "Dev queue size",
           description: "Maximum pending runs in development environments",
@@ -291,10 +294,6 @@ export class LimitsPresenter extends BasePresenter {
           currentUsage: 0, // Would need to query Redis for this
           source: organization.maximumDeployedQueueSize ? "override" : "default",
         },
-      },
-      batchConcurrency: {
-        limit: batchConcurrencyConfig.processingConcurrency,
-        source: batchConcurrencySource,
       },
       features: {
         hasStagingEnvironment: {
