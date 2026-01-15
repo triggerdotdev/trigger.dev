@@ -544,7 +544,7 @@ export class LogsListPresenter extends BasePresenter {
       // For error logs with status ERROR, try to extract error message from attributes
       if (log.status === "ERROR" && log.attributes_text) {
         try {
-          let attributes = JSON.parse(log.attributes_text) as ErrorAttributes;
+          const attributes = JSON.parse(log.attributes_text) as ErrorAttributes;
 
           if (attributes?.error?.message && typeof attributes.error.message === "string") {
             displayMessage = attributes.error.message;

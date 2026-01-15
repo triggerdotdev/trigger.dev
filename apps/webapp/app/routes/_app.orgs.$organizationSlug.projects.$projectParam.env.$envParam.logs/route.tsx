@@ -98,11 +98,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = user.id;
   const isAdmin = user.admin || user.isImpersonating;
 
-  if (!isAdmin) {
-    throw redirect("/");
-  }
 
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
+
+  const canAccess = await hasLogsPageAccess(
+    userId,
+    user.admin,
+    user.isImpersonating,
+    organizationSlug
+  );
+
+  if(!canAccess) {
+    throw redirect("/");
+  }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {

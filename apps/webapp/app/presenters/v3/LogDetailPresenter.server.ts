@@ -70,18 +70,10 @@ export class LogDetailPresenter {
 
     const log = records[0];
 
-    // Parse metadata and attributes
-    let parsedMetadata: Record<string, unknown> = {};
+
     let parsedAttributes: Record<string, unknown> = {};
     let rawAttributesString = "";
 
-    try {
-      if (log.metadata) {
-        parsedMetadata = JSON.parse(log.metadata) as Record<string, unknown>;
-      }
-    } catch {
-      // Ignore parse errors
-    }
 
     try {
       // Handle attributes_text which is a string
@@ -107,10 +99,8 @@ export class LogDetailPresenter {
       status: log.status,
       duration: typeof log.duration === "number" ? log.duration : Number(log.duration),
       level: kindToLevel(log.kind, log.status),
-      metadata: parsedMetadata,
       attributes: parsedAttributes,
       // Raw strings for display
-      rawMetadata: log.metadata,
       rawAttributes: rawAttributesString,
     };
   }
