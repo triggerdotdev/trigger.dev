@@ -34,7 +34,7 @@ jobs:
       - name: Setup node
         uses: buildjet/setup-node@v4
         with:
-          node-version: 20.19.0
+          node-version: 20.20.0
           cache: "pnpm"
 
       - name: Install dependencies
@@ -83,7 +83,7 @@ jobs:
       - name: Setup node
         uses: buildjet/setup-node@v4
         with:
-          node-version: 20.19.0
+          node-version: 20.20.0
 
       - name: Install and update lockfile
         run: pnpm install --no-frozen-lockfile

@@ -11,8 +11,10 @@ import {
   getExternalValue,
   getInternalValueFromMapping,
   getInternalValueFromMappingCaseInsensitive,
+  sanitizeErrorMessage,
   type ColumnSchema,
   type FieldMappings,
+  type TableSchema,
 } from "./schema.js";
 
 describe("Value mapping helper functions", () => {
@@ -363,7 +365,9 @@ describe("Field mapping helper functions (runtime dynamic mappings)", () => {
     });
 
     it("should return null if mapping name does not exist", () => {
-      expect(getInternalValueFromMapping(fieldMappings, "nonexistent", "my-project-ref")).toBeNull();
+      expect(
+        getInternalValueFromMapping(fieldMappings, "nonexistent", "my-project-ref")
+      ).toBeNull();
     });
 
     it("should return null for empty mappings", () => {
@@ -454,3 +458,335 @@ describe("Field mapping helper functions (runtime dynamic mappings)", () => {
   });
 });
 
+describe("Error message sanitization", () => {
+  // Test schema mimicking the real runs schema
+  const runsSchema: TableSchema = {
+    name: "runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    description: "Task runs table",
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+    columns: {
+      run_id: {
+        name: "run_id",
+        clickhouseName: "friendly_id",
+        ...column("String"),
+      },
+      triggered_at: {
+        name: "triggered_at",
+        clickhouseName: "created_at",
+        ...column("DateTime64"),
+      },
+      machine: {
+        name: "machine",
+        clickhouseName: "machine_preset",
+        ...column("String"),
+      },
+      status: {
+        name: "status",
+        // No clickhouseName - same as name
+        ...column("String"),
+      },
+      task_identifier: {
+        name: "task_identifier",
+        // No clickhouseName - same as name
+        ...column("String"),
+      },
+    },
+  };
+
+  describe("sanitizeErrorMessage", () => {
+    it("should replace fully qualified table.column references", () => {
+      const error = "Missing column trigger_dev.task_runs_v2.friendly_id in query";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Missing column runs.run_id in query");
+    });
+
+    it("should replace standalone table names", () => {
+      const error = "Table trigger_dev.task_runs_v2 does not exist";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Table runs does not exist");
+    });
+
+    it("should replace standalone column names with different clickhouseName", () => {
+      const error = "Unknown identifier: friendly_id";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Unknown identifier: run_id");
+    });
+
+    it("should replace multiple occurrences in the same message", () => {
+      const error =
+        "Cannot compare friendly_id with created_at: incompatible types in trigger_dev.task_runs_v2";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Cannot compare run_id with triggered_at: incompatible types in runs");
+    });
+
+    it("should not replace column names that have no clickhouseName mapping", () => {
+      const error = "Invalid value for column status";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Invalid value for column status");
+    });
+
+    it("should handle error messages with quoted identifiers", () => {
+      const error = "Column 'machine_preset' is not of type String";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Column 'machine' is not of type String");
+    });
+
+    it("should handle error messages with backtick identifiers", () => {
+      const error = "Unknown column `friendly_id` in table";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Unknown column `run_id` in table");
+    });
+
+    it("should not replace partial matches within larger identifiers", () => {
+      const error = "Column my_friendly_id_column not found";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      // Should not replace "friendly_id" within "my_friendly_id_column"
+      expect(sanitized).toBe("Column my_friendly_id_column not found");
+    });
+
+    it("should return original message if no schemas provided", () => {
+      const error = "Some error with trigger_dev.task_runs_v2";
+      const sanitized = sanitizeErrorMessage(error, []);
+      expect(sanitized).toBe("Some error with trigger_dev.task_runs_v2");
+    });
+
+    it("should return original message if no matches found", () => {
+      const error = "Generic database error occurred";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Generic database error occurred");
+    });
+
+    it("should handle multiple tables", () => {
+      const eventsSchema: TableSchema = {
+        name: "events",
+        clickhouseName: "trigger_dev.task_events",
+        description: "Task events table",
+        tenantColumns: {
+          organizationId: "organization_id",
+          projectId: "project_id",
+          environmentId: "environment_id",
+        },
+        columns: {
+          event_id: {
+            name: "event_id",
+            clickhouseName: "internal_event_id",
+            ...column("String"),
+          },
+        },
+      };
+
+      const error =
+        "Cannot join trigger_dev.task_runs_v2 with trigger_dev.task_events on internal_event_id";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema, eventsSchema]);
+      expect(sanitized).toBe("Cannot join runs with events on event_id");
+    });
+
+    it("should handle real ClickHouse error format", () => {
+      const error =
+        "Unable to query clickhouse: Code: 47. DB::Exception: Missing columns: 'friendly_id' while processing query";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      // Should remove the "Unable to query clickhouse:" prefix
+      expect(sanitized).toBe(
+        "Code: 47. DB::Exception: Missing columns: 'run_id' while processing query"
+      );
+    });
+
+    it("should remove 'Unable to query clickhouse:' prefix", () => {
+      const error = "Unable to query clickhouse: Something went wrong";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Something went wrong");
+      expect(sanitized).not.toContain("Unable to query clickhouse");
+    });
+
+    it("should handle error with column in parentheses", () => {
+      const error = "Function count(friendly_id) expects different arguments";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Function count(run_id) expects different arguments");
+    });
+
+    it("should handle error with column after comma", () => {
+      const error = "SELECT friendly_id, created_at FROM table";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("SELECT run_id, triggered_at FROM table");
+    });
+
+    it("should NOT replace column names in 'Did you mean' error messages", () => {
+      // When a user types an internal ClickHouse column name, we show "Did you mean X?"
+      // The sanitizer should NOT replace the column name in this case, as it would
+      // turn "Unknown column 'created_at'. Did you mean 'triggered_at'?" into
+      // "Unknown column 'triggered_at'. Did you mean 'triggered_at'?" which is confusing
+      const error = 'Unknown column "created_at". Did you mean "triggered_at"?';
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      // Should preserve both the original column name AND the suggestion
+      expect(sanitized).toBe('Unknown column "created_at". Did you mean "triggered_at"?');
+    });
+
+    it("should prioritize longer matches (table.column before standalone column)", () => {
+      // This tests that we replace "trigger_dev.task_runs_v2.friendly_id" as a unit,
+      // not "trigger_dev.task_runs_v2" and then "friendly_id" separately
+      const error = "Error in trigger_dev.task_runs_v2.friendly_id";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Error in runs.run_id");
+    });
+
+    it("should remove tenant isolation filters from error messages", () => {
+      const error =
+        "Unknown identifier in scope SELECT run_id FROM runs WHERE ((organization_id = 'org123') AND (project_id = 'proj456') AND (environment_id = 'env789')) AND (status = 'Failed')";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).not.toContain("organization_id");
+      expect(sanitized).not.toContain("project_id");
+      expect(sanitized).not.toContain("environment_id");
+      expect(sanitized).toContain("status = 'Failed'");
+    });
+
+    it("should remove redundant column aliases like 'run_id AS run_id'", () => {
+      const error = "Error in SELECT run_id AS run_id, machine AS machine FROM runs";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Error in SELECT run_id, machine FROM runs");
+    });
+
+    it("should remove redundant table aliases like 'runs AS runs'", () => {
+      const error = "Error in SELECT * FROM runs AS runs WHERE status = 'Failed'";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Error in SELECT * FROM runs WHERE status = 'Failed'");
+    });
+
+    it("should handle real error with tenant filters and aliases", () => {
+      const error =
+        "Unable to query clickhouse: Unknown expression identifier `triggered_ata` in scope SELECT run_id AS run_id, machine AS machine FROM runs AS runs WHERE ((organization_id = 'cm5qtzpb800007cp7h6ebwt2i') AND (project_id = 'cme2p1yep00007calt8ugarkr') AND (environment_id = 'cme2p1ygj00027caln51kyiwl')) AND (status = 'Complted') ORDER BY triggered_ata DESC LIMIT 100.";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+
+      // Should not contain internal prefix
+      expect(sanitized).not.toContain("Unable to query clickhouse");
+
+      // Should not contain internal IDs
+      expect(sanitized).not.toContain("cm5qtzpb800007cp7h6ebwt2i");
+      expect(sanitized).not.toContain("cme2p1yep00007calt8ugarkr");
+      expect(sanitized).not.toContain("cme2p1ygj00027caln51kyiwl");
+      expect(sanitized).not.toContain("organization_id");
+      expect(sanitized).not.toContain("project_id");
+      expect(sanitized).not.toContain("environment_id");
+
+      // Should not have redundant aliases
+      expect(sanitized).not.toContain("run_id AS run_id");
+      expect(sanitized).not.toContain("machine AS machine");
+      expect(sanitized).not.toContain("runs AS runs");
+
+      // Should still have the user's query parts
+      expect(sanitized).toContain("status = 'Complted'");
+      expect(sanitized).toContain("triggered_ata");
+      expect(sanitized).toContain("LIMIT 100");
+    });
+
+    it("should remove required filters like engine = 'V2'", () => {
+      // Schema with required filters
+      const schemaWithRequiredFilters: TableSchema = {
+        name: "runs",
+        clickhouseName: "trigger_dev.task_runs_v2",
+        description: "Task runs table",
+        tenantColumns: {
+          organizationId: "organization_id",
+          projectId: "project_id",
+          environmentId: "environment_id",
+        },
+        requiredFilters: [{ column: "engine", value: "V2" }],
+        columns: {
+          run_id: {
+            name: "run_id",
+            ...column("String"),
+          },
+        },
+      };
+
+      const error =
+        "Error in SELECT run_id FROM runs WHERE ((organization_id = 'org1') AND (engine = 'V2')) AND (status = 'Failed')";
+      const sanitized = sanitizeErrorMessage(error, [schemaWithRequiredFilters]);
+
+      expect(sanitized).not.toContain("engine = 'V2'");
+      expect(sanitized).not.toContain("organization_id");
+      expect(sanitized).toContain("status = 'Failed'");
+    });
+
+    it("should handle project and environment field mappings in tenant columns", () => {
+      // The schema uses 'project' and 'environment' as column names with field mappings
+      const schemaWithFieldMappedTenants: TableSchema = {
+        name: "runs",
+        clickhouseName: "trigger_dev.task_runs_v2",
+        description: "Task runs table",
+        tenantColumns: {
+          organizationId: "organization_id",
+          projectId: "project",
+          environmentId: "environment",
+        },
+        columns: {
+          run_id: {
+            name: "run_id",
+            ...column("String"),
+          },
+        },
+      };
+
+      const error =
+        "Error WHERE ((organization_id = 'org1') AND (project = 'proj1') AND (environment = 'env1')) AND (status = 'ok')";
+      const sanitized = sanitizeErrorMessage(error, [schemaWithFieldMappedTenants]);
+
+      expect(sanitized).not.toContain("organization_id = 'org1'");
+      expect(sanitized).not.toContain("project = 'proj1'");
+      expect(sanitized).not.toContain("environment = 'env1'");
+      expect(sanitized).toContain("status = 'ok'");
+    });
+
+    it("should handle queries with only automatic WHERE filters (no user WHERE clause)", () => {
+      // When user writes: SELECT * FROM runs LIMIT 10
+      // The compiled query becomes: SELECT * FROM runs WHERE (org_id = '...') AND (proj_id = '...') AND (env_id = '...')
+      const error =
+        "Unable to query clickhouse: Some error in SELECT run_id FROM runs WHERE ((organization_id = 'org1') AND (project_id = 'proj1') AND (environment_id = 'env1')) LIMIT 10";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+
+      expect(sanitized).not.toContain("Unable to query clickhouse");
+      expect(sanitized).not.toContain("organization_id");
+      expect(sanitized).not.toContain("project_id");
+      expect(sanitized).not.toContain("environment_id");
+      expect(sanitized).not.toContain("WHERE");
+      expect(sanitized).toContain("SELECT run_id FROM runs");
+      expect(sanitized).toContain("LIMIT 10");
+    });
+
+    it("should handle queries with only automatic filters including engine filter", () => {
+      const schemaWithEngine: TableSchema = {
+        name: "runs",
+        clickhouseName: "trigger_dev.task_runs_v2",
+        description: "Task runs table",
+        tenantColumns: {
+          organizationId: "organization_id",
+          projectId: "project_id",
+          environmentId: "environment_id",
+        },
+        requiredFilters: [{ column: "engine", value: "V2" }],
+        columns: {
+          run_id: {
+            name: "run_id",
+            ...column("String"),
+          },
+        },
+      };
+
+      const error =
+        "Error in SELECT * FROM runs WHERE ((organization_id = 'org1') AND (project_id = 'proj1') AND (environment_id = 'env1') AND (engine = 'V2')) ORDER BY run_id";
+      const sanitized = sanitizeErrorMessage(error, [schemaWithEngine]);
+
+      expect(sanitized).not.toContain("organization_id");
+      expect(sanitized).not.toContain("project_id");
+      expect(sanitized).not.toContain("environment_id");
+      expect(sanitized).not.toContain("engine");
+      expect(sanitized).not.toContain("WHERE");
+      expect(sanitized).toContain("SELECT * FROM runs");
+      expect(sanitized).toContain("ORDER BY run_id");
+    });
+  });
+});

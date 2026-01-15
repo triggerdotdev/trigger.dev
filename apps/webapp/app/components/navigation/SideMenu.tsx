@@ -26,9 +26,10 @@ import {
 import { Link, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
-import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
+import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
+import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
@@ -64,6 +65,7 @@ import {
   v3DeploymentsPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
+  v3LogsPath,
   v3ProjectAlertsPath,
   v3ProjectPath,
   v3ProjectSettingsPath,
@@ -267,6 +269,16 @@ export function SideMenu({
               to={v3DeploymentsPath(organization, project, environment)}
               data-action="deployments"
             />
+            {(user.admin || user.isImpersonating || featureFlags.hasLogsPageAccess) && (
+              <SideMenuItem
+                name="Logs"
+                icon={LogsIcon}
+                activeIconColor="text-logs"
+                to={v3LogsPath(organization, project, environment)}
+                data-action="logs"
+                badge={<AlphaBadge />}
+              />
+            )}
             <SideMenuItem
               name="Test"
               icon={BeakerIcon}

@@ -93,6 +93,7 @@ export const DateTime = ({
         />
       }
       side="right"
+      asChild={true}
     />
   );
 };
@@ -273,6 +274,7 @@ const DateTimeAccurateInner = ({
       button={<Fragment>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</Fragment>}
       content={tooltipContent}
       side="right"
+      asChild={true}
     />
   );
 };

@@ -1,4 +1,5 @@
 import { column, type TableSchema } from "@internal/tsql";
+import { autoFormatSQL } from "~/components/code/TSQLEditor";
 import { runFriendlyStatus, runStatusTitleFromStatus } from "~/components/runs/v3/TaskRunStatus";
 import { logger } from "~/services/logger.server";
 
@@ -42,6 +43,7 @@ export const runsSchema: TableSchema = {
           "A unique ID for a run. They always start with `run_`, e.g., run_cm1a2b3c4d5e6f7g8h9i",
         customRenderType: "runId",
         example: "run_cm1a2b3c4d5e6f7g8h9i",
+        coreColumn: true,
       }),
     },
     environment: {
@@ -87,6 +89,7 @@ export const runsSchema: TableSchema = {
         valueMap: runStatusTitleFromStatus,
         customRenderType: "runStatus",
         example: "Completed",
+        coreColumn: true,
       }),
     },
     is_finished: {
@@ -103,7 +106,11 @@ export const runsSchema: TableSchema = {
     // Task & queue
     task_identifier: {
       name: "task_identifier",
-      ...column("String", { description: "Task identifier/slug", example: "my-background-task" }),
+      ...column("String", {
+        description: "Task identifier/slug",
+        example: "my-background-task",
+        coreColumn: true,
+      }),
     },
     queue: {
       name: "queue",
@@ -182,6 +189,7 @@ export const runsSchema: TableSchema = {
       ...column("DateTime64", {
         description: "When the run was triggered.",
         example: "2024-01-15 09:30:00.000",
+        coreColumn: true,
       }),
     },
     queued_at: {
@@ -419,7 +427,7 @@ export const querySchemas: TableSchema[] = [runsSchema];
 /**
  * Default query for the query editor
  */
-export const defaultQuery = `SELECT *
+export const defaultQuery = autoFormatSQL(`SELECT run_id, task_identifier, triggered_at, status
 FROM runs
 ORDER BY triggered_at DESC
-LIMIT 100`;
+LIMIT 100`);

@@ -260,13 +260,18 @@ export function timeFilterRenderValues({
   return { label, valueLabel, rangeType };
 }
 
-export function TimeFilter() {
+export interface TimeFilterProps {
+  defaultPeriod?: string;
+}
+
+export function TimeFilter({ defaultPeriod }: TimeFilterProps = {}) {
   const { value, del } = useSearchParams();
 
   const { period, from, to, label, valueLabel } = timeFilters({
     period: value("period"),
     from: value("from"),
     to: value("to"),
+    defaultPeriod,
   });
 
   return (
@@ -287,6 +292,7 @@ export function TimeFilter() {
           period={period}
           from={from}
           to={to}
+          defaultPeriod={defaultPeriod}
         />
       )}
     </FilterMenuProvider>

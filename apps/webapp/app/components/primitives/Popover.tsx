@@ -65,6 +65,7 @@ const PopoverMenuItem = React.forwardRef<
     className?: string;
     onClick?: React.MouseEventHandler;
     disabled?: boolean;
+    openInNewTab?: boolean;
   }
 >(
   (
@@ -78,6 +79,7 @@ const PopoverMenuItem = React.forwardRef<
       className,
       onClick,
       disabled,
+      openInNewTab = false,
     },
     ref
   ) => {
@@ -102,6 +104,8 @@ const PopoverMenuItem = React.forwardRef<
           ref={ref as React.Ref<HTMLAnchorElement>}
           className={cn("group/button focus-custom", contentProps.fullWidth ? "w-full" : "")}
           onClick={onClick as any}
+          target={openInNewTab ? "_blank" : undefined}
+          rel={openInNewTab ? "noopener noreferrer" : undefined}
         >
           <ButtonContent {...contentProps}>{title}</ButtonContent>
         </Link>
