@@ -5,7 +5,7 @@ import {
   clickhouseEventRepositoryV2,
 } from "./clickhouseEventRepositoryInstance.server";
 import { IEventRepository, TraceEventOptions } from "./eventRepository.types";
-import { $replica, prisma } from "~/db.server";
+import {  prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { FEATURE_FLAG, flags } from "../featureFlags.server";
 import { getTaskEventStore } from "../taskEventStore.server";
@@ -24,9 +24,17 @@ export function resolveEventRepositoryForStore(store: string | undefined): IEven
   return eventRepository;
 }
 
+ export const EVENT_STORE_TYPES = {
+        POSTGRES: "postgres",
+        CLICKHOUSE: "clickhouse",
+        CLICKHOUSE_V2: "clickhouse_v2",
+      } as const;
+
+export type EventStoreType = typeof EVENT_STORE_TYPES[keyof typeof EVENT_STORE_TYPES];
+
 export async function getConfiguredEventRepository(
   organizationId: string
-): Promise<{ repository: IEventRepository; store: string }> {
+): Promise<{ repository: IEventRepository; store: EventStoreType }> {
   const organization = await prisma.organization.findFirst({
     select: {
       id: true,
@@ -49,15 +57,15 @@ export async function getConfiguredEventRepository(
     (organization.featureFlags as Record<string, unknown> | null) ?? undefined
   );
 
-  if (taskEventStore === "clickhouse_v2") {
-    return { repository: clickhouseEventRepositoryV2, store: "clickhouse_v2" };
+  if (taskEventStore === EVENT_STORE_TYPES.CLICKHOUSE_V2) {
+    return { repository: clickhouseEventRepositoryV2, store: EVENT_STORE_TYPES.CLICKHOUSE_V2 };
   }
 
-  if (taskEventStore === "clickhouse") {
-    return { repository: clickhouseEventRepository, store: "clickhouse" };
+  if (taskEventStore === EVENT_STORE_TYPES.CLICKHOUSE) {
+    return { repository: clickhouseEventRepository, store: EVENT_STORE_TYPES.CLICKHOUSE };
   }
 
-  return { repository: eventRepository, store: "postgres" };
+  return { repository: eventRepository, store: EVENT_STORE_TYPES.POSTGRES };
 }
 
 export async function getEventRepository(

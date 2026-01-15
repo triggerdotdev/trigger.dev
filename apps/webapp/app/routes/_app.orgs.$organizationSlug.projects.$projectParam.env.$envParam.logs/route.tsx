@@ -141,7 +141,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     defaultPeriod: "1h",
   }).catch((error) => {
     if (error instanceof ServiceValidationError) {
-      return { error: error.message };
+      return { error: "Failed to load logs. Please refresh and try again." };
     }
     throw error;
   });
