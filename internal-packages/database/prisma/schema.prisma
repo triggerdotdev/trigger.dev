@@ -407,7 +407,8 @@ model Project {
   connectedGithubRepository ConnectedGithubRepository?
   customerQueries           CustomerQuery[]
 
-  buildSettings Json?
+  buildSettings         Json?
+  taskScheduleInstances TaskScheduleInstance[]
 }
 
 enum ProjectVersion {
@@ -592,7 +593,7 @@ model TaskRun {
   /// Debounce options: { key: string, delay: string, createdAt: Date }
   debounce Json?
 
-  taskIdentifier          String
+  taskIdentifier String
 
   isTest Boolean @default(false)
 
@@ -1948,6 +1949,9 @@ model TaskScheduleInstance {
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
 
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1958,6 +1962,7 @@ model TaskScheduleInstance {
 
   //you can only have a schedule attached to each environment once
   @@unique([taskScheduleId, environmentId])
+  @@index([environmentId])
 }
 
 model RuntimeEnvironmentSession {
