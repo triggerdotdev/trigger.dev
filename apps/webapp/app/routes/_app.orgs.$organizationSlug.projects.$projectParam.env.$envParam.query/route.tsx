@@ -476,7 +476,7 @@ export default function Page() {
                   onValueChange={(v) => setResultsView(v as "table" | "graph")}
                   className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden"
                 >
-                  <ClientTabsList variant="underline" className="shrink-0 px-3">
+                  <ClientTabsList variant="underline" className="shrink-0 pl-3 pr-1">
                     <ClientTabsTrigger value="table" variant="underline" layoutId="results-tabs">
                       Table
                     </ClientTabsTrigger>
@@ -489,7 +489,7 @@ export default function Page() {
                       Graph
                     </ClientTabsTrigger>
                     {results?.rows ? (
-                      <div className="flex flex-1 items-center justify-end border-b border-grid-dimmed pl-3">
+                      <div className="flex flex-1 items-center justify-end gap-2 border-b border-grid-dimmed pl-3">
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-text-dimmed">
                             {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
@@ -506,7 +506,7 @@ export default function Page() {
                           )}
                           {resultsView === "table" && (
                             <Switch
-                              variant="small"
+                              variant="secondary/small"
                               label="Pretty formatting"
                               checked={prettyFormatting}
                               onCheckedChange={setPrettyFormatting}
@@ -679,7 +679,9 @@ function ExportResultsButton({
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
-      <PopoverArrowTrigger isOpen={isOpen}>Export</PopoverArrowTrigger>
+      <PopoverArrowTrigger variant="tertiary" isOpen={isOpen}>
+        Export
+      </PopoverArrowTrigger>
       <PopoverContent className="min-w-[10rem] p-1" align="end">
         <div className="flex flex-col gap-1">
           <PopoverMenuItem icon={ClipboardIcon} title="Copy CSV" onClick={handleCopyCSV} />
