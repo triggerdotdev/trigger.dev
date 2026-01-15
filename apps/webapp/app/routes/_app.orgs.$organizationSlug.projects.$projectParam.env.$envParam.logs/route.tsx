@@ -92,7 +92,6 @@ async function hasLogsPageAccess(
   return hasLogsPageAccessResult.success && hasLogsPageAccessResult.data === true;
 }
 
-
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;

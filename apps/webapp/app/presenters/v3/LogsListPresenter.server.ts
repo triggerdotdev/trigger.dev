@@ -2,11 +2,9 @@ import { z } from "zod";
 import { type ClickHouse, type LogsListResult } from "@internal/clickhouse";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import {
-  type PrismaClient,
   type PrismaClientOrTransaction,
   type TaskRunStatus,
   TaskRunStatus as TaskRunStatusEnum,
-  TaskTriggerSource,
 } from "@trigger.dev/database";
 import { getConfiguredEventRepository } from "~/v3/eventRepository/index.server";
 
@@ -25,7 +23,6 @@ import {
   convertDateToClickhouseDateTime,
   convertClickhouseDateTime64ToJsDate,
 } from "~/v3/eventRepository/clickhouseEventRepository.server";
-
 
 export type { LogLevel };
 
@@ -173,7 +170,7 @@ export class LogsListPresenter extends BasePresenter {
     private readonly replica: PrismaClientOrTransaction,
     private readonly clickhouse: ClickHouse
   ) {
-    super();
+    super(undefined, replica);
   }
 
   public async call(

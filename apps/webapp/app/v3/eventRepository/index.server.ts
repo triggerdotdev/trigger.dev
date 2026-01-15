@@ -38,7 +38,7 @@ export async function getConfiguredEventRepository(
   });
 
   if (!organization) {
-    throw new Error('Organization not found when configuring event repository');
+    throw new Error("Organization not found when configuring event repository");
   }
 
   // resolveTaskEventRepositoryFlag checks:
@@ -57,7 +57,7 @@ export async function getConfiguredEventRepository(
     return { repository: clickhouseEventRepository, store: "clickhouse" };
   }
 
-  return { repository: eventRepository, store: 'postgres' };
+  return { repository: eventRepository, store: "postgres" };
 }
 
 export async function getEventRepository(
