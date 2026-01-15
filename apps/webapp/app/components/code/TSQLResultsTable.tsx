@@ -5,6 +5,7 @@ import {
   flexRender,
   type ColumnDef,
   type CellContext,
+  type ColumnResizeMode,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
@@ -663,9 +664,13 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   );
 
   // Initialize TanStack Table
+  // Column resize mode: 'onChange' for real-time feedback, 'onEnd' for performance
+  const columnResizeMode: ColumnResizeMode = "onChange";
+
   const table = useReactTable({
     data: rows,
     columns: columnDefs,
+    columnResizeMode,
     getCoreRowModel: getCoreRowModel(),
   });
 
@@ -705,6 +710,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                   return (
                     <th
                       key={header.id}
+                      className="group/header relative"
                       style={{
                         display: "flex",
                         width: header.getSize(),
@@ -716,6 +722,18 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
                       </HeaderCellContent>
+                      {/* Column resizer */}
+                      <div
+                        onDoubleClick={() => header.column.resetSize()}
+                        onMouseDown={header.getResizeHandler()}
+                        onTouchStart={header.getResizeHandler()}
+                        className={cn(
+                          "absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none select-none",
+                          "opacity-0 group-hover/header:opacity-100",
+                          "bg-charcoal-600 hover:bg-primary",
+                          header.column.getIsResizing() && "bg-primary opacity-100"
+                        )}
+                      />
                     </th>
                   );
                 })}
@@ -759,6 +777,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                 return (
                   <th
                     key={header.id}
+                    className="group/header relative"
                     style={{
                       display: "flex",
                       width: header.getSize(),
@@ -770,6 +789,18 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
                     </HeaderCellContent>
+                    {/* Column resizer */}
+                    <div
+                      onDoubleClick={() => header.column.resetSize()}
+                      onMouseDown={header.getResizeHandler()}
+                      onTouchStart={header.getResizeHandler()}
+                      className={cn(
+                        "absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none select-none",
+                        "opacity-0 group-hover/header:opacity-100",
+                        "bg-charcoal-600 hover:bg-primary",
+                        header.column.getIsResizing() && "bg-primary opacity-100"
+                      )}
+                    />
                   </th>
                 );
               })}
