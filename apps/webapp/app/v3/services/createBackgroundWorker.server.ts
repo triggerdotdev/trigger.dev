@@ -593,6 +593,7 @@ export async function syncDeclarativeSchedules(
             create: [
               {
                 environmentId: environment.id,
+                projectId: environment.projectId,
               },
             ],
           },
