@@ -540,7 +540,7 @@ function CopyableCell({
   return (
     <div
       className={cn(
-        "relative flex items-center px-2 py-1.5",
+        "relative flex w-full items-center px-2 py-1.5",
         "font-mono text-xs text-text-dimmed group-hover/row:text-text-bright",
         alignment === "right" && "justify-end"
       )}
@@ -555,7 +555,7 @@ function CopyableCell({
             e.preventDefault();
             copy();
           }}
-          className="absolute right-0 top-1/2 z-10 flex -translate-y-1/2 cursor-pointer"
+          className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 cursor-pointer"
         >
           <SimpleTooltip
             button={
