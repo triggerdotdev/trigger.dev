@@ -99,25 +99,23 @@ export function ChartLegendCompound({
     }));
 
     if (allItems.length <= maxItems) {
-      return { visible: allItems, remaining: 0 };
+      return { visible: allItems, remaining: 0, hoveredHiddenItem: undefined };
     }
 
     const visibleItems = allItems.slice(0, maxItems);
     const remainingCount = allItems.length - maxItems;
 
     // If we're hovering over an item that's not visible in the legend,
-    // add it as an extra item instead of showing the "view more" row
+    // pass it separately to replace the "view more" row
+    let hoveredHiddenItem: (typeof allItems)[0] | undefined;
     if (
       highlight.activeBarKey &&
       !visibleItems.some((item) => item.dataKey === highlight.activeBarKey)
     ) {
-      const hoveredItem = allItems.find((item) => item.dataKey === highlight.activeBarKey);
-      if (hoveredItem) {
-        return { visible: [...visibleItems, hoveredItem], remaining: remainingCount - 1 };
-      }
+      hoveredHiddenItem = allItems.find((item) => item.dataKey === highlight.activeBarKey);
     }
 
-    return { visible: visibleItems, remaining: remainingCount };
+    return { visible: visibleItems, remaining: remainingCount, hoveredHiddenItem };
   }, [config, dataKeys, maxItems, highlight.activeBarKey]);
 
   if (hidden || dataKeys.length === 0) {
@@ -187,8 +185,17 @@ export function ChartLegendCompound({
         );
       })}
 
-      {/* View more row */}
-      {legendItems.remaining > 0 && <ViewAllDataRow remainingCount={legendItems.remaining} />}
+      {/* View more row - replaced by hovered hidden item when applicable */}
+      {legendItems.remaining > 0 &&
+        (legendItems.hoveredHiddenItem ? (
+          <HoveredHiddenItemRow
+            item={legendItems.hoveredHiddenItem}
+            value={currentData[legendItems.hoveredHiddenItem.dataKey] ?? 0}
+            remainingCount={legendItems.remaining - 1}
+          />
+        ) : (
+          <ViewAllDataRow remainingCount={legendItems.remaining} />
+        ))}
     </div>
   );
 }
@@ -210,5 +217,40 @@ function ViewAllDataRow({ remainingCount }: ViewAllDataRowProps) {
         View all
       </Paragraph>
     </Button>
+  );
+}
+
+type HoveredHiddenItemRowProps = {
+  item: { dataKey: string; color?: string; label: React.ReactNode };
+  value: number;
+  remainingCount: number;
+};
+
+function HoveredHiddenItemRow({ item, value, remainingCount }: HoveredHiddenItemRowProps) {
+  return (
+    <div className="relative flex w-full items-center justify-between gap-2 rounded px-2 py-1">
+      {/* Active highlight background */}
+      {item.color && (
+        <div
+          className="absolute inset-0 rounded opacity-10"
+          style={{ backgroundColor: item.color }}
+        />
+      )}
+      <div className="relative flex w-full items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          {item.color && (
+            <div
+              className="h-3 w-1 shrink-0 rounded-[2px]"
+              style={{ backgroundColor: item.color }}
+            />
+          )}
+          <span className="text-text-bright">{item.label}</span>
+          {remainingCount > 0 && <span className="text-text-dimmed">+{remainingCount} more</span>}
+        </div>
+        <span className="tabular-nums text-text-bright">
+          <AnimatedNumber value={value} duration={0.25} />
+        </span>
+      </div>
+    </div>
   );
 }
