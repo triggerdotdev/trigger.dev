@@ -559,12 +559,16 @@ export default function Page() {
                             . Specify them explicitly to include them.
                           </Callout>
                         )}
-                        <div className="min-h-0 flex-1 overflow-hidden">
-                          <TSQLResultsTable
-                            rows={results.rows}
-                            columns={results.columns}
-                            prettyFormatting={prettyFormatting}
-                          />
+                        <div className="h-full bg-charcoal-900 p-2">
+                          <Card className="max-h-full overflow-hidden p-0">
+                            <Card.Content className="max-h-full overflow-hidden p-0">
+                              <TSQLResultsTable
+                                rows={results.rows}
+                                columns={results.columns}
+                                prettyFormatting={prettyFormatting}
+                              />
+                            </Card.Content>
+                          </Card>
                         </div>
                       </div>
                     ) : (

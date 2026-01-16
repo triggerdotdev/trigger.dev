@@ -21,8 +21,8 @@ const CardHeader = ({ children }: { children: ReactNode }) => {
   );
 };
 
-const CardContent = ({ children }: { children: ReactNode }) => {
-  return <div className="px-2">{children}</div>;
+const CardContent = ({ children, className }: { children: ReactNode; className?: string }) => {
+  return <div className={cn("px-2", className)}>{children}</div>;
 };
 
 const CardAccessory = ({ children }: { children: ReactNode }) => {
