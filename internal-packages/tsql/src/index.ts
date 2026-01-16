@@ -6,7 +6,19 @@ import { CharStreams, CommonTokenStream } from "antlr4ts";
 import type { Token } from "antlr4ts/Token";
 import { TSQLLexer } from "./grammar/TSQLLexer.js";
 import { TSQLParser } from "./grammar/TSQLParser.js";
-import type { Expression, SelectQuery, SelectSetQuery } from "./query/ast.js";
+import type {
+  And,
+  BetweenExpr,
+  CompareOperation,
+  Constant,
+  Expression,
+  Field,
+  Not,
+  Or,
+  SelectQuery,
+  SelectSetQuery,
+} from "./query/ast.js";
+import { CompareOperationOp } from "./query/ast.js";
 import { SyntaxError as TSQLSyntaxError } from "./query/errors.js";
 import { TSQLParseTreeConverter } from "./query/parser.js";
 import { printToClickHouse, type PrintResult } from "./query/printer.js";
@@ -204,6 +216,237 @@ export function parseTSQLExpr(expr: string): Expression {
 }
 
 /**
+ * Check if a column is referenced in an expression (for WHERE clause detection).
+ * Recursively traverses And, Or, CompareOperation, BetweenExpr, and Field nodes.
+ *
+ * @param expr - The expression to search
+ * @param column - The column name to look for
+ * @returns true if the column is referenced in the expression
+ */
+export function isColumnReferencedInExpression(
+  expr: Expression | undefined,
+  column: string
+): boolean {
+  if (!expr) return false;
+
+  const exprType = (expr as Expression).expression_type;
+
+  switch (exprType) {
+    case "and": {
+      const andExpr = expr as And;
+      return andExpr.exprs.some((e) => isColumnReferencedInExpression(e, column));
+    }
+    case "or": {
+      const orExpr = expr as Or;
+      return orExpr.exprs.some((e) => isColumnReferencedInExpression(e, column));
+    }
+    case "compare_operation": {
+      const compareExpr = expr as CompareOperation;
+      return (
+        isColumnReferencedInExpression(compareExpr.left, column) ||
+        isColumnReferencedInExpression(compareExpr.right, column)
+      );
+    }
+    case "between_expr": {
+      const betweenExpr = expr as BetweenExpr;
+      return isColumnReferencedInExpression(betweenExpr.expr, column);
+    }
+    case "field": {
+      const fieldExpr = expr as Field;
+      // Check if any part of the chain matches the column name
+      // Handles both unqualified (column) and qualified (table.column) references
+      return fieldExpr.chain.some((part) => part === column);
+    }
+    case "not": {
+      const notExpr = expr as Not;
+      return isColumnReferencedInExpression(notExpr.expr, column);
+    }
+    default:
+      return false;
+  }
+}
+
+/**
+ * Convert a fallback value to the appropriate type for AST constants
+ */
+function convertFallbackValue(value: Date | string | number): string | number {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return value;
+}
+
+/**
+ * Map fallback operator to CompareOperationOp
+ */
+function mapFallbackOpToCompareOp(op: SimpleComparisonFallback["op"]): CompareOperationOp {
+  switch (op) {
+    case "eq":
+      return CompareOperationOp.Eq;
+    case "neq":
+      return CompareOperationOp.NotEq;
+    case "gt":
+      return CompareOperationOp.Gt;
+    case "gte":
+      return CompareOperationOp.GtEq;
+    case "lt":
+      return CompareOperationOp.Lt;
+    case "lte":
+      return CompareOperationOp.LtEq;
+  }
+}
+
+/**
+ * Create an AST expression from a fallback condition
+ *
+ * @param column - The column name
+ * @param fallback - The fallback condition
+ * @returns The AST expression for the fallback condition
+ */
+export function createFallbackExpression(
+  column: string,
+  fallback: WhereClauseFallback
+): Expression {
+  const fieldExpr: Field = {
+    expression_type: "field",
+    chain: [column],
+  };
+
+  if (fallback.op === "between") {
+    const betweenExpr: BetweenExpr = {
+      expression_type: "between_expr",
+      expr: fieldExpr,
+      low: {
+        expression_type: "constant",
+        value: convertFallbackValue(fallback.low),
+      } as Constant,
+      high: {
+        expression_type: "constant",
+        value: convertFallbackValue(fallback.high),
+      } as Constant,
+    };
+    return betweenExpr;
+  }
+
+  // Simple comparison
+  const compareExpr: CompareOperation = {
+    expression_type: "compare_operation",
+    left: fieldExpr,
+    right: {
+      expression_type: "constant",
+      value: convertFallbackValue(fallback.value),
+    } as Constant,
+    op: mapFallbackOpToCompareOp(fallback.op),
+  };
+  return compareExpr;
+}
+
+/**
+ * Inject fallback WHERE conditions into a parsed AST.
+ * Only adds fallback conditions for columns not already referenced in the WHERE clause.
+ *
+ * @param ast - The parsed SELECT query AST
+ * @param fallbacks - The fallback conditions to potentially inject
+ * @returns The modified AST with fallback conditions injected
+ */
+export function injectFallbackConditions(
+  ast: SelectQuery | SelectSetQuery,
+  fallbacks: Record<string, WhereClauseFallback>
+): SelectQuery | SelectSetQuery {
+  // Handle SelectSetQuery (UNION, etc.) - apply to each query in the set
+  if (ast.expression_type === "select_set_query") {
+    const setQuery = ast as SelectSetQuery;
+    // Process the initial select query
+    const modifiedInitial = injectFallbackConditions(
+      setQuery.initial_select_query,
+      fallbacks
+    ) as SelectQuery;
+
+    // Process subsequent queries
+    const modifiedSubsequent = setQuery.subsequent_select_queries.map((sq) => ({
+      ...sq,
+      select_query: injectFallbackConditions(sq.select_query, fallbacks) as SelectQuery,
+    }));
+
+    return {
+      ...setQuery,
+      initial_select_query: modifiedInitial,
+      subsequent_select_queries: modifiedSubsequent,
+    };
+  }
+
+  // Handle SelectQuery
+  const selectQuery = ast as SelectQuery;
+  const existingWhere = selectQuery.where;
+
+  // Collect fallback expressions for columns not already in WHERE
+  const fallbackExprs: Expression[] = [];
+  for (const [column, fallback] of Object.entries(fallbacks)) {
+    if (!isColumnReferencedInExpression(existingWhere, column)) {
+      fallbackExprs.push(createFallbackExpression(column, fallback));
+    }
+  }
+
+  // If no fallbacks to add, return original AST
+  if (fallbackExprs.length === 0) {
+    return ast;
+  }
+
+  // Combine fallbacks with existing WHERE using AND
+  let newWhere: Expression;
+  if (!existingWhere) {
+    // No existing WHERE - just use fallbacks
+    if (fallbackExprs.length === 1) {
+      newWhere = fallbackExprs[0];
+    } else {
+      newWhere = {
+        expression_type: "and",
+        exprs: fallbackExprs,
+      } as And;
+    }
+  } else {
+    // Combine existing WHERE with fallbacks
+    newWhere = {
+      expression_type: "and",
+      exprs: [...fallbackExprs, existingWhere],
+    } as And;
+  }
+
+  return {
+    ...selectQuery,
+    where: newWhere,
+  };
+}
+
+/**
+ * A simple comparison fallback condition (e.g., column > value)
+ */
+export interface SimpleComparisonFallback {
+  /** The comparison operator */
+  op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte";
+  /** The value to compare against */
+  value: Date | string | number;
+}
+
+/**
+ * A between fallback condition (e.g., column BETWEEN low AND high)
+ */
+export interface BetweenFallback {
+  /** The between operator */
+  op: "between";
+  /** The low bound of the range */
+  low: Date | string | number;
+  /** The high bound of the range */
+  high: Date | string | number;
+}
+
+/**
+ * A WHERE clause fallback condition.
+ * Used to apply default filters when the user hasn't specified one for a column.
+ */
+export type WhereClauseFallback = SimpleComparisonFallback | BetweenFallback;
+
+/**
  * Options for compiling a TSQL query to ClickHouse SQL
  */
 export interface CompileTSQLOptions {
@@ -229,6 +472,24 @@ export interface CompileTSQLOptions {
    * ```
    */
   fieldMappings?: FieldMappings;
+  /**
+   * Fallback WHERE conditions to apply when the user hasn't filtered on a column.
+   * Key is the column name, value is the fallback condition.
+   *
+   * @example
+   * ```typescript
+   * // Apply time > 7 days ago if user doesn't filter on time
+   * whereClauseFallback: {
+   *   time: { op: 'gte', value: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+   * }
+   *
+   * // Apply time BETWEEN two dates if user doesn't filter on time
+   * whereClauseFallback: {
+   *   time: { op: 'between', low: startDate, high: endDate }
+   * }
+   * ```
+   */
+  whereClauseFallback?: Record<string, WhereClauseFallback>;
 }
 
 /**
@@ -261,12 +522,17 @@ export interface CompileTSQLOptions {
  */
 export function compileTSQL(query: string, options: CompileTSQLOptions): PrintResult {
   // 1. Parse the TSQL query
-  const ast = parseTSQLSelect(query);
+  let ast = parseTSQLSelect(query);
 
-  // 2. Create schema registry from table schemas
+  // 2. Inject fallback WHERE conditions if provided
+  if (options.whereClauseFallback && Object.keys(options.whereClauseFallback).length > 0) {
+    ast = injectFallbackConditions(ast, options.whereClauseFallback);
+  }
+
+  // 3. Create schema registry from table schemas
   const schemaRegistry = createSchemaRegistry(options.tableSchema);
 
-  // 3. Create printer context with tenant IDs and field mappings
+  // 4. Create printer context with tenant IDs and field mappings
   const context = createPrinterContext({
     organizationId: options.organizationId,
     projectId: options.projectId,
@@ -276,6 +542,6 @@ export function compileTSQL(query: string, options: CompileTSQLOptions): PrintRe
     fieldMappings: options.fieldMappings,
   });
 
-  // 4. Print the AST to ClickHouse SQL
+  // 5. Print the AST to ClickHouse SQL
   return printToClickHouse(ast, context);
 }
