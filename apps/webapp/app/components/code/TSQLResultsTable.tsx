@@ -942,7 +942,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   if (rows.length === 0) {
     return (
       <div
-        className="h-full w-full overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="h-full min-h-0 w-full overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         style={{ position: "relative" }}
       >
         <table style={{ display: "grid" }}>
@@ -1027,7 +1027,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   return (
     <div
       ref={tableContainerRef}
-      className="h-full w-full overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+      className="h-full min-h-0 w-full overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
       style={{ position: "relative" }}
     >
       <table style={{ display: "grid" }}>

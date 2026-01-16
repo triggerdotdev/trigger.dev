@@ -560,8 +560,8 @@ export default function Page() {
                           </Callout>
                         )}
                         <div className="h-full bg-charcoal-900 p-2">
-                          <Card className="max-h-full overflow-hidden p-0">
-                            <Card.Content className="max-h-full overflow-hidden p-0">
+                          <Card className="h-full overflow-hidden p-0">
+                            <Card.Content className="min-h-0 flex-1 overflow-hidden p-0">
                               <TSQLResultsTable
                                 rows={results.rows}
                                 columns={results.columns}
