@@ -205,7 +205,7 @@ export class LimitsPresenter extends BasePresenter {
           schedulesLimit !== null
             ? {
                 name: "Schedules",
-                description: "Maximum number of schedules across all projects",
+                description: "Maximum number of schedules per project",
                 limit: schedulesLimit,
                 currentUsage: scheduleCount,
                 source: "plan",
@@ -229,7 +229,7 @@ export class LimitsPresenter extends BasePresenter {
           alertsLimit !== null
             ? {
                 name: "Alert channels",
-                description: "Maximum number of alert channels across all projects",
+                description: "Maximum number of alert channels per project",
                 limit: alertsLimit,
                 currentUsage: alertChannelCount,
                 source: "plan",
@@ -241,7 +241,7 @@ export class LimitsPresenter extends BasePresenter {
           branchesLimit !== null
             ? {
                 name: "Preview branches",
-                description: "Maximum number of active preview branches",
+                description: "Maximum number of active preview branches per project",
                 limit: branchesLimit,
                 currentUsage: activeBranchCount,
                 source: "plan",
@@ -297,8 +297,8 @@ export class LimitsPresenter extends BasePresenter {
       },
       features: {
         hasStagingEnvironment: {
-          name: "Staging environment",
-          description: "Access to staging environment for testing before production",
+          name: "Staging/Preview environments",
+          description: "Access to staging/preview environments for testing before production",
           enabled: hasStagingEnvironment,
         },
         support: {
