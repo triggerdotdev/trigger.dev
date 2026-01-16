@@ -466,7 +466,10 @@ export default function Page() {
                   onValueChange={(v) => setResultsView(v as "table" | "graph")}
                   className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden"
                 >
-                  <ClientTabsList variant="underline" className="shrink-0 pl-3 pr-1">
+                  <ClientTabsList
+                    variant="underline"
+                    className="shrink-0 overflow-hidden pl-3 pr-1"
+                  >
                     <ClientTabsTrigger value="table" variant="underline" layoutId="results-tabs">
                       Table
                     </ClientTabsTrigger>
@@ -479,8 +482,8 @@ export default function Page() {
                       Graph
                     </ClientTabsTrigger>
                     {results?.rows ? (
-                      <div className="flex flex-1 items-center justify-end gap-2 border-b border-grid-dimmed pl-3">
-                        <div className="flex items-center gap-2">
+                      <div className="flex flex-1 items-center justify-end gap-2 overflow-hidden border-b border-grid-dimmed pl-3">
+                        <div className="flex items-center gap-2 overflow-hidden truncate">
                           <span className="text-xs text-text-dimmed">
                             {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
                           </span>
