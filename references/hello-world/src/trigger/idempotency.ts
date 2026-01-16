@@ -301,3 +301,90 @@ export const idempotencyTriggerAndWaitWithInProgressRun = task({
     );
   },
 });
+
+// Test task for verifying idempotencyKeyOptions storage (TRI-4352)
+export const idempotencyKeyOptionsChild = task({
+  id: "idempotency-key-options-child",
+  run: async (payload: { message: string }, { ctx }) => {
+    // Log the idempotency key from context - should be the user-provided key, not the hash
+    logger.log("Child task context", {
+      idempotencyKey: ctx.run.idempotencyKey,
+      idempotencyKeyScope: ctx.run.idempotencyKeyScope,
+      runId: ctx.run.id,
+    });
+
+    return {
+      receivedIdempotencyKey: ctx.run.idempotencyKey,
+      receivedIdempotencyKeyScope: ctx.run.idempotencyKeyScope,
+      message: payload.message,
+    };
+  },
+});
+
+
+export const idempotencyKeyOptionsTest = task({
+  id: "idempotency-key-options-test",
+  maxDuration: 60,
+  run: async (payload: any, { ctx }) => {
+    logger.log("Testing idempotencyKeyOptions feature (TRI-4352)");
+
+    // Test 1: Create key with "run" scope (default)
+    const runScopedKey = await idempotencyKeys.create("my-run-scoped-key");
+    logger.log("Created run-scoped key", { key: runScopedKey.toString() });
+
+    const result1 = await idempotencyKeyOptionsChild.triggerAndWait(
+      { message: "Test with run scope" },
+      { idempotencyKey: runScopedKey, idempotencyKeyTTL: "60s" }
+    );
+    logger.log("Result 1 (run scope)", { result: result1 });
+
+    // Test 2: Create key with "global" scope
+    const globalScopedKey = await idempotencyKeys.create("my-global-scoped-key", {
+      scope: "global",
+    });
+    logger.log("Created global-scoped key", { key: globalScopedKey.toString() });
+
+    const result2 = await idempotencyKeyOptionsChild.triggerAndWait(
+      { message: "Test with global scope" },
+      { idempotencyKey: globalScopedKey, idempotencyKeyTTL: "60s" }
+    );
+    logger.log("Result 2 (global scope)", { result: result2 });
+
+    // Test 3: Create key with "attempt" scope
+    const attemptScopedKey = await idempotencyKeys.create("my-attempt-scoped-key", {
+      scope: "attempt",
+    });
+    logger.log("Created attempt-scoped key", { key: attemptScopedKey.toString() });
+
+    const result3 = await idempotencyKeyOptionsChild.triggerAndWait(
+      { message: "Test with attempt scope" },
+      { idempotencyKey: attemptScopedKey, idempotencyKeyTTL: "60s" }
+    );
+    logger.log("Result 3 (attempt scope)", { result: result3 });
+
+    // Test 4: Create key with array input
+    const arrayKey = await idempotencyKeys.create(["user", "123", "action"]);
+    logger.log("Created array key", { key: arrayKey.toString() });
+
+    const result4 = await idempotencyKeyOptionsChild.triggerAndWait(
+      { message: "Test with array key" },
+      { idempotencyKey: arrayKey, idempotencyKeyTTL: "60s" }
+    );
+    logger.log("Result 4 (array key)", { result: result4 });
+
+    return {
+      results: [
+        { scope: "run", idempotencyKey: result1.ok ? result1.output?.receivedIdempotencyKey : null },
+        {
+          scope: "global",
+          idempotencyKey: result2.ok ? result2.output?.receivedIdempotencyKey : null,
+        },
+        {
+          scope: "attempt",
+          idempotencyKey: result3.ok ? result3.output?.receivedIdempotencyKey : null,
+        },
+        { scope: "array", idempotencyKey: result4.ok ? result4.output?.receivedIdempotencyKey : null },
+      ],
+    };
+  },
+});

@@ -194,6 +194,7 @@ export class RunAttemptSystem {
         runTags: true,
         isTest: true,
         idempotencyKey: true,
+        idempotencyKeyOptions: true,
         startedAt: true,
         maxAttempts: true,
         taskVersion: true,
@@ -261,7 +262,8 @@ export class RunAttemptSystem {
         isTest: run.isTest,
         createdAt: run.createdAt,
         startedAt: run.startedAt ?? run.createdAt,
-        idempotencyKey: run.idempotencyKey ?? undefined,
+        idempotencyKey: this.#getUserProvidedIdempotencyKey(run) ?? undefined,
+        idempotencyKeyScope: this.#getIdempotencyKeyScope(run),
         maxAttempts: run.maxAttempts ?? undefined,
         version: run.taskVersion ?? "unknown",
         maxDuration: run.maxDurationInSeconds ?? undefined,
@@ -422,6 +424,7 @@ export class RunAttemptSystem {
                   runTags: true,
                   isTest: true,
                   idempotencyKey: true,
+                  idempotencyKeyOptions: true,
                   startedAt: true,
                   maxAttempts: true,
                   taskVersion: true,
@@ -570,7 +573,8 @@ export class RunAttemptSystem {
               createdAt: updatedRun.createdAt,
               tags: updatedRun.runTags,
               isTest: updatedRun.isTest,
-              idempotencyKey: updatedRun.idempotencyKey ?? undefined,
+              idempotencyKey: this.#getUserProvidedIdempotencyKey(updatedRun) ?? undefined,
+              idempotencyKeyScope: this.#getIdempotencyKeyScope(updatedRun),
               startedAt: updatedRun.startedAt ?? updatedRun.createdAt,
               maxAttempts: updatedRun.maxAttempts ?? undefined,
               version: updatedRun.taskVersion ?? "unknown",
@@ -1913,6 +1917,25 @@ export class RunAttemptSystem {
       message: truncateString(error.message, 1024 * 16), // 16kb
       stackTrace: truncateString(error.stackTrace, 1024 * 16), // 16kb
     };
+  }
+
+  #getUserProvidedIdempotencyKey(
+    run: { idempotencyKey: string | null; idempotencyKeyOptions: unknown }
+  ): string | null {
+    const options = run.idempotencyKeyOptions as { key?: string; scope?: string } | null;
+    // Return user-provided key if available, otherwise fall back to the hash
+    return options?.key ?? run.idempotencyKey;
+  }
+
+  #getIdempotencyKeyScope(
+    run: { idempotencyKeyOptions: unknown }
+  ): "run" | "attempt" | "global" | undefined {
+    const options = run.idempotencyKeyOptions as { key?: string; scope?: string } | null;
+    const scope = options?.scope;
+    if (scope === "run" || scope === "attempt" || scope === "global") {
+      return scope;
+    }
+    return undefined;
   }
 }
 
