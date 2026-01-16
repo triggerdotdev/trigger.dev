@@ -113,12 +113,15 @@ export class CheckScheduleService extends BaseService {
     return await prisma.taskScheduleInstance.count({
       where: {
         projectId,
+        active: true,
         environment: {
           type: {
             not: "DEVELOPMENT",
           },
         },
-        active: true,
+        taskSchedule: {
+          active: true,
+        },
       },
     });
   }
