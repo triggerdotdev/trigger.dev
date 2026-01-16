@@ -665,11 +665,11 @@ export const streams = {
 function getRunIdForOptions(options?: RealtimeStreamOperationOptions): string | undefined {
   if (options?.target) {
     if (options.target === "parent") {
-      return taskContext.ctx?.run?.parentTaskRunId;
+      return taskContext.ctx?.run?.parentTaskRunId ?? taskContext.ctx?.run?.id;
     }
 
     if (options.target === "root") {
-      return taskContext.ctx?.run?.rootTaskRunId;
+      return taskContext.ctx?.run?.rootTaskRunId ?? taskContext.ctx?.run?.id;
     }
 
     if (options.target === "self") {
