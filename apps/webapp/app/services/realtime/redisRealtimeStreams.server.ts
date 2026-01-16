@@ -272,7 +272,7 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
       await redis.quit().catch(console.error);
     }
 
-    signal.addEventListener("abort", cleanup);
+    signal.addEventListener("abort", cleanup, { once: true });
 
     return new Response(stream, {
       headers: {

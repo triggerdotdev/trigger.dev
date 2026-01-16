@@ -2,6 +2,8 @@ import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis
 import { EventEmitter } from "node:events";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
+import { Gauge } from "prom-client";
+import { metricsRegister } from "~/metrics.server";
 
 export type TracePubSubOptions = {
   redis: RedisWithClusterOptions;
@@ -15,7 +17,10 @@ export class TracePubSub {
     this._publisher = createRedisClient("trigger:eventRepoPublisher", this._options.redis);
   }
 
-  // TODO: do this more efficiently
+  get subscriberCount() {
+    return this._subscriberCount;
+  }
+
   async publish(traceIds: string[]) {
     if (traceIds.length === 0) return;
     const uniqueTraces = new Set(traceIds.map((e) => `events:${e}`));
@@ -40,15 +45,18 @@ export class TracePubSub {
 
     const eventEmitter = new EventEmitter();
 
-    // Define the message handler.
-    redis.on("message", (_, message) => {
+    // Define the message handler - store reference so we can remove it later.
+    const messageHandler = (_: string, message: string) => {
       eventEmitter.emit("message", message);
-    });
+    };
+    redis.on("message", messageHandler);
 
     // Return a function that can be used to unsubscribe.
     const unsubscribe = async () => {
+      // Remove the message listener before closing the connection
+      redis.off("message", messageHandler);
       await redis.unsubscribe(channel);
-      redis.quit();
+      await redis.quit();
       this._subscriberCount--;
     };
 
@@ -62,7 +70,7 @@ export class TracePubSub {
 export const tracePubSub = singleton("tracePubSub", initializeTracePubSub);
 
 function initializeTracePubSub() {
-  return new TracePubSub({
+  const pubSub = new TracePubSub({
     redis: {
       port: env.PUBSUB_REDIS_PORT,
       host: env.PUBSUB_REDIS_HOST,
@@ -72,4 +80,15 @@ function initializeTracePubSub() {
       clusterMode: env.PUBSUB_REDIS_CLUSTER_MODE_ENABLED === "1",
     },
   });
+
+  new Gauge({
+    name: "trace_pub_sub_subscribers",
+    help: "Number of trace pub sub subscribers",
+    collect() {
+      this.set(pubSub.subscriberCount);
+    },
+    registers: [metricsRegister],
+  });
+
+  return pubSub;
 }
