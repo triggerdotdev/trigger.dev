@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json, redirect } from "@remix-run/server-runtime";
+import { useState } from "react";
 import { Form, useLoaderData, useNavigation } from "@remix-run/react";
 import { z } from "zod";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -246,7 +247,7 @@ export async function action({ request }: ActionFunctionArgs) {
       params.set("next", next);
     }
 
-    return redirect(`/vercel/connect?${params.toString()}`);
+    return redirect(`/vercel/connect?${params.toString()}`, 303);
   } catch (error) {
     logger.error("Failed to generate Vercel OAuth state", { error });
     return json({ error: "Failed to generate installation state" }, { status: 500 });
@@ -257,6 +258,7 @@ export default function VercelOnboardingPage() {
   const data = useLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
+  const [isInstalling, setIsInstalling] = useState(false);
 
   if (data.step === "error") {
     return (
@@ -355,7 +357,7 @@ export default function VercelOnboardingPage() {
             title="Select Project"
             description={`Choose which project in ${data.organization.title} to install the Vercel integration into.`}
           />
-          <Form method="post">
+          <Form method="post" onSubmit={() => setIsInstalling(true)}>
             <input type="hidden" name="action" value="select-project" />
             <input type="hidden" name="organizationId" value={data.organization.id} />
             <input type="hidden" name="code" value={data.code} />
@@ -384,14 +386,14 @@ export default function VercelOnboardingPage() {
               </Select>
 
               <div className="mt-2 flex w-full justify-between gap-2">
-                <Button variant="tertiary/medium" onClick={() => window.close()} disabled={isSubmitting}>
+                <Button variant="tertiary/medium" onClick={() => window.close()} disabled={isSubmitting || isInstalling}>
                   Cancel
                 </Button>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="secondary/medium"
                     className="flex-1"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isInstalling}
                     onClick={() => {
                       const params = new URLSearchParams({
                         code: data.code,
@@ -407,8 +409,8 @@ export default function VercelOnboardingPage() {
                   >
                     + New Project
                   </Button>
-                  <Button type="submit" variant="primary/medium" disabled={isSubmitting} className="flex-1">
-                    {isSubmitting ? "Installing..." : "Install Integration"}
+                  <Button type="submit" variant="primary/medium" disabled={isSubmitting || isInstalling} className="flex-1">
+                    {(isSubmitting || isInstalling) ? "Installing..." : "Install Integration"}
                   </Button>
                 </div>
               </div>

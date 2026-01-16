@@ -2,8 +2,7 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { env } from "~/env.server";
-import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
+import { VercelIntegrationRepository, type TokenResponse } from "~/models/vercelIntegration.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { requestUrl } from "~/utils/requestUrl.server";
@@ -17,67 +16,6 @@ const VercelConnectSchema = z.object({
   next: z.string().optional(),
   origin: z.enum(["marketplace", "dashboard"]),
 });
-
-type TokenResponse = {
-  accessToken: string;
-  tokenType: string;
-  teamId?: string;
-  userId?: string;
-  raw: Record<string, unknown>;
-};
-
-async function exchangeCodeForToken(code: string): Promise<TokenResponse | null> {
-  const clientId = env.VERCEL_INTEGRATION_CLIENT_ID;
-  const clientSecret = env.VERCEL_INTEGRATION_CLIENT_SECRET;
-  const redirectUri = `${env.APP_ORIGIN}/vercel/callback`;
-
-  if (!clientId || !clientSecret) {
-    logger.error("Vercel integration not configured");
-    return null;
-  }
-
-  try {
-    const response = await fetch("https://api.vercel.com/v2/oauth/access_token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        code,
-        redirect_uri: redirectUri,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      logger.error("Failed to exchange Vercel OAuth code", {
-        status: response.status,
-        error: errorText,
-      });
-      return null;
-    }
-
-    const data = (await response.json()) as {
-      access_token: string;
-      token_type: string;
-      team_id?: string;
-      user_id?: string;
-    };
-
-    return {
-      accessToken: data.access_token,
-      tokenType: data.token_type,
-      teamId: data.team_id,
-      userId: data.user_id,
-      raw: data as Record<string, unknown>,
-    };
-  } catch (error) {
-    logger.error("Error exchanging Vercel OAuth code", { error });
-    return null;
-  }
-}
 
 async function createOrFindVercelIntegration(
   organizationId: string,
@@ -177,7 +115,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     throw new Response("Project not found", { status: 404 });
   }
 
-  const tokenResponse = await exchangeCodeForToken(code);
+  const tokenResponse = await VercelIntegrationRepository.exchangeCodeForToken(code);
   if (!tokenResponse) {
     const params = new URLSearchParams({ error: "expired" });
     return redirect(`/vercel/onboarding?${params.toString()}`);
@@ -199,6 +137,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
     throw new Response("Environment not found", { status: 404 });
   }
 
+  const settingsPath = v3ProjectSettingsPath(
+    { slug: stateData.organizationSlug },
+    { slug: stateData.projectSlug },
+    { slug: environment.slug }
+  );
+
   try {
     await createOrFindVercelIntegration(stateData.organizationId, stateData.projectId, tokenResponse, configurationId, origin);
 
@@ -208,12 +152,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
       teamId: tokenResponse.teamId,
     });
 
-    const settingsPath = v3ProjectSettingsPath(
-      { slug: stateData.organizationSlug },
-      { slug: stateData.projectSlug },
-      { slug: environment.slug }
-    );
-
     const params = new URLSearchParams({ vercelOnboarding: "true", origin });
     if (next) {
       params.set("next", next);
@@ -222,13 +160,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return redirect(`${settingsPath}?${params.toString()}`);
   } catch (error) {
     logger.error("Failed to complete Vercel integration", { error });
-
-    const settingsPath = v3ProjectSettingsPath(
-      { slug: stateData.organizationSlug },
-      { slug: stateData.projectSlug },
-      { slug: environment.slug }
-    );
-
     throw redirect(settingsPath);
   }
 }

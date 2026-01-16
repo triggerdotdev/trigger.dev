@@ -72,7 +72,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 
 function shortEnvironmentLabel(environment: RuntimeEnvironmentType) {
-  switch (environment) {
+  switch (environment.toUpperCase()) {
     case "PRODUCTION":
       return "Prod";
     case "STAGING":
@@ -98,10 +98,11 @@ function formatVercelTargets(targets: string[]): string {
     production: "Production",
     preview: "Preview",
     development: "Development",
+    staging: "Staging",
   };
 
   return targets
-    .map((t) => targetLabels[t] || t)
+    .map((t) => targetLabels[t.toLowerCase()] || t)
     .join(", ");
 }
 
@@ -237,10 +238,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     const result = resultOrFail.value;
     const url = new URL(request.url);
     const needsOnboarding = url.searchParams.get("vercelOnboarding") === "true";
+    const vercelEnvironmentId = url.searchParams.get("vercelEnvironmentId") || undefined;
 
     let onboardingData: VercelOnboardingData | null = null;
     if (needsOnboarding) {
-      onboardingData = await presenter.getOnboardingData(project.id, project.organizationId);
+      onboardingData = await presenter.getOnboardingData(
+        project.id, 
+        project.organizationId,
+        vercelEnvironmentId
+      );
     }
 
     const authInvalid = onboardingData?.authInvalid || result.authInvalid || false;
@@ -726,14 +732,14 @@ function ConnectedVercelProjectForm({
                 connectedProject.integrationData.config.vercelStagingEnvironment &&
                 connectedProject.integrationData.config.vercelStagingEnvironment !== "" &&
                 connectedProject.integrationData.config.vercelStagingName && (
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <div>
                       <Label>Staging environment mapping</Label>
                       <Hint>
                         Vercel environment mapped to Trigger.dev's Staging environment.
                       </Hint>
                     </div>
-                    <span className="font-mono text-sm text-text-bright">
+                    <span className="font-mono text-sm text-text-bright break-all">
                       {connectedProject.integrationData.config.vercelStagingName}
                     </span>
                   </div>
@@ -1031,7 +1037,7 @@ function VercelOnboardingModal({
   hasStagingEnvironment: boolean;
   hasOrgIntegration: boolean;
   nextUrl?: string;
-  onDataReload?: () => void;
+  onDataReload?: (vercelStagingEnvironment?: string) => void;
 }) {
   const navigation = useNavigation();
   const fetcher = useTypedFetcher<typeof loader>();
@@ -1129,7 +1135,7 @@ function VercelOnboardingModal({
       case "loading-env-vars":
         // Reload data to get environment variables
         if (onDataReload) {
-          onDataReload();
+          onDataReload(vercelStagingEnvironment || undefined);
         }
         // Transition to env-var-sync when data is ready (handled by another effect)
         break;
@@ -1142,12 +1148,12 @@ function VercelOnboardingModal({
       case "completed":
         break;
     }
-  }, [isOpen, state, hasOrgIntegration, hasProjectSelected, onboardingData, hasCustomEnvs, hasStagingEnvironment, onDataReload]);
+  }, [isOpen, state, hasOrgIntegration, hasProjectSelected, onboardingData, hasCustomEnvs, hasStagingEnvironment, vercelStagingEnvironment, onDataReload]);
 
   // Watch for data loading completion
   useEffect(() => {
-    if (!onboardingData?.authInvalid && state === "loading-projects" && onboardingData?.availableProjects && onboardingData.availableProjects.length > 0) {
-      // Projects loaded, transition to project selection
+    if (!onboardingData?.authInvalid && state === "loading-projects" && onboardingData?.availableProjects !== undefined) {
+      // Projects loaded (whether empty or not), transition to project selection
       setState("project-selection");
     }
   }, [state, onboardingData?.availableProjects, onboardingData?.authInvalid]);
@@ -1166,6 +1172,7 @@ function VercelOnboardingModal({
       setState("loading-env-mapping");
       // Reload data to get updated project info and env vars
       if (onDataReload) {
+        console.log("Vercel onboarding: Reloading data after successful project selection to get updated project info and env vars");
         onDataReload();
       }
     } else if (fetcher.data && "error" in fetcher.data && typeof fetcher.data.error === "string") {
@@ -1267,24 +1274,31 @@ function VercelOnboardingModal({
 
   const handleSkipEnvMapping = useCallback(() => {
     // Skip the env mapping step and go directly to loading env vars
+    setVercelStagingEnvironment("");
     setState("loading-env-vars");
   }, []);
 
   const handleUpdateEnvMapping = useCallback(() => {
+    if (!vercelStagingEnvironment) {
+      setState("loading-env-vars");
+      return;
+    }
+
+    // Save the environment mapping first
     const formData = new FormData();
     formData.append("action", "update-env-mapping");
-    if (vercelStagingEnvironment) {
-      formData.append("vercelStagingEnvironment", vercelStagingEnvironment);
-      const environment = customEnvironments.find((env) => env.id === vercelStagingEnvironment);
-      if (environment) {
-        formData.append("vercelStagingName", environment.slug);
-      }
+    formData.append("vercelStagingEnvironment", vercelStagingEnvironment);
+    const environment = customEnvironments.find((env) => env.id === vercelStagingEnvironment);
+    if (environment) {
+      formData.append("vercelStagingName", environment.slug);
     }
+
     envMappingFetcher.submit(formData, {
       method: "post",
       action: actionUrl,
     });
-  }, [vercelStagingEnvironment, customEnvironments, envMappingFetcher, actionUrl]);
+    
+  }, [vercelStagingEnvironment, customEnvironments, envMappingFetcher, actionUrl, onDataReload]);
 
   const handleFinishOnboarding = useCallback((e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1365,7 +1379,7 @@ function VercelOnboardingModal({
 
   if (isLoadingState) {
     return (
-      <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <Dialog open={isOpen} onOpenChange={(open) => !open && !fromMarketplaceContext && onClose()}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <div className="flex items-center gap-2">
@@ -1386,7 +1400,7 @@ function VercelOnboardingModal({
   const showEnvVarSync = state === "env-var-sync";
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && !fromMarketplaceContext && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <div className="flex items-center gap-2">
@@ -1544,7 +1558,7 @@ function VercelOnboardingModal({
                 name="syncEnvVarsMapping"
                 value={JSON.stringify(syncEnvVarsMapping)}
               />
-              {nextUrl && !fromMarketplaceContext && (
+              {nextUrl && fromMarketplaceContext && (
                 <input
                   type="hidden"
                   name="next"
@@ -1582,18 +1596,6 @@ function VercelOnboardingModal({
                     onCheckedChange={handleToggleAll}
                   />
                 </div>
-                {overlappingEnvVarsCount > 0 && (
-                  <div className="flex items-center gap-2">
-                    <ExclamationTriangleIcon className="h-4 w-4 text-amber-500" />
-                    <span className="text-xs text-text-dimmed">
-                      {overlappingEnvVarsCount} env vars are going to be updated (marked with{" "}
-                      <span className="underline decoration-yellow-500 decoration-dotted underline-offset-2">
-                        underline
-                      </span>
-                      )
-                    </span>
-                  </div>
-                )}
 
                 {/* Expandable env var list */}
                 {pullEnvVarsFromVercel && envVars.length > 0 && (
@@ -1624,8 +1626,8 @@ function VercelOnboardingModal({
                               {existingVars[envVar.key] ? (
                                 <TooltipProvider>
                                   <Tooltip>
-                                    <TooltipTrigger className="min-w-0 max-w-full cursor-default text-left">
-                                      <div className="truncate font-mono text-xs underline decoration-yellow-500 decoration-dotted underline-offset-2">
+                                    <TooltipTrigger asChild>
+                                      <div className="min-w-0 max-w-full cursor-default text-left truncate font-mono text-xs underline decoration-yellow-500 decoration-dotted underline-offset-2">
                                         {envVar.key}
                                       </div>
                                     </TooltipTrigger>
@@ -1663,6 +1665,19 @@ function VercelOnboardingModal({
                         ))}
                       </div>
                     )}
+                  </div>
+                )}
+              
+                {overlappingEnvVarsCount > 0 && pullEnvVarsFromVercel && (
+                  <div className="flex items-center gap-2">
+                    <ExclamationTriangleIcon className="h-4 w-4 text-amber-500" />
+                    <span className="text-xs text-text-dimmed">
+                      {overlappingEnvVarsCount} env vars are going to be updated (marked with{" "}
+                      <span className="underline decoration-yellow-500 decoration-dotted underline-offset-2">
+                        underline
+                      </span>
+                      )
+                    </span>
                   </div>
                 )}
 

@@ -7,6 +7,7 @@ import {
 } from "@trigger.dev/database";
 import { z } from "zod";
 import { $transaction, prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
@@ -43,6 +44,14 @@ export const VercelSecretSchema = z.object({
 
 export type VercelSecret = z.infer<typeof VercelSecretSchema>;
 
+export type TokenResponse = {
+  accessToken: string;
+  tokenType: string;
+  teamId?: string;
+  userId?: string;
+  raw: Record<string, unknown>;
+};
+
 export type VercelEnvironmentVariable = {
   id: string;
   key: string;
@@ -71,26 +80,101 @@ export type VercelAPIResult<T> = {
   error: string;
 };
 
-function isVercelAuthError(error: unknown): boolean {
+const VercelErrorSchema = z.union([
+  z.object({ status: z.number() }),
+  z.object({ response: z.object({ status: z.number() }) }),
+  z.object({ statusCode: z.number() }),
+]);
+
+function extractVercelErrorStatus(error: unknown): number | null {
   if (error && typeof error === 'object' && 'status' in error) {
-    const status = (error as { status?: number }).status;
-    return status === 401 || status === 403;
+    const parsed = VercelErrorSchema.safeParse(error);
+    if (parsed.success && 'status' in parsed.data) {
+      return parsed.data.status;
+    }
   }
+
   if (error && typeof error === 'object' && 'response' in error) {
-    const response = (error as { response?: { status?: number } }).response;
-    return response?.status === 401 || response?.status === 403;
+    const parsed = VercelErrorSchema.safeParse(error);
+    if (parsed.success && 'response' in parsed.data) {
+      return parsed.data.response.status;
+    }
   }
+
   if (error && typeof error === 'object' && 'statusCode' in error) {
-    const statusCode = (error as { statusCode?: number }).statusCode;
-    return statusCode === 401 || statusCode === 403;
+    const parsed = VercelErrorSchema.safeParse(error);
+    if (parsed.success && 'statusCode' in parsed.data) {
+      return parsed.data.statusCode;
+    }
   }
-  if (error && typeof error === 'string' && (error.includes('401') || error.includes('403'))) {
-    return true;
+
+  if (typeof error === 'string') {
+    if (error.includes('401')) return 401;
+    if (error.includes('403')) return 403;
   }
-  return false;
+
+  return null;
+}
+
+function isVercelAuthError(error: unknown): boolean {
+  const status = extractVercelErrorStatus(error);
+  return status === 401 || status === 403;
 }
 
 export class VercelIntegrationRepository {
+  static async exchangeCodeForToken(code: string): Promise<TokenResponse | null> {
+    const clientId = env.VERCEL_INTEGRATION_CLIENT_ID;
+    const clientSecret = env.VERCEL_INTEGRATION_CLIENT_SECRET;
+    const redirectUri = `${env.APP_ORIGIN}/vercel/callback`;
+
+    if (!clientId || !clientSecret) {
+      logger.error("Vercel integration not configured");
+      return null;
+    }
+
+    try {
+      const response = await fetch("https://api.vercel.com/v2/oauth/access_token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          redirect_uri: redirectUri,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error("Failed to exchange Vercel OAuth code", {
+          status: response.status,
+          error: errorText,
+        });
+        return null;
+      }
+
+      const data = (await response.json()) as {
+        access_token: string;
+        token_type: string;
+        team_id?: string;
+        user_id?: string;
+      };
+
+      return {
+        accessToken: data.access_token,
+        tokenType: data.token_type,
+        teamId: data.team_id,
+        userId: data.user_id,
+        raw: data as Record<string, unknown>,
+      };
+    } catch (error) {
+      logger.error("Error exchanging Vercel OAuth code", { error });
+      return null;
+    }
+  }
+
   static async getVercelClient(
     integration: OrganizationIntegration & { tokenReference: SecretReference }
   ): Promise<Vercel> {
@@ -253,7 +337,7 @@ export class VercelIntegrationRepository {
   static async getVercelEnvironmentVariables(
     client: Vercel,
     projectId: string,
-    teamId?: string | null
+    teamId?: string | null,
   ): Promise<VercelAPIResult<VercelEnvironmentVariable[]>> {
     try {
       const response = await client.projects.filterProjectEnvs({
@@ -277,6 +361,7 @@ export class VercelIntegrationRepository {
             type,
             isSecret,
             target: normalizeTarget(env.target),
+            customEnvironmentIds: env.customEnvironmentIds as string[] ?? [],
           };
         }),
       };

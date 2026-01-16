@@ -45,7 +45,6 @@ export type VercelOnboardingData = {
   environmentVariables: VercelEnvironmentVariable[];
   availableProjects: VercelAvailableProject[];
   hasProjectSelected: boolean;
-  hasProjectSelected: boolean;
   authInvalid?: boolean;
   existingVariables: Record<string, { environments: RuntimeEnvironmentType[] }>;
 };
@@ -234,7 +233,11 @@ export class VercelSettingsPresenter extends BasePresenter {
   /**
    * Get data needed for the onboarding modal (custom environments and env vars)
    */
-  public async getOnboardingData(projectId: string, organizationId: string): Promise<VercelOnboardingData | null> {
+  public async getOnboardingData(
+    projectId: string, 
+    organizationId: string,
+    vercelEnvironmentId?: string
+  ): Promise<VercelOnboardingData | null> {
     try {
       const orgIntegration = await (this._replica as PrismaClient).organizationIntegration.findFirst({
         where: {
@@ -258,7 +261,6 @@ export class VercelSettingsPresenter extends BasePresenter {
           environmentVariables: [],
           availableProjects: [],
           hasProjectSelected: false,
-          hasProjectSelected: false,
           authInvalid: true,
           existingVariables: {},
         };
@@ -268,132 +270,144 @@ export class VercelSettingsPresenter extends BasePresenter {
       const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
 
     // Get the project integration to find the Vercel project ID (if selected)
-    const projectIntegration = await (this._replica as PrismaClient).organizationProjectIntegration.findFirst({
-      where: {
-        projectId,
-        deletedAt: null,
-        organizationIntegration: {
-          service: "VERCEL",
+      const projectIntegration = await (this._replica as PrismaClient).organizationProjectIntegration.findFirst({
+        where: {
+          projectId,
           deletedAt: null,
+          organizationIntegration: {
+            service: "VERCEL",
+            deletedAt: null,
+          },
         },
-      },
-    });
+      });
 
     // Always fetch available projects for selection
-    const availableProjectsResult = await VercelIntegrationRepository.getVercelProjects(client, teamId);
-    
-    if (!availableProjectsResult.success) {
-      return {
-        customEnvironments: [],
-        environmentVariables: [],
-        availableProjects: [],
-        hasProjectSelected: false,
-        hasProjectSelected: false,
-        authInvalid: availableProjectsResult.authInvalid,
-        existingVariables: {},
-      };
-    }
+      const availableProjectsResult = await VercelIntegrationRepository.getVercelProjects(client, teamId);
+      
+      if (!availableProjectsResult.success) {
+        return {
+          customEnvironments: [],
+          environmentVariables: [],
+          availableProjects: [],
+          hasProjectSelected: false,
+          authInvalid: availableProjectsResult.authInvalid,
+          existingVariables: {},
+        };
+      }
 
     // If no project integration exists, return early with just available projects
-    if (!projectIntegration) {
-      return {
-        customEnvironments: [],
-        environmentVariables: [],
-        availableProjects: availableProjectsResult.data,
-        availableProjects: availableProjectsResult.data,
-        hasProjectSelected: false,
-        existingVariables: {},
-      };
-    }
+      if (!projectIntegration) {
+        return {
+          customEnvironments: [],
+          environmentVariables: [],
+          availableProjects: availableProjectsResult.data,
+          hasProjectSelected: false,
+          existingVariables: {},
+        };
+      }
 
     // Fetch custom environments, project env vars, and shared env vars in parallel
-    const [customEnvironmentsResult, projectEnvVarsResult, sharedEnvVarsResult] = await Promise.all([
-      VercelIntegrationRepository.getVercelCustomEnvironments(
-        client,
-        projectIntegration.externalEntityId,
-        teamId
-      ),
-      VercelIntegrationRepository.getVercelEnvironmentVariables(
-        client,
-        projectIntegration.externalEntityId,
-        teamId
-      ),
+      const [customEnvironmentsResult, projectEnvVarsResult, sharedEnvVarsResult] = await Promise.all([
+        VercelIntegrationRepository.getVercelCustomEnvironments(
+          client,
+          projectIntegration.externalEntityId,
+          teamId
+        ),
+        VercelIntegrationRepository.getVercelEnvironmentVariables(
+          client,
+          projectIntegration.externalEntityId,
+          teamId
+        ),
       // Only fetch shared env vars if teamId is available
-      teamId
-        ? VercelIntegrationRepository.getVercelSharedEnvironmentVariables(
-            client,
-            teamId,
-            projectIntegration.externalEntityId
-          )
-        : Promise.resolve({ success: true as const, data: [] }),
-    ]);
+        teamId
+          ? VercelIntegrationRepository.getVercelSharedEnvironmentVariables(
+              client,
+              teamId,
+              projectIntegration.externalEntityId
+            )
+          : Promise.resolve({ success: true as const, data: [] }),
+      ]);
+      // Check if any of the API calls failed due to auth issues
+      const authInvalid = 
+        (!customEnvironmentsResult.success && customEnvironmentsResult.authInvalid) ||
+        (!projectEnvVarsResult.success && projectEnvVarsResult.authInvalid) ||
+        (!sharedEnvVarsResult.success && sharedEnvVarsResult.authInvalid);
 
-    // Check if any of the API calls failed due to auth issues
-    const authInvalid = !customEnvironmentsResult.success && customEnvironmentsResult.authInvalid ||
-                       !projectEnvVarsResult.success && projectEnvVarsResult.authInvalid ||
-                       !sharedEnvVarsResult.success && sharedEnvVarsResult.authInvalid;
-
-    if (authInvalid) {
-      return {
-        customEnvironments: [],
-        environmentVariables: [],
-        availableProjects: availableProjectsResult.data,
-        hasProjectSelected: true,
-        availableProjects: availableProjectsResult.data,
-        hasProjectSelected: true,
-        authInvalid: true,
-        existingVariables: {},
-      };
-    }
+      if (authInvalid) {
+        return {
+          customEnvironments: [],
+          environmentVariables: [],
+          availableProjects: availableProjectsResult.data,
+          hasProjectSelected: true,
+          authInvalid: true,
+          existingVariables: {},
+        };
+      }
 
     // Extract data from successful results
-    const customEnvironments = customEnvironmentsResult.success ? customEnvironmentsResult.data : [];
-    const projectEnvVars = projectEnvVarsResult.success ? projectEnvVarsResult.data : [];
-    const sharedEnvVars = sharedEnvVarsResult.success ? sharedEnvVarsResult.data : [];
+      const customEnvironments = customEnvironmentsResult.success ? customEnvironmentsResult.data : [];
+      const projectEnvVars = projectEnvVarsResult.success ? projectEnvVarsResult.data : [];
+      const sharedEnvVars = sharedEnvVarsResult.success ? sharedEnvVarsResult.data : [];
 
     // Merge project and shared env vars (project vars take precedence)
     // Also filter out TRIGGER_SECRET_KEY as it's managed by Trigger.dev
-    const projectEnvVarKeys = new Set(projectEnvVars.map((v) => v.key));
-    const mergedEnvVars: VercelEnvironmentVariable[] = [
-      ...projectEnvVars.filter((v) => v.key !== "TRIGGER_SECRET_KEY"),
-      ...sharedEnvVars
-        .filter((v) => !projectEnvVarKeys.has(v.key) && v.key !== "TRIGGER_SECRET_KEY")
-        .map((v) => ({
-          id: v.id,
-          key: v.key,
-          type: v.type as VercelEnvironmentVariable["type"],
-          isSecret: v.isSecret,
-          target: v.target,
-          isShared: true,
-        })),
-    ];
+      const projectEnvVarKeys = new Set(projectEnvVars.map((v) => v.key));
+      const mergedEnvVars: VercelEnvironmentVariable[] = [
+        ...projectEnvVars
+          .filter((v) => v.key !== "TRIGGER_SECRET_KEY")
+          .map((v) => {
+            const envVar = { ...v };
+            // Check if this env var is used in the selected custom environment
+            if (vercelEnvironmentId && (v as any).customEnvironmentIds?.includes(vercelEnvironmentId)) {
+              envVar.target = [...v.target, 'staging'];
+            }
+            return envVar;
+          }),
+        ...sharedEnvVars
+          .filter((v) => !projectEnvVarKeys.has(v.key) && v.key !== "TRIGGER_SECRET_KEY")
+          .map((v) => {
+            const envVar = {
+              id: v.id,
+              key: v.key,
+              type: v.type as VercelEnvironmentVariable["type"],
+              isSecret: v.isSecret,
+              target: v.target,
+              isShared: true,
+            };
+            // Check if this shared env var is used in the selected custom environment
+            if (vercelEnvironmentId && (v as any).customEnvironmentIds?.includes(vercelEnvironmentId)) {
+              envVar.target = [...v.target, 'staging'];
+            }
+            return envVar;
+          }),
+      ];
 
     // Sort environment variables alphabetically
-    const sortedEnvVars = [...mergedEnvVars].sort((a, b) =>
-      a.key.localeCompare(b.key)
-    );
+      const sortedEnvVars = [...mergedEnvVars].sort((a, b) =>
+        a.key.localeCompare(b.key)
+      );
 
     // Get existing environment variables in Trigger.dev
-    const envVarRepository = new EnvironmentVariablesRepository(this._replica as PrismaClient);
-    const existingVariables = await envVarRepository.getProject(projectId);
-    const existingVariablesRecord: Record<string, { environments: RuntimeEnvironmentType[] }> = {};
-    for (const v of existingVariables) {
-      existingVariablesRecord[v.key] = {
-        environments: v.values.map((val) => val.environment.type),
-      };
-    }
+      const envVarRepository = new EnvironmentVariablesRepository(this._replica as PrismaClient);
+      const existingVariables = await envVarRepository.getProject(projectId);
+      const existingVariablesRecord: Record<string, { environments: RuntimeEnvironmentType[] }> = {};
+      for (const v of existingVariables) {
+        existingVariablesRecord[v.key] = {
+          environments: v.values.map((val) => val.environment.type),
+        };
+      }
 
-    return {
-      customEnvironments,
-      environmentVariables: sortedEnvVars,
-      availableProjects: availableProjectsResult.data,
-      hasProjectSelected: true,
-      existingVariables: existingVariablesRecord,
-    };
+      return {
+        customEnvironments,
+        environmentVariables: sortedEnvVars,
+        availableProjects: availableProjectsResult.data,
+        hasProjectSelected: true,
+        existingVariables: existingVariablesRecord,
+      };
     } catch (error) {
-      // Log the error and return null to indicate failure
       console.error("Error in getOnboardingData:", error);
       return null;
-    }  }
+    }
+  }
 
 }

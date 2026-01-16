@@ -623,9 +623,11 @@ export default function Page() {
           hasStagingEnvironment={vercelFetcher.data?.hasStagingEnvironment ?? false}
           hasOrgIntegration={vercelFetcher.data?.hasOrgIntegration ?? false}
           nextUrl={nextUrl ?? undefined}
-          onDataReload={() => {
+          onDataReload={(vercelEnvironmentId) => {
             vercelFetcher.load(
-              `${vercelResourcePath(organization.slug, project.slug, environment.slug)}?vercelOnboarding=true`
+              `${vercelResourcePath(organization.slug, project.slug, environment.slug)}?vercelOnboarding=true${
+                vercelEnvironmentId ? `&vercelEnvironmentId=${vercelEnvironmentId}` : ""
+              }`
             );
           }}
         />
