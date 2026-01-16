@@ -507,6 +507,14 @@ export function concurrencyPath(
   return `${v3EnvironmentPath(organization, project, environment)}/concurrency`;
 }
 
+export function limitsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/limits`;
+}
+
 export function regionsPath(
   organization: OrgForPath,
   project: ProjectForPath,
