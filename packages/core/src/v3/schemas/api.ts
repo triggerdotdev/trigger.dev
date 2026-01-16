@@ -149,6 +149,14 @@ export const RunTags = z.union([RunTag, RunTag.array()]);
 
 export type RunTags = z.infer<typeof RunTags>;
 
+/** Stores the original user-provided idempotency key and scope */
+export const IdempotencyKeyOptionsSchema = z.object({
+  key: z.string(),
+  scope: z.enum(["run", "attempt", "global"]),
+});
+
+export type IdempotencyKeyOptionsSchema = z.infer<typeof IdempotencyKeyOptionsSchema>;
+
 export const TriggerTaskRequestBody = z.object({
   payload: z.any(),
   context: z.any(),
@@ -191,6 +199,8 @@ export const TriggerTaskRequestBody = z.object({
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),
+      /** The original user-provided idempotency key and scope */
+      idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
       machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),
       maxDuration: z.number().optional(),
@@ -240,6 +250,8 @@ export const BatchTriggerTaskItem = z.object({
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),
+      /** The original user-provided idempotency key and scope */
+      idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
       lockToVersion: z.string().optional(),
       machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),
@@ -345,6 +357,8 @@ export const CreateBatchRequestBody = z.object({
   resumeParentOnCompletion: z.boolean().optional(),
   /** Idempotency key for the batch */
   idempotencyKey: z.string().optional(),
+  /** The original user-provided idempotency key and scope */
+  idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
 });
 
 export type CreateBatchRequestBody = z.infer<typeof CreateBatchRequestBody>;

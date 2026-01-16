@@ -18,6 +18,26 @@ import { generatePresignedUrl } from "~/v3/r2.server";
 import { tracer } from "~/v3/tracer.server";
 import { startSpanWithEnv } from "~/v3/tracing.server";
 
+/**
+ * Returns the user-provided idempotency key if available (from idempotencyKeyOptions),
+ * otherwise falls back to the stored idempotency key (which is the hash).
+ */
+function getUserProvidedIdempotencyKey(run: {
+  idempotencyKey: string | null;
+  idempotencyKeyOptions: unknown;
+}): string | undefined {
+  // If we have the user-provided key options, return the original key
+  const options = run.idempotencyKeyOptions as {
+    key?: string;
+    scope?: string;
+  } | null;
+  if (options?.key) {
+    return options.key;
+  }
+  // Fallback to the hash (for runs created before this feature)
+  return run.idempotencyKey ?? undefined;
+}
+
 // Build 'select' object
 const commonRunSelect = {
   id: true,
@@ -38,6 +58,7 @@ const commonRunSelect = {
   baseCostInCents: true,
   usageDurationMs: true,
   idempotencyKey: true,
+  idempotencyKeyOptions: true,
   isTest: true,
   depth: true,
   scheduleId: true,
@@ -442,7 +463,7 @@ async function createCommonRunStructure(run: CommonRelatedRun, apiVersion: API_V
   return {
     id: run.friendlyId,
     taskIdentifier: run.taskIdentifier,
-    idempotencyKey: run.idempotencyKey ?? undefined,
+    idempotencyKey: getUserProvidedIdempotencyKey(run),
     version: run.lockedToVersion?.version,
     status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status, apiVersion),
     createdAt: run.createdAt,

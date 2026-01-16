@@ -891,6 +891,8 @@ export class RunsReplicationService {
       run.spanId, // span_id
       run.traceId, // trace_id
       run.idempotencyKey ?? "", // idempotency_key
+      this.#extractIdempotencyKeyUser(run), // idempotency_key_user
+      this.#extractIdempotencyKeyScope(run), // idempotency_key_scope
       run.ttl ?? "", // expiration_ttl
       run.isTest ?? false, // is_test
       _version.toString(), // _version
@@ -950,6 +952,16 @@ export class RunsReplicationService {
     }
 
     return { data: parsedData };
+  }
+
+  #extractIdempotencyKeyUser(run: TaskRun): string {
+    const options = run.idempotencyKeyOptions as { key?: string; scope?: string } | null;
+    return options?.key ?? "";
+  }
+
+  #extractIdempotencyKeyScope(run: TaskRun): string {
+    const options = run.idempotencyKeyOptions as { key?: string; scope?: string } | null;
+    return options?.scope ?? "";
   }
 }
 

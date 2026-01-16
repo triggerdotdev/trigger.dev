@@ -229,7 +229,7 @@ export class SpanPresenter extends BasePresenter {
       isTest: run.isTest,
       replayedFromTaskRunFriendlyId: run.replayedFromTaskRunFriendlyId,
       environmentId: run.runtimeEnvironment.id,
-      idempotencyKey: run.idempotencyKey,
+      idempotencyKey: this.getUserProvidedIdempotencyKey(run),
       idempotencyKeyExpiresAt: run.idempotencyKeyExpiresAt,
       debounce: run.debounce as { key: string; delay: string; createdAt: Date } | null,
       schedule: await this.resolveSchedule(run.scheduleId ?? undefined),
@@ -355,6 +355,7 @@ export class SpanPresenter extends BasePresenter {
         //idempotency
         idempotencyKey: true,
         idempotencyKeyExpiresAt: true,
+        idempotencyKeyOptions: true,
         //debounce
         debounce: true,
         //delayed
@@ -644,7 +645,7 @@ export class SpanPresenter extends BasePresenter {
         createdAt: run.createdAt,
         tags: run.runTags,
         isTest: run.isTest,
-        idempotencyKey: run.idempotencyKey ?? undefined,
+        idempotencyKey: this.getUserProvidedIdempotencyKey(run) ?? undefined,
         startedAt: run.startedAt ?? run.createdAt,
         durationMs: run.usageDurationMs,
         costInCents: run.costInCents,
@@ -703,5 +704,24 @@ export class SpanPresenter extends BasePresenter {
     const parsedTraceparent = parseTraceparent(externalTraceparent);
 
     return parsedTraceparent?.traceId;
+  }
+
+  /**
+   * Returns the user-provided idempotency key if available (from idempotencyKeyOptions),
+   * otherwise falls back to the stored idempotency key (which is the hash).
+   */
+  getUserProvidedIdempotencyKey(
+    run: Pick<FindRunResult, "idempotencyKey" | "idempotencyKeyOptions">
+  ): string | null {
+    // If we have the user-provided key options, return the original key
+    const options = run.idempotencyKeyOptions as {
+      key?: string;
+      scope?: string;
+    } | null;
+    if (options?.key) {
+      return options.key;
+    }
+    // Fallback to the hash (for runs created before this feature)
+    return run.idempotencyKey;
   }
 }
