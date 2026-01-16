@@ -841,7 +841,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         series={series}
         labelFormatter={legendLabelFormatter}
         showLegend={showLegend}
-        maxLegendItems={8}
+        maxLegendItems={6}
         minHeight="300px"
       >
         <Chart.Bar
