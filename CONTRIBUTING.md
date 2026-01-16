@@ -92,7 +92,7 @@ We use the `<root>/references/hello-world` subdirectory as a staging ground for 
 
 First, make sure you are running the webapp according to the instructions above. Then:
 
-1. Visit http://localhost:3030 in your browser and create a new V3 project called "hello-world".
+1. Visit http://localhost:3030 in your browser and create a new project called "hello-world".
 
 2. In Postgres go to the "Projects" table and for the project you create change the `externalRef` to `proj_rrkpdguyagvsoktglnod`.
 
@@ -127,7 +127,7 @@ pnpm exec trigger deploy --profile local
 
 ### Running
 
-The following steps should be followed any time you start working on a new feature you want to test in v3:
+The following steps should be followed any time you start working on a new feature you want to test:
 
 1. Make sure the webapp is running on localhost:3030
 
