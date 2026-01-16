@@ -19,7 +19,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
 import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 import { forwardRef, memo, useEffect, useMemo, useRef, useState } from "react";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabel, EnvironmentSlug } from "~/components/environments/EnvironmentLabel";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
 import {
@@ -666,7 +666,7 @@ function EnvironmentCellValue({ value }: { value: string }) {
     return <span>{value}</span>;
   }
 
-  return <EnvironmentLabel environment={environment} />;
+  return <EnvironmentSlug environment={environment} />;
 }
 
 function JSONCellValue({ value }: { value: unknown }) {
@@ -782,7 +782,7 @@ function HeaderCellContent({
   return (
     <div
       className={cn(
-        "flex w-full items-center gap-1 overflow-hidden bg-background-dimmed px-2 py-1.5",
+        "flex w-full items-center gap-1 overflow-hidden bg-background-dimmed py-1.5 pl-2 pr-1",
         "font-mono text-xs font-medium text-text-bright",
         alignment === "right" && "justify-end",
         canSort && "cursor-pointer select-none"
@@ -827,14 +827,10 @@ function HeaderCellContent({
             e.stopPropagation();
             onFilterClick();
           }}
-          className={cn(
-            "flex-shrink-0 rounded p-0.5 transition-colors",
-            "hover:bg-charcoal-700",
-            "text-text-dimmed hover:text-text-bright"
-          )}
+          className="flex-shrink-0 rounded text-text-dimmed transition-colors hover:bg-charcoal-700 hover:text-text-bright"
           title="Toggle column filters"
         >
-          <FunnelIcon className="size-3.5" />
+          <FunnelIcon className="size-3" />
         </button>
       )}
     </div>
