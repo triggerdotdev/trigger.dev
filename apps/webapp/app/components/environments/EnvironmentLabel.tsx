@@ -139,11 +139,7 @@ export function EnvironmentLabel({
 }
 
 export function EnvironmentSlug({ environment }: { environment: Environment & { slug: string } }) {
-  return (
-    <span className={cn("text-sm text-text-bright", environmentTextClassName(environment))}>
-      {environment.slug}
-    </span>
-  );
+  return <span className={environmentTextClassName(environment)}>{environment.slug}</span>;
 }
 
 export function environmentTitle(environment: Environment, username?: string) {
