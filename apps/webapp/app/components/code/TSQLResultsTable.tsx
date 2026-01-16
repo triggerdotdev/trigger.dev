@@ -4,6 +4,7 @@ import {
   useReactTable,
   getCoreRowModel,
   getFilteredRowModel,
+  getSortedRowModel,
   flexRender,
   type ColumnDef,
   type CellContext,
@@ -11,6 +12,8 @@ import {
   type ColumnFiltersState,
   type FilterFn,
   type Column,
+  type SortingState,
+  type SortDirection,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
@@ -36,7 +39,12 @@ import { Paragraph } from "../primitives/Paragraph";
 import { TextLink } from "../primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "../primitives/Tooltip";
 import { QueueName } from "../runs/v3/QueueName";
-import { FunnelIcon } from "@heroicons/react/20/solid";
+import {
+  FunnelIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
+  ChevronUpDownIcon,
+} from "@heroicons/react/20/solid";
 
 const MAX_STRING_DISPLAY_LENGTH = 64;
 const ROW_HEIGHT = 33; // Estimated row height in pixels
@@ -757,6 +765,9 @@ function HeaderCellContent({
   onFilterClick,
   showFilters,
   hasActiveFilter,
+  sortDirection,
+  onSortClick,
+  canSort,
 }: {
   alignment: "left" | "right";
   tooltip?: React.ReactNode;
@@ -764,6 +775,9 @@ function HeaderCellContent({
   onFilterClick?: () => void;
   showFilters?: boolean;
   hasActiveFilter?: boolean;
+  sortDirection?: SortDirection | false;
+  onSortClick?: (event: React.MouseEvent) => void;
+  canSort?: boolean;
 }) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -772,10 +786,12 @@ function HeaderCellContent({
       className={cn(
         "flex w-full items-center gap-1 overflow-hidden bg-background-dimmed px-2 py-1.5",
         "text-sm font-medium text-text-bright",
-        alignment === "right" && "justify-end"
+        alignment === "right" && "justify-end",
+        canSort && "cursor-pointer select-none"
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onClick={onSortClick}
     >
       {tooltip ? (
         <div
@@ -792,6 +808,20 @@ function HeaderCellContent({
         </div>
       ) : (
         <span className="min-w-0 flex-1 truncate">{children}</span>
+      )}
+      {/* Sort indicator */}
+      {canSort && (
+        <span
+          className={cn("flex-shrink-0", sortDirection ? "text-text-bright" : "text-text-dimmed")}
+        >
+          {sortDirection === "asc" ? (
+            <ChevronUpIcon className="size-4" />
+          ) : sortDirection === "desc" ? (
+            <ChevronDownIcon className="size-4" />
+          ) : (
+            <ChevronUpDownIcon className="size-4" />
+          )}
+        </span>
       )}
       {onFilterClick && (
         <button
@@ -849,6 +879,8 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   // State for column filters and filter row visibility
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [showFilters, setShowFilters] = useState(false);
+  // State for column sorting
+  const [sorting, setSorting] = useState<SortingState>([]);
 
   // Create TanStack Table column definitions from OutputColumnMetadata
   // Calculate column widths based on content
@@ -885,10 +917,13 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
     columnResizeMode,
     state: {
       columnFilters,
+      sorting,
     },
     onColumnFiltersChange: setColumnFilters,
+    onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
   });
 
   const { rows: tableRows } = table.getRowModel();
@@ -939,6 +974,9 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                         onFilterClick={() => setShowFilters(!showFilters)}
                         showFilters={showFilters}
                         hasActiveFilter={!!header.column.getFilterValue()}
+                        sortDirection={header.column.getIsSorted()}
+                        onSortClick={header.column.getToggleSortingHandler()}
+                        canSort={header.column.getCanSort()}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
                       </HeaderCellContent>
@@ -1022,6 +1060,9 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                       onFilterClick={() => setShowFilters(!showFilters)}
                       showFilters={showFilters}
                       hasActiveFilter={!!header.column.getFilterValue()}
+                      sortDirection={header.column.getIsSorted()}
+                      onSortClick={header.column.getToggleSortingHandler()}
+                      canSort={header.column.getCanSort()}
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
                     </HeaderCellContent>
