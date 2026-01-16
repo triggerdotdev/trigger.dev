@@ -18,7 +18,7 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
 import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, memo, useEffect, useMemo, useRef, useState } from "react";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
@@ -188,16 +188,14 @@ const fuzzyFilter: FilterFn<RowData> = (row, columnId, value, addMeta) => {
 /**
  * Debounced input component for filter inputs
  */
-function DebouncedInput({
-  value: initialValue,
-  onChange,
-  debounce = 300,
-  ...props
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  debounce?: number;
-} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange">) {
+const DebouncedInput = forwardRef<
+  HTMLInputElement,
+  {
+    value: string;
+    onChange: (value: string) => void;
+    debounce?: number;
+  } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange">
+>(function DebouncedInput({ value: initialValue, onChange, debounce = 300, ...props }, ref) {
   const [value, setValue] = useState(initialValue);
 
   useEffect(() => {
@@ -212,8 +210,8 @@ function DebouncedInput({
     return () => clearTimeout(timeout);
   }, [value, debounce, onChange]);
 
-  return <input {...props} value={value} onChange={(e) => setValue(e.target.value)} />;
-}
+  return <input ref={ref} {...props} value={value} onChange={(e) => setValue(e.target.value)} />;
+});
 
 // Extended column meta to store OutputColumnMetadata
 interface ColumnMeta {
@@ -785,7 +783,7 @@ function HeaderCellContent({
     <div
       className={cn(
         "flex w-full items-center gap-1 overflow-hidden bg-background-dimmed px-2 py-1.5",
-        "text-sm font-medium text-text-bright",
+        "font-mono text-xs font-medium text-text-bright",
         alignment === "right" && "justify-end",
         canSort && "cursor-pointer select-none"
       )}
@@ -846,12 +844,31 @@ function HeaderCellContent({
 /**
  * Filter input cell for the filter row
  */
-function FilterCell({ column, width }: { column: Column<RowData, unknown>; width: number }) {
+function FilterCell({
+  column,
+  width,
+  shouldFocus,
+  onFocused,
+}: {
+  column: Column<RowData, unknown>;
+  width: number;
+  shouldFocus?: boolean;
+  onFocused?: () => void;
+}) {
   const columnFilterValue = column.getFilterValue() as string;
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (shouldFocus && inputRef.current) {
+      inputRef.current.focus();
+      onFocused?.();
+    }
+  }, [shouldFocus, onFocused]);
 
   return (
     <div className="flex items-center bg-background-dimmed px-1.5 pb-1" style={{ width }}>
       <DebouncedInput
+        ref={inputRef}
         value={columnFilterValue ?? ""}
         onChange={(value) => column.setFilterValue(value)}
         placeholder="Filter..."
@@ -879,6 +896,8 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   // State for column filters and filter row visibility
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [showFilters, setShowFilters] = useState(false);
+  // Track which column's filter should be focused
+  const [focusFilterColumn, setFocusFilterColumn] = useState<string | null>(null);
   // State for column sorting
   const [sorting, setSorting] = useState<SortingState>([]);
 
@@ -971,7 +990,14 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                       <HeaderCellContent
                         alignment={meta?.alignment ?? "left"}
                         tooltip={meta?.outputColumn.description}
-                        onFilterClick={() => setShowFilters(!showFilters)}
+                        onFilterClick={() => {
+                          if (!showFilters) {
+                            setFocusFilterColumn(header.id);
+                          } else {
+                            setColumnFilters([]);
+                          }
+                          setShowFilters(!showFilters);
+                        }}
                         showFilters={showFilters}
                         hasActiveFilter={!!header.column.getFilterValue()}
                         sortDirection={header.column.getIsSorted()}
@@ -1005,6 +1031,8 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                     key={`filter-${header.id}`}
                     column={header.column}
                     width={header.getSize()}
+                    shouldFocus={focusFilterColumn === header.id}
+                    onFocused={() => setFocusFilterColumn(null)}
                   />
                 ))}
               </tr>
@@ -1057,7 +1085,14 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                     <HeaderCellContent
                       alignment={meta?.alignment ?? "left"}
                       tooltip={meta?.outputColumn.description}
-                      onFilterClick={() => setShowFilters(!showFilters)}
+                      onFilterClick={() => {
+                        if (!showFilters) {
+                          setFocusFilterColumn(header.id);
+                        } else {
+                          setColumnFilters([]);
+                        }
+                        setShowFilters(!showFilters);
+                      }}
                       showFilters={showFilters}
                       hasActiveFilter={!!header.column.getFilterValue()}
                       sortDirection={header.column.getIsSorted()}
@@ -1091,6 +1126,8 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                   key={`filter-${header.id}`}
                   column={header.column}
                   width={header.getSize()}
+                  shouldFocus={focusFilterColumn === header.id}
+                  onFocused={() => setFocusFilterColumn(null)}
                 />
               ))}
             </tr>
