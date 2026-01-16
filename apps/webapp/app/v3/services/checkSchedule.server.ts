@@ -118,6 +118,7 @@ export class CheckScheduleService extends BaseService {
           type: {
             not: "DEVELOPMENT",
           },
+          archivedAt: null,
         },
         taskSchedule: {
           active: true,
