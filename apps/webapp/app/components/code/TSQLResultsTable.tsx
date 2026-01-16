@@ -933,7 +933,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
     count: tableRows.length,
     estimateSize: () => ROW_HEIGHT,
     getScrollElement: () => tableContainerRef.current,
-    overscan: 5,
+    overscan: 20,
   });
 
   if (!columns.length) return null;
