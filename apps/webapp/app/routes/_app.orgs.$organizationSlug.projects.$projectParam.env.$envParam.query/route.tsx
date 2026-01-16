@@ -707,11 +707,15 @@ function ScopeItem({ scope }: { scope: QueryScope }) {
 
   switch (scope) {
     case "organization":
-      return organization.title;
+      return `Org: ${organization.title}`;
     case "project":
-      return project.name;
+      return `Project: ${project.name}`;
     case "environment":
-      return <EnvironmentLabel environment={environment} />;
+      return (
+        <>
+          Env: <EnvironmentLabel environment={environment} />
+        </>
+      );
     default:
       return scope;
   }
