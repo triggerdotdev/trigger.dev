@@ -79,6 +79,12 @@ type MessageFromSocketSchema<
   payload: z.input<GetSocketMessageSchema<TMessageCatalog, K>>;
 };
 
+type NormalizedMessage = {
+  type: string;
+  version?: string;
+  payload: Record<string, any>;
+};
+
 export type MessagesFromSocketCatalog<TMessageCatalog extends ZodSocketMessageCatalogSchema> = {
   [K in keyof TMessageCatalog]: MessageFromSocketSchema<K, TMessageCatalog>;
 }[keyof TMessageCatalog];
@@ -187,6 +193,28 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
     };
   }
 
+  private isObject(value: any): value is Record<string, any> {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+  }
+
+  private normalizeMessage(eventName: string, message: any): NormalizedMessage {
+    const hasValidPayload = "payload" in message && "version" in message && this.isObject(message.payload);
+
+    if (hasValidPayload) {
+      return {
+        type: eventName,
+        ...message,
+      };
+    }
+
+    const { version, ...rest } = message;
+    return {
+      type: eventName,
+      version: version, 
+      payload: rest,
+    };
+  }
+
   public registerHandlers(emitter: EventEmitterLike, logger?: StructuredLogger) {
     const log = logger ?? console;
 
@@ -206,14 +234,8 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
         let ack;
 
         try {
-          // FIXME: this only works if the message doesn't have genuine payload prop
-          if ("payload" in message) {
-            ack = await this.handleMessage({ type: eventName, ...message });
-          } else {
-            // Handle messages not sent by ZodMessageSender
-            const { version, ...payload } = message;
-            ack = await this.handleMessage({ type: eventName, version, payload });
-          }
+          const normalized = this.normalizeMessage(eventName, message);
+          ack = await this.handleMessage(normalized);
         } catch (error) {
           log.error("Error while handling message", {
             error:
