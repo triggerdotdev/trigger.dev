@@ -1,5 +1,5 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
-import { BarChart, LineChart } from "lucide-react";
+import { BarChart, LineChart, Plus, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { cn } from "~/utils/cn";
 import { Header3 } from "../primitives/Headers";
@@ -322,31 +322,87 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
           </Select>
         </ConfigField>
 
-        {/* Y-Axis */}
-        <ConfigField label="Y-Axis">
+        {/* Y-Axis / Series */}
+        <ConfigField label={config.yAxisColumns.length > 1 ? "Series" : "Y-Axis"}>
           {yAxisOptions.length === 0 ? (
             <span className="text-xs text-text-dimmed">No numeric columns</span>
           ) : (
-            <Select
-              value={config.yAxisColumns[0] ?? ""}
-              setValue={(value) => updateConfig({ yAxisColumns: value ? [value] : [] })}
-              variant="tertiary/small"
-              placeholder="Select column"
-              items={yAxisOptions}
-              dropdownIcon
-              className="min-w-[140px]"
-            >
-              {(items) =>
-                items.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    <span className="flex items-center gap-2">
-                      <span>{item.label}</span>
-                      <TypeBadge type={item.type} />
-                    </span>
-                  </SelectItem>
-                ))
-              }
-            </Select>
+            <div className="flex flex-col gap-1.5">
+              {config.yAxisColumns.map((col, index) => (
+                <div key={index} className="flex items-center gap-1">
+                  <Select
+                    value={col}
+                    setValue={(value) => {
+                      const newColumns = [...config.yAxisColumns];
+                      if (value) {
+                        newColumns[index] = value;
+                      } else {
+                        newColumns.splice(index, 1);
+                      }
+                      updateConfig({ yAxisColumns: newColumns });
+                    }}
+                    variant="tertiary/small"
+                    placeholder="Select column"
+                    items={yAxisOptions.filter(
+                      (opt) => opt.value === col || !config.yAxisColumns.includes(opt.value)
+                    )}
+                    dropdownIcon
+                    className="min-w-[140px] flex-1"
+                  >
+                    {(items) =>
+                      items.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          <span className="flex items-center gap-2">
+                            <span>{item.label}</span>
+                            <TypeBadge type={item.type} />
+                          </span>
+                        </SelectItem>
+                      ))
+                    }
+                  </Select>
+                  {index > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newColumns = config.yAxisColumns.filter((_, i) => i !== index);
+                        updateConfig({ yAxisColumns: newColumns });
+                      }}
+                      className="rounded p-1 text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+                      title="Remove series"
+                    >
+                      <XIcon className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              {/* Add another series button - disabled when group by is set */}
+              {config.yAxisColumns.length < yAxisOptions.length && !config.groupByColumn && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const availableColumns = yAxisOptions.filter(
+                      (opt) => !config.yAxisColumns.includes(opt.value)
+                    );
+                    if (availableColumns.length > 0) {
+                      updateConfig({
+                        yAxisColumns: [...config.yAxisColumns, availableColumns[0].value],
+                      });
+                    }
+                  }}
+                  className="flex items-center gap-1 self-start rounded px-1 py-0.5 text-xs text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+                >
+                  <Plus className="h-3 w-3" />
+                  Add series
+                </button>
+              )}
+
+              {config.groupByColumn && config.yAxisColumns.length === 1 && (
+                <span className="text-xxs text-text-dimmed">
+                  Remove group by to add multiple series
+                </span>
+              )}
+            </div>
           )}
         </ConfigField>
 
@@ -370,36 +426,42 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
           </Select>
         </ConfigField>
 
-        {/* Group By */}
+        {/* Group By - disabled when multiple series are selected */}
         <ConfigField label="Group by">
-          <Select
-            value={config.groupByColumn ?? "__none__"}
-            setValue={(value) =>
-              updateConfig({ groupByColumn: value === "__none__" ? null : value })
-            }
-            variant="tertiary/small"
-            placeholder="None"
-            items={groupByOptions}
-            dropdownIcon
-            className="min-w-[140px]"
-            text={(t) => (t === "__none__" ? "None" : t)}
-          >
-            {(items) =>
-              items.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  <span className="flex items-center gap-2">
-                    <span>{item.label}</span>
-                    {item.type && <TypeBadge type={item.type} />}
-                  </span>
-                </SelectItem>
-              ))
-            }
-          </Select>
+          {config.yAxisColumns.length > 1 ? (
+            <span className="text-xs text-text-dimmed">
+              Not available with multiple series
+            </span>
+          ) : (
+            <Select
+              value={config.groupByColumn ?? "__none__"}
+              setValue={(value) =>
+                updateConfig({ groupByColumn: value === "__none__" ? null : value })
+              }
+              variant="tertiary/small"
+              placeholder="None"
+              items={groupByOptions}
+              dropdownIcon
+              className="min-w-[140px]"
+              text={(t) => (t === "__none__" ? "None" : t)}
+            >
+              {(items) =>
+                items.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    <span className="flex items-center gap-2">
+                      <span>{item.label}</span>
+                      {item.type && <TypeBadge type={item.type} />}
+                    </span>
+                  </SelectItem>
+                ))
+              }
+            </Select>
+          )}
         </ConfigField>
 
-        {/* Stacked toggle (only when grouped) */}
-        {config.groupByColumn && (
-          <ConfigField label="Stack groups">
+        {/* Stacked toggle (when grouped or multiple series) */}
+        {(config.groupByColumn || config.yAxisColumns.length > 1) && (
+          <ConfigField label={config.groupByColumn ? "Stack groups" : "Stack series"}>
             <Switch
               variant="medium"
               checked={config.stacked}
