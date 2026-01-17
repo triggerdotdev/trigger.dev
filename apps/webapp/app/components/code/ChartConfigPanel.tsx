@@ -328,74 +328,84 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
             <span className="text-xs text-text-dimmed">No numeric columns</span>
           ) : (
             <div className="flex flex-col gap-1.5">
-              {config.yAxisColumns.map((col, index) => (
-                <div key={index} className="flex items-center gap-1">
-                  <Select
-                    value={col}
-                    setValue={(value) => {
-                      const newColumns = [...config.yAxisColumns];
-                      if (value) {
-                        newColumns[index] = value;
-                      } else {
-                        newColumns.splice(index, 1);
-                      }
-                      updateConfig({ yAxisColumns: newColumns });
-                    }}
-                    variant="tertiary/small"
-                    placeholder="Select column"
-                    items={yAxisOptions.filter(
-                      (opt) => opt.value === col || !config.yAxisColumns.includes(opt.value)
-                    )}
-                    dropdownIcon
-                    className="min-w-[140px] flex-1"
-                  >
-                    {(items) =>
-                      items.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          <span className="flex items-center gap-2">
-                            <span>{item.label}</span>
-                            <TypeBadge type={item.type} />
-                          </span>
-                        </SelectItem>
-                      ))
-                    }
-                  </Select>
-                  {index > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newColumns = config.yAxisColumns.filter((_, i) => i !== index);
+              {/* Always show at least one dropdown, even if yAxisColumns is empty */}
+              {(config.yAxisColumns.length === 0 ? [""] : config.yAxisColumns).map(
+                (col, index) => (
+                  <div key={index} className="flex items-center gap-1">
+                    <Select
+                      value={col}
+                      setValue={(value) => {
+                        const newColumns = [...config.yAxisColumns];
+                        if (value) {
+                          // If this is a new slot (empty string), add it
+                          if (index >= config.yAxisColumns.length) {
+                            newColumns.push(value);
+                          } else {
+                            newColumns[index] = value;
+                          }
+                        } else if (index < config.yAxisColumns.length) {
+                          newColumns.splice(index, 1);
+                        }
                         updateConfig({ yAxisColumns: newColumns });
                       }}
-                      className="rounded p-1 text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
-                      title="Remove series"
+                      variant="tertiary/small"
+                      placeholder="Select column"
+                      items={yAxisOptions.filter(
+                        (opt) => opt.value === col || !config.yAxisColumns.includes(opt.value)
+                      )}
+                      dropdownIcon
+                      className="min-w-[140px] flex-1"
                     >
-                      <XIcon className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))}
-
-              {/* Add another series button - disabled when group by is set */}
-              {config.yAxisColumns.length < yAxisOptions.length && !config.groupByColumn && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const availableColumns = yAxisOptions.filter(
-                      (opt) => !config.yAxisColumns.includes(opt.value)
-                    );
-                    if (availableColumns.length > 0) {
-                      updateConfig({
-                        yAxisColumns: [...config.yAxisColumns, availableColumns[0].value],
-                      });
-                    }
-                  }}
-                  className="flex items-center gap-1 self-start rounded px-1 py-0.5 text-xs text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
-                >
-                  <Plus className="h-3 w-3" />
-                  Add series
-                </button>
+                      {(items) =>
+                        items.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            <span className="flex items-center gap-2">
+                              <span>{item.label}</span>
+                              <TypeBadge type={item.type} />
+                            </span>
+                          </SelectItem>
+                        ))
+                      }
+                    </Select>
+                    {index > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newColumns = config.yAxisColumns.filter((_, i) => i !== index);
+                          updateConfig({ yAxisColumns: newColumns });
+                        }}
+                        className="rounded p-1 text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+                        title="Remove series"
+                      >
+                        <XIcon className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )
               )}
+
+              {/* Add another series button - only show when we have at least one series and not grouped */}
+              {config.yAxisColumns.length > 0 &&
+                config.yAxisColumns.length < yAxisOptions.length &&
+                !config.groupByColumn && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const availableColumns = yAxisOptions.filter(
+                        (opt) => !config.yAxisColumns.includes(opt.value)
+                      );
+                      if (availableColumns.length > 0) {
+                        updateConfig({
+                          yAxisColumns: [...config.yAxisColumns, availableColumns[0].value],
+                        });
+                      }
+                    }}
+                    className="flex items-center gap-1 self-start rounded px-1 py-0.5 text-xs text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add series
+                  </button>
+                )}
 
               {config.groupByColumn && config.yAxisColumns.length === 1 && (
                 <span className="text-xxs text-text-dimmed">
