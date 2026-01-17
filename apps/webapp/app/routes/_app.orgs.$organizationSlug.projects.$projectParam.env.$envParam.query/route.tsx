@@ -470,7 +470,9 @@ export default function Page() {
     }));
   }, []);
 
-  const isLoading = navigation.state === "submitting" || navigation.state === "loading";
+  const isLoading = (navigation.state === "submitting" || navigation.state === "loading") && navigation.formMethod === "POST";
+
+  console.log(navigation, isLoading);
 
   // Create a stable key from columns to detect schema changes
   const columnsKey = results?.columns
