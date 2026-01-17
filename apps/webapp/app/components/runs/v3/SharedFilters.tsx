@@ -28,6 +28,8 @@ import { cn } from "~/utils/cn";
 import { Button } from "../../primitives/Buttons";
 import { filterIcon } from "./RunFilters";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { ShortcutDefinition } from "~/hooks/useShortcutKeys";
+import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 
 export type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {
   userName?: string;
@@ -140,11 +142,13 @@ export const timeFilters = ({
   from,
   to,
   defaultPeriod = DEFAULT_PERIOD,
+  labelName = "Created",
 }: {
   period?: string;
   from?: string | number;
   to?: string | number;
   defaultPeriod?: string;
+  labelName?: string;
 }): {
   period?: string;
   from?: Date;
@@ -155,7 +159,11 @@ export const timeFilters = ({
   valueLabel: ReactNode;
 } => {
   if (period) {
-    return { period, isDefault: period === defaultPeriod, ...timeFilterRenderValues({ period }) };
+    return {
+      period,
+      isDefault: period === defaultPeriod,
+      ...timeFilterRenderValues({ period, labelName }),
+    };
   }
 
   if (from && to) {
@@ -165,7 +173,7 @@ export const timeFilters = ({
       from: fromDate,
       to: toDate,
       isDefault: false,
-      ...timeFilterRenderValues({ from: fromDate, to: toDate }),
+      ...timeFilterRenderValues({ from: fromDate, to: toDate, labelName }),
     };
   }
 
@@ -175,7 +183,7 @@ export const timeFilters = ({
     return {
       from: fromDate,
       isDefault: false,
-      ...timeFilterRenderValues({ from: fromDate }),
+      ...timeFilterRenderValues({ from: fromDate, labelName }),
     };
   }
 
@@ -185,14 +193,14 @@ export const timeFilters = ({
     return {
       to: toDate,
       isDefault: false,
-      ...timeFilterRenderValues({ to: toDate }),
+      ...timeFilterRenderValues({ to: toDate, labelName }),
     };
   }
 
   return {
     period: defaultPeriod,
     isDefault: true,
-    ...timeFilterRenderValues({ period: defaultPeriod }),
+    ...timeFilterRenderValues({ period: defaultPeriod, labelName }),
   };
 };
 
@@ -201,11 +209,13 @@ export function timeFilterRenderValues({
   to,
   period,
   defaultPeriod = DEFAULT_PERIOD,
+  labelName = "Created",
 }: {
   from?: Date;
   to?: Date;
   period?: string;
   defaultPeriod?: string;
+  labelName?: string;
 }) {
   const rangeType: TimeRangeType = from && to ? "range" : from ? "from" : to ? "to" : "period";
 
@@ -252,19 +262,22 @@ export function timeFilterRenderValues({
 
   let label =
     rangeType === "range" || rangeType === "period"
-      ? "Created"
+      ? labelName
       : rangeType === "from"
-      ? "Created after"
-      : "Created before";
+      ? `${labelName} after`
+      : `${labelName} before`;
 
   return { label, valueLabel, rangeType };
 }
 
 export interface TimeFilterProps {
   defaultPeriod?: string;
+  /** Label name used in the filter display, defaults to "Created" */
+  labelName?: string;
+  applyShortcut?: ShortcutDefinition | undefined;
 }
 
-export function TimeFilter({ defaultPeriod }: TimeFilterProps = {}) {
+export function TimeFilter({ defaultPeriod, labelName = "Created", applyShortcut }: TimeFilterProps = {}) {
   const { value, del } = useSearchParams();
 
   const { period, from, to, label, valueLabel } = timeFilters({
@@ -272,6 +285,7 @@ export function TimeFilter({ defaultPeriod }: TimeFilterProps = {}) {
     from: value("from"),
     to: value("to"),
     defaultPeriod,
+    labelName,
   });
 
   return (
@@ -293,6 +307,8 @@ export function TimeFilter({ defaultPeriod }: TimeFilterProps = {}) {
           from={from}
           to={to}
           defaultPeriod={defaultPeriod}
+          labelName={labelName}
+          applyShortcut={applyShortcut}
         />
       )}
     </FilterMenuProvider>
@@ -316,12 +332,16 @@ export function TimeDropdown({
   from,
   to,
   defaultPeriod = DEFAULT_PERIOD,
+  labelName = "Created",
+  applyShortcut,
 }: {
   trigger: ReactNode;
   period?: string;
   from?: Date;
   to?: Date;
   defaultPeriod?: string;
+  labelName?: string;
+  applyShortcut?: ShortcutDefinition | undefined;
 }) {
   const [open, setOpen] = useState<boolean | undefined>();
   const { replace } = useSearchParams();
@@ -449,7 +469,7 @@ export function TimeDropdown({
                   activeSection === "duration" && "text-indigo-500"
                 )}
               >
-                Runs created in the last
+                {labelName} in the last
               </Label>
               <div className="grid grid-cols-4 gap-2">
                 {/* Custom duration row */}
@@ -751,7 +771,7 @@ export function TimeDropdown({
             </Button>
             <Button
               variant="primary/small"
-              shortcut={{
+              shortcut={applyShortcut ? applyShortcut : {
                 modifiers: ["mod"],
                 key: "Enter",
                 enabledOnInputElements: true,

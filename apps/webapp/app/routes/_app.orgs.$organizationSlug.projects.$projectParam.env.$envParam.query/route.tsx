@@ -401,6 +401,17 @@ const QueryEditorForm = forwardRef<
         <input type="hidden" name="to" value={to ?? ""} />
         <QueryHistoryPopover history={history} onQuerySelected={handleHistorySelected} />
         <div className="flex items-center gap-1">
+          {isAdmin && (
+            <Button
+              type="submit"
+              name="explain"
+              value="true"
+              variant="minimal/small"
+              disabled={isLoading || !query.trim()}
+            >
+              Explain
+            </Button>
+          )}
           <Select
             value={scope}
             setValue={(value) => setScope(value as QueryScope)}
@@ -419,18 +430,7 @@ const QueryEditorForm = forwardRef<
               ))
             }
           </Select>
-          <TimeFilter defaultPeriod={DEFAULT_PERIOD} />
-          {isAdmin && (
-            <Button
-              type="submit"
-              name="explain"
-              value="true"
-              variant="tertiary/small"
-              disabled={isLoading || !query.trim()}
-            >
-              Explain
-            </Button>
-          )}
+          <TimeFilter defaultPeriod={DEFAULT_PERIOD} labelName="Triggered" applyShortcut={{ key: "enter", enabledOnInputElements: true }} />
           <Button
             type="submit"
             variant="primary/small"
