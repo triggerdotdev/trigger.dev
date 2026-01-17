@@ -8,6 +8,7 @@ import {
   type V3TaskRunContext,
 } from "@trigger.dev/core/v3";
 import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
+import { getUserProvidedIdempotencyKey } from "@trigger.dev/core/v3/serverOnly";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { logger } from "~/services/logger.server";
 import { rehydrateAttribute } from "~/v3/eventRepository/eventRepository.server";
@@ -229,7 +230,7 @@ export class SpanPresenter extends BasePresenter {
       isTest: run.isTest,
       replayedFromTaskRunFriendlyId: run.replayedFromTaskRunFriendlyId,
       environmentId: run.runtimeEnvironment.id,
-      idempotencyKey: run.idempotencyKey,
+      idempotencyKey: getUserProvidedIdempotencyKey(run),
       idempotencyKeyExpiresAt: run.idempotencyKeyExpiresAt,
       debounce: run.debounce as { key: string; delay: string; createdAt: Date } | null,
       schedule: await this.resolveSchedule(run.scheduleId ?? undefined),
@@ -355,6 +356,7 @@ export class SpanPresenter extends BasePresenter {
         //idempotency
         idempotencyKey: true,
         idempotencyKeyExpiresAt: true,
+        idempotencyKeyOptions: true,
         //debounce
         debounce: true,
         //delayed
@@ -644,7 +646,7 @@ export class SpanPresenter extends BasePresenter {
         createdAt: run.createdAt,
         tags: run.runTags,
         isTest: run.isTest,
-        idempotencyKey: run.idempotencyKey ?? undefined,
+        idempotencyKey: getUserProvidedIdempotencyKey(run) ?? undefined,
         startedAt: run.startedAt ?? run.createdAt,
         durationMs: run.usageDurationMs,
         costInCents: run.costInCents,
@@ -704,4 +706,5 @@ export class SpanPresenter extends BasePresenter {
 
     return parsedTraceparent?.traceId;
   }
+
 }

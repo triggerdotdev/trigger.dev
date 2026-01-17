@@ -124,6 +124,8 @@ export type TriggerParams = {
   environment: MinimalAuthenticatedEnvironment;
   idempotencyKey?: string;
   idempotencyKeyExpiresAt?: Date;
+  /** The original user-provided idempotency key and scope */
+  idempotencyKeyOptions?: { key: string; scope: "run" | "attempt" | "global" };
   taskIdentifier: string;
   payload: string;
   payloadType: string;

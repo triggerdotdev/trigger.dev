@@ -40,6 +40,8 @@ export const TaskRunV2 = z.object({
   span_id: z.string(),
   trace_id: z.string(),
   idempotency_key: z.string(),
+  idempotency_key_user: z.string().default(""),
+  idempotency_key_scope: z.string().default(""),
   expiration_ttl: z.string(),
   is_test: z.boolean().default(false),
   concurrency_key: z.string().default(""),
@@ -91,6 +93,8 @@ export const TASK_RUN_COLUMNS = [
   "span_id",
   "trace_id",
   "idempotency_key",
+  "idempotency_key_user",
+  "idempotency_key_scope",
   "expiration_ttl",
   "is_test",
   "_version",
@@ -151,6 +155,8 @@ export type TaskRunFieldTypes = {
   span_id: string;
   trace_id: string;
   idempotency_key: string;
+  idempotency_key_user: string;
+  idempotency_key_scope: string;
   expiration_ttl: string;
   is_test: boolean;
   _version: string;
@@ -282,6 +288,8 @@ export type TaskRunInsertArray = [
   span_id: string,
   trace_id: string,
   idempotency_key: string,
+  idempotency_key_user: string,
+  idempotency_key_scope: string,
   expiration_ttl: string,
   is_test: boolean,
   _version: string,

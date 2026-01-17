@@ -589,6 +589,8 @@ model TaskRun {
 
   idempotencyKey          String?
   idempotencyKeyExpiresAt DateTime?
+  /// Stores the user-provided key and scope: { key: string, scope: "run" | "attempt" | "global" }
+  idempotencyKeyOptions   Json?
 
   /// Debounce options: { key: string, delay: string, createdAt: Date }
   debounce Json?

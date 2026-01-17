@@ -11,6 +11,7 @@ import {
   defaultRetryOptions,
   flattenIdempotencyKey,
   getEnvVar,
+  getIdempotencyKeyOptions,
   getSchemaParseFn,
   InitOutput,
   lifecycleHooks,
@@ -1540,6 +1541,7 @@ async function executeBatchTwoPhase(
     parentRunId?: string;
     resumeParentOnCompletion?: boolean;
     idempotencyKey?: string;
+    idempotencyKeyOptions?: { key: string; scope: "run" | "attempt" | "global" };
     spanParentAsLink?: boolean;
   },
   requestOptions?: TriggerApiRequestOptions
@@ -1554,6 +1556,7 @@ async function executeBatchTwoPhase(
         parentRunId: options.parentRunId,
         resumeParentOnCompletion: options.resumeParentOnCompletion,
         idempotencyKey: options.idempotencyKey,
+        idempotencyKeyOptions: options.idempotencyKeyOptions,
       },
       { spanParentAsLink: options.spanParentAsLink },
       requestOptions
@@ -1696,6 +1699,7 @@ async function executeBatchTwoPhaseStreaming(
     parentRunId?: string;
     resumeParentOnCompletion?: boolean;
     idempotencyKey?: string;
+    idempotencyKeyOptions?: { key: string; scope: "run" | "attempt" | "global" };
     spanParentAsLink?: boolean;
   },
   requestOptions?: TriggerApiRequestOptions
@@ -2058,6 +2062,13 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
       flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
     );
 
+    // Process item-specific idempotency key and extract options
+    const itemIdempotencyKey = await makeIdempotencyKey(item.options?.idempotencyKey);
+    const finalIdempotencyKey = itemIdempotencyKey ?? batchItemIdempotencyKey;
+    const idempotencyKeyOptions = itemIdempotencyKey
+      ? getIdempotencyKeyOptions(itemIdempotencyKey)
+      : undefined;
+
     yield {
       index: index++,
       task: taskIdentifier,
@@ -2078,9 +2089,9 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
         maxAttempts: item.options?.maxAttempts,
         metadata: item.options?.metadata,
         maxDuration: item.options?.maxDuration,
-        idempotencyKey:
-          (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+        idempotencyKey: finalIdempotencyKey?.toString(),
         idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+        idempotencyKeyOptions,
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
@@ -2104,6 +2115,12 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
 
   const payloadPacket = await stringifyIO(parsedPayload);
 
+  // Process idempotency key and extract options for storage
+  const processedIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
+  const idempotencyKeyOptions = processedIdempotencyKey
+    ? getIdempotencyKeyOptions(processedIdempotencyKey)
+    : undefined;
+
   const handle = await apiClient.triggerTask(
     id,
     {
@@ -2113,8 +2130,9 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         concurrencyKey: options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
-        idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+        idempotencyKey: processedIdempotencyKey?.toString(),
         idempotencyKeyTTL: options?.idempotencyKeyTTL,
+        idempotencyKeyOptions,
         delay: options?.delay,
         ttl: options?.ttl,
         tags: options?.tags,
@@ -2179,6 +2197,13 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
           flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
         );
 
+        // Process item-specific idempotency key and extract options
+        const itemIdempotencyKey = await makeIdempotencyKey(item.options?.idempotencyKey);
+        const finalIdempotencyKey = itemIdempotencyKey ?? batchItemIdempotencyKey;
+        const idempotencyKeyOptions = itemIdempotencyKey
+          ? getIdempotencyKeyOptions(itemIdempotencyKey)
+          : undefined;
+
         return {
           index,
           task: taskIdentifier,
@@ -2198,9 +2223,9 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
             maxAttempts: item.options?.maxAttempts,
             metadata: item.options?.metadata,
             maxDuration: item.options?.maxDuration,
-            idempotencyKey:
-              (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+            idempotencyKey: finalIdempotencyKey?.toString(),
             idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+            idempotencyKeyOptions,
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
@@ -2211,6 +2236,12 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
     );
 
     // Execute 2-phase batch
+    // Process batch-level idempotency key
+    const batchIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
+    const batchIdempotencyKeyOptions = batchIdempotencyKey
+      ? getIdempotencyKeyOptions(batchIdempotencyKey)
+      : undefined;
+
     const response = await tracer.startActiveSpan(
       name,
       async (span) => {
@@ -2219,7 +2250,8 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
           ndJsonItems,
           {
             parentRunId: ctx?.run.id,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: batchIdempotencyKey?.toString(),
+            idempotencyKeyOptions: batchIdempotencyKeyOptions,
             spanParentAsLink: true, // Fire-and-forget: child runs get separate trace IDs
           },
           requestOptions
@@ -2266,6 +2298,12 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
     );
 
     // Execute streaming 2-phase batch
+    // Process batch-level idempotency key
+    const streamBatchIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
+    const streamBatchIdempotencyKeyOptions = streamBatchIdempotencyKey
+      ? getIdempotencyKeyOptions(streamBatchIdempotencyKey)
+      : undefined;
+
     const response = await tracer.startActiveSpan(
       name,
       async (span) => {
@@ -2274,7 +2312,8 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
           transformedItems,
           {
             parentRunId: ctx?.run.id,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: streamBatchIdempotencyKey?.toString(),
+            idempotencyKeyOptions: streamBatchIdempotencyKeyOptions,
             spanParentAsLink: true, // Fire-and-forget: child runs get separate trace IDs
           },
           requestOptions
@@ -2332,6 +2371,12 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
 
   const payloadPacket = await stringifyIO(parsedPayload);
 
+  // Process idempotency key and extract options for storage
+  const processedIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
+  const idempotencyKeyOptions = processedIdempotencyKey
+    ? getIdempotencyKeyOptions(processedIdempotencyKey)
+    : undefined;
+
   return await tracer.startActiveSpan(
     name,
     async (span) => {
@@ -2353,8 +2398,9 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             maxDuration: options?.maxDuration,
             resumeParentOnCompletion: true,
             parentRunId: ctx.run.id,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: processedIdempotencyKey?.toString(),
             idempotencyKeyTTL: options?.idempotencyKeyTTL,
+            idempotencyKeyOptions,
             machine: options?.machine,
             priority: options?.priority,
             region: options?.region,
@@ -2425,6 +2471,13 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
           flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
         );
 
+        // Process item-specific idempotency key and extract options
+        const itemIdempotencyKey = await makeIdempotencyKey(item.options?.idempotencyKey);
+        const finalIdempotencyKey = itemIdempotencyKey ?? batchItemIdempotencyKey;
+        const idempotencyKeyOptions = itemIdempotencyKey
+          ? getIdempotencyKeyOptions(itemIdempotencyKey)
+          : undefined;
+
         return {
           index,
           task: id,
@@ -2445,9 +2498,9 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
             maxAttempts: item.options?.maxAttempts,
             metadata: item.options?.metadata,
             maxDuration: item.options?.maxDuration,
-            idempotencyKey:
-              (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+            idempotencyKey: finalIdempotencyKey?.toString(),
             idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+            idempotencyKeyOptions,
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
@@ -2455,6 +2508,12 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
         };
       })
     );
+
+    // Process batch-level idempotency key
+    const batchIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
+    const batchIdempotencyKeyOptions = batchIdempotencyKey
+      ? getIdempotencyKeyOptions(batchIdempotencyKey)
+      : undefined;
 
     return await tracer.startActiveSpan(
       name,
@@ -2466,7 +2525,8 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
           {
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: batchIdempotencyKey?.toString(),
+            idempotencyKeyOptions: batchIdempotencyKeyOptions,
             spanParentAsLink: false, // Waiting: child runs share parent's trace ID
           },
           requestOptions
@@ -2518,6 +2578,12 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
       queue
     );
 
+    // Process batch-level idempotency key for streaming path
+    const streamBatchIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
+    const streamBatchIdempotencyKeyOptions = streamBatchIdempotencyKey
+      ? getIdempotencyKeyOptions(streamBatchIdempotencyKey)
+      : undefined;
+
     return await tracer.startActiveSpan(
       name,
       async (span) => {
@@ -2528,7 +2594,8 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
           {
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: streamBatchIdempotencyKey?.toString(),
+            idempotencyKeyOptions: streamBatchIdempotencyKeyOptions,
             spanParentAsLink: false, // Waiting: child runs share parent's trace ID
           },
           requestOptions
