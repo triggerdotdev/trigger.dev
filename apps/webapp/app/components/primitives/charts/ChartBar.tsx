@@ -118,8 +118,9 @@ export function ChartBarRenderer({
   }
 
   // Get the x-axis ticks based on tooltip state
+  // Only hide middle ticks when zoom is enabled (to make room for zoom instructions)
   const xAxisTicks =
-    highlight.tooltipActive && data.length > 2
+    enableZoom && highlight.tooltipActive && data.length > 2
       ? [data[0]?.[dataKey], data[data.length - 1]?.[dataKey]]
       : undefined;
 
