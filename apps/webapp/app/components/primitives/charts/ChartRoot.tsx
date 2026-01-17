@@ -140,7 +140,8 @@ function ChartRootInner({
 }
 
 /**
- * Hook to check if all data in the visible range is empty (zero or null).
+ * Hook to check if all data in the visible range is empty (null or undefined).
+ * Zero values are considered valid data and will render.
  * Useful for rendering "no data" states.
  */
 export function useHasNoData(): boolean {
@@ -152,7 +153,7 @@ export function useHasNoData(): boolean {
     return data.every((item) => {
       return dataKeys.every((key) => {
         const value = item[key];
-        return value === 0 || value === null || value === undefined;
+        return value === null || value === undefined;
       });
     });
   }, [data, dataKeys]);
