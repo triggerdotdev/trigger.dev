@@ -9,6 +9,7 @@ import {
   logger,
 } from "@trigger.dev/core/v3";
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
+import { getUserProvidedIdempotencyKey } from "@trigger.dev/core/v3/serverOnly";
 import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { API_VERSIONS, CURRENT_API_VERSION, RunStatusUnspecifiedApiVersion } from "~/api/versions";
@@ -17,26 +18,6 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { generatePresignedUrl } from "~/v3/r2.server";
 import { tracer } from "~/v3/tracer.server";
 import { startSpanWithEnv } from "~/v3/tracing.server";
-
-/**
- * Returns the user-provided idempotency key if available (from idempotencyKeyOptions),
- * otherwise falls back to the stored idempotency key (which is the hash).
- */
-function getUserProvidedIdempotencyKey(run: {
-  idempotencyKey: string | null;
-  idempotencyKeyOptions: unknown;
-}): string | undefined {
-  // If we have the user-provided key options, return the original key
-  const options = run.idempotencyKeyOptions as {
-    key?: string;
-    scope?: string;
-  } | null;
-  if (options?.key) {
-    return options.key;
-  }
-  // Fallback to the hash (for runs created before this feature)
-  return run.idempotencyKey ?? undefined;
-}
 
 // Build 'select' object
 const commonRunSelect = {
