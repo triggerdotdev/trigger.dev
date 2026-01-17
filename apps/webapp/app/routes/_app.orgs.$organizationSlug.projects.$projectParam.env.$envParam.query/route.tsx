@@ -364,6 +364,10 @@ const QueryEditorForm = forwardRef<
   const from = searchParamValue("from");
   const to = searchParamValue("to");
 
+  // Check if the query contains triggered_at in a WHERE clause
+  // This disables the time filter UI since the user is filtering in their query
+  const queryHasTriggeredAt = /\bWHERE\b[\s\S]*\btriggered_at\b/i.test(query);
+
   // Expose methods to parent for external query setting (history, AI, examples)
   useImperativeHandle(
     ref,
@@ -430,7 +434,11 @@ const QueryEditorForm = forwardRef<
               ))
             }
           </Select>
-          <TimeFilter defaultPeriod={DEFAULT_PERIOD} labelName="Triggered" applyShortcut={{ key: "enter", enabledOnInputElements: true }} />
+          {queryHasTriggeredAt ? <Button variant="tertiary/small" disabled={true} type="button">Set in query</Button> : <TimeFilter
+            defaultPeriod={DEFAULT_PERIOD}
+            labelName="Triggered"
+            applyShortcut={{ key: "enter", enabledOnInputElements: true }}
+          />}
           <Button
             type="submit"
             variant="primary/small"
