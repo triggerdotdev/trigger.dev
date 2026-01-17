@@ -807,24 +807,31 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   const xAxisAngle = timeGranularity === "hours" || timeGranularity === "seconds" ? -45 : 0;
   const xAxisHeight = xAxisAngle !== 0 ? 60 : undefined;
 
-  // Build xAxisProps - different config for date-based (continuous) vs categorical axes
-  const xAxisProps = isDateBased
+  // Base x-axis props shared by all chart types
+  const baseXAxisProps = {
+    tickFormatter: xAxisTickFormatter,
+    angle: xAxisAngle,
+    textAnchor: xAxisAngle !== 0 ? ("end" as const) : ("middle" as const),
+    height: xAxisHeight,
+  };
+
+  // Line charts use continuous time scale for date-based data
+  // This properly represents time gaps between data points
+  const xAxisPropsForLine = isDateBased
     ? {
         type: "number" as const,
         domain: timeDomain ?? (["auto", "auto"] as [string, string]),
         scale: "time" as const,
         // Explicitly specify tick positions so labels appear across the entire range
         ticks: timeTicks ?? undefined,
-        tickFormatter: xAxisTickFormatter,
-        angle: xAxisAngle,
-        textAnchor: xAxisAngle !== 0 ? ("end" as const) : ("middle" as const),
-        height: xAxisHeight,
+        ...baseXAxisProps,
       }
-    : {
-        angle: xAxisAngle,
-        textAnchor: xAxisAngle !== 0 ? ("end" as const) : ("middle" as const),
-        height: xAxisHeight,
-      };
+    : baseXAxisProps;
+
+  // Bar charts always use categorical axis positioning
+  // This ensures bars are evenly distributed regardless of data point count
+  // (prevents massive bars when there are only a few data points)
+  const xAxisPropsForBar = baseXAxisProps;
 
   const yAxisProps = {
     tickFormatter: yAxisFormatter,
@@ -846,7 +853,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         minHeight="300px"
       >
         <Chart.Bar
-          xAxisProps={xAxisProps}
+          xAxisProps={xAxisPropsForBar}
           yAxisProps={yAxisProps}
           stackId={stacked ? "stack" : undefined}
           tooltipLabelFormatter={tooltipLabelFormatter}
@@ -868,7 +875,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
       minHeight="300px"
     >
       <Chart.Line
-        xAxisProps={xAxisProps}
+        xAxisProps={xAxisPropsForLine}
         yAxisProps={yAxisProps}
         stacked={stacked && series.length > 1}
         tooltipLabelFormatter={tooltipLabelFormatter}
