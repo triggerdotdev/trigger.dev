@@ -1,6 +1,113 @@
 # Supervisor
 
+## Quick Setup (Recommended)
+
+Use the automated setup script to create and configure workers.
+
+### Prerequisites
+
+- `curl` and `jq` installed
+- Personal Access Token (PAT) from your Trigger.dev instance
+
+### Basic Usage
+
+```bash
+# Interactive mode (will prompt for missing values)
+./scripts/setup-worker.sh
+
+# With parameters
+./scripts/setup-worker.sh \
+  --name my-worker \
+  --pat tr_pat_... \
+  --api-url https://trigger.example.com \
+  --project-ref proj_... \
+  --default
+```
+
+### Examples
+
+**Self-hosted with specific project:**
+
+```bash
+./scripts/setup-worker.sh \
+  --name production-worker \
+  --pat tr_pat_... \
+  --api-url https://trigger.example.com \
+  --project-ref proj_... \
+  --default
+```
+
+**Using environment variables:**
+
+```bash
+export TRIGGER_PAT=tr_pat_...
+export TRIGGER_API_URL=https://trigger.example.com
+export TRIGGER_WORKER_NAME=my-worker
+export TRIGGER_PROJECT_REF=proj_...
+
+./scripts/setup-worker.sh --default
+```
+
+**List available projects first:**
+
+```bash
+./scripts/setup-worker.sh --list-projects
+```
+
+**Dry-run (see what would happen):**
+
+```bash
+./scripts/setup-worker.sh \
+  --name test-worker \
+  --project-ref proj_... \
+  --dry-run
+```
+
+### Script Options
+
+| Option                | Description                               |
+| --------------------- | ----------------------------------------- |
+| `--name <name>`       | Worker group name (required)              |
+| `--pat <token>`       | Personal Access Token (tr*pat*...)        |
+| `--api-url <url>`     | Trigger.dev API URL                       |
+| `--project-ref <ref>` | Project external ref (proj\_...)          |
+| `--project-id <id>`   | Project internal ID (cmk...)              |
+| `--default`           | Make worker default for project           |
+| `--list-projects`     | List all projects and exit                |
+| `--dry-run`           | Show what would be done without executing |
+| `--help`              | Show help message                         |
+
+### Finding Your PAT
+
+Your Personal Access Token is stored locally after running `trigger.dev login`:
+
+**macOS:**
+
+```bash
+cat ~/Library/Preferences/trigger/config.json | jq -r '.profiles.default.accessToken'
+# OR
+cat ~/Library/Application\ Support/trigger/config.json | jq -r '.profiles.default.accessToken'
+```
+
+**Linux:**
+
+```bash
+cat ~/.config/trigger/config.json | jq -r '.profiles.default.accessToken'
+```
+
+**Windows:**
+
+```powershell
+type %APPDATA%\trigger\config.json | jq -r ".profiles.default.accessToken"
+```
+
+---
+
 ## Dev setup
+
+**Quick Start:** Use the [automated setup script](#quick-setup-recommended) for easier configuration.
+
+**Manual Setup:** Follow these steps if you prefer manual configuration:
 
 1. Create a worker group
 
@@ -103,3 +210,32 @@ curl -sS \
 
 - The project will then use the global default again
 - When `removeDefaultFromProject: true` no other actions will be performed
+
+---
+
+## Appendix: Project ID Types
+
+Trigger.dev uses two types of project identifiers:
+
+| Type             | Format          | Where Used                      | Example                     |
+| ---------------- | --------------- | ------------------------------- | --------------------------- |
+| **External Ref** | `proj_...`      | trigger.config.ts, CLI commands | `proj_pxutendrlvklfzuatira` |
+| **Internal ID**  | `cmk...` (CUID) | Admin APIs, Database operations | `cmkif24mo0005nu1yt2y5dkrf` |
+
+The setup script automatically resolves external refs to internal IDs when needed.
+
+### Getting Project Information
+
+List all projects with both ID types:
+
+```bash
+curl -sS \
+  -H "Authorization: Bearer tr_pat_..." \
+  "https://your-instance.trigger.dev/api/v1/projects" | jq
+```
+
+Or use the setup script:
+
+```bash
+./scripts/setup-worker.sh --list-projects --pat tr_pat_...
+```
