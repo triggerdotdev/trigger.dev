@@ -828,6 +828,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
 
   const yAxisProps = {
     tickFormatter: yAxisFormatter,
+    domain: [0, "auto"] as [number, string],
   };
 
   const showLegend = series.length > 0;
