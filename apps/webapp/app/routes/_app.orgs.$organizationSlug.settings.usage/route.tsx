@@ -7,8 +7,9 @@ import { redirect, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { URL } from "url";
 import { UsageBar } from "~/components/billing/UsageBar";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Card } from "~/components/primitives/charts/Card";
 import type { ChartConfig } from "~/components/primitives/charts/Chart";
-import { ChartBar } from "~/components/primitives/charts/ChartBar";
+import { Chart } from "~/components/primitives/charts/ChartCompound";
 import { Header2 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
@@ -166,30 +167,30 @@ export default function Page() {
               </Suspense>
             </div>
           </div>
-          <div>
-            <Header2 spacing className="pl-3">
-              Usage by day
-            </Header2>
-            <div className="p-3">
-              <Suspense
-                fallback={
-                  <div className="flex min-h-40 items-center justify-center">
-                    <Spinner />
-                  </div>
-                }
-              >
-                <Await
-                  resolve={usage}
-                  errorElement={
+          <div className="px-3">
+            <Card>
+              <Card.Header>Usage by day</Card.Header>
+              <Card.Content>
+                <Suspense
+                  fallback={
                     <div className="flex min-h-40 items-center justify-center">
-                      <Paragraph variant="small">Failed to load graph.</Paragraph>
+                      <Spinner />
                     </div>
                   }
                 >
-                  {(u) => <UsageChart data={u.timeSeries} />}
-                </Await>
-              </Suspense>
-            </div>
+                  <Await
+                    resolve={usage}
+                    errorElement={
+                      <div className="flex min-h-40 items-center justify-center">
+                        <Paragraph variant="small">Failed to load graph.</Paragraph>
+                      </div>
+                    }
+                  >
+                    {(u) => <UsageChart data={u.timeSeries} />}
+                  </Await>
+                </Suspense>
+              </Card.Content>
+            </Card>
           </div>
           <div>
             <Header2 spacing className="pl-3">
@@ -289,47 +290,40 @@ const tooltipDateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 });
 
+const xAxisTickFormatter = (value: string) => {
+  if (!value) return "";
+  const date = new Date(value);
+  return `${date.getDate()}`;
+};
+
+const tooltipLabelFormatter = (label: string) => {
+  if (!label) return "";
+  return tooltipDateFormatter.format(new Date(label));
+};
+
 function UsageChart({ data }: { data: UsageSeriesData }) {
   const maxDollar = Math.max(...data.map((d) => d.dollars));
   const decimalPlaces = maxDollar < 1 ? 4 : 2;
-
-  const xAxisTickFormatter = useMemo(
-    () => (value: string) => {
-      if (!value) return "";
-      const date = new Date(value);
-      return `${date.getDate()}`;
-    },
-    []
-  );
 
   const yAxisTickFormatter = useMemo(
     () => (value: number) => `$${value.toFixed(decimalPlaces)}`,
     [decimalPlaces]
   );
 
-  const tooltipLabelFormatter = useMemo(
-    () => (_label: string, payload: Array<{ payload?: Record<string, unknown> }>) => {
-      const dateString = payload.at(0)?.payload?.date as string | undefined;
-      if (!dateString) {
-        return "";
-      }
-      return tooltipDateFormatter.format(new Date(dateString));
-    },
-    []
-  );
-
   return (
-    <ChartBar
+    <Chart.Root
       config={chartConfig}
       data={data}
       dataKey="date"
       showLegend={false}
       enableZoom={false}
-      xAxisProps={{ tickFormatter: xAxisTickFormatter }}
-      yAxisProps={{ tickFormatter: yAxisTickFormatter, allowDecimals: true }}
-      tooltipLabelFormatter={tooltipLabelFormatter}
       minHeight="160px"
-      className="max-h-96"
-    />
+    >
+      <Chart.Bar
+        xAxisProps={{ tickFormatter: xAxisTickFormatter }}
+        yAxisProps={{ tickFormatter: yAxisTickFormatter, allowDecimals: true }}
+        tooltipLabelFormatter={tooltipLabelFormatter}
+      />
+    </Chart.Root>
   );
 }
