@@ -1,4 +1,4 @@
-import { batch, idempotencyKeys, logger, task, timeout, usage, wait } from "@trigger.dev/sdk/v3";
+import { batch, idempotencyKeys, logger, runs, task, timeout, usage, wait } from "@trigger.dev/sdk/v3";
 import { setTimeout } from "timers/promises";
 import { childTask } from "./example.js";
 
@@ -385,6 +385,158 @@ export const idempotencyKeyOptionsTest = task({
         },
         { scope: "array", idempotencyKey: result4.ok ? result4.output?.receivedIdempotencyKey : null },
       ],
+    };
+  },
+});
+
+// Test task for verifying idempotencyKeys.reset works with the new API (TRI-4352)
+export const idempotencyKeyResetTest = task({
+  id: "idempotency-key-reset-test",
+  maxDuration: 120,
+  run: async (payload: any, { ctx }) => {
+    logger.log("Testing idempotencyKeys.reset feature (TRI-4352)");
+
+    const testResults: Array<{
+      test: string;
+      success: boolean;
+      details: Record<string, unknown>;
+    }> = [];
+
+    // Test 1: Reset using IdempotencyKey object (options extracted automatically)
+    {
+      const key = await idempotencyKeys.create("reset-test-key-1", { scope: "global" });
+      logger.log("Test 1: Created global-scoped key", { key: key.toString() });
+
+      // First trigger - should create a new run
+      const result1 = await idempotencyKeyOptionsChild.triggerAndWait(
+        { message: "First trigger" },
+        { idempotencyKey: key, idempotencyKeyTTL: "300s" }
+      );
+      const firstRunId = result1.ok ? result1.id : null;
+      logger.log("Test 1: First trigger", { runId: firstRunId });
+
+      // Second trigger - should be deduplicated (same run ID)
+      const result2 = await idempotencyKeyOptionsChild.triggerAndWait(
+        { message: "Second trigger (should dedupe)" },
+        { idempotencyKey: key, idempotencyKeyTTL: "300s" }
+      );
+      const secondRunId = result2.ok ? result2.id : null;
+      logger.log("Test 1: Second trigger (dedupe check)", { runId: secondRunId });
+
+      const wasDeduplicated = firstRunId === secondRunId;
+
+      // Reset the idempotency key using the IdempotencyKey object
+      logger.log("Test 1: Resetting idempotency key using IdempotencyKey object");
+      await idempotencyKeys.reset("idempotency-key-options-child", key);
+
+      // Third trigger - should create a NEW run after reset
+      const result3 = await idempotencyKeyOptionsChild.triggerAndWait(
+        { message: "Third trigger (after reset)" },
+        { idempotencyKey: key, idempotencyKeyTTL: "300s" }
+      );
+      const thirdRunId = result3.ok ? result3.id : null;
+      logger.log("Test 1: Third trigger (after reset)", { runId: thirdRunId });
+
+      const wasResetSuccessful = thirdRunId !== firstRunId && thirdRunId !== null;
+
+      testResults.push({
+        test: "Reset with IdempotencyKey object (global scope)",
+        success: wasDeduplicated && wasResetSuccessful,
+        details: {
+          firstRunId,
+          secondRunId,
+          thirdRunId,
+          wasDeduplicated,
+          wasResetSuccessful,
+        },
+      });
+    }
+
+    // Test 2: Reset using raw string with scope option
+    {
+      const keyString = "reset-test-key-2";
+      const key = await idempotencyKeys.create(keyString, { scope: "global" });
+      logger.log("Test 2: Created global-scoped key from string", { key: key.toString() });
+
+      // First trigger
+      const result1 = await idempotencyKeyOptionsChild.triggerAndWait(
+        { message: "First trigger (raw string test)" },
+        { idempotencyKey: key, idempotencyKeyTTL: "300s" }
+      );
+      const firstRunId = result1.ok ? result1.id : null;
+      logger.log("Test 2: First trigger", { runId: firstRunId });
+
+      // Reset using raw string + scope option
+      logger.log("Test 2: Resetting idempotency key using raw string + scope");
+      await idempotencyKeys.reset("idempotency-key-options-child", keyString, { scope: "global" });
+
+      // Second trigger - should create a NEW run after reset
+      const result2 = await idempotencyKeyOptionsChild.triggerAndWait(
+        { message: "Second trigger (after reset with raw string)" },
+        { idempotencyKey: key, idempotencyKeyTTL: "300s" }
+      );
+      const secondRunId = result2.ok ? result2.id : null;
+      logger.log("Test 2: Second trigger (after reset)", { runId: secondRunId });
+
+      const wasResetSuccessful = secondRunId !== firstRunId && secondRunId !== null;
+
+      testResults.push({
+        test: "Reset with raw string + scope option (global scope)",
+        success: wasResetSuccessful,
+        details: {
+          firstRunId,
+          secondRunId,
+          wasResetSuccessful,
+        },
+      });
+    }
+
+    // Test 3: Reset with run scope (uses current run context)
+    {
+      const key = await idempotencyKeys.create("reset-test-key-3", { scope: "run" });
+      logger.log("Test 3: Created run-scoped key", { key: key.toString() });
+
+      // First trigger
+      const result1 = await idempotencyKeyOptionsChild.triggerAndWait(
+        { message: "First trigger (run scope)" },
+        { idempotencyKey: key, idempotencyKeyTTL: "300s" }
+      );
+      const firstRunId = result1.ok ? result1.id : null;
+      logger.log("Test 3: First trigger", { runId: firstRunId });
+
+      // Reset using IdempotencyKey (run scope - should use current run context)
+      logger.log("Test 3: Resetting idempotency key with run scope");
+      await idempotencyKeys.reset("idempotency-key-options-child", key);
+
+      // Second trigger - should create a NEW run after reset
+      const result2 = await idempotencyKeyOptionsChild.triggerAndWait(
+        { message: "Second trigger (after reset, run scope)" },
+        { idempotencyKey: key, idempotencyKeyTTL: "300s" }
+      );
+      const secondRunId = result2.ok ? result2.id : null;
+      logger.log("Test 3: Second trigger (after reset)", { runId: secondRunId });
+
+      const wasResetSuccessful = secondRunId !== firstRunId && secondRunId !== null;
+
+      testResults.push({
+        test: "Reset with IdempotencyKey object (run scope)",
+        success: wasResetSuccessful,
+        details: {
+          firstRunId,
+          secondRunId,
+          wasResetSuccessful,
+          parentRunId: ctx.run.id,
+        },
+      });
+    }
+
+    // Summary
+    const allPassed = testResults.every((r) => r.success);
+    logger.log("Test summary", { allPassed, testResults });
+
+    return {
+      allPassed,
+      testResults,
     };
   },
 });
