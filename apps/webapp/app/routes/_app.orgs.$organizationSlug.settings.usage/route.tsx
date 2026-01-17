@@ -280,7 +280,7 @@ export default function Page() {
 
 const chartConfig = {
   dollars: {
-    label: "Usage ($)",
+    label: "Usage $",
     color: "#7655fd",
   },
 } satisfies ChartConfig;
