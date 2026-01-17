@@ -127,6 +127,12 @@ export function ChartLineRenderer({
     ...yAxisPropsProp,
   };
 
+  // Handle mouse leave to also reset highlight
+  const handleMouseLeave = () => {
+    highlight.setTooltipActive(false);
+    highlight.reset();
+  };
+
   // Render stacked area chart if stacked prop is true
   if (stacked && dataKeys.length > 1) {
     return (
@@ -139,8 +145,16 @@ export function ChartLineRenderer({
           left: 12,
           right: 12,
         }}
-        onMouseEnter={() => highlight.setTooltipActive(true)}
-        onMouseLeave={() => highlight.setTooltipActive(false)}
+        onMouseMove={(e: any) => {
+          // Update active payload for legend
+          if (e?.activePayload?.length) {
+            highlight.setActivePayload(e.activePayload);
+            highlight.setTooltipActive(true);
+          } else {
+            highlight.setTooltipActive(false);
+          }
+        }}
+        onMouseLeave={handleMouseLeave}
       >
         <CartesianGrid vertical={false} stroke="#272A2E" strokeDasharray="3 3" />
         <XAxis {...xAxisConfig} />
@@ -178,8 +192,16 @@ export function ChartLineRenderer({
         left: 12,
         right: 12,
       }}
-      onMouseEnter={() => highlight.setTooltipActive(true)}
-      onMouseLeave={() => highlight.setTooltipActive(false)}
+      onMouseMove={(e: any) => {
+        // Update active payload for legend
+        if (e?.activePayload?.length) {
+          highlight.setActivePayload(e.activePayload);
+          highlight.setTooltipActive(true);
+        } else {
+          highlight.setTooltipActive(false);
+        }
+      }}
+      onMouseLeave={handleMouseLeave}
     >
       <CartesianGrid vertical={false} stroke="#272A2E" strokeDasharray="3 3" />
       <XAxis {...xAxisConfig} />
