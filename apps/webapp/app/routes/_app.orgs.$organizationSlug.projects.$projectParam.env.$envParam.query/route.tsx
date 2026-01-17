@@ -1,6 +1,6 @@
 import { ArrowDownTrayIcon, ClipboardIcon } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata, WhereClauseFallback } from "@internal/clickhouse";
-import { Form, useNavigation } from "@remix-run/react";
+import { Form, useNavigation, useSubmit } from "@remix-run/react";
 import {
   redirect,
   type ActionFunctionArgs,
@@ -358,6 +358,7 @@ const QueryEditorForm = forwardRef<
   const [query, setQuery] = useState(defaultQuery);
   const [scope, setScope] = useState<QueryScope>(defaultScope);
   const { value: searchParamValue } = useSearchParams();
+  const formRef = useRef<HTMLFormElement>(null);
 
   // Get time filter values from URL search params
   const period = searchParamValue("period");
@@ -367,6 +368,8 @@ const QueryEditorForm = forwardRef<
   // Check if the query contains triggered_at in a WHERE clause
   // This disables the time filter UI since the user is filtering in their query
   const queryHasTriggeredAt = /\bWHERE\b[\s\S]*\btriggered_at\b/i.test(query);
+
+  
 
   // Expose methods to parent for external query setting (history, AI, examples)
   useImperativeHandle(
@@ -396,7 +399,7 @@ const QueryEditorForm = forwardRef<
         minHeight="200px"
         className="min-h-[200px]"
       />
-      <Form method="post" className="flex items-center justify-between gap-2 px-2">
+      <Form ref={formRef} method="post" className="flex items-center justify-between gap-2 px-2">
         <input type="hidden" name="query" value={query} />
         <input type="hidden" name="scope" value={scope} />
         {/* Pass time filter values to action */}
@@ -434,11 +437,18 @@ const QueryEditorForm = forwardRef<
               ))
             }
           </Select>
-          {queryHasTriggeredAt ? <Button variant="tertiary/small" disabled={true} type="button">Set in query</Button> : <TimeFilter
-            defaultPeriod={DEFAULT_PERIOD}
-            labelName="Triggered"
-            applyShortcut={{ key: "enter", enabledOnInputElements: true }}
-          />}
+          {queryHasTriggeredAt ? (
+            <Button variant="tertiary/small" disabled={true} type="button">
+              Set in query
+            </Button>
+          ) : (
+            <TimeFilter
+              defaultPeriod={DEFAULT_PERIOD}
+              labelName="Triggered"
+              applyShortcut={{ key: "enter", enabledOnInputElements: true }}
+              onApply={() => formRef.current?.submit()}
+            />
+          )}
           <Button
             type="submit"
             variant="primary/small"

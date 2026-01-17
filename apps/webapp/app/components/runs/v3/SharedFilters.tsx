@@ -16,7 +16,7 @@ import {
   isSunday,
 } from "date-fns";
 import parse from "parse-duration";
-import { startTransition, useCallback, useEffect, useState, type ReactNode } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { DateTimePicker } from "~/components/primitives/DateTimePicker";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -30,6 +30,7 @@ import { filterIcon } from "./RunFilters";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { ShortcutDefinition } from "~/hooks/useShortcutKeys";
 import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
+import { useLocation } from "@remix-run/react";
 
 export type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {
   userName?: string;
@@ -270,23 +271,65 @@ export function timeFilterRenderValues({
   return { label, valueLabel, rangeType };
 }
 
+/** Values passed to onApply callback when a time filter is applied */
+export interface TimeFilterApplyValues {
+  period?: string;
+  from?: string;
+  to?: string;
+}
+
 export interface TimeFilterProps {
   defaultPeriod?: string;
   /** Label name used in the filter display, defaults to "Created" */
   labelName?: string;
   applyShortcut?: ShortcutDefinition | undefined;
+  /** Callback when the user applies a time filter selection, receives the applied values */
+  onApply?: (values: TimeFilterApplyValues) => void;
 }
 
-export function TimeFilter({ defaultPeriod, labelName = "Created", applyShortcut }: TimeFilterProps = {}) {
-  const { value, del } = useSearchParams();
+export function TimeFilter({
+  defaultPeriod,
+  labelName = "Created",
+  applyShortcut,
+  onApply,
+}: TimeFilterProps = {}) {
+  const { value } = useSearchParams();
+  const periodValue = value("period");
+  const fromValue = value("from");
+  const toValue = value("to");
 
+  //non-optimistic location
+  const location = useLocation();
+  
   const { period, from, to, label, valueLabel } = timeFilters({
-    period: value("period"),
-    from: value("from"),
-    to: value("to"),
+    period: periodValue,
+    from: fromValue,
+    to: toValue,
     defaultPeriod,
     labelName,
   });
+  
+  // Track the search string, not individual values
+  const previousSearch = useRef<string | null>(null);
+
+  useEffect(() => {
+    // Skip first render - set initial value and return
+    if (previousSearch.current === null) {
+      previousSearch.current = location.search;
+      return;
+    }
+    
+    // Only call onApply if the URL actually changed
+    if (previousSearch.current !== location.search) {
+      const currentSearch = new URLSearchParams(location.search);
+      onApply?.({ 
+        period: currentSearch.get("period") ?? undefined, 
+        from: currentSearch.get("from") ?? undefined, 
+        to: currentSearch.get("to") ?? undefined 
+      });
+      previousSearch.current = location.search;
+    }
+  }, [location.search, onApply]);
 
   return (
     <FilterMenuProvider>
@@ -309,6 +352,7 @@ export function TimeFilter({ defaultPeriod, labelName = "Created", applyShortcut
           defaultPeriod={defaultPeriod}
           labelName={labelName}
           applyShortcut={applyShortcut}
+          onApply={onApply}
         />
       )}
     </FilterMenuProvider>
@@ -334,6 +378,7 @@ export function TimeDropdown({
   defaultPeriod = DEFAULT_PERIOD,
   labelName = "Created",
   applyShortcut,
+  onApply,
 }: {
   trigger: ReactNode;
   period?: string;
@@ -342,6 +387,7 @@ export function TimeDropdown({
   defaultPeriod?: string;
   labelName?: string;
   applyShortcut?: ShortcutDefinition | undefined;
+  onApply?: (values: TimeFilterApplyValues) => void;
 }) {
   const [open, setOpen] = useState<boolean | undefined>();
   const { replace } = useSearchParams();
@@ -409,6 +455,7 @@ export function TimeDropdown({
       setFromValue(undefined);
       setToValue(undefined);
       setOpen(false);
+      onApply?.({ period: periodToApply, from: undefined, to: undefined });
     } else {
       // Validate date range
       if (!fromValue && !toValue) {
@@ -421,15 +468,19 @@ export function TimeDropdown({
         return;
       }
 
+      const fromStr = fromValue?.getTime().toString();
+      const toStr = toValue?.getTime().toString();
+
       replace({
         period: undefined,
         cursor: undefined,
         direction: undefined,
-        from: fromValue?.getTime().toString(),
-        to: toValue?.getTime().toString(),
+        from: fromStr,
+        to: toStr,
       });
 
       setOpen(false);
+      onApply?.({ period: undefined, from: fromStr, to: toStr });
     }
   }, [
     activeSection,
@@ -440,6 +491,7 @@ export function TimeDropdown({
     fromValue,
     toValue,
     replace,
+    onApply,
   ]);
 
   return (
