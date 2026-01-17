@@ -94,6 +94,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     environmentId,
     history,
     customOrgConcurrencyLimit,
+    whereClauseFallback,
     ...baseOptions
   } = options;
 
@@ -155,6 +156,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       ...baseOptions,
       ...tenantOptions,
       fieldMappings,
+      whereClauseFallback,
       clickhouseSettings: {
         ...getDefaultClickhouseSettings(),
         ...baseOptions.clickhouseSettings, // Allow caller overrides if needed

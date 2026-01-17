@@ -14,6 +14,7 @@ import {
   type TableSchema,
   type QuerySettings,
   type FieldMappings,
+  type WhereClauseFallback,
 } from "@internal/tsql";
 import type { ClickhouseReader, QueryStats } from "./types.js";
 import { QueryError } from "./errors.js";
@@ -24,7 +25,7 @@ const logger = new Logger("tsql", "info");
 
 export type { QueryStats };
 
-export type { TableSchema, QuerySettings, FieldMappings };
+export type { TableSchema, QuerySettings, FieldMappings, WhereClauseFallback };
 
 /**
  * Options for executing a TSQL query
@@ -74,6 +75,19 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
    * @default false
    */
   explain?: boolean;
+  /**
+   * Fallback WHERE conditions to apply when the user hasn't filtered on a column.
+   * Key is the column name, value is the fallback condition.
+   *
+   * @example
+   * ```typescript
+   * // Apply triggered_at >= 7 days ago if user doesn't filter on triggered_at
+   * whereClauseFallback: {
+   *   triggered_at: { op: 'gte', value: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+   * }
+   * ```
+   */
+  whereClauseFallback?: Record<string, WhereClauseFallback>;
 }
 
 /**
@@ -144,6 +158,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       tableSchema: options.tableSchema,
       settings: options.querySettings,
       fieldMappings: options.fieldMappings,
+      whereClauseFallback: options.whereClauseFallback,
     });
 
     generatedSql = sql;
