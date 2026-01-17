@@ -1008,10 +1008,10 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                         onMouseDown={header.getResizeHandler()}
                         onTouchStart={header.getResizeHandler()}
                         className={cn(
-                          "absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none select-none",
+                          "absolute right-0 top-0 h-full w-0.5 cursor-col-resize touch-none select-none",
                           "opacity-0 group-hover/header:opacity-100",
-                          "bg-charcoal-600 hover:bg-primary",
-                          header.column.getIsResizing() && "bg-primary opacity-100"
+                          "bg-charcoal-600 hover:bg-indigo-500",
+                          header.column.getIsResizing() && "bg-indigo-500 opacity-100"
                         )}
                       />
                     </th>
@@ -1105,8 +1105,8 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                       className={cn(
                         "absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none select-none",
                         "opacity-0 group-hover/header:opacity-100",
-                        "bg-charcoal-600 hover:bg-primary",
-                        header.column.getIsResizing() && "bg-primary opacity-100"
+                        "bg-charcoal-600 hover:bg-indigo-500",
+                        header.column.getIsResizing() && "bg-indigo-500 opacity-100"
                       )}
                     />
                   </th>
