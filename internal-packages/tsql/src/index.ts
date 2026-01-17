@@ -9,6 +9,7 @@ import { TSQLParser } from "./grammar/TSQLParser.js";
 import type {
   And,
   BetweenExpr,
+  Call,
   CompareOperation,
   Constant,
   Expression,
@@ -267,13 +268,37 @@ export function isColumnReferencedInExpression(
 }
 
 /**
- * Convert a fallback value to the appropriate type for AST constants
+ * Format a Date as a ClickHouse-compatible DateTime64 string.
+ * ClickHouse expects format: 'YYYY-MM-DD HH:MM:SS.mmm' (in UTC)
  */
-function convertFallbackValue(value: Date | string | number): string | number {
+function formatDateForClickHouse(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const hours = String(date.getUTCHours()).padStart(2, "0");
+  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+  const seconds = String(date.getUTCSeconds()).padStart(2, "0");
+  const ms = String(date.getUTCMilliseconds()).padStart(3, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms}`;
+}
+
+/**
+ * Create an AST expression for a fallback value.
+ * Date values are wrapped in toDateTime64() for ClickHouse compatibility.
+ */
+function createValueExpression(value: Date | string | number): Expression {
   if (value instanceof Date) {
-    return value.toISOString();
+    // Wrap Date in toDateTime64(formatted_string, 3) for ClickHouse DateTime64(3) columns
+    return {
+      expression_type: "call",
+      name: "toDateTime64",
+      args: [
+        { expression_type: "constant", value: formatDateForClickHouse(value) } as Constant,
+        { expression_type: "constant", value: 3 } as Constant,
+      ],
+    } as Call;
   }
-  return value;
+  return { expression_type: "constant", value } as Constant;
 }
 
 /**
@@ -316,14 +341,8 @@ export function createFallbackExpression(
     const betweenExpr: BetweenExpr = {
       expression_type: "between_expr",
       expr: fieldExpr,
-      low: {
-        expression_type: "constant",
-        value: convertFallbackValue(fallback.low),
-      } as Constant,
-      high: {
-        expression_type: "constant",
-        value: convertFallbackValue(fallback.high),
-      } as Constant,
+      low: createValueExpression(fallback.low),
+      high: createValueExpression(fallback.high),
     };
     return betweenExpr;
   }
@@ -332,10 +351,7 @@ export function createFallbackExpression(
   const compareExpr: CompareOperation = {
     expression_type: "compare_operation",
     left: fieldExpr,
-    right: {
-      expression_type: "constant",
-      value: convertFallbackValue(fallback.value),
-    } as Constant,
+    right: createValueExpression(fallback.value),
     op: mapFallbackOpToCompareOp(fallback.op),
   };
   return compareExpr;

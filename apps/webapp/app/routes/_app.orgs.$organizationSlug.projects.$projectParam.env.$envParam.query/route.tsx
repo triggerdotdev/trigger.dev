@@ -1,5 +1,5 @@
 import { ArrowDownTrayIcon, ClipboardIcon } from "@heroicons/react/20/solid";
-import type { OutputColumnMetadata } from "@internal/clickhouse";
+import type { OutputColumnMetadata, WhereClauseFallback } from "@internal/clickhouse";
 import { Form, useNavigation } from "@remix-run/react";
 import {
   redirect,
@@ -21,6 +21,8 @@ import { autoFormatSQL, TSQLEditor } from "~/components/code/TSQLEditor";
 import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { TimeFilter, timeFilters } from "~/components/runs/v3/SharedFilters";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Card } from "~/components/primitives/charts/Card";
@@ -62,6 +64,8 @@ import { querySchemas } from "~/v3/querySchemas";
 import { QueryHelpSidebar } from "./QueryHelpSidebar";
 import { QueryHistoryPopover } from "./QueryHistoryPopover";
 import { formatQueryStats } from "./utils";
+import { requireUser } from "~/services/session.server";
+import parse from "parse-duration";
 
 async function hasQueryAccess(
   userId: string,
@@ -148,12 +152,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-import { requireUser } from "~/services/session.server";
+const DEFAULT_PERIOD = "7d";
 
 const ActionSchema = z.object({
   query: z.string().min(1, "Query is required"),
   scope: z.enum(["environment", "project", "organization"]),
   explain: z.enum(["true", "false"]).nullable().optional(),
+  period: z.string().nullable().optional(),
+  from: z.string().nullable().optional(),
+  to: z.string().nullable().optional(),
 });
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -218,6 +225,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     query: formData.get("query"),
     scope: formData.get("scope"),
     explain: formData.get("explain"),
+    period: formData.get("period"),
+    from: formData.get("from"),
+    to: formData.get("to"),
   });
 
   if (!parsed.success) {
@@ -235,10 +245,34 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     );
   }
 
-  const { query, scope, explain: explainParam } = parsed.data;
+  const { query, scope, explain: explainParam, period, from, to } = parsed.data;
   // Only allow explain for admins/impersonating users
   const isAdmin = user.admin || user.isImpersonating;
   const explain = explainParam === "true" && isAdmin;
+
+  // Build time filter fallback for triggered_at column
+  const timeFilter = timeFilters({
+    period: period ?? undefined,
+    from: from ?? undefined,
+    to: to ?? undefined,
+    defaultPeriod: DEFAULT_PERIOD,
+  });
+
+  let triggeredAtFallback: WhereClauseFallback;
+  if (timeFilter.from && timeFilter.to) {
+    // Both from and to specified - use BETWEEN
+    triggeredAtFallback = { op: "between", low: timeFilter.from, high: timeFilter.to };
+  } else if (timeFilter.from) {
+    // Only from specified
+    triggeredAtFallback = { op: "gte", value: timeFilter.from };
+  } else if (timeFilter.to) {
+    // Only to specified
+    triggeredAtFallback = { op: "lte", value: timeFilter.to };
+  } else {
+    // Period specified (or default) - calculate from now
+    const periodMs = parse(timeFilter.period ?? DEFAULT_PERIOD) ?? 7 * 24 * 60 * 60 * 1000;
+    triggeredAtFallback = { op: "gte", value: new Date(Date.now() - periodMs) };
+  }
 
   try {
     const [error, result] = await executeQuery({
@@ -252,6 +286,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       projectId: project.id,
       environmentId: environment.id,
       explain,
+      whereClauseFallback: {
+        triggered_at: triggeredAtFallback,
+      },
       history: {
         source: "DASHBOARD",
         userId: user.id,
@@ -320,6 +357,12 @@ const QueryEditorForm = forwardRef<
 >(function QueryEditorForm({ defaultQuery, defaultScope, history, isLoading, isAdmin }, ref) {
   const [query, setQuery] = useState(defaultQuery);
   const [scope, setScope] = useState<QueryScope>(defaultScope);
+  const { value: searchParamValue } = useSearchParams();
+
+  // Get time filter values from URL search params
+  const period = searchParamValue("period");
+  const from = searchParamValue("from");
+  const to = searchParamValue("to");
 
   // Expose methods to parent for external query setting (history, AI, examples)
   useImperativeHandle(
@@ -352,6 +395,10 @@ const QueryEditorForm = forwardRef<
       <Form method="post" className="flex items-center justify-between gap-2 px-2">
         <input type="hidden" name="query" value={query} />
         <input type="hidden" name="scope" value={scope} />
+        {/* Pass time filter values to action */}
+        <input type="hidden" name="period" value={period ?? ""} />
+        <input type="hidden" name="from" value={from ?? ""} />
+        <input type="hidden" name="to" value={to ?? ""} />
         <QueryHistoryPopover history={history} onQuerySelected={handleHistorySelected} />
         <div className="flex items-center gap-1">
           <Select
@@ -372,6 +419,7 @@ const QueryEditorForm = forwardRef<
               ))
             }
           </Select>
+          <TimeFilter defaultPeriod={DEFAULT_PERIOD} />
           {isAdmin && (
             <Button
               type="submit"
