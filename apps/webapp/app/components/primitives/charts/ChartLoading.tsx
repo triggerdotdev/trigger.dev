@@ -4,6 +4,7 @@ import { Paragraph } from "../Paragraph";
 import { Spinner } from "../Spinner";
 import { useDateRange } from "./DateRangeContext";
 import { useMemo } from "react";
+import { ClientOnly } from "remix-utils/client-only";
 
 export function ChartBarLoading() {
   return (
@@ -121,7 +122,9 @@ function ChartBarLoadingBackground() {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
     >
-      <motion.div
+      <ClientOnly fallback={<div />}>
+      {() => (<>
+        <motion.div
         className="flex flex-1 items-end gap-1"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -176,6 +179,9 @@ function ChartBarLoadingBackground() {
           </motion.div>
         ))}
       </motion.div>
+      </>)}
+    </ClientOnly>
+      
     </motion.div>
   );
 }
