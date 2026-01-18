@@ -48,12 +48,6 @@ export type ChartBarRendererProps = {
   referenceLine?: ReferenceLineProps;
   /** Custom tooltip label formatter */
   tooltipLabelFormatter?: (label: string, payload: any[]) => string;
-  /** @deprecated Legend is now controlled via Chart.Root showLegend prop */
-  showLegend?: boolean;
-  /** @deprecated Legend is now controlled via Chart.Root maxLegendItems prop */
-  maxLegendItems?: number;
-  /** @deprecated No longer used */
-  simpleLegend?: boolean;
   /** Width injected by ResponsiveContainer */
   width?: number;
   /** Height injected by ResponsiveContainer */
@@ -78,10 +72,6 @@ export function ChartBarRenderer({
   yAxisProps: yAxisPropsProp,
   referenceLine,
   tooltipLabelFormatter,
-  // Deprecated: legend is now controlled via Chart.Root
-  showLegend: _showLegend,
-  maxLegendItems: _maxLegendItems,
-  simpleLegend: _simpleLegend,
   width,
   height,
 }: ChartBarRendererProps) {
@@ -291,8 +281,6 @@ type LegacyChartBarProps = {
   state?: ChartState;
   maxLegendItems?: number;
   referenceLine?: ReferenceLineProps;
-  /** @deprecated Use onZoomChange callback instead */
-  useGlobalDateRange?: boolean;
   minHeight?: string;
   stackId?: string;
   /** Series keys to render (if not provided, derived from config keys) */
@@ -315,62 +303,3 @@ type LegacyChartBarProps = {
   className?: string;
 };
 
-/**
- * Legacy ChartBar component for backward compatibility.
- * Uses the new compound component system internally.
- *
- * For new code, prefer the compound component API:
- * ```tsx
- * <Chart.Root config={config} data={data} dataKey="day" enableZoom onZoomChange={handleZoom}>
- *   <Chart.Bar stackId="a" />
- *   <Chart.Legend />
- * </Chart.Root>
- * ```
- */
-export function ChartBar({
-  config,
-  data,
-  dataKey,
-  state,
-  maxLegendItems = 5,
-  referenceLine,
-  useGlobalDateRange = false,
-  minHeight,
-  stackId,
-  series,
-  xAxisProps,
-  yAxisProps,
-  showLegend = true,
-  enableZoom = true,
-  onZoomChange,
-  tooltipLabelFormatter,
-  simpleLegend = false,
-  className,
-}: LegacyChartBarProps) {
-  // Note: useGlobalDateRange is deprecated - the new compound system uses
-  // DateRangeContext integration via the syncWithDateRange prop on Chart.Zoom
-
-  return (
-    <ChartRoot
-      config={config}
-      data={data}
-      dataKey={dataKey}
-      series={series}
-      state={state}
-      enableZoom={enableZoom}
-      onZoomChange={onZoomChange}
-      minHeight={minHeight}
-      className={className}
-      showLegend={showLegend}
-      maxLegendItems={maxLegendItems}
-    >
-      <ChartBarRenderer
-        stackId={stackId}
-        xAxisProps={xAxisProps}
-        yAxisProps={yAxisProps}
-        referenceLine={referenceLine}
-        tooltipLabelFormatter={tooltipLabelFormatter}
-      />
-    </ChartRoot>
-  );
-}

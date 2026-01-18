@@ -1,25 +1,21 @@
 import { ArrowTrendingUpIcon } from "@heroicons/react/20/solid";
 import { IconTimeline } from "@tabler/icons-react";
 import { useMemo, useState } from "react";
-import { AbacusIcon } from "~/assets/icons/AbacusIcon";
-import { ArrowTopRightBottomLeftIcon } from "~/assets/icons/ArrowTopRightBottomLeftIcon";
 import { Button } from "~/components/primitives/Buttons";
 import { BigNumber } from "~/components/primitives/charts/BigNumber";
 import { Card } from "~/components/primitives/charts/Card";
-import { type ChartState, type ChartConfig } from "~/components/primitives/charts/Chart";
-import { ChartBar } from "~/components/primitives/charts/ChartBar";
-import { ChartLine } from "~/components/primitives/charts/ChartLine";
+import { type ChartConfig, type ChartState } from "~/components/primitives/charts/Chart";
 import { Chart } from "~/components/primitives/charts/ChartCompound";
 import {
   DateRangeProvider,
-  useDateRange,
   formatISODate,
   formatISODateLong,
+  useDateRange,
 } from "~/components/primitives/charts/DateRangeContext";
+import type { ZoomRange } from "~/components/primitives/charts/hooks/useZoomSelection";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
-import type { ZoomRange } from "~/components/primitives/charts/hooks/useZoomSelection";
 
 // Date formatters for chart display
 const xAxisTickFormatter = (value: string) => formatISODate(value);
@@ -172,50 +168,7 @@ function ChartsDashboard() {
           </Card.Content>
         </Card>
 
-        {/* Legacy API Example (still works) */}
-        <Card>
-          <Card.Header>
-            <div className="flex items-center gap-1.5">
-              <AbacusIcon className="size-5 text-indigo-500" />
-              Legacy API <span className="font-normal text-text-dimmed">by status</span>
-            </div>
-            <Card.Accessory>
-              <SegmentedControl
-                name="runCountByStatus"
-                options={[
-                  { label: "By status", value: "status" },
-                  { label: "By task", value: "task" },
-                ]}
-                defaultValue="status"
-                variant="secondary/small"
-              />
-              <Button
-                variant="secondary/small"
-                TrailingIcon={<ArrowTopRightBottomLeftIcon className="size-4" />}
-                className="px-1"
-              />
-            </Card.Accessory>
-          </Card.Header>
-          <Card.Content>
-            <ChartBar
-              config={barChartConfig}
-              data={filteredBarData2}
-              dataKey="day"
-              stackId="a"
-              enableZoom
-              onZoomChange={handleZoomChange}
-              referenceLine={{
-                value: 30000,
-                label: "Max concurrency",
-              }}
-              state={chartState === "loaded" ? undefined : chartState}
-              minHeight="400px"
-              xAxisProps={{ tickFormatter: xAxisTickFormatter }}
-              tooltipLabelFormatter={tooltipLabelFormatter}
-            />
-          </Card.Content>
-        </Card>
-
+       
         {/* Simple Line Chart (no zoom, but synced with date range) */}
         <Card>
           <Card.Header>

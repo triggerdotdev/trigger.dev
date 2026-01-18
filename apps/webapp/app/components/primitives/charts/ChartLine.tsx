@@ -51,8 +51,6 @@ export type ChartLineRendererProps = {
   stacked?: boolean;
   /** Custom tooltip label formatter */
   tooltipLabelFormatter?: (label: string, payload: any[]) => string;
-  /** @deprecated Legend is now controlled via Chart.Root showLegend prop */
-  showLegend?: boolean;
   /** Width injected by ResponsiveContainer */
   width?: number;
   /** Height injected by ResponsiveContainer */
@@ -77,8 +75,6 @@ export function ChartLineRenderer({
   yAxisProps: yAxisPropsProp,
   stacked = false,
   tooltipLabelFormatter,
-  // Deprecated: legend is now controlled via Chart.Root
-  showLegend: _showLegend,
   width,
   height,
 }: ChartLineRendererProps) {
@@ -225,93 +221,5 @@ export function ChartLineRenderer({
         />
       ))}
     </LineChart>
-  );
-}
-
-// ============================================================================
-// LEGACY API (for backward compatibility)
-// ============================================================================
-
-type LegacyChartLineProps = {
-  config: ChartConfig;
-  data: any[];
-  dataKey: string;
-  state?: ChartState;
-  /** @deprecated Use onZoomChange callback instead */
-  useGlobalDateRange?: boolean;
-  lineType?: CurveType;
-  /** Series keys to render (if not provided, derived from config keys) */
-  series?: string[];
-  /** Custom X-axis props to merge with defaults */
-  xAxisProps?: Partial<XAxisProps>;
-  /** Custom Y-axis props to merge with defaults */
-  yAxisProps?: Partial<YAxisProps>;
-  /** Render as stacked area chart instead of line chart */
-  stacked?: boolean;
-  /** Custom tooltip label formatter */
-  tooltipLabelFormatter?: (label: string, payload: any[]) => string;
-  /** Show legend (default false) */
-  showLegend?: boolean;
-  /** Enable zoom selection (default false for line charts) */
-  enableZoom?: boolean;
-  /** Callback when zoom range changes */
-  onZoomChange?: (range: ZoomRange) => void;
-  /** Additional className for the container */
-  className?: string;
-  /** Minimum height for the chart */
-  minHeight?: string;
-};
-
-/**
- * Legacy ChartLine component for backward compatibility.
- * Uses the new compound component system internally.
- *
- * For new code, prefer the compound component API:
- * ```tsx
- * <Chart.Root config={config} data={data} dataKey="day">
- *   <Chart.Line type="step" />
- *   <Chart.Legend simple />
- * </Chart.Root>
- * ```
- */
-export function ChartLine({
-  config,
-  data,
-  dataKey,
-  state,
-  useGlobalDateRange = false,
-  lineType = "step",
-  series,
-  xAxisProps,
-  yAxisProps,
-  stacked = false,
-  tooltipLabelFormatter,
-  showLegend = false,
-  enableZoom = false,
-  onZoomChange,
-  className,
-  minHeight,
-}: LegacyChartLineProps) {
-  return (
-    <ChartRoot
-      config={config}
-      data={data}
-      dataKey={dataKey}
-      series={series}
-      state={state}
-      enableZoom={enableZoom}
-      onZoomChange={onZoomChange}
-      minHeight={minHeight}
-      className={className}
-      showLegend={showLegend}
-    >
-      <ChartLineRenderer
-        lineType={lineType}
-        xAxisProps={xAxisProps}
-        yAxisProps={yAxisProps}
-        stacked={stacked}
-        tooltipLabelFormatter={tooltipLabelFormatter}
-      />
-    </ChartRoot>
   );
 }
