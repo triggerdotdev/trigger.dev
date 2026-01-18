@@ -11,9 +11,16 @@ import { ExamplesContent } from "./ExamplesContent";
 import { TableSchemaContent } from "./TableSchemaContent";
 import { TRQLGuideContent } from "./TRQLGuideContent";
 
+interface AITimeFilter {
+  period?: string;
+  from?: string;
+  to?: string;
+}
+
 export function QueryHelpSidebar({
   onTryExample,
   onQueryGenerated,
+  onTimeFilterChange,
   getCurrentQuery,
   activeTab,
   onTabChange,
@@ -21,6 +28,7 @@ export function QueryHelpSidebar({
 }: {
   onTryExample: (query: string, scope: QueryScope) => void;
   onQueryGenerated: (query: string) => void;
+  onTimeFilterChange?: (filter: AITimeFilter) => void;
   getCurrentQuery: () => string;
   activeTab: string;
   onTabChange: (tab: string) => void;
@@ -55,6 +63,7 @@ export function QueryHelpSidebar({
         >
           <AITabContent
             onQueryGenerated={onQueryGenerated}
+            onTimeFilterChange={onTimeFilterChange}
             getCurrentQuery={getCurrentQuery}
             aiFixRequest={aiFixRequest}
           />

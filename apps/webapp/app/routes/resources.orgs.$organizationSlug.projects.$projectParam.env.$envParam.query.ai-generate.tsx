@@ -6,7 +6,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
-import { AIQueryService } from "~/v3/services/aiQueryService.server";
+import { AIQueryService, type AITimeFilter } from "~/v3/services/aiQueryService.server";
 import { querySchemas } from "~/v3/querySchemas";
 
 const RequestSchema = z.object({
@@ -102,6 +102,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
         success?: boolean;
         query?: string;
         error?: string;
+        filter?: AITimeFilter;
+        timeFilter?: AITimeFilter;
       }) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
@@ -122,6 +124,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
                 tool: part.toolName,
                 args: part.args,
               });
+
+              // If it's a setTimeFilter call, emit the time_filter event immediately
+              if (part.toolName === "setTimeFilter") {
+                const args = part.args as { period?: string; from?: string; to?: string };
+                sendEvent({
+                  type: "time_filter",
+                  filter: {
+                    period: args.period,
+                    from: args.from,
+                    to: args.to,
+                  },
+                });
+              }
               break;
             }
             case "error": {
@@ -136,12 +151,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
               // Extract query from the final text
               const finalText = await result.text;
               const query = extractQueryFromText(finalText);
+              const timeFilter = service.getPendingTimeFilter();
 
               if (query) {
                 sendEvent({
                   type: "result",
                   success: true,
                   query,
+                  timeFilter,
                 });
               } else if (
                 finalText.toLowerCase().includes("cannot") ||

@@ -464,10 +464,17 @@ const QueryEditorForm = forwardRef<
   );
 });
 
+interface AITimeFilter {
+  period?: string;
+  from?: string;
+  to?: string;
+}
+
 export default function Page() {
   const { defaultQuery, history, isAdmin } = useTypedLoaderData<typeof loader>();
   const results = useTypedActionData<typeof action>();
   const navigation = useNavigation();
+  const { replace: replaceSearchParams } = useSearchParams();
 
   // Use most recent history item if available, otherwise fall back to defaults
   const initialQuery = history.length > 0 ? history[0].query : defaultQuery;
@@ -487,6 +494,21 @@ export default function Page() {
       key: (prev?.key ?? 0) + 1,
     }));
   }, []);
+
+  // Handle time filter changes from AI
+  const handleTimeFilterChange = useCallback(
+    (filter: AITimeFilter) => {
+      replaceSearchParams({
+        period: filter.period,
+        from: filter.from,
+        to: filter.to,
+        // Clear cursor/direction when time filter changes
+        cursor: undefined,
+        direction: undefined,
+      });
+    },
+    [replaceSearchParams]
+  );
 
   const isLoading = (navigation.state === "submitting" || navigation.state === "loading") && navigation.formMethod === "POST";
 
@@ -702,6 +724,7 @@ export default function Page() {
                 const formatted = autoFormatSQL(query);
                 editorRef.current?.setQuery(formatted);
               }}
+              onTimeFilterChange={handleTimeFilterChange}
               getCurrentQuery={() => editorRef.current?.getQuery() ?? ""}
               activeTab={sidebarTab}
               onTabChange={setSidebarTab}

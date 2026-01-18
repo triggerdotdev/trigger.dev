@@ -2,12 +2,20 @@ import { useState } from "react";
 import { AIQueryInput } from "~/components/code/AIQueryInput";
 import { Header3 } from "~/components/primitives/Headers";
 
+interface AITimeFilter {
+  period?: string;
+  from?: string;
+  to?: string;
+}
+
 export function AITabContent({
   onQueryGenerated,
+  onTimeFilterChange,
   getCurrentQuery,
   aiFixRequest,
 }: {
   onQueryGenerated: (query: string) => void;
+  onTimeFilterChange?: (filter: AITimeFilter) => void;
   getCurrentQuery: () => string;
   aiFixRequest: { prompt: string; key: number } | null;
 }) {
@@ -31,6 +39,7 @@ export function AITabContent({
     <div className="space-y-2">
       <AIQueryInput
         onQueryGenerated={onQueryGenerated}
+        onTimeFilterChange={onTimeFilterChange}
         autoSubmitPrompt={activeRequest?.prompt}
         autoSubmitKey={activeRequest?.key}
         getCurrentQuery={getCurrentQuery}
