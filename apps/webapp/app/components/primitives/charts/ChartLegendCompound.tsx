@@ -78,7 +78,7 @@ export function ChartLegendCompound({
     // If we have activePayload data from hovering over a bar
     const hoverData = highlight.activePayload.reduce((acc, item) => {
       if (item.dataKey && item.value !== undefined) {
-        acc[item.dataKey] = item.value;
+        acc[item.dataKey] = Number(item.value) || 0;
       }
       return acc;
     }, {} as Record<string, number>);
