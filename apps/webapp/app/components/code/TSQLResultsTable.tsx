@@ -108,7 +108,7 @@ function getFormattedValue(value: unknown, column: OutputColumnMetadata): string
       try {
         const date = new Date(value);
         // Format as a searchable string: "15 Jan 2026 12:34:56"
-        return date.toLocaleDateString("en-GB", {
+        return date.toLocaleString("en-GB", {
           day: "numeric",
           month: "short",
           year: "numeric",
