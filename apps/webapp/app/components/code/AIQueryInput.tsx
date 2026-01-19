@@ -18,13 +18,8 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import type { AITimeFilter } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/types";
 import { cn } from "~/utils/cn";
-
-interface AITimeFilter {
-  period?: string;
-  from?: string;
-  to?: string;
-}
 
 type StreamEventType =
   | { type: "thinking"; content: string }

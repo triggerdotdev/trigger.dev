@@ -10,12 +10,7 @@ import { AITabContent } from "./AITabContent";
 import { ExamplesContent } from "./ExamplesContent";
 import { TableSchemaContent } from "./TableSchemaContent";
 import { TRQLGuideContent } from "./TRQLGuideContent";
-
-interface AITimeFilter {
-  period?: string;
-  from?: string;
-  to?: string;
-}
+import type { AITimeFilter } from "./types";
 
 export function QueryHelpSidebar({
   onTryExample,

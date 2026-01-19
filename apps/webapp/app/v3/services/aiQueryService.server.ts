@@ -7,15 +7,10 @@ import {
 } from "@internal/tsql";
 import { streamText, type LanguageModelV1, tool } from "ai";
 import { z } from "zod";
+import type { AITimeFilter } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/types";
 
-/**
- * Time filter configuration that can be set by the AI
- */
-export interface AITimeFilter {
-  period?: string;
-  from?: string;
-  to?: string;
-}
+// Re-export for backwards compatibility
+export type { AITimeFilter };
 
 /**
  * Stream event types for AI query generation

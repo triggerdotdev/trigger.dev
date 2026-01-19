@@ -1,12 +1,7 @@
 import { useState } from "react";
 import { AIQueryInput } from "~/components/code/AIQueryInput";
 import { Header3 } from "~/components/primitives/Headers";
-
-interface AITimeFilter {
-  period?: string;
-  from?: string;
-  to?: string;
-}
+import type { AITimeFilter } from "./types";
 
 export function AITabContent({
   onQueryGenerated,

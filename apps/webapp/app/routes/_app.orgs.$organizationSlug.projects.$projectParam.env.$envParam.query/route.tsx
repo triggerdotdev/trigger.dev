@@ -63,6 +63,7 @@ import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags.server
 import { querySchemas } from "~/v3/querySchemas";
 import { QueryHelpSidebar } from "./QueryHelpSidebar";
 import { QueryHistoryPopover } from "./QueryHistoryPopover";
+import type { AITimeFilter } from "./types";
 import { formatQueryStats } from "./utils";
 import { requireUser } from "~/services/session.server";
 import parse from "parse-duration";
@@ -463,12 +464,6 @@ const QueryEditorForm = forwardRef<
     </div>
   );
 });
-
-interface AITimeFilter {
-  period?: string;
-  from?: string;
-  to?: string;
-}
 
 export default function Page() {
   const { defaultQuery, history, isAdmin } = useTypedLoaderData<typeof loader>();

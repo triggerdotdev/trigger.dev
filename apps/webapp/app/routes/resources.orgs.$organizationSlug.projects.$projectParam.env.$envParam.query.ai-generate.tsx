@@ -4,9 +4,10 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import type { AITimeFilter } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/types";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
-import { AIQueryService, type AITimeFilter } from "~/v3/services/aiQueryService.server";
+import { AIQueryService } from "~/v3/services/aiQueryService.server";
 import { querySchemas } from "~/v3/querySchemas";
 
 const RequestSchema = z.object({
