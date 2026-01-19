@@ -595,68 +595,22 @@ function RunBody({
                                   <GlobeAltIcon className="size-4 text-blue-500" />
                                   <Header3>Scope</Header3>
                                 </div>
-                                <ul className="flex flex-col gap-0.5 text-sm">
-                                  <li className="flex gap-1.5">
-                                    <span className="text-text-dimmed">•</span>
-                                    <span>
-                                      <span className="text-text-bright">Global:</span>{" "}
-                                      <span className="text-text-dimmed">
-                                        applies across all runs
-                                      </span>
-                                    </span>
-                                  </li>
-                                  <li className="flex gap-1.5">
-                                    <span className="text-text-dimmed">•</span>
-                                    <span>
-                                      <span className="text-text-bright">Run:</span>{" "}
-                                      <span className="text-text-dimmed">
-                                        unique to a parent run
-                                      </span>
-                                    </span>
-                                  </li>
-                                  <li className="flex gap-1.5">
-                                    <span className="text-text-dimmed">•</span>
-                                    <span>
-                                      <span className="text-text-bright">Attempt:</span>{" "}
-                                      <span className="text-text-dimmed">
-                                        unique to a specific attempt
-                                      </span>
-                                    </span>
-                                  </li>
-                                </ul>
+                                <div className="flex flex-col gap-0.5 text-sm text-text-dimmed">
+                                  <div>Global: applies across all runs</div>
+                                  <div>Run: unique to a parent run</div>
+                                  <div>Attempt: unique to a specific attempt</div>
+                                </div>
                               </div>
                               <div>
                                 <div className="mb-1 flex items-center gap-1">
                                   <SignalIcon className="size-4 text-success" />
                                   <Header3>Status</Header3>
                                 </div>
-                                <ul className="flex flex-col gap-0.5 text-sm">
-                                  <li className="flex gap-1.5">
-                                    <span className="text-text-dimmed">•</span>
-                                    <span>
-                                      <span className="text-text-bright">Active:</span>{" "}
-                                      <span className="text-text-dimmed">
-                                        duplicates are blocked
-                                      </span>
-                                    </span>
-                                  </li>
-                                  <li className="flex gap-1.5">
-                                    <span className="text-text-dimmed">•</span>
-                                    <span>
-                                      <span className="text-text-bright">Expired:</span>{" "}
-                                      <span className="text-text-dimmed">the TTL has passed</span>
-                                    </span>
-                                  </li>
-                                  <li className="flex gap-1.5">
-                                    <span className="text-text-dimmed">•</span>
-                                    <span>
-                                      <span className="text-text-bright">Inactive:</span>{" "}
-                                      <span className="text-text-dimmed">
-                                        the key was reset or cleared
-                                      </span>
-                                    </span>
-                                  </li>
-                                </ul>
+                                <div className="flex flex-col gap-0.5 text-sm text-text-dimmed">
+                                  <div>Active: duplicates are blocked</div>
+                                  <div>Expired: the TTL has passed</div>
+                                  <div>Inactive: the key was reset or cleared</div>
+                                </div>
                               </div>
                               <LinkButton
                                 to={docsPath("idempotency")}
