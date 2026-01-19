@@ -1,6 +1,12 @@
 import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
 import { jumpHash } from "@trigger.dev/core/v3/serverOnly";
-import type { ClaimResult, FairQueueKeyProducer, InFlightMessage } from "./types.js";
+import type {
+  ClaimResult,
+  FairQueueKeyProducer,
+  InFlightMessage,
+  ReclaimedMessageInfo,
+  StoredMessage,
+} from "./types.js";
 
 export interface VisibilityManagerOptions {
   redis: RedisOptions;
@@ -368,7 +374,7 @@ export class VisibilityManager {
    *
    * @param shardId - The shard to check
    * @param getQueueKeys - Function to get queue keys for a queue ID
-   * @returns Number of messages reclaimed
+   * @returns Array of reclaimed message info for concurrency release
    */
   async reclaimTimedOut(
     shardId: number,
@@ -377,7 +383,7 @@ export class VisibilityManager {
       queueItemsKey: string;
       masterQueueKey: string;
     }
-  ): Promise<number> {
+  ): Promise<ReclaimedMessageInfo[]> {
     const inflightKey = this.keys.inflightKey(shardId);
     const inflightDataKey = this.keys.inflightDataKey(shardId);
     const now = Date.now();
@@ -393,7 +399,7 @@ export class VisibilityManager {
       100 // Process in batches
     );
 
-    let reclaimed = 0;
+    const reclaimedMessages: ReclaimedMessageInfo[] = [];
 
     for (let i = 0; i < timedOut.length; i += 2) {
       const member = timedOut[i];
@@ -405,6 +411,17 @@ export class VisibilityManager {
       const { queueKey, queueItemsKey, masterQueueKey } = getQueueKeys(queueId);
 
       try {
+        // Get message data BEFORE releasing so we can extract tenantId for concurrency release
+        const dataJson = await this.redis.hget(inflightDataKey, messageId);
+        let storedMessage: StoredMessage | null = null;
+        if (dataJson) {
+          try {
+            storedMessage = JSON.parse(dataJson);
+          } catch {
+            // Ignore parse error, proceed with reclaim
+          }
+        }
+
         // Re-add to queue with original score (or now if not available)
         const score = parseFloat(originalScore) || now;
         await this.redis.releaseMessage(
@@ -419,7 +436,15 @@ export class VisibilityManager {
           queueId
         );
 
-        reclaimed++;
+        // Track reclaimed message for concurrency release
+        if (storedMessage) {
+          reclaimedMessages.push({
+            messageId,
+            queueId,
+            tenantId: storedMessage.tenantId,
+            metadata: storedMessage.metadata,
+          });
+        }
 
         this.logger.debug("Reclaimed timed-out message", {
           messageId,
@@ -435,7 +460,7 @@ export class VisibilityManager {
       }
     }
 
-    return reclaimed;
+    return reclaimedMessages;
   }
 
   /**
