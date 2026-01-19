@@ -7,7 +7,10 @@ import {
   ClockIcon,
   CloudArrowDownIcon,
   EnvelopeIcon,
+  GlobeAltIcon,
+  KeyIcon,
   QueueListIcon,
+  SignalIcon,
 } from "@heroicons/react/20/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
@@ -576,21 +579,85 @@ function RunBody({
                         Idempotency
                         <InfoIconTooltip
                           content={
-                            <div className="flex max-w-xs flex-col gap-2 p-1">
-                              <Paragraph variant="small">
-                                Idempotency keys prevent duplicate task runs. If you trigger a task
-                                with the same key twice, the second request returns the original run.
-                              </Paragraph>
-                              <Paragraph variant="small">
-                                <strong>Scope:</strong> <strong>global</strong> applies across all
-                                runs, <strong>run</strong> is unique to a parent run, and{" "}
-                                <strong>attempt</strong> is unique to a specific attempt.
-                              </Paragraph>
-                              <Paragraph variant="small">
-                                <strong>Status:</strong> <strong>Active</strong> means duplicates are
-                                blocked, <strong>Expired</strong> means the TTL has passed, and{" "}
-                                <strong>Inactive</strong> means the key was reset or cleared.
-                              </Paragraph>
+                            <div className="flex max-w-xs flex-col gap-3 p-1 pb-2">
+                              <div>
+                                <div className="mb-0.5 flex items-center gap-1.5">
+                                  <KeyIcon className="size-4 text-text-dimmed" />
+                                  <Header3>Idempotency keys</Header3>
+                                </div>
+                                <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                                  Prevent duplicate task runs. If you trigger a task with the same
+                                  key twice, the second request returns the original run.
+                                </Paragraph>
+                              </div>
+                              <div>
+                                <div className="mb-1 flex items-center gap-1">
+                                  <GlobeAltIcon className="size-4 text-blue-500" />
+                                  <Header3>Scope</Header3>
+                                </div>
+                                <ul className="flex flex-col gap-0.5 text-sm">
+                                  <li className="flex gap-1.5">
+                                    <span className="text-text-dimmed">•</span>
+                                    <span>
+                                      <span className="text-text-bright">Global:</span>{" "}
+                                      <span className="text-text-dimmed">
+                                        applies across all runs
+                                      </span>
+                                    </span>
+                                  </li>
+                                  <li className="flex gap-1.5">
+                                    <span className="text-text-dimmed">•</span>
+                                    <span>
+                                      <span className="text-text-bright">Run:</span>{" "}
+                                      <span className="text-text-dimmed">
+                                        unique to a parent run
+                                      </span>
+                                    </span>
+                                  </li>
+                                  <li className="flex gap-1.5">
+                                    <span className="text-text-dimmed">•</span>
+                                    <span>
+                                      <span className="text-text-bright">Attempt:</span>{" "}
+                                      <span className="text-text-dimmed">
+                                        unique to a specific attempt
+                                      </span>
+                                    </span>
+                                  </li>
+                                </ul>
+                              </div>
+                              <div>
+                                <div className="mb-1 flex items-center gap-1">
+                                  <SignalIcon className="size-4 text-success" />
+                                  <Header3>Status</Header3>
+                                </div>
+                                <ul className="flex flex-col gap-0.5 text-sm">
+                                  <li className="flex gap-1.5">
+                                    <span className="text-text-dimmed">•</span>
+                                    <span>
+                                      <span className="text-text-bright">Active:</span>{" "}
+                                      <span className="text-text-dimmed">
+                                        duplicates are blocked
+                                      </span>
+                                    </span>
+                                  </li>
+                                  <li className="flex gap-1.5">
+                                    <span className="text-text-dimmed">•</span>
+                                    <span>
+                                      <span className="text-text-bright">Expired:</span>{" "}
+                                      <span className="text-text-dimmed">the TTL has passed</span>
+                                    </span>
+                                  </li>
+                                  <li className="flex gap-1.5">
+                                    <span className="text-text-dimmed">•</span>
+                                    <span>
+                                      <span className="text-text-bright">Inactive:</span>{" "}
+                                      <span className="text-text-dimmed">
+                                        the key was reset or cleared
+                                      </span>
+                                    </span>
+                                  </li>
+                                </ul>
+                              </div>
                               <LinkButton
                                 to={docsPath("idempotency")}
                                 variant="docs/small"
@@ -630,7 +697,7 @@ function RunBody({
                   </Property.Label>
                   <Property.Value>
                     {run.idempotencyKeyStatus ? (
-                      <>
+                      <div className="flex flex-col gap-0.5">
                         <div>
                           <span className="text-text-dimmed">Key: </span>
                           {run.idempotencyKey ? (
@@ -638,6 +705,7 @@ function RunBody({
                               value={run.idempotencyKey}
                               copyValue={run.idempotencyKey}
                               asChild
+                              className="max-h-5"
                             />
                           ) : (
                             "–"
@@ -657,7 +725,7 @@ function RunBody({
                             "–"
                           )}
                         </div>
-                      </>
+                      </div>
                     ) : (
                       "–"
                     )}
