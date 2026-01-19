@@ -54,6 +54,7 @@ const MIN_COLUMN_WIDTH = 60;
 const MAX_COLUMN_WIDTH = 400;
 const CHAR_WIDTH_PX = 7.5; // Approximate width of a monospace character at text-xs (12px)
 const CELL_PADDING_PX = 40; // px-2 (8px) on each side + buffer for copy button
+const HEADER_ICONS_WIDTH_PX = 72; // Sort icon (16px) + filter icon (12px) + info icon (16px) + gaps (12px) + header padding (16px)
 const SAMPLE_SIZE = 100; // Number of rows to sample for width calculation
 
 // Type for row data
@@ -306,21 +307,25 @@ function calculateColumnWidth(
   rows: RowData[],
   column: OutputColumnMetadata
 ): number {
-  // Start with header length
-  let maxLength = columnName.length;
+  // Calculate minimum width needed for the header (text + icons)
+  const headerWidth = Math.ceil(columnName.length * CHAR_WIDTH_PX + HEADER_ICONS_WIDTH_PX);
 
   // Sample rows to find max content length
+  let maxContentLength = 0;
   const sampleRows = rows.slice(0, SAMPLE_SIZE);
   for (const row of sampleRows) {
     const value = row[columnName];
     const displayLength = getDisplayLength(value, column);
-    if (displayLength > maxLength) {
-      maxLength = displayLength;
+    if (displayLength > maxContentLength) {
+      maxContentLength = displayLength;
     }
   }
 
-  // Calculate pixel width: characters * char width + padding
-  const calculatedWidth = Math.ceil(maxLength * CHAR_WIDTH_PX + CELL_PADDING_PX);
+  // Calculate pixel width for content: characters * char width + padding
+  const contentWidth = Math.ceil(maxContentLength * CHAR_WIDTH_PX + CELL_PADDING_PX);
+
+  // Use the larger of header width or content width
+  const calculatedWidth = Math.max(headerWidth, contentWidth);
 
   // Apply min/max bounds
   return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, calculatedWidth));
