@@ -1,6 +1,8 @@
 import {
   ArrowPathIcon,
+  BookOpenIcon,
   CheckIcon,
+  ClockIcon,
   CloudArrowDownIcon,
   EnvelopeIcon,
   QueueListIcon,
@@ -159,7 +161,8 @@ export function SpanView({
     return null;
   }
 
-  if (fetcher.state !== "idle" || fetcher.data === undefined) {
+  // Only show loading spinner when there's no data yet, not during revalidation
+  if (fetcher.data === undefined) {
     return (
       <div
         className={cn(
@@ -308,32 +311,6 @@ function RunBody({
   const tab = value("tab");
   const resetFetcher = useTypedFetcher<typeof resetIdempotencyKeyAction>();
 
-  // Handle toast messages from the reset action
-  useEffect(() => {
-    if (resetFetcher.data && resetFetcher.state === "idle") {
-      // Check if the response indicates success
-      if (
-        resetFetcher.data &&
-        typeof resetFetcher.data === "object" &&
-        "success" in resetFetcher.data &&
-        resetFetcher.data.success === true
-      ) {
-        toast.custom(
-          (t) => (
-            <ToastUI
-              variant="success"
-              message="Idempotency key reset successfully"
-              t={t as string}
-            />
-          ),
-          {
-            duration: 5000,
-          }
-        );
-      }
-    }
-  }, [resetFetcher.data, resetFetcher.state]);
-
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_3.25rem] overflow-hidden bg-background-bright">
       <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3 pr-2">
@@ -441,6 +418,12 @@ function RunBody({
                       content={`View runs filtered by ${run.taskIdentifier}`}
                       disableHoverableContent
                     />
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Run ID</Property.Label>
+                  <Property.Value>
+                    <CopyableText value={run.friendlyId} copyValue={run.friendlyId} asChild />
                   </Property.Value>
                 </Property.Item>
                 {run.relationships.root ? (
@@ -581,38 +564,45 @@ function RunBody({
                   </Property.Item>
                 )}
                 <Property.Item>
-                  <Property.Label>Idempotency</Property.Label>
-                  <Property.Value>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        {run.idempotencyKey ? (
-                          <CopyableText
-                            value={run.idempotencyKey}
-                            copyValue={run.idempotencyKey}
-                            asChild
-                          />
-                        ) : (
-                          <div className="break-all">–</div>
-                        )}
-                        {run.idempotencyKey && (
-                          <div>
-                            Expires:{" "}
-                            {run.idempotencyKeyExpiresAt ? (
-                              <DateTime date={run.idempotencyKeyExpiresAt} />
-                            ) : (
-                              "–"
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      {run.idempotencyKey && (
+                  <Property.Label>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        Idempotency
+                        <InfoIconTooltip
+                          content={
+                            <div className="flex max-w-xs flex-col gap-2 p-1">
+                              <Paragraph variant="small">
+                                Idempotency keys prevent duplicate task runs. If you trigger a task
+                                with the same key twice, the second request returns the original run.
+                              </Paragraph>
+                              <Paragraph variant="small">
+                                <strong>Scope:</strong> <strong>global</strong> applies across all
+                                runs, <strong>run</strong> is unique to a parent run, and{" "}
+                                <strong>attempt</strong> is unique to a specific attempt.
+                              </Paragraph>
+                              <Paragraph variant="small">
+                                <strong>Status:</strong> <strong>Active</strong> means duplicates are
+                                blocked, <strong>Expired</strong> means the TTL has passed, and{" "}
+                                <strong>Inactive</strong> means the key was reset or cleared.
+                              </Paragraph>
+                              <LinkButton
+                                to={docsPath("idempotency")}
+                                variant="docs/small"
+                                LeadingIcon={BookOpenIcon}
+                              >
+                                Read docs
+                              </LinkButton>
+                            </div>
+                          }
+                        />
+                      </span>
+                      {run.idempotencyKeyStatus === "active" ? (
                         <resetFetcher.Form
                           method="post"
                           action={v3RunIdempotencyKeyResetPath(organization, project, environment, {
-                            friendlyId: runParam,
+                            friendlyId: run.friendlyId,
                           })}
                         >
-                          <input type="hidden" name="taskIdentifier" value={run.taskIdentifier} />
                           <Button
                             type="submit"
                             variant="minimal/small"
@@ -622,8 +612,49 @@ function RunBody({
                             {resetFetcher.state === "submitting" ? "Resetting..." : "Reset"}
                           </Button>
                         </resetFetcher.Form>
-                      )}
+                      ) : run.idempotencyKeyStatus === "expired" ? (
+                        <span className="flex items-center gap-1 text-xs text-amber-500">
+                          <ClockIcon className="size-4" />
+                          Expired
+                        </span>
+                      ) : run.idempotencyKeyStatus === "inactive" ? (
+                        <span className="text-xs text-text-dimmed">Inactive</span>
+                      ) : null}
                     </div>
+                  </Property.Label>
+                  <Property.Value>
+                    {run.idempotencyKeyStatus ? (
+                      <>
+                        <div>
+                          <span className="text-text-dimmed">Key: </span>
+                          {run.idempotencyKey ? (
+                            <CopyableText
+                              value={run.idempotencyKey}
+                              copyValue={run.idempotencyKey}
+                              asChild
+                            />
+                          ) : (
+                            "–"
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-text-dimmed">Scope: </span>
+                          {run.idempotencyKeyScope ?? "–"}
+                        </div>
+                        <div>
+                          <span className="text-text-dimmed">
+                            {run.idempotencyKeyStatus === "expired" ? "Expired: " : "Expires: "}
+                          </span>
+                          {run.idempotencyKeyExpiresAt ? (
+                            <DateTime date={run.idempotencyKeyExpiresAt} />
+                          ) : (
+                            "–"
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      "–"
+                    )}
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
@@ -857,18 +888,6 @@ function RunBody({
                     {run.usageDurationMs > 0
                       ? formatDurationMilliseconds(run.usageDurationMs, { style: "short" })
                       : "–"}
-                  </Property.Value>
-                </Property.Item>
-                <Property.Item>
-                  <Property.Label>Run ID</Property.Label>
-                  <Property.Value>
-                    <CopyableText value={run.friendlyId} copyValue={run.friendlyId} asChild />
-                  </Property.Value>
-                </Property.Item>
-                <Property.Item>
-                  <Property.Label>Internal ID</Property.Label>
-                  <Property.Value>
-                    <CopyableText value={run.id} copyValue={run.id} asChild />
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>

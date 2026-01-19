@@ -8,7 +8,10 @@ import {
   type V3TaskRunContext,
 } from "@trigger.dev/core/v3";
 import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
-import { getUserProvidedIdempotencyKey } from "@trigger.dev/core/v3/serverOnly";
+import {
+  getIdempotencyKeyScope,
+  getUserProvidedIdempotencyKey,
+} from "@trigger.dev/core/v3/serverOnly";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { logger } from "~/services/logger.server";
 import { rehydrateAttribute } from "~/v3/eventRepository/eventRepository.server";
@@ -232,6 +235,8 @@ export class SpanPresenter extends BasePresenter {
       environmentId: run.runtimeEnvironment.id,
       idempotencyKey: getUserProvidedIdempotencyKey(run),
       idempotencyKeyExpiresAt: run.idempotencyKeyExpiresAt,
+      idempotencyKeyScope: getIdempotencyKeyScope(run),
+      idempotencyKeyStatus: this.getIdempotencyKeyStatus(run),
       debounce: run.debounce as { key: string; delay: string; createdAt: Date } | null,
       schedule: await this.resolveSchedule(run.scheduleId ?? undefined),
       queue: {
@@ -275,6 +280,30 @@ export class SpanPresenter extends BasePresenter {
       taskEventStore: run.taskEventStore,
       externalTraceId,
     };
+  }
+
+  private getIdempotencyKeyStatus(run: {
+    idempotencyKey: string | null;
+    idempotencyKeyExpiresAt: Date | null;
+    idempotencyKeyOptions: unknown;
+  }): "active" | "inactive" | "expired" | undefined {
+    // No idempotency configured if no scope exists
+    const scope = getIdempotencyKeyScope(run);
+    if (!scope) {
+      return undefined;
+    }
+
+    // Check if expired first (takes precedence)
+    if (run.idempotencyKeyExpiresAt && run.idempotencyKeyExpiresAt < new Date()) {
+      return "expired";
+    }
+
+    // Check if reset (hash is null but options exist)
+    if (run.idempotencyKey === null) {
+      return "inactive";
+    }
+
+    return "active";
   }
 
   async resolveSchedule(scheduleId?: string) {
@@ -706,5 +735,4 @@ export class SpanPresenter extends BasePresenter {
 
     return parsedTraceparent?.traceId;
   }
-
 }
