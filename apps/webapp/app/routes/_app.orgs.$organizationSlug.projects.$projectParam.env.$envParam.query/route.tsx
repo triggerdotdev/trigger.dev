@@ -67,6 +67,7 @@ import type { AITimeFilter } from "./types";
 import { formatQueryStats } from "./utils";
 import { requireUser } from "~/services/session.server";
 import parse from "parse-duration";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 
 async function hasQueryAccess(
   userId: string,
@@ -370,7 +371,7 @@ const QueryEditorForm = forwardRef<
   // This disables the time filter UI since the user is filtering in their query
   const queryHasTriggeredAt = /\bWHERE\b[\s\S]*\btriggered_at\b/i.test(query);
 
-  
+
 
   // Expose methods to parent for external query setting (history, AI, examples)
   useImperativeHandle(
@@ -439,9 +440,12 @@ const QueryEditorForm = forwardRef<
             }
           </Select>
           {queryHasTriggeredAt ? (
-            <Button variant="tertiary/small" disabled={true} type="button">
-              Set in query
-            </Button>
+            <SimpleTooltip
+              button={<Button variant="tertiary/small" disabled={true} type="button">
+                Set in query
+              </Button>}
+              content="Your query includes a WHERE clause with triggered_at so this filter is disabled."
+            />
           ) : (
             <TimeFilter
               defaultPeriod={DEFAULT_PERIOD}
