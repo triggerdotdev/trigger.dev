@@ -1,7 +1,9 @@
 import {
   ArrowPathIcon,
+  ArrowRightIcon,
   BookOpenIcon,
   CheckIcon,
+  ChevronUpIcon,
   ClockIcon,
   CloudArrowDownIcon,
   EnvelopeIcon,
@@ -30,9 +32,14 @@ import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  Popover,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverTrigger,
+} from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
-import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -44,7 +51,6 @@ import {
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
-import { ToastUI } from "~/components/primitives/Toast";
 import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
@@ -67,6 +73,7 @@ import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { logger } from "~/services/logger.server";
+import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
@@ -84,11 +91,10 @@ import {
   v3SpanParamsSchema,
 } from "~/utils/pathBuilder";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
-import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
-import { requireUserId } from "~/services/session.server";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
+import { type action as resetIdempotencyKeyAction } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.idempotencyKey.reset";
 import { RealtimeStreamViewer } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.streams.$streamKey/route";
-import { action as resetIdempotencyKeyAction } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.idempotencyKey.reset";
+import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -312,7 +318,7 @@ function RunBody({
   const resetFetcher = useTypedFetcher<typeof resetIdempotencyKeyAction>();
 
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_3.25rem] overflow-hidden bg-background-bright">
+    <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_minmax(3.25rem,auto)] overflow-hidden bg-background-bright">
       <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3 pr-2">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
@@ -962,7 +968,7 @@ function RunBody({
           )}
         </div>
       </div>
-      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
+      <div className="flex items-center flex-wrap py-2 justify-between gap-2 border-t border-grid-dimmed px-2">
         <div className="flex items-center gap-4">
           {run.friendlyId !== runParam && (
             <LinkButton
@@ -982,28 +988,46 @@ function RunBody({
           )}
           <AdminDebugRun friendlyId={run.friendlyId} />
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center">
           {run.logsDeletedAt === null ? (
-            <>
+            <div className="flex">
               <LinkButton
                 to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${
                   new Date(run.createdAt).getTime() - 60000
                 }`}
                 variant="secondary/medium"
+                className="rounded-r-none border-r-0"
               >
                 View logs
               </LinkButton>
-              <LinkButton
-                to={v3RunDownloadLogsPath({ friendlyId: runParam })}
-                LeadingIcon={CloudArrowDownIcon}
-                leadingIconClassName="text-indigo-400"
-                variant="secondary/medium"
-                target="_blank"
-                download
-              >
-                Download logs
-              </LinkButton>
-            </>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="secondary/medium"
+                    className="rounded-l-none border-l-charcoal-700 px-1.5"
+                  >
+                    <ChevronUpIcon className="size-4 transition group-hover/button:text-text-bright" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="min-w-[140px] p-1" align="end">
+                  <PopoverMenuItem
+                    to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${
+                      new Date(run.createdAt).getTime() - 60000
+                    }`}
+                    title="View logs"
+                    icon={ArrowRightIcon}
+                    leadingIconClassName="text-blue-500"
+                  />
+                  <PopoverMenuItem
+                    to={v3RunDownloadLogsPath({ friendlyId: runParam })}
+                    title="Download logs"
+                    icon={CloudArrowDownIcon}
+                    leadingIconClassName="text-indigo-500"
+                    openInNewTab
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
           ) : null}
         </div>
       </div>
