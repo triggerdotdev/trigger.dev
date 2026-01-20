@@ -791,6 +791,20 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     };
   }, [isDateBased, timeGranularity]);
 
+  // Y-axis domain calculation - must be before early returns to maintain consistent hook order
+  const yAxisDomain = useMemo(() => {
+    let min = 0;
+    for (const point of data) {
+      for (const s of series) {
+        const val = point[s];
+        if (typeof val === "number" && isFinite(val)) {
+          min = Math.min(min, val);
+        }
+      }
+    }
+    return [min, "auto"] as [number, string];
+  }, [data, series]);
+
   // Validation
   if (!xAxisColumn) {
     return <EmptyState message="Select an X-axis column to display the chart" />;
@@ -837,19 +851,6 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   // This ensures bars are evenly distributed regardless of data point count
   // (prevents massive bars when there are only a few data points)
   const xAxisPropsForBar = baseXAxisProps;
-
-  const yAxisDomain = useMemo(() => {
-    let min = 0;
-    for (const point of data) {
-      for (const s of series) {
-        const val = point[s];
-        if (typeof val === "number" && isFinite(val)) {
-          min = Math.min(min, val);
-        }
-      }
-    }
-    return [min, "auto"] as [number, string];
-  }, [data, series]);
 
   const yAxisProps = {
     tickFormatter: yAxisFormatter,
