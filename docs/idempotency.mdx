@@ -367,22 +367,16 @@ When you reset an idempotency key, it will be cleared for all runs that match bo
 ```ts
 idempotencyKeys.reset(
   taskIdentifier: string,
-  idempotencyKey: IdempotencyKey | string | string[],
-  options?: {
-    scope?: "run" | "attempt" | "global";
-    parentRunId?: string;
-    attemptNumber?: number;
-  }
-)
+  idempotencyKey: string,
+  requestOptions?: ZodFetchOptions
+): Promise<{ id: string }>
 ```
 
 | Parameter | Description |
 | --- | --- |
 | `taskIdentifier` | The identifier of the task (e.g., `"my-task"`) |
-| `idempotencyKey` | The idempotency key to reset. Can be an `IdempotencyKey` from `create()`, a raw string, or a string array |
-| `options.scope` | The scope used when the key was created. Defaults to `"run"` |
-| `options.parentRunId` | Required for `"run"` or `"attempt"` scope when called outside a task context |
-| `options.attemptNumber` | Required for `"attempt"` scope when called outside a task context |
+| `idempotencyKey` | The idempotency key hash to reset (the 64-character hash string) |
+| `requestOptions` | Optional fetch options for the API request |
 
 ### Resetting keys created with `idempotencyKeys.create()`
 
