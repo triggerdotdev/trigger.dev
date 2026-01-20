@@ -856,43 +856,43 @@ function AnimatedChevron({
 
   return (
     <svg
-      width="5"
-      height="24"
-      viewBox="0 0 5 24"
+      width="4"
+      height="30"
+      viewBox="0 0 4 30"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className="overflow-visible text-charcoal-500 group-hover:text-text-bright transition-colors"
+      className="overflow-visible text-charcoal-600 group-hover:text-text-bright transition-colors"
       style={{
         transform: `translateX(${getTranslateX()}px)`,
-        transition: "transform 200ms ease-out",
+        transition: "transform 400ms ease-out",
       }}
     >
       {/* Top segment */}
       <line
-        x1="2.5"
-        y1="1"
-        x2="2.5"
-        y2="12"
+        x1="2"
+        y1="1.5"
+        x2="2"
+        y2="15"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth="3"
         strokeLinecap="round"
         style={{
-          transformOrigin: "2.5px 12px",
+          transformOrigin: "2px 15px",
           transform: `rotate(${top}deg)`,
           transition: "transform 200ms ease-out",
         }}
       />
       {/* Bottom segment */}
       <line
-        x1="2.5"
-        y1="12"
-        x2="2.5"
-        y2="23"
+        x1="2"
+        y1="15"
+        x2="2"
+        y2="28.5"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth="3"
         strokeLinecap="round"
         style={{
-          transformOrigin: "2.5px 12px",
+          transformOrigin: "2px 15px",
           transform: `rotate(${bottom}deg)`,
           transition: "transform 200ms ease-out",
         }}
@@ -912,6 +912,8 @@ function CollapseToggle({
 
   return (
     <div className="absolute -right-3 top-1/2 z-10 -translate-y-1/2">
+      {/* Vertical line to mask the side menu border */}
+      <div className="absolute left-1/2 top-1/2 h-10 w-px -translate-y-1/2 bg-background-bright" />
       <TooltipProvider disableHoverableContent>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -920,7 +922,7 @@ function CollapseToggle({
               onMouseEnter={() => setIsHovering(true)}
               onMouseLeave={() => setIsHovering(false)}
               className={cn(
-                "group flex h-10 w-6 items-center justify-center rounded-md text-text-dimmed transition-all duration-200",
+                "group flex h-12 w-6 items-center justify-center rounded-md text-text-dimmed transition-all duration-200",
                 isHovering
                   ? "border border-grid-bright bg-background-bright shadow-md hover:bg-charcoal-750 hover:text-text-bright"
                   : "border border-transparent bg-transparent"
