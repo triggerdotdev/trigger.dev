@@ -362,18 +362,120 @@ You can reset an idempotency key to clear it from all associated runs. This is u
 
 When you reset an idempotency key, it will be cleared for all runs that match both the task identifier and the idempotency key in the current environment. This allows you to trigger the task again with the same key.
 
+### API signature
+
+```ts
+idempotencyKeys.reset(
+  taskIdentifier: string,
+  idempotencyKey: IdempotencyKey | string | string[],
+  options?: {
+    scope?: "run" | "attempt" | "global";
+    parentRunId?: string;
+    attemptNumber?: number;
+  }
+)
+```
+
+| Parameter | Description |
+| --- | --- |
+| `taskIdentifier` | The identifier of the task (e.g., `"my-task"`) |
+| `idempotencyKey` | The idempotency key to reset. Can be an `IdempotencyKey` from `create()`, a raw string, or a string array |
+| `options.scope` | The scope used when the key was created. Defaults to `"run"` |
+| `options.parentRunId` | Required for `"run"` or `"attempt"` scope when called outside a task context |
+| `options.attemptNumber` | Required for `"attempt"` scope when called outside a task context |
+
+### Resetting keys created with `idempotencyKeys.create()`
+
+When you pass an `IdempotencyKey` created with `idempotencyKeys.create()`, the scope and original key are automatically extracted, making it easy to reset:
+
+```ts
+import { idempotencyKeys, task } from "@trigger.dev/sdk";
+
+export const parentTask = task({
+  id: "parent-task",
+  run: async (payload) => {
+    const key = await idempotencyKeys.create("my-key", { scope: "global" });
+    await childTask.trigger(payload, { idempotencyKey: key });
+
+    // Later in the same task, reset it - options extracted automatically
+    await idempotencyKeys.reset("child-task", key);
+  },
+});
+```
+
+### Resetting global keys
+
+Global keys are the simplest to reset since they don't require any run context:
+
 ```ts
 import { idempotencyKeys } from "@trigger.dev/sdk";
 
-// Reset an idempotency key for a specific task
-await idempotencyKeys.reset("my-task", "my-idempotency-key");
+// From anywhere - inside a task or from your backend code
+await idempotencyKeys.reset("my-task", "my-key", { scope: "global" });
 ```
 
-The `reset` function requires both parameters:
-- `taskIdentifier`: The identifier of the task (e.g., `"my-task"`)
-- `idempotencyKey`: The idempotency key to reset
+### Resetting run-scoped keys
 
-After resetting, any subsequent triggers with the same idempotency key will create new task runs instead of returning the existing ones.
+Keys created with `"run"` scope (the default) include the parent run ID in the hash. When resetting from inside the same task, the run ID is automatically available:
+
+```ts
+import { idempotencyKeys, task } from "@trigger.dev/sdk";
+
+export const parentTask = task({
+  id: "parent-task",
+  run: async (payload) => {
+    // Create a run-scoped key (default)
+    const key = await idempotencyKeys.create("my-key");
+    await childTask.trigger(payload, { idempotencyKey: key });
+
+    // Reset works automatically inside the task - run ID is available from context
+    await idempotencyKeys.reset("child-task", key);
+  },
+});
+```
+
+When resetting from outside a task (e.g., from your backend code), you must provide the `parentRunId`:
+
+```ts
+import { idempotencyKeys } from "@trigger.dev/sdk";
+
+// From your backend code - you need to know the parent run ID
+await idempotencyKeys.reset("my-task", "my-key", {
+  scope: "run",
+  parentRunId: "run_abc123"
+});
+```
+
+### Resetting attempt-scoped keys
+
+Keys created with `"attempt"` scope include both the parent run ID and attempt number. When resetting from outside a task, you must provide both:
+
+```ts
+import { idempotencyKeys } from "@trigger.dev/sdk";
+
+// From your backend code
+await idempotencyKeys.reset("my-task", "my-key", {
+  scope: "attempt",
+  parentRunId: "run_abc123",
+  attemptNumber: 1
+});
+```
+
+<Warning>
+If you try to reset a `"run"` or `"attempt"` scoped key from outside a task without providing the required `parentRunId` (and `attemptNumber` for attempt scope), it will throw an error.
+</Warning>
+
+### Resetting from the dashboard
+
+You can also reset idempotency keys directly from the Trigger.dev dashboard:
+
+1. Navigate to the run that has the idempotency key you want to reset
+2. In the run details panel, find the "Idempotency key" section
+3. Click the "Reset" button
+
+This is useful when you need to manually allow a task to be re-triggered without writing code.
+
+![Idempotency section in the run details pane showing the key, scope, and expiration time](/images/idempotency-key-dashboard.png)
 
 <Note>
 Resetting an idempotency key only affects runs in the current environment. The reset is scoped to the specific task identifier and idempotency key combination.
@@ -397,8 +499,4 @@ The scope determines what gets hashed alongside your key:
 
 This is why understanding scopes is crucial: the same string key can produce different idempotency behavior depending on the scope and context.
 
-### Viewing scope in the dashboard
 
-When you view a run in the Trigger.dev dashboard, you can see both the idempotency key and its scope in the run details panel. This helps you debug idempotency issues by understanding exactly how the key was configured.
-
-![Idempotency section in the run details pane showing the key, scope, and expiration time](/images/idempotency-key-dashboard.png)
