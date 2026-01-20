@@ -3,7 +3,6 @@ import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { Button } from "~/components/primitives/Buttons";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import type { QueryHistoryItem } from "~/presenters/v3/QueryPresenter.server";
-import { formatDateTimeRange, formatTimePeriod } from "./utils";
 import { timeFilterRenderValues } from "~/components/runs/v3/SharedFilters";
 
 const SQL_KEYWORDS = [
