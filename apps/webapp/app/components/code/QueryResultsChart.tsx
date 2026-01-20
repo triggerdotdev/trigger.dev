@@ -27,6 +27,7 @@ interface QueryResultsChartProps {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
   config: ChartConfiguration;
+  fullLegend?: boolean;
 }
 
 interface TransformedData {
@@ -697,6 +698,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   rows,
   columns,
   config,
+  fullLegend = false,
 }: QueryResultsChartProps) {
   const {
     xAxisColumn,
@@ -849,7 +851,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         series={series}
         labelFormatter={legendLabelFormatter}
         showLegend={showLegend}
-        maxLegendItems={5}
+        maxLegendItems={fullLegend ? Infinity : 5}
         minHeight="300px"
       >
         <Chart.Bar
@@ -871,7 +873,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
       series={series}
       labelFormatter={legendLabelFormatter}
       showLegend={showLegend}
-      maxLegendItems={8}
+      maxLegendItems={fullLegend ? Infinity : 5}
       minHeight="300px"
     >
       <Chart.Line

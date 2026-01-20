@@ -1,4 +1,4 @@
-import { ArrowDownTrayIcon, ClipboardIcon } from "@heroicons/react/20/solid";
+import { ArrowDownTrayIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon, ArrowTrendingUpIcon, ClipboardIcon } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata, WhereClauseFallback } from "@internal/clickhouse";
 import {
   redirect,
@@ -68,6 +68,8 @@ import { formatQueryStats } from "./utils";
 import { requireUser } from "~/services/session.server";
 import parse from "parse-duration";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { Dialog, DialogContent, DialogHeader, DialogPortal, DialogTrigger } from "~/components/primitives/Dialog";
+import { DialogOverlay } from "@radix-ui/react-dialog";
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {
@@ -719,29 +721,12 @@ export default function Page() {
                     className="m-0 grid min-h-0 grid-rows-[1fr] overflow-hidden"
                   >
                     {results?.rows && results?.columns && results.rows.length > 0 ? (
-                      <ResizablePanelGroup className="h-full overflow-hidden">
-                        <ResizablePanel id="chart-results">
-                          <div className="h-full bg-charcoal-900 p-2 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                            <Card>
-                              <Card.Content>
-                                <QueryResultsChart
-                                  rows={results.rows}
-                                  columns={results.columns}
-                                  config={chartConfig}
-                                />
-                              </Card.Content>
-                            </Card>
-                          </div>
-                        </ResizablePanel>
-                        <ResizableHandle id="chart-split" />
-                        <ResizablePanel id="chart-config" min="50px" default="200px">
-                          <ChartConfigPanel
-                            columns={results.columns}
-                            config={chartConfig}
-                            onChange={handleChartConfigChange}
-                          />
-                        </ResizablePanel>
-                      </ResizablePanelGroup>
+                      <ResultsChart
+                        rows={results.rows}
+                        columns={results.columns}
+                        chartConfig={chartConfig}
+                        onChartConfigChange={handleChartConfigChange}
+                      />
                     ) : (
                       <Paragraph variant="small" className="p-4 text-text-dimmed">
                         Run a query to visualize results.
@@ -857,4 +842,57 @@ function ScopeItem({ scope }: { scope: QueryScope }) {
     default:
       return scope;
   }
+}
+
+function ResultsChart({
+  rows,
+  columns,
+  chartConfig,
+  onChartConfigChange,
+}: {
+  rows: Record<string, unknown>[];
+  columns: OutputColumnMetadata[];
+  chartConfig: ChartConfiguration;
+  onChartConfigChange: (config: ChartConfiguration) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <><ResizablePanelGroup className="h-full overflow-hidden">
+      <ResizablePanel id="chart-results">
+        <div className="h-full bg-charcoal-900 p-2 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <Card>
+            <Card.Header>
+              <div className="flex items-center gap-1.5">
+                <ArrowTrendingUpIcon className="size-5 text-indigo-500" />
+                Chart
+              </div>
+              <Card.Accessory>
+                <Button variant="minimal/small" LeadingIcon={ArrowsPointingOutIcon} onClick={() => setIsOpen(true)} />
+              </Card.Accessory>
+            </Card.Header>
+            <Card.Content>
+              <QueryResultsChart rows={rows} columns={columns} config={chartConfig} />
+            </Card.Content>
+          </Card>
+
+        </div>
+      </ResizablePanel>
+      <ResizableHandle id="chart-split" />
+      <ResizablePanel id="chart-config" min="50px" default="200px">
+        <ChartConfigPanel columns={columns} config={chartConfig} onChange={onChartConfigChange} />
+      </ResizablePanel>
+    </ResizablePanelGroup>
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent fullscreen>
+          <DialogHeader>
+            Chart
+          </DialogHeader>
+          <div className="overflow-hidden w-full">
+            <QueryResultsChart rows={rows} columns={columns} config={chartConfig} fullLegend={true} />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }
