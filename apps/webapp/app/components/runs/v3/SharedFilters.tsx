@@ -265,8 +265,8 @@ export function timeFilterRenderValues({
     rangeType === "range" || rangeType === "period"
       ? labelName
       : rangeType === "from"
-      ? `${labelName} after`
-      : `${labelName} before`;
+        ? `${labelName} after`
+        : `${labelName} before`;
 
   return { label, valueLabel, rangeType };
 }
@@ -280,56 +280,37 @@ export interface TimeFilterApplyValues {
 
 export interface TimeFilterProps {
   defaultPeriod?: string;
+  period?: string;
+  from?: string;
+  to?: string;
   /** Label name used in the filter display, defaults to "Created" */
   labelName?: string;
   applyShortcut?: ShortcutDefinition | undefined;
   /** Callback when the user applies a time filter selection, receives the applied values */
-  onApply?: (values: TimeFilterApplyValues) => void;
+  onValueChange?: (values: TimeFilterApplyValues) => void;
 }
 
 export function TimeFilter({
   defaultPeriod,
+  period,
+  from,
+  to,
   labelName = "Created",
   applyShortcut,
-  onApply,
+  onValueChange,
 }: TimeFilterProps = {}) {
   const { value } = useSearchParams();
-  const periodValue = value("period");
-  const fromValue = value("from");
-  const toValue = value("to");
+  const periodValue = period ?? value("period");
+  const fromValue = from ?? value("from");
+  const toValue = to ?? value("to");
 
-  //non-optimistic location
-  const location = useLocation();
-  
-  const { period, from, to, label, valueLabel } = timeFilters({
+  const constrained = timeFilters({
     period: periodValue,
     from: fromValue,
     to: toValue,
     defaultPeriod,
     labelName,
   });
-  
-  // Track the search string, not individual values
-  const previousSearch = useRef<string | null>(null);
-
-  useEffect(() => {
-    // Skip first render - set initial value and return
-    if (previousSearch.current === null) {
-      previousSearch.current = location.search;
-      return;
-    }
-    
-    // Only call onApply if the URL actually changed
-    if (previousSearch.current !== location.search) {
-      const currentSearch = new URLSearchParams(location.search);
-      onApply?.({ 
-        period: currentSearch.get("period") ?? undefined, 
-        from: currentSearch.get("from") ?? undefined, 
-        to: currentSearch.get("to") ?? undefined 
-      });
-      previousSearch.current = location.search;
-    }
-  }, [location.search, onApply]);
 
   return (
     <FilterMenuProvider>
@@ -338,21 +319,21 @@ export function TimeFilter({
           trigger={
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
-                label={label}
+                label={constrained.label}
                 icon={filterIcon("period")}
-                value={valueLabel}
+                value={constrained.valueLabel}
                 removable={false}
                 variant="secondary/small"
               />
             </Ariakit.Select>
           }
-          period={period}
-          from={from}
-          to={to}
+          period={constrained.period}
+          from={constrained.from}
+          to={constrained.to}
           defaultPeriod={defaultPeriod}
           labelName={labelName}
           applyShortcut={applyShortcut}
-          onApply={onApply}
+          onValueChange={onValueChange}
         />
       )}
     </FilterMenuProvider>
@@ -379,6 +360,7 @@ export function TimeDropdown({
   labelName = "Created",
   applyShortcut,
   onApply,
+  onValueChange,
 }: {
   trigger: ReactNode;
   period?: string;
@@ -388,6 +370,8 @@ export function TimeDropdown({
   labelName?: string;
   applyShortcut?: ShortcutDefinition | undefined;
   onApply?: (values: TimeFilterApplyValues) => void;
+  /** When provided, the component operates in controlled mode and skips URL navigation */
+  onValueChange?: (values: TimeFilterApplyValues) => void;
 }) {
   const [open, setOpen] = useState<boolean | undefined>();
   const { replace } = useSearchParams();
@@ -444,18 +428,26 @@ export function TimeDropdown({
         periodToApply = `${customValue}${customUnit}`;
       }
 
-      replace({
-        period: periodToApply,
-        cursor: undefined,
-        direction: undefined,
-        from: undefined,
-        to: undefined,
-      });
+      const values: TimeFilterApplyValues = { period: periodToApply, from: undefined, to: undefined };
+
+      if (onValueChange) {
+        // Controlled mode - just call the handler
+        onValueChange(values);
+      } else {
+        // URL mode - navigate
+        replace({
+          period: periodToApply,
+          cursor: undefined,
+          direction: undefined,
+          from: undefined,
+          to: undefined,
+        });
+      }
 
       setFromValue(undefined);
       setToValue(undefined);
       setOpen(false);
-      onApply?.({ period: periodToApply, from: undefined, to: undefined });
+      onApply?.(values);
     } else {
       // Validate date range
       if (!fromValue && !toValue) {
@@ -471,16 +463,24 @@ export function TimeDropdown({
       const fromStr = fromValue?.getTime().toString();
       const toStr = toValue?.getTime().toString();
 
-      replace({
-        period: undefined,
-        cursor: undefined,
-        direction: undefined,
-        from: fromStr,
-        to: toStr,
-      });
+      const values: TimeFilterApplyValues = { period: undefined, from: fromStr, to: toStr };
+
+      if (onValueChange) {
+        // Controlled mode - just call the handler
+        onValueChange(values);
+      } else {
+        // URL mode - navigate
+        replace({
+          period: undefined,
+          cursor: undefined,
+          direction: undefined,
+          from: fromStr,
+          to: toStr,
+        });
+      }
 
       setOpen(false);
-      onApply?.({ period: undefined, from: fromStr, to: toStr });
+      onApply?.(values);
     }
   }, [
     activeSection,
@@ -492,6 +492,7 @@ export function TimeDropdown({
     toValue,
     replace,
     onApply,
+    onValueChange,
   ]);
 
   return (
@@ -532,9 +533,9 @@ export function TimeDropdown({
                       ? "border-indigo-500 "
                       : "border-charcoal-650 hover:border-charcoal-600",
                     validationError &&
-                      activeSection === "duration" &&
-                      selectedPeriod === "custom" &&
-                      "border-error"
+                    activeSection === "duration" &&
+                    selectedPeriod === "custom" &&
+                    "border-error"
                   )}
                   onClick={(e) => e.stopPropagation()}
                 >

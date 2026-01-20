@@ -1,13 +1,13 @@
 import { ArrowDownTrayIcon, ClipboardIcon } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata, WhereClauseFallback } from "@internal/clickhouse";
-import { Form, useNavigation, useSubmit } from "@remix-run/react";
 import {
   redirect,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "@remix-run/server-runtime";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
+import { flushSync } from "react-dom";
+import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { AlphaTitle } from "~/components/AlphaBadge";
@@ -353,25 +353,23 @@ const QueryEditorForm = forwardRef<
     defaultQuery: string;
     defaultScope: QueryScope;
     history: QueryHistoryItem[];
-    isLoading: boolean;
+    fetcher: ReturnType<typeof useTypedFetcher<typeof action>>;
     isAdmin: boolean;
   }
->(function QueryEditorForm({ defaultQuery, defaultScope, history, isLoading, isAdmin }, ref) {
+>(function QueryEditorForm({ defaultQuery, defaultScope, history, fetcher, isAdmin }, ref) {
+  const isLoading = fetcher.state === "submitting" || fetcher.state === "loading";
   const [query, setQuery] = useState(defaultQuery);
   const [scope, setScope] = useState<QueryScope>(defaultScope);
-  const { value: searchParamValue } = useSearchParams();
   const formRef = useRef<HTMLFormElement>(null);
 
   // Get time filter values from URL search params
-  const period = searchParamValue("period");
-  const from = searchParamValue("from");
-  const to = searchParamValue("to");
+  const [period, setPeriod] = useState<string | undefined>();
+  const [from, setFrom] = useState<string | undefined>();
+  const [to, setTo] = useState<string | undefined>();
 
   // Check if the query contains triggered_at in a WHERE clause
   // This disables the time filter UI since the user is filtering in their query
   const queryHasTriggeredAt = /\bWHERE\b[\s\S]*\btriggered_at\b/i.test(query);
-
-
 
   // Expose methods to parent for external query setting (history, AI, examples)
   useImperativeHandle(
@@ -401,7 +399,7 @@ const QueryEditorForm = forwardRef<
         minHeight="200px"
         className="min-h-[200px]"
       />
-      <Form ref={formRef} method="post" className="flex items-center justify-between gap-2 px-2">
+      <fetcher.Form ref={formRef} method="post" className="flex items-center justify-between gap-2 px-2">
         <input type="hidden" name="query" value={query} />
         <input type="hidden" name="scope" value={scope} />
         {/* Pass time filter values to action */}
@@ -450,8 +448,20 @@ const QueryEditorForm = forwardRef<
             <TimeFilter
               defaultPeriod={DEFAULT_PERIOD}
               labelName="Triggered"
+              period={period}
+              from={from}
+              to={to}
               applyShortcut={{ key: "enter", enabledOnInputElements: true }}
-              onApply={() => formRef.current?.submit()}
+              onValueChange={(values) => {
+                flushSync(() => {
+                  setPeriod(values.period);
+                  setFrom(values.from);
+                  setTo(values.to);
+                });
+                if (formRef.current) {
+                  fetcher.submit(formRef.current);
+                }
+              }}
             />
           )}
           <Button
@@ -464,15 +474,15 @@ const QueryEditorForm = forwardRef<
             {isLoading ? "Querying..." : "Query"}
           </Button>
         </div>
-      </Form>
+      </fetcher.Form>
     </div>
   );
 });
 
 export default function Page() {
   const { defaultQuery, history, isAdmin } = useTypedLoaderData<typeof loader>();
-  const results = useTypedActionData<typeof action>();
-  const navigation = useNavigation();
+  const fetcher = useTypedFetcher<typeof action>();
+  const results = fetcher.data;
   const { replace: replaceSearchParams } = useSearchParams();
 
   // Use most recent history item if available, otherwise fall back to defaults
@@ -509,8 +519,7 @@ export default function Page() {
     [replaceSearchParams]
   );
 
-  const isLoading = (navigation.state === "submitting" || navigation.state === "loading") && navigation.formMethod === "POST";
-
+  const isLoading = fetcher.state === "submitting" || fetcher.state === "loading";
 
   // Create a stable key from columns to detect schema changes
   const columnsKey = results?.columns
@@ -544,7 +553,7 @@ export default function Page() {
                 defaultQuery={initialQuery}
                 defaultScope={initialScope}
                 history={history}
-                isLoading={isLoading}
+                fetcher={fetcher}
                 isAdmin={isAdmin}
               />
               {/* Results */}
