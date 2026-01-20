@@ -202,9 +202,9 @@ export class RunEngine {
             id: payload.waitpointId,
             output: payload.error
               ? {
-                  value: payload.error,
-                  isError: true,
-                }
+                value: payload.error,
+                isError: true,
+              }
               : undefined,
           });
         },
@@ -329,8 +329,8 @@ export class RunEngine {
     });
 
     // Initialize BatchQueue for DRR-based batch processing (if configured)
-    // Only start consumers if worker is not disabled (same as main worker)
-    const startConsumers = !options.worker.disabled;
+    // Only start consumers if consumerDisabled is not set or is false
+    const startBatchQueueConsumers = options.batchQueue?.consumerEnabled ?? true;
 
     this.batchQueue = new BatchQueue({
       redis: {
@@ -348,7 +348,7 @@ export class RunEngine {
       consumerIntervalMs: options.batchQueue?.consumerIntervalMs ?? 100,
       defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
       globalRateLimiter: options.batchQueue?.globalRateLimiter,
-      startConsumers,
+      startConsumers: startBatchQueueConsumers,
       tracer: options.tracer,
       meter: options.meter,
     });
@@ -357,7 +357,7 @@ export class RunEngine {
       consumerCount: options.batchQueue?.consumerCount ?? 2,
       drrQuantum: options.batchQueue?.drr?.quantum ?? 5,
       defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
-      consumersEnabled: startConsumers,
+      consumersEnabled: startBatchQueueConsumers,
     });
 
     this.runAttemptSystem = new RunAttemptSystem({
@@ -464,18 +464,18 @@ export class RunEngine {
             debounce:
               debounce.mode === "trailing"
                 ? {
-                    ...debounce,
-                    updateData: {
-                      payload,
-                      payloadType,
-                      metadata,
-                      metadataType,
-                      tags,
-                      maxAttempts,
-                      maxDurationInSeconds,
-                      machine,
-                    },
-                  }
+                  ...debounce,
+                  updateData: {
+                    payload,
+                    payloadType,
+                    metadata,
+                    metadataType,
+                    tags,
+                    maxAttempts,
+                    maxDurationInSeconds,
+                    machine,
+                  },
+                }
                 : debounce,
             tx: prisma,
           });
@@ -574,8 +574,8 @@ export class RunEngine {
                 tags.length === 0
                   ? undefined
                   : {
-                      connect: tags,
-                    },
+                    connect: tags,
+                  },
               runTags: tags.length === 0 ? undefined : tags.map((tag) => tag.name),
               oneTimeUseToken,
               parentTaskRunId,
@@ -598,10 +598,10 @@ export class RunEngine {
               realtimeStreamsVersion,
               debounce: debounce
                 ? {
-                    key: debounce.key,
-                    delay: debounce.delay,
-                    createdAt: new Date(),
-                  }
+                  key: debounce.key,
+                  delay: debounce.delay,
+                  createdAt: new Date(),
+                }
                 : undefined,
               executionSnapshots: {
                 create: {
@@ -1750,17 +1750,17 @@ export class RunEngine {
           const error =
             latestSnapshot.environmentType === "DEVELOPMENT"
               ? ({
-                  type: "INTERNAL_ERROR",
-                  code: taskStalledErrorCode,
-                  message: errorMessage,
-                } satisfies TaskRunInternalError)
+                type: "INTERNAL_ERROR",
+                code: taskStalledErrorCode,
+                message: errorMessage,
+              } satisfies TaskRunInternalError)
               : this.options.treatProductionExecutionStallsAsOOM
-              ? ({
+                ? ({
                   type: "INTERNAL_ERROR",
                   code: "TASK_PROCESS_OOM_KILLED",
                   message: "Run was terminated due to running out of memory",
                 } satisfies TaskRunInternalError)
-              : ({
+                : ({
                   type: "INTERNAL_ERROR",
                   code: taskStalledErrorCode,
                   message: errorMessage,
@@ -1775,10 +1775,10 @@ export class RunEngine {
               error,
               retry: shouldRetry
                 ? {
-                    //250ms in the future
-                    timestamp: Date.now() + retryDelay,
-                    delay: retryDelay,
-                  }
+                  //250ms in the future
+                  timestamp: Date.now() + retryDelay,
+                  delay: retryDelay,
+                }
                 : undefined,
             },
             forceRequeue: true,
