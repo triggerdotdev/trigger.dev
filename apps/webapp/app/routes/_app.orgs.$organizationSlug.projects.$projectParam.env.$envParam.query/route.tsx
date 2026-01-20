@@ -69,6 +69,14 @@ import { requireUser } from "~/services/session.server";
 import parse from "parse-duration";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 
+/** Convert a Date or ISO string to ISO string format */
+function toISOString(value: Date | string): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  return value.toISOString();
+}
+
 async function hasQueryAccess(
   userId: string,
   isAdmin: boolean,
@@ -295,6 +303,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         source: "DASHBOARD",
         userId: user.id,
         skip: user.isImpersonating,
+        timeFilter: {
+          // Save the effective period used for the query (timeFilters() handles defaults)
+          // Only save period if no custom from/to range was specified
+          period: timeFilter.from || timeFilter.to ? undefined : timeFilter.period,
+          from: timeFilter.from,
+          to: timeFilter.to,
+        },
       },
     });
 
@@ -344,6 +359,7 @@ interface QueryEditorFormHandle {
   setQuery: (query: string) => void;
   setScope: (scope: QueryScope) => void;
   getQuery: () => string;
+  setTimeFilter: (filter: { period?: string; from?: string; to?: string }) => void;
 }
 
 /** Self-contained query editor with form - isolates query state from parent */
@@ -352,20 +368,21 @@ const QueryEditorForm = forwardRef<
   {
     defaultQuery: string;
     defaultScope: QueryScope;
+    defaultTimeFilter?: { period?: string; from?: string; to?: string };
     history: QueryHistoryItem[];
     fetcher: ReturnType<typeof useTypedFetcher<typeof action>>;
     isAdmin: boolean;
   }
->(function QueryEditorForm({ defaultQuery, defaultScope, history, fetcher, isAdmin }, ref) {
+>(function QueryEditorForm({ defaultQuery, defaultScope, defaultTimeFilter, history, fetcher, isAdmin }, ref) {
   const isLoading = fetcher.state === "submitting" || fetcher.state === "loading";
   const [query, setQuery] = useState(defaultQuery);
   const [scope, setScope] = useState<QueryScope>(defaultScope);
   const formRef = useRef<HTMLFormElement>(null);
 
-  // Get time filter values from URL search params
-  const [period, setPeriod] = useState<string | undefined>();
-  const [from, setFrom] = useState<string | undefined>();
-  const [to, setTo] = useState<string | undefined>();
+  // Get time filter values - initialize from props (which may come from history)
+  const [period, setPeriod] = useState<string | undefined>(defaultTimeFilter?.period);
+  const [from, setFrom] = useState<string | undefined>(defaultTimeFilter?.from);
+  const [to, setTo] = useState<string | undefined>(defaultTimeFilter?.to);
 
   // Check if the query contains triggered_at in a WHERE clause
   // This disables the time filter UI since the user is filtering in their query
@@ -378,6 +395,11 @@ const QueryEditorForm = forwardRef<
       setQuery,
       setScope,
       getQuery: () => query,
+      setTimeFilter: (filter: { period?: string; from?: string; to?: string }) => {
+        setPeriod(filter.period);
+        setFrom(filter.from);
+        setTo(filter.to);
+      },
     }),
     [query]
   );
@@ -385,6 +407,11 @@ const QueryEditorForm = forwardRef<
   const handleHistorySelected = useCallback((item: QueryHistoryItem) => {
     setQuery(item.query);
     setScope(item.scope);
+    // Apply time filter from history item
+    // Note: filterFrom/filterTo might be Date objects or ISO strings depending on serialization
+    setPeriod(item.filterPeriod ?? undefined);
+    setFrom(item.filterFrom ? toISOString(item.filterFrom) : undefined);
+    setTo(item.filterTo ? toISOString(item.filterTo) : undefined);
   }, []);
 
   return (
@@ -488,6 +515,14 @@ export default function Page() {
   // Use most recent history item if available, otherwise fall back to defaults
   const initialQuery = history.length > 0 ? history[0].query : defaultQuery;
   const initialScope: QueryScope = history.length > 0 ? history[0].scope : "environment";
+  const initialTimeFilter = history.length > 0
+    ? {
+      period: history[0].filterPeriod ?? undefined,
+      // Note: filterFrom/filterTo might be Date objects or ISO strings depending on serialization
+      from: history[0].filterFrom ? toISOString(history[0].filterFrom) : undefined,
+      to: history[0].filterTo ? toISOString(history[0].filterTo) : undefined,
+    }
+    : undefined;
 
   const editorRef = useRef<QueryEditorFormHandle>(null);
   const [prettyFormatting, setPrettyFormatting] = useState(true);
@@ -552,6 +587,7 @@ export default function Page() {
                 ref={editorRef}
                 defaultQuery={initialQuery}
                 defaultScope={initialScope}
+                defaultTimeFilter={initialTimeFilter}
                 history={history}
                 fetcher={fetcher}
                 isAdmin={isAdmin}
