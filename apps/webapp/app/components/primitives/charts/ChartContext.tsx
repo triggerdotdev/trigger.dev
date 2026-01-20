@@ -33,6 +33,9 @@ export type ChartContextValue = {
 
   // Zoom callback (only present when zoom is enabled)
   onZoomChange?: (range: ZoomRange) => void;
+
+  // Whether the compound legend is shown (disables tooltip when true)
+  showLegend: boolean;
 };
 
 const ChartCompoundContext = createContext<ChartContextValue | null>(null);
@@ -58,6 +61,8 @@ export type ChartProviderProps = {
   enableZoom?: boolean;
   /** Callback when zoom range changes */
   onZoomChange?: (range: ZoomRange) => void;
+  /** Whether the compound legend is shown (disables tooltip when true) */
+  showLegend?: boolean;
   children: React.ReactNode;
 };
 
@@ -70,6 +75,7 @@ export function ChartProvider({
   labelFormatter,
   enableZoom = false,
   onZoomChange,
+  showLegend = false,
   children,
 }: ChartProviderProps) {
   const highlight = useHighlightState();
@@ -92,8 +98,9 @@ export function ChartProvider({
       highlight,
       zoom: enableZoom ? zoomState : null,
       onZoomChange: enableZoom ? onZoomChange : undefined,
+      showLegend,
     }),
-    [config, data, dataKey, dataKeys, state, labelFormatter, highlight, zoomState, enableZoom, onZoomChange]
+    [config, data, dataKey, dataKeys, state, labelFormatter, highlight, zoomState, enableZoom, onZoomChange, showLegend]
   );
 
   return <ChartCompoundContext.Provider value={value}>{children}</ChartCompoundContext.Provider>;

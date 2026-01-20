@@ -79,6 +79,7 @@ export function ChartRoot({
       labelFormatter={labelFormatter}
       enableZoom={enableZoom}
       onZoomChange={onZoomChange}
+      showLegend={showLegend}
     >
       <ChartRootInner
         minHeight={minHeight}

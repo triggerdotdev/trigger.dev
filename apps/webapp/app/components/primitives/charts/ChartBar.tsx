@@ -75,7 +75,7 @@ export function ChartBarRenderer({
   width,
   height,
 }: ChartBarRendererProps) {
-  const { config, data, dataKey, dataKeys, state, highlight, zoom } = useChartContext();
+  const { config, data, dataKey, dataKeys, state, highlight, zoom, showLegend } = useChartContext();
   const hasNoData = useHasNoData();
   const zoomHandlers = useZoomHandlers();
   const enableZoom = zoom !== null;
@@ -162,23 +162,26 @@ export function ChartBarRenderer({
         domain={["auto", (dataMax: number) => dataMax * 1.15]}
         {...yAxisPropsProp}
       />
-      <ChartTooltip
-        cursor={{ fill: "#2C3034" }}
-        content={
-          tooltipLabelFormatter ? (
-            <ChartTooltipContent />
-          ) : (
-            <ZoomTooltip
-              isSelecting={zoom?.isSelecting}
-              refAreaLeft={zoom?.refAreaLeft}
-              refAreaRight={zoom?.refAreaRight}
-              invalidSelection={zoom?.invalidSelection}
-            />
-          )
-        }
-        labelFormatter={tooltipLabelFormatter}
-        allowEscapeViewBox={{ x: false, y: true }}
-      />
+      {/* Hide tooltip when legend is shown - legend displays hover data instead */}
+      {!showLegend && (
+        <ChartTooltip
+          cursor={{ fill: "#2C3034" }}
+          content={
+            tooltipLabelFormatter ? (
+              <ChartTooltipContent />
+            ) : (
+              <ZoomTooltip
+                isSelecting={zoom?.isSelecting}
+                refAreaLeft={zoom?.refAreaLeft}
+                refAreaRight={zoom?.refAreaRight}
+                invalidSelection={zoom?.invalidSelection}
+              />
+            )
+          }
+          labelFormatter={tooltipLabelFormatter}
+          allowEscapeViewBox={{ x: false, y: true }}
+        />
+      )}
 
       {/* Zoom selection area - rendered before bars to appear behind them */}
       {enableZoom && zoom?.refAreaLeft && zoom?.refAreaRight && (
@@ -269,37 +272,3 @@ export function ChartBarRenderer({
     </BarChart>
   );
 }
-
-// ============================================================================
-// LEGACY API (for backward compatibility)
-// ============================================================================
-
-type LegacyChartBarProps = {
-  config: ChartConfig;
-  data: any[];
-  dataKey: string;
-  state?: ChartState;
-  maxLegendItems?: number;
-  referenceLine?: ReferenceLineProps;
-  minHeight?: string;
-  stackId?: string;
-  /** Series keys to render (if not provided, derived from config keys) */
-  series?: string[];
-  /** Custom X-axis props to merge with defaults */
-  xAxisProps?: Partial<XAxisProps>;
-  /** Custom Y-axis props to merge with defaults */
-  yAxisProps?: Partial<YAxisProps>;
-  /** Show legend (default true) */
-  showLegend?: boolean;
-  /** Enable zoom selection (default true) */
-  enableZoom?: boolean;
-  /** Callback when zoom range changes */
-  onZoomChange?: (range: ZoomRange) => void;
-  /** Custom tooltip label formatter */
-  tooltipLabelFormatter?: (label: string, payload: any[]) => string;
-  /** Use simple inline legend instead of row-based legend */
-  simpleLegend?: boolean;
-  /** Additional className for the container */
-  className?: string;
-};
-

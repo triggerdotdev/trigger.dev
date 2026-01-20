@@ -819,13 +819,13 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   // This properly represents time gaps between data points
   const xAxisPropsForLine = isDateBased
     ? {
-        type: "number" as const,
-        domain: timeDomain ?? (["auto", "auto"] as [string, string]),
-        scale: "time" as const,
-        // Explicitly specify tick positions so labels appear across the entire range
-        ticks: timeTicks ?? undefined,
-        ...baseXAxisProps,
-      }
+      type: "number" as const,
+      domain: timeDomain ?? (["auto", "auto"] as [string, string]),
+      scale: "time" as const,
+      // Explicitly specify tick positions so labels appear across the entire range
+      ticks: timeTicks ?? undefined,
+      ...baseXAxisProps,
+    }
     : baseXAxisProps;
 
   // Bar charts always use categorical axis positioning
@@ -849,7 +849,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         series={series}
         labelFormatter={legendLabelFormatter}
         showLegend={showLegend}
-        maxLegendItems={6}
+        maxLegendItems={5}
         minHeight="300px"
       >
         <Chart.Bar

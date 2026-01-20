@@ -721,7 +721,7 @@ export default function Page() {
                     {results?.rows && results?.columns && results.rows.length > 0 ? (
                       <ResizablePanelGroup className="h-full overflow-hidden">
                         <ResizablePanel id="chart-results">
-                          <div className="h-full bg-charcoal-900 p-2">
+                          <div className="h-full bg-charcoal-900 p-2 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
                             <Card>
                               <Card.Content>
                                 <QueryResultsChart
