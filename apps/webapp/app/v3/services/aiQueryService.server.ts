@@ -59,6 +59,47 @@ export class AIQueryService {
   ) {}
 
   /**
+   * Build the setTimeFilter tool definition
+   * Used by both streamQuery() and call() to keep behavior consistent
+   */
+  private buildSetTimeFilterTool() {
+    return tool({
+      description:
+        "Set the time filter for the query page UI instead of adding triggered_at conditions to the query. ALWAYS use this tool when the user wants to filter by time (e.g., 'last 7 days', 'past hour', 'yesterday'). The UI will apply this filter automatically. Do NOT add triggered_at to the WHERE clause - use this tool instead.",
+      parameters: z.object({
+        period: z
+          .string()
+          .optional()
+          .describe(
+            "Relative time period like '1m', '5m', '30m', '1h', '6h', '12h', '1d', '3d', '7d', '14d', '30d', '90d'. Use this for 'last X days/hours/minutes' requests."
+          ),
+        from: z
+          .string()
+          .optional()
+          .describe(
+            "ISO 8601 timestamp for the start of an absolute date range. Use with 'to' for specific date ranges."
+          ),
+        to: z
+          .string()
+          .optional()
+          .describe(
+            "ISO 8601 timestamp for the end of an absolute date range. Use with 'from' for specific date ranges."
+          ),
+      }),
+      execute: async ({ period, from, to }) => {
+        // Store the time filter so we can include it in the result
+        this.pendingTimeFilter = { period, from, to };
+        return {
+          success: true,
+          message: period
+            ? `Time filter set to: last ${period}`
+            : `Time filter set to: ${from ?? "start"} - ${to ?? "now"}`,
+        };
+      },
+    });
+  }
+
+  /**
    * Generate a TSQL query from natural language, streaming the result
    */
   streamQuery(prompt: string, options: AIQueryOptions = {}) {
@@ -104,40 +145,7 @@ export class AIQueryService {
             return this.getSchemaInfo(tableName);
           },
         }),
-        setTimeFilter: tool({
-          description:
-            "Set the time filter for the query page UI instead of adding triggered_at conditions to the query. ALWAYS use this tool when the user wants to filter by time (e.g., 'last 7 days', 'past hour', 'yesterday'). The UI will apply this filter automatically. Do NOT add triggered_at to the WHERE clause - use this tool instead.",
-          parameters: z.object({
-            period: z
-              .string()
-              .optional()
-              .describe(
-                "Relative time period like '1m', '5m', '30m', '1h', '6h', '12h', '1d', '3d', '7d', '14d', '30d', '90d'. Use this for 'last X days/hours/minutes' requests."
-              ),
-            from: z
-              .string()
-              .optional()
-              .describe(
-                "ISO 8601 timestamp for the start of an absolute date range. Use with 'to' for specific date ranges."
-              ),
-            to: z
-              .string()
-              .optional()
-              .describe(
-                "ISO 8601 timestamp for the end of an absolute date range. Use with 'from' for specific date ranges."
-              ),
-          }),
-          execute: async ({ period, from, to }) => {
-            // Store the time filter so we can include it in the result
-            this.pendingTimeFilter = { period, from, to };
-            return {
-              success: true,
-              message: period
-                ? `Time filter set to: last ${period}`
-                : `Time filter set to: ${from ?? "start"} - ${to ?? "now"}`,
-            };
-          },
-        }),
+        setTimeFilter: this.buildSetTimeFilterTool(),
       },
       maxSteps: 5,
       experimental_telemetry: {
@@ -203,40 +211,7 @@ export class AIQueryService {
             return this.getSchemaInfo(tableName);
           },
         }),
-        setTimeFilter: tool({
-          description:
-            "Set the time filter for the query page UI instead of adding triggered_at conditions to the query. ALWAYS use this tool when the user wants to filter by time (e.g., 'last 7 days', 'past hour', 'yesterday'). The UI will apply this filter automatically. Do NOT add triggered_at to the WHERE clause - use this tool instead.",
-          parameters: z.object({
-            period: z
-              .string()
-              .optional()
-              .describe(
-                "Relative time period like '1m', '5m', '30m', '1h', '6h', '12h', '1d', '3d', '7d', '14d', '30d', '90d'. Use this for 'last X days/hours/minutes' requests."
-              ),
-            from: z
-              .string()
-              .optional()
-              .describe(
-                "ISO 8601 timestamp for the start of an absolute date range. Use with 'to' for specific date ranges."
-              ),
-            to: z
-              .string()
-              .optional()
-              .describe(
-                "ISO 8601 timestamp for the end of an absolute date range. Use with 'from' for specific date ranges."
-              ),
-          }),
-          execute: async ({ period, from, to }) => {
-            // Store the time filter so we can include it in the result
-            this.pendingTimeFilter = { period, from, to };
-            return {
-              success: true,
-              message: period
-                ? `Time filter set to: last ${period}`
-                : `Time filter set to: ${from ?? "start"} - ${to ?? "now"}`,
-            };
-          },
-        }),
+        setTimeFilter: this.buildSetTimeFilterTool(),
       },
       maxSteps: 5,
       experimental_telemetry: {
