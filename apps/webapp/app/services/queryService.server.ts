@@ -75,6 +75,15 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
     userId?: string | null;
     /** Skip saving to history (e.g., when impersonating) */
     skip?: boolean;
+    /** Time filter settings to save with the query */
+    timeFilter?: {
+      /** Period like "7d", "24h", etc. */
+      period?: string;
+      /** Custom start date */
+      from?: Date;
+      /** Custom end date */
+      to?: Date;
+    };
   };
   /** Custom per-org concurrency limit (overrides default) */
   customOrgConcurrencyLimit?: number;
@@ -174,11 +183,17 @@ export async function executeQuery<TOut extends z.ZodSchema>(
           userId: history.userId ?? null,
         },
         orderBy: { createdAt: "desc" },
-        select: { query: true, scope: true },
+        select: { query: true, scope: true, filterPeriod: true, filterFrom: true, filterTo: true },
       });
 
+      const timeFilter = history.timeFilter;
       const isDuplicate =
-        lastQuery && lastQuery.query === options.query && lastQuery.scope === scopeToEnum[scope];
+        lastQuery &&
+        lastQuery.query === options.query &&
+        lastQuery.scope === scopeToEnum[scope] &&
+        lastQuery.filterPeriod === (timeFilter?.period ?? null) &&
+        lastQuery.filterFrom?.getTime() === (timeFilter?.from?.getTime() ?? undefined) &&
+        lastQuery.filterTo?.getTime() === (timeFilter?.to?.getTime() ?? undefined);
 
       if (!isDuplicate) {
         const stats = result[1].stats;
@@ -196,6 +211,9 @@ export async function executeQuery<TOut extends z.ZodSchema>(
             projectId: scope === "project" || scope === "environment" ? projectId : null,
             environmentId: scope === "environment" ? environmentId : null,
             userId: history.userId ?? null,
+            filterPeriod: history.timeFilter?.period ?? null,
+            filterFrom: history.timeFilter?.from ?? null,
+            filterTo: history.timeFilter?.to ?? null,
           },
         });
       }

@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { Button } from "~/components/primitives/Buttons";
-import { DateTime } from "~/components/primitives/DateTime";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import type { QueryHistoryItem } from "~/presenters/v3/QueryPresenter.server";
+import { formatDateTimeRange, formatTimePeriod } from "./utils";
+import { timeFilterRenderValues } from "~/components/runs/v3/SharedFilters";
 
 const SQL_KEYWORDS = [
   "SELECT",
@@ -104,28 +105,33 @@ export function QueryHistoryPopover({
       >
         <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <div className="p-1">
-            {history.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  onQuerySelected(item);
-                  setIsOpen(false);
-                }}
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900"
-              >
-                <div className="flex flex-1 flex-col items-start overflow-hidden">
-                  <p className="line-clamp-2 w-full break-words text-left font-mono text-xs text-[#9b99ff]">
-                    {highlightSQL(item.query)}
-                  </p>
-                  <div className="flex items-center gap-2 text-xs text-text-dimmed">
-                    <DateTime date={item.createdAt} showTooltip={false} />
-                    {item.userName && <span>· {item.userName}</span>}
-                    <span className="capitalize">· {item.scope}</span>
+            {history.map((item) => {
+              // Format time filter display
+              const { valueLabel } = timeFilterRenderValues({ period: item.filterPeriod ?? undefined, from: item.filterFrom ?? undefined, to: item.filterTo ?? undefined });
+
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    onQuerySelected(item);
+                    setIsOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900"
+                >
+                  <div className="flex flex-1 flex-col items-start overflow-hidden">
+                    <p className="line-clamp-2 w-full break-words text-left font-mono text-xs text-[#9b99ff]">
+                      {highlightSQL(item.query)}
+                    </p>
+                    <div className="flex items-center gap-1.5 text-xs text-text-dimmed">
+                      <span className="capitalize">{item.scope}</span>
+                      {valueLabel && <span>· {valueLabel}</span>}
+                      {item.userName && <span>· {item.userName}</span>}
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </div>
       </PopoverContent>
