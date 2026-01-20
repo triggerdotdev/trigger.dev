@@ -30,6 +30,10 @@ import {
   TaskRunInternalError,
   TaskRunSuccessfulExecutionResult,
 } from "@trigger.dev/core/v3/schemas";
+import {
+  extractIdempotencyKeyScope,
+  getUserProvidedIdempotencyKey,
+} from "@trigger.dev/core/v3/serverOnly";
 import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import {
   $transaction,
@@ -194,6 +198,7 @@ export class RunAttemptSystem {
         runTags: true,
         isTest: true,
         idempotencyKey: true,
+        idempotencyKeyOptions: true,
         startedAt: true,
         maxAttempts: true,
         taskVersion: true,
@@ -261,7 +266,8 @@ export class RunAttemptSystem {
         isTest: run.isTest,
         createdAt: run.createdAt,
         startedAt: run.startedAt ?? run.createdAt,
-        idempotencyKey: run.idempotencyKey ?? undefined,
+        idempotencyKey: getUserProvidedIdempotencyKey(run) ?? undefined,
+        idempotencyKeyScope: extractIdempotencyKeyScope(run),
         maxAttempts: run.maxAttempts ?? undefined,
         version: run.taskVersion ?? "unknown",
         maxDuration: run.maxDurationInSeconds ?? undefined,
@@ -422,6 +428,7 @@ export class RunAttemptSystem {
                   runTags: true,
                   isTest: true,
                   idempotencyKey: true,
+                  idempotencyKeyOptions: true,
                   startedAt: true,
                   maxAttempts: true,
                   taskVersion: true,
@@ -570,7 +577,8 @@ export class RunAttemptSystem {
               createdAt: updatedRun.createdAt,
               tags: updatedRun.runTags,
               isTest: updatedRun.isTest,
-              idempotencyKey: updatedRun.idempotencyKey ?? undefined,
+              idempotencyKey: getUserProvidedIdempotencyKey(updatedRun) ?? undefined,
+              idempotencyKeyScope: extractIdempotencyKeyScope(updatedRun),
               startedAt: updatedRun.startedAt ?? updatedRun.createdAt,
               maxAttempts: updatedRun.maxAttempts ?? undefined,
               version: updatedRun.taskVersion ?? "unknown",
@@ -1914,6 +1922,7 @@ export class RunAttemptSystem {
       stackTrace: truncateString(error.stackTrace, 1024 * 16), // 16kb
     };
   }
+
 }
 
 export function safeParseGitMeta(git: unknown): GitMeta | undefined {

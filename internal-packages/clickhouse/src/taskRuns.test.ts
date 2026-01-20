@@ -64,6 +64,8 @@ describe("Task Runs V2", () => {
       "span_1234", // span_id
       "trace_1234", // trace_id
       "idempotency_key_1234", // idempotency_key
+      "my-user-key", // idempotency_key_user
+      "run", // idempotency_key_scope
       "1h", // expiration_ttl
       true, // is_test
       "1", // _version
@@ -189,6 +191,8 @@ describe("Task Runs V2", () => {
       "538677637f937f54", // span_id
       "20a28486b0b9f50c647b35e8863e36a5", // trace_id
       "", // idempotency_key
+      "", // idempotency_key_user
+      "", // idempotency_key_scope
       "", // expiration_ttl
       true, // is_test
       "1", // _version
@@ -237,6 +241,8 @@ describe("Task Runs V2", () => {
       "538677637f937f54", // span_id
       "20a28486b0b9f50c647b35e8863e36a5", // trace_id
       "", // idempotency_key
+      "", // idempotency_key_user
+      "", // idempotency_key_scope
       "", // expiration_ttl
       true, // is_test
       "2", // _version
@@ -332,6 +338,8 @@ describe("Task Runs V2", () => {
         "538677637f937f54", // span_id
         "20a28486b0b9f50c647b35e8863e36a5", // trace_id
         "", // idempotency_key
+        "", // idempotency_key_user
+        "", // idempotency_key_scope
         "", // expiration_ttl
         true, // is_test
         "1", // _version

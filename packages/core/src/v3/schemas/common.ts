@@ -214,7 +214,10 @@ export const TaskRun = z.object({
   isTest: z.boolean().default(false),
   createdAt: z.coerce.date(),
   startedAt: z.coerce.date().default(() => new Date()),
+  /** The user-provided idempotency key (not the hash) */
   idempotencyKey: z.string().optional(),
+  /** The scope of the idempotency key */
+  idempotencyKeyScope: z.enum(["run", "attempt", "global"]).optional(),
   maxAttempts: z.number().optional(),
   version: z.string().optional(),
   metadata: z.record(DeserializedJsonSchema).optional(),
@@ -374,7 +377,10 @@ export const V3TaskRun = z.object({
   isTest: z.boolean().default(false),
   createdAt: z.coerce.date(),
   startedAt: z.coerce.date().default(() => new Date()),
+  /** The user-provided idempotency key (not the hash) */
   idempotencyKey: z.string().optional(),
+  /** The scope of the idempotency key */
+  idempotencyKeyScope: z.enum(["run", "attempt", "global"]).optional(),
   maxAttempts: z.number().optional(),
   version: z.string().optional(),
   metadata: z.record(DeserializedJsonSchema).optional(),
