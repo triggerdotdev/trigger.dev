@@ -475,6 +475,7 @@ const QueryEditorForm = forwardRef<
             <TimeFilter
               defaultPeriod={DEFAULT_PERIOD}
               labelName="Triggered"
+              hideLabel
               period={period}
               from={from}
               to={to}

@@ -1,36 +1,34 @@
 import * as Ariakit from "@ariakit/react";
 import type { RuntimeEnvironment } from "@trigger.dev/database";
 import {
-  startOfDay,
   endOfDay,
-  startOfWeek,
-  endOfWeek,
-  startOfMonth,
   endOfMonth,
-  startOfYear,
-  subDays,
-  subWeeks,
-  subMonths,
-  previousSaturday,
+  endOfWeek,
   isSaturday,
   isSunday,
+  previousSaturday,
+  startOfDay,
+  startOfMonth,
+  startOfWeek,
+  startOfYear,
+  subDays,
+  subMonths,
+  subWeeks,
 } from "date-fns";
 import parse from "parse-duration";
-import { startTransition, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { startTransition, useCallback, useEffect, useState, type ReactNode } from "react";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
-import { DateTimePicker } from "~/components/primitives/DateTimePicker";
 import { DateTime } from "~/components/primitives/DateTime";
+import { DateTimePicker } from "~/components/primitives/DateTimePicker";
 import { Label } from "~/components/primitives/Label";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import { ComboboxProvider, SelectPopover, SelectProvider } from "~/components/primitives/Select";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { type ShortcutDefinition } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { Button } from "../../primitives/Buttons";
 import { filterIcon } from "./RunFilters";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import { ShortcutDefinition } from "~/hooks/useShortcutKeys";
-import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
-import { useLocation } from "@remix-run/react";
 
 export type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {
   userName?: string;
@@ -290,6 +288,7 @@ export interface TimeFilterProps {
   to?: string;
   /** Label name used in the filter display, defaults to "Created" */
   labelName?: string;
+  hideLabel?: boolean;
   applyShortcut?: ShortcutDefinition | undefined;
   /** Callback when the user applies a time filter selection, receives the applied values */
   onValueChange?: (values: TimeFilterApplyValues) => void;
@@ -301,6 +300,7 @@ export function TimeFilter({
   from,
   to,
   labelName = "Created",
+  hideLabel = false,
   applyShortcut,
   onValueChange,
 }: TimeFilterProps = {}) {
@@ -324,7 +324,7 @@ export function TimeFilter({
           trigger={
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
-                label={constrained.label}
+                label={hideLabel ? undefined : constrained.label}
                 icon={filterIcon("period")}
                 value={constrained.valueLabel}
                 removable={false}
