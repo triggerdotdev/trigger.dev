@@ -36,17 +36,21 @@ export function formatChartDateLong(date: Date): string {
 }
 
 /**
- * Convert a Date to ISO date string (YYYY-MM-DD)
+ * Convert a Date to ISO date string (YYYY-MM-DD) using local date components
  */
 export function toISODateString(date: Date): string {
-  return date.toISOString().split("T")[0];
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 /**
- * Parse an ISO date string to a Date object
+ * Parse an ISO date string (YYYY-MM-DD) to a local Date object
  */
 export function parseISODateString(isoString: string): Date {
-  return new Date(isoString + "T00:00:00");
+  const [year, month, day] = isoString.split("-").map(Number);
+  return new Date(year, month - 1, day);
 }
 
 /**
