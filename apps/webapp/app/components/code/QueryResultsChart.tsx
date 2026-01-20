@@ -838,9 +838,22 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   // (prevents massive bars when there are only a few data points)
   const xAxisPropsForBar = baseXAxisProps;
 
+  const yAxisDomain = useMemo(() => {
+    let min = 0;
+    for (const point of data) {
+      for (const s of series) {
+        const val = point[s];
+        if (typeof val === "number" && isFinite(val)) {
+          min = Math.min(min, val);
+        }
+      }
+    }
+    return [min, "auto"] as [number, string];
+  }, [data, series]);
+
   const yAxisProps = {
     tickFormatter: yAxisFormatter,
-    domain: [0, "auto"] as [number, string],
+    domain: yAxisDomain,
   };
 
   const showLegend = series.length > 0;

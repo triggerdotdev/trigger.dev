@@ -184,7 +184,7 @@ export function ChartBarRenderer({
       )}
 
       {/* Zoom selection area - rendered before bars to appear behind them */}
-      {enableZoom && zoom?.refAreaLeft && zoom?.refAreaRight && (
+      {enableZoom && zoom?.refAreaLeft !== null && zoom?.refAreaRight !== null && (
         <ReferenceArea
           x1={zoom.refAreaLeft}
           x2={zoom.refAreaRight}
