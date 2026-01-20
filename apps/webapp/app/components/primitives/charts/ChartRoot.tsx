@@ -191,16 +191,14 @@ export function useHasNoData(): boolean {
  * Useful for legend displays.
  */
 export function useSeriesTotal(): Record<string, number> {
-  const { data, dataKey } = useChartContext();
+  const { data, dataKeys } = useChartContext();
 
   return useMemo(() => {
     return data.reduce((acc, item) => {
-      Object.entries(item).forEach(([key, value]) => {
-        if (key !== dataKey) {
-          acc[key] = (acc[key] || 0) + (Number(value) || 0);
-        }
-      });
+      for (const seriesKey of dataKeys) {
+        acc[seriesKey] = (acc[seriesKey] || 0) + Number(item[seriesKey] || 0);
+      }
       return acc;
     }, {} as Record<string, number>);
-  }, [data, dataKey]);
+  }, [data, dataKeys]);
 }
