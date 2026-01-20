@@ -1,17 +1,16 @@
 import { apiClientManager } from "./apiClientManager-api.js";
+import { idempotencyKeyCatalog } from "./idempotency-key-catalog-api.js";
+import type {
+  IdempotencyKeyOptions,
+  IdempotencyKeyScope,
+} from "./idempotency-key-catalog/catalog.js";
 import { taskContext } from "./task-context-api.js";
 import { IdempotencyKey } from "./types/idempotencyKeys.js";
 import { digestSHA256 } from "./utils/crypto.js";
 import type { ZodFetchOptions } from "./apiClient/core.js";
 
-export type IdempotencyKeyScope = "run" | "attempt" | "global";
-
-export type IdempotencyKeyOptions = {
-  key: string;
-  scope: IdempotencyKeyScope;
-};
-
-const IDEMPOTENCY_KEY_OPTIONS_SYMBOL = Symbol.for("__idempotencyKeyOptions");
+// Re-export types from catalog for backwards compatibility
+export type { IdempotencyKeyScope, IdempotencyKeyOptions } from "./idempotency-key-catalog/catalog.js";
 
 /**
  * Extracts the user-provided key and scope from an idempotency key created with `idempotencyKeys.create()`.
@@ -29,32 +28,19 @@ const IDEMPOTENCY_KEY_OPTIONS_SYMBOL = Symbol.for("__idempotencyKeyOptions");
 export function getIdempotencyKeyOptions(
   idempotencyKey: IdempotencyKey | string
 ): IdempotencyKeyOptions | undefined {
-  return (idempotencyKey as any)[IDEMPOTENCY_KEY_OPTIONS_SYMBOL];
-}
-
-/**
- * Attaches idempotency key options to a String object for later extraction.
- * @internal
- */
-function attachIdempotencyKeyOptions(
-  idempotencyKey: string,
-  options: IdempotencyKeyOptions
-): IdempotencyKey {
-  const result = new String(idempotencyKey) as IdempotencyKey;
-  (result as any)[IDEMPOTENCY_KEY_OPTIONS_SYMBOL] = options;
-  return result;
+  // Look up options from the catalog using the hash string
+  if (typeof idempotencyKey === "string") {
+    return idempotencyKeyCatalog.getKeyOptions(idempotencyKey);
+  }
+  return undefined;
 }
 
 export function isIdempotencyKey(
   value: string | string[] | IdempotencyKey
 ): value is IdempotencyKey {
   // Cannot check the brand at runtime because it doesn't exist (it's a TypeScript-only construct)
-  // Check for both primitive strings and String objects (created via new String())
-  // String objects have typeof "object" so we also check instanceof String
+  // Check for primitive strings only (we no longer use String objects)
   if (typeof value === "string") {
-    return value.length === 64;
-  }
-  if (value instanceof String) {
     return value.length === 64;
   }
   return false;
@@ -148,8 +134,11 @@ export async function createIdempotencyKey(
 
   const idempotencyKey = await generateIdempotencyKey(keyArray.concat(injectScope(scope)));
 
-  // Attach the original key and scope as metadata for later extraction
-  return attachIdempotencyKeyOptions(idempotencyKey, { key: userKey, scope });
+  // Register the original key and scope in the catalog for later extraction
+  idempotencyKeyCatalog.registerKeyOptions(idempotencyKey, { key: userKey, scope });
+
+  // Return primitive string cast as IdempotencyKey
+  return idempotencyKey as IdempotencyKey;
 }
 
 function injectScope(scope: IdempotencyKeyScope): string[] {
@@ -238,8 +227,8 @@ export async function resetIdempotencyKey(
 
   // Try to extract options from an IdempotencyKey created with idempotencyKeys.create()
   const attachedOptions =
-    typeof idempotencyKey === "string" || idempotencyKey instanceof String
-      ? getIdempotencyKeyOptions(idempotencyKey as IdempotencyKey)
+    typeof idempotencyKey === "string"
+      ? getIdempotencyKeyOptions(idempotencyKey)
       : undefined;
 
   const scope = attachedOptions?.scope ?? options?.scope ?? "run";
