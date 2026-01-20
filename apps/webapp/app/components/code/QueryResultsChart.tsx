@@ -28,6 +28,8 @@ interface QueryResultsChartProps {
   columns: OutputColumnMetadata[];
   config: ChartConfiguration;
   fullLegend?: boolean;
+  /** Callback when "View all" legend button is clicked */
+  onViewAllLegendItems?: () => void;
 }
 
 interface TransformedData {
@@ -699,6 +701,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   columns,
   config,
   fullLegend = false,
+  onViewAllLegendItems,
 }: QueryResultsChartProps) {
   const {
     xAxisColumn,
@@ -853,6 +856,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         showLegend={showLegend}
         maxLegendItems={fullLegend ? Infinity : 5}
         minHeight="300px"
+        onViewAllLegendItems={onViewAllLegendItems}
       >
         <Chart.Bar
           xAxisProps={xAxisPropsForBar}
@@ -875,6 +879,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
       showLegend={showLegend}
       maxLegendItems={fullLegend ? Infinity : 5}
       minHeight="300px"
+      onViewAllLegendItems={onViewAllLegendItems}
     >
       <Chart.Line
         xAxisProps={xAxisPropsForLine}

@@ -29,6 +29,8 @@ export type ChartRootProps = {
   maxLegendItems?: number;
   /** Label for the total row in the legend */
   legendTotalLabel?: string;
+  /** Callback when "View all" legend button is clicked */
+  onViewAllLegendItems?: () => void;
   children: React.ComponentProps<typeof RechartsPrimitive.ResponsiveContainer>["children"];
 };
 
@@ -67,6 +69,7 @@ export function ChartRoot({
   showLegend = false,
   maxLegendItems = 5,
   legendTotalLabel,
+  onViewAllLegendItems,
   children,
 }: ChartRootProps) {
   return (
@@ -87,6 +90,7 @@ export function ChartRoot({
         showLegend={showLegend}
         maxLegendItems={maxLegendItems}
         legendTotalLabel={legendTotalLabel}
+        onViewAllLegendItems={onViewAllLegendItems}
       >
         {children}
       </ChartRootInner>
@@ -100,6 +104,7 @@ type ChartRootInnerProps = {
   showLegend?: boolean;
   maxLegendItems?: number;
   legendTotalLabel?: string;
+  onViewAllLegendItems?: () => void;
   children: React.ComponentProps<typeof RechartsPrimitive.ResponsiveContainer>["children"];
 };
 
@@ -109,6 +114,7 @@ function ChartRootInner({
   showLegend = false,
   maxLegendItems = 5,
   legendTotalLabel,
+  onViewAllLegendItems,
   children,
 }: ChartRootInnerProps) {
   const { config, zoom } = useChartContext();
@@ -134,7 +140,11 @@ function ChartRootInner({
       </div>
       {/* Legend rendered outside the chart container */}
       {showLegend && (
-        <ChartLegendCompound maxItems={maxLegendItems} totalLabel={legendTotalLabel} />
+        <ChartLegendCompound
+          maxItems={maxLegendItems}
+          totalLabel={legendTotalLabel}
+          onViewAllLegendItems={onViewAllLegendItems}
+        />
       )}
     </div>
   );

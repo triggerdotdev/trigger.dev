@@ -872,7 +872,7 @@ function ResultsChart({
               </Card.Accessory>
             </Card.Header>
             <Card.Content>
-              <QueryResultsChart rows={rows} columns={columns} config={chartConfig} />
+              <QueryResultsChart rows={rows} columns={columns} config={chartConfig} onViewAllLegendItems={() => setIsOpen(true)} />
             </Card.Content>
           </Card>
 

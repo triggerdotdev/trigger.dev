@@ -15,6 +15,8 @@ export type ChartLegendCompoundProps = {
   className?: string;
   /** Label for the total row */
   totalLabel?: string;
+  /** Callback when "View all" button is clicked */
+  onViewAllLegendItems?: () => void;
 };
 
 /**
@@ -34,6 +36,7 @@ export function ChartLegendCompound({
   hidden = false,
   className,
   totalLabel = "Total",
+  onViewAllLegendItems,
 }: ChartLegendCompoundProps) {
   const { config, dataKey, dataKeys, highlight, labelFormatter } = useChartContext();
   const totals = useSeriesTotal();
@@ -194,7 +197,7 @@ export function ChartLegendCompound({
             remainingCount={legendItems.remaining - 1}
           />
         ) : (
-          <ViewAllDataRow remainingCount={legendItems.remaining} />
+          <ViewAllDataRow remainingCount={legendItems.remaining} onViewAll={onViewAllLegendItems} />
         ))}
     </div>
   );
@@ -202,11 +205,18 @@ export function ChartLegendCompound({
 
 type ViewAllDataRowProps = {
   remainingCount: number;
+  onViewAll?: () => void;
 };
 
-function ViewAllDataRow({ remainingCount }: ViewAllDataRowProps) {
+function ViewAllDataRow({ remainingCount, onViewAll }: ViewAllDataRowProps) {
   return (
-    <Button variant="minimal/small" fullWidth iconSpacing="justify-between" className="px-2 py-1">
+    <Button
+      variant="minimal/small"
+      fullWidth
+      iconSpacing="justify-between"
+      className="px-2 py-1"
+      onClick={onViewAll}
+    >
       <div className="flex items-center gap-1.5 text-text-dimmed">
         <div className="h-3 w-1 rounded-[2px] border border-charcoal-600" />
         <Paragraph variant="extra-small" className="tabular-nums">
