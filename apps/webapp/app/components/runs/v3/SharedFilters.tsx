@@ -246,12 +246,17 @@ export function timeFilterRenderValues({
       break;
     }
     case "range":
-      valueLabel = (
-        <span>
-          <DateTime date={from!} includeTime includeSeconds /> –{" "}
-          <DateTime date={to!} includeTime includeSeconds />
-        </span>
-      );
+      {
+        //If the day is the same, only show the time for the `to` date
+        const isSameDay = from && to && from.getDate() === to.getDate();
+
+        valueLabel = (
+          <span>
+            <DateTime date={from!} includeTime includeSeconds /> –{" "}
+            <DateTime date={to!} includeTime includeSeconds includeDate={!isSameDay} />
+          </span>
+        );
+      }
       break;
     case "from":
       valueLabel = <DateTime date={from!} includeTime includeSeconds />;
@@ -859,10 +864,9 @@ export function appliedSummary(values: string[], maxValues = 3) {
 export function dateFromString(value: string | undefined | null): Date | undefined {
   if (!value) return;
 
-  //is it an int?
-  const int = parseInt(value);
-  if (!isNaN(int)) {
-    return new Date(int);
+  // Only treat as timestamp if the string is purely numeric
+  if (/^\d+$/.test(value)) {
+    return new Date(parseInt(value));
   }
 
   return new Date(value);
