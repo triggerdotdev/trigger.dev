@@ -273,6 +273,14 @@ export function SideMenu({
               data-action="queues"
               isCollapsed={isCollapsed}
             />
+              <SideMenuItem
+                name="Waitpoint tokens"
+                icon={WaitpointTokenIcon}
+                activeIconColor="text-sky-500"
+                to={v3WaitpointTokensPath(organization, project, environment)}
+                badge={<V4Badge />}
+                isCollapsed={isCollapsed}
+              />
             <SideMenuItem
               name="Deployments"
               icon={ServerStackIcon}
@@ -312,17 +320,6 @@ export function SideMenu({
               />
             )}
           </div>
-
-          <SideMenuSection title="Waitpoints" isSideMenuCollapsed={isCollapsed}>
-            <SideMenuItem
-              name="Tokens"
-              icon={WaitpointTokenIcon}
-              activeIconColor="text-sky-500"
-              to={v3WaitpointTokensPath(organization, project, environment)}
-              badge={<V4Badge />}
-              isCollapsed={isCollapsed}
-            />
-          </SideMenuSection>
 
           <SideMenuSection title="Manage" isSideMenuCollapsed={isCollapsed}>
             <SideMenuItem
