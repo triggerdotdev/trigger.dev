@@ -802,7 +802,7 @@ function HeaderCellContent({
             "justify-end": alignment === "right",
           })}
         >
-          <span className="truncate">{children}</span>
+          <span className="truncate text-left">{children}</span>
           <InfoIconTooltip
             content={tooltip}
             contentClassName="normal-case tracking-normal"
@@ -810,7 +810,7 @@ function HeaderCellContent({
           />
         </div>
       ) : (
-        <span className="min-w-0 flex-1 truncate">{children}</span>
+        <span className="min-w-0 flex-1 truncate text-left">{children}</span>
       )}
       {/* Sort indicator */}
       {canSort && (
