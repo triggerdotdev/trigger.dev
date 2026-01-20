@@ -51,7 +51,7 @@ export function AppliedFilter({
       <div className={cn("flex items-start leading-4", label === undefined ? "gap-1.5" : "gap-0.5")}>
         <div className="-mt-[0.5px] flex items-center gap-1">
           {icon}
-          {label !== undefined && <div className="text-text-bright">
+          {label && <div className="text-text-bright">
             <span>{label}</span>:
           </div>}
         </div>
