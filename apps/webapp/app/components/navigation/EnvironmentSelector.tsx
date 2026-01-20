@@ -9,7 +9,7 @@ import { useOrganization, type MatchedOrganization } from "~/hooks/useOrganizati
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { branchesPath, docsPath, v3BillingPath } from "~/utils/pathBuilder";
-import { EnvironmentCombo } from "../environments/EnvironmentLabel";
+import { EnvironmentCombo, EnvironmentIcon, environmentFullTitle } from "../environments/EnvironmentLabel";
 import { ButtonContent } from "../primitives/Buttons";
 import { Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
@@ -22,6 +22,7 @@ import {
   PopoverTrigger,
 } from "../primitives/Popover";
 import { TextLink } from "../primitives/TextLink";
+import { SimpleTooltip } from "../primitives/Tooltip";
 import { V4Badge } from "../V4Badge";
 import { type SideMenuEnvironment, type SideMenuProject } from "./SideMenu";
 import { Badge } from "../primitives/Badge";
@@ -31,11 +32,13 @@ export function EnvironmentSelector({
   project,
   environment,
   className,
+  isCollapsed = false,
 }: {
   organization: MatchedOrganization;
   project: SideMenuProject;
   environment: SideMenuEnvironment;
   className?: string;
+  isCollapsed?: boolean;
 }) {
   const { isManagedCloud } = useFeatures();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -47,6 +50,20 @@ export function EnvironmentSelector({
   }, [navigation.location?.pathname]);
 
   const hasStaging = project.environments.some((env) => env.type === "STAGING");
+
+  if (isCollapsed) {
+    return (
+      <SimpleTooltip
+        button={
+          <div className="flex h-8 w-full items-center justify-center rounded transition-colors hover:bg-charcoal-750">
+            <EnvironmentIcon environment={environment} className="size-5" />
+          </div>
+        }
+        content={environmentFullTitle(environment)}
+        side="right"
+      />
+    );
+  }
 
   return (
     <Popover onOpenChange={(open) => setIsMenuOpen(open)} open={isMenuOpen}>

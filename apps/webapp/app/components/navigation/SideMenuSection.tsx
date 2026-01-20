@@ -7,6 +7,8 @@ type Props = {
   initialCollapsed?: boolean;
   onCollapseToggle?: (isCollapsed: boolean) => void;
   children: React.ReactNode;
+  /** When true, hides the section header and shows only children */
+  isSideMenuCollapsed?: boolean;
 };
 
 /** A collapsible section for the side menu
@@ -17,6 +19,7 @@ export function SideMenuSection({
   initialCollapsed = false,
   onCollapseToggle,
   children,
+  isSideMenuCollapsed = false,
 }: Props) {
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed);
 
@@ -25,6 +28,11 @@ export function SideMenuSection({
     setIsCollapsed(newIsCollapsed);
     onCollapseToggle?.(newIsCollapsed);
   }, [isCollapsed, onCollapseToggle]);
+
+  // When the side menu is collapsed, just render the children without the header
+  if (isSideMenuCollapsed) {
+    return <div>{children}</div>;
+  }
 
   return (
     <div>

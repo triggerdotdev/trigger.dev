@@ -5,8 +5,8 @@ import {
   BeakerIcon,
   BellAlertIcon,
   ChartBarIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
-  CircleStackIcon,
   ClockIcon,
   Cog8ToothIcon,
   CogIcon,
@@ -15,14 +15,13 @@ import {
   GlobeAmericasIcon,
   IdentificationIcon,
   KeyIcon,
-  MagnifyingGlassCircleIcon,
   PencilSquareIcon,
   PlusIcon,
   RectangleStackIcon,
   ServerStackIcon,
   Squares2X2Icon,
   TableCellsIcon,
-  UsersIcon,
+  UsersIcon
 } from "@heroicons/react/20/solid";
 import { Link, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -78,6 +77,7 @@ import {
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
+import { AlphaBadge } from "../AlphaBadge";
 import { AskAI } from "../AskAI";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
@@ -102,7 +102,6 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { AlphaBadge } from "../AlphaBadge";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -130,6 +129,7 @@ export function SideMenu({
 }: SideMenuProps) {
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const currentPlan = useCurrentPlan();
   const { isConnected } = useDevPresence();
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
@@ -154,9 +154,11 @@ export function SideMenu({
   return (
     <div
       className={cn(
-        "grid h-full grid-rows-[2.5rem_1fr_auto] overflow-hidden border-r border-grid-bright bg-background-bright transition"
+        "relative grid h-full grid-rows-[2.5rem_1fr_auto] border-r border-grid-bright bg-background-bright transition-all duration-200",
+        isCollapsed ? "w-14" : "w-56"
       )}
     >
+      <CollapseToggle isCollapsed={isCollapsed} onToggle={() => setIsCollapsed(!isCollapsed)} />
       <div
         className={cn(
           "flex items-center overflow-hidden border-b px-1 py-1 transition duration-300",
@@ -169,9 +171,10 @@ export function SideMenu({
             organization={organization}
             project={project}
             user={user}
+            isCollapsed={isCollapsed}
           />
         </div>
-        {isAdmin && !user.isImpersonating ? (
+        {!isCollapsed && isAdmin && !user.isImpersonating ? (
           <TooltipProvider disableHoverableContent={true}>
             <Tooltip>
               <TooltipTrigger>
@@ -182,7 +185,7 @@ export function SideMenu({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        ) : isAdmin && user.isImpersonating ? (
+        ) : !isCollapsed && isAdmin && user.isImpersonating ? (
           <ImpersonationBanner />
         ) : null}
       </div>
@@ -190,16 +193,17 @@ export function SideMenu({
         className="overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         ref={borderRef}
       >
-        <div className="mb-6 flex flex-col gap-4 px-1">
+        <div className={cn("mb-6 flex flex-col gap-4", isCollapsed ? "px-0.5" : "px-1")}>
           <div className="space-y-1">
-            <SideMenuHeader title={"Environment"} />
+            {!isCollapsed && <SideMenuHeader title={"Environment"} />}
             <div className="flex items-center">
               <EnvironmentSelector
                 organization={organization}
                 project={project}
                 environment={environment}
+                isCollapsed={isCollapsed}
               />
-              {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
+              {!isCollapsed && environment.type === "DEVELOPMENT" && project.engine === "V2" && (
                 <Dialog>
                   <TooltipProvider disableHoverableContent={true}>
                     <Tooltip>
@@ -236,12 +240,14 @@ export function SideMenu({
               activeIconColor="text-tasks"
               to={v3EnvironmentPath(organization, project, environment)}
               data-action="tasks"
+              isCollapsed={isCollapsed}
             />
             <SideMenuItem
               name="Runs"
               icon={RunsIconExtraSmall}
               activeIconColor="text-runs"
               to={v3RunsPath(organization, project, environment)}
+              isCollapsed={isCollapsed}
             />
             <SideMenuItem
               name="Batches"
@@ -249,6 +255,7 @@ export function SideMenu({
               activeIconColor="text-batches"
               to={v3BatchesPath(organization, project, environment)}
               data-action="batches"
+              isCollapsed={isCollapsed}
             />
             <SideMenuItem
               name="Schedules"
@@ -256,6 +263,7 @@ export function SideMenu({
               activeIconColor="text-schedules"
               to={v3SchedulesPath(organization, project, environment)}
               data-action="schedules"
+              isCollapsed={isCollapsed}
             />
             <SideMenuItem
               name="Queues"
@@ -263,6 +271,7 @@ export function SideMenu({
               activeIconColor="text-queues"
               to={v3QueuesPath(organization, project, environment)}
               data-action="queues"
+              isCollapsed={isCollapsed}
             />
             <SideMenuItem
               name="Deployments"
@@ -270,6 +279,7 @@ export function SideMenu({
               activeIconColor="text-deployments"
               to={v3DeploymentsPath(organization, project, environment)}
               data-action="deployments"
+              isCollapsed={isCollapsed}
             />
             {(user.admin || user.isImpersonating || featureFlags.hasLogsPageAccess) && (
               <SideMenuItem
@@ -279,6 +289,7 @@ export function SideMenu({
                 to={v3LogsPath(organization, project, environment)}
                 data-action="logs"
                 badge={<AlphaBadge />}
+                isCollapsed={isCollapsed}
               />
             )}
             <SideMenuItem
@@ -287,6 +298,7 @@ export function SideMenu({
               activeIconColor="text-tests"
               to={v3TestPath(organization, project, environment)}
               data-action="test"
+              isCollapsed={isCollapsed}
             />
             {(user.admin || user.isImpersonating || featureFlags.hasQueryAccess) && (
               <SideMenuItem
@@ -296,27 +308,30 @@ export function SideMenu({
                 to={queryPath(organization, project, environment)}
                 data-action="query"
                 badge={<AlphaBadge />}
+                isCollapsed={isCollapsed}
               />
             )}
           </div>
 
-          <SideMenuSection title="Waitpoints">
+          <SideMenuSection title="Waitpoints" isSideMenuCollapsed={isCollapsed}>
             <SideMenuItem
               name="Tokens"
               icon={WaitpointTokenIcon}
               activeIconColor="text-sky-500"
               to={v3WaitpointTokensPath(organization, project, environment)}
               badge={<V4Badge />}
+              isCollapsed={isCollapsed}
             />
           </SideMenuSection>
 
-          <SideMenuSection title="Manage">
+          <SideMenuSection title="Manage" isSideMenuCollapsed={isCollapsed}>
             <SideMenuItem
               name="Bulk actions"
               icon={ListCheckedIcon}
               activeIconColor="text-bulkActions"
               to={v3BulkActionsPath(organization, project, environment)}
               data-action="bulk actions"
+              isCollapsed={isCollapsed}
             />
             <SideMenuItem
               name="API keys"
@@ -324,6 +339,7 @@ export function SideMenu({
               activeIconColor="text-apiKeys"
               to={v3ApiKeysPath(organization, project, environment)}
               data-action="api keys"
+              isCollapsed={isCollapsed}
             />
             <SideMenuItem
               name="Environment variables"
@@ -331,6 +347,7 @@ export function SideMenu({
               activeIconColor="text-environmentVariables"
               to={v3EnvironmentVariablesPath(organization, project, environment)}
               data-action="environment variables"
+              isCollapsed={isCollapsed}
             />
             <SideMenuItem
               name="Alerts"
@@ -338,6 +355,7 @@ export function SideMenu({
               activeIconColor="text-alerts"
               to={v3ProjectAlertsPath(organization, project, environment)}
               data-action="alerts"
+              isCollapsed={isCollapsed}
             />
             <SideMenuItem
               name="Preview branches"
@@ -346,6 +364,7 @@ export function SideMenu({
               to={branchesPath(organization, project, environment)}
               data-action="preview-branches"
               badge={<V4Badge />}
+              isCollapsed={isCollapsed}
             />
             {isManagedCloud && (
               <SideMenuItem
@@ -354,6 +373,7 @@ export function SideMenu({
                 activeIconColor="text-concurrency"
                 to={concurrencyPath(organization, project, environment)}
                 data-action="concurrency"
+                isCollapsed={isCollapsed}
               />
             )}
             <SideMenuItem
@@ -363,6 +383,7 @@ export function SideMenu({
               to={regionsPath(organization, project, environment)}
               data-action="regions"
               badge={<V4Badge />}
+              isCollapsed={isCollapsed}
             />
             <SideMenuItem
               name="Limits"
@@ -370,6 +391,7 @@ export function SideMenu({
               activeIconColor="text-limits"
               to={limitsPath(organization, project, environment)}
               data-action="limits"
+              isCollapsed={isCollapsed}
             />
             <SideMenuItem
               name="Project settings"
@@ -377,17 +399,18 @@ export function SideMenu({
               activeIconColor="text-projectSettings"
               to={v3ProjectSettingsPath(organization, project, environment)}
               data-action="project-settings"
+              isCollapsed={isCollapsed}
             />
           </SideMenuSection>
         </div>
       </div>
       <div>
-        <IncidentStatusPanel />
-        <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
+        {!isCollapsed && <IncidentStatusPanel />}
+        <div className={cn("flex flex-col gap-1 border-t border-grid-bright p-1", isCollapsed && "items-center")}>
           <div className="flex w-full items-center justify-between">
-            <HelpAndAI />
+            <HelpAndAI isCollapsed={isCollapsed} />
           </div>
-          {isFreeUser && (
+          {!isCollapsed && isFreeUser && (
             <FreePlanUsage
               to={v3BillingPath(organization)}
               percentage={currentPlan.v3Usage.usagePercentage}
@@ -404,11 +427,13 @@ function ProjectSelector({
   organization,
   organizations,
   user,
+  isCollapsed = false,
 }: {
   project: SideMenuProject;
   organization: MatchedOrganization;
   organizations: MatchedOrganization[];
   user: SideMenuUser;
+  isCollapsed?: boolean;
 }) {
   const currentPlan = useCurrentPlan();
   const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
@@ -425,6 +450,135 @@ function ProjectSelector({
   useEffect(() => {
     setOrgMenuOpen(false);
   }, [navigation.location?.pathname]);
+
+  if (isCollapsed) {
+    return (
+      <Popover onOpenChange={(open) => setOrgMenuOpen(open)} open={isOrgMenuOpen}>
+        <TooltipProvider disableHoverableContent>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger className="flex h-8 w-full items-center justify-center rounded transition-colors hover:bg-charcoal-750">
+                <Avatar avatar={organization.avatar} size={1.25} orgName={organization.title} />
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="text-xs">
+              {organization.title} / {project.name}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <PopoverContent
+          className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          align="start"
+          style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
+        >
+          <div className="flex flex-col gap-2 bg-charcoal-750 p-2">
+            <div className="flex items-center gap-2.5">
+              <Link
+                to={organizationSettingsPath(organization)}
+                className="group relative box-content size-10 overflow-clip rounded-sm bg-charcoal-800"
+              >
+                <Avatar avatar={organization.avatar} size={2.5} orgName={organization.title} />
+                <div className="absolute inset-0 z-10 grid h-full w-full place-items-center bg-black/50 opacity-0 transition group-hover:opacity-100">
+                  <PencilSquareIcon className="size-5 text-text-bright" />
+                </div>
+              </Link>
+              <div className="space-y-0.5">
+                <Paragraph variant="small/bright">{organization.title}</Paragraph>
+                <div className="flex items-baseline gap-2">
+                  {plan && (
+                    <TextLink
+                      variant="secondary"
+                      className="text-xs"
+                      to={v3BillingPath(organization)}
+                    >
+                      {plan} plan
+                    </TextLink>
+                  )}
+                  <TextLink
+                    variant="secondary"
+                    className="text-xs"
+                    to={organizationTeamPath(organization)}
+                  >{simplur`${organization.membersCount} member[|s]`}</TextLink>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <LinkButton
+                variant="secondary/small"
+                to={organizationSettingsPath(organization)}
+                fullWidth
+                iconSpacing="gap-1.5"
+                className="group-hover/button:border-charcoal-500"
+              >
+                <CogIcon className="size-4 text-text-dimmed" />
+                <span className="text-text-bright">Settings</span>
+              </LinkButton>
+              {isManagedCloud && (
+                <LinkButton
+                  variant="secondary/small"
+                  to={v3UsagePath(organization)}
+                  fullWidth
+                  iconSpacing="gap-1.5"
+                  className="group-hover/button:border-charcoal-500"
+                >
+                  <ChartBarIcon className="size-4 text-text-dimmed" />
+                  <span className="text-text-bright">Usage</span>
+                </LinkButton>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-1 p-1">
+            {organization.projects.map((p) => {
+              const isSelected = p.id === project.id;
+              return (
+                <PopoverMenuItem
+                  key={p.id}
+                  to={v3ProjectPath(organization, p)}
+                  title={
+                    <div className="flex w-full items-center justify-between text-text-bright">
+                      <span className="grow truncate text-left">{p.name}</span>
+                    </div>
+                  }
+                  isSelected={isSelected}
+                  icon={isSelected ? FolderOpenIcon : FolderIcon}
+                  leadingIconClassName="text-indigo-500"
+                />
+              );
+            })}
+            <PopoverMenuItem to={newProjectPath(organization)} title="New project" icon={PlusIcon} />
+          </div>
+          <div className="border-t border-charcoal-700 p-1">
+            {organizations.length > 1 ? (
+              <SwitchOrganizations organizations={organizations} organization={organization} />
+            ) : (
+              <PopoverMenuItem
+                to={newOrganizationPath()}
+                title="New organization"
+                icon={PlusIcon}
+                leadingIconClassName="text-text-dimmed"
+              />
+            )}
+          </div>
+          <div className="border-t border-charcoal-700 p-1">
+            <PopoverMenuItem
+              to={accountPath()}
+              title="Account"
+              icon={UserProfilePhoto}
+              leadingIconClassName="text-text-dimmed rounded-full border border-transparent"
+            />
+          </div>
+          <div className="border-t border-charcoal-700 p-1">
+            <PopoverMenuItem
+              to={logoutPath()}
+              title="Logout"
+              icon={ArrowRightOnRectangleIcon}
+              leadingIconClassName="text-text-dimmed"
+            />
+          </div>
+        </PopoverContent>
+      </Popover>
+    );
+  }
 
   return (
     <Popover onOpenChange={(open) => setOrgMenuOpen(open)} open={isOrgMenuOpen}>
@@ -661,12 +815,128 @@ function SelectorDivider() {
   );
 }
 
-function HelpAndAI() {
+function HelpAndAI({ isCollapsed }: { isCollapsed: boolean }) {
   return (
     <>
       <ShortcutsAutoOpen />
-      <HelpAndFeedback />
-      <AskAI />
+      {!isCollapsed && <HelpAndFeedback />}
+      {!isCollapsed && <AskAI />}
     </>
+  );
+}
+
+function AnimatedChevron({
+  isHovering,
+  isCollapsed,
+}: {
+  isHovering: boolean;
+  isCollapsed: boolean;
+}) {
+  // When hovering and expanded: left chevron (pointing left to collapse)
+  // When hovering and collapsed: right chevron (pointing right to expand)
+  // When not hovering: straight vertical line
+  
+  const getRotation = () => {
+    if (!isHovering) return { top: 0, bottom: 0 };
+    if (isCollapsed) {
+      // Right chevron
+      return { top: -17, bottom: 17 };
+    } else {
+      // Left chevron
+      return { top: 17, bottom: -17 };
+    }
+  };
+
+  const { top, bottom } = getRotation();
+  
+  // Calculate horizontal offset to keep chevron centered when rotated
+  // Left chevron: translate left (-1.5px)
+  // Right chevron: translate right (+1.5px)
+  const getTranslateX = () => {
+    if (!isHovering) return 0;
+    return isCollapsed ? 1.5 : -1.5;
+  };
+
+  return (
+    <svg
+      width="5"
+      height="24"
+      viewBox="0 0 5 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="overflow-visible text-charcoal-500 group-hover:text-text-bright transition-colors"
+      style={{
+        transform: `translateX(${getTranslateX()}px)`,
+        transition: "transform 200ms ease-out",
+      }}
+    >
+      {/* Top segment */}
+      <line
+        x1="2.5"
+        y1="1"
+        x2="2.5"
+        y2="12"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        style={{
+          transformOrigin: "2.5px 12px",
+          transform: `rotate(${top}deg)`,
+          transition: "transform 200ms ease-out",
+        }}
+      />
+      {/* Bottom segment */}
+      <line
+        x1="2.5"
+        y1="12"
+        x2="2.5"
+        y2="23"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        style={{
+          transformOrigin: "2.5px 12px",
+          transform: `rotate(${bottom}deg)`,
+          transition: "transform 200ms ease-out",
+        }}
+      />
+    </svg>
+  );
+}
+
+function CollapseToggle({
+  isCollapsed,
+  onToggle,
+}: {
+  isCollapsed: boolean;
+  onToggle: () => void;
+}) {
+  const [isHovering, setIsHovering] = useState(false);
+
+  return (
+    <div className="absolute -right-3 top-1/2 z-10 -translate-y-1/2">
+      <TooltipProvider disableHoverableContent>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onToggle}
+              onMouseEnter={() => setIsHovering(true)}
+              onMouseLeave={() => setIsHovering(false)}
+              className={cn(
+                "group flex h-10 w-6 items-center justify-center rounded-md text-text-dimmed transition-all duration-200",
+                isHovering
+                  ? "border border-grid-bright bg-background-bright shadow-md hover:bg-charcoal-750 hover:text-text-bright"
+                  : "border border-transparent bg-transparent"
+              )}
+            >
+              <AnimatedChevron isHovering={isHovering} isCollapsed={isCollapsed} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="text-xs">
+            {isCollapsed ? "Expand" : "Collapse"}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
   );
 }
