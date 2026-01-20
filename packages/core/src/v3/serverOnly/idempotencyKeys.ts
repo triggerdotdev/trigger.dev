@@ -24,7 +24,7 @@ export function getUserProvidedIdempotencyKey(run: {
  * @param run - Object containing idempotencyKeyOptions (JSON from DB)
  * @returns The scope if valid options exist, otherwise undefined
  */
-export function getIdempotencyKeyScope(run: {
+export function extractIdempotencyKeyScope(run: {
   idempotencyKeyOptions: unknown;
 }): "run" | "attempt" | "global" | undefined {
   const parsed = IdempotencyKeyOptionsSchema.safeParse(run.idempotencyKeyOptions);
@@ -32,6 +32,13 @@ export function getIdempotencyKeyScope(run: {
     return parsed.data.scope;
   }
   return undefined;
+}
+
+export function unsafeExtractIdempotencyKeyScope(run: {
+  idempotencyKeyOptions: unknown;
+}): "run" | "attempt" | "global" | undefined {
+  const unsafe = run.idempotencyKeyOptions as { scope?: "run" | "attempt" | "global" } | undefined | null;
+  return unsafe?.scope ?? undefined;
 }
 
 /**
@@ -50,3 +57,13 @@ export function extractIdempotencyKeyUser(run: {
   }
   return undefined;
 }
+
+export function unsafeExtractIdempotencyKeyUser(run: {
+  idempotencyKeyOptions: unknown;
+}): string | undefined {
+  const unsafe = run.idempotencyKeyOptions as { key?: string } | undefined | null;
+
+  return unsafe?.key ?? undefined;
+}
+
+

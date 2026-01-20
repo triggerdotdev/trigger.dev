@@ -31,7 +31,7 @@ import {
   TaskRunSuccessfulExecutionResult,
 } from "@trigger.dev/core/v3/schemas";
 import {
-  getIdempotencyKeyScope,
+  extractIdempotencyKeyScope,
   getUserProvidedIdempotencyKey,
 } from "@trigger.dev/core/v3/serverOnly";
 import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
@@ -267,7 +267,7 @@ export class RunAttemptSystem {
         createdAt: run.createdAt,
         startedAt: run.startedAt ?? run.createdAt,
         idempotencyKey: getUserProvidedIdempotencyKey(run) ?? undefined,
-        idempotencyKeyScope: getIdempotencyKeyScope(run),
+        idempotencyKeyScope: extractIdempotencyKeyScope(run),
         maxAttempts: run.maxAttempts ?? undefined,
         version: run.taskVersion ?? "unknown",
         maxDuration: run.maxDurationInSeconds ?? undefined,
@@ -578,7 +578,7 @@ export class RunAttemptSystem {
               tags: updatedRun.runTags,
               isTest: updatedRun.isTest,
               idempotencyKey: getUserProvidedIdempotencyKey(updatedRun) ?? undefined,
-              idempotencyKeyScope: getIdempotencyKeyScope(updatedRun),
+              idempotencyKeyScope: extractIdempotencyKeyScope(updatedRun),
               startedAt: updatedRun.startedAt ?? updatedRun.createdAt,
               maxAttempts: updatedRun.maxAttempts ?? undefined,
               version: updatedRun.taskVersion ?? "unknown",

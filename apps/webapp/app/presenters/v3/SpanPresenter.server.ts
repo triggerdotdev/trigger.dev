@@ -9,7 +9,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import {
-  getIdempotencyKeyScope,
+  extractIdempotencyKeyScope,
   getUserProvidedIdempotencyKey,
 } from "@trigger.dev/core/v3/serverOnly";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
@@ -235,7 +235,7 @@ export class SpanPresenter extends BasePresenter {
       environmentId: run.runtimeEnvironment.id,
       idempotencyKey: getUserProvidedIdempotencyKey(run),
       idempotencyKeyExpiresAt: run.idempotencyKeyExpiresAt,
-      idempotencyKeyScope: getIdempotencyKeyScope(run),
+      idempotencyKeyScope: extractIdempotencyKeyScope(run),
       idempotencyKeyStatus: this.getIdempotencyKeyStatus(run),
       debounce: run.debounce as { key: string; delay: string; createdAt: Date } | null,
       schedule: await this.resolveSchedule(run.scheduleId ?? undefined),
@@ -288,7 +288,7 @@ export class SpanPresenter extends BasePresenter {
     idempotencyKeyOptions: unknown;
   }): "active" | "inactive" | "expired" | undefined {
     // No idempotency configured if no scope exists
-    const scope = getIdempotencyKeyScope(run);
+    const scope = extractIdempotencyKeyScope(run);
     if (!scope) {
       return undefined;
     }
