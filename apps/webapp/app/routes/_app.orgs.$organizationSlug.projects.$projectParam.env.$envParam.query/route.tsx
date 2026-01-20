@@ -860,8 +860,8 @@ function ResultsChart({
   return (
     <><ResizablePanelGroup className="h-full overflow-hidden">
       <ResizablePanel id="chart-results">
-        <div className="h-full bg-charcoal-900 p-2 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-          <Card>
+        <div className="h-full bg-charcoal-900 p-2 overflow-hidden">
+          <Card className="h-full">
             <Card.Header>
               <div className="flex items-center gap-1.5">
                 <ArrowTrendingUpIcon className="size-5 text-indigo-500" />
@@ -871,7 +871,7 @@ function ResultsChart({
                 <Button variant="minimal/small" LeadingIcon={ArrowsPointingOutIcon} onClick={() => setIsOpen(true)} />
               </Card.Accessory>
             </Card.Header>
-            <Card.Content>
+            <Card.Content className="h-full flex-1 min-h-0">
               <QueryResultsChart rows={rows} columns={columns} config={chartConfig} onViewAllLegendItems={() => setIsOpen(true)} />
             </Card.Content>
           </Card>
@@ -888,7 +888,7 @@ function ResultsChart({
           <DialogHeader>
             Chart
           </DialogHeader>
-          <div className="overflow-hidden w-full">
+          <div className="h-full min-h-0 flex-1 overflow-hidden w-full pt-4">
             <QueryResultsChart rows={rows} columns={columns} config={chartConfig} fullLegend={true} />
           </div>
         </DialogContent>

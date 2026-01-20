@@ -31,6 +31,8 @@ export type ChartRootProps = {
   legendTotalLabel?: string;
   /** Callback when "View all" legend button is clicked */
   onViewAllLegendItems?: () => void;
+  /** When true, chart fills its parent container height and distributes space between chart and legend */
+  fillContainer?: boolean;
   children: React.ComponentProps<typeof RechartsPrimitive.ResponsiveContainer>["children"];
 };
 
@@ -70,6 +72,7 @@ export function ChartRoot({
   maxLegendItems = 5,
   legendTotalLabel,
   onViewAllLegendItems,
+  fillContainer = false,
   children,
 }: ChartRootProps) {
   return (
@@ -91,6 +94,7 @@ export function ChartRoot({
         maxLegendItems={maxLegendItems}
         legendTotalLabel={legendTotalLabel}
         onViewAllLegendItems={onViewAllLegendItems}
+        fillContainer={fillContainer}
       >
         {children}
       </ChartRootInner>
@@ -105,6 +109,7 @@ type ChartRootInnerProps = {
   maxLegendItems?: number;
   legendTotalLabel?: string;
   onViewAllLegendItems?: () => void;
+  fillContainer?: boolean;
   children: React.ComponentProps<typeof RechartsPrimitive.ResponsiveContainer>["children"];
 };
 
@@ -115,25 +120,36 @@ function ChartRootInner({
   maxLegendItems = 5,
   legendTotalLabel,
   onViewAllLegendItems,
+  fillContainer = false,
   children,
 }: ChartRootInnerProps) {
   const { config, zoom } = useChartContext();
   const enableZoom = zoom !== null;
 
   return (
-    <div className={cn("relative flex w-full flex-col", className)}>
+    <div
+      className={cn(
+        "relative flex w-full flex-col",
+        fillContainer && "h-full",
+        className
+      )}
+    >
       <div
-        className={cn("h-full w-full", enableZoom && "mt-8 cursor-crosshair")}
+        className={cn(
+          fillContainer ? "min-h-0 flex-1" : "h-full w-full",
+          enableZoom && "mt-8 cursor-crosshair"
+        )}
         style={{ touchAction: "none", userSelect: "none" }}
       >
         <ChartContainer
           config={config}
           className={cn(
             "h-full w-full",
+            fillContainer && "!aspect-auto",
             enableZoom &&
               "[&_.recharts-surface]:cursor-crosshair [&_.recharts-wrapper]:cursor-crosshair"
           )}
-          style={minHeight ? { minHeight } : undefined}
+          style={fillContainer ? undefined : minHeight ? { minHeight } : undefined}
         >
           {children}
         </ChartContainer>

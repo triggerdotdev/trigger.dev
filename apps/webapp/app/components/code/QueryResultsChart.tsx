@@ -856,6 +856,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         showLegend={showLegend}
         maxLegendItems={fullLegend ? Infinity : 5}
         minHeight="300px"
+        fillContainer
         onViewAllLegendItems={onViewAllLegendItems}
       >
         <Chart.Bar
@@ -879,6 +880,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
       showLegend={showLegend}
       maxLegendItems={fullLegend ? Infinity : 5}
       minHeight="300px"
+      fillContainer
       onViewAllLegendItems={onViewAllLegendItems}
     >
       <Chart.Line
