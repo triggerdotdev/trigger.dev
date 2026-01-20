@@ -6,7 +6,8 @@ export class LRUIdempotencyKeyCatalog implements IdempotencyKeyCatalog {
 
   constructor(maxSize: number = 1_000) {
     this.cache = new Map();
-    this.maxSize = maxSize;
+    // Clamp to non-negative to prevent infinite loop in eviction
+    this.maxSize = Math.max(0, maxSize);
   }
 
   registerKeyOptions(hash: string, options: IdempotencyKeyOptions): void {

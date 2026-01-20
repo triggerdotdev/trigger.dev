@@ -58,9 +58,16 @@ describe("LRUIdempotencyKeyCatalog", () => {
       expect(catalog.getKeyOptions("hash2")).toBeDefined();
       expect(catalog.getKeyOptions("hash3")).toBeDefined();
 
-      // Add a fourth - hash1 should be evicted (it was least recently used after the gets above moved others)
-      // Note: After the gets above, the order is hash1, hash2, hash3 (hash1 was accessed first in the gets)
-      // Actually let's reset and test more carefully
+      // After the gets above, the LRU order from oldest to newest is: hash1, hash2, hash3
+      // (each get moves the key to the most recent position)
+
+      // Add a fourth - hash1 should be evicted (it was accessed first, so it's the oldest)
+      catalog.registerKeyOptions("hash4", { key: "key4", scope: "global" });
+
+      expect(catalog.getKeyOptions("hash1")).toBeUndefined();
+      expect(catalog.getKeyOptions("hash2")).toBeDefined();
+      expect(catalog.getKeyOptions("hash3")).toBeDefined();
+      expect(catalog.getKeyOptions("hash4")).toBeDefined();
     });
 
     it("should evict least recently registered entry when capacity exceeded", () => {
@@ -176,6 +183,27 @@ describe("LRUIdempotencyKeyCatalog", () => {
       expect(catalog.getKeyOptions("hash0")).toBeUndefined();
       // Last entry should exist
       expect(catalog.getKeyOptions("hash1000")).toBeDefined();
+    });
+  });
+
+  describe("edge cases", () => {
+    it("should handle negative maxSize by clamping to 0", () => {
+      const catalog = new LRUIdempotencyKeyCatalog(-5);
+
+      // With maxSize clamped to 0, nothing should be stored
+      catalog.registerKeyOptions("hash1", { key: "key1", scope: "global" });
+
+      // Should be immediately evicted since maxSize is 0
+      expect(catalog.getKeyOptions("hash1")).toBeUndefined();
+    });
+
+    it("should handle maxSize of 0", () => {
+      const catalog = new LRUIdempotencyKeyCatalog(0);
+
+      catalog.registerKeyOptions("hash1", { key: "key1", scope: "global" });
+
+      // Should be immediately evicted since maxSize is 0
+      expect(catalog.getKeyOptions("hash1")).toBeUndefined();
     });
   });
 });
