@@ -8,14 +8,14 @@ import { IdempotencyKeyOptionsSchema } from "../schemas/api.js";
  * @returns The user-provided key, the hash as fallback, or null if neither exists
  */
 export function getUserProvidedIdempotencyKey(run: {
-  idempotencyKey: string | null;
+  idempotencyKey: string | null | undefined;
   idempotencyKeyOptions: unknown;
-}): string | null {
+}): string | undefined {
   const parsed = IdempotencyKeyOptionsSchema.safeParse(run.idempotencyKeyOptions);
   if (parsed.success) {
     return parsed.data.key;
   }
-  return run.idempotencyKey;
+  return run.idempotencyKey ?? undefined;
 }
 
 /**
