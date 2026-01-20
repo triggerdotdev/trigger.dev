@@ -61,9 +61,6 @@ const SAMPLE_SIZE = 100; // Number of rows to sample for width calculation
 type RowData = Record<string, unknown>;
 
 /**
- * Fuzzy filter function using match-sorter ranking
- */
-/**
  * Get the formatted display string for a value based on its column type
  * This mirrors the formatting logic in CellValue component
  */
@@ -163,10 +160,10 @@ const fuzzyFilter: FilterFn<RowData> = (row, columnId, value, addMeta) => {
     cellValue === null
       ? "NULL"
       : cellValue === undefined
-      ? ""
-      : typeof cellValue === "object"
-      ? JSON.stringify(cellValue)
-      : String(cellValue);
+        ? ""
+        : typeof cellValue === "object"
+          ? JSON.stringify(cellValue)
+          : String(cellValue);
 
   // Build searchable strings - formatted value (if we have column metadata)
   const formattedValue = meta?.outputColumn
@@ -493,8 +490,8 @@ function CellValue({
         const status = isTaskRunStatus(value)
           ? value
           : isRunFriendlyStatus(value)
-          ? runStatusFromFriendlyTitle(value)
-          : undefined;
+            ? runStatusFromFriendlyTitle(value)
+            : undefined;
         if (status) {
           if (hovered) {
             return (
