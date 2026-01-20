@@ -107,7 +107,7 @@ export function formatDateTime(
   locales: string[],
   includeSeconds: boolean,
   includeTime: boolean,
-  includeDate: boolean,
+  includeDate: boolean = true,
   hour12: boolean = true
 ): string {
   return new Intl.DateTimeFormat(locales, {

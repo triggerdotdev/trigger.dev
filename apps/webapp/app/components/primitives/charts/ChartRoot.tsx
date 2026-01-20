@@ -147,7 +147,7 @@ function ChartRootInner({
             "h-full w-full",
             fillContainer && "!aspect-auto",
             enableZoom &&
-              "[&_.recharts-surface]:cursor-crosshair [&_.recharts-wrapper]:cursor-crosshair"
+            "[&_.recharts-surface]:cursor-crosshair [&_.recharts-wrapper]:cursor-crosshair"
           )}
           style={fillContainer ? undefined : minHeight ? { minHeight } : undefined}
         >
