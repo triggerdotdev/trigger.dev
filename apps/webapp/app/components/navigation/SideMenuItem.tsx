@@ -48,13 +48,32 @@ export function SideMenuItem({
         className="flex min-w-0 flex-1 items-center justify-between overflow-hidden"
         initial={false}
         animate={{
-          opacity: isCollapsed ? 0 : 1,
           width: isCollapsed ? 0 : "auto",
         }}
         transition={{ duration: 0.15, ease: "easeOut" }}
       >
-        <span className="truncate text-2sm">{name}</span>
-        {badge && <div className="ml-1 flex shrink-0 items-center gap-1">{badge}</div>}
+        <motion.span 
+          className="truncate text-2sm"
+          initial={false}
+          animate={{
+            opacity: isCollapsed ? 0 : 1,
+          }}
+          transition={{ duration: 0.15, ease: "easeOut" }}
+        >
+          {name}
+        </motion.span>
+        {badge && (
+          <motion.div 
+            className="ml-1 flex shrink-0 items-center gap-1"
+            initial={false}
+            animate={{
+              opacity: isCollapsed ? 0 : 1,
+            }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+          >
+            {badge}
+          </motion.div>
+        )}
       </motion.div>
     </Link>
   );

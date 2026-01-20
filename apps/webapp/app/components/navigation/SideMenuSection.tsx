@@ -30,27 +30,39 @@ export function SideMenuSection({
   }, [isCollapsed, onCollapseToggle]);
 
   return (
-    <div>
-      <motion.div
-        className="flex cursor-pointer items-center gap-1 overflow-hidden rounded-sm py-1 pl-1.5 text-text-dimmed transition hover:bg-charcoal-750 hover:text-text-bright"
-        onClick={handleToggle}
-        initial={false}
-        animate={{
-          height: isSideMenuCollapsed ? 0 : "auto",
-          opacity: isSideMenuCollapsed ? 0 : 1,
-          marginBottom: isSideMenuCollapsed ? 0 : undefined,
-        }}
-        transition={{ duration: 0.15, ease: "easeOut" }}
-      >
-        <h2 className="text-xs whitespace-nowrap">{title}</h2>
+    <div className="overflow-hidden">
+      {/* Header container - stays in DOM to preserve height */}
+      <div className="relative">
+        {/* Header - fades out when sidebar is collapsed */}
         <motion.div
-          initial={isCollapsed}
-          animate={{ rotate: isCollapsed ? -90 : 0 }}
-          transition={{ duration: 0.2 }}
+          className="flex cursor-pointer items-center gap-1 overflow-hidden rounded-sm py-1 pl-1.5 text-text-dimmed transition hover:bg-charcoal-750 hover:text-text-bright"
+          onClick={isSideMenuCollapsed ? undefined : handleToggle}
+          style={{ cursor: isSideMenuCollapsed ? "default" : "pointer" }}
+          initial={false}
+          animate={{
+            opacity: isSideMenuCollapsed ? 0 : 1,
+          }}
+          transition={{ duration: 0.15, ease: "easeOut" }}
         >
-          <ToggleArrowIcon className="size-2" />
+          <h2 className="text-xs whitespace-nowrap">{title}</h2>
+          <motion.div
+            initial={isCollapsed}
+            animate={{ rotate: isCollapsed ? -90 : 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <ToggleArrowIcon className="size-2" />
+          </motion.div>
         </motion.div>
-      </motion.div>
+        {/* Divider - absolutely positioned, visible when sidebar is collapsed */}
+        <motion.div
+          className="absolute left-2 right-2 top-1 w-full h-px bg-grid-bright"
+          initial={false}
+          animate={{
+            opacity: isSideMenuCollapsed ? 1 : 0,
+          }}
+          transition={{ duration: 0.15, ease: "easeOut" }}
+        />
+      </div>
       <AnimatePresence initial={false}>
         <motion.div
           initial={isCollapsed ? "collapsed" : "expanded"}
@@ -73,6 +85,7 @@ export function SideMenuSection({
           style={{ overflow: "hidden" }}
         >
           <motion.div
+            className="space-y-px"
             variants={{
               expanded: {
                 translateY: 0,

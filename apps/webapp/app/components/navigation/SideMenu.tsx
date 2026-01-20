@@ -156,7 +156,7 @@ export function SideMenu({
     <div
       className={cn(
         "relative grid h-full grid-rows-[2.5rem_1fr_auto] border-r border-grid-bright bg-background-bright transition-all duration-200",
-        isCollapsed ? "w-14" : "w-56"
+        isCollapsed ? "w-12" : "w-56"
       )}
     >
       <CollapseToggle isCollapsed={isCollapsed} onToggle={() => setIsCollapsed(!isCollapsed)} />
@@ -240,7 +240,7 @@ export function SideMenu({
             </div>
           </div>
 
-          <div>
+          <div className="space-y-px">
             <SideMenuItem
               name="Tasks"
               icon={TaskIconSmall}
