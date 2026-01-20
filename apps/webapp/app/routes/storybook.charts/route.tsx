@@ -168,7 +168,7 @@ function ChartsDashboard() {
           </Card.Content>
         </Card>
 
-       
+
         {/* Simple Line Chart (no zoom, but synced with date range) */}
         <Card>
           <Card.Header>
@@ -688,25 +688,6 @@ const lineChartConfig = {
   "failure-rate": {
     label: "Failure Rate",
     color: "#F43F5E",
-  },
-} satisfies ChartConfig;
-
-const barChartConfig = {
-  completed: {
-    label: "Completed",
-    color: "#28BF5C",
-  },
-  "in-progress": {
-    label: "In Progress",
-    color: "#3B82F6",
-  },
-  canceled: {
-    label: "Canceled",
-    color: "#878C99",
-  },
-  failed: {
-    label: "Failed",
-    color: "#E11D48",
   },
 } satisfies ChartConfig;
 
