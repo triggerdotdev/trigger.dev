@@ -180,9 +180,19 @@ export function AIQueryInput({
           break;
         case "tool_call":
           if (event.tool === "setTimeFilter") {
-            setThinking((prev) => prev + `\nSetting time filter...\n`);
+            setThinking((prev) => {
+              if (prev.trimEnd().endsWith("Setting time filter...")) {
+                return prev;
+              }
+              return prev + `\nSetting time filter...\n`;
+            });
           } else {
-            setThinking((prev) => prev + `\nValidating query...\n`);
+            setThinking((prev) => {
+              if (prev.trimEnd().endsWith("Validating query...")) {
+                return prev;
+              }
+              return prev + `\nValidating query...\n`;
+            });
           }
           break;
         case "time_filter":
@@ -376,10 +386,10 @@ export function AIQueryInput({
                     {isLoading
                       ? "AI is thinking..."
                       : lastResult === "success"
-                      ? "Query generated"
-                      : lastResult === "error"
-                      ? "Generation failed"
-                      : "AI response"}
+                        ? "Query generated"
+                        : lastResult === "error"
+                          ? "Generation failed"
+                          : "AI response"}
                   </span>
                 </div>
                 {isLoading ? (
