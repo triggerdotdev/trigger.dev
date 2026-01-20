@@ -246,7 +246,7 @@ export function timeFilterRenderValues({
     case "range":
       {
         //If the day is the same, only show the time for the `to` date
-        const isSameDay = from && to && from.getDate() === to.getDate();
+        const isSameDay = from && to && from.getDate() === to.getDate() && from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
 
         valueLabel = (
           <span>
