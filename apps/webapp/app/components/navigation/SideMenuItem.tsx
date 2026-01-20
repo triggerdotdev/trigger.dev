@@ -1,8 +1,8 @@
 import { type AnchorHTMLAttributes, type ReactNode } from "react";
 import { Link } from "@remix-run/react";
+import { motion } from "framer-motion";
 import { usePathName } from "~/hooks/usePathName";
 import { cn } from "~/utils/cn";
-import { LinkButton } from "../primitives/Buttons";
 import { type RenderIcon, Icon } from "../primitives/Icon";
 import { SimpleTooltip } from "../primitives/Tooltip";
 
@@ -10,8 +10,6 @@ export function SideMenuItem({
   icon,
   activeIconColor,
   inactiveIconColor,
-  trailingIcon,
-  trailingIconClassName,
   name,
   to,
   badge,
@@ -21,8 +19,6 @@ export function SideMenuItem({
   icon?: RenderIcon;
   activeIconColor?: string;
   inactiveIconColor?: string;
-  trailingIcon?: RenderIcon;
-  trailingIconClassName?: string;
   name: string;
   to: string;
   badge?: ReactNode;
@@ -32,54 +28,47 @@ export function SideMenuItem({
   const pathName = usePathName();
   const isActive = pathName === to;
 
+  const content = (
+    <Link
+      to={to}
+      target={target}
+      className={cn(
+        "flex h-8 items-center gap-2 overflow-hidden rounded px-2 text-text-bright transition-colors hover:bg-charcoal-750",
+        isActive ? "bg-tertiary" : ""
+      )}
+    >
+      <Icon
+        icon={icon}
+        className={cn(
+          "size-5 shrink-0",
+          isActive ? activeIconColor : inactiveIconColor ?? "text-text-dimmed"
+        )}
+      />
+      <motion.div
+        className="flex min-w-0 flex-1 items-center justify-between overflow-hidden"
+        initial={false}
+        animate={{
+          opacity: isCollapsed ? 0 : 1,
+          width: isCollapsed ? 0 : "auto",
+        }}
+        transition={{ duration: 0.15, ease: "easeOut" }}
+      >
+        <span className="truncate text-2sm">{name}</span>
+        {badge && <div className="ml-1 flex shrink-0 items-center gap-1">{badge}</div>}
+      </motion.div>
+    </Link>
+  );
+
   if (isCollapsed) {
     return (
-      <SimpleTooltip
-        button={
-          <Link
-            to={to}
-            target={target}
-            className={cn(
-              "flex h-8 w-full items-center justify-center rounded text-text-bright transition-colors hover:bg-charcoal-750",
-              isActive ? "bg-tertiary" : ""
-            )}
-          >
-            <Icon
-              icon={icon}
-              className={cn(
-                "size-5",
-                isActive ? activeIconColor : inactiveIconColor ?? "text-text-dimmed"
-              )}
-            />
-          </Link>
-        }
-        content={name}
+      <SimpleTooltip 
+        button={content} 
+        content={name} 
         side="right"
-        asChild
+        buttonClassName="!h-8 block"
       />
     );
   }
 
-  return (
-    <LinkButton
-      variant="small-menu-item"
-      fullWidth
-      textAlignLeft
-      LeadingIcon={icon}
-      leadingIconClassName={isActive ? activeIconColor : inactiveIconColor ?? "text-text-dimmed"}
-      TrailingIcon={trailingIcon}
-      trailingIconClassName={trailingIconClassName}
-      to={to}
-      target={target}
-      className={cn(
-        "text-text-bright group-hover:bg-charcoal-750 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
-        isActive ? "bg-tertiary text-text-bright" : "group-hover:text-text-bright"
-      )}
-    >
-      <div className="flex w-full items-center justify-between">
-        {name}
-        <div className="flex items-center gap-1">{badge !== undefined && badge}</div>
-      </div>
-    </LinkButton>
-  );
+  return content;
 }

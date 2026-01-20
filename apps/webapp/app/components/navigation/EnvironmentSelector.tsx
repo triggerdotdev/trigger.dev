@@ -1,5 +1,6 @@
 import { ChevronRightIcon, Cog8ToothIcon } from "@heroicons/react/20/solid";
 import { useNavigation } from "@remix-run/react";
+import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -9,7 +10,7 @@ import { useOrganization, type MatchedOrganization } from "~/hooks/useOrganizati
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { branchesPath, docsPath, v3BillingPath } from "~/utils/pathBuilder";
-import { EnvironmentCombo, EnvironmentIcon, environmentFullTitle } from "../environments/EnvironmentLabel";
+import { EnvironmentCombo, EnvironmentIcon, EnvironmentLabel, environmentFullTitle } from "../environments/EnvironmentLabel";
 import { ButtonContent } from "../primitives/Buttons";
 import { Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
@@ -51,16 +52,35 @@ export function EnvironmentSelector({
 
   const hasStaging = project.environments.some((env) => env.type === "STAGING");
 
+  const trigger = (
+    <div
+      className={cn(
+        "flex h-8 items-center gap-1.5 overflow-hidden rounded px-2 transition-colors hover:bg-charcoal-750",
+        className
+      )}
+    >
+      <EnvironmentIcon environment={environment} className="size-5 shrink-0" />
+      <motion.div
+        className="flex min-w-0 flex-1 items-center overflow-hidden"
+        initial={false}
+        animate={{
+          opacity: isCollapsed ? 0 : 1,
+          width: isCollapsed ? 0 : "auto",
+        }}
+        transition={{ duration: 0.15, ease: "easeOut" }}
+      >
+        <EnvironmentLabel environment={environment} className="text-2sm" />
+      </motion.div>
+    </div>
+  );
+
   if (isCollapsed) {
     return (
       <SimpleTooltip
-        button={
-          <div className="flex h-8 w-full items-center justify-center rounded transition-colors hover:bg-charcoal-750">
-            <EnvironmentIcon environment={environment} className="size-5" />
-          </div>
-        }
+        button={trigger}
         content={environmentFullTitle(environment)}
         side="right"
+        buttonClassName="!h-8 block"
       />
     );
   }
@@ -71,9 +91,22 @@ export function EnvironmentSelector({
         isOpen={isMenuOpen}
         overflowHidden
         fullWidth
-        className={cn("h-7 overflow-hidden py-1 pl-1.5", className)}
+        className={cn("h-8 overflow-hidden py-1 pl-0.5", className)}
       >
-        <EnvironmentCombo environment={environment} className="w-full text-2sm" />
+        <span className="flex items-center gap-1.5 text-sm text-text-bright">
+          <EnvironmentIcon environment={environment} className="size-5 shrink-0" />
+          <motion.span
+            className="flex min-w-0 flex-1 items-center overflow-hidden"
+            initial={false}
+            animate={{
+              opacity: isCollapsed ? 0 : 1,
+              width: isCollapsed ? 0 : "auto",
+            }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+          >
+            <EnvironmentLabel environment={environment} className="text-2sm" />
+          </motion.span>
+        </span>
       </PopoverArrowTrigger>
       <PopoverContent
         className="min-w-[14rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"

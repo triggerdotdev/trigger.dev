@@ -29,18 +29,20 @@ export function SideMenuSection({
     onCollapseToggle?.(newIsCollapsed);
   }, [isCollapsed, onCollapseToggle]);
 
-  // When the side menu is collapsed, just render the children without the header
-  if (isSideMenuCollapsed) {
-    return <div>{children}</div>;
-  }
-
   return (
     <div>
-      <div
-        className="flex cursor-pointer items-center gap-1 rounded-sm py-1 pl-1.5 text-text-dimmed transition hover:bg-charcoal-750 hover:text-text-bright"
+      <motion.div
+        className="flex cursor-pointer items-center gap-1 overflow-hidden rounded-sm py-1 pl-1.5 text-text-dimmed transition hover:bg-charcoal-750 hover:text-text-bright"
         onClick={handleToggle}
+        initial={false}
+        animate={{
+          height: isSideMenuCollapsed ? 0 : "auto",
+          opacity: isSideMenuCollapsed ? 0 : 1,
+          marginBottom: isSideMenuCollapsed ? 0 : undefined,
+        }}
+        transition={{ duration: 0.15, ease: "easeOut" }}
       >
-        <h2 className="text-xs">{title}</h2>
+        <h2 className="text-xs whitespace-nowrap">{title}</h2>
         <motion.div
           initial={isCollapsed}
           animate={{ rotate: isCollapsed ? -90 : 0 }}
@@ -48,11 +50,11 @@ export function SideMenuSection({
         >
           <ToggleArrowIcon className="size-2" />
         </motion.div>
-      </div>
+      </motion.div>
       <AnimatePresence initial={false}>
         <motion.div
           initial={isCollapsed ? "collapsed" : "expanded"}
-          animate={isCollapsed ? "collapsed" : "expanded"}
+          animate={isCollapsed && !isSideMenuCollapsed ? "collapsed" : "expanded"}
           exit="collapsed"
           variants={{
             expanded: {
