@@ -178,7 +178,7 @@ function PopoverSideMenuTrigger({
       {...props}
       ref={ref}
       className={cn(
-        "flex h-[1.8rem] shrink-0 select-none items-center rounded-sm bg-transparent px-[0.4rem] text-center font-sans text-2sm font-normal text-text-bright transition duration-150 focus-custom hover:bg-charcoal-750",
+        "flex h-[1.8rem] shrink-0 select-none items-center rounded-sm bg-transparent pl-[0.4rem] pr-2.5 text-center font-sans text-2sm font-normal text-text-bright transition duration-150 focus-custom hover:bg-charcoal-750",
         shortcut && !hideShortcutKey ? "justify-between gap-x-1.5" : "",
         className
       )}

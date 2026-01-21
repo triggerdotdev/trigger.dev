@@ -12,6 +12,7 @@ import { cn } from "~/utils/cn";
 import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useState } from "react";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { Feedback } from "../Feedback";
 import { Shortcuts } from "../Shortcuts";
 import { StepContentContainer } from "../StepContentContainer";
@@ -20,7 +21,9 @@ import { ClipboardField } from "../primitives/ClipboardField";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
 import { Icon } from "../primitives/Icon";
 import { Paragraph } from "../primitives/Paragraph";
-import { Popover, PopoverContent, PopoverSideMenuTrigger } from "../primitives/Popover";
+import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
+import { SimpleTooltip } from "../primitives/Tooltip";
+import { ShortcutKey } from "../primitives/ShortcutKey";
 import { StepNumber } from "../primitives/StepNumber";
 import { SideMenuItem } from "./SideMenuItem";
 import { Badge } from "../primitives/Badge";
@@ -35,27 +38,54 @@ export function HelpAndFeedback({
   const [isHelpMenuOpen, setHelpMenuOpen] = useState(false);
   const currentPlan = useCurrentPlan();
 
+  useShortcutKeys({
+    shortcut: disableShortcut ? undefined : { key: "h", enabledOnInputElements: false },
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setHelpMenuOpen(true);
+    },
+  });
+
   return (
-    <Popover onOpenChange={(open) => setHelpMenuOpen(open)}>
-      <PopoverSideMenuTrigger
-        isOpen={isHelpMenuOpen}
-        shortcut={{ key: "h", enabledOnInputElements: false }}
-        className={isCollapsed ? "w-full" : "flex-1"}
-        disabled={disableShortcut}
-        hideShortcutKey={isCollapsed}
-      >
-        <div className="flex items-center gap-1.5 overflow-hidden">
-          <QuestionMarkCircleIcon className="size-4.5 shrink-0 text-success" />
-          <span
+    <Popover open={isHelpMenuOpen} onOpenChange={setHelpMenuOpen}>
+      <SimpleTooltip
+        button={
+          <PopoverTrigger
             className={cn(
-              "overflow-hidden whitespace-nowrap transition-all duration-150",
-              isCollapsed ? "max-w-0 opacity-0" : "max-w-[150px] opacity-100"
+              "group flex h-8 items-center gap-1.5 rounded pl-[0.4375rem] pr-2 transition-colors hover:bg-charcoal-750",
+              isCollapsed ? "w-full" : "flex-1 justify-between"
             )}
           >
-            Help & Feedback
-          </span>
-        </div>
-      </PopoverSideMenuTrigger>
+            <span className="flex items-center gap-1.5 overflow-hidden">
+              <QuestionMarkCircleIcon className="size-5 shrink-0 text-success" />
+              <span
+                className={cn(
+                  "overflow-hidden whitespace-nowrap text-2sm text-text-bright transition-all duration-150",
+                  isCollapsed ? "max-w-0 opacity-0" : "max-w-[150px] opacity-100"
+                )}
+              >
+                Help & Feedback
+              </span>
+            </span>
+            <ShortcutKey
+              className={cn(
+                "size-4 flex-none transition-all duration-150",
+                isCollapsed ? "hidden" : ""
+              )}
+              shortcut={{ key: "h" }}
+              variant="small"
+            />
+          </PopoverTrigger>
+        }
+        content="Help & Feedback"
+        side="right"
+        sideOffset={8}
+        hidden={!isCollapsed}
+        buttonClassName={isCollapsed ? "!h-8 w-full" : "!h-8 flex-1"}
+        asChild
+        disableHoverableContent
+      />
       <PopoverContent
         className="min-w-[14rem] divide-y divide-grid-bright overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         side={isCollapsed ? "right" : "top"}
