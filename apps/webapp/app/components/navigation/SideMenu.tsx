@@ -780,12 +780,8 @@ function HelpAndAI({ isCollapsed }: { isCollapsed: boolean }) {
   return (
     <>
       <ShortcutsAutoOpen />
-      <CollapsibleHeight isCollapsed={isCollapsed}>
-        <HelpAndFeedback />
-      </CollapsibleHeight>
-      <CollapsibleHeight isCollapsed={isCollapsed}>
-        <AskAI />
-      </CollapsibleHeight>
+      <HelpAndFeedback isCollapsed={isCollapsed} />
+      <AskAI isCollapsed={isCollapsed} />
     </>
   );
 }

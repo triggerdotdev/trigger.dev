@@ -154,10 +154,12 @@ function PopoverSideMenuTrigger({
   children,
   className,
   shortcut,
+  hideShortcutKey = false,
   ...props
 }: {
   isOpen?: boolean;
   shortcut?: useShortcutKeys.ShortcutDefinition;
+  hideShortcutKey?: boolean;
 } & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
   const ref = React.useRef<HTMLButtonElement>(null);
   useShortcutKeys.useShortcutKeys({
@@ -176,14 +178,14 @@ function PopoverSideMenuTrigger({
       {...props}
       ref={ref}
       className={cn(
-        "flex h-[1.8rem] shrink-0 select-none items-center gap-x-1.5 rounded-sm bg-transparent px-[0.4rem] text-center font-sans text-2sm font-normal text-text-bright transition duration-150 focus-custom hover:bg-charcoal-750",
-        shortcut ? "justify-between" : "",
+        "flex h-[1.8rem] shrink-0 select-none items-center rounded-sm bg-transparent px-[0.4rem] text-center font-sans text-2sm font-normal text-text-bright transition duration-150 focus-custom hover:bg-charcoal-750",
+        shortcut && !hideShortcutKey ? "justify-between gap-x-1.5" : "",
         className
       )}
     >
       {children}
-      {shortcut && (
-        <ShortcutKey className={cn("size-4 flex-none")} shortcut={shortcut} variant={"small"} />
+      {shortcut && !hideShortcutKey && (
+        <ShortcutKey className="size-4 flex-none" shortcut={shortcut} variant={"small"} />
       )}
     </PopoverTrigger>
   );

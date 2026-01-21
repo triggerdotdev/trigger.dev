@@ -8,6 +8,7 @@ import {
   SignalIcon,
   StarIcon,
 } from "@heroicons/react/20/solid";
+import { cn } from "~/utils/cn";
 import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useState } from "react";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
@@ -24,7 +25,13 @@ import { StepNumber } from "../primitives/StepNumber";
 import { SideMenuItem } from "./SideMenuItem";
 import { Badge } from "../primitives/Badge";
 
-export function HelpAndFeedback({ disableShortcut = false }: { disableShortcut?: boolean }) {
+export function HelpAndFeedback({
+  disableShortcut = false,
+  isCollapsed = false,
+}: {
+  disableShortcut?: boolean;
+  isCollapsed?: boolean;
+}) {
   const [isHelpMenuOpen, setHelpMenuOpen] = useState(false);
   const currentPlan = useCurrentPlan();
 
@@ -33,16 +40,26 @@ export function HelpAndFeedback({ disableShortcut = false }: { disableShortcut?:
       <PopoverSideMenuTrigger
         isOpen={isHelpMenuOpen}
         shortcut={{ key: "h", enabledOnInputElements: false }}
-        className="grow pr-2"
+        className={isCollapsed ? "w-full justify-center" : "grow pr-2"}
         disabled={disableShortcut}
+        hideShortcutKey={isCollapsed}
       >
         <div className="flex items-center gap-1.5">
-          <QuestionMarkCircleIcon className="size-4 text-success" />
-          Help & Feedback
+          <QuestionMarkCircleIcon className="size-4.5 shrink-0 text-success" />
+          <span
+            className={cn(
+              "overflow-hidden whitespace-nowrap transition-all duration-150",
+              isCollapsed ? "max-w-0 opacity-0" : "max-w-[150px] opacity-100"
+            )}
+          >
+            Help & Feedback
+          </span>
         </div>
       </PopoverSideMenuTrigger>
       <PopoverContent
         className="min-w-[14rem] divide-y divide-grid-bright overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        side={isCollapsed ? "right" : "top"}
+        sideOffset={isCollapsed ? 8 : 4}
         align="start"
       >
         <Fragment>

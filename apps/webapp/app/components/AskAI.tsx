@@ -5,6 +5,7 @@ import {
   HandThumbUpIcon,
   StopIcon,
 } from "@heroicons/react/20/solid";
+import { cn } from "~/utils/cn";
 import { type FeedbackComment, KapaProvider, type QA, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
 import DOMPurify from "dompurify";
@@ -37,7 +38,7 @@ function useKapaWebsiteId() {
   return routeMatch?.kapa.websiteId;
 }
 
-export function AskAI() {
+export function AskAI({ isCollapsed = false }: { isCollapsed?: boolean }) {
   const { isManagedCloud } = useFeatures();
   const websiteId = useKapaWebsiteId();
 
@@ -46,21 +47,28 @@ export function AskAI() {
   }
 
   return (
-    <ClientOnly
-      fallback={
-        <Button
-          variant="small-menu-item"
-          data-action="ask-ai"
-          hideShortcutKey
-          data-modal-override-open-class-ask-ai="true"
-          disabled
-        >
-          <AISparkleIcon className="size-5" />
-        </Button>
-      }
+    <div
+      className={cn(
+        "transition-opacity duration-200",
+        isCollapsed ? "pointer-events-none opacity-0" : "opacity-100"
+      )}
     >
-      {() => <AskAIProvider websiteId={websiteId} />}
-    </ClientOnly>
+      <ClientOnly
+        fallback={
+          <Button
+            variant="small-menu-item"
+            data-action="ask-ai"
+            hideShortcutKey
+            data-modal-override-open-class-ask-ai="true"
+            disabled
+          >
+            <AISparkleIcon className="size-5" />
+          </Button>
+        }
+      >
+        {() => <AskAIProvider websiteId={websiteId} />}
+      </ClientOnly>
+    </div>
   );
 }
 
