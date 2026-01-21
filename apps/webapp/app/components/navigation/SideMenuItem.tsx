@@ -10,6 +10,8 @@ export function SideMenuItem({
   icon,
   activeIconColor,
   inactiveIconColor,
+  trailingIcon,
+  trailingIconClassName,
   name,
   to,
   badge,
@@ -19,6 +21,8 @@ export function SideMenuItem({
   icon?: RenderIcon;
   activeIconColor?: string;
   inactiveIconColor?: string;
+  trailingIcon?: RenderIcon;
+  trailingIconClassName?: string;
   name: string;
   to: string;
   badge?: ReactNode;
@@ -67,6 +71,12 @@ export function SideMenuItem({
               >
                 {badge}
               </motion.div>
+            )}
+            {trailingIcon && !isCollapsed && (
+              <Icon
+                icon={trailingIcon}
+                className={cn("ml-1 size-4 shrink-0", trailingIconClassName)}
+              />
             )}
           </motion.div>
         </Link>
