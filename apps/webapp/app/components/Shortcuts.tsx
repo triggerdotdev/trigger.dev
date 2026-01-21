@@ -1,18 +1,17 @@
 import { Keyboard } from "lucide-react";
+import { useState } from "react";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { Button } from "./primitives/Buttons";
 import { Header3 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
+  SheetTrigger
 } from "./primitives/SheetV3";
 import { ShortcutKey } from "./primitives/ShortcutKey";
-import { Button } from "./primitives/Buttons";
-import { useState } from "react";
-import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 
 export function Shortcuts() {
   return (
@@ -26,8 +25,8 @@ export function Shortcuts() {
           fullWidth
           textAlignLeft
           shortcut={{ modifiers: ["shift"], key: "?", enabled: false }}
-          className="gap-x-0 pl-0.5"
-          iconSpacing="gap-x-0.5"
+          className="gap-x-0 pl-1.5"
+          iconSpacing="gap-x-1.5"
         >
           Shortcuts
         </Button>

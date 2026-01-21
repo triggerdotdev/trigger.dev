@@ -223,8 +223,9 @@ export function HelpAndFeedback({
               button={
                 <Button
                   variant="small-menu-item"
+                  className="pl-2"
                   LeadingIcon={EnvelopeIcon}
-                  leadingIconClassName="text-blue-500"
+                  leadingIconClassName="text-blue-500 pr-1"
                   data-action="contact-us"
                   fullWidth
                   textAlignLeft
