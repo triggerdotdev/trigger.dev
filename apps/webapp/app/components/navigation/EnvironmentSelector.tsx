@@ -1,6 +1,6 @@
 import { ChevronRightIcon, Cog8ToothIcon } from "@heroicons/react/20/solid";
+import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { useNavigation } from "@remix-run/react";
-import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -16,7 +16,6 @@ import { Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
 import {
   Popover,
-  PopoverArrowTrigger,
   PopoverContent,
   PopoverMenuItem,
   PopoverSectionHeader,
@@ -52,64 +51,49 @@ export function EnvironmentSelector({
 
   const hasStaging = project.environments.some((env) => env.type === "STAGING");
 
-  const trigger = (
-    <div
-      className={cn(
-        "flex h-8 w-full items-center gap-1.5 overflow-hidden rounded pl-1.5 pr-2 transition-colors hover:bg-charcoal-750",
-        className
-      )}
-    >
-      <EnvironmentIcon environment={environment} className="size-5 shrink-0" />
-      <motion.div
-        className="flex min-w-0 flex-1 items-center overflow-hidden"
-        initial={false}
-        animate={{
-          opacity: isCollapsed ? 0 : 1,
-          width: isCollapsed ? 0 : "auto",
-        }}
-        transition={{ duration: 0.15, ease: "easeOut" }}
-      >
-        <EnvironmentLabel environment={environment} className="text-2sm" />
-      </motion.div>
-    </div>
-  );
-
-  if (isCollapsed) {
-    return (
-      <SimpleTooltip
-        button={trigger}
-        content={environmentFullTitle(environment)}
-        side="right"
-        buttonClassName="!h-8 block"
-      />
-    );
-  }
-
   return (
     <Popover onOpenChange={(open) => setIsMenuOpen(open)} open={isMenuOpen}>
-      <PopoverArrowTrigger
-        isOpen={isMenuOpen}
-        overflowHidden
-        fullWidth
-        className={cn("h-8 overflow-hidden py-1 pl-1.5", className)}
-      >
-        <span className="flex items-center gap-1.5 text-sm text-text-bright">
-          <EnvironmentIcon environment={environment} className="size-5 shrink-0" />
-          <motion.span
-            className="flex min-w-0 flex-1 items-center overflow-hidden"
-            initial={false}
-            animate={{
-              opacity: isCollapsed ? 0 : 1,
-              width: isCollapsed ? 0 : "auto",
-            }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
+      <SimpleTooltip
+        button={
+          <PopoverTrigger
+            className={cn(
+              "group flex h-8 w-full items-center rounded pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
+              isCollapsed ? "justify-center pr-0.5" : "justify-between pr-1",
+              className
+            )}
           >
-            <EnvironmentLabel environment={environment} className="text-2sm" />
-          </motion.span>
-        </span>
-      </PopoverArrowTrigger>
+            <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+              <EnvironmentIcon environment={environment} className="size-5 shrink-0" />
+              <span
+                className={cn(
+                  "flex min-w-0 items-center overflow-hidden transition-all duration-200",
+                  isCollapsed ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100"
+                )}
+              >
+                <EnvironmentLabel environment={environment} className="text-2sm" />
+              </span>
+            </span>
+            <span
+              className={cn(
+                "overflow-hidden transition-all duration-200",
+                isCollapsed ? "max-w-0 opacity-0" : "max-w-[16px] opacity-100"
+              )}
+            >
+              <DropdownIcon className="size-4 min-w-4 text-text-dimmed transition group-hover:text-text-bright" />
+            </span>
+          </PopoverTrigger>
+        }
+        content={environmentFullTitle(environment)}
+        side="right"
+        sideOffset={8}
+        hidden={!isCollapsed}
+        buttonClassName="!h-8 w-full"
+        asChild
+      />
       <PopoverContent
         className="min-w-[14rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        side={isCollapsed ? "right" : "bottom"}
+        sideOffset={isCollapsed ? 8 : 4}
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
