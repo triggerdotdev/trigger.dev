@@ -78,7 +78,12 @@ export function HelpAndFeedback({
             />
           </PopoverTrigger>
         }
-        content="Help & Feedback"
+        content={
+          <span className="flex items-center gap-1">
+            Help & Feedback
+            <ShortcutKey shortcut={{ key: "h" }} variant="small" />
+          </span>
+        }
         side="right"
         sideOffset={8}
         hidden={!isCollapsed}
