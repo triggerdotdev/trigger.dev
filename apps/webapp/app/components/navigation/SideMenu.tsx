@@ -415,9 +415,7 @@ export function SideMenu({
         </div>
       </div>
       <div>
-        <CollapsibleHeight isCollapsed={isCollapsed}>
-          <IncidentStatusPanel />
-        </CollapsibleHeight>
+        <IncidentStatusPanel isCollapsed={isCollapsed} />
         <div className={cn("flex flex-col gap-1 border-t border-grid-bright p-1", isCollapsed && "items-center")}>
           <div className="flex w-full items-center justify-between">
             <HelpAndAI isCollapsed={isCollapsed} />
@@ -763,17 +761,15 @@ function CollapsibleHeight({
   className?: string;
 }) {
   return (
-    <motion.div
-      className={cn("overflow-hidden", className)}
-      initial={false}
-      animate={{
-        opacity: isCollapsed ? 0 : 1,
-        height: isCollapsed ? 0 : "auto",
-      }}
-      transition={{ duration: 0.15, ease: "easeOut" }}
+    <div
+      className={cn(
+        "grid transition-all duration-200 ease-in-out",
+        isCollapsed ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100",
+        className
+      )}
     >
-      {children}
-    </motion.div>
+      <div className="overflow-hidden">{children}</div>
+    </div>
   );
 }
 
