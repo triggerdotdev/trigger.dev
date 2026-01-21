@@ -167,10 +167,14 @@ export const runsSchema: TableSchema = {
       expression: "if(depth > 0, true, false)",
     },
 
-    // Useless until we show the user-provided key
     idempotency_key: {
       name: "idempotency_key",
-      ...column("String", { description: "Idempotency key", example: "user-123-action-456" }),
+      clickhouseName: "idempotency_key_user",
+      ...column("String", { description: "Idempotency key (available from 4.3.3)", example: "user-123-action-456" }),
+    },
+    idempotency_key_scope: {
+      name: "idempotency_key_scope",
+      ...column("String", { description: "The idempotency key scope determines whether a task should be considered unique within a parent run, a specific attempt, or globally. An empty value means there's no idempotency key set (available from 4.3.3).", example: "run", allowedValues: ["", "global", "run", "attempt"], }),
     },
     region: {
       name: "region",
