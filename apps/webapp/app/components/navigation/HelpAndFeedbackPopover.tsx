@@ -40,11 +40,11 @@ export function HelpAndFeedback({
       <PopoverSideMenuTrigger
         isOpen={isHelpMenuOpen}
         shortcut={{ key: "h", enabledOnInputElements: false }}
-        className={isCollapsed ? "w-full justify-center" : "grow pr-2"}
+        className={isCollapsed ? "w-full" : "flex-1"}
         disabled={disableShortcut}
         hideShortcutKey={isCollapsed}
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 overflow-hidden">
           <QuestionMarkCircleIcon className="size-4.5 shrink-0 text-success" />
           <span
             className={cn(
