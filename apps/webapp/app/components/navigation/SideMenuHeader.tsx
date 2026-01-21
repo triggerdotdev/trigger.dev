@@ -8,10 +8,13 @@ export function SideMenuHeader({
   title,
   children,
   isCollapsed = false,
+  collapsedTitle,
 }: {
   title: string;
   children?: React.ReactNode;
   isCollapsed?: boolean;
+  /** When provided, this text stays visible when collapsed and the rest fades out */
+  collapsedTitle?: string;
 }) {
   const [isHeaderMenuOpen, setHeaderMenuOpen] = useState(false);
   const navigation = useNavigation();
@@ -20,17 +23,34 @@ export function SideMenuHeader({
     setHeaderMenuOpen(false);
   }, [navigation.location?.pathname]);
 
+  // If collapsedTitle is provided and title starts with it, split the title
+  const hasCollapsedTitle = collapsedTitle && title.startsWith(collapsedTitle);
+  const visiblePart = hasCollapsedTitle ? collapsedTitle : title;
+  const fadingPart = hasCollapsedTitle ? title.slice(collapsedTitle.length) : "";
+
   return (
     <motion.div
-      className="group flex items-center justify-between overflow-hidden pl-1.5"
+      className="group flex h-4 items-center justify-between overflow-hidden pl-1.5"
       initial={false}
       animate={{
-        height: isCollapsed ? 0 : "auto",
-        opacity: isCollapsed ? 0 : 1,
+        opacity: hasCollapsedTitle ? 1 : isCollapsed ? 0 : 1,
       }}
       transition={{ duration: 0.15, ease: "easeOut" }}
     >
-      <h2 className="text-xs whitespace-nowrap">{title}</h2>
+      <h2 className="text-xs whitespace-nowrap">
+        {visiblePart}
+        {fadingPart && (
+          <motion.span
+            initial={false}
+            animate={{
+              opacity: isCollapsed ? 0 : 1,
+            }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+          >
+            {fadingPart}
+          </motion.span>
+        )}
+      </h2>
       {children !== undefined ? (
         <Popover onOpenChange={(open) => setHeaderMenuOpen(open)} open={isHeaderMenuOpen}>
           <PopoverCustomTrigger className="p-1">

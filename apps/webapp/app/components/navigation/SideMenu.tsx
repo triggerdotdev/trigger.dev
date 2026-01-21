@@ -5,7 +5,6 @@ import {
   BeakerIcon,
   BellAlertIcon,
   ChartBarIcon,
-  ChevronLeftIcon,
   ChevronRightIcon,
   ClockIcon,
   Cog8ToothIcon,
@@ -28,6 +27,7 @@ import { motion } from "framer-motion";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
+import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { LogsIcon } from "~/assets/icons/LogsIcon";
@@ -88,13 +88,12 @@ import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
 import {
   Popover,
-  PopoverArrowTrigger,
   PopoverContent,
   PopoverMenuItem,
-  PopoverTrigger,
+  PopoverTrigger
 } from "../primitives/Popover";
 import { TextLink } from "../primitives/TextLink";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { ShortcutsAutoOpen } from "../Shortcuts";
 import { UserProfilePhoto } from "../UserProfilePhoto";
 import { V4Badge } from "../V4Badge";
@@ -155,18 +154,18 @@ export function SideMenu({
   return (
     <div
       className={cn(
-        "relative grid h-full grid-rows-[2.5rem_1fr_auto] border-r border-grid-bright bg-background-bright transition-all duration-200",
-        isCollapsed ? "w-12" : "w-56"
+        "relative grid h-full grid-cols-[100%] grid-rows-[2.5rem_1fr_auto] border-r border-grid-bright bg-background-bright transition-all duration-200",
+        isCollapsed ? "w-[2.75rem]" : "w-56"
       )}
     >
       <CollapseToggle isCollapsed={isCollapsed} onToggle={() => setIsCollapsed(!isCollapsed)} />
       <div
         className={cn(
-          "flex items-center overflow-hidden border-b px-1 py-1 transition duration-300",
-          showHeaderDivider ? "border-grid-bright" : "border-transparent"
+          "flex min-w-0 items-center overflow-hidden border-b px-1 py-1 transition duration-300",
+          showHeaderDivider || isCollapsed ? "border-grid-bright" : "border-transparent"
         )}
       >
-        <div className="min-w-0 flex-1">
+        <div className={cn("min-w-0", !isCollapsed && "flex-1")}>
           <ProjectSelector
             organizations={organizations}
             organization={organization}
@@ -198,9 +197,9 @@ export function SideMenu({
         className="overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         ref={borderRef}
       >
-        <div className={cn("mb-6 flex flex-col gap-4 overflow-hidden", isCollapsed ? "px-0.5" : "px-1")}>
-          <div className="space-y-1">
-            <SideMenuHeader title={"Environment"} isCollapsed={isCollapsed} />
+        <div className="mb-6 flex w-full flex-col gap-4 overflow-hidden px-1">
+          <div className="w-full space-y-1">
+            <SideMenuHeader title={"Environment"} isCollapsed={isCollapsed} collapsedTitle="Env" />
             <div className="flex items-center">
               <EnvironmentSelector
                 organization={organization}
@@ -240,7 +239,7 @@ export function SideMenu({
             </div>
           </div>
 
-          <div className="space-y-px">
+          <div className="w-full space-y-px">
             <SideMenuItem
               name="Tasks"
               icon={TaskIconSmall}
@@ -459,52 +458,51 @@ function ProjectSelector({
     setOrgMenuOpen(false);
   }, [navigation.location?.pathname]);
 
-  const triggerContent = (
-    <span className="flex items-center gap-1.5 overflow-hidden">
-      <Avatar avatar={organization.avatar} size={1.25} orgName={organization.title} />
-      <motion.span
-        className="flex items-center gap-1.5 overflow-hidden"
-        initial={false}
-        animate={{
-          opacity: isCollapsed ? 0 : 1,
-          width: isCollapsed ? 0 : "auto",
-        }}
-        transition={{ duration: 0.15, ease: "easeOut" }}
-      >
-        <SelectorDivider />
-        <span className="truncate text-2sm font-normal text-text-bright">
-          {project.name ?? "Select a project"}
-        </span>
-      </motion.span>
-    </span>
-  );
-
   return (
     <Popover onOpenChange={(open) => setOrgMenuOpen(open)} open={isOrgMenuOpen}>
-      {isCollapsed ? (
-        <TooltipProvider disableHoverableContent>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <PopoverTrigger className="flex h-8 w-full items-center justify-center rounded px-1.5 transition-colors hover:bg-charcoal-750">
-                {triggerContent}
-              </PopoverTrigger>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="text-xs">
-              {organization.title} / {project.name}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      ) : (
-        <PopoverArrowTrigger
-          isOpen={isOrgMenuOpen}
-          overflowHidden
-          className="h-8 w-full justify-between py-1 pl-1.5"
-        >
-          {triggerContent}
-        </PopoverArrowTrigger>
-      )}
+      <SimpleTooltip
+        button={
+          <PopoverTrigger
+            className={cn(
+              "group flex h-8 items-center rounded pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
+              isCollapsed ? "justify-center pr-0.5" : "w-full justify-between pr-1"
+            )}
+          >
+            <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+              <Avatar avatar={organization.avatar} size={1.25} orgName={organization.title} />
+              <span
+                className={cn(
+                  "flex min-w-0 items-center gap-1.5 overflow-hidden transition-all duration-200",
+                  isCollapsed ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100"
+                )}
+              >
+                <SelectorDivider />
+                <span className="truncate text-2sm font-normal text-text-bright">
+                  {project.name ?? "Select a project"}
+                </span>
+              </span>
+            </span>
+            <span
+              className={cn(
+                "overflow-hidden transition-all duration-200",
+                isCollapsed ? "max-w-0 opacity-0" : "max-w-[16px] opacity-100"
+              )}
+            >
+              <DropdownIcon className="size-4 min-w-4 text-text-dimmed transition group-hover:text-text-bright" />
+            </span>
+          </PopoverTrigger>
+        }
+        content={`${organization.title} / ${project.name}`}
+        side="right"
+        sideOffset={8}
+        hidden={!isCollapsed}
+        buttonClassName="!h-8"
+        asChild
+      />
       <PopoverContent
         className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        side={isCollapsed ? "right" : "bottom"}
+        sideOffset={isCollapsed ? 8 : 4}
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >

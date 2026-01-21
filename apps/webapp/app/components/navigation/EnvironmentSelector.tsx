@@ -55,7 +55,7 @@ export function EnvironmentSelector({
   const trigger = (
     <div
       className={cn(
-        "flex h-8 items-center gap-1.5 overflow-hidden rounded px-2 transition-colors hover:bg-charcoal-750",
+        "flex h-8 w-full items-center gap-1.5 overflow-hidden rounded pl-1.5 pr-2 transition-colors hover:bg-charcoal-750",
         className
       )}
     >

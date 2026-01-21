@@ -30,9 +30,9 @@ export function SideMenuSection({
   }, [isCollapsed, onCollapseToggle]);
 
   return (
-    <div className="overflow-hidden">
+    <div className="w-full overflow-hidden">
       {/* Header container - stays in DOM to preserve height */}
-      <div className="relative">
+      <div className="relative w-full">
         {/* Header - fades out when sidebar is collapsed */}
         <motion.div
           className="flex cursor-pointer items-center gap-1 overflow-hidden rounded-sm py-1 pl-1.5 text-text-dimmed transition hover:bg-charcoal-750 hover:text-text-bright"
@@ -55,7 +55,7 @@ export function SideMenuSection({
         </motion.div>
         {/* Divider - absolutely positioned, visible when sidebar is collapsed */}
         <motion.div
-          className="absolute left-2 right-2 top-1 w-full h-px bg-grid-bright"
+          className="absolute left-2 right-2 top-1 h-px bg-grid-bright"
           initial={false}
           animate={{
             opacity: isSideMenuCollapsed ? 1 : 0,
@@ -65,6 +65,7 @@ export function SideMenuSection({
       </div>
       <AnimatePresence initial={false}>
         <motion.div
+          className="w-full"
           initial={isCollapsed ? "collapsed" : "expanded"}
           animate={isCollapsed && !isSideMenuCollapsed ? "collapsed" : "expanded"}
           exit="collapsed"
@@ -85,7 +86,7 @@ export function SideMenuSection({
           style={{ overflow: "hidden" }}
         >
           <motion.div
-            className="space-y-px"
+            className="w-full space-y-px"
             variants={{
               expanded: {
                 translateY: 0,
