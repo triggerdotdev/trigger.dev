@@ -820,20 +820,21 @@ function AnimatedChevron({
   };
 
   return (
-    <svg
+    <motion.svg
       width="4"
       height="30"
       viewBox="0 0 4 30"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className="overflow-visible text-charcoal-600 group-hover:text-text-bright transition-colors"
-      style={{
-        transform: `translateX(${getTranslateX()}px)`,
-        transition: "transform 400ms ease-out",
+      className="pointer-events-none relative z-10 overflow-visible text-charcoal-600 group-hover:text-text-bright transition-colors"
+      initial={false}
+      animate={{
+        x: getTranslateX(),
       }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
     >
       {/* Top segment */}
-      <line
+      <motion.line
         x1="2"
         y1="1.5"
         x2="2"
@@ -841,14 +842,15 @@ function AnimatedChevron({
         stroke="currentColor"
         strokeWidth="3"
         strokeLinecap="round"
-        style={{
-          transformOrigin: "2px 15px",
-          transform: `rotate(${top}deg)`,
-          transition: "transform 200ms ease-out",
+        initial={false}
+        animate={{
+          rotate: top,
         }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        style={{ transformOrigin: "2px 15px" }}
       />
       {/* Bottom segment */}
-      <line
+      <motion.line
         x1="2"
         y1="15"
         x2="2"
@@ -856,13 +858,14 @@ function AnimatedChevron({
         stroke="currentColor"
         strokeWidth="3"
         strokeLinecap="round"
-        style={{
-          transformOrigin: "2px 15px",
-          transform: `rotate(${bottom}deg)`,
-          transition: "transform 200ms ease-out",
+        initial={false}
+        animate={{
+          rotate: bottom,
         }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        style={{ transformOrigin: "2px 15px" }}
       />
-    </svg>
+    </motion.svg>
   );
 }
 
@@ -878,7 +881,7 @@ function CollapseToggle({
   return (
     <div className="absolute -right-3 top-1/2 z-10 -translate-y-1/2">
       {/* Vertical line to mask the side menu border */}
-      <div className="absolute left-1/2 top-1/2 h-10 w-px -translate-y-1/2 bg-background-bright" />
+      <div className="pointer-events-none absolute left-1/2 top-1/2 h-10 w-px -translate-y-1/2 bg-background-bright" />
       <TooltipProvider disableHoverableContent>
         <Tooltip>
           <TooltipTrigger asChild>
