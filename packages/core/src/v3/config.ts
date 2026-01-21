@@ -171,6 +171,15 @@ export type TriggerConfig = {
    */
   disableConsoleInterceptor?: boolean;
 
+  /**
+   * Enable or disable source-map-support for enhanced stack traces.
+   * Disabling this can help prevent OOM issues when using Sentry's debug ID injection
+   * with large projects that have many bundled files.
+   *
+   * @default true
+   */
+  sourceMapSupport?: boolean;
+
   build?: {
     /**
      * Add custom conditions to the esbuild build. For example, if you are importing `ai/rsc`, you'll need to add "react-server" condition.

@@ -63,17 +63,28 @@ import {
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
 import { setInterval, setTimeout } from "node:timers/promises";
-import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { VERSION } from "../version.js";
 import { promiseWithResolvers } from "@trigger.dev/core/utils";
 
-sourceMapSupport.install({
-  handleUncaughtExceptions: false,
-  environment: "node",
-  hookRequire: false,
-});
+let sourceMapSupportInstalled = false;
+
+async function installSourceMapSupport() {
+  if (sourceMapSupportInstalled) return;
+  sourceMapSupportInstalled = true;
+
+  try {
+    const sourceMapSupport = await import("source-map-support");
+    sourceMapSupport.default.install({
+      handleUncaughtExceptions: false,
+      environment: "node",
+      hookRequire: false,
+    });
+  } catch (error) {
+    console.warn("Failed to install source-map-support:", error);
+  }
+}
 
 process.on("uncaughtException", function (error, origin) {
   logError("Uncaught exception", { error, origin });
@@ -269,6 +280,11 @@ async function doBootstrap() {
         id: "config",
         fn: handleError as AnyOnCatchErrorHookFunction,
       });
+    }
+
+    // Install source-map-support after config is loaded (deferred to avoid OOM with Sentry debug ID injection)
+    if (config.sourceMapSupport !== false) {
+      installSourceMapSupport();
     }
 
     log("Bootstrapped worker");

@@ -13,18 +13,29 @@ import {
 } from "@trigger.dev/core/v3/workers";
 import { sendMessageInCatalog, ZodSchemaParsedError } from "@trigger.dev/core/v3/zodMessageHandler";
 import { readFile } from "node:fs/promises";
-import sourceMapSupport from "source-map-support";
 import { registerResources } from "../indexing/registerResources.js";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { detectRuntimeVersion } from "@trigger.dev/core/v3/build";
 import { schemaToJsonSchema } from "@trigger.dev/schema-to-json";
 
-sourceMapSupport.install({
-  handleUncaughtExceptions: false,
-  environment: "node",
-  hookRequire: false,
-});
+let sourceMapSupportInstalled = false;
+
+async function installSourceMapSupport() {
+  if (sourceMapSupportInstalled) return;
+  sourceMapSupportInstalled = true;
+
+  try {
+    const sourceMapSupport = await import("source-map-support");
+    sourceMapSupport.default.install({
+      handleUncaughtExceptions: false,
+      environment: "node",
+      hookRequire: false,
+    });
+  } catch (error) {
+    console.warn("Failed to install source-map-support:", error);
+  }
+}
 
 process.on("uncaughtException", function (error, origin) {
   if (error instanceof Error) {
@@ -79,6 +90,11 @@ async function bootstrap() {
   const buildManifest = await loadBuildManifest();
 
   const { config } = await importConfig(buildManifest.configPath);
+
+  // Install source-map-support after config is loaded (deferred to avoid OOM with Sentry debug ID injection)
+  if (config.sourceMapSupport !== false) {
+    installSourceMapSupport();
+  }
 
   // This needs to run or the PrismaInstrumentation will throw an error
   const tracingSDK = new TracingSDK({
