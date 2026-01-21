@@ -41,6 +41,8 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
 import { useHasAdminAccess } from "~/hooks/useUser";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { ShortcutKey } from "../primitives/ShortcutKey";
 import { type User } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
@@ -136,6 +138,11 @@ export function SideMenu({
   const isAdmin = useHasAdminAccess();
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
+
+  useShortcutKeys({
+    shortcut: { modifiers: ["mod"], key: "b" },
+    action: () => setIsCollapsed((prev) => !prev),
+  });
 
   useEffect(() => {
     const handleScroll = () => {
@@ -897,8 +904,12 @@ function CollapseToggle({
               <AnimatedChevron isHovering={isHovering} isCollapsed={isCollapsed} />
             </button>
           </TooltipTrigger>
-          <TooltipContent side="right" className="text-xs">
+          <TooltipContent side="right" className="flex items-center gap-2 text-xs">
             {isCollapsed ? "Expand" : "Collapse"}
+            <span className="flex items-center">
+              <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="small" />
+              <ShortcutKey shortcut={{ key: "b" }} variant="small" />
+            </span>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

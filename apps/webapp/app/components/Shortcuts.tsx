@@ -82,6 +82,10 @@ function ShortcutContent() {
             <Shortcut name="Filter">
               <ShortcutKey shortcut={{ key: "f" }} variant="medium/bright" />
             </Shortcut>
+            <Shortcut name="Toggle side menu">
+              <ShortcutKey shortcut={{ modifiers: ["mod"]}} variant="medium/bright" />
+              <ShortcutKey shortcut={{ key: "b" }} variant="medium/bright" />
+            </Shortcut>
             <Shortcut name="Select filter">
               <ShortcutKey shortcut={{ key: "1" }} variant="medium/bright" />
               <Paragraph variant="small" className="ml-1.5">
