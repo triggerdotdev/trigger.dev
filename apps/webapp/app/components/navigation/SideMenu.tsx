@@ -140,7 +140,7 @@ export function SideMenu({
   const featureFlags = useFeatureFlags();
 
   useShortcutKeys({
-    shortcut: { modifiers: ["mod"], key: "b" },
+    shortcut: { modifiers: ["mod"], key: "b", enabledOnInputElements: true },
     action: () => setIsCollapsed((prev) => !prev),
   });
 
