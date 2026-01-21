@@ -25,6 +25,10 @@ const stories: Story[] = [
     slug: "callout",
   },
   {
+    name: "Charts",
+    slug: "charts",
+  },
+  {
     name: "Checkboxes",
     slug: "checkboxes",
   },
@@ -65,10 +69,6 @@ const stories: Story[] = [
     slug: "loading-bar-divider",
   },
   {
-    name: "NamedIcon",
-    slug: "named-icon",
-  },
-  {
     name: "Page header",
     slug: "page-header",
   },
@@ -83,6 +83,10 @@ const stories: Story[] = [
   {
     name: "Resizable",
     slug: "resizable",
+  },
+  {
+    name: "Run & Span timeline",
+    slug: "run-and-span-timeline",
   },
   {
     name: "Segemented control",
@@ -109,6 +113,10 @@ const stories: Story[] = [
     slug: "tabs",
   },
   {
+    name: "Timeline",
+    slug: "timeline",
+  },
+  {
     name: "Toast",
     slug: "toast",
   },
@@ -125,14 +133,6 @@ const stories: Story[] = [
     slug: "tsql-editor",
   },
   {
-    name: "Timeline",
-    slug: "timeline",
-  },
-  {
-    name: "Run & Span timeline",
-    slug: "run-and-span-timeline",
-  },
-  {
     name: "Typography",
     slug: "typography",
   },
@@ -140,6 +140,7 @@ const stories: Story[] = [
     name: "Usage",
     slug: "usage",
   },
+  // Forms section
   {
     sectionTitle: "Forms",
     name: "Date fields",
@@ -165,18 +166,19 @@ const stories: Story[] = [
     name: "Textarea",
     slug: "textarea",
   },
+  // Menus section
   {
     sectionTitle: "Menus",
-    name: "Select",
-    slug: "select",
-  },
-  {
     name: "Filter",
     slug: "filter",
   },
   {
     name: "Popover",
     slug: "popover",
+  },
+  {
+    name: "Select",
+    slug: "select",
   },
 ];
 
