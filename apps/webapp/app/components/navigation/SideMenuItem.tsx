@@ -62,12 +62,12 @@ export function SideMenuItem({
         >
           {name}
         </motion.span>
-        {badge && (
+        {badge && !isCollapsed && (
           <motion.div 
             className="ml-1 flex shrink-0 items-center gap-1"
             initial={false}
             animate={{
-              opacity: isCollapsed ? 0 : 1,
+              opacity: 1,
             }}
             transition={{ duration: 0.15, ease: "easeOut" }}
           >
