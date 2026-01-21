@@ -505,6 +505,7 @@ function ProjectSelector({
         hidden={!isCollapsed}
         buttonClassName="!h-8"
         asChild
+        disableHoverableContent
       />
       <PopoverContent
         className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"

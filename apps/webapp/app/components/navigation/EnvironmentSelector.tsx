@@ -89,6 +89,7 @@ export function EnvironmentSelector({
         hidden={!isCollapsed}
         buttonClassName="!h-8 w-full"
         asChild
+        disableHoverableContent
       />
       <PopoverContent
         className="min-w-[14rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"

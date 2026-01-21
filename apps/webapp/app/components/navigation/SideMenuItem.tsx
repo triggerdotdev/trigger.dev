@@ -87,6 +87,7 @@ export function SideMenuItem({
       buttonClassName="!h-8 block w-full"
       hidden={!isCollapsed}
       asChild
+      disableHoverableContent
     />
   );
 }
