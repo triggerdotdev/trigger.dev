@@ -268,6 +268,7 @@ export class RunEngine {
 
     const resources: SystemResources = {
       prisma: this.prisma,
+      readOnlyPrisma: this.readOnlyPrisma,
       worker: this.worker,
       eventBus: this.eventBus,
       logger: this.logger,
