@@ -739,17 +739,15 @@ function CollapsibleElement({
   className?: string;
 }) {
   return (
-    <motion.div
-      className={cn("overflow-hidden", className)}
-      initial={false}
-      animate={{
-        opacity: isCollapsed ? 0 : 1,
-        width: isCollapsed ? 0 : "auto",
-      }}
-      transition={{ duration: 0.15, ease: "easeOut" }}
+    <div
+      className={cn(
+        "overflow-hidden transition-all duration-200",
+        isCollapsed ? "max-w-0 opacity-0" : "max-w-[100px] opacity-100",
+        className
+      )}
     >
       {children}
-    </motion.div>
+    </div>
   );
 }
 
