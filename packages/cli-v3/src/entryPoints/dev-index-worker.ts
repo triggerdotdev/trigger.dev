@@ -13,18 +13,17 @@ import {
 } from "@trigger.dev/core/v3/workers";
 import { sendMessageInCatalog, ZodSchemaParsedError } from "@trigger.dev/core/v3/zodMessageHandler";
 import { readFile } from "node:fs/promises";
-import sourceMapSupport from "source-map-support";
 import { registerResources } from "../indexing/registerResources.js";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { detectRuntimeVersion } from "@trigger.dev/core/v3/build";
 import { schemaToJsonSchema } from "@trigger.dev/schema-to-json";
+import {
+  installDeferredSourceMapSupport,
+  enableSourceMapSupport,
+} from "./deferredSourceMapSupport.js";
 
-sourceMapSupport.install({
-  handleUncaughtExceptions: false,
-  environment: "node",
-  hookRequire: false,
-});
+installDeferredSourceMapSupport();
 
 process.on("uncaughtException", function (error, origin) {
   if (error instanceof Error) {
@@ -100,6 +99,9 @@ async function bootstrap() {
 }
 
 const { buildManifest, importErrors, config, timings } = await bootstrap();
+
+// Enable sourcemap support after bootstrap completes (loading phase is over)
+enableSourceMapSupport();
 
 let tasks = await convertSchemasToJsonSchemas(resourceCatalog.listTaskManifests());
 

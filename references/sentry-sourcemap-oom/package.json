@@ -1,0 +1,16 @@
+{
+  "name": "references-sentry-sourcemap-oom",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "trigger.dev": "workspace:*"
+  },
+  "dependencies": {
+    "@trigger.dev/build": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*"
+  },
+  "scripts": {
+    "dev": "trigger dev",
+    "deploy": "trigger deploy"
+  }
+}

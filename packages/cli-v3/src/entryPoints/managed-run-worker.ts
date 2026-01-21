@@ -63,17 +63,16 @@ import {
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
 import { setInterval, setTimeout } from "node:timers/promises";
-import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { VERSION } from "../version.js";
 import { promiseWithResolvers } from "@trigger.dev/core/utils";
+import {
+  installDeferredSourceMapSupport,
+  enableSourceMapSupport,
+} from "./deferredSourceMapSupport.js";
 
-sourceMapSupport.install({
-  handleUncaughtExceptions: false,
-  environment: "node",
-  hookRequire: false,
-});
+installDeferredSourceMapSupport();
 
 process.on("uncaughtException", function (error, origin) {
   console.error("Uncaught exception", { error, origin });
@@ -404,6 +403,9 @@ const zodIpc = new ZodIpcConnection({
       try {
         const { tracer, tracingSDK, consoleInterceptor, config, workerManifest } =
           await bootstrap();
+
+        // Enable sourcemap support after bootstrap completes (loading phase is over)
+        enableSourceMapSupport();
 
         _tracingSDK = tracingSDK;
 
