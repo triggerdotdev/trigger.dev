@@ -330,6 +330,7 @@ export const runsSchema: TableSchema = {
     // For JSON columns, NULL checks are transformed to check for empty object '{}'
     // So `error IS NULL` becomes `error = '{}'` and `error IS NOT NULL` becomes `error != '{}'`
     // textColumn uses the pre-materialized text columns for better performance
+    // dataPrefix handles the internal {"data": ...} wrapper transparently
     output: {
       name: "output",
       ...column("JSON", {
@@ -338,6 +339,7 @@ export const runsSchema: TableSchema = {
       }),
       nullValue: "'{}'", // Transform NULL checks to compare against empty object
       textColumn: "output_text", // Use output_text for full JSON value queries
+      dataPrefix: "data", // Internal data is wrapped in {"data": ...}
     },
     error: {
       name: "error",
@@ -348,6 +350,7 @@ export const runsSchema: TableSchema = {
       }),
       nullValue: "'{}'", // Transform NULL checks to compare against empty object
       textColumn: "error_text", // Use error_text for full JSON value queries
+      dataPrefix: "data", // Internal data is wrapped in {"data": ...}
     },
 
     // Tags & versions

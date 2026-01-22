@@ -657,10 +657,10 @@ export class ClickHousePrinter {
           // If so, add an alias to preserve the nice column name (dots → underscores)
           const isJsonSubfield = this.isJsonSubfieldAccess(field.chain);
           if (isJsonSubfield) {
-            // Build the alias using underscores (e.g., "error_data_name")
-            const aliasName = field.chain
-              .filter((p): p is string => typeof p === "string")
-              .join("_");
+            // Build the alias using underscores, excluding any dataPrefix
+            // e.g., output.message -> "output_message" (not "output_data_message")
+            const dataPrefix = this.getDataPrefixForField(field.chain);
+            const aliasName = this.buildAliasWithoutDataPrefix(field.chain, dataPrefix);
             sqlResult = `${visited} AS ${this.printIdentifier(aliasName)}`;
             // Override output name for metadata
             effectiveOutputName = aliasName;
@@ -2125,8 +2125,11 @@ export class ClickHousePrinter {
       return `(${virtualExpression})`;
     }
 
+    // Inject dataPrefix for JSON columns if needed (e.g., output.message -> output.data.message)
+    const chainWithPrefix = this.injectDataPrefix(node.chain);
+
     // Try to resolve column names through table context
-    const resolvedChain = this.resolveFieldChain(node.chain);
+    const resolvedChain = this.resolveFieldChain(chainWithPrefix);
 
     // Print each chain element
     let result = resolvedChain.map((part) => this.printIdentifierOrIndex(part)).join(".");
@@ -2271,6 +2274,81 @@ export class ClickHousePrinter {
   private getTextColumnForExpression(expr: Expression): string | null {
     if ((expr as Field).expression_type !== "field") return null;
     return this.getTextColumnForField((expr as Field).chain);
+  }
+
+  /**
+   * Get the dataPrefix for a field chain if the root column has one defined.
+   * Returns null if the column doesn't have a dataPrefix or if this isn't a subfield access.
+   */
+  private getDataPrefixForField(chain: Array<string | number>): string | null {
+    if (chain.length < 2) return null; // Need at least column.subfield
+
+    const firstPart = chain[0];
+    if (typeof firstPart !== "string") return null;
+
+    // Check if first part is a table alias (table.column.subfield)
+    const tableSchema = this.tableContexts.get(firstPart);
+    if (tableSchema) {
+      // Qualified: table.column.subfield - need at least 3 parts
+      if (chain.length < 3) return null;
+      const columnName = chain[1];
+      if (typeof columnName !== "string") return null;
+      const columnSchema = tableSchema.columns[columnName];
+      return columnSchema?.dataPrefix ?? null;
+    }
+
+    // Unqualified: column.subfield
+    const columnSchema = this.resolveFieldToColumnSchema([firstPart]);
+    return columnSchema?.dataPrefix ?? null;
+  }
+
+  /**
+   * Inject dataPrefix into a field chain if the root column has one defined.
+   * e.g., [output, message] -> [output, data, message] when dataPrefix is "data"
+   * Returns the original chain if no dataPrefix applies.
+   */
+  private injectDataPrefix(chain: Array<string | number>): Array<string | number> {
+    const dataPrefix = this.getDataPrefixForField(chain);
+    if (!dataPrefix) return chain;
+
+    const firstPart = chain[0];
+    if (typeof firstPart !== "string") return chain;
+
+    // Check if first part is a table alias
+    const tableSchema = this.tableContexts.get(firstPart);
+    if (tableSchema) {
+      // Qualified: table.column.subfield -> table.column.dataPrefix.subfield
+      // [table, column, subfield] -> [table, column, dataPrefix, subfield]
+      return [chain[0], chain[1], dataPrefix, ...chain.slice(2)];
+    }
+
+    // Unqualified: column.subfield -> column.dataPrefix.subfield
+    // [column, subfield] -> [column, dataPrefix, subfield]
+    return [chain[0], dataPrefix, ...chain.slice(1)];
+  }
+
+  /**
+   * Build an alias name for a field chain, excluding the dataPrefix if present.
+   * e.g., [output, message] with dataPrefix "data" -> "output_message"
+   * This gives users clean column names without the internal data wrapper.
+   */
+  private buildAliasWithoutDataPrefix(
+    chain: Array<string | number>,
+    dataPrefix: string | null
+  ): string {
+    // Filter to just string parts and join with underscores
+    const parts = chain.filter((p): p is string => typeof p === "string");
+
+    if (dataPrefix) {
+      // Remove the dataPrefix from the parts (it's an implementation detail)
+      const prefixIndex = parts.indexOf(dataPrefix);
+      if (prefixIndex > 0) {
+        // Only remove if it's not the first element (column name)
+        parts.splice(prefixIndex, 1);
+      }
+    }
+
+    return parts.join("_");
   }
 
   /**

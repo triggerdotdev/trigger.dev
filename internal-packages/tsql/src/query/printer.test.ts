@@ -842,6 +842,156 @@ describe("ClickHousePrinter", () => {
     });
   });
 
+  describe("dataPrefix for JSON columns", () => {
+    // Create a schema with JSON columns that have dataPrefix set
+    const dataPrefixSchema: TableSchema = {
+      name: "runs",
+      clickhouseName: "trigger_dev.task_runs_v2",
+      columns: {
+        id: { name: "id", ...column("String") },
+        output: {
+          name: "output",
+          ...column("JSON"),
+          nullValue: "'{}'",
+          dataPrefix: "data",
+        },
+        error: {
+          name: "error",
+          ...column("JSON"),
+          nullValue: "'{}'",
+          dataPrefix: "data",
+        },
+        status: { name: "status", ...column("String") },
+        organization_id: { name: "organization_id", ...column("String") },
+        project_id: { name: "project_id", ...column("String") },
+        environment_id: { name: "environment_id", ...column("String") },
+      },
+      tenantColumns: {
+        organizationId: "organization_id",
+        projectId: "project_id",
+        environmentId: "environment_id",
+      },
+    };
+
+    function createDataPrefixContext() {
+      const schema = createSchemaRegistry([dataPrefixSchema]);
+      return createPrinterContext({
+        organizationId: "org_test",
+        projectId: "proj_test",
+        environmentId: "env_test",
+        schema,
+      });
+    }
+
+    describe("SELECT clause", () => {
+      it("should inject dataPrefix into JSON subfield path", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery("SELECT output.message FROM runs", ctx);
+
+        // Should transform output.message to output.data.message
+        expect(sql).toContain("output.data.message");
+      });
+
+      it("should generate clean alias without dataPrefix", () => {
+        const ctx = createDataPrefixContext();
+        const { sql, columns } = printQuery("SELECT output.message FROM runs", ctx);
+
+        // Alias should be output_message, not output_data_message
+        expect(sql).toContain("AS output_message");
+        expect(sql).not.toContain("AS output_data_message");
+        expect(columns).toContainEqual(
+          expect.objectContaining({ name: "output_message" })
+        );
+      });
+
+      it("should handle nested paths with dataPrefix", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery("SELECT output.user.name FROM runs", ctx);
+
+        // Should transform output.user.name to output.data.user.name
+        expect(sql).toContain("output.data.user.name");
+        // Alias should be output_user_name
+        expect(sql).toContain("AS output_user_name");
+      });
+
+      it("should work with multiple JSON columns with dataPrefix", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery("SELECT output.msg, error.code FROM runs", ctx);
+
+        expect(sql).toContain("output.data.msg");
+        expect(sql).toContain("error.data.code");
+        expect(sql).toContain("AS output_msg");
+        expect(sql).toContain("AS error_code");
+      });
+
+      it("should not affect bare JSON column selection", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery("SELECT output FROM runs", ctx);
+
+        // Bare column should not have dataPrefix injected
+        expect(sql).not.toContain("output.data");
+        expect(sql).toMatch(/SELECT\s+output[\s,]/);
+      });
+    });
+
+    describe("WHERE clause", () => {
+      it("should inject dataPrefix into WHERE comparison", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery(
+          "SELECT id FROM runs WHERE output.status = 'success'",
+          ctx
+        );
+
+        // Should transform output.status to output.data.status
+        expect(sql).toContain("output.data.status");
+      });
+
+      it("should inject dataPrefix into LIKE comparison", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery(
+          "SELECT id FROM runs WHERE error.message LIKE '%failed%'",
+          ctx
+        );
+
+        expect(sql).toContain("error.data.message");
+      });
+    });
+
+    describe("GROUP BY clause", () => {
+      it("should inject dataPrefix into GROUP BY", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery(
+          "SELECT output.type, count() AS cnt FROM runs GROUP BY output.type",
+          ctx
+        );
+
+        // Should inject dataPrefix in both SELECT and GROUP BY
+        expect(sql).toContain("output.data.type");
+        expect(sql).toContain("GROUP BY output.data.type");
+      });
+    });
+
+    describe("edge cases", () => {
+      it("should not affect columns without dataPrefix", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery("SELECT status FROM runs", ctx);
+
+        // Regular column should not be affected
+        expect(sql).toContain("status");
+        expect(sql).not.toContain("status.data");
+      });
+
+      it("should work with explicit alias on JSON subfield", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery("SELECT output.message AS msg FROM runs", ctx);
+
+        // Should inject dataPrefix but use user's alias
+        expect(sql).toContain("output.data.message");
+        expect(sql).toContain("AS msg");
+      });
+    });
+  });
+
   describe("ORDER BY clauses", () => {
     it("should print ORDER BY ASC", () => {
       const { sql } = printQuery("SELECT * FROM task_runs ORDER BY created_at ASC");
