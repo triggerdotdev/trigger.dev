@@ -622,19 +622,18 @@ describe("ClickHousePrinter", () => {
       expect(sql).not.toContain("error.message.:String");
     });
 
-    it("should add .:String in SELECT but not in WHERE for same field", () => {
+    it("should NOT add .:String in SELECT or WHERE when no GROUP BY", () => {
       const ctx = createJsonContext();
       const { sql } = printQuery(
         "SELECT error.data.name FROM runs WHERE error.data.name = 'test'",
         ctx
       );
 
-      // SELECT should have .:String with alias
-      expect(sql).toContain("error.data.name.:String AS error_data_name");
+      // SELECT should NOT have .:String (no GROUP BY, so no need for type hint)
+      expect(sql).toContain("error.data.name AS error_data_name");
+      expect(sql).not.toContain(".:String");
       // WHERE should NOT have .:String
       expect(sql).toContain("equals(error.data.name,");
-      // Make sure WHERE doesn't accidentally get the type hint
-      expect(sql).not.toMatch(/equals\(error\.data\.name\.:String/);
     });
 
     it("should add .:String in GROUP BY but not in WHERE for same query", () => {
@@ -712,13 +711,14 @@ describe("ClickHousePrinter", () => {
         expect(sql).toContain("error_text AS error");
       });
 
-      it("should use JSON column for subfield access", () => {
+      it("should use JSON column for subfield access without .:String when no GROUP BY", () => {
         const ctx = createTextColumnContext();
         const { sql } = printQuery("SELECT output.data.name FROM runs", ctx);
 
-        // Should use the original JSON column with .:String type hint
-        expect(sql).toContain("output.data.name.:String");
+        // Should use the original JSON column without .:String (no GROUP BY)
+        expect(sql).toContain("output.data.name AS output_data_name");
         expect(sql).not.toContain("output_text");
+        expect(sql).not.toContain(".:String");
       });
     });
 

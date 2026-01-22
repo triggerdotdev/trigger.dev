@@ -114,6 +114,8 @@ export class ClickHousePrinter {
   private outputColumns: OutputColumnMetadata[] = [];
   /** Whether we're currently processing GROUP BY expressions */
   private inGroupByContext = false;
+  /** Whether the current query has a GROUP BY clause (used for JSON subfield type hints) */
+  private queryHasGroupBy = false;
   /** Columns hidden when SELECT * is expanded to core columns only */
   private hiddenColumns: string[] = [];
   /**
@@ -392,6 +394,11 @@ export class ClickHousePrinter {
       }
     }
 
+    // Track if query has GROUP BY for JSON subfield type hint decisions
+    // (ClickHouse requires .:String for Dynamic types in GROUP BY, and SELECT must match)
+    const savedQueryHasGroupBy = this.queryHasGroupBy;
+    this.queryHasGroupBy = !!node.group_by;
+
     // Process SELECT columns and collect metadata
     // Using flatMap because asterisk expansion can return multiple columns
     // Set inProjectionContext to block internal-only columns in user projections
@@ -543,6 +550,7 @@ export class ClickHousePrinter {
 
     // Restore saved contexts (for nested queries)
     this.selectAliases = savedAliases;
+    this.queryHasGroupBy = savedQueryHasGroupBy;
     this.tableContexts = savedTableContexts;
     this.allowedInternalColumns = savedInternalColumns;
     this.internalOnlyColumns = savedInternalOnlyColumns;
@@ -2124,14 +2132,21 @@ export class ClickHousePrinter {
     let result = resolvedChain.map((part) => this.printIdentifierOrIndex(part)).join(".");
 
     // For JSON column subfield access (e.g., error.data.name), add .:String type hint
-    // This is required because ClickHouse's Dynamic/Variant types are not allowed in
-    // GROUP BY without type casting, and SELECT/GROUP BY expressions must match
-    // However, we skip this in WHERE comparisons where it breaks the query
+    // This is ONLY required when the query has GROUP BY, because:
+    // 1. ClickHouse's Dynamic/Variant types are not allowed in GROUP BY without type casting
+    // 2. SELECT/GROUP BY expressions must match
+    // For queries without GROUP BY, the .:String type hint actually breaks the query
+    // (returns NULL instead of the actual value)
+    // We also skip this in WHERE comparisons where it breaks the query
     if (resolvedChain.length > 1) {
       // Check if the root column (first part) is a JSON column
       const rootColumnSchema = this.resolveFieldToColumnSchema([node.chain[0]]);
-      // Add .:String for SELECT/GROUP BY, but NOT in WHERE comparisons
-      if (rootColumnSchema?.type === "JSON" && !this.isInWhereComparisonContext()) {
+      // Add .:String ONLY for GROUP BY queries, and NOT in WHERE comparisons
+      if (
+        rootColumnSchema?.type === "JSON" &&
+        this.queryHasGroupBy &&
+        !this.isInWhereComparisonContext()
+      ) {
         // Add .:String type hint for JSON subfield access
         result = `${result}.:String`;
       }
