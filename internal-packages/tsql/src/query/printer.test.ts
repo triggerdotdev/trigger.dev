@@ -599,6 +599,192 @@ describe("ClickHousePrinter", () => {
     });
   });
 
+  describe("textColumn optimization for JSON columns", () => {
+    // Create a schema with JSON columns that have textColumn set
+    const textColumnSchema: TableSchema = {
+      name: "runs",
+      clickhouseName: "trigger_dev.task_runs_v2",
+      columns: {
+        id: { name: "id", ...column("String") },
+        output: {
+          name: "output",
+          ...column("JSON"),
+          nullValue: "'{}'",
+          textColumn: "output_text",
+        },
+        error: {
+          name: "error",
+          ...column("JSON"),
+          nullValue: "'{}'",
+          textColumn: "error_text",
+        },
+        status: { name: "status", ...column("String") },
+        organization_id: { name: "organization_id", ...column("String") },
+        project_id: { name: "project_id", ...column("String") },
+        environment_id: { name: "environment_id", ...column("String") },
+      },
+      tenantColumns: {
+        organizationId: "organization_id",
+        projectId: "project_id",
+        environmentId: "environment_id",
+      },
+    };
+
+    function createTextColumnContext() {
+      const schema = createSchemaRegistry([textColumnSchema]);
+      return createPrinterContext({
+        organizationId: "org_test",
+        projectId: "proj_test",
+        environmentId: "env_test",
+        schema,
+      });
+    }
+
+    describe("SELECT clause", () => {
+      it("should use text column when selecting bare JSON column", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT output FROM runs", ctx);
+
+        // Should use the text column with an alias to preserve the column name
+        expect(sql).toContain("output_text AS output");
+      });
+
+      it("should use text column for multiple JSON columns", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT output, error FROM runs", ctx);
+
+        expect(sql).toContain("output_text AS output");
+        expect(sql).toContain("error_text AS error");
+      });
+
+      it("should use JSON column for subfield access", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT output.data.name FROM runs", ctx);
+
+        // Should use the original JSON column with .:String type hint
+        expect(sql).toContain("output.data.name.:String");
+        expect(sql).not.toContain("output_text");
+      });
+    });
+
+    describe("SELECT * expansion", () => {
+      it("should use text columns when expanding SELECT *", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT * FROM runs", ctx);
+
+        // Should use text columns for JSON columns
+        expect(sql).toContain("output_text AS output");
+        expect(sql).toContain("error_text AS error");
+      });
+    });
+
+    describe("WHERE clause", () => {
+      it("should use text column for exact equality comparison", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT id FROM runs WHERE output = '{}'", ctx);
+
+        expect(sql).toContain("equals(output_text,");
+        expect(sql).not.toMatch(/equals\(output,/);
+      });
+
+      it("should use text column for inequality comparison", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT id FROM runs WHERE output != '{}'", ctx);
+
+        expect(sql).toContain("notEquals(output_text,");
+      });
+
+      it("should use text column for LIKE comparison", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT id FROM runs WHERE output LIKE '%error%'", ctx);
+
+        expect(sql).toContain("like(output_text,");
+        expect(sql).not.toMatch(/like\(output,/);
+      });
+
+      it("should use text column for ILIKE comparison", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT id FROM runs WHERE error ILIKE '%failed%'", ctx);
+
+        expect(sql).toContain("ilike(error_text,");
+      });
+
+      it("should use text column for NOT LIKE comparison", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT id FROM runs WHERE output NOT LIKE '%test%'", ctx);
+
+        expect(sql).toContain("notLike(output_text,");
+      });
+
+      it("should use JSON column for subfield comparison", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery(
+          "SELECT id FROM runs WHERE output.data.name = 'test'",
+          ctx
+        );
+
+        // Should use the original JSON column, not the text column
+        expect(sql).toContain("equals(output.data.name.:String,");
+        expect(sql).not.toContain("output_text");
+      });
+
+      it("should still use nullValue transformation for IS NULL", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT id FROM runs WHERE output IS NULL", ctx);
+
+        // NULL check should use the text column with nullValue
+        expect(sql).toContain("equals(output_text, '{}')");
+      });
+
+      it("should still use nullValue transformation for IS NOT NULL", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT id FROM runs WHERE error IS NOT NULL", ctx);
+
+        expect(sql).toContain("notEquals(error_text, '{}')");
+      });
+    });
+
+    describe("edge cases", () => {
+      it("should work with columns without textColumn defined", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT status FROM runs WHERE status = 'completed'", ctx);
+
+        // Regular column should work as before
+        expect(sql).toContain("status");
+        expect(sql).not.toContain("status_text");
+      });
+
+      it("should use text column for aliased JSON columns in SELECT", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT output AS result FROM runs", ctx);
+
+        // Should use text column with user's alias
+        expect(sql).toContain("output_text AS result");
+      });
+
+      it("should use text column for table-qualified JSON columns in SELECT", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT runs.output FROM runs", ctx);
+
+        // Should use text column
+        expect(sql).toContain("output_text AS output");
+      });
+
+      it("should use text column in both SELECT and WHERE for same query", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery(
+          "SELECT output FROM runs WHERE output LIKE '%test%'",
+          ctx
+        );
+
+        // SELECT should use text column
+        expect(sql).toContain("output_text AS output");
+        // WHERE should use text column
+        expect(sql).toContain("like(output_text,");
+      });
+    });
+  });
+
   describe("ORDER BY clauses", () => {
     it("should print ORDER BY ASC", () => {
       const { sql } = printQuery("SELECT * FROM task_runs ORDER BY created_at ASC");

@@ -214,6 +214,22 @@ export interface ColumnSchema {
    * ```
    */
   nullValue?: string;
+  /**
+   * Alternative text column to use when selecting or comparing the full JSON value.
+   *
+   * For JSON columns, this allows using a pre-materialized string column
+   * which is more efficient than reading from the JSON column directly.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   name: "output",
+   *   type: "JSON",
+   *   textColumn: "output_text",
+   * }
+   * ```
+   */
+  textColumn?: string;
 }
 
 /**

@@ -627,37 +627,47 @@ export class ClickHousePrinter {
     let sqlResult: string;
     if ((col as Field).expression_type === "field") {
       const field = col as Field;
-      const virtualColumnName = this.getVirtualColumnNameForField(field.chain);
 
-      if (virtualColumnName !== null) {
-        // Visit the field (which will return the expression)
-        const visited = this.visit(col);
-        // Add the alias to preserve the column name
-        sqlResult = `${visited} AS ${this.printIdentifier(virtualColumnName)}`;
+      // Check if this is a bare JSON field that should use a text column
+      const textColumn = this.getTextColumnForField(field.chain);
+      if (textColumn !== null && outputName) {
+        // Use the text column instead of the JSON column, with alias to preserve name
+        sqlResult = `${this.printIdentifier(textColumn)} AS ${this.printIdentifier(outputName)}`;
       } else {
-        // Visit the field to get the ClickHouse SQL
-        const visited = this.visit(col);
+        const virtualColumnName = this.getVirtualColumnNameForField(field.chain);
 
-        // Check if this is a JSON subfield access (will have .:String type hint)
-        // If so, add an alias to preserve the nice column name (dots → underscores)
-        const isJsonSubfield = this.isJsonSubfieldAccess(field.chain);
-        if (isJsonSubfield) {
-          // Build the alias using underscores (e.g., "error_data_name")
-          const aliasName = field.chain.filter((p): p is string => typeof p === "string").join("_");
-          sqlResult = `${visited} AS ${this.printIdentifier(aliasName)}`;
-          // Override output name for metadata
-          effectiveOutputName = aliasName;
-        }
-        // Check if the column has a different clickhouseName - if so, add an alias
-        // to ensure results come back with the user-facing name
-        else if (
-          outputName &&
-          sourceColumn?.clickhouseName &&
-          sourceColumn.clickhouseName !== outputName
-        ) {
-          sqlResult = `${visited} AS ${this.printIdentifier(outputName)}`;
+        if (virtualColumnName !== null) {
+          // Visit the field (which will return the expression)
+          const visited = this.visit(col);
+          // Add the alias to preserve the column name
+          sqlResult = `${visited} AS ${this.printIdentifier(virtualColumnName)}`;
         } else {
-          sqlResult = visited;
+          // Visit the field to get the ClickHouse SQL
+          const visited = this.visit(col);
+
+          // Check if this is a JSON subfield access (will have .:String type hint)
+          // If so, add an alias to preserve the nice column name (dots → underscores)
+          const isJsonSubfield = this.isJsonSubfieldAccess(field.chain);
+          if (isJsonSubfield) {
+            // Build the alias using underscores (e.g., "error_data_name")
+            const aliasName = field.chain
+              .filter((p): p is string => typeof p === "string")
+              .join("_");
+            sqlResult = `${visited} AS ${this.printIdentifier(aliasName)}`;
+            // Override output name for metadata
+            effectiveOutputName = aliasName;
+          }
+          // Check if the column has a different clickhouseName - if so, add an alias
+          // to ensure results come back with the user-facing name
+          else if (
+            outputName &&
+            sourceColumn?.clickhouseName &&
+            sourceColumn.clickhouseName !== outputName
+          ) {
+            sqlResult = `${visited} AS ${this.printIdentifier(outputName)}`;
+          } else {
+            sqlResult = visited;
+          }
         }
       }
     } else if (
@@ -675,8 +685,23 @@ export class ClickHousePrinter {
       } else {
         sqlResult = visited;
       }
+    } else if ((col as Alias).expression_type === "alias") {
+      // Handle Alias expressions - check if inner expression is a bare JSON field with textColumn
+      const alias = col as Alias;
+      if ((alias.expr as Field).expression_type === "field") {
+        const innerField = alias.expr as Field;
+        const textColumn = this.getTextColumnForField(innerField.chain);
+        if (textColumn !== null) {
+          // Use the text column with the user's explicit alias
+          sqlResult = `${this.printIdentifier(textColumn)} AS ${this.printIdentifier(alias.alias)}`;
+        } else {
+          sqlResult = this.visit(col);
+        }
+      } else {
+        sqlResult = this.visit(col);
+      }
     } else {
-      // For Alias expressions or other types, visit normally
+      // For other types, visit normally
       sqlResult = this.visit(col);
     }
 
@@ -817,6 +842,11 @@ export class ClickHousePrinter {
       if (isVirtualColumn(columnSchema)) {
         // Virtual column: use the expression with an alias
         sqlResult = `(${columnSchema.expression}) AS ${this.printIdentifier(columnName)}`;
+      } else if (columnSchema.textColumn) {
+        // JSON column with text column optimization: use the text column with alias
+        sqlResult = `${this.printIdentifier(columnSchema.textColumn)} AS ${this.printIdentifier(
+          columnName
+        )}`;
       } else {
         // Regular column: use the actual ClickHouse column name
         const clickhouseName = columnSchema.clickhouseName ?? columnName;
@@ -1711,7 +1741,20 @@ export class ClickHousePrinter {
     // Transform the right side if it contains user-friendly values
     const transformedRight = this.transformValueMapExpression(node.right, columnSchema);
 
-    const left = this.visit(node.left);
+    // Check if we should use a text column for bare JSON field comparisons
+    // This applies to: Eq, NotEq, Like, ILike, NotLike, NotILike
+    const textColumnOps = [
+      CompareOperationOp.Eq,
+      CompareOperationOp.NotEq,
+      CompareOperationOp.Like,
+      CompareOperationOp.ILike,
+      CompareOperationOp.NotLike,
+      CompareOperationOp.NotILike,
+    ];
+    const useTextColumn = textColumnOps.includes(node.op);
+    const leftTextColumn = useTextColumn ? this.getTextColumnForExpression(node.left) : null;
+
+    const left = leftTextColumn ? this.printIdentifier(leftTextColumn) : this.visit(node.left);
     const right = this.visit(transformedRight);
 
     switch (node.op) {
@@ -2153,6 +2196,50 @@ export class ClickHousePrinter {
 
     const rootColumnSchema = this.resolveFieldToColumnSchema([chain[0]]);
     return rootColumnSchema?.type === "JSON";
+  }
+
+  /**
+   * Check if a field should use a text column instead of the JSON column.
+   * Returns the text column name if the field is a bare JSON field with textColumn defined,
+   * or null if the original column should be used.
+   *
+   * A "bare" JSON field means selecting the entire column (e.g., SELECT output)
+   * rather than accessing a subfield (e.g., SELECT output.data.name).
+   */
+  private getTextColumnForField(chain: Array<string | number>): string | null {
+    if (chain.length === 0) return null;
+
+    const firstPart = chain[0];
+    if (typeof firstPart !== "string") return null;
+
+    let columnSchema: ColumnSchema | null = null;
+
+    if (chain.length === 1) {
+      // Unqualified: just column name
+      columnSchema = this.resolveFieldToColumnSchema(chain);
+    } else if (chain.length === 2) {
+      // Could be table.column (qualified) - check if first part is a table alias
+      const tableSchema = this.tableContexts.get(firstPart);
+      if (tableSchema) {
+        const columnName = chain[1];
+        if (typeof columnName === "string") {
+          columnSchema = tableSchema.columns[columnName] || null;
+        }
+      }
+      // If not a table alias, it's JSON path access (e.g., output.data) - return null
+    }
+    // chain.length > 2 means JSON path access - return null
+
+    return columnSchema?.textColumn ?? null;
+  }
+
+  /**
+   * Get the text column for an expression if it's a bare JSON field.
+   * Returns null if the expression is not a field or doesn't have a textColumn.
+   */
+  private getTextColumnForExpression(expr: Expression): string | null {
+    if ((expr as Field).expression_type !== "field") return null;
+    return this.getTextColumnForField((expr as Field).chain);
   }
 
   /**
