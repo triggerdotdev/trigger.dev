@@ -2126,10 +2126,12 @@ export class ClickHousePrinter {
     // For JSON column subfield access (e.g., error.data.name), add .:String type hint
     // This is required because ClickHouse's Dynamic/Variant types are not allowed in
     // GROUP BY without type casting, and SELECT/GROUP BY expressions must match
+    // However, we skip this in WHERE comparisons where it breaks the query
     if (resolvedChain.length > 1) {
       // Check if the root column (first part) is a JSON column
       const rootColumnSchema = this.resolveFieldToColumnSchema([node.chain[0]]);
-      if (rootColumnSchema?.type === "JSON") {
+      // Add .:String for SELECT/GROUP BY, but NOT in WHERE comparisons
+      if (rootColumnSchema?.type === "JSON" && !this.isInWhereComparisonContext()) {
         // Add .:String type hint for JSON subfield access
         result = `${result}.:String`;
       }
@@ -2149,6 +2151,20 @@ export class ClickHousePrinter {
     }
 
     // Check if we're inside a comparison operation (WHERE/HAVING context)
+    for (const node of this.stack) {
+      if ((node as CompareOperation).expression_type === "compare_operation") {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Check if we're inside a WHERE/HAVING comparison operation.
+   * Unlike isInComparisonContext(), this does NOT include GROUP BY context.
+   * Used to skip .:String type hints in WHERE clauses where they break queries.
+   */
+  private isInWhereComparisonContext(): boolean {
     for (const node of this.stack) {
       if ((node as CompareOperation).expression_type === "compare_operation") {
         return true;

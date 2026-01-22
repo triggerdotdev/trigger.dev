@@ -597,6 +597,61 @@ describe("ClickHousePrinter", () => {
       expect(sql).toContain("GROUP BY status");
       expect(sql).not.toContain(".:String");
     });
+
+    it("should NOT add .:String type hint for JSON subfield in WHERE comparison", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery(
+        "SELECT id FROM runs WHERE error.data.name = 'test'",
+        ctx
+      );
+
+      // WHERE clause should NOT have .:String type hint (it breaks the query)
+      expect(sql).toContain("equals(error.data.name,");
+      expect(sql).not.toContain("error.data.name.:String");
+    });
+
+    it("should NOT add .:String for JSON subfield in WHERE with LIKE", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery(
+        "SELECT id FROM runs WHERE error.message LIKE '%error%'",
+        ctx
+      );
+
+      // WHERE clause should NOT have .:String type hint
+      expect(sql).toContain("like(error.message,");
+      expect(sql).not.toContain("error.message.:String");
+    });
+
+    it("should add .:String in SELECT but not in WHERE for same field", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery(
+        "SELECT error.data.name FROM runs WHERE error.data.name = 'test'",
+        ctx
+      );
+
+      // SELECT should have .:String with alias
+      expect(sql).toContain("error.data.name.:String AS error_data_name");
+      // WHERE should NOT have .:String
+      expect(sql).toContain("equals(error.data.name,");
+      // Make sure WHERE doesn't accidentally get the type hint
+      expect(sql).not.toMatch(/equals\(error\.data\.name\.:String/);
+    });
+
+    it("should add .:String in GROUP BY but not in WHERE for same query", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery(
+        "SELECT error.data.name, count() AS cnt FROM runs WHERE error.data.name = 'test' GROUP BY error.data.name",
+        ctx
+      );
+
+      // SELECT should have .:String
+      expect(sql).toContain("error.data.name.:String AS error_data_name");
+      // GROUP BY should have .:String
+      expect(sql).toContain("GROUP BY error.data.name.:String");
+      // WHERE should NOT have .:String
+      expect(sql).toContain("equals(error.data.name,");
+      expect(sql).not.toMatch(/equals\(error\.data\.name\.:String/);
+    });
   });
 
   describe("textColumn optimization for JSON columns", () => {
@@ -716,7 +771,7 @@ describe("ClickHousePrinter", () => {
         expect(sql).toContain("notLike(output_text,");
       });
 
-      it("should use JSON column for subfield comparison", () => {
+      it("should use JSON column for subfield comparison without .:String", () => {
         const ctx = createTextColumnContext();
         const { sql } = printQuery(
           "SELECT id FROM runs WHERE output.data.name = 'test'",
@@ -724,8 +779,10 @@ describe("ClickHousePrinter", () => {
         );
 
         // Should use the original JSON column, not the text column
-        expect(sql).toContain("equals(output.data.name.:String,");
+        // And should NOT have .:String in WHERE (breaks the query)
+        expect(sql).toContain("equals(output.data.name,");
         expect(sql).not.toContain("output_text");
+        expect(sql).not.toContain("output.data.name.:String");
       });
 
       it("should still use nullValue transformation for IS NULL", () => {
