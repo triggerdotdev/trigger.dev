@@ -444,14 +444,14 @@ export class ApiClient {
 
         if (retryResult.retry) {
           // Cancel the request stream before retry to prevent tee() from buffering
-          await forRequest.cancel();
+          await safeStreamCancel(forRequest);
           await sleep(retryResult.delay);
           // Use the backup stream for retry
           return this.#streamBatchItemsWithRetry(batchId, forRetry, retryOptions, attempt + 1);
         }
 
         // Not retrying - cancel the backup stream
-        await forRetry.cancel();
+        await safeStreamCancel(forRetry);
 
         const errText = await response.text().catch((e) => (e as Error).message);
         let errJSON: Object | undefined;
@@ -471,7 +471,7 @@ export class ApiClient {
 
       if (!parsed.success) {
         // Cancel backup stream since we're throwing
-        await forRetry.cancel();
+        await safeStreamCancel(forRetry);
         throw new Error(
           `Invalid response from server for batch ${batchId}: ${parsed.error.message}`
         );
@@ -484,14 +484,14 @@ export class ApiClient {
 
         if (delay) {
           // Cancel the request stream before retry to prevent tee() from buffering
-          await forRequest.cancel();
+          await safeStreamCancel(forRequest);
           // Retry with the backup stream
           await sleep(delay);
           return this.#streamBatchItemsWithRetry(batchId, forRetry, retryOptions, attempt + 1);
         }
 
         // No more retries - cancel backup stream and throw descriptive error
-        await forRetry.cancel();
+        await safeStreamCancel(forRetry);
         throw new BatchNotSealedError({
           batchId,
           enqueuedCount: parsed.data.enqueuedCount ?? 0,
@@ -502,7 +502,7 @@ export class ApiClient {
       }
 
       // Success - cancel the backup stream to release resources
-      await forRetry.cancel();
+      await safeStreamCancel(forRetry);
 
       return parsed.data;
     } catch (error) {
@@ -519,13 +519,13 @@ export class ApiClient {
       const delay = calculateNextRetryDelay(retryOptions, attempt);
       if (delay) {
         // Cancel the request stream before retry to prevent tee() from buffering
-        await forRequest.cancel();
+        await safeStreamCancel(forRequest);
         await sleep(delay);
         return this.#streamBatchItemsWithRetry(batchId, forRetry, retryOptions, attempt + 1);
       }
 
       // No more retries - cancel the backup stream
-      await forRetry.cancel();
+      await safeStreamCancel(forRetry);
 
       // Wrap in a more descriptive error
       const cause = error instanceof Error ? error : new Error(String(error));
@@ -1729,6 +1729,30 @@ function shouldRetryStreamBatchItems(
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Safely cancels a ReadableStream, handling the case where it might be locked.
+ *
+ * When fetch uses a ReadableStream as a request body and an error occurs mid-transfer
+ * (connection reset, timeout, etc.), the stream may remain locked by fetch's internal reader.
+ * Attempting to cancel a locked stream throws "Invalid state: ReadableStream is locked".
+ *
+ * This function gracefully handles that case by catching the error and doing nothing -
+ * the stream will be cleaned up by garbage collection when the reader is released.
+ */
+async function safeStreamCancel(stream: ReadableStream<unknown>): Promise<void> {
+  try {
+    await stream.cancel();
+  } catch (error) {
+    // Ignore "locked" errors - the stream will be cleaned up when the reader is released.
+    // This happens when fetch crashes mid-read and doesn't release the reader lock.
+    if (error instanceof TypeError && String(error).includes("locked")) {
+      return;
+    }
+    // Re-throw unexpected errors
+    throw error;
+  }
 }
 
 // ============================================================================

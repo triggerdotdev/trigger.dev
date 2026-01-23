@@ -75,6 +75,15 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
     userId?: string | null;
     /** Skip saving to history (e.g., when impersonating) */
     skip?: boolean;
+    /** Time filter settings to save with the query */
+    timeFilter?: {
+      /** Period like "7d", "24h", etc. */
+      period?: string;
+      /** Custom start date */
+      from?: Date;
+      /** Custom end date */
+      to?: Date;
+    };
   };
   /** Custom per-org concurrency limit (overrides default) */
   customOrgConcurrencyLimit?: number;
@@ -94,6 +103,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     environmentId,
     history,
     customOrgConcurrencyLimit,
+    whereClauseFallback,
     ...baseOptions
   } = options;
 
@@ -155,6 +165,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       ...baseOptions,
       ...tenantOptions,
       fieldMappings,
+      whereClauseFallback,
       clickhouseSettings: {
         ...getDefaultClickhouseSettings(),
         ...baseOptions.clickhouseSettings, // Allow caller overrides if needed
@@ -164,23 +175,48 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     // If query succeeded and history options provided, save to history
     // Skip history for EXPLAIN queries (admin debugging) and when explicitly skipped (e.g., impersonating)
     if (result[0] === null && history && !history.skip && !baseOptions.explain) {
-      const stats = result[1].stats;
-      const byteSeconds = parseFloat(stats.byte_seconds) || 0;
-      const costInCents = byteSeconds * env.CENTS_PER_QUERY_BYTE_SECOND;
-
-      await prisma.customerQuery.create({
-        data: {
-          query: options.query,
-          scope: scopeToEnum[scope],
-          stats: { ...stats },
-          costInCents,
-          source: history.source,
+      // Check if this query is the same as the last one saved (avoid duplicate history entries)
+      const lastQuery = await prisma.customerQuery.findFirst({
+        where: {
           organizationId,
-          projectId: scope === "project" || scope === "environment" ? projectId : null,
-          environmentId: scope === "environment" ? environmentId : null,
+          source: history.source,
           userId: history.userId ?? null,
         },
+        orderBy: { createdAt: "desc" },
+        select: { query: true, scope: true, filterPeriod: true, filterFrom: true, filterTo: true },
       });
+
+      const timeFilter = history.timeFilter;
+      const isDuplicate =
+        lastQuery &&
+        lastQuery.query === options.query &&
+        lastQuery.scope === scopeToEnum[scope] &&
+        lastQuery.filterPeriod === (timeFilter?.period ?? null) &&
+        lastQuery.filterFrom?.getTime() === (timeFilter?.from?.getTime() ?? undefined) &&
+        lastQuery.filterTo?.getTime() === (timeFilter?.to?.getTime() ?? undefined);
+
+      if (!isDuplicate) {
+        const stats = result[1].stats;
+        const byteSeconds = parseFloat(stats.byte_seconds) || 0;
+        const costInCents = byteSeconds * env.CENTS_PER_QUERY_BYTE_SECOND;
+
+        await prisma.customerQuery.create({
+          data: {
+            query: options.query,
+            scope: scopeToEnum[scope],
+            stats: { ...stats },
+            costInCents,
+            source: history.source,
+            organizationId,
+            projectId: scope === "project" || scope === "environment" ? projectId : null,
+            environmentId: scope === "environment" ? environmentId : null,
+            userId: history.userId ?? null,
+            filterPeriod: history.timeFilter?.period ?? null,
+            filterFrom: history.timeFilter?.from ?? null,
+            filterTo: history.timeFilter?.to ?? null,
+          },
+        });
+      }
     }
 
     return result;

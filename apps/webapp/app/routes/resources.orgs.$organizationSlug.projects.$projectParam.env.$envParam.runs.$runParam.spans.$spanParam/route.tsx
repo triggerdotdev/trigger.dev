@@ -1,9 +1,16 @@
 import {
   ArrowPathIcon,
+  ArrowRightIcon,
+  BookOpenIcon,
   CheckIcon,
+  ChevronUpIcon,
+  ClockIcon,
   CloudArrowDownIcon,
   EnvelopeIcon,
+  GlobeAltIcon,
+  KeyIcon,
   QueueListIcon,
+  SignalIcon,
 } from "@heroicons/react/20/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
@@ -28,9 +35,14 @@ import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  Popover,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverTrigger,
+} from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
-import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -42,7 +54,6 @@ import {
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
-import { ToastUI } from "~/components/primitives/Toast";
 import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
@@ -65,6 +76,7 @@ import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { logger } from "~/services/logger.server";
+import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
@@ -82,11 +94,10 @@ import {
   v3SpanParamsSchema,
 } from "~/utils/pathBuilder";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
-import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
-import { requireUserId } from "~/services/session.server";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
+import { type action as resetIdempotencyKeyAction } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.idempotencyKey.reset";
 import { RealtimeStreamViewer } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.streams.$streamKey/route";
-import { action as resetIdempotencyKeyAction } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.idempotencyKey.reset";
+import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -159,7 +170,8 @@ export function SpanView({
     return null;
   }
 
-  if (fetcher.state !== "idle" || fetcher.data === undefined) {
+  // Only show loading spinner when there's no data yet, not during revalidation
+  if (fetcher.data === undefined) {
     return (
       <div
         className={cn(
@@ -308,34 +320,8 @@ function RunBody({
   const tab = value("tab");
   const resetFetcher = useTypedFetcher<typeof resetIdempotencyKeyAction>();
 
-  // Handle toast messages from the reset action
-  useEffect(() => {
-    if (resetFetcher.data && resetFetcher.state === "idle") {
-      // Check if the response indicates success
-      if (
-        resetFetcher.data &&
-        typeof resetFetcher.data === "object" &&
-        "success" in resetFetcher.data &&
-        resetFetcher.data.success === true
-      ) {
-        toast.custom(
-          (t) => (
-            <ToastUI
-              variant="success"
-              message="Idempotency key reset successfully"
-              t={t as string}
-            />
-          ),
-          {
-            duration: 5000,
-          }
-        );
-      }
-    }
-  }, [resetFetcher.data, resetFetcher.state]);
-
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_3.25rem] overflow-hidden bg-background-bright">
+    <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_minmax(3.25rem,auto)] overflow-hidden bg-background-bright">
       <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3 pr-2">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
@@ -441,6 +427,12 @@ function RunBody({
                       content={`View runs filtered by ${run.taskIdentifier}`}
                       disableHoverableContent
                     />
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Run ID</Property.Label>
+                  <Property.Value>
+                    <CopyableText value={run.friendlyId} copyValue={run.friendlyId} asChild />
                   </Property.Value>
                 </Property.Item>
                 {run.relationships.root ? (
@@ -581,38 +573,63 @@ function RunBody({
                   </Property.Item>
                 )}
                 <Property.Item>
-                  <Property.Label>Idempotency</Property.Label>
-                  <Property.Value>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        {run.idempotencyKey ? (
-                          <CopyableText
-                            value={run.idempotencyKey}
-                            copyValue={run.idempotencyKey}
-                            asChild
-                          />
-                        ) : (
-                          <div className="break-all">–</div>
-                        )}
-                        {run.idempotencyKey && (
-                          <div>
-                            Expires:{" "}
-                            {run.idempotencyKeyExpiresAt ? (
-                              <DateTime date={run.idempotencyKeyExpiresAt} />
-                            ) : (
-                              "–"
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      {run.idempotencyKey && (
+                  <Property.Label>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        Idempotency
+                        <InfoIconTooltip
+                          content={
+                            <div className="flex max-w-xs flex-col gap-3 p-1 pb-2">
+                              <div>
+                                <div className="mb-0.5 flex items-center gap-1.5">
+                                  <KeyIcon className="size-4 text-text-dimmed" />
+                                  <Header3>Idempotency keys</Header3>
+                                </div>
+                                <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                                  Prevent duplicate task runs. If you trigger a task with the same
+                                  key twice, the second request returns the original run.
+                                </Paragraph>
+                              </div>
+                              <div>
+                                <div className="mb-1 flex items-center gap-1">
+                                  <GlobeAltIcon className="size-4 text-blue-500" />
+                                  <Header3>Scope</Header3>
+                                </div>
+                                <div className="flex flex-col gap-0.5 text-sm text-text-dimmed">
+                                  <div>Global: applies across all runs</div>
+                                  <div>Run: unique to a parent run</div>
+                                  <div>Attempt: unique to a specific attempt</div>
+                                </div>
+                              </div>
+                              <div>
+                                <div className="mb-1 flex items-center gap-1">
+                                  <SignalIcon className="size-4 text-success" />
+                                  <Header3>Status</Header3>
+                                </div>
+                                <div className="flex flex-col gap-0.5 text-sm text-text-dimmed">
+                                  <div>Active: duplicates are blocked</div>
+                                  <div>Expired: the TTL has passed</div>
+                                  <div>Inactive: the key was reset or cleared</div>
+                                </div>
+                              </div>
+                              <LinkButton
+                                to={docsPath("idempotency")}
+                                variant="docs/small"
+                                LeadingIcon={BookOpenIcon}
+                              >
+                                Read docs
+                              </LinkButton>
+                            </div>
+                          }
+                        />
+                      </span>
+                      {run.idempotencyKeyStatus === "active" ? (
                         <resetFetcher.Form
                           method="post"
                           action={v3RunIdempotencyKeyResetPath(organization, project, environment, {
-                            friendlyId: runParam,
+                            friendlyId: run.friendlyId,
                           })}
                         >
-                          <input type="hidden" name="taskIdentifier" value={run.taskIdentifier} />
                           <Button
                             type="submit"
                             variant="minimal/small"
@@ -622,8 +639,50 @@ function RunBody({
                             {resetFetcher.state === "submitting" ? "Resetting..." : "Reset"}
                           </Button>
                         </resetFetcher.Form>
-                      )}
+                      ) : run.idempotencyKeyStatus === "expired" ? (
+                        <span className="flex items-center gap-1 text-xs text-amber-500">
+                          <ClockIcon className="size-4" />
+                          Expired
+                        </span>
+                      ) : run.idempotencyKeyStatus === "inactive" ? (
+                        <span className="text-xs text-text-dimmed">Inactive</span>
+                      ) : null}
                     </div>
+                  </Property.Label>
+                  <Property.Value>
+                    {run.idempotencyKeyStatus ? (
+                      <div className="flex flex-col gap-0.5">
+                        <div>
+                          <span className="text-text-dimmed">Key: </span>
+                          {run.idempotencyKey ? (
+                            <CopyableText
+                              value={run.idempotencyKey}
+                              copyValue={run.idempotencyKey}
+                              asChild
+                              className="max-h-5"
+                            />
+                          ) : (
+                            "–"
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-text-dimmed">Scope: </span>
+                          {run.idempotencyKeyScope ?? "–"}
+                        </div>
+                        <div>
+                          <span className="text-text-dimmed">
+                            {run.idempotencyKeyStatus === "expired" ? "Expired: " : "Expires: "}
+                          </span>
+                          {run.idempotencyKeyExpiresAt ? (
+                            <DateTime date={run.idempotencyKeyExpiresAt} />
+                          ) : (
+                            "–"
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      "–"
+                    )}
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
@@ -860,18 +919,6 @@ function RunBody({
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
-                  <Property.Label>Run ID</Property.Label>
-                  <Property.Value>
-                    <CopyableText value={run.friendlyId} copyValue={run.friendlyId} asChild />
-                  </Property.Value>
-                </Property.Item>
-                <Property.Item>
-                  <Property.Label>Internal ID</Property.Label>
-                  <Property.Value>
-                    <CopyableText value={run.id} copyValue={run.id} asChild />
-                  </Property.Value>
-                </Property.Item>
-                <Property.Item>
                   <Property.Label>Run Engine</Property.Label>
                   <Property.Value>{run.engine}</Property.Value>
                 </Property.Item>
@@ -943,7 +990,7 @@ function RunBody({
           )}
         </div>
       </div>
-      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
+      <div className="flex items-center flex-wrap py-2 justify-between gap-2 border-t border-grid-dimmed px-2">
         <div className="flex items-center gap-4">
           {run.friendlyId !== runParam && (
             <LinkButton
@@ -963,28 +1010,46 @@ function RunBody({
           )}
           <AdminDebugRun friendlyId={run.friendlyId} />
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center">
           {run.logsDeletedAt === null ? (
-            <>
+            <div className="flex">
               <LinkButton
                 to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${
                   new Date(run.createdAt).getTime() - 60000
                 }`}
                 variant="secondary/medium"
+                className="rounded-r-none border-r-0"
               >
                 View logs
               </LinkButton>
-              <LinkButton
-                to={v3RunDownloadLogsPath({ friendlyId: runParam })}
-                LeadingIcon={CloudArrowDownIcon}
-                leadingIconClassName="text-indigo-400"
-                variant="secondary/medium"
-                target="_blank"
-                download
-              >
-                Download logs
-              </LinkButton>
-            </>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="secondary/medium"
+                    className="rounded-l-none border-l-charcoal-700 px-1.5"
+                  >
+                    <ChevronUpIcon className="size-4 transition group-hover/button:text-text-bright" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="min-w-[140px] p-1" align="end">
+                  <PopoverMenuItem
+                    to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${
+                      new Date(run.createdAt).getTime() - 60000
+                    }`}
+                    title="View logs"
+                    icon={ArrowRightIcon}
+                    leadingIconClassName="text-blue-500"
+                  />
+                  <PopoverMenuItem
+                    to={v3RunDownloadLogsPath({ friendlyId: runParam })}
+                    title="Download logs"
+                    icon={CloudArrowDownIcon}
+                    leadingIconClassName="text-indigo-500"
+                    openInNewTab
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
           ) : null}
         </div>
       </div>

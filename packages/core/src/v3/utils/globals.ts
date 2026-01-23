@@ -1,6 +1,7 @@
 import { ApiClientConfiguration } from "../apiClientManager/types.js";
 import { Clock } from "../clock/clock.js";
 import { HeartbeatsManager } from "../heartbeats/types.js";
+import type { IdempotencyKeyCatalog } from "../idempotency-key-catalog/catalog.js";
 import { LifecycleHooksManager } from "../lifecycleHooks/types.js";
 import { LocalsManager } from "../locals/types.js";
 import { RealtimeStreamsManager } from "../realtimeStreams/types.js";
@@ -61,6 +62,7 @@ type TriggerDotDevGlobalAPI = {
   clock?: Clock;
   usage?: UsageManager;
   ["resource-catalog"]?: ResourceCatalog;
+  ["idempotency-key-catalog"]?: IdempotencyKeyCatalog;
   ["task-context"]?: TaskContext;
   ["api-client"]?: ApiClientConfiguration;
   ["run-metadata"]?: RunMetadataManager;

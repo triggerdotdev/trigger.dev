@@ -18,18 +18,22 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import type { AITimeFilter } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/types";
 import { cn } from "~/utils/cn";
 
 type StreamEventType =
   | { type: "thinking"; content: string }
   | { type: "tool_call"; tool: string; args: unknown }
-  | { type: "result"; success: true; query: string }
+  | { type: "time_filter"; filter: AITimeFilter }
+  | { type: "result"; success: true; query: string; timeFilter?: AITimeFilter }
   | { type: "result"; success: false; error: string };
 
 export type AIQueryMode = "new" | "edit";
 
 interface AIQueryInputProps {
   onQueryGenerated: (query: string) => void;
+  /** Called when the AI sets a time filter - updates URL search params */
+  onTimeFilterChange?: (filter: AITimeFilter) => void;
   /** Set this to a prompt to auto-populate and immediately submit */
   autoSubmitPrompt?: string;
   /** Change this to force re-submission even if prompt is the same */
@@ -40,6 +44,7 @@ interface AIQueryInputProps {
 
 export function AIQueryInput({
   onQueryGenerated,
+  onTimeFilterChange,
   autoSubmitPrompt,
   autoSubmitKey,
   getCurrentQuery,
@@ -174,10 +179,32 @@ export function AIQueryInput({
           setThinking((prev) => prev + event.content);
           break;
         case "tool_call":
-          setThinking((prev) => prev + `\nValidating query...\n`);
+          if (event.tool === "setTimeFilter") {
+            setThinking((prev) => {
+              if (prev.trimEnd().endsWith("Setting time filter...")) {
+                return prev;
+              }
+              return prev + `\nSetting time filter...\n`;
+            });
+          } else {
+            setThinking((prev) => {
+              if (prev.trimEnd().endsWith("Validating query...")) {
+                return prev;
+              }
+              return prev + `\nValidating query...\n`;
+            });
+          }
+          break;
+        case "time_filter":
+          // Apply time filter immediately when the AI sets it
+          onTimeFilterChange?.(event.filter);
           break;
         case "result":
           if (event.success) {
+            // Apply time filter if included in result (backup in case time_filter event was missed)
+            if (event.timeFilter) {
+              onTimeFilterChange?.(event.timeFilter);
+            }
             onQueryGenerated(event.query);
             setPrompt("");
             setLastResult("success");
@@ -189,7 +216,7 @@ export function AIQueryInput({
           break;
       }
     },
-    [onQueryGenerated]
+    [onQueryGenerated, onTimeFilterChange]
   );
 
   const handleSubmit = useCallback(
@@ -359,10 +386,10 @@ export function AIQueryInput({
                     {isLoading
                       ? "AI is thinking..."
                       : lastResult === "success"
-                      ? "Query generated"
-                      : lastResult === "error"
-                      ? "Generation failed"
-                      : "AI response"}
+                        ? "Query generated"
+                        : lastResult === "error"
+                          ? "Generation failed"
+                          : "AI response"}
                   </span>
                 </div>
                 {isLoading ? (

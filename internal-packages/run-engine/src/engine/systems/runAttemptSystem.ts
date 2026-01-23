@@ -30,6 +30,10 @@ import {
   TaskRunInternalError,
   TaskRunSuccessfulExecutionResult,
 } from "@trigger.dev/core/v3/schemas";
+import {
+  extractIdempotencyKeyScope,
+  getUserProvidedIdempotencyKey,
+} from "@trigger.dev/core/v3/serverOnly";
 import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import {
   $transaction,
@@ -171,7 +175,7 @@ export class RunAttemptSystem {
   }
 
   public async resolveTaskRunContext(runId: string): Promise<TaskRunContext> {
-    const run = await this.$.prisma.taskRun.findFirst({
+    const run = await this.$.readOnlyPrisma.taskRun.findFirst({
       where: {
         id: runId,
       },
@@ -194,6 +198,7 @@ export class RunAttemptSystem {
         runTags: true,
         isTest: true,
         idempotencyKey: true,
+        idempotencyKeyOptions: true,
         startedAt: true,
         maxAttempts: true,
         taskVersion: true,
@@ -228,9 +233,9 @@ export class RunAttemptSystem {
       run.lockedById
         ? this.#resolveTaskRunExecutionTask(run.lockedById)
         : Promise.resolve({
-            id: run.taskIdentifier,
-            filePath: "unknown",
-          }),
+          id: run.taskIdentifier,
+          filePath: "unknown",
+        }),
       this.#resolveTaskRunExecutionQueue({
         runId,
         lockedQueueId: run.lockedQueueId ?? undefined,
@@ -242,13 +247,13 @@ export class RunAttemptSystem {
       run.lockedById
         ? this.#resolveTaskRunExecutionMachinePreset(run.lockedById, run.machinePreset)
         : Promise.resolve(
-            getMachinePreset({
-              defaultMachine: this.options.machines.defaultMachine,
-              machines: this.options.machines.machines,
-              config: undefined,
-              run,
-            })
-          ),
+          getMachinePreset({
+            defaultMachine: this.options.machines.defaultMachine,
+            machines: this.options.machines.machines,
+            config: undefined,
+            run,
+          })
+        ),
       run.lockedById
         ? this.#resolveTaskRunExecutionDeployment(run.lockedById)
         : Promise.resolve(undefined),
@@ -261,7 +266,8 @@ export class RunAttemptSystem {
         isTest: run.isTest,
         createdAt: run.createdAt,
         startedAt: run.startedAt ?? run.createdAt,
-        idempotencyKey: run.idempotencyKey ?? undefined,
+        idempotencyKey: getUserProvidedIdempotencyKey(run) ?? undefined,
+        idempotencyKeyScope: extractIdempotencyKeyScope(run),
         maxAttempts: run.maxAttempts ?? undefined,
         version: run.taskVersion ?? "unknown",
         maxDuration: run.maxDurationInSeconds ?? undefined,
@@ -331,7 +337,7 @@ export class RunAttemptSystem {
             });
           }
 
-          const taskRun = await prisma.taskRun.findFirst({
+          const taskRun = await this.$.readOnlyPrisma.taskRun.findFirst({
             where: {
               id: runId,
             },
@@ -422,6 +428,7 @@ export class RunAttemptSystem {
                   runTags: true,
                   isTest: true,
                   idempotencyKey: true,
+                  idempotencyKeyOptions: true,
                   startedAt: true,
                   maxAttempts: true,
                   taskVersion: true,
@@ -453,9 +460,8 @@ export class RunAttemptSystem {
                 run,
                 snapshot: {
                   executionStatus: "EXECUTING",
-                  description: `Attempt created, starting execution${
-                    isWarmStart ? " (warm start)" : ""
-                  }`,
+                  description: `Attempt created, starting execution${isWarmStart ? " (warm start)" : ""
+                    }`,
                 },
                 previousSnapshotId: latestSnapshot.id,
                 environmentId: latestSnapshot.environmentId,
@@ -570,7 +576,8 @@ export class RunAttemptSystem {
               createdAt: updatedRun.createdAt,
               tags: updatedRun.runTags,
               isTest: updatedRun.isTest,
-              idempotencyKey: updatedRun.idempotencyKey ?? undefined,
+              idempotencyKey: getUserProvidedIdempotencyKey(updatedRun) ?? undefined,
+              idempotencyKeyScope: extractIdempotencyKeyScope(updatedRun),
               startedAt: updatedRun.startedAt ?? updatedRun.createdAt,
               maxAttempts: updatedRun.maxAttempts ?? undefined,
               version: updatedRun.taskVersion ?? "unknown",
@@ -613,8 +620,8 @@ export class RunAttemptSystem {
             deployment,
             batch: updatedRun.batchId
               ? {
-                  id: BatchId.toFriendlyId(updatedRun.batchId),
-                }
+                id: BatchId.toFriendlyId(updatedRun.batchId),
+              }
               : undefined,
           };
 
@@ -699,8 +706,33 @@ export class RunAttemptSystem {
           }
 
           span.setAttribute("completionStatus", completion.ok);
+          span.setAttribute("runId", runId);
 
           const completedAt = new Date();
+
+          // Read current usage values to calculate new totals (safe under runLock)
+          const currentRun = await this.$.readOnlyPrisma.taskRun.findFirst({
+            where: { id: runId },
+            select: {
+              usageDurationMs: true,
+              costInCents: true,
+              machinePreset: true,
+            },
+          });
+
+          if (!currentRun) {
+            throw new ServiceValidationError("Run not found", 404);
+          }
+
+          // Calculate new usage totals
+          const updatedUsage = this.#calculateUpdatedUsage({
+            runId,
+            currentUsageDurationMs: currentRun.usageDurationMs,
+            currentCostInCents: currentRun.costInCents,
+            attemptDurationMs: completion.usage?.durationMs ?? 0,
+            machinePresetName: currentRun.machinePreset,
+            environmentType: latestSnapshot.environmentType,
+          });
 
           const run = await prisma.taskRun.update({
             where: { id: runId },
@@ -709,6 +741,8 @@ export class RunAttemptSystem {
               completedAt,
               output: completion.output,
               outputType: completion.outputType,
+              usageDurationMs: updatedUsage.usageDurationMs,
+              costInCents: updatedUsage.costInCents,
               executionSnapshots: {
                 create: {
                   executionStatus: "FINISHED",
@@ -865,7 +899,7 @@ export class RunAttemptSystem {
 
           const failedAt = new Date();
 
-          const retryResult = await retryOutcomeFromCompletion(prisma, {
+          const retryResult = await retryOutcomeFromCompletion(this.$.readOnlyPrisma, {
             runId,
             error: completion.error,
             retryUsingQueue: forceRequeue ?? false,
@@ -875,7 +909,7 @@ export class RunAttemptSystem {
 
           // Force requeue means it was crashed so the attempt span needs to be closed
           if (forceRequeue) {
-            const minimalRun = await prisma.taskRun.findFirst({
+            const minimalRun = await this.$.readOnlyPrisma.taskRun.findFirst({
               where: {
                 id: runId,
               },
@@ -922,6 +956,7 @@ export class RunAttemptSystem {
                 completedAt: failedAt,
                 reason: retryResult.reason,
                 finalizeRun: true,
+                attemptDurationMs: completion.usage?.durationMs,
                 tx: prisma,
               });
               return {
@@ -940,10 +975,22 @@ export class RunAttemptSystem {
                 error: retryResult.sanitizedError,
                 workerId,
                 runnerId,
+                attemptDurationMs: completion.usage?.durationMs,
               });
             }
             case "retry": {
               const retryAt = new Date(retryResult.settings.timestamp);
+
+              // Calculate new usage totals using the current machine's rate
+              // (retryResult includes current usage values from the read in retryOutcomeFromCompletion)
+              const updatedUsage = this.#calculateUpdatedUsage({
+                runId,
+                currentUsageDurationMs: retryResult.usageDurationMs,
+                currentCostInCents: retryResult.costInCents,
+                attemptDurationMs: completion.usage?.durationMs ?? 0,
+                machinePresetName: retryResult.machinePreset,
+                environmentType: latestSnapshot.environmentType,
+              });
 
               const run = await prisma.taskRun.update({
                 where: {
@@ -951,6 +998,8 @@ export class RunAttemptSystem {
                 },
                 data: {
                   machinePreset: retryResult.machine,
+                  usageDurationMs: updatedUsage.usageDurationMs,
+                  costInCents: updatedUsage.costInCents,
                 },
                 include: {
                   runtimeEnvironment: {
@@ -1240,6 +1289,7 @@ export class RunAttemptSystem {
   If the run is in-progress it will change it's state to PENDING_CANCEL and notify the worker.
   If the run is not in-progress it will finish it.
   You can pass `finalizeRun` in if you know it's no longer running, e.g. the worker has messaged to say it's done.
+  You can optionally pass `attemptDurationMs` if you have completion data with usage info.
   */
   async cancelRun({
     runId,
@@ -1249,6 +1299,7 @@ export class RunAttemptSystem {
     reason,
     finalizeRun,
     bulkActionId,
+    attemptDurationMs,
     tx,
   }: {
     runId: string;
@@ -1258,6 +1309,7 @@ export class RunAttemptSystem {
     reason?: string;
     finalizeRun?: boolean;
     bulkActionId?: string;
+    attemptDurationMs?: number;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
     const prisma = tx ?? this.$.prisma;
@@ -1304,6 +1356,32 @@ export class RunAttemptSystem {
           raw: reason,
         };
 
+        // Calculate updated usage if we have attempt duration data
+        let usageUpdate: { usageDurationMs: number; costInCents: number } | undefined;
+        if (attemptDurationMs !== undefined) {
+          const currentRun = await this.$.readOnlyPrisma.taskRun.findFirst({
+            where: { id: runId },
+            select: {
+              usageDurationMs: true,
+              costInCents: true,
+              machinePreset: true,
+            },
+          });
+
+          if (!currentRun) {
+            throw new ServiceValidationError("Run not found", 404);
+          }
+
+          usageUpdate = this.#calculateUpdatedUsage({
+            runId,
+            currentUsageDurationMs: currentRun.usageDurationMs,
+            currentCostInCents: currentRun.costInCents,
+            attemptDurationMs,
+            machinePresetName: currentRun.machinePreset,
+            environmentType: latestSnapshot.environmentType,
+          });
+        }
+
         const run = await prisma.taskRun.update({
           where: { id: runId },
           data: {
@@ -1312,9 +1390,13 @@ export class RunAttemptSystem {
             error,
             bulkActionGroupIds: bulkActionId
               ? {
-                  push: bulkActionId,
-                }
+                push: bulkActionId,
+              }
               : undefined,
+            ...(usageUpdate && {
+              usageDurationMs: usageUpdate.usageDurationMs,
+              costInCents: usageUpdate.costInCents,
+            }),
           },
           select: {
             id: true,
@@ -1470,6 +1552,7 @@ export class RunAttemptSystem {
     error,
     workerId,
     runnerId,
+    attemptDurationMs,
   }: {
     runId: string;
     latestSnapshot: EnhancedExecutionSnapshot;
@@ -1477,6 +1560,7 @@ export class RunAttemptSystem {
     error: TaskRunError;
     workerId?: string;
     runnerId?: string;
+    attemptDurationMs?: number;
   }): Promise<CompleteRunAttemptResult> {
     const prisma = this.$.prisma;
 
@@ -1484,6 +1568,30 @@ export class RunAttemptSystem {
       const status = runStatusFromError(error, latestSnapshot.environmentType);
 
       const truncatedError = this.#truncateTaskRunError(error);
+
+      // Read current usage values to calculate new totals
+      const currentRun = await this.$.readOnlyPrisma.taskRun.findFirst({
+        where: { id: runId },
+        select: {
+          usageDurationMs: true,
+          costInCents: true,
+          machinePreset: true,
+        },
+      });
+
+      if (!currentRun) {
+        throw new ServiceValidationError("Run not found", 404);
+      }
+
+      // Calculate new usage totals
+      const updatedUsage = this.#calculateUpdatedUsage({
+        runId,
+        currentUsageDurationMs: currentRun.usageDurationMs,
+        currentCostInCents: currentRun.costInCents,
+        attemptDurationMs: attemptDurationMs ?? 0,
+        machinePresetName: currentRun.machinePreset,
+        environmentType: latestSnapshot.environmentType,
+      });
 
       //run permanently failed
       const run = await prisma.taskRun.update({
@@ -1494,6 +1602,8 @@ export class RunAttemptSystem {
           status,
           completedAt: failedAt,
           error: truncatedError,
+          usageDurationMs: updatedUsage.usageDurationMs,
+          costInCents: updatedUsage.costInCents,
         },
         select: {
           id: true,
@@ -1610,7 +1720,7 @@ export class RunAttemptSystem {
     backgroundWorkerTaskId: string
   ): Promise<BackwardsCompatibleTaskRunExecution["task"]> {
     const result = await this.cache.tasks.swr(backgroundWorkerTaskId, async () => {
-      const task = await this.$.prisma.backgroundWorkerTask.findFirstOrThrow({
+      const task = await this.$.readOnlyPrisma.backgroundWorkerTask.findFirstOrThrow({
         where: {
           id: backgroundWorkerTaskId,
         },
@@ -1646,7 +1756,7 @@ export class RunAttemptSystem {
     organizationId: string
   ): Promise<TaskRunExecutionOrganization> {
     const result = await this.cache.orgs.swr(organizationId, async () => {
-      const organization = await this.$.prisma.organization.findFirstOrThrow({
+      const organization = await this.$.readOnlyPrisma.organization.findFirstOrThrow({
         where: { id: organizationId },
         select: {
           id: true,
@@ -1679,7 +1789,7 @@ export class RunAttemptSystem {
     runtimeEnvironmentId: string
   ): Promise<TaskRunExecutionProject> {
     const result = await this.cache.projects.swr(runtimeEnvironmentId, async () => {
-      const { project } = await this.$.prisma.runtimeEnvironment.findFirstOrThrow({
+      const { project } = await this.$.readOnlyPrisma.runtimeEnvironment.findFirstOrThrow({
         where: { id: runtimeEnvironmentId },
         select: {
           id: true,
@@ -1727,7 +1837,7 @@ export class RunAttemptSystem {
     }
 
     const result = await this.cache.machinePresets.swr(backgroundWorkerTaskId, async () => {
-      const { machineConfig } = await this.$.prisma.backgroundWorkerTask.findFirstOrThrow({
+      const { machineConfig } = await this.$.readOnlyPrisma.backgroundWorkerTask.findFirstOrThrow({
         where: {
           id: backgroundWorkerTaskId,
         },
@@ -1765,27 +1875,27 @@ export class RunAttemptSystem {
   }): Promise<TaskRunExecutionQueue> {
     const result = await this.cache.queues.swr(params.runId, async () => {
       const queue = params.lockedQueueId
-        ? await this.$.prisma.taskQueue.findFirst({
-            where: {
-              id: params.lockedQueueId,
-            },
-            select: {
-              id: true,
-              friendlyId: true,
-              name: true,
-            },
-          })
-        : await this.$.prisma.taskQueue.findFirst({
-            where: {
-              runtimeEnvironmentId: params.runtimeEnvironmentId,
-              name: params.queueName,
-            },
-            select: {
-              id: true,
-              friendlyId: true,
-              name: true,
-            },
-          });
+        ? await this.$.readOnlyPrisma.taskQueue.findFirst({
+          where: {
+            id: params.lockedQueueId,
+          },
+          select: {
+            id: true,
+            friendlyId: true,
+            name: true,
+          },
+        })
+        : await this.$.readOnlyPrisma.taskQueue.findFirst({
+          where: {
+            runtimeEnvironmentId: params.runtimeEnvironmentId,
+            name: params.queueName,
+          },
+          select: {
+            id: true,
+            friendlyId: true,
+            name: true,
+          },
+        });
 
       if (!queue) {
         throw new ServiceValidationError(
@@ -1818,7 +1928,7 @@ export class RunAttemptSystem {
     backgroundWorkerTaskId: string
   ): Promise<TaskRunExecutionDeployment | undefined> {
     const result = await this.cache.deployments.swr(backgroundWorkerTaskId, async () => {
-      const { worker } = await this.$.prisma.backgroundWorkerTask.findFirstOrThrow({
+      const { worker } = await this.$.readOnlyPrisma.backgroundWorkerTask.findFirstOrThrow({
         where: { id: backgroundWorkerTaskId },
         select: {
           worker: {
@@ -1914,6 +2024,66 @@ export class RunAttemptSystem {
       stackTrace: truncateString(error.stackTrace, 1024 * 16), // 16kb
     };
   }
+
+  // PostgreSQL int4 max value (~24.85 days in milliseconds)
+  static readonly MAX_INT4 = 2_147_483_647;
+
+  /**
+   * Calculates the updated usage values for a run by adding the attempt's usage to the current totals.
+   * This should be called under the runLock to ensure safe read-modify-write.
+   * Cost is only calculated for non-dev environments.
+   */
+  #calculateUpdatedUsage({
+    runId,
+    currentUsageDurationMs,
+    currentCostInCents,
+    attemptDurationMs,
+    machinePresetName,
+    environmentType,
+  }: {
+    runId: string;
+    currentUsageDurationMs: number;
+    currentCostInCents: number;
+    attemptDurationMs: number;
+    machinePresetName: string | null;
+    environmentType: RuntimeEnvironmentType;
+  }): { usageDurationMs: number; costInCents: number } {
+    let usageDurationMs = currentUsageDurationMs + attemptDurationMs;
+
+    // Overflow protection: cap at PostgreSQL int4 max value
+    if (usageDurationMs > RunAttemptSystem.MAX_INT4) {
+      this.$.logger.error("usageDurationMs overflow detected, capping at max int4 value", {
+        runId,
+        currentUsageDurationMs,
+        attemptDurationMs,
+        calculatedTotal: usageDurationMs,
+        cappedAt: RunAttemptSystem.MAX_INT4,
+      });
+      usageDurationMs = RunAttemptSystem.MAX_INT4;
+    }
+
+    // Only calculate cost for non-dev environments
+    let costInCents = currentCostInCents;
+    if (environmentType !== "DEVELOPMENT") {
+      const machinePreset = machinePresetName
+        ? machinePresetFromName(
+          this.options.machines.machines,
+          machinePresetName as MachinePresetName
+        )
+        : machinePresetFromName(
+          this.options.machines.machines,
+          this.options.machines.defaultMachine
+        );
+
+      costInCents = currentCostInCents + attemptDurationMs * machinePreset.centsPerMs;
+    }
+
+    return {
+      usageDurationMs,
+      costInCents,
+    };
+  }
+
 }
 
 export function safeParseGitMeta(git: unknown): GitMeta | undefined {

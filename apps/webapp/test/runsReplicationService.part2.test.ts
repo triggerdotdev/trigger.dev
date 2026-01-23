@@ -1292,7 +1292,11 @@ describe("RunsReplicationService (part 2/2)", () => {
 
           // Execution settings
           machinePreset: "large-1x",
-          idempotencyKey: "exhaustive-idempotency-key",
+          idempotencyKey: "exhaustive-idempotency-key-hashed",
+          idempotencyKeyOptions: {
+            key: "exhaustive-idempotency-key",
+            scope: "run",
+          },
           ttl: "1h",
           isTest: true,
           concurrencyKey: "exhaustive-concurrency-key",
@@ -1388,7 +1392,9 @@ describe("RunsReplicationService (part 2/2)", () => {
 
       // Execution settings
       expect(clickhouseRun.machine_preset).toBe("large-1x");
-      expect(clickhouseRun.idempotency_key).toBe("exhaustive-idempotency-key");
+      expect(clickhouseRun.idempotency_key).toBe("exhaustive-idempotency-key-hashed");
+      expect(clickhouseRun.idempotency_key_user).toBe("exhaustive-idempotency-key");
+      expect(clickhouseRun.idempotency_key_scope).toBe("run");
       expect(clickhouseRun.expiration_ttl).toBe("1h");
       expect(clickhouseRun.is_test).toBe(1); // ClickHouse returns booleans as integers
       expect(clickhouseRun.concurrency_key).toBe("exhaustive-concurrency-key");
