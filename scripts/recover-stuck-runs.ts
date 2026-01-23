@@ -15,6 +15,7 @@
  * 2. Checking which runs have QUEUED execution status (inconsistent state)
  * 3. Re-adding them to their specific queue sorted sets
  * 4. Removing them from the queue-specific currentConcurrency sets
+ * 5. Removing them from the environment-level currentConcurrency set
  *
  * SAFETY:
  * - Dry-run mode when no write Redis URL is provided (read-only, no writes)
@@ -262,6 +263,7 @@ async function main() {
       console.log(`This will:`);
       console.log(`  1. Add each run back to its specific queue sorted set`);
       console.log(`  2. Remove each run from the queue-specific currentConcurrency set`);
+      console.log(`  3. Remove each run from the env-level currentConcurrency set`);
       console.log();
 
       let successCount = 0;
@@ -292,16 +294,26 @@ async function main() {
               args: [run.runId],
               description: `Remove run from queue currentConcurrency set`,
             },
+            {
+              type: "SREM",
+              key: envConcurrencyKey,
+              args: [run.runId],
+              description: `Remove run from env currentConcurrency set`,
+            },
           ];
 
           if (executeMode && redisWrite) {
             // Execute operations using the write client
             await redisWrite.zadd(queueKey, currentTimestamp, run.runId);
-            const removed = await redisWrite.srem(queueConcurrencyKey, run.runId);
+            const removedFromQueue = await redisWrite.srem(queueConcurrencyKey, run.runId);
+            const removedFromEnv = await redisWrite.srem(envConcurrencyKey, run.runId);
 
             console.log(`  ✓ Recovered run ${run.runId} (${run.taskIdentifier})`);
-            if (removed === 0) {
+            if (removedFromQueue === 0) {
               console.log(`    ⚠ Run was not in queue currentConcurrency set`);
+            }
+            if (removedFromEnv === 0) {
+              console.log(`    ⚠ Run was not in env currentConcurrency set`);
             }
             successCount++;
           } else {
