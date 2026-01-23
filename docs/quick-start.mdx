@@ -1,6 +1,6 @@
 ---
 title: "Quick start"
-description: "How to get started in 3 minutes using the CLI and SDK."
+description: "How to quickly get started using an AI coding assistant or the CLI and SDK."
 ---
 
 import CliInitStep from '/snippets/step-cli-init.mdx';
@@ -8,37 +8,35 @@ import CliDevStep from '/snippets/step-cli-dev.mdx';
 import CliRunTestStep from '/snippets/step-run-test.mdx';
 import CliViewRunStep from '/snippets/step-view-run.mdx';
 
-In this guide we will:
+<Accordion title="Using an AI coding assistant? Copy this prompt to set up Trigger.dev" icon="sparkles">
 
-1. Create a `trigger.config.ts` file and a `/trigger` directory with an example task.
-2. Get you to run the task using the CLI.
-3. Show you how to view the run logs for that task.
+```txt
+Add Trigger.dev to my project.
+
+- Before each step, briefly explain what it does
+- Keep me on track until I've successfully triggered my first task
+- Show me the results when we're done
+```
+
+</Accordion>
 
 <Steps titleSize="h3">
+  <Step title="Create a Trigger.dev account">
+    You can either:
+    - Use the [Trigger.dev Cloud](https://cloud.trigger.dev).
+    - Or [self-host](/open-source-self-hosting) the service.
+  </Step>
 
-<Step title="Create a Trigger.dev account">
+  <Step title="Create your first project">
+    Once you've created an account, follow the steps in the app to:
+    1. Complete your account details.
+    2. Create your first Organization and Project.
+  </Step>
 
-You can either:
-
-- Use the [Trigger.dev Cloud](https://cloud.trigger.dev).
-- Or [self-host](/open-source-self-hosting) the service.
-
-</Step>
-
-<Step title="Create your first project">
-
-Once you've created an account, follow the steps in the app to:
-
-1. Complete your account details.
-2. Create your first Organization and Project.
-
-</Step>
-
-<CliInitStep />
-<CliDevStep />
-<CliRunTestStep />
-<CliViewRunStep />
-
+  <CliInitStep />
+  <CliDevStep />
+  <CliRunTestStep />
+  <CliViewRunStep />
 </Steps>
 
 ## Next steps
