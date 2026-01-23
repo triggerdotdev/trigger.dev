@@ -417,7 +417,7 @@ const QueryEditorForm = forwardRef<
   }, []);
 
   return (
-    <div className="flex flex-col gap-2 bg-charcoal-900 pb-2">
+    <div className="flex h-full flex-col gap-2 bg-charcoal-900 pb-2">
       <TSQLEditor
         defaultValue={query}
         onChange={setQuery}
@@ -425,8 +425,7 @@ const QueryEditorForm = forwardRef<
         linterEnabled={true}
         showCopyButton={true}
         showClearButton={true}
-        minHeight="200px"
-        className="min-h-[200px]"
+        className="min-h-0 flex-1"
       />
       <fetcher.Form ref={formRef} method="post" className="flex items-center justify-between gap-2 px-2">
         <input type="hidden" name="query" value={query} />
@@ -584,19 +583,22 @@ export default function Page() {
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full bg-charcoal-800">
           <ResizablePanel id="query-main" className="h-full">
-            <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+            <ResizablePanelGroup orientation="vertical" className="h-full overflow-hidden">
               {/* Query editor - isolated component to prevent re-renders */}
-              <QueryEditorForm
-                ref={editorRef}
-                defaultQuery={initialQuery}
-                defaultScope={initialScope}
-                defaultTimeFilter={initialTimeFilter}
-                history={history}
-                fetcher={fetcher}
-                isAdmin={isAdmin}
-              />
+              <ResizablePanel id="query-editor" min="100px" default="300px" className="overflow-hidden">
+                <QueryEditorForm
+                  ref={editorRef}
+                  defaultQuery={initialQuery}
+                  defaultScope={initialScope}
+                  defaultTimeFilter={initialTimeFilter}
+                  history={history}
+                  fetcher={fetcher}
+                  isAdmin={isAdmin}
+                />
+              </ResizablePanel>
+              <ResizableHandle id="query-editor-handle" />
               {/* Results */}
-              <div className="grid max-h-full grid-rows-[1fr] overflow-hidden border-t border-grid-dimmed bg-charcoal-800">
+              <ResizablePanel id="query-results" min="200px" className="overflow-hidden bg-charcoal-800">
                 <ClientTabs
                   value={resultsView}
                   onValueChange={(v) => setResultsView(v as "table" | "graph")}
@@ -734,8 +736,8 @@ export default function Page() {
                     )}
                   </ClientTabsContent>
                 </ClientTabs>
-              </div>
-            </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
           </ResizablePanel>
           <ResizableHandle id="query-handle" />
           <ResizablePanel
