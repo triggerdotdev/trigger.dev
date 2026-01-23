@@ -20,8 +20,8 @@ export function convertToolParametersToSchema<TToolParameters extends ToolTaskPa
 }
 
 function convertAISchemaToTaskSchema(schema: AISchema<any>): Schema {
-  return (payload: unknown) => {
-    const result = schema.validate?.(payload);
+  return async (payload: unknown) => {
+    const result = await schema.validate?.(payload);
 
     if (!result) {
       throw new Error("Invalid payload");

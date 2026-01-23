@@ -62,7 +62,7 @@ model User {
 
   impersonationsPerformed ImpersonationAuditLog[] @relation("ImpersonationAdmin")
   impersonationsReceived  ImpersonationAuditLog[] @relation("ImpersonationTarget")
-  customerQueries      CustomerQuery[]
+  customerQueries         CustomerQuery[]
 }
 
 model MfaBackupCode {
@@ -589,6 +589,8 @@ model TaskRun {
 
   idempotencyKey          String?
   idempotencyKeyExpiresAt DateTime?
+  /// Stores the user-provided key and scope: { key: string, scope: "run" | "attempt" | "global" }
+  idempotencyKeyOptions   Json?
 
   /// Debounce options: { key: string, delay: string, createdAt: Date }
   debounce Json?
@@ -2425,7 +2427,6 @@ model ImpersonationAuditLog {
   @@index([adminId])
   @@index([targetId])
   @@index([createdAt])
-
 }
 
 enum CustomerQuerySource {
@@ -2469,6 +2470,14 @@ model CustomerQuery {
   /// Optional user who executed the query (null for API calls)
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   userId String?
+
+  /// Time filter settings used when the query was executed
+  /// Period like "7d", "24h", etc.
+  filterPeriod String?
+  /// Custom start date (ISO 8601)
+  filterFrom   DateTime?
+  /// Custom end date (ISO 8601)
+  filterTo     DateTime?
 
   createdAt DateTime @default(now())
 

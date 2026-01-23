@@ -21,6 +21,7 @@ import {
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
+import { unsafeExtractIdempotencyKeyScope, unsafeExtractIdempotencyKeyUser } from "@trigger.dev/core/v3/serverOnly";
 import { type TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import EventEmitter from "node:events";
@@ -891,6 +892,8 @@ export class RunsReplicationService {
       run.spanId, // span_id
       run.traceId, // trace_id
       run.idempotencyKey ?? "", // idempotency_key
+      unsafeExtractIdempotencyKeyUser(run) ?? "", // idempotency_key_user
+      unsafeExtractIdempotencyKeyScope(run) ?? "", // idempotency_key_scope
       run.ttl ?? "", // expiration_ttl
       run.isTest ?? false, // is_test
       _version.toString(), // _version
@@ -951,6 +954,7 @@ export class RunsReplicationService {
 
     return { data: parsedData };
   }
+
 }
 
 export type ConcurrentFlushSchedulerConfig<T> = {

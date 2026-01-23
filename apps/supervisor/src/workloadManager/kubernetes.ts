@@ -4,7 +4,12 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
-import type { EnvironmentType, MachinePreset, PlacementTag } from "@trigger.dev/core/v3";
+import type {
+  EnvironmentType,
+  MachinePreset,
+  MachinePresetName,
+  PlacementTag,
+} from "@trigger.dev/core/v3";
 import { PlacementTagProcessor } from "@trigger.dev/core/v3/serverOnly";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
@@ -12,6 +17,26 @@ import { getRunnerId } from "../util.js";
 
 type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
+};
+
+const cpuRequestRatioByMachinePreset: Record<MachinePresetName, number | undefined> = {
+  micro: env.KUBERNETES_CPU_REQUEST_RATIO_MICRO,
+  "small-1x": env.KUBERNETES_CPU_REQUEST_RATIO_SMALL_1X,
+  "small-2x": env.KUBERNETES_CPU_REQUEST_RATIO_SMALL_2X,
+  "medium-1x": env.KUBERNETES_CPU_REQUEST_RATIO_MEDIUM_1X,
+  "medium-2x": env.KUBERNETES_CPU_REQUEST_RATIO_MEDIUM_2X,
+  "large-1x": env.KUBERNETES_CPU_REQUEST_RATIO_LARGE_1X,
+  "large-2x": env.KUBERNETES_CPU_REQUEST_RATIO_LARGE_2X,
+};
+
+const memoryRequestRatioByMachinePreset: Record<MachinePresetName, number | undefined> = {
+  micro: env.KUBERNETES_MEMORY_REQUEST_RATIO_MICRO,
+  "small-1x": env.KUBERNETES_MEMORY_REQUEST_RATIO_SMALL_1X,
+  "small-2x": env.KUBERNETES_MEMORY_REQUEST_RATIO_SMALL_2X,
+  "medium-1x": env.KUBERNETES_MEMORY_REQUEST_RATIO_MEDIUM_1X,
+  "medium-2x": env.KUBERNETES_MEMORY_REQUEST_RATIO_MEDIUM_2X,
+  "large-1x": env.KUBERNETES_MEMORY_REQUEST_RATIO_LARGE_1X,
+  "large-2x": env.KUBERNETES_MEMORY_REQUEST_RATIO_LARGE_2X,
 };
 
 export class KubernetesWorkloadManager implements WorkloadManager {
@@ -321,8 +346,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   }
 
   #getResourceRequestsForMachine(preset: MachinePreset): ResourceQuantities {
-    const cpuRequest = preset.cpu * this.cpuRequestRatio;
-    const memoryRequest = preset.memory * this.memoryRequestRatio;
+    const cpuRatio = cpuRequestRatioByMachinePreset[preset.name] ?? this.cpuRequestRatio;
+    const memoryRatio = memoryRequestRatioByMachinePreset[preset.name] ?? this.memoryRequestRatio;
+
+    const cpuRequest = preset.cpu * cpuRatio;
+    const memoryRequest = preset.memory * memoryRatio;
 
     // Clamp between min and max
     const clampedCpu = this.clamp(cpuRequest, this.cpuRequestMinCores, preset.cpu);

@@ -952,6 +952,7 @@ const EnvironmentSchema = z
     BATCH_QUEUE_MAX_DEFICIT: z.coerce.number().int().default(100),
     BATCH_QUEUE_CONSUMER_COUNT: z.coerce.number().int().default(3),
     BATCH_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(50),
+    BATCH_QUEUE_WORKER_ENABLED: BoolEnv.default(true),
     // Number of master queue shards for horizontal scaling
     BATCH_QUEUE_SHARD_COUNT: z.coerce.number().int().default(1),
     // Maximum queues to fetch from master queue per iteration
