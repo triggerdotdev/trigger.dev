@@ -707,7 +707,8 @@ Runs that are delayed and have not been enqueued yet will display in the dashboa
 
 <Note>
   Delayed runs will be enqueued at the time specified, and will run as soon as possible after that
-  time, just as a normally triggered run would.
+  time, just as a normally triggered run would. They execute on the currently deployed version when
+  they start, not the version that was active when they were enqueued.
 </Note>
 
 You can cancel a delayed run using the `runs.cancel` SDK function:
@@ -732,6 +733,12 @@ The `delay` option is also available when using `batchTrigger`:
 ```ts
 await myTask.batchTrigger([{ payload: { some: "data" }, options: { delay: "1h" } }]);
 ```
+
+<Note>
+  If your payload contains Date objects, pass them directly rather than manually stringifying with
+  `JSON.stringify()`. The SDK handles Date serialization automatically. If you need to stringify
+  manually, convert Dates to ISO strings first (e.g., `date.toISOString()`).
+</Note>
 
 ### `ttl`
 
@@ -1048,7 +1055,7 @@ You can override the default region when you trigger a run:
 await yourTask.trigger(payload, { region: "eu-central-1" });
 ```
 
-If you don't specify a region it will use the default for your project. Go to the "Regions" page in the dashboard to see available regions or switch your default.
+If you don't specify a region it will use the default for your project. Go to the "Regions" page in the dashboard to see available regions or switch your default. Static IP addresses are also available on the Regions page for paid plans.
 
 The region is where your runs are executed, it does not change where the run payload, output, tags, logs, or are any other data is stored.
 
