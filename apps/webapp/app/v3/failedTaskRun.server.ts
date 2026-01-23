@@ -18,18 +18,12 @@ import { isFailableRunStatus, isFinalAttemptStatus } from "./taskStatus";
 const FailedTaskRunRetryGetPayload = {
   select: {
     id: true,
-    attempts: {
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: 1,
-    },
     lockedById: true, // task
     lockedToVersionId: true, // worker
   },
 } as const;
 
-type TaskRunWithAttempts = Prisma.TaskRunGetPayload<typeof FailedTaskRunRetryGetPayload>;
+type TaskRunForRetry = Prisma.TaskRunGetPayload<typeof FailedTaskRunRetryGetPayload>;
 
 export class FailedTaskRunService extends BaseService {
   public async call(anyRunId: string, completion: TaskRunFailedExecutionResult) {
@@ -128,10 +122,15 @@ export class FailedTaskRunRetryHelper extends BaseService {
   }
 
   async #getRetriableAttemptExecution(
-    run: TaskRunWithAttempts,
+    run: TaskRunForRetry,
     completion: TaskRunFailedExecutionResult
   ): Promise<V3TaskRunExecution | undefined> {
-    let attempt = run.attempts[0];
+    // Fetch the latest attempt separately (FK removed for TaskRun partitioning)
+    const attempt = await this._prisma.taskRunAttempt.findFirst({
+      where: { taskRunId: run.id },
+      orderBy: { createdAt: "desc" },
+      take: 1,
+    });
 
     // We need to create an attempt if:
     // - None exists yet

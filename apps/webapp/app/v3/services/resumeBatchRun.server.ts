@@ -1,6 +1,7 @@
 import { PrismaClientOrTransaction } from "~/db.server";
 import { commonWorker } from "../commonWorker.server";
 import { marqs } from "~/v3/marqs/index.server";
+import { taskRunRouter } from "../taskRunRouter.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { BatchTaskRun } from "@trigger.dev/database";
@@ -147,16 +148,7 @@ export class ResumeBatchRunService extends BaseService {
       select: {
         status: true,
         id: true,
-        taskRun: {
-          select: {
-            id: true,
-            queue: true,
-            taskIdentifier: true,
-            concurrencyKey: true,
-            createdAt: true,
-            queueTimestamp: true,
-          },
-        },
+        taskRunId: true,
       },
     });
 
@@ -169,9 +161,20 @@ export class ResumeBatchRunService extends BaseService {
       return "ERROR";
     }
 
+    // Fetch dependent run separately (FK removed for TaskRun partitioning)
+    const dependentRun = await taskRunRouter.findById(dependentTaskAttempt.taskRunId);
+
+    if (!dependentRun) {
+      logger.error("ResumeBatchRunService: Dependent run not found", {
+        batchRunId: batchRun.id,
+        taskRunId: dependentTaskAttempt.taskRunId,
+      });
+
+      return "ERROR";
+    }
+
     // This batch has a dependent attempt and just finalized, we should resume that attempt
     const environment = batchRun.runtimeEnvironment;
-    const dependentRun = dependentTaskAttempt.taskRun;
 
     if (dependentTaskAttempt.status === "PAUSED" && batchRun.checkpointEventId) {
       logger.debug("ResumeBatchRunService: Attempt is paused and has a checkpoint event", {
@@ -198,7 +201,7 @@ export class ResumeBatchRunService extends BaseService {
             completedAttemptIds: [],
             resumableAttemptId: dependentTaskAttempt.id,
             checkpointEventId: batchRun.checkpointEventId,
-            taskIdentifier: dependentTaskAttempt.taskRun.taskIdentifier,
+            taskIdentifier: dependentRun.taskIdentifier,
             projectId: environment.projectId,
             environmentId: environment.id,
             environmentType: environment.type,
@@ -261,13 +264,13 @@ export class ResumeBatchRunService extends BaseService {
               .filter(Boolean),
             resumableAttemptId: dependentTaskAttempt.id,
             checkpointEventId: batchRun.checkpointEventId ?? undefined,
-            taskIdentifier: dependentTaskAttempt.taskRun.taskIdentifier,
+            taskIdentifier: dependentRun.taskIdentifier,
             projectId: environment.projectId,
             environmentId: environment.id,
             environmentType: environment.type,
           },
           (
-            dependentTaskAttempt.taskRun.queueTimestamp ?? dependentTaskAttempt.taskRun.createdAt
+            dependentRun.queueTimestamp ?? dependentRun.createdAt
           ).getTime(),
           "resume"
         );

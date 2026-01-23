@@ -70,26 +70,6 @@ export class CancelTaskRunServiceV1 extends BaseService {
       completedAt: opts.cancelledAt,
       bulkActionId: opts.bulkActionId,
       include: {
-        attempts: {
-          where: {
-            status: {
-              in: CANCELLABLE_ATTEMPT_STATUSES,
-            },
-          },
-          include: {
-            backgroundWorker: true,
-            dependencies: {
-              include: {
-                taskRun: true,
-              },
-            },
-            batchTaskRunItems: {
-              include: {
-                taskRun: true,
-              },
-            },
-          },
-        },
         runtimeEnvironment: true,
         lockedToVersion: true,
         project: true,
@@ -98,6 +78,17 @@ export class CancelTaskRunServiceV1 extends BaseService {
       error: {
         type: "STRING_ERROR",
         raw: opts.reason,
+      },
+    });
+
+    // Fetch cancellable attempts separately (FK removed for TaskRun partitioning)
+    const cancellableAttempts = await this._prisma.taskRunAttempt.findMany({
+      where: {
+        taskRunId: cancelledTaskRun.id,
+        status: { in: CANCELLABLE_ATTEMPT_STATUSES },
+      },
+      include: {
+        backgroundWorker: true,
       },
     });
 
@@ -120,7 +111,7 @@ export class CancelTaskRunServiceV1 extends BaseService {
 
     // Cancel any in progress attempts
     if (opts.cancelAttempts) {
-      await this.#cancelPotentiallyRunningAttempts(cancelledTaskRun, cancelledTaskRun.attempts);
+      await this.#cancelPotentiallyRunningAttempts(cancelledTaskRun, cancellableAttempts);
       await this.#cancelRemainingRunWorkers(cancelledTaskRun);
     }
 

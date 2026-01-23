@@ -2,6 +2,7 @@ import { TaskRunDependency } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { commonWorker } from "../commonWorker.server";
+import { taskRunRouter } from "../taskRunRouter.server";
 import { BaseService } from "./baseService.server";
 
 export class ResumeTaskDependencyService extends BaseService {
@@ -19,11 +20,7 @@ export class ResumeTaskDependencyService extends BaseService {
             },
           },
         },
-        dependentAttempt: {
-          include: {
-            taskRun: true,
-          },
-        },
+        dependentAttempt: true,
       },
     });
 
@@ -36,7 +33,16 @@ export class ResumeTaskDependencyService extends BaseService {
       return;
     }
 
-    const dependentRun = dependency.dependentAttempt.taskRun;
+    // Fetch dependent run separately (FK removed for TaskRun partitioning)
+    const dependentRun = await taskRunRouter.findById(dependency.dependentAttempt.taskRunId);
+
+    if (!dependentRun) {
+      logger.error("ResumeTaskDependencyService: Dependent run not found", {
+        dependencyId,
+        taskRunId: dependency.dependentAttempt.taskRunId,
+      });
+      return;
+    }
 
     if (dependency.dependentAttempt.status === "PAUSED" && dependency.checkpointEventId) {
       logger.debug(

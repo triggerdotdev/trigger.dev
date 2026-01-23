@@ -30,17 +30,20 @@ export type TaskRunWithAttempts = TaskRun & {
 };
 
 export function executionResultForTaskRun(
-  taskRun: TaskRunWithAttempts
+  taskRun: TaskRun,
+  attempts?: TaskRunAttempt[]
 ): TaskRunExecutionResult | undefined {
+  // Support both old style (TaskRunWithAttempts) and new style (separate attempts)
+  const taskRunAttempts = attempts ?? (taskRun as TaskRunWithAttempts).attempts ?? [];
   if (SUCCESSFUL_STATUSES.includes(taskRun.status)) {
     // find the last attempt that was successful
-    const attempt = taskRun.attempts.find((a) => a.status === TaskRunAttemptStatus.COMPLETED);
+    const attempt = taskRunAttempts.find((a) => a.status === TaskRunAttemptStatus.COMPLETED);
 
     if (!attempt) {
       logger.error("Task run is successful but no successful attempt found", {
         taskRunId: taskRun.id,
         taskRunStatus: taskRun.status,
-        taskRunAttempts: taskRun.attempts.map((a) => a.status),
+        taskRunAttempts: taskRunAttempts.map((a) => a.status),
       });
 
       return undefined;
@@ -68,13 +71,13 @@ export function executionResultForTaskRun(
       } satisfies TaskRunFailedExecutionResult;
     }
 
-    const attempt = taskRun.attempts.find((a) => a.status === TaskRunAttemptStatus.FAILED);
+    const attempt = taskRunAttempts.find((a) => a.status === TaskRunAttemptStatus.FAILED);
 
     if (!attempt) {
       logger.error("Task run is failed but no failed attempt found", {
         taskRunId: taskRun.id,
         taskRunStatus: taskRun.status,
-        taskRunAttempts: taskRun.attempts.map((a) => a.status),
+        taskRunAttempts: taskRunAttempts.map((a) => a.status),
       });
 
       return undefined;
@@ -86,7 +89,7 @@ export function executionResultForTaskRun(
       logger.error("Failed to parse error from failed task run attempt", {
         taskRunId: taskRun.id,
         taskRunStatus: taskRun.status,
-        taskRunAttempts: taskRun.attempts.map((a) => a.status),
+        taskRunAttempts: taskRunAttempts.map((a) => a.status),
         error: attempt.error,
       });
 

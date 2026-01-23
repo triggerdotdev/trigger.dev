@@ -1,0 +1,64 @@
+## 2026-01-23 15:10:24 - Error Detected
+
+**Triage:** Route query error indicating potential service disruption or request handling failure
+
+**Line:**
+```
+{"error":{"message":"queryRoute() call aborted: GET http://localhost:3030/resources/orgs/references-9dfd/projects/test-suite-3-l3pO/env/dev/runs/run_w1nryyvt2erxa4mxjzzvk/spans/db096c2e8122fb3b?_data=routes%2Fresources.orgs.%24organizationSlug.projects.%24projectParam.env.%24envParam.runs.%24runParam.spans.%24spanParam","stack":"Error: queryRoute() call aborted: GET http://localhost:3030/resources/orgs/references-9dfd/projects/test-suite-3-l3pO/env/dev/runs/run_w1nryyvt2erxa4mxjzzvk/spans/db096c2e8122fb3b?_data=routes%2Fresources.orgs.%24organizationSlug.projects.%24projectParam.env.%24envParam.runs.%24runParam.spans.%24spanParam\n    at loadRouteData (/Users/eric/code/triggerdotdev/trigger.dev/node_modules/.pnpm/@remix-run+router@1.10.0/node_modules/@remix-run/router/dist/router.cjs.js:3463:13)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async queryImpl (/Users/eric/code/triggerdotdev/trigger.dev/node_modules/.pnpm/@remix-run+router@1.10.0/node_modules/@remix-run/router/dist/router.cjs.js:3298:20)\n    at async Object.queryRoute (/Users/eric/code/triggerdotdev/trigger.dev/node_modules/.pnpm/@remix-run+router@1.10.0/node_modules/@remix-run/router/dist/router.cjs.js:3264:18)\n    at async handleDataRequestRR (/Users/eric/code/triggerdotdev/trigger.dev/node_modules/.pnpm/@remix-run+server-runtime@2.1.0_typescript@5.5.4/node_modules/@remix-run/server-runtime/dist/server.js:77:20)\n    at async requestHandler (/Users/eric/code/triggerdotdev/trigger.dev/node_modules/.pnpm/@remix-run+server-runtime@2.1.0_typescript@5.5.4/node_modules/@remix-run/server-runtime/dist/server.js:51:18)\n    at async /Users/eric/code/triggerdotdev/trigger.dev/node_modules/.pnpm/@remix-run+express@2.1.0_express@4.20.0_typescript@5.5.4/node_modules/@remix-run/express/dist/server.js:41:22","name":"Error"},"request":{"url":"http://localhost:3030/resources/orgs/references-9dfd/projects/test-suite-3-l3pO/env/dev/runs/run_w1nryyvt2erxa4mxjzzvk/spans/db096c2e8122fb3b?_data=routes%2Fresources.orgs.%24organizationSlug.projects.%24projectParam.env.%24envParam.runs.%24runParam.spans.%24spanParam","method":"GET"},"http":{"requestId":"elQ7VZMU_3ur4vysVWd02","path":"/resources/orgs/references-9dfd/projects/test-suite-3-l3pO/env/dev/runs/run_w1nryyvt2erxa4mxjzzvk/spans/db096c2e8122fb3b?_data=routes%2Fresources.orgs.%24organizationSlug.projects.%24projectParam.env.%24envParam.runs.%24runParam.spans.%24spanParam","host":"localhost","method":"GET"},"timestamp":"2026-01-23T15:09:54.419Z","name":"webapp","message":"Error in handleError","level":"debug","traceId":"e3f5c962ee63ad40fd36c3e1487cb2b6","parentSpanId":"35da710147b7a674"}
+```
+
+**Analysis:**
+The Remix router's queryRoute() call was aborted while trying to fetch data for a span resource endpoint. This appears to be a request cancellation issue, likely caused by the client disconnecting or timing out before the server could complete processing the GET request for span data. The error occurred in the Remix framework's data loading pipeline, suggesting either network connectivity issues or the client navigating away before the request completed.
+
+<details>
+<summary>Context (10 lines)</summary>
+
+```
+    [32m'transfer-encoding'[39m: [32m'chunked'[39m,
+    [32m'x-clickhouse-query-id'[39m: [32m'cff67e63-3018-4750-8341-a274fd2b1a5a'[39m,
+    [32m'x-clickhouse-timezone'[39m: [32m'UTC'[39m,
+    [32m'x-clickhouse-summary'[39m: [32m'{"read_rows":"1","read_bytes":"738","written_rows":"1","written_bytes":"738","result_rows":"1","result_bytes":"738","elapsed_ns":"21672959"}'[39m
+  },
+  response_time_ms: [33m48[39m
+}
+{"clientName":"runs-replication","name":"ClickHouse","table":"trigger_dev.task_runs_v2","result":{"query_id":"cff67e63-3018-4750-8341-a274fd2b1a5a","summary":{"read_rows":"1","read_bytes":"738","written_rows":"1","written_bytes":"738","result_rows":"1","result_bytes":"738","elapsed_ns":"21672959"},"response_headers":{"date":"Fri, 23 Jan 2026 15:09:54 GMT","connection":"Close","content-type":"text/plain; charset=UTF-8","access-control-expose-headers":"X-ClickHouse-Query-Id,X-ClickHouse-Summary,X-ClickHouse-Server-Display-Name,X-ClickHouse-Format,X-ClickHouse-Timezone,X-ClickHouse-Exception-Code","x-clickhouse-server-display-name":"81fee3667d78","transfer-encoding":"chunked","x-clickhouse-query-id":"cff67e63-3018-4750-8341-a274fd2b1a5a","x-clickhouse-timezone":"UTC","x-clickhouse-summary":"{\"read_rows\":\"1\",\"read_bytes\":\"738\",\"written_rows\":\"1\",\"written_bytes\":\"738\",\"result_rows\":\"1\",\"result_bytes\":\"738\",\"elapsed_ns\":\"21672959\"}"},"executed":true},"queryId":"cff67e63-3018-4750-8341-a274fd2b1a5a","timestamp":"2026-01-23T15:09:54.405Z","message":"Inserted into clickhouse","level":"debug","traceId":"fd7aac2a04fcf6989c2c9acb28468961","parentSpanId":"3568c1e70354e5de"}
+{"clientName":"runs-replication","name":"ClickHouse","table":"trigger_dev.raw_task_runs_payload_v1","events":0,"settings":{"async_insert":1,"wait_for_async_insert":0,"async_insert_max_data_size":"1000000","async_insert_busy_timeout_ms":1000,"enable_json_type":1,"type_json_skip_duplicated_paths":1},"options":{"params":{"clickhouse_settings":{}}},"queryId":"6a4e1bed-e704-4527-b2ee-a13aefcbd091","timestamp":"2026-01-23T15:09:54.406Z","message":"Inserting into clickhouse (compact raw)","level":"debug","traceId":"fd7aac2a04fcf6989c2c9acb28468961","parentSpanId":"cd9d3e0657b186f5"}
+GET /resources/orgs/references-9dfd/projects/test-suite-3-l3pO/env/dev/runs/run_w1nryyvt2erxa4mxjzzvk/spans/db096c2e8122fb3b?_data=routes%2Fresources.orgs.%24organizationSlug.projects.%24projectParam.env.%24envParam.runs.%24runParam.spans.%24spanParam - - - - ms
+```
+
+</details>
+
+---
+
+## 2026-01-23 15:14:49 - Error Detected
+
+**Triage:** Error in query route call, indicating a potential service or routing failure
+
+**Line:**
+```
+{"error":{"message":"queryRoute() call aborted: GET http://localhost:3030/realtime/v1/runs/run_4wkgjwkn2mfriegqpsukn?cursor=40749280&handle=120143959-1769181265575578&live=true&offset=57427196584_0","stack":"Error: queryRoute() call aborted: GET http://localhost:3030/realtime/v1/runs/run_4wkgjwkn2mfriegqpsukn?cursor=40749280&handle=120143959-1769181265575578&live=true&offset=57427196584_0\n    at loadRouteData (/Users/eric/code/triggerdotdev/trigger.dev/node_modules/.pnpm/@remix-run+router@1.10.0/node_modules/@remix-run/router/dist/router.cjs.js:3463:13)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async queryImpl (/Users/eric/code/triggerdotdev/trigger.dev/node_modules/.pnpm/@remix-run+router@1.10.0/node_modules/@remix-run/router/dist/router.cjs.js:3298:20)\n    at async Object.queryRoute (/Users/eric/code/triggerdotdev/trigger.dev/node_modules/.pnpm/@remix-run+router@1.10.0/node_modules/@remix-run/router/dist/router.cjs.js:3264:18)\n    at async handleResourceRequestRR (/Users/eric/code/triggerdotdev/trigger.dev/node_modules/.pnpm/@remix-run+server-runtime@2.1.0_typescript@5.5.4/node_modules/@remix-run/server-runtime/dist/server.js:219:20)\n    at async requestHandler (/Users/eric/code/triggerdotdev/trigger.dev/node_modules/.pnpm/@remix-run+server-runtime@2.1.0_typescript@5.5.4/node_modules/@remix-run/server-runtime/dist/server.js:61:18)\n    at async /Users/eric/code/triggerdotdev/trigger.dev/node_modules/.pnpm/@remix-run+express@2.1.0_express@4.20.0_typescript@5.5.4/node_modules/@remix-run/express/dist/server.js:41:22","name":"Error"},"request":{"url":"http://localhost:3030/realtime/v1/runs/run_4wkgjwkn2mfriegqpsukn?cursor=40749280&handle=120143959-1769181265575578&live=true&offset=57427196584_0","method":"GET"},"http":{"requestId":"Qrte_fLk5w-TQBqiPRrTn","path":"/realtime/v1/runs/run_4wkgjwkn2mfriegqpsukn?cursor=40749280&handle=120143959-1769181265575578&live=true&offset=57427196584_0","host":"localhost","method":"GET"},"timestamp":"2026-01-23T15:14:44.246Z","name":"webapp","message":"Error in handleError","level":"debug","traceId":"30f0ae527b8c8c2166353a5adbe15d8c","parentSpanId":"e56f88b1afa8bf22"}
+```
+
+**Analysis:**
+The realtime API call to fetch run data was aborted, likely due to a client disconnect or timeout. This appears to be a long-polling request for live updates on a task run that was terminated before completion, possibly because the client navigated away or the connection was dropped. The error is being handled gracefully by the error handler, suggesting this is expected behavior for realtime streaming endpoints.
+
+<details>
+<summary>Context (10 lines)</summary>
+
+```
+{"commitEndLsn":"0000000D/5EEE0290","lastAcknowledgedAt":1769181276686,"timestamp":"2026-01-23T15:14:36.686Z","name":"RunsReplicationService","message":"acknowledge_latest_transaction","level":"info"}
+{"utilization":0.025328569574804803,"timestamp":"2026-01-23T15:14:37.687Z","name":"webapp","message":"nodejs.event_loop.utilization","level":"info"}
+GET /metrics 200 - - 23.237 ms
+{"name":"LogicalReplicationClient","slotName":"task_runs_to_clickhouse_v1","publicationName":"task_runs_to_clickhouse_v1_publication","lockTimeoutMs":30000,"lockExtendIntervalMs":10000,"timestamp":"2026-01-23T15:14:43.262Z","message":"Extended leader lock","level":"debug"}
+{"previousConcurrency":1,"newConcurrency":3,"queuePressure":0.0005,"totalQueuedItems":5,"currentBatchSize":1000,"memoryPressureThreshold":10000,"timestamp":"2026-01-23T15:14:44.226Z","name":"EventRepo.DynamicFlushScheduler","message":"Adjusted flush concurrency","level":"info","traceId":"29ab5e362336a864fbb021e29fa56c8e","parentSpanId":"722999f85e84cfac"}
+POST /otel/v1/traces 200 - - 23.408 ms
+{"previousConcurrency":3,"newConcurrency":5,"queuePressure":0.0006,"totalQueuedItems":6,"currentBatchSize":1000,"memoryPressureThreshold":10000,"timestamp":"2026-01-23T15:14:44.232Z","name":"EventRepo.DynamicFlushScheduler","message":"Adjusted flush concurrency","level":"info","traceId":"30435708b5443baa403b958aabd83cbd","parentSpanId":"b30f33f488aae293"}
+POST /otel/v1/logs 200 - - 3.965 ms
+{"taskRunCompletion":{"ok":true,"id":"run_vjgyfy2xmxum9okzxyx44","output":"[filtered 250 bytes]","outputType":"application/super+json","usage":{"durationMs":18782},"taskIdentifier":"metadata-test"},"execution":{"task":{"id":"metadata-test","filePath":"src/trigger/tests/metadata.ts","exportName":"metadataTestTask"},"attempt":{"number":1,"startedAt":"2026-01-23T15:14:25.176Z","id":"attempt_gb48cobgkae5bus3zct81","backgroundWorkerId":"cmkqx8k0c0000hpdyb5bmxku0","backgroundWorkerTaskId":"cmkqx8khp003mdyhpt43wxevj","status":"EXECUTING"},"run":{"id":"run_vjgyfy2xmxum9okzxyx44","payload":"","payloadType":"application/json","tags":[],"isTest":false,"createdAt":"2026-01-23T15:14:24.464Z","startedAt":"2026-01-23T15:14:25.139Z","version":"20260123.1","maxDuration":240,"context":null,"durationMs":0,"costInCents":0,"baseCostInCents":0},"queue":{"id":"queue_jqbmi5wyv3cnsyrq9epca","name":"task/metadata-test"},"environment":{"id":"cmkqx7k7e0004dyhpfundc35s","slug":"dev","type":"DEVELOPMENT"},"organization":{"id":"cmizxi9sl0000dy1voegngpdn","slug":"references-9dfd","name":"References"},"project":{"id":"cmkqx7k4l0002dyhpnaod7pm5","ref":"proj_elphtlzhktmmmouectgs","slug":"test-suite-3-l3pO","name":"test-suite-3"},"machine":{"name":"small-1x","cpu":0.5,"memory":0.5,"centsPerMs":0}},"env":"cmkqx7k7e0004dyhpfundc35s","timestamp":"2026-01-23T15:14:44.239Z","name":"webapp","message":"[DevQueueConsumer] taskAttemptCompleted()","level":"debug"}
+GET /realtime/v1/runs/run_4wkgjwkn2mfriegqpsukn?cursor=40749280&handle=120143959-1769181265575578&live=true&offset=57427196584_0 - - - - ms
+```
+
+</details>
+
+---
+

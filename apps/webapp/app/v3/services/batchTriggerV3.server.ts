@@ -27,6 +27,7 @@ import { marqs } from "../marqs/index.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../r2.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import { taskRunRouter } from "../taskRunRouter.server";
 import { startActiveSpan } from "../tracer.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
@@ -168,21 +169,19 @@ export class BatchTriggerV3Service extends BaseService {
           const dependentAttempt = body?.dependentAttempt
             ? await this._prisma.taskRunAttempt.findFirst({
                 where: { friendlyId: body.dependentAttempt },
-                include: {
-                  taskRun: {
-                    select: {
-                      id: true,
-                      status: true,
-                    },
-                  },
-                },
               })
+            : undefined;
+
+          // Fetch the dependent task run separately (FK removed for TaskRun partitioning)
+          const dependentTaskRun = dependentAttempt
+            ? await taskRunRouter.findById(dependentAttempt.taskRunId)
             : undefined;
 
           if (
             dependentAttempt &&
+            dependentTaskRun &&
             (isFinalAttemptStatus(dependentAttempt.status) ||
-              isFinalRunStatus(dependentAttempt.taskRun.status))
+              isFinalRunStatus(dependentTaskRun.status))
           ) {
             logger.debug("[BatchTriggerV2][call] Dependent attempt or run is in a terminal state", {
               dependentAttempt: dependentAttempt,
@@ -476,6 +475,14 @@ export class BatchTriggerV3Service extends BaseService {
         data: { sealed: true, sealedAt: new Date() },
       });
 
+      // Schedule completion check in case any runs completed before sealing
+      await legacyRunEngineWorker.enqueue({
+        id: `tryCompleteBatchV3:${batch.id}`,
+        job: "tryCompleteBatchV3",
+        payload: { batchId: batch.id, scheduleResumeOnComplete: true },
+        availableAt: new Date(Date.now() + 200),
+      });
+
       return batch;
     } else {
       const batch = await this._prisma.batchTaskRun.create({
@@ -694,6 +701,14 @@ export class BatchTriggerV3Service extends BaseService {
             data: { sealed: true, sealedAt: new Date() },
           });
 
+          // Schedule completion check in case any runs completed before sealing
+          await legacyRunEngineWorker.enqueue({
+            id: `tryCompleteBatchV3:${batch.id}`,
+            job: "tryCompleteBatchV3",
+            payload: { batchId: batch.id, scheduleResumeOnComplete: true },
+            availableAt: new Date(Date.now() + 200),
+          });
+
           logger.debug("[BatchTriggerV2][processBatchTaskRun] Batch processing complete", {
             batchId: batch.friendlyId,
             runCount: batch.runCount,
@@ -737,6 +752,14 @@ export class BatchTriggerV3Service extends BaseService {
           await this._prisma.batchTaskRun.update({
             where: { id: batch.id },
             data: { sealed: true, sealedAt: new Date() },
+          });
+
+          // Schedule completion check in case any runs completed before sealing
+          await legacyRunEngineWorker.enqueue({
+            id: `tryCompleteBatchV3:${batch.id}`,
+            job: "tryCompleteBatchV3",
+            payload: { batchId: batch.id, scheduleResumeOnComplete: true },
+            availableAt: new Date(Date.now() + 200),
           });
 
           logger.debug("[BatchTriggerV2][processBatchTaskRun] Batch processing complete", {

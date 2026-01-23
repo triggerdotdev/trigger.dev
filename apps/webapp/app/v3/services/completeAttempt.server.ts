@@ -22,6 +22,7 @@ import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
+import { taskRunRouter } from "~/v3/taskRunRouter.server";
 import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
 import { socketIo } from "../handleSocketIo.server";
 import { createExceptionPropertiesFromError } from "../eventRepository/common.server";
@@ -106,13 +107,22 @@ export class CompleteAttemptService extends BaseService {
       return "COMPLETED";
     }
 
-    if (
-      isFinalAttemptStatus(taskRunAttempt.status) ||
-      isFinalRunStatus(taskRunAttempt.taskRun.status)
-    ) {
+    const taskRun = await taskRunRouter.findById(taskRunAttempt.taskRunId);
+
+    if (!taskRun) {
+      logger.error("[CompleteAttemptService] Task run not found for attempt", {
+        attemptId: taskRunAttempt.id,
+        taskRunId: taskRunAttempt.taskRunId,
+      });
+
+      return "COMPLETED";
+    }
+
+    if (isFinalAttemptStatus(taskRunAttempt.status) || isFinalRunStatus(taskRun.status)) {
       // We don't want to retry a task run that has already been marked as failed, cancelled, or completed
       logger.debug("[CompleteAttemptService] Attempt or run is already in a final state", {
         taskRunAttempt,
+        taskRun,
         completion,
       });
 
@@ -120,12 +130,13 @@ export class CompleteAttemptService extends BaseService {
     }
 
     if (completion.ok) {
-      return await this.#completeAttemptSuccessfully(completion, taskRunAttempt, env);
+      return await this.#completeAttemptSuccessfully(completion, taskRunAttempt, taskRun, env);
     } else {
       return await this.#completeAttemptFailed({
         completion,
         execution,
         taskRunAttempt,
+        taskRun,
         env,
         checkpoint,
       });
@@ -135,6 +146,7 @@ export class CompleteAttemptService extends BaseService {
   async #completeAttemptSuccessfully(
     completion: TaskRunSuccessfulExecutionResult,
     taskRunAttempt: NonNullable<FoundAttempt>,
+    taskRun: TaskRun,
     env?: AuthenticatedEnvironment
   ): Promise<"COMPLETED"> {
     await this._prisma.taskRunAttempt.update({
@@ -145,13 +157,12 @@ export class CompleteAttemptService extends BaseService {
         output: completion.output,
         outputType: completion.outputType,
         usageDurationMs: completion.usage?.durationMs,
-        taskRun: {
-          update: {
-            output: completion.output,
-            outputType: completion.outputType,
-          },
-        },
       },
+    });
+
+    await taskRunRouter.updateById(taskRunAttempt.taskRunId, {
+      output: completion.output,
+      outputType: completion.outputType,
     });
 
     const finalizeService = new FinalizeTaskRunService();
@@ -163,11 +174,11 @@ export class CompleteAttemptService extends BaseService {
       env,
     });
 
-    const eventRepository = resolveEventRepositoryForStore(taskRunAttempt.taskRun.taskEventStore);
+    const eventRepository = resolveEventRepositoryForStore(taskRun.taskEventStore);
 
     const [completeSuccessfulRunEventError] = await tryCatch(
       eventRepository.completeSuccessfulRunEvent({
-        run: taskRunAttempt.taskRun,
+        run: taskRun,
         endTime: new Date(),
       })
     );
@@ -186,12 +197,14 @@ export class CompleteAttemptService extends BaseService {
     completion,
     execution,
     taskRunAttempt,
+    taskRun,
     env,
     checkpoint,
   }: {
     completion: TaskRunFailedExecutionResult;
     execution: V3TaskRunExecution;
     taskRunAttempt: NonNullable<FoundAttempt>;
+    taskRun: TaskRun;
     env?: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
   }): Promise<"COMPLETED" | "RETRIED"> {
@@ -239,7 +252,7 @@ export class CompleteAttemptService extends BaseService {
       executionRetryInferred = true;
       executionRetry = FailedTaskRunRetryHelper.getExecutionRetry({
         run: {
-          ...taskRunAttempt.taskRun,
+          ...taskRun,
           lockedBy: taskRunAttempt.backgroundWorkerTask,
           lockedToVersion: taskRunAttempt.backgroundWorker,
         },
@@ -257,7 +270,7 @@ export class CompleteAttemptService extends BaseService {
     if (isOOMAttempt) {
       const retryConfig = FailedTaskRunRetryHelper.getRetryConfig({
         run: {
-          ...taskRunAttempt.taskRun,
+          ...taskRun,
           lockedBy: taskRunAttempt.backgroundWorkerTask,
           lockedToVersion: taskRunAttempt.backgroundWorker,
         },
@@ -265,7 +278,7 @@ export class CompleteAttemptService extends BaseService {
       });
 
       oomMachine = retryConfig?.outOfMemory?.machine;
-      isOnMaxOOMMachine = oomMachine === taskRunAttempt.taskRun.machinePreset;
+      isOnMaxOOMMachine = oomMachine === taskRun.machinePreset;
 
       if (oomMachine && !isOnMaxOOMMachine) {
         //we will retry
@@ -273,7 +286,7 @@ export class CompleteAttemptService extends BaseService {
         retriableError = true;
         executionRetry = FailedTaskRunRetryHelper.getExecutionRetry({
           run: {
-            ...taskRunAttempt.taskRun,
+            ...taskRun,
             lockedBy: taskRunAttempt.backgroundWorkerTask,
             lockedToVersion: taskRunAttempt.backgroundWorker,
           },
@@ -302,6 +315,7 @@ export class CompleteAttemptService extends BaseService {
         executionRetry,
         executionRetryInferred,
         taskRunAttempt,
+        taskRun,
         environment,
         checkpoint,
         forceRequeue: isOOMRetry,
@@ -316,11 +330,11 @@ export class CompleteAttemptService extends BaseService {
       exitRun(taskRunAttempt.taskRunId);
     }
 
-    const eventRepository = resolveEventRepositoryForStore(taskRunAttempt.taskRun.taskEventStore);
+    const eventRepository = resolveEventRepositoryForStore(taskRun.taskEventStore);
 
     const [completeFailedRunEventError] = await tryCatch(
       eventRepository.completeFailedRunEvent({
-        run: taskRunAttempt.taskRun,
+        run: taskRun,
         endTime: failedAt,
         exception: createExceptionPropertiesFromError(sanitizedError),
       })
@@ -378,7 +392,7 @@ export class CompleteAttemptService extends BaseService {
       case "CRASHED": {
         const [createAttemptFailedEventError] = await tryCatch(
           eventRepository.createAttemptFailedRunEvent({
-            run: taskRunAttempt.taskRun,
+            run: taskRun,
             endTime: failedAt,
             attemptNumber: taskRunAttempt.number,
             exception: createExceptionPropertiesFromError(sanitizedError),
@@ -397,7 +411,7 @@ export class CompleteAttemptService extends BaseService {
       case "SYSTEM_FAILURE": {
         const [createAttemptFailedEventError] = await tryCatch(
           eventRepository.createAttemptFailedRunEvent({
-            run: taskRunAttempt.taskRun,
+            run: taskRun,
             endTime: failedAt,
             attemptNumber: taskRunAttempt.number,
             exception: createExceptionPropertiesFromError(sanitizedError),
@@ -521,6 +535,7 @@ export class CompleteAttemptService extends BaseService {
     executionRetry,
     executionRetryInferred,
     taskRunAttempt,
+    taskRun,
     environment,
     checkpoint,
     forceRequeue = false,
@@ -530,6 +545,7 @@ export class CompleteAttemptService extends BaseService {
     executionRetry: TaskRunExecutionRetry;
     executionRetryInferred: boolean;
     taskRunAttempt: NonNullable<FoundAttempt>;
+    taskRun: TaskRun;
     environment: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
     forceRequeue?: boolean;
@@ -538,36 +554,34 @@ export class CompleteAttemptService extends BaseService {
   }) {
     const retryAt = new Date(executionRetry.timestamp);
 
-    const eventRepository = resolveEventRepositoryForStore(taskRunAttempt.taskRun.taskEventStore);
+    const eventRepository = resolveEventRepositoryForStore(taskRun.taskEventStore);
 
     // Retry the task run
     await eventRepository.recordEvent(
       `Retry #${execution.attempt.number} delay${oomMachine ? " after OOM" : ""}`,
       {
-        taskSlug: taskRunAttempt.taskRun.taskIdentifier,
+        taskSlug: taskRun.taskIdentifier,
         environment,
         attributes: {
           metadata: this.#generateMetadataAttributesForNextAttempt(execution),
           properties: {
             retryAt: retryAt.toISOString(),
-            previousMachine: oomMachine
-              ? taskRunAttempt.taskRun.machinePreset ?? undefined
-              : undefined,
+            previousMachine: oomMachine ? taskRun.machinePreset ?? undefined : undefined,
             nextMachine: oomMachine,
           },
-          runId: taskRunAttempt.taskRun.friendlyId,
+          runId: taskRun.friendlyId,
           style: {
             icon: "schedule-attempt",
           },
         },
-        context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
+        context: taskRun.traceContext as Record<string, string | undefined>,
         spanIdSeed: `retry-${taskRunAttempt.number + 1}`,
         endTime: retryAt,
       }
     );
 
     logger.debug("[CompleteAttemptService] Retrying", {
-      taskRun: taskRunAttempt.taskRun.friendlyId,
+      taskRun: taskRun.friendlyId,
       retry: executionRetry,
     });
 
@@ -591,6 +605,7 @@ export class CompleteAttemptService extends BaseService {
       return await this.#retryAttemptWithCheckpoint({
         execution,
         taskRunAttempt,
+        taskRun,
         executionRetry,
         executionRetryInferred,
         checkpoint,
@@ -598,7 +613,7 @@ export class CompleteAttemptService extends BaseService {
     }
 
     await this.#enqueueReattempt({
-      run: taskRunAttempt.taskRun,
+      run: taskRun,
       executionRetry,
       supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
       executionRetryInferred,
@@ -611,12 +626,14 @@ export class CompleteAttemptService extends BaseService {
   async #retryAttemptWithCheckpoint({
     execution,
     taskRunAttempt,
+    taskRun,
     executionRetry,
     executionRetryInferred,
     checkpoint,
   }: {
     execution: V3TaskRunExecution;
     taskRunAttempt: NonNullable<FoundAttempt>;
+    taskRun: TaskRun;
     executionRetry: TaskRunExecutionRetry;
     executionRetryInferred: boolean;
     checkpoint: CheckpointData;
@@ -654,7 +671,7 @@ export class CompleteAttemptService extends BaseService {
     }
 
     await this.#enqueueReattempt({
-      run: taskRunAttempt.taskRun,
+      run: taskRun,
       executionRetry,
       checkpointEventId: checkpointCreateResult.event.id,
       supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
@@ -692,7 +709,6 @@ async function findAttempt(prismaClient: PrismaClientOrTransaction, friendlyId: 
   return prismaClient.taskRunAttempt.findFirst({
     where: { friendlyId },
     include: {
-      taskRun: true,
       backgroundWorkerTask: true,
       backgroundWorker: {
         select: {

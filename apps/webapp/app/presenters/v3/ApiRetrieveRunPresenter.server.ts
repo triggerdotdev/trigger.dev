@@ -83,11 +83,6 @@ export class ApiRetrieveRunPresenter {
         output: true,
         outputType: true,
         error: true,
-        attempts: {
-          select: {
-            id: true,
-          },
-        },
         attemptNumber: true,
         engine: true,
         taskEventStore: true,
@@ -169,6 +164,14 @@ export class ApiRetrieveRunPresenter {
         }
       }
 
+      // Get attempt count (FK removed for TaskRun partitioning)
+      let attemptCount = taskRun.attemptNumber ?? 0;
+      if (taskRun.engine === "V1") {
+        attemptCount = await prisma.taskRunAttempt.count({
+          where: { taskRunId: taskRun.id },
+        });
+      }
+
       return {
         ...(await createCommonRunStructure(taskRun, this.apiVersion)),
         payload: $payload,
@@ -178,8 +181,7 @@ export class ApiRetrieveRunPresenter {
         error: ApiRetrieveRunPresenter.apiErrorFromError(taskRun.error),
         schedule: await resolveSchedule(taskRun),
         // We're removing attempts from the API
-        attemptCount:
-          taskRun.engine === "V1" ? taskRun.attempts.length : taskRun.attemptNumber ?? 0,
+        attemptCount,
         attempts: [],
         relatedRuns: {
           root: taskRun.rootTaskRun

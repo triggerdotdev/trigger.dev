@@ -29,6 +29,7 @@ import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { uploadPacketToObjectStore } from "../r2.server";
 import { removeQueueConcurrencyLimits, updateQueueConcurrencyLimits } from "../runQueue.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import { taskRunRouter } from "../taskRunRouter.server";
 import { startActiveSpan } from "../tracer.server";
 import { clampMaxDuration } from "../utils/maxDuration";
 import { BaseService, ServiceValidationError } from "./baseService.server";
@@ -169,27 +170,25 @@ export class TriggerTaskServiceV1 extends BaseService {
       const dependentAttempt = body.options?.dependentAttempt
         ? await this._prisma.taskRunAttempt.findFirst({
             where: { friendlyId: body.options.dependentAttempt },
-            include: {
-              taskRun: {
-                select: {
-                  id: true,
-                  status: true,
-                  taskIdentifier: true,
-                  rootTaskRunId: true,
-                  depth: true,
-                  queueTimestamp: true,
-                  queue: true,
-                  taskEventStore: true,
-                },
-              },
+            select: {
+              id: true,
+              friendlyId: true,
+              status: true,
+              taskRunId: true,
             },
           })
         : undefined;
 
+      // Fetch dependent task run separately (FK removed for TaskRun partitioning)
+      const dependentTaskRun = dependentAttempt
+        ? await taskRunRouter.findById(dependentAttempt.taskRunId)
+        : undefined;
+
       if (
         dependentAttempt &&
+        dependentTaskRun &&
         (isFinalAttemptStatus(dependentAttempt.status) ||
-          isFinalRunStatus(dependentAttempt.taskRun.status))
+          isFinalRunStatus(dependentTaskRun.status))
       ) {
         logger.debug("Dependent attempt or run is in a terminal state", {
           dependentAttempt: dependentAttempt,
@@ -201,7 +200,7 @@ export class TriggerTaskServiceV1 extends BaseService {
           );
         } else {
           throw new ServiceValidationError(
-            `Cannot trigger ${taskId} as the parent run has a status of ${dependentAttempt.taskRun.status}`
+            `Cannot trigger ${taskId} as the parent run has a status of ${dependentTaskRun.status}`
           );
         }
       }
@@ -209,64 +208,71 @@ export class TriggerTaskServiceV1 extends BaseService {
       const parentAttempt = body.options?.parentAttempt
         ? await this._prisma.taskRunAttempt.findFirst({
             where: { friendlyId: body.options.parentAttempt },
-            include: {
-              taskRun: {
-                select: {
-                  id: true,
-                  status: true,
-                  taskIdentifier: true,
-                  rootTaskRunId: true,
-                  depth: true,
-                  taskEventStore: true,
-                },
-              },
+            select: {
+              id: true,
+              friendlyId: true,
+              status: true,
+              taskRunId: true,
             },
           })
+        : undefined;
+
+      // Fetch parent task run separately (FK removed for TaskRun partitioning)
+      const parentTaskRun = parentAttempt
+        ? await taskRunRouter.findById(parentAttempt.taskRunId)
         : undefined;
 
       const dependentBatchRun = body.options?.dependentBatch
         ? await this._prisma.batchTaskRun.findFirst({
             where: { friendlyId: body.options.dependentBatch },
-            include: {
-              dependentTaskAttempt: {
-                include: {
-                  taskRun: {
-                    select: {
-                      id: true,
-                      status: true,
-                      taskIdentifier: true,
-                      rootTaskRunId: true,
-                      depth: true,
-                      queueTimestamp: true,
-                      queue: true,
-                      taskEventStore: true,
-                    },
-                  },
-                },
-              },
+            select: {
+              id: true,
+              friendlyId: true,
+              status: true,
+              dependentTaskAttemptId: true,
+              checkpointEventId: true,
             },
           })
         : undefined;
 
+      // Fetch dependent batch run's attempt separately (FK removed for TaskRun partitioning)
+      const dependentBatchRunAttempt = dependentBatchRun?.dependentTaskAttemptId
+        ? await this._prisma.taskRunAttempt.findFirst({
+            where: { id: dependentBatchRun.dependentTaskAttemptId },
+            select: {
+              id: true,
+              friendlyId: true,
+              status: true,
+              taskRunId: true,
+            },
+          })
+        : undefined;
+
+      // Fetch dependent batch run's task run separately
+      const dependentBatchRunTaskRun = dependentBatchRunAttempt
+        ? await taskRunRouter.findById(dependentBatchRunAttempt.taskRunId)
+        : undefined;
+
       if (
         dependentBatchRun &&
-        dependentBatchRun.dependentTaskAttempt &&
-        (isFinalAttemptStatus(dependentBatchRun.dependentTaskAttempt.status) ||
-          isFinalRunStatus(dependentBatchRun.dependentTaskAttempt.taskRun.status))
+        dependentBatchRunAttempt &&
+        dependentBatchRunTaskRun &&
+        (isFinalAttemptStatus(dependentBatchRunAttempt.status) ||
+          isFinalRunStatus(dependentBatchRunTaskRun.status))
       ) {
         logger.debug("Dependent batch run task attempt or run has been canceled", {
           dependentBatchRunId: dependentBatchRun.id,
           status: dependentBatchRun.status,
-          attempt: dependentBatchRun.dependentTaskAttempt,
+          attempt: dependentBatchRunAttempt,
         });
 
-        if (isFinalAttemptStatus(dependentBatchRun.dependentTaskAttempt.status)) {
+        if (isFinalAttemptStatus(dependentBatchRunAttempt.status)) {
           throw new ServiceValidationError(
-            `Cannot trigger ${taskId} as the parent attempt has a status of ${dependentBatchRun.dependentTaskAttempt.status}`
+            `Cannot trigger ${taskId} as the parent attempt has a status of ${dependentBatchRunAttempt.status}`
           );
         } else {
           throw new ServiceValidationError(
-            `Cannot trigger ${taskId} as the parent run has a status of ${dependentBatchRun.dependentTaskAttempt.taskRun.status}`
+            `Cannot trigger ${taskId} as the parent run has a status of ${dependentBatchRunTaskRun.status}`
           );
         }
       }
@@ -274,27 +280,34 @@ export class TriggerTaskServiceV1 extends BaseService {
       const parentBatchRun = body.options?.parentBatch
         ? await this._prisma.batchTaskRun.findFirst({
             where: { friendlyId: body.options.parentBatch },
-            include: {
-              dependentTaskAttempt: {
-                include: {
-                  taskRun: {
-                    select: {
-                      id: true,
-                      status: true,
-                      taskIdentifier: true,
-                      rootTaskRunId: true,
-                    },
-                  },
-                },
-              },
+            select: {
+              id: true,
+              friendlyId: true,
+              status: true,
+              dependentTaskAttemptId: true,
             },
           })
         : undefined;
 
+      // Fetch parent batch run's attempt and task run separately (FK removed for TaskRun partitioning)
+      const parentBatchRunAttempt = parentBatchRun?.dependentTaskAttemptId
+        ? await this._prisma.taskRunAttempt.findFirst({
+            where: { id: parentBatchRun.dependentTaskAttemptId },
+            select: {
+              id: true,
+              taskRunId: true,
+            },
+          })
+        : undefined;
+
+      const parentBatchRunTaskRun = parentBatchRunAttempt
+        ? await taskRunRouter.findById(parentBatchRunAttempt.taskRunId)
+        : undefined;
+
       const { repository, store } = await getV3EventRepository(
-        dependentAttempt?.taskRun.taskEventStore ??
-          parentAttempt?.taskRun.taskEventStore ??
-          dependentBatchRun?.dependentTaskAttempt?.taskRun.taskEventStore
+        dependentTaskRun?.taskEventStore ??
+          parentTaskRun?.taskEventStore ??
+          dependentBatchRunTaskRun?.taskEventStore
       );
 
       try {
@@ -359,18 +372,18 @@ export class TriggerTaskServiceV1 extends BaseService {
                   }
                 }
 
-                const depth = dependentAttempt
-                  ? dependentAttempt.taskRun.depth + 1
-                  : parentAttempt
-                  ? parentAttempt.taskRun.depth + 1
-                  : dependentBatchRun?.dependentTaskAttempt
-                  ? dependentBatchRun.dependentTaskAttempt.taskRun.depth + 1
+                const depth = dependentTaskRun
+                  ? dependentTaskRun.depth + 1
+                  : parentTaskRun
+                  ? parentTaskRun.depth + 1
+                  : dependentBatchRunTaskRun
+                  ? dependentBatchRunTaskRun.depth + 1
                   : 0;
 
                 const queueTimestamp =
                   options.queueTimestamp ??
-                  dependentAttempt?.taskRun.queueTimestamp ??
-                  dependentBatchRun?.dependentTaskAttempt?.taskRun.queueTimestamp ??
+                  dependentTaskRun?.queueTimestamp ??
+                  dependentBatchRunTaskRun?.queueTimestamp ??
                   delayUntil ??
                   new Date();
 
@@ -414,20 +427,20 @@ export class TriggerTaskServiceV1 extends BaseService {
                             connect: tagIds.map((id) => ({ id })),
                           },
                     parentTaskRunId:
-                      dependentAttempt?.taskRun.id ??
-                      parentAttempt?.taskRun.id ??
-                      dependentBatchRun?.dependentTaskAttempt?.taskRun.id,
+                      dependentTaskRun?.id ??
+                      parentTaskRun?.id ??
+                      dependentBatchRunTaskRun?.id,
                     parentTaskRunAttemptId:
                       dependentAttempt?.id ??
                       parentAttempt?.id ??
-                      dependentBatchRun?.dependentTaskAttempt?.id,
+                      dependentBatchRunAttempt?.id,
                     rootTaskRunId:
-                      dependentAttempt?.taskRun.rootTaskRunId ??
-                      dependentAttempt?.taskRun.id ??
-                      parentAttempt?.taskRun.rootTaskRunId ??
-                      parentAttempt?.taskRun.id ??
-                      dependentBatchRun?.dependentTaskAttempt?.taskRun.rootTaskRunId ??
-                      dependentBatchRun?.dependentTaskAttempt?.taskRun.id,
+                      dependentTaskRun?.rootTaskRunId ??
+                      dependentTaskRun?.id ??
+                      parentTaskRun?.rootTaskRunId ??
+                      parentTaskRun?.id ??
+                      dependentBatchRunTaskRun?.rootTaskRunId ??
+                      dependentBatchRunTaskRun?.id,
                     replayedFromTaskRunFriendlyId: options.replayedFromTaskRunFriendlyId,
                     batchId: dependentBatchRun?.id ?? parentBatchRun?.id,
                     resumeParentOnCompletion: !!(dependentAttempt ?? dependentBatchRun),
@@ -572,8 +585,7 @@ export class TriggerTaskServiceV1 extends BaseService {
               const enqueueResult = await enqueueRun({
                 env: environment,
                 run,
-                dependentRun:
-                  dependentAttempt?.taskRun ?? dependentBatchRun?.dependentTaskAttempt?.taskRun,
+                dependentRun: dependentTaskRun ?? dependentBatchRunTaskRun ?? undefined,
               });
 
               if (!enqueueResult.ok) {

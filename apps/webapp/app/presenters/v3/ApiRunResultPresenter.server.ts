@@ -14,20 +14,19 @@ export class ApiRunResultPresenter extends BasePresenter {
           friendlyId,
           runtimeEnvironmentId: env.id,
         },
-        include: {
-          attempts: {
-            orderBy: {
-              createdAt: "desc",
-            },
-          },
-        },
       });
 
       if (!taskRun) {
         return undefined;
       }
 
-      return executionResultForTaskRun(taskRun);
+      // Fetch attempts separately (FK removed for TaskRun partitioning)
+      const attempts = await this._prisma.taskRunAttempt.findMany({
+        where: { taskRunId: taskRun.id },
+        orderBy: { createdAt: "desc" },
+      });
+
+      return executionResultForTaskRun(taskRun, attempts);
     });
   }
 }

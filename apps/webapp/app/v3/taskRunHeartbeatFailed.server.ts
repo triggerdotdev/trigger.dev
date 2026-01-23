@@ -30,11 +30,6 @@ export class TaskRunHeartbeatFailedService extends BaseService {
             supportsLazyAttempts: true,
           },
         },
-        _count: {
-          select: {
-            attempts: true,
-          },
-        },
       },
     });
 

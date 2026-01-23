@@ -443,18 +443,6 @@ export class SpanPresenter extends BasePresenter {
           },
         },
         replayedFromTaskRunFriendlyId: true,
-        attempts: {
-          take: 1,
-          orderBy: {
-            createdAt: "desc",
-          },
-          select: {
-            number: true,
-            status: true,
-            createdAt: true,
-            friendlyId: true,
-          },
-        },
       },
       where: originalRunId
         ? {
@@ -650,7 +638,18 @@ export class SpanPresenter extends BasePresenter {
     run: FindRunResult;
     machine?: MachinePreset;
   }): Promise<V3TaskRunContext> {
-    const attempt = run.attempts[0];
+    // Fetch the latest attempt separately (FK removed for TaskRun partitioning)
+    const attempt = await this._replica.taskRunAttempt.findFirst({
+      where: { taskRunId: run.id },
+      orderBy: { createdAt: "desc" },
+      take: 1,
+      select: {
+        number: true,
+        status: true,
+        createdAt: true,
+        friendlyId: true,
+      },
+    });
 
     const context = {
       attempt: attempt

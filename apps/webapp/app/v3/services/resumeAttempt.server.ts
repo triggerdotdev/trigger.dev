@@ -6,11 +6,12 @@ import {
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
+import { taskRunRouter } from "~/v3/taskRunRouter.server";
 import { socketIo } from "../handleSocketIo.server";
 import { sharedQueueTasks } from "../marqs/sharedQueueConsumer.server";
 import { BaseService } from "./baseService.server";
-import { Prisma, TaskRunAttempt } from "@trigger.dev/database";
-import { FINAL_ATTEMPT_STATUSES, FINAL_RUN_STATUSES, isFinalRunStatus } from "../taskStatus";
+import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
+import { FINAL_ATTEMPT_STATUSES, isFinalRunStatus } from "../taskStatus";
 
 export class ResumeAttemptService extends BaseService {
   private _logger = logger;
@@ -20,31 +21,14 @@ export class ResumeAttemptService extends BaseService {
   ): Promise<void> {
     this._logger.debug(`ResumeAttemptService.call()`, params);
 
-    const latestAttemptSelect = {
-      orderBy: {
-        number: "desc",
-      },
-      take: 1,
-      select: {
-        id: true,
-        number: true,
-        status: true,
-      },
-    } satisfies Prisma.TaskRunInclude["attempts"];
-
     const attempt = await this._prisma.taskRunAttempt.findFirst({
       where: {
         friendlyId: params.attemptFriendlyId,
       },
       include: {
-        taskRun: true,
         dependencies: {
           select: {
-            taskRun: {
-              select: {
-                attempts: latestAttemptSelect,
-              },
-            },
+            taskRunId: true,
           },
           orderBy: {
             createdAt: "desc",
@@ -55,11 +39,7 @@ export class ResumeAttemptService extends BaseService {
           select: {
             items: {
               select: {
-                taskRun: {
-                  select: {
-                    attempts: latestAttemptSelect,
-                  },
-                },
+                taskRunId: true,
               },
             },
           },
@@ -76,13 +56,23 @@ export class ResumeAttemptService extends BaseService {
       return;
     }
 
+    const taskRun = await taskRunRouter.findById(attempt.taskRunId);
+
+    if (!taskRun) {
+      this._logger.error("Could not find task run for attempt", {
+        ...params,
+        taskRunId: attempt.taskRunId,
+      });
+      return;
+    }
+
     this._logger = logger.child({
       attemptId: attempt.id,
       attemptFriendlyId: attempt.friendlyId,
-      taskRun: attempt.taskRun,
+      taskRun,
     });
 
-    if (isFinalRunStatus(attempt.taskRun.status)) {
+    if (isFinalRunStatus(taskRun.status)) {
       this._logger.error("Run is not resumable");
       return;
     }
@@ -93,7 +83,7 @@ export class ResumeAttemptService extends BaseService {
       case "WAIT_FOR_DURATION": {
         this._logger.debug("Sending duration wait resume message");
 
-        await this.#setPostResumeStatuses(attempt);
+        await this.#setPostResumeStatuses(attempt, taskRun);
 
         socketIo.coordinatorNamespace.emit("RESUME_AFTER_DURATION", {
           version: "v1",
@@ -105,7 +95,15 @@ export class ResumeAttemptService extends BaseService {
       case "WAIT_FOR_TASK": {
         if (attempt.dependencies.length) {
           // We only care about the latest dependency
-          const dependentAttempt = attempt.dependencies[0].taskRun.attempts[0];
+          const dependentTaskRunId = attempt.dependencies[0].taskRunId;
+
+          // Fetch the latest attempt for the dependent task run (FK removed for TaskRun partitioning)
+          const dependentAttempt = await this._prisma.taskRunAttempt.findFirst({
+            where: { taskRunId: dependentTaskRunId },
+            orderBy: { number: "desc" },
+            take: 1,
+            select: { id: true, number: true, status: true },
+          });
 
           if (!dependentAttempt) {
             this._logger.error("No dependent attempt");
@@ -118,28 +116,46 @@ export class ResumeAttemptService extends BaseService {
           return;
         }
 
-        await this.#handleDependencyResume(attempt, completedAttemptIds);
+        await this.#handleDependencyResume(attempt, taskRun, completedAttemptIds);
 
         break;
       }
       case "WAIT_FOR_BATCH": {
-        if (attempt.batchDependencies) {
+        if (attempt.batchDependencies && attempt.batchDependencies.length > 0) {
           // We only care about the latest batch dependency
           const dependentBatchItems = attempt.batchDependencies[0].items;
 
-          if (!dependentBatchItems) {
+          if (!dependentBatchItems || dependentBatchItems.length === 0) {
             this._logger.error("No dependent batch items");
             return;
           }
 
-          //find the best attempt for each batch item
-          //it should be the most recent one in a final state
-          const finalAttempts = dependentBatchItems
-            .map((item) => {
-              return item.taskRun.attempts
-                .filter((a) => FINAL_ATTEMPT_STATUSES.includes(a.status))
-                .sort((a, b) => b.number - a.number)
-                .at(0);
+          // Get all task run IDs from the batch items
+          const taskRunIds = dependentBatchItems.map((item) => item.taskRunId);
+
+          // Fetch all attempts for these task runs (FK removed for TaskRun partitioning)
+          const allAttempts = await this._prisma.taskRunAttempt.findMany({
+            where: {
+              taskRunId: { in: taskRunIds },
+              status: { in: FINAL_ATTEMPT_STATUSES },
+            },
+            orderBy: { number: "desc" },
+            select: { id: true, number: true, status: true, taskRunId: true },
+          });
+
+          // Group attempts by taskRunId and find the best one for each
+          const attemptsByRunId = new Map<string, typeof allAttempts>();
+          for (const att of allAttempts) {
+            const existing = attemptsByRunId.get(att.taskRunId) ?? [];
+            existing.push(att);
+            attemptsByRunId.set(att.taskRunId, existing);
+          }
+
+          // Find the best attempt for each batch item (most recent in final state)
+          const finalAttempts = taskRunIds
+            .map((runId) => {
+              const attempts = attemptsByRunId.get(runId) ?? [];
+              return attempts.sort((a, b) => b.number - a.number).at(0);
             })
             .filter(Boolean);
 
@@ -160,7 +176,7 @@ export class ResumeAttemptService extends BaseService {
           return;
         }
 
-        await this.#handleDependencyResume(attempt, completedAttemptIds);
+        await this.#handleDependencyResume(attempt, taskRun, completedAttemptIds);
 
         break;
       }
@@ -170,7 +186,11 @@ export class ResumeAttemptService extends BaseService {
     }
   }
 
-  async #handleDependencyResume(attempt: TaskRunAttempt, completedAttemptIds: string[]) {
+  async #handleDependencyResume(
+    attempt: TaskRunAttempt,
+    taskRun: TaskRun,
+    completedAttemptIds: string[]
+  ) {
     if (completedAttemptIds.length === 0) {
       this._logger.error("No completed attempt IDs");
       return;
@@ -183,19 +203,25 @@ export class ResumeAttemptService extends BaseService {
       const completedAttempt = await this._prisma.taskRunAttempt.findFirst({
         where: {
           id: completedAttemptId,
-          taskRun: {
-            lockedAt: {
-              not: null,
-            },
-            lockedById: {
-              not: null,
-            },
-          },
         },
       });
 
       if (!completedAttempt) {
         this._logger.error("Completed attempt not found", { completedAttemptId });
+        await marqs?.acknowledgeMessage(
+          attempt.taskRunId,
+          "Cannot find completed attempt in ResumeAttemptService"
+        );
+        return;
+      }
+
+      // Check that the completed attempt's taskRun is locked
+      const completedTaskRun = await taskRunRouter.findById(completedAttempt.taskRunId);
+      if (!completedTaskRun || !completedTaskRun.lockedAt || !completedTaskRun.lockedById) {
+        this._logger.error("Completed attempt's task run is not locked", {
+          completedAttemptId,
+          taskRunId: completedAttempt.taskRunId,
+        });
         await marqs?.acknowledgeMessage(
           attempt.taskRunId,
           "Cannot find completed attempt in ResumeAttemptService"
@@ -224,7 +250,7 @@ export class ResumeAttemptService extends BaseService {
       executions.push(resumePayload.execution);
     }
 
-    await this.#setPostResumeStatuses(attempt);
+    await this.#setPostResumeStatuses(attempt, taskRun);
 
     socketIo.coordinatorNamespace.emit("RESUME_AFTER_DEPENDENCY", {
       version: "v1",
@@ -236,38 +262,31 @@ export class ResumeAttemptService extends BaseService {
     });
   }
 
-  async #setPostResumeStatuses(attempt: TaskRunAttempt) {
+  async #setPostResumeStatuses(attempt: TaskRunAttempt, taskRun: TaskRun) {
     try {
+      const newRunStatus = attempt.number > 1 ? "RETRYING_AFTER_FAILURE" : "EXECUTING";
+
       const updatedAttempt = await this._prisma.taskRunAttempt.update({
         where: {
           id: attempt.id,
         },
         data: {
           status: "EXECUTING",
-          taskRun: {
-            update: {
-              data: {
-                status: attempt.number > 1 ? "RETRYING_AFTER_FAILURE" : "EXECUTING",
-              },
-            },
-          },
         },
         select: {
           id: true,
           status: true,
-          taskRun: {
-            select: {
-              id: true,
-              status: true,
-            },
-          },
         },
+      });
+
+      await taskRunRouter.updateById(attempt.taskRunId, {
+        status: newRunStatus,
       });
 
       this._logger.debug("Set post resume statuses", {
         run: {
-          id: updatedAttempt.taskRun.id,
-          status: updatedAttempt.taskRun.status,
+          id: taskRun.id,
+          status: newRunStatus,
         },
         attempt: {
           id: updatedAttempt.id,

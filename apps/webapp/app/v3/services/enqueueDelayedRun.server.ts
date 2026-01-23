@@ -2,6 +2,7 @@ import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "~/services/worker.server";
 import { commonWorker } from "../commonWorker.server";
+import { taskRunRouter } from "../taskRunRouter.server";
 import { BaseService } from "./baseService.server";
 import { enqueueRun } from "./enqueueRun.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
@@ -48,15 +49,15 @@ export class EnqueueDelayedRunService extends BaseService {
             dependentBatchRun: {
               include: {
                 dependentTaskAttempt: {
-                  include: {
-                    taskRun: true,
+                  select: {
+                    taskRunId: true,
                   },
                 },
               },
             },
             dependentAttempt: {
-              include: {
-                taskRun: true,
+              select: {
+                taskRunId: true,
               },
             },
           },
@@ -98,12 +99,18 @@ export class EnqueueDelayedRunService extends BaseService {
       }
     }
 
+    // Fetch dependent run separately (FK removed for TaskRun partitioning)
+    const dependentTaskRunId =
+      run.dependency?.dependentAttempt?.taskRunId ??
+      run.dependency?.dependentBatchRun?.dependentTaskAttempt?.taskRunId;
+    const dependentRun = dependentTaskRunId
+      ? await taskRunRouter.findById(dependentTaskRunId)
+      : undefined;
+
     await enqueueRun({
       env: run.runtimeEnvironment,
       run: run,
-      dependentRun:
-        run.dependency?.dependentAttempt?.taskRun ??
-        run.dependency?.dependentBatchRun?.dependentTaskAttempt?.taskRun,
+      dependentRun: dependentRun ?? undefined,
     });
   }
 }

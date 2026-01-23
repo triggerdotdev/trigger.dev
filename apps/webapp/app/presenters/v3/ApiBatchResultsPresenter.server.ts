@@ -17,15 +17,7 @@ export class ApiBatchResultsPresenter extends BasePresenter {
         include: {
           items: {
             include: {
-              taskRun: {
-                include: {
-                  attempts: {
-                    orderBy: {
-                      createdAt: "desc",
-                    },
-                  },
-                },
-              },
+              taskRun: true,
             },
           },
         },
@@ -35,10 +27,25 @@ export class ApiBatchResultsPresenter extends BasePresenter {
         return undefined;
       }
 
+      // Fetch attempts for all task runs (FK removed for TaskRun partitioning)
+      const taskRunIds = batchRun.items.map((item) => item.taskRun.id);
+      const allAttempts = await this._prisma.taskRunAttempt.findMany({
+        where: { taskRunId: { in: taskRunIds } },
+        orderBy: { createdAt: "desc" },
+      });
+
+      // Group attempts by task run ID
+      const attemptsByRunId = new Map<string, typeof allAttempts>();
+      for (const attempt of allAttempts) {
+        const existing = attemptsByRunId.get(attempt.taskRunId) ?? [];
+        existing.push(attempt);
+        attemptsByRunId.set(attempt.taskRunId, existing);
+      }
+
       return {
         id: batchRun.friendlyId,
         items: batchRun.items
-          .map((item) => executionResultForTaskRun(item.taskRun))
+          .map((item) => executionResultForTaskRun(item.taskRun, attemptsByRunId.get(item.taskRun.id)))
           .filter(Boolean),
       };
     });

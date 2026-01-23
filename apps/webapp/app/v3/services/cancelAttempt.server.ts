@@ -1,6 +1,7 @@
 import { $transaction, type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { taskRunRouter } from "~/v3/taskRunRouter.server";
 import { isCancellableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
@@ -31,12 +32,19 @@ export class CancelAttemptService extends BaseService {
         where: {
           friendlyId: attemptId,
         },
-        include: {
-          taskRun: true,
-        },
       });
 
       if (!taskRunAttempt) {
+        return;
+      }
+
+      const taskRun = await taskRunRouter.findById(taskRunAttempt.taskRunId);
+
+      if (!taskRun) {
+        logger.error("Task run not found for attempt", {
+          attemptId,
+          taskRunId: taskRunAttempt.taskRunId,
+        });
         return;
       }
 
@@ -59,7 +67,7 @@ export class CancelAttemptService extends BaseService {
           },
         });
 
-        const isCancellable = isCancellableRunStatus(taskRunAttempt.taskRun.status);
+        const isCancellable = isCancellableRunStatus(taskRun.status);
 
         const finalizeService = new FinalizeTaskRunService(tx);
         await finalizeService.call({

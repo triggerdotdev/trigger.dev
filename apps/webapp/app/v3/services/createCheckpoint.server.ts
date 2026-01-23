@@ -3,6 +3,7 @@ import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import type { Checkpoint, CheckpointRestoreEvent } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
+import { taskRunRouter } from "~/v3/taskRunRouter.server";
 import { isFreezableAttemptStatus, isFreezableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
@@ -35,7 +36,6 @@ export class CreateCheckpointService extends BaseService {
         friendlyId: params.attemptFriendlyId,
       },
       include: {
-        taskRun: true,
         backgroundWorker: {
           select: {
             id: true,
@@ -57,9 +57,19 @@ export class CreateCheckpointService extends BaseService {
       };
     }
 
+    const taskRun = await taskRunRouter.findById(attempt.taskRunId);
+
+    if (!taskRun) {
+      logger.error("TaskRun not found", { taskRunId: attempt.taskRunId, params });
+
+      return {
+        success: false,
+      };
+    }
+
     if (
       !isFreezableAttemptStatus(attempt.status) ||
-      !isFreezableRunStatus(attempt.taskRun.status)
+      !isFreezableRunStatus(taskRun.status)
     ) {
       logger.error("Unfreezable state", {
         attempt: {
@@ -68,7 +78,7 @@ export class CreateCheckpointService extends BaseService {
         },
         run: {
           id: attempt.taskRunId,
-          status: attempt.taskRun.status,
+          status: taskRun.status,
         },
         params,
       });
@@ -201,7 +211,7 @@ export class CreateCheckpointService extends BaseService {
         ...params.reason,
         attemptId: attempt.id,
         previousAttemptStatus: attempt.status,
-        previousRunStatus: attempt.taskRun.status,
+        previousRunStatus: taskRun.status,
       } satisfies ManualCheckpointMetadata);
     } else {
       metadata = JSON.stringify(params.reason);
@@ -210,8 +220,8 @@ export class CreateCheckpointService extends BaseService {
     const checkpoint = await this._prisma.checkpoint.create({
       data: {
         ...CheckpointId.generate(),
-        runtimeEnvironmentId: attempt.taskRun.runtimeEnvironmentId,
-        projectId: attempt.taskRun.projectId,
+        runtimeEnvironmentId: taskRun.runtimeEnvironmentId,
+        projectId: taskRun.projectId,
         attemptId: attempt.id,
         attemptNumber: attempt.number,
         runId: attempt.taskRunId,
@@ -231,13 +241,10 @@ export class CreateCheckpointService extends BaseService {
       },
       data: {
         status: params.reason.type === "RETRYING_AFTER_FAILURE" ? undefined : "PAUSED",
-        taskRun: {
-          update: {
-            status: "WAITING_TO_RESUME",
-          },
-        },
       },
     });
+
+    await taskRunRouter.updateById(attempt.taskRunId, { status: "WAITING_TO_RESUME" });
 
     let checkpointEvent: CheckpointRestoreEvent | undefined;
 
@@ -388,7 +395,7 @@ export class CreateCheckpointService extends BaseService {
           }
 
           //if there's a message in the queue, we make sure the checkpoint event is on it
-          await marqs.replaceMessage(attempt.taskRun.id, {
+          await marqs.replaceMessage(taskRun.id, {
             checkpointEventId: checkpointEvent.id,
           });
 

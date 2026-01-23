@@ -5,6 +5,7 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 import { TriggerTaskService } from "./triggerTask.server";
 import { batchTaskRunItemStatusForRunStatus } from "~/models/taskRun.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import { taskRunRouter } from "../taskRunRouter.server";
 
 export type BatchTriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -56,21 +57,19 @@ export class BatchTriggerTaskService extends BaseService {
       const dependentAttempt = body?.dependentAttempt
         ? await this._prisma.taskRunAttempt.findUnique({
             where: { friendlyId: body.dependentAttempt },
-            include: {
-              taskRun: {
-                select: {
-                  id: true,
-                  status: true,
-                },
-              },
-            },
           })
+        : undefined;
+
+      // Fetch the dependent task run separately (FK removed for TaskRun partitioning)
+      const dependentTaskRun = dependentAttempt
+        ? await taskRunRouter.findById(dependentAttempt.taskRunId)
         : undefined;
 
       if (
         dependentAttempt &&
+        dependentTaskRun &&
         (isFinalAttemptStatus(dependentAttempt.status) ||
-          isFinalRunStatus(dependentAttempt.taskRun.status))
+          isFinalRunStatus(dependentTaskRun.status))
       ) {
         logger.debug("Dependent attempt or run is in a terminal state", {
           dependentAttempt: dependentAttempt,
@@ -82,7 +81,7 @@ export class BatchTriggerTaskService extends BaseService {
           );
         } else {
           throw new ServiceValidationError(
-            `Cannot batch trigger ${taskId} as the parent run has a status of ${dependentAttempt.taskRun.status}`
+            `Cannot batch trigger ${taskId} as the parent run has a status of ${dependentTaskRun.status}`
           );
         }
       }

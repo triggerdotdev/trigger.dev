@@ -1,0 +1,32 @@
+{
+  "name": "@internal/store",
+  "private": true,
+  "version": "0.0.1",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@triggerdotdev/source": "./src/index.ts",
+      "import": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "dependencies": {
+    "@trigger.dev/core": "workspace:*",
+    "@trigger.dev/database": "workspace:*",
+    "ksuid": "^3.0.0"
+  },
+  "devDependencies": {
+    "@internal/testcontainers": "workspace:*",
+    "rimraf": "6.0.1"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "test": "vitest --sequence.concurrent=false --no-file-parallelism",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "dev": "tsc --watch -p tsconfig.build.json"
+  }
+}

@@ -53,12 +53,6 @@ export class CreateTaskRunAttemptService extends BaseService {
         },
         include: {
           tags: true,
-          attempts: {
-            take: 1,
-            orderBy: {
-              number: "desc",
-            },
-          },
           lockedBy: {
             include: {
               worker: {
@@ -120,8 +114,16 @@ export class CreateTaskRunAttemptService extends BaseService {
         throw new ServiceValidationError("Queue not found", 404);
       }
 
-      const nextAttemptNumber = taskRun.attempts[0]
-        ? taskRun.attempts[0].number + 1
+      // Fetch the latest attempt separately (FK removed for TaskRun partitioning)
+      const latestAttempt = await this._prisma.taskRunAttempt.findFirst({
+        where: { taskRunId: taskRun.id },
+        orderBy: { number: "desc" },
+        take: 1,
+        select: { number: true },
+      });
+
+      const nextAttemptNumber = latestAttempt
+        ? latestAttempt.number + 1
         : startAtZero
         ? 0
         : 1;

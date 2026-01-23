@@ -634,8 +634,8 @@ model TaskRun {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  attempts TaskRunAttempt[] @relation("attempts")
-  tags     TaskRunTag[]
+  /// attempts relation removed for TaskRun partitioning - query TaskRunAttempt directly
+  tags TaskRunTag[]
 
   /// Denormized column that holds the raw tags
   runTags String[]
@@ -1316,7 +1316,7 @@ model TaskRunAttempt {
 
   friendlyId String @unique
 
-  taskRun   TaskRun @relation("attempts", fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  /// FK removed for TaskRun partitioning - use TaskRunRouter.findById(taskRunId) instead
   taskRunId String
 
   backgroundWorker   BackgroundWorker @relation(fields: [backgroundWorkerId], references: [id], onDelete: Cascade, onUpdate: Cascade)

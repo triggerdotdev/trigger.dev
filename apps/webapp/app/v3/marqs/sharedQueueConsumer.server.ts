@@ -45,6 +45,7 @@ import {
   RuntimeEnvironmentForEnvRepoPayload,
   resolveVariablesForEnvironment,
 } from "../environmentVariables/environmentVariablesRepository.server";
+import { taskRunRouter } from "../taskRunRouter.server";
 import { EnvironmentVariable } from "../environmentVariables/repository";
 import { FailedTaskRunService } from "../failedTaskRun.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
@@ -746,10 +747,6 @@ export class SharedQueueConsumer {
       },
       include: {
         runtimeEnvironment: true,
-        attempts: {
-          take: 1,
-          orderBy: { number: "desc" },
-        },
         tags: true,
         checkpoints: {
           take: 1,
@@ -822,7 +819,15 @@ export class SharedQueueConsumer {
       };
     }
 
-    const nextAttemptNumber = lockedTaskRun.attempts[0] ? lockedTaskRun.attempts[0].number + 1 : 1;
+    // Fetch the latest attempt separately (FK removed for TaskRun partitioning)
+    const latestAttempt = await prisma.taskRunAttempt.findFirst({
+      where: { taskRunId: lockedTaskRun.id },
+      orderBy: { number: "desc" },
+      take: 1,
+      select: { number: true },
+    });
+
+    const nextAttemptNumber = latestAttempt ? latestAttempt.number + 1 : 1;
 
     const isRetry =
       nextAttemptNumber > 1 &&
@@ -1572,16 +1577,17 @@ export const AttemptForCompletionGetPayload = {
     output: true,
     outputType: true,
     error: true,
-    taskRun: {
-      select: {
-        taskIdentifier: true,
-        friendlyId: true,
-      },
-    },
+    taskRunId: true,
   },
 } as const;
 
 type AttemptForCompletion = Prisma.TaskRunAttemptGetPayload<typeof AttemptForCompletionGetPayload>;
+
+// TaskRun data needed for completion payload
+type TaskRunForCompletion = {
+  taskIdentifier: string;
+  friendlyId: string;
+};
 
 export const AttemptForExecutionGetPayload = {
   select: {
@@ -1628,30 +1634,6 @@ export const AttemptForExecutionGetPayload = {
         },
       },
     },
-    taskRun: {
-      select: {
-        id: true,
-        status: true,
-        traceContext: true,
-        machinePreset: true,
-        friendlyId: true,
-        payload: true,
-        payloadType: true,
-        context: true,
-        createdAt: true,
-        startedAt: true,
-        isTest: true,
-        metadata: true,
-        metadataType: true,
-        idempotencyKey: true,
-        usageDurationMs: true,
-        costInCents: true,
-        baseCostInCents: true,
-        maxDurationInSeconds: true,
-        tags: true,
-        taskEventStore: true,
-      },
-    },
     queue: {
       select: {
         name: true,
@@ -1663,25 +1645,53 @@ export const AttemptForExecutionGetPayload = {
 
 type AttemptForExecution = Prisma.TaskRunAttemptGetPayload<typeof AttemptForExecutionGetPayload>;
 
+// TaskRun data needed for execution payload
+type TaskRunForExecution = {
+  id: string;
+  status: TaskRunStatus;
+  traceContext: unknown;
+  machinePreset: string | null;
+  friendlyId: string;
+  payload: string;
+  payloadType: string;
+  context: unknown;
+  createdAt: Date;
+  startedAt: Date | null;
+  isTest: boolean;
+  metadata: string | null;
+  metadataType: string;
+  idempotencyKey: string | null;
+  usageDurationMs: number;
+  costInCents: number;
+  baseCostInCents: number;
+  maxDurationInSeconds: number | null;
+  tags: { name: string }[];
+  taskEventStore: string | null;
+  taskIdentifier: string;
+};
+
 class SharedQueueTasks {
-  private _completionPayloadFromAttempt(attempt: AttemptForCompletion): TaskRunExecutionResult {
+  private _completionPayloadFromAttempt(
+    attempt: AttemptForCompletion,
+    taskRun: TaskRunForCompletion
+  ): TaskRunExecutionResult {
     const ok = attempt.status === "COMPLETED";
 
     if (ok) {
       const success: TaskRunSuccessfulExecutionResult = {
         ok,
-        id: attempt.taskRun.friendlyId,
+        id: taskRun.friendlyId,
         output: attempt.output ?? undefined,
         outputType: attempt.outputType,
-        taskIdentifier: attempt.taskRun.taskIdentifier,
+        taskIdentifier: taskRun.taskIdentifier,
       };
       return success;
     } else {
       const failure: TaskRunFailedExecutionResult = {
         ok,
-        id: attempt.taskRun.friendlyId,
+        id: taskRun.friendlyId,
         error: attempt.error as TaskRunError,
-        taskIdentifier: attempt.taskRun.taskIdentifier,
+        taskIdentifier: taskRun.taskIdentifier,
       };
       return failure;
     }
@@ -1689,13 +1699,14 @@ class SharedQueueTasks {
 
   private async _executionFromAttempt(
     attempt: AttemptForExecution,
+    taskRun: TaskRunForExecution,
     machinePreset?: MachinePreset
   ): Promise<V3ProdTaskRunExecution> {
-    const { backgroundWorkerTask, taskRun, queue } = attempt;
+    const { backgroundWorkerTask, queue } = attempt;
 
     if (!machinePreset) {
       machinePreset =
-        machinePresetFromRun(attempt.taskRun) ??
+        machinePresetFromRun(taskRun) ??
         machinePresetFromConfig(backgroundWorkerTask.machineConfig ?? {});
     }
 
@@ -1782,7 +1793,15 @@ class SharedQueueTasks {
       return;
     }
 
-    return this._completionPayloadFromAttempt(attempt);
+    // Fetch the TaskRun separately (FK removed for TaskRun partitioning)
+    const taskRun = await taskRunRouter.findById(attempt.taskRunId);
+
+    if (!taskRun) {
+      logger.error("Task run not found for attempt", { attemptId: id, taskRunId: attempt.taskRunId });
+      return;
+    }
+
+    return this._completionPayloadFromAttempt(attempt, taskRun);
   }
 
   async getExecutionPayloadFromAttempt({
@@ -1808,6 +1827,42 @@ class SharedQueueTasks {
       return;
     }
 
+    // Fetch the TaskRun separately (FK removed for TaskRun partitioning)
+    const taskRunResult = await prisma.taskRun.findFirst({
+      where: { id: attempt.taskRunId },
+      select: {
+        id: true,
+        status: true,
+        traceContext: true,
+        machinePreset: true,
+        friendlyId: true,
+        payload: true,
+        payloadType: true,
+        context: true,
+        createdAt: true,
+        startedAt: true,
+        isTest: true,
+        metadata: true,
+        metadataType: true,
+        idempotencyKey: true,
+        usageDurationMs: true,
+        costInCents: true,
+        baseCostInCents: true,
+        maxDurationInSeconds: true,
+        tags: true,
+        taskEventStore: true,
+        taskIdentifier: true,
+      },
+    });
+
+    if (!taskRunResult) {
+      logger.error("getExecutionPayloadFromAttempt: Task run not found", {
+        attemptId: id,
+        taskRunId: attempt.taskRunId,
+      });
+      return;
+    }
+
     if (!skipStatusChecks) {
       switch (attempt.status) {
         case "CANCELED":
@@ -1823,7 +1878,7 @@ class SharedQueueTasks {
         }
       }
 
-      switch (attempt.taskRun.status) {
+      switch (taskRunResult.status) {
         case "CANCELED":
         case "EXECUTING":
         case "INTERRUPTED": {
@@ -1832,7 +1887,7 @@ class SharedQueueTasks {
             {
               attemptId: id,
               runId: attempt.taskRunId,
-              status: attempt.taskRun.status,
+              status: taskRunResult.status,
             }
           );
           return;
@@ -1841,7 +1896,7 @@ class SharedQueueTasks {
     }
 
     if (setToExecuting) {
-      if (isFinalAttemptStatus(attempt.status) || isFinalRunStatus(attempt.taskRun.status)) {
+      if (isFinalAttemptStatus(attempt.status) || isFinalRunStatus(taskRunResult.status)) {
         logger.error("getExecutionPayloadFromAttempt: Status already in final state", {
           attempt: {
             id: attempt.id,
@@ -1849,46 +1904,49 @@ class SharedQueueTasks {
           },
           run: {
             id: attempt.taskRunId,
-            status: attempt.taskRun.status,
+            status: taskRunResult.status,
           },
         });
         return;
       }
 
+      // Update attempt and TaskRun separately (FK removed for TaskRun partitioning)
       await prisma.taskRunAttempt.update({
         where: {
           id,
         },
         data: {
           status: "EXECUTING",
-          taskRun: {
-            update: {
-              data: {
-                status: isRetrying ? "RETRYING_AFTER_FAILURE" : "EXECUTING",
-              },
-            },
-          },
+        },
+      });
+
+      await prisma.taskRun.update({
+        where: {
+          id: attempt.taskRunId,
+        },
+        data: {
+          status: isRetrying ? "RETRYING_AFTER_FAILURE" : "EXECUTING",
         },
       });
     }
 
-    const { backgroundWorkerTask, taskRun } = attempt;
+    const { backgroundWorkerTask } = attempt;
 
     const machinePreset =
-      machinePresetFromRun(attempt.taskRun) ??
+      machinePresetFromRun(taskRunResult) ??
       machinePresetFromConfig(backgroundWorkerTask.machineConfig ?? {});
 
-    const execution = await this._executionFromAttempt(attempt, machinePreset);
+    const execution = await this._executionFromAttempt(attempt, taskRunResult, machinePreset);
     const variables = await this.#buildEnvironmentVariables(
       attempt.runtimeEnvironment,
-      taskRun.id,
+      taskRunResult.id,
       machinePreset,
-      taskRun.taskEventStore ?? undefined
+      taskRunResult.taskEventStore ?? undefined
     );
 
     const payload: V3ProdTaskRunExecutionPayload = {
       execution,
-      traceContext: taskRun.traceContext as Record<string, unknown>,
+      traceContext: taskRunResult.traceContext as Record<string, unknown>,
       environment: variables.reduce((acc: Record<string, string>, curr) => {
         acc[curr.key] = curr.value;
         return acc;
@@ -1914,12 +1972,6 @@ class SharedQueueTasks {
         error: true,
         output: true,
         outputType: true,
-        taskRun: {
-          select: {
-            ...AttemptForExecutionGetPayload.select.taskRun.select,
-            taskIdentifier: true,
-          },
-        },
       },
     });
 
@@ -1928,8 +1980,44 @@ class SharedQueueTasks {
       return;
     }
 
-    const execution = await this._executionFromAttempt(attempt);
-    const completion = this._completionPayloadFromAttempt(attempt);
+    // Fetch the TaskRun separately (FK removed for TaskRun partitioning)
+    const taskRun = await prisma.taskRun.findFirst({
+      where: { id: attempt.taskRunId },
+      select: {
+        id: true,
+        status: true,
+        traceContext: true,
+        machinePreset: true,
+        friendlyId: true,
+        payload: true,
+        payloadType: true,
+        context: true,
+        createdAt: true,
+        startedAt: true,
+        isTest: true,
+        metadata: true,
+        metadataType: true,
+        idempotencyKey: true,
+        usageDurationMs: true,
+        costInCents: true,
+        baseCostInCents: true,
+        maxDurationInSeconds: true,
+        tags: true,
+        taskEventStore: true,
+        taskIdentifier: true,
+      },
+    });
+
+    if (!taskRun) {
+      logger.error("getResumePayload: Task run not found", {
+        attemptId,
+        taskRunId: attempt.taskRunId,
+      });
+      return;
+    }
+
+    const execution = await this._executionFromAttempt(attempt, taskRun);
+    const completion = this._completionPayloadFromAttempt(attempt, taskRun);
 
     return {
       execution,
@@ -1954,12 +2042,6 @@ class SharedQueueTasks {
         error: true,
         output: true,
         outputType: true,
-        taskRun: {
-          select: {
-            ...AttemptForExecutionGetPayload.select.taskRun.select,
-            taskIdentifier: true,
-          },
-        },
       },
     });
 
@@ -1969,15 +2051,53 @@ class SharedQueueTasks {
       throw new ResumePayloadAttemptsNotFoundError(attemptIds);
     }
 
+    // Fetch all TaskRuns in a single query (FK removed for TaskRun partitioning)
+    const taskRunIds = attempts.map((a) => a.taskRunId);
+    const taskRuns = await prisma.taskRun.findMany({
+      where: { id: { in: taskRunIds } },
+      select: {
+        id: true,
+        status: true,
+        traceContext: true,
+        machinePreset: true,
+        friendlyId: true,
+        payload: true,
+        payloadType: true,
+        context: true,
+        createdAt: true,
+        startedAt: true,
+        isTest: true,
+        metadata: true,
+        metadataType: true,
+        idempotencyKey: true,
+        usageDurationMs: true,
+        costInCents: true,
+        baseCostInCents: true,
+        maxDurationInSeconds: true,
+        tags: true,
+        taskEventStore: true,
+        taskIdentifier: true,
+      },
+    });
+
+    // Create a map for efficient lookup
+    const taskRunMap = new Map(taskRuns.map((run) => [run.id, run]));
+
     const payloads = await Promise.all(
       attempts.map(async (attempt) => {
-        const execution = await this._executionFromAttempt(attempt);
+        const taskRun = taskRunMap.get(attempt.taskRunId);
+
+        if (!taskRun) {
+          throw new ResumePayloadExecutionNotFoundError(attempt.id);
+        }
+
+        const execution = await this._executionFromAttempt(attempt, taskRun);
 
         if (!execution) {
           throw new ResumePayloadExecutionNotFoundError(attempt.id);
         }
 
-        const completion = this._completionPayloadFromAttempt(attempt);
+        const completion = this._completionPayloadFromAttempt(attempt, taskRun);
 
         if (!completion) {
           throw new ResumePayloadCompletionNotFoundError(attempt.id);
@@ -1998,21 +2118,13 @@ class SharedQueueTasks {
     setToExecuting?: boolean,
     isRetrying?: boolean
   ): Promise<V3ProdTaskRunExecutionPayload | undefined> {
-    const run = await prisma.taskRun.findFirst({
-      where: {
-        id,
-      },
-      include: {
-        attempts: {
-          take: 1,
-          orderBy: {
-            createdAt: "desc",
-          },
-        },
-      },
+    // Fetch the latest attempt directly (FK removed for TaskRun partitioning)
+    const latestAttempt = await prisma.taskRunAttempt.findFirst({
+      where: { taskRunId: id },
+      orderBy: { createdAt: "desc" },
+      take: 1,
+      select: { id: true },
     });
-
-    const latestAttempt = run?.attempts[0];
 
     if (!latestAttempt) {
       logger.error("No attempts for run", { id });

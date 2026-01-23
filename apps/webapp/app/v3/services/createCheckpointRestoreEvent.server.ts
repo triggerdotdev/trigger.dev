@@ -4,6 +4,7 @@ import type {
   CheckpointRestoreEventType,
 } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
+import { taskRunRouter } from "../taskRunRouter.server";
 import { BaseService } from "./baseService.server";
 import { ManualCheckpointMetadata } from "@trigger.dev/core/v3";
 import { isTaskRunAttemptStatus, isTaskRunStatus, TaskRunAttemptStatus } from "~/database-types";
@@ -138,36 +139,29 @@ export class CreateCheckpointRestoreEventService extends BaseService {
     }
 
     try {
+      // Update attempt and taskRun separately (FK removed for TaskRun partitioning)
       const updatedAttempt = await this._prisma.taskRunAttempt.update({
         where: {
           id: attemptId,
         },
         data: {
           status: previousAttemptStatus,
-          taskRun: {
-            update: {
-              data: {
-                status: previousRunStatus,
-              },
-            },
-          },
         },
         select: {
           id: true,
           status: true,
-          taskRun: {
-            select: {
-              id: true,
-              status: true,
-            },
-          },
+          taskRunId: true,
         },
+      });
+
+      const updatedRun = await taskRunRouter.updateById(updatedAttempt.taskRunId, {
+        status: previousRunStatus,
       });
 
       logger.debug("Set post resume statuses after manual checkpoint", {
         run: {
-          id: updatedAttempt.taskRun.id,
-          status: updatedAttempt.taskRun.status,
+          id: updatedRun?.id,
+          status: updatedRun?.status,
         },
         attempt: {
           id: updatedAttempt.id,

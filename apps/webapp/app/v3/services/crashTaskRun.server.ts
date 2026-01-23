@@ -92,17 +92,6 @@ export class CrashTaskRunService extends BaseService {
       status: "CRASHED",
       completedAt: new Date(),
       include: {
-        attempts: {
-          where: {
-            status: {
-              in: CRASHABLE_ATTEMPT_STATUSES,
-            },
-          },
-          include: {
-            backgroundWorker: true,
-            runtimeEnvironment: true,
-          },
-        },
         dependency: true,
         runtimeEnvironment: {
           include: {
@@ -117,6 +106,18 @@ export class CrashTaskRunService extends BaseService {
         code: opts.errorCode ?? TaskRunErrorCodes.TASK_RUN_CRASHED,
         message: opts.reason,
         stackTrace: opts.logs,
+      },
+    });
+
+    // Fetch attempts separately (FK removed for TaskRun partitioning)
+    const crashableAttempts = await this._prisma.taskRunAttempt.findMany({
+      where: {
+        taskRunId: crashedTaskRun.id,
+        status: { in: CRASHABLE_ATTEMPT_STATUSES },
+      },
+      include: {
+        backgroundWorker: true,
+        runtimeEnvironment: true,
       },
     });
 
@@ -146,7 +147,7 @@ export class CrashTaskRunService extends BaseService {
     }
 
     // Cancel any in progress attempts
-    for (const attempt of crashedTaskRun.attempts) {
+    for (const attempt of crashableAttempts) {
       await this.#failAttempt(
         attempt,
         crashedTaskRun,
