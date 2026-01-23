@@ -899,7 +899,7 @@ export class RunAttemptSystem {
 
           const failedAt = new Date();
 
-          const retryResult = await retryOutcomeFromCompletion(prisma, {
+          const retryResult = await retryOutcomeFromCompletion(this.$.readOnlyPrisma, {
             runId,
             error: completion.error,
             retryUsingQueue: forceRequeue ?? false,
