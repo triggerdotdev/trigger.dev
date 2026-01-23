@@ -3,7 +3,7 @@ import { type Prettify } from "@trigger.dev/core";
 import { SignJWT, errors, jwtVerify } from "jose";
 import { z } from "zod";
 
-import { prisma } from "~/db.server";
+import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { findProjectByRef } from "~/models/project.server";
 import {
@@ -479,7 +479,7 @@ export async function authenticatedEnvironmentForAuthentication(
       return auth.result.environment;
     }
     case "personalAccessToken": {
-      const user = await prisma.user.findUnique({
+      const user = await $replica.user.findUnique({
         where: {
           id: auth.result.userId,
         },
@@ -498,7 +498,7 @@ export async function authenticatedEnvironmentForAuthentication(
       const sanitizedBranch = sanitizeBranchName(branch);
 
       if (!sanitizedBranch) {
-        const environment = await prisma.runtimeEnvironment.findFirst({
+        const environment = await $replica.runtimeEnvironment.findFirst({
           where: {
             projectId: project.id,
             slug: slug,
@@ -523,7 +523,7 @@ export async function authenticatedEnvironmentForAuthentication(
         return environment;
       }
 
-      const environment = await prisma.runtimeEnvironment.findFirst({
+      const environment = await $replica.runtimeEnvironment.findFirst({
         where: {
           projectId: project.id,
           type: "PREVIEW",
@@ -553,7 +553,7 @@ export async function authenticatedEnvironmentForAuthentication(
       };
     }
     case "organizationAccessToken": {
-      const organization = await prisma.organization.findUnique({
+      const organization = await $replica.organization.findUnique({
         where: {
           id: auth.result.organizationId,
         },
@@ -563,7 +563,7 @@ export async function authenticatedEnvironmentForAuthentication(
         throw json({ error: "Invalid or missing organization access token" }, { status: 401 });
       }
 
-      const project = await prisma.project.findFirst({
+      const project = await $replica.project.findFirst({
         where: {
           organizationId: organization.id,
           externalRef: projectRef,
@@ -577,7 +577,7 @@ export async function authenticatedEnvironmentForAuthentication(
       const sanitizedBranch = sanitizeBranchName(branch);
 
       if (!sanitizedBranch) {
-        const environment = await prisma.runtimeEnvironment.findFirst({
+        const environment = await $replica.runtimeEnvironment.findFirst({
           where: {
             projectId: project.id,
             slug: slug,
@@ -595,7 +595,7 @@ export async function authenticatedEnvironmentForAuthentication(
         return environment;
       }
 
-      const environment = await prisma.runtimeEnvironment.findFirst({
+      const environment = await $replica.runtimeEnvironment.findFirst({
         where: {
           projectId: project.id,
           type: "PREVIEW",

@@ -1,6 +1,6 @@
 import type { AuthenticatedEnvironment } from "@internal/run-engine";
 import type { Prisma, PrismaClientOrTransaction, RuntimeEnvironment } from "@trigger.dev/database";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
 import { sanitizeBranchName } from "~/v3/gitBranch";
@@ -11,7 +11,7 @@ export async function findEnvironmentByApiKey(
   apiKey: string,
   branchName: string | undefined
 ): Promise<AuthenticatedEnvironment | null> {
-  const environment = await prisma.runtimeEnvironment.findFirst({
+  const environment = await $replica.runtimeEnvironment.findFirst({
     where: {
       apiKey,
     },
@@ -67,7 +67,7 @@ export async function findEnvironmentByPublicApiKey(
   apiKey: string,
   branchName: string | undefined
 ): Promise<AuthenticatedEnvironment | null> {
-  const environment = await prisma.runtimeEnvironment.findFirst({
+  const environment = await $replica.runtimeEnvironment.findFirst({
     where: {
       pkApiKey: apiKey,
     },
@@ -89,7 +89,7 @@ export async function findEnvironmentByPublicApiKey(
 export async function findEnvironmentById(
   id: string
 ): Promise<(AuthenticatedEnvironment & { parentEnvironment: { apiKey: string } | null }) | null> {
-  const environment = await prisma.runtimeEnvironment.findFirst({
+  const environment = await $replica.runtimeEnvironment.findFirst({
     where: {
       id,
     },
@@ -118,7 +118,7 @@ export async function findEnvironmentBySlug(
   envSlug: string,
   userId: string
 ): Promise<AuthenticatedEnvironment | null> {
-  return prisma.runtimeEnvironment.findFirst({
+  return $replica.runtimeEnvironment.findFirst({
     where: {
       projectId: projectId,
       slug: envSlug,
@@ -148,7 +148,7 @@ export async function findEnvironmentFromRun(
   runId: string,
   tx?: PrismaClientOrTransaction
 ): Promise<AuthenticatedEnvironment | null> {
-  const taskRun = await (tx ?? prisma).taskRun.findFirst({
+  const taskRun = await (tx ?? $replica).taskRun.findFirst({
     where: {
       id: runId,
     },
@@ -223,7 +223,7 @@ export async function disconnectSession(environmentId: string) {
 }
 
 export async function findLatestSession(environmentId: string) {
-  const session = await prisma.runtimeEnvironmentSession.findFirst({
+  const session = await $replica.runtimeEnvironmentSession.findFirst({
     where: {
       environmentId,
     },
@@ -280,7 +280,7 @@ export async function findDisplayableEnvironment(
   environmentId: string,
   userId: string | undefined
 ) {
-  const environment = await prisma.runtimeEnvironment.findFirst({
+  const environment = await $replica.runtimeEnvironment.findFirst({
     where: {
       id: environmentId,
     },
