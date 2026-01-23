@@ -7,7 +7,7 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import { RedisWithClusterOptions } from "~/redis.server";
 import { logger } from "./logger.server";
-import { createRedisRateLimitClient, Duration, RateLimiter } from "./rateLimiter.server";
+import { createRedisRateLimitClient, Duration, Limiter, RateLimiter } from "./rateLimiter.server";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
 
 const DurationSchema = z.custom<Duration>((value) => {
@@ -130,6 +130,18 @@ async function resolveLimitConfig(
   return cacheResult.val ?? defaultLimiter;
 }
 
+/**
+ * Creates a Ratelimit limiter from a RateLimiterConfig.
+ * This function is shared across the codebase to ensure consistent limiter creation.
+ */
+export function createLimiterFromConfig(config: RateLimiterConfig): Limiter {
+  return config.type === "fixedWindow"
+    ? Ratelimit.fixedWindow(config.tokens, config.window)
+    : config.type === "tokenBucket"
+    ? Ratelimit.tokenBucket(config.refillRate, config.interval, config.maxTokens)
+    : Ratelimit.slidingWindow(config.tokens, config.window);
+}
+
 //returns an Express middleware that rate limits using the Bearer token in the Authorization header
 export function authorizationRateLimitMiddleware({
   redis,
@@ -249,16 +261,7 @@ export function authorizationRateLimitMiddleware({
       limiterConfigOverride
     );
 
-    const limiter =
-      limiterConfig.type === "fixedWindow"
-        ? Ratelimit.fixedWindow(limiterConfig.tokens, limiterConfig.window)
-        : limiterConfig.type === "tokenBucket"
-        ? Ratelimit.tokenBucket(
-            limiterConfig.refillRate,
-            limiterConfig.interval,
-            limiterConfig.maxTokens
-          )
-        : Ratelimit.slidingWindow(limiterConfig.tokens, limiterConfig.window);
+    const limiter = createLimiterFromConfig(limiterConfig);
 
     const rateLimiter = new RateLimiter({
       redisClient,

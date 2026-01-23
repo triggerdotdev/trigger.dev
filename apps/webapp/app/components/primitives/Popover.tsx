@@ -65,6 +65,7 @@ const PopoverMenuItem = React.forwardRef<
     className?: string;
     onClick?: React.MouseEventHandler;
     disabled?: boolean;
+    openInNewTab?: boolean;
   }
 >(
   (
@@ -78,6 +79,7 @@ const PopoverMenuItem = React.forwardRef<
       className,
       onClick,
       disabled,
+      openInNewTab = false,
     },
     ref
   ) => {
@@ -102,6 +104,8 @@ const PopoverMenuItem = React.forwardRef<
           ref={ref as React.Ref<HTMLAnchorElement>}
           className={cn("group/button focus-custom", contentProps.fullWidth ? "w-full" : "")}
           onClick={onClick as any}
+          target={openInNewTab ? "_blank" : undefined}
+          rel={openInNewTab ? "noopener noreferrer" : undefined}
         >
           <ButtonContent {...contentProps}>{title}</ButtonContent>
         </Link>
@@ -185,37 +189,54 @@ function PopoverSideMenuTrigger({
   );
 }
 
+const popoverArrowTriggerVariants = {
+  minimal: {
+    trigger: "text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright",
+    text: "group-hover:text-text-bright",
+    icon: "text-text-dimmed group-hover:text-text-bright",
+  },
+  tertiary: {
+    trigger: "bg-tertiary text-text-bright hover:bg-charcoal-600",
+    text: "text-text-bright",
+    icon: "text-text-bright",
+  },
+} as const;
+
+type PopoverArrowTriggerVariant = keyof typeof popoverArrowTriggerVariants;
+
 function PopoverArrowTrigger({
   isOpen,
   children,
   fullWidth = false,
   overflowHidden = false,
+  variant = "minimal",
   className,
   ...props
 }: {
   isOpen?: boolean;
   fullWidth?: boolean;
   overflowHidden?: boolean;
+  variant?: PopoverArrowTriggerVariant;
 } & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
+  const variantStyles = popoverArrowTriggerVariants[variant];
+
   return (
     <PopoverTrigger
       {...props}
       className={cn(
-        "group flex h-6 items-center gap-1 rounded pl-2 pr-1 text-text-dimmed transition focus-custom hover:bg-charcoal-700 hover:text-text-bright",
+        "group flex h-6 items-center gap-1 rounded pl-2 pr-1 transition focus-custom",
+        variantStyles.trigger,
         fullWidth && "w-full justify-between",
         className
       )}
     >
       <Paragraph
         variant="extra-small"
-        className={cn(
-          "flex transition group-hover:text-text-bright",
-          overflowHidden && "overflow-hidden"
-        )}
+        className={cn("flex transition", variantStyles.text, overflowHidden && "overflow-hidden")}
       >
         {children}
       </Paragraph>
-      <DropdownIcon className="size-4 min-w-4 text-text-dimmed transition group-hover:text-text-bright" />
+      <DropdownIcon className={cn("size-4 min-w-4 transition", variantStyles.icon)} />
     </PopoverTrigger>
   );
 }
@@ -249,3 +270,5 @@ export {
   PopoverTrigger,
   PopoverVerticalEllipseTrigger,
 };
+
+export type { PopoverArrowTriggerVariant };

@@ -11,6 +11,12 @@
   inherits: false;
 }
 
+@supports (-webkit-hyphens: none) {
+  .safari-only {
+    @apply border-b border-grid-dimmed;
+  }
+}
+
 @layer base {
   * {
     @apply border-grid-bright;
@@ -104,5 +110,96 @@
   }
   100% {
     --gradient-angle: 360deg;
+  }
+}
+
+/* Streamdown markdown styling */
+.streamdown-container {
+  /* Streamdown uses shadcn/ui CSS variables - define them for our theme */
+  --muted: 220 13% 20%;
+  --muted-foreground: 215 14% 60%;
+  --foreground: 210 20% 90%;
+  --border: 217 19% 27%;
+
+  & p {
+    @apply my-1;
+  }
+  & h1, & h2, & h3, & h4, & h5, & h6 {
+    @apply font-semibold text-text-bright mt-2 mb-1;
+  }
+  & h1 {
+    @apply text-base;
+  }
+  & h2 {
+    @apply text-sm;
+  }
+  & h3, & h4, & h5, & h6 {
+    @apply text-xs;
+  }
+  & ul, & ol {
+    @apply ml-4 my-1;
+  }
+  & ul {
+    @apply list-disc;
+  }
+  & ol {
+    @apply list-decimal;
+  }
+  & li {
+    @apply my-0.5;
+  }
+  /* Inline code (not in pre blocks) */
+  & code:not(pre code) {
+    @apply bg-charcoal-700 px-1 py-0.5 rounded text-text-bright font-mono;
+  }
+  & blockquote {
+    @apply border-l-2 border-charcoal-600 pl-3 my-2 italic;
+  }
+  & a {
+    @apply text-blue-400 hover:underline;
+  }
+  & strong {
+    @apply font-semibold text-text-bright;
+  }
+  & em {
+    @apply italic;
+  }
+  & hr {
+    @apply my-2 border-charcoal-600;
+  }
+  & table {
+    @apply w-full my-2 border-collapse;
+  }
+  & th, & td {
+    @apply border border-charcoal-600 px-2 py-1 text-left;
+  }
+  & th {
+    @apply bg-charcoal-700 font-semibold;
+  }
+
+  /* Streamdown code block container */
+  & [data-code-block-container] {
+    @apply my-2 border-charcoal-700;
+  }
+  & [data-code-block-header] {
+    @apply bg-charcoal-800 text-text-dimmed border-b border-charcoal-700;
+  }
+  /* Hide light mode code block, show dark mode */
+  & [data-code-block].dark\:hidden {
+    display: none !important;
+  }
+  & [data-code-block].hidden.dark\:block {
+    display: block !important;
+  }
+  /* Override the bg-muted/40 class to let inline styles work */
+  & [data-code-block] pre {
+    background-color: inherit !important;
+    @apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600;
+  }
+  & [data-code-block] pre code {
+    @apply bg-transparent;
+  }
+  & [data-code-block] .line {
+    @apply leading-relaxed;
   }
 }

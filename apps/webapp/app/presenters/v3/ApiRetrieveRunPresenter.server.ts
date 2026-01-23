@@ -9,6 +9,7 @@ import {
   logger,
 } from "@trigger.dev/core/v3";
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
+import { getUserProvidedIdempotencyKey } from "@trigger.dev/core/v3/serverOnly";
 import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { API_VERSIONS, CURRENT_API_VERSION, RunStatusUnspecifiedApiVersion } from "~/api/versions";
@@ -38,6 +39,7 @@ const commonRunSelect = {
   baseCostInCents: true,
   usageDurationMs: true,
   idempotencyKey: true,
+  idempotencyKeyOptions: true,
   isTest: true,
   depth: true,
   scheduleId: true,
@@ -442,7 +444,7 @@ async function createCommonRunStructure(run: CommonRelatedRun, apiVersion: API_V
   return {
     id: run.friendlyId,
     taskIdentifier: run.taskIdentifier,
-    idempotencyKey: run.idempotencyKey ?? undefined,
+    idempotencyKey: getUserProvidedIdempotencyKey(run),
     version: run.lockedToVersion?.version,
     status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status, apiVersion),
     createdAt: run.createdAt,

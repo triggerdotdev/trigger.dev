@@ -59,7 +59,6 @@ import type {
   TraceEventOptions,
   TraceSummary,
 } from "./eventRepository.types";
-import { originalRunIdCache } from "./originalRunIdCache.server";
 
 export type ClickhouseEventRepositoryConfig = {
   clickhouse: ClickHouse;
@@ -705,13 +704,6 @@ export class ClickhouseEventRepository implements IEventRepository {
       expires_at: convertDateToClickhouseDateTime(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)),
     };
 
-    const originalRunId =
-      options.attributes.properties?.[SemanticInternalAttributes.ORIGINAL_RUN_ID];
-
-    if (typeof originalRunId === "string") {
-      await originalRunIdCache.set(traceId, spanId, originalRunId);
-    }
-
     const events = [event];
 
     if (failedWithError) {
@@ -1195,17 +1187,6 @@ export class ClickhouseEventRepository implements IEventRepository {
     const span = this.#mergeRecordsIntoSpanDetail(spanId, records, metadataCache);
 
     return span;
-  }
-
-  async getSpanOriginalRunId(
-    storeTable: TaskEventStoreTable,
-    environmentId: string,
-    spanId: string,
-    traceId: string,
-    startCreatedAt: Date,
-    endCreatedAt?: Date
-  ): Promise<string | undefined> {
-    return await originalRunIdCache.lookup(traceId, spanId);
   }
 
   #mergeRecordsIntoSpanDetail(

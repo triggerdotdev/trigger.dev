@@ -367,6 +367,7 @@
               "guides/example-projects/product-image-generator",
               "guides/example-projects/realtime-csv-importer",
               "guides/example-projects/realtime-fal-ai",
+              "guides/example-projects/smart-spreadsheet",
               "guides/example-projects/turborepo-monorepo-prisma",
               "guides/example-projects/vercel-ai-sdk-deep-research",
               "guides/example-projects/vercel-ai-sdk-image-generator"

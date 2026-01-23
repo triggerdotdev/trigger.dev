@@ -94,7 +94,11 @@ const RegenerateApiKeyModalContent = ({ id, randomWord, title, closeModal }: Mod
                 Regenerate
               </Button>
             }
-            cancelButton={<Button variant={"tertiary/medium"}>Cancel</Button>}
+            cancelButton={
+              <Button variant={"tertiary/medium"} type="button" onClick={closeModal}>
+                Cancel
+              </Button>
+            }
           />
         </Fieldset>
       </fetcher.Form>

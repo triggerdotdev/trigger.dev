@@ -14,7 +14,7 @@ branch are tagged into a release periodically.
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/en) version 20.11.1
+- [Node.js](https://nodejs.org/en) version 20.20.0
 - [pnpm package manager](https://pnpm.io/installation) version 10.23.0
 - [Docker](https://www.docker.com/get-started/)
 - [protobuf](https://github.com/protocolbuffers/protobuf)
@@ -34,7 +34,7 @@ branch are tagged into a release periodically.
    ```
    cd trigger.dev
    ```
-3. Ensure you are on the correct version of Node.js (20.11.1). If you are using `nvm`, there is an `.nvmrc` file that will automatically select the correct version of Node.js when you navigate to the repository.
+3. Ensure you are on the correct version of Node.js (20.20.0). If you are using `nvm`, there is an `.nvmrc` file that will automatically select the correct version of Node.js when you navigate to the repository.
 
 4. Run `corepack enable` to use the correct version of pnpm (`10.23.0`) as specified in the root `package.json` file.
 
@@ -92,7 +92,7 @@ We use the `<root>/references/hello-world` subdirectory as a staging ground for 
 
 First, make sure you are running the webapp according to the instructions above. Then:
 
-1. Visit http://localhost:3030 in your browser and create a new V3 project called "hello-world".
+1. Visit http://localhost:3030 in your browser and create a new project called "hello-world".
 
 2. In Postgres go to the "Projects" table and for the project you create change the `externalRef` to `proj_rrkpdguyagvsoktglnod`.
 
@@ -127,7 +127,7 @@ pnpm exec trigger deploy --profile local
 
 ### Running
 
-The following steps should be followed any time you start working on a new feature you want to test in v3:
+The following steps should be followed any time you start working on a new feature you want to test:
 
 1. Make sure the webapp is running on localhost:3030
 

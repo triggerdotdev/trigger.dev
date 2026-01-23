@@ -113,18 +113,23 @@ export function InfoIconTooltip({
   contentClassName,
   variant = "basic",
   disableHoverableContent = false,
+  enabled = true,
 }: {
   content: React.ReactNode;
   buttonClassName?: string;
   contentClassName?: string;
   variant?: Variant;
   disableHoverableContent?: boolean;
+  enabled?: boolean;
 }) {
+  const icon = (
+    <InformationCircleIcon className={cn("size-3.5 text-text-dimmed flex-0", buttonClassName)} />
+  );
+
+  if (!enabled) return icon;
   return (
     <SimpleTooltip
-      button={
-        <InformationCircleIcon className={cn("size-3.5 text-text-dimmed", buttonClassName)} />
-      }
+      button={icon}
       content={content}
       variant={variant}
       className={contentClassName}

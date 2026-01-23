@@ -93,6 +93,7 @@ describe("ScheduleEngine Integration", () => {
           data: {
             taskScheduleId: taskSchedule.id,
             environmentId: environment.id,
+            projectId: project.id,
             active: true,
           },
         });

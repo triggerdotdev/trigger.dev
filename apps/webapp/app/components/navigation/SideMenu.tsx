@@ -1,10 +1,12 @@
 import {
+  AdjustmentsHorizontalIcon,
   ArrowPathRoundedSquareIcon,
   ArrowRightOnRectangleIcon,
   BeakerIcon,
   BellAlertIcon,
   ChartBarIcon,
   ChevronRightIcon,
+  CircleStackIcon,
   ClockIcon,
   Cog8ToothIcon,
   CogIcon,
@@ -13,24 +15,28 @@ import {
   GlobeAmericasIcon,
   IdentificationIcon,
   KeyIcon,
+  MagnifyingGlassCircleIcon,
   PencilSquareIcon,
   PlusIcon,
   RectangleStackIcon,
   ServerStackIcon,
   Squares2X2Icon,
+  TableCellsIcon,
   UsersIcon,
 } from "@heroicons/react/20/solid";
 import { Link, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
-import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
+import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
+import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
+import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
@@ -45,12 +51,14 @@ import {
   adminPath,
   branchesPath,
   concurrencyPath,
+  limitsPath,
   logoutPath,
   newOrganizationPath,
   newProjectPath,
   organizationPath,
   organizationSettingsPath,
   organizationTeamPath,
+  queryPath,
   regionsPath,
   v3ApiKeysPath,
   v3BatchesPath,
@@ -59,6 +67,7 @@ import {
   v3DeploymentsPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
+  v3LogsPath,
   v3ProjectAlertsPath,
   v3ProjectPath,
   v3ProjectSettingsPath,
@@ -93,6 +102,7 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
+import { AlphaBadge } from "../AlphaBadge";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -125,6 +135,7 @@ export function SideMenu({
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
   const isAdmin = useHasAdminAccess();
   const { isManagedCloud } = useFeatures();
+  const featureFlags = useFeatureFlags();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -260,6 +271,16 @@ export function SideMenu({
               to={v3DeploymentsPath(organization, project, environment)}
               data-action="deployments"
             />
+            {(user.admin || user.isImpersonating || featureFlags.hasLogsPageAccess) && (
+              <SideMenuItem
+                name="Logs"
+                icon={LogsIcon}
+                activeIconColor="text-logs"
+                to={v3LogsPath(organization, project, environment)}
+                data-action="logs"
+                badge={<AlphaBadge />}
+              />
+            )}
             <SideMenuItem
               name="Test"
               icon={BeakerIcon}
@@ -267,6 +288,16 @@ export function SideMenu({
               to={v3TestPath(organization, project, environment)}
               data-action="test"
             />
+            {(user.admin || user.isImpersonating || featureFlags.hasQueryAccess) && (
+              <SideMenuItem
+                name="Query"
+                icon={TableCellsIcon}
+                activeIconColor="text-purple-500"
+                to={queryPath(organization, project, environment)}
+                data-action="query"
+                badge={<AlphaBadge />}
+              />
+            )}
           </div>
 
           <SideMenuSection title="Waitpoints">
@@ -320,7 +351,7 @@ export function SideMenu({
               <SideMenuItem
                 name="Concurrency"
                 icon={ConcurrencyIcon}
-                activeIconColor="text-amber-500"
+                activeIconColor="text-concurrency"
                 to={concurrencyPath(organization, project, environment)}
                 data-action="concurrency"
               />
@@ -328,10 +359,17 @@ export function SideMenu({
             <SideMenuItem
               name="Regions"
               icon={GlobeAmericasIcon}
-              activeIconColor="text-green-500"
+              activeIconColor="text-regions"
               to={regionsPath(organization, project, environment)}
               data-action="regions"
               badge={<V4Badge />}
+            />
+            <SideMenuItem
+              name="Limits"
+              icon={AdjustmentsHorizontalIcon}
+              activeIconColor="text-limits"
+              to={limitsPath(organization, project, environment)}
+              data-action="limits"
             />
             <SideMenuItem
               name="Project settings"
