@@ -577,6 +577,7 @@ export const InitializeDeploymentResponseBody = z.object({
   version: z.string(),
   imageTag: z.string(),
   imagePlatform: z.string(),
+  environmentSlug: z.string(),
   externalBuildData: ExternalBuildData.optional().nullable(),
   eventStream: z
     .object({
