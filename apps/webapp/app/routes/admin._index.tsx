@@ -21,8 +21,7 @@ import {
 } from "~/components/primitives/Table";
 import { useUser } from "~/hooks/useUser";
 import { adminGetUsers, redirectWithImpersonation } from "~/models/admin.server";
-import { commitImpersonationSession, setImpersonationId } from "~/services/impersonation.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser, requireUserId } from "~/services/session.server";
 import { createSearchParams } from "~/utils/searchParams";
 
 export const SearchParams = z.object({
@@ -32,7 +31,29 @@ export const SearchParams = z.object({
 
 export type SearchParams = z.infer<typeof SearchParams>;
 
+const FormSchema = z.object({ id: z.string() });
+
+async function handleImpersonationRequest(
+  request: Request,
+  userId: string
+): Promise<Response> {
+  const user = await requireUser(request);
+  if (!user.admin) {
+    return redirect("/");
+  }
+  return redirectWithImpersonation(request, userId, "/");
+}
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  // Check if this is an impersonation request via query parameter (e.g., from Plain customer cards)
+  const url = new URL(request.url);
+  const impersonateUserId = url.searchParams.get("impersonate");
+
+  if (impersonateUserId) {
+    return handleImpersonationRequest(request, impersonateUserId);
+  }
+
+  // Normal loader logic for admin dashboard
   const userId = await requireUserId(request);
 
   const searchParams = createSearchParams(request.url, SearchParams);
@@ -44,8 +65,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson(result);
 };
 
-const FormSchema = z.object({ id: z.string() });
-
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method.toLowerCase() !== "post") {
     return new Response("Method not allowed", { status: 405 });
@@ -54,7 +73,7 @@ export async function action({ request }: ActionFunctionArgs) {
   const payload = Object.fromEntries(await request.formData());
   const { id } = FormSchema.parse(payload);
 
-  return redirectWithImpersonation(request, id, "/");
+  return handleImpersonationRequest(request, id);
 }
 
 export default function AdminDashboardRoute() {
