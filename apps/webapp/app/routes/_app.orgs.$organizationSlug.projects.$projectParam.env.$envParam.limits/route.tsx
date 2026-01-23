@@ -81,6 +81,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     presenter.call({
       organizationId: project.organizationId,
       projectId: project.id,
+      environmentId: environment.id,
       environmentApiKey: environment.apiKey,
     })
   );
