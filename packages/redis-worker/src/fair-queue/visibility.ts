@@ -45,8 +45,8 @@ export class VisibilityManager {
     this.shardCount = options.shardCount;
     this.defaultTimeoutMs = options.defaultTimeoutMs;
     this.logger = options.logger ?? {
-      debug: () => {},
-      error: () => {},
+      debug: () => { },
+      error: () => { },
     };
 
     this.#registerCommands();
@@ -403,8 +403,8 @@ export class VisibilityManager {
 
     for (let i = 0; i < timedOut.length; i += 2) {
       const member = timedOut[i];
-      const originalScore = timedOut[i + 1];
-      if (!member || !originalScore) {
+      const _deadlineScore = timedOut[i + 1]; // This is the visibility deadline, not the original timestamp
+      if (!member || !_deadlineScore) {
         continue;
       }
       const { messageId, queueId } = this.#parseMember(member);
@@ -422,8 +422,9 @@ export class VisibilityManager {
           }
         }
 
-        // Re-add to queue with original score (or now if not available)
-        const score = parseFloat(originalScore) || now;
+        // Re-add to queue with original timestamp to preserve priority
+        // Fall back to now if we can't get the original timestamp
+        const score = storedMessage?.timestamp ?? now;
         await this.redis.releaseMessage(
           inflightKey,
           inflightDataKey,
@@ -437,6 +438,7 @@ export class VisibilityManager {
         );
 
         // Track reclaimed message for concurrency release
+        // Always add to reclaimedMessages to avoid concurrency leaks
         if (storedMessage) {
           reclaimedMessages.push({
             messageId,
@@ -444,12 +446,25 @@ export class VisibilityManager {
             tenantId: storedMessage.tenantId,
             metadata: storedMessage.metadata,
           });
+        } else {
+          // Fallback: extract tenantId from queueId when message data is missing or corrupted
+          // This ensures concurrency is released even if we can't get the full metadata
+          this.logger.error("Missing or corrupted message data during reclaim, using fallback", {
+            messageId,
+            queueId,
+          });
+          reclaimedMessages.push({
+            messageId,
+            queueId,
+            tenantId: this.keys.extractTenantId(queueId),
+            metadata: {},
+          });
         }
 
         this.logger.debug("Reclaimed timed-out message", {
           messageId,
           queueId,
-          originalScore,
+          deadline: _deadlineScore,
         });
       } catch (error) {
         this.logger.error("Failed to reclaim message", {

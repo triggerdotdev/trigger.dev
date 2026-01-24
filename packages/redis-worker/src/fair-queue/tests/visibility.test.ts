@@ -659,6 +659,11 @@ describe("VisibilityManager", () => {
         const queueCount = await redis.zcard(queueKey);
         expect(queueCount).toBe(1);
 
+        // Verify message is back in queue with its original timestamp (not the deadline)
+        const queueMessages = await redis.zrange(queueKey, 0, -1, "WITHSCORES");
+        expect(queueMessages[0]).toBe(messageId);
+        expect(parseInt(queueMessages[1]!)).toBe(storedMessage.timestamp);
+
         // Verify message is no longer in-flight
         const inflightCount = await manager.getTotalInflightCount();
         expect(inflightCount).toBe(0);
@@ -770,6 +775,71 @@ describe("VisibilityManager", () => {
         // Verify both tenants are represented
         const tenantIds = reclaimedMessages.map((m: ReclaimedMessageInfo) => m.tenantId).sort();
         expect(tenantIds).toEqual(["t1", "t2"]);
+
+        await manager.close();
+        await redis.quit();
+      }
+    );
+
+    redisTest(
+      "should use fallback tenantId extraction when message data is missing or corrupted",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new VisibilityManager({
+          redis: redisOptions,
+          keys,
+          shardCount: 1,
+          defaultTimeoutMs: 100,
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:fallback-test";
+        const queueKey = keys.queueKey(queueId);
+        const queueItemsKey = keys.queueItemsKey(queueId);
+        const masterQueueKey = keys.masterQueueKey(0);
+        const inflightDataKey = keys.inflightDataKey(0);
+
+        // Add and claim a message
+        const messageId = "fallback-msg";
+        const storedMessage = {
+          id: messageId,
+          queueId,
+          tenantId: "t1",
+          payload: { id: 1 },
+          timestamp: Date.now() - 1000,
+          attempt: 1,
+          metadata: { orgId: "org-123" },
+        };
+
+        await redis.zadd(queueKey, storedMessage.timestamp, messageId);
+        await redis.hset(queueItemsKey, messageId, JSON.stringify(storedMessage));
+
+        // Claim the message
+        const claimResult = await manager.claim(queueId, queueKey, queueItemsKey, "consumer-1", 100);
+        expect(claimResult.claimed).toBe(true);
+
+        // Corrupt the in-flight data by setting invalid JSON
+        await redis.hset(inflightDataKey, messageId, "not-valid-json{{{");
+
+        // Wait for timeout
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        // Reclaim should still work using fallback extraction
+        const reclaimedMessages = await manager.reclaimTimedOut(0, (qId) => ({
+          queueKey: keys.queueKey(qId),
+          queueItemsKey: keys.queueItemsKey(qId),
+          masterQueueKey,
+        }));
+
+        expect(reclaimedMessages).toHaveLength(1);
+        expect(reclaimedMessages[0]).toEqual({
+          messageId,
+          queueId,
+          tenantId: "t1", // Extracted from queueId via fallback
+          metadata: {}, // Empty metadata since we couldn't parse the stored message
+        });
 
         await manager.close();
         await redis.quit();
