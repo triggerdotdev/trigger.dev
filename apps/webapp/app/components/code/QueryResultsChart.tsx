@@ -1,24 +1,7 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { memo, useMemo } from "react";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  XAxis,
-  YAxis,
-} from "recharts";
-import {
-  type ChartConfig,
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "~/components/primitives/Chart";
+import type { ChartConfig } from "~/components/primitives/charts/Chart";
+import { Chart } from "~/components/primitives/charts/ChartCompound";
 import { Paragraph } from "../primitives/Paragraph";
 import type { AggregationType, ChartConfiguration } from "./ChartConfigPanel";
 
@@ -44,6 +27,9 @@ interface QueryResultsChartProps {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
   config: ChartConfiguration;
+  fullLegend?: boolean;
+  /** Callback when "View all" legend button is clicked */
+  onViewAllLegendItems?: () => void;
 }
 
 interface TransformedData {
@@ -714,6 +700,8 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   rows,
   columns,
   config,
+  fullLegend = false,
+  onViewAllLegendItems,
 }: QueryResultsChartProps) {
   const {
     xAxisColumn,
@@ -789,6 +777,34 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     };
   }, []);
 
+  // Label formatter for the legend (formats x-axis values)
+  const legendLabelFormatter = useMemo(() => {
+    if (!isDateBased || !timeGranularity) return undefined;
+    return (value: string) => {
+      // For date-based axes, the value is a timestamp
+      const timestamp = Number(value);
+      if (!isNaN(timestamp)) {
+        const date = new Date(timestamp);
+        return formatDateForTooltip(date, timeGranularity);
+      }
+      return value;
+    };
+  }, [isDateBased, timeGranularity]);
+
+  // Y-axis domain calculation - must be before early returns to maintain consistent hook order
+  const yAxisDomain = useMemo(() => {
+    let min = 0;
+    for (const point of data) {
+      for (const s of series) {
+        const val = point[s];
+        if (typeof val === "number" && isFinite(val)) {
+          min = Math.min(min, val);
+        }
+      }
+    }
+    return [min, "auto"] as [number, string];
+  }, [data, series]);
+
   // Validation
   if (!xAxisColumn) {
     return <EmptyState message="Select an X-axis column to display the chart" />;
@@ -806,122 +822,89 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     return <EmptyState message="Unable to transform data for chart" />;
   }
 
-  const commonProps = {
-    data,
-    margin: { top: 10, right: 10, left: 10, bottom: 10 },
-  };
-
   // Determine appropriate angle for X-axis labels based on granularity
   const xAxisAngle = timeGranularity === "hours" || timeGranularity === "seconds" ? -45 : 0;
   const xAxisHeight = xAxisAngle !== 0 ? 60 : undefined;
 
-  // Build xAxisProps - different config for date-based (continuous) vs categorical axes
-  const xAxisProps = isDateBased
-    ? {
-        dataKey: xDataKey,
-        type: "number" as const,
-        domain: timeDomain ?? ["auto", "auto"],
-        scale: "time" as const,
-        // Explicitly specify tick positions so labels appear across the entire range
-        ticks: timeTicks ?? undefined,
-        fontSize: 12,
-        tickLine: false,
-        tickMargin: 8,
-        axisLine: false,
-        tick: { fill: "var(--color-text-dimmed)" },
-        tickFormatter: xAxisTickFormatter,
-        angle: xAxisAngle,
-        textAnchor: xAxisAngle !== 0 ? ("end" as const) : ("middle" as const),
-        height: xAxisHeight,
-      }
-    : {
-        dataKey: xDataKey,
-        fontSize: 12,
-        tickLine: false,
-        tickMargin: 8,
-        axisLine: false,
-        tick: { fill: "var(--color-text-dimmed)" },
-        angle: xAxisAngle,
-        textAnchor: xAxisAngle !== 0 ? ("end" as const) : ("middle" as const),
-        height: xAxisHeight,
-      };
-
-  const yAxisProps = {
-    fontSize: 12,
-    tickLine: false,
-    tickMargin: 8,
-    axisLine: false,
-    tick: { fill: "var(--color-text-dimmed)" },
-    tickFormatter: yAxisFormatter,
+  // Base x-axis props shared by all chart types
+  const baseXAxisProps = {
+    tickFormatter: xAxisTickFormatter,
+    angle: xAxisAngle,
+    textAnchor: xAxisAngle !== 0 ? ("end" as const) : ("middle" as const),
+    height: xAxisHeight,
   };
 
+  // Line charts use continuous time scale for date-based data
+  // This properly represents time gaps between data points
+  const xAxisPropsForLine = isDateBased
+    ? {
+      type: "number" as const,
+      domain: timeDomain ?? (["auto", "auto"] as [string, string]),
+      scale: "time" as const,
+      // Explicitly specify tick positions so labels appear across the entire range
+      ticks: timeTicks ?? undefined,
+      ...baseXAxisProps,
+    }
+    : baseXAxisProps;
+
+  // Bar charts always use categorical axis positioning
+  // This ensures bars are evenly distributed regardless of data point count
+  // (prevents massive bars when there are only a few data points)
+  const xAxisPropsForBar = baseXAxisProps;
+
+  const yAxisProps = {
+    tickFormatter: yAxisFormatter,
+    domain: yAxisDomain,
+  };
+
+  const showLegend = series.length > 0;
+
+  if (chartType === "bar") {
+    return (
+      <Chart.Root
+        config={chartConfig}
+        data={data}
+        dataKey={xDataKey}
+        series={series}
+        labelFormatter={legendLabelFormatter}
+        showLegend={showLegend}
+        maxLegendItems={fullLegend ? Infinity : 5}
+        minHeight="300px"
+        fillContainer
+        onViewAllLegendItems={onViewAllLegendItems}
+      >
+        <Chart.Bar
+          xAxisProps={xAxisPropsForBar}
+          yAxisProps={yAxisProps}
+          stackId={stacked ? "stack" : undefined}
+          tooltipLabelFormatter={tooltipLabelFormatter}
+        />
+      </Chart.Root>
+    );
+  }
+
+  // Line or stacked area chart
   return (
-    <ChartContainer config={chartConfig} className="h-full min-h-[300px] w-full">
-      {chartType === "bar" ? (
-        <BarChart {...commonProps}>
-          <CartesianGrid vertical={false} strokeDasharray="3 3" />
-          <XAxis {...xAxisProps} />
-          <YAxis {...yAxisProps} />
-          <ChartTooltip
-            content={<ChartTooltipContent />}
-            labelFormatter={tooltipLabelFormatter}
-            cursor={{ fill: "var(--color-charcoal-800)", opacity: 0.5 }}
-          />
-          {series.length > 1 && <ChartLegend content={<ChartLegendContent />} />}
-          {series.map((s, i) => (
-            <Bar
-              key={s}
-              dataKey={s}
-              fill={getSeriesColor(i)}
-              stackId={stacked ? "stack" : undefined}
-              radius={stacked ? [0, 0, 0, 0] : [4, 4, 0, 0]}
-            />
-          ))}
-        </BarChart>
-      ) : stacked && series.length > 1 ? (
-        <AreaChart {...commonProps} stackOffset="none">
-          <CartesianGrid vertical={false} strokeDasharray="3 3" />
-          <XAxis {...xAxisProps} />
-          <YAxis {...yAxisProps} />
-          <ChartTooltip
-            content={<ChartTooltipContent indicator="line" />}
-            labelFormatter={tooltipLabelFormatter}
-          />
-          <ChartLegend content={<ChartLegendContent />} />
-          {series.map((s, i) => (
-            <Area
-              key={s}
-              type="linear"
-              dataKey={s}
-              stroke={getSeriesColor(i)}
-              fill={getSeriesColor(i)}
-              fillOpacity={0.6}
-              strokeWidth={2}
-              stackId="stack"
-            />
-          ))}
-        </AreaChart>
-      ) : (
-        <LineChart {...commonProps}>
-          <CartesianGrid vertical={false} strokeDasharray="3 3" />
-          <XAxis {...xAxisProps} />
-          <YAxis {...yAxisProps} />
-          <ChartTooltip content={<ChartTooltipContent />} labelFormatter={tooltipLabelFormatter} />
-          {series.length > 1 && <ChartLegend content={<ChartLegendContent />} />}
-          {series.map((s, i) => (
-            <Line
-              key={s}
-              type="linear"
-              dataKey={s}
-              stroke={getSeriesColor(i)}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 4 }}
-            />
-          ))}
-        </LineChart>
-      )}
-    </ChartContainer>
+    <Chart.Root
+      config={chartConfig}
+      data={data}
+      dataKey={xDataKey}
+      series={series}
+      labelFormatter={legendLabelFormatter}
+      showLegend={showLegend}
+      maxLegendItems={fullLegend ? Infinity : 5}
+      minHeight="300px"
+      fillContainer
+      onViewAllLegendItems={onViewAllLegendItems}
+    >
+      <Chart.Line
+        xAxisProps={xAxisPropsForLine}
+        yAxisProps={yAxisProps}
+        stacked={stacked && series.length > 1}
+        tooltipLabelFormatter={tooltipLabelFormatter}
+        lineType="linear"
+      />
+    </Chart.Root>
   );
 });
 

@@ -409,6 +409,7 @@ function StandardTaskForm({
       tags,
       version,
       machine,
+      prioritySeconds,
     },
   ] = useForm({
     id: "test-task",
@@ -731,6 +732,12 @@ function StandardTaskForm({
                 <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
+                <Label variant="small">Priority</Label>
+                <DurationPicker name={prioritySeconds.name} id={prioritySeconds.id} />
+                <Hint>Sets the priority of the run. Higher values mean higher priority.</Hint>
+                <FormError id={prioritySeconds.errorId}>{prioritySeconds.error}</FormError>
+              </InputGroup>
+              <InputGroup>
                 <Label variant="small">TTL</Label>
                 <DurationPicker
                   name={ttlSeconds.name}
@@ -872,6 +879,7 @@ function ScheduledTaskForm({
       tags,
       version,
       machine,
+      prioritySeconds,
     },
   ] = useForm({
     id: "test-task-scheduled",
@@ -1236,6 +1244,14 @@ function ScheduledTaskForm({
             />
             <Hint>Limits concurrency by creating a separate queue for each value of the key.</Hint>
             <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
+          </InputGroup>
+          <InputGroup>
+            <Label htmlFor={prioritySeconds.id} variant="small">
+              Priority
+            </Label>
+            <DurationPicker name={prioritySeconds.name} id={prioritySeconds.id} />
+            <Hint>Sets the priority of the run. Higher values mean higher priority.</Hint>
+            <FormError id={prioritySeconds.errorId}>{prioritySeconds.error}</FormError>
           </InputGroup>
           <InputGroup>
             <Label htmlFor={ttlSeconds.id} variant="small">

@@ -1,33 +1,34 @@
 import * as Ariakit from "@ariakit/react";
 import type { RuntimeEnvironment } from "@trigger.dev/database";
 import {
-  startOfDay,
   endOfDay,
-  startOfWeek,
-  endOfWeek,
-  startOfMonth,
   endOfMonth,
-  startOfYear,
-  subDays,
-  subWeeks,
-  subMonths,
-  previousSaturday,
+  endOfWeek,
   isSaturday,
   isSunday,
+  previousSaturday,
+  startOfDay,
+  startOfMonth,
+  startOfWeek,
+  startOfYear,
+  subDays,
+  subMonths,
+  subWeeks,
 } from "date-fns";
 import parse from "parse-duration";
 import { startTransition, useCallback, useEffect, useState, type ReactNode } from "react";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
-import { DateTimePicker } from "~/components/primitives/DateTimePicker";
 import { DateTime } from "~/components/primitives/DateTime";
+import { DateTimePicker } from "~/components/primitives/DateTimePicker";
 import { Label } from "~/components/primitives/Label";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import { ComboboxProvider, SelectPopover, SelectProvider } from "~/components/primitives/Select";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { type ShortcutDefinition } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { Button } from "../../primitives/Buttons";
 import { filterIcon } from "./RunFilters";
-import { Paragraph } from "~/components/primitives/Paragraph";
 
 export type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {
   userName?: string;
@@ -140,11 +141,13 @@ export const timeFilters = ({
   from,
   to,
   defaultPeriod = DEFAULT_PERIOD,
+  labelName = "Created",
 }: {
   period?: string;
   from?: string | number;
   to?: string | number;
   defaultPeriod?: string;
+  labelName?: string;
 }): {
   period?: string;
   from?: Date;
@@ -155,7 +158,11 @@ export const timeFilters = ({
   valueLabel: ReactNode;
 } => {
   if (period) {
-    return { period, isDefault: period === defaultPeriod, ...timeFilterRenderValues({ period }) };
+    return {
+      period,
+      isDefault: period === defaultPeriod,
+      ...timeFilterRenderValues({ period, labelName }),
+    };
   }
 
   if (from && to) {
@@ -165,7 +172,7 @@ export const timeFilters = ({
       from: fromDate,
       to: toDate,
       isDefault: false,
-      ...timeFilterRenderValues({ from: fromDate, to: toDate }),
+      ...timeFilterRenderValues({ from: fromDate, to: toDate, labelName }),
     };
   }
 
@@ -175,7 +182,7 @@ export const timeFilters = ({
     return {
       from: fromDate,
       isDefault: false,
-      ...timeFilterRenderValues({ from: fromDate }),
+      ...timeFilterRenderValues({ from: fromDate, labelName }),
     };
   }
 
@@ -185,14 +192,14 @@ export const timeFilters = ({
     return {
       to: toDate,
       isDefault: false,
-      ...timeFilterRenderValues({ to: toDate }),
+      ...timeFilterRenderValues({ to: toDate, labelName }),
     };
   }
 
   return {
     period: defaultPeriod,
     isDefault: true,
-    ...timeFilterRenderValues({ period: defaultPeriod }),
+    ...timeFilterRenderValues({ period: defaultPeriod, labelName }),
   };
 };
 
@@ -201,11 +208,13 @@ export function timeFilterRenderValues({
   to,
   period,
   defaultPeriod = DEFAULT_PERIOD,
+  labelName = "Created",
 }: {
   from?: Date;
   to?: Date;
   period?: string;
   defaultPeriod?: string;
+  labelName?: string;
 }) {
   const rangeType: TimeRangeType = from && to ? "range" : from ? "from" : to ? "to" : "period";
 
@@ -235,12 +244,17 @@ export function timeFilterRenderValues({
       break;
     }
     case "range":
-      valueLabel = (
-        <span>
-          <DateTime date={from!} includeTime includeSeconds /> –{" "}
-          <DateTime date={to!} includeTime includeSeconds />
-        </span>
-      );
+      {
+        //If the day is the same, only show the time for the `to` date
+        const isSameDay = from && to && from.getDate() === to.getDate() && from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
+
+        valueLabel = (
+          <span>
+            <DateTime date={from!} includeTime includeSeconds /> –{" "}
+            <DateTime date={to!} includeTime includeSeconds includeDate={!isSameDay} />
+          </span>
+        );
+      }
       break;
     case "from":
       valueLabel = <DateTime date={from!} includeTime includeSeconds />;
@@ -252,26 +266,55 @@ export function timeFilterRenderValues({
 
   let label =
     rangeType === "range" || rangeType === "period"
-      ? "Created"
+      ? labelName
       : rangeType === "from"
-      ? "Created after"
-      : "Created before";
+        ? `${labelName} after`
+        : `${labelName} before`;
 
   return { label, valueLabel, rangeType };
 }
 
-export interface TimeFilterProps {
-  defaultPeriod?: string;
+/** Values passed to onApply callback when a time filter is applied */
+export interface TimeFilterApplyValues {
+  period?: string;
+  from?: string;
+  to?: string;
 }
 
-export function TimeFilter({ defaultPeriod }: TimeFilterProps = {}) {
-  const { value, del } = useSearchParams();
+export interface TimeFilterProps {
+  defaultPeriod?: string;
+  period?: string;
+  from?: string;
+  to?: string;
+  /** Label name used in the filter display, defaults to "Created" */
+  labelName?: string;
+  hideLabel?: boolean;
+  applyShortcut?: ShortcutDefinition | undefined;
+  /** Callback when the user applies a time filter selection, receives the applied values */
+  onValueChange?: (values: TimeFilterApplyValues) => void;
+}
 
-  const { period, from, to, label, valueLabel } = timeFilters({
-    period: value("period"),
-    from: value("from"),
-    to: value("to"),
+export function TimeFilter({
+  defaultPeriod,
+  period,
+  from,
+  to,
+  labelName = "Created",
+  hideLabel = false,
+  applyShortcut,
+  onValueChange,
+}: TimeFilterProps = {}) {
+  const { value } = useSearchParams();
+  const periodValue = period ?? value("period");
+  const fromValue = from ?? value("from");
+  const toValue = to ?? value("to");
+
+  const constrained = timeFilters({
+    period: periodValue,
+    from: fromValue,
+    to: toValue,
     defaultPeriod,
+    labelName,
   });
 
   return (
@@ -281,18 +324,21 @@ export function TimeFilter({ defaultPeriod }: TimeFilterProps = {}) {
           trigger={
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
-                label={label}
+                label={hideLabel ? undefined : constrained.label}
                 icon={filterIcon("period")}
-                value={valueLabel}
+                value={constrained.valueLabel}
                 removable={false}
                 variant="secondary/small"
               />
             </Ariakit.Select>
           }
-          period={period}
-          from={from}
-          to={to}
+          period={constrained.period}
+          from={constrained.from}
+          to={constrained.to}
           defaultPeriod={defaultPeriod}
+          labelName={labelName}
+          applyShortcut={applyShortcut}
+          onValueChange={onValueChange}
         />
       )}
     </FilterMenuProvider>
@@ -316,12 +362,21 @@ export function TimeDropdown({
   from,
   to,
   defaultPeriod = DEFAULT_PERIOD,
+  labelName = "Created",
+  applyShortcut,
+  onApply,
+  onValueChange,
 }: {
   trigger: ReactNode;
   period?: string;
   from?: Date;
   to?: Date;
   defaultPeriod?: string;
+  labelName?: string;
+  applyShortcut?: ShortcutDefinition | undefined;
+  onApply?: (values: TimeFilterApplyValues) => void;
+  /** When provided, the component operates in controlled mode and skips URL navigation */
+  onValueChange?: (values: TimeFilterApplyValues) => void;
 }) {
   const [open, setOpen] = useState<boolean | undefined>();
   const { replace } = useSearchParams();
@@ -378,17 +433,26 @@ export function TimeDropdown({
         periodToApply = `${customValue}${customUnit}`;
       }
 
-      replace({
-        period: periodToApply,
-        cursor: undefined,
-        direction: undefined,
-        from: undefined,
-        to: undefined,
-      });
+      const values: TimeFilterApplyValues = { period: periodToApply, from: undefined, to: undefined };
+
+      if (onValueChange) {
+        // Controlled mode - just call the handler
+        onValueChange(values);
+      } else {
+        // URL mode - navigate
+        replace({
+          period: periodToApply,
+          cursor: undefined,
+          direction: undefined,
+          from: undefined,
+          to: undefined,
+        });
+      }
 
       setFromValue(undefined);
       setToValue(undefined);
       setOpen(false);
+      onApply?.(values);
     } else {
       // Validate date range
       if (!fromValue && !toValue) {
@@ -401,15 +465,27 @@ export function TimeDropdown({
         return;
       }
 
-      replace({
-        period: undefined,
-        cursor: undefined,
-        direction: undefined,
-        from: fromValue?.getTime().toString(),
-        to: toValue?.getTime().toString(),
-      });
+      const fromStr = fromValue?.getTime().toString();
+      const toStr = toValue?.getTime().toString();
+
+      const values: TimeFilterApplyValues = { period: undefined, from: fromStr, to: toStr };
+
+      if (onValueChange) {
+        // Controlled mode - just call the handler
+        onValueChange(values);
+      } else {
+        // URL mode - navigate
+        replace({
+          period: undefined,
+          cursor: undefined,
+          direction: undefined,
+          from: fromStr,
+          to: toStr,
+        });
+      }
 
       setOpen(false);
+      onApply?.(values);
     }
   }, [
     activeSection,
@@ -420,6 +496,8 @@ export function TimeDropdown({
     fromValue,
     toValue,
     replace,
+    onApply,
+    onValueChange,
   ]);
 
   return (
@@ -449,7 +527,7 @@ export function TimeDropdown({
                   activeSection === "duration" && "text-indigo-500"
                 )}
               >
-                Runs created in the last
+                {labelName} in the last
               </Label>
               <div className="grid grid-cols-4 gap-2">
                 {/* Custom duration row */}
@@ -460,9 +538,9 @@ export function TimeDropdown({
                       ? "border-indigo-500 "
                       : "border-charcoal-650 hover:border-charcoal-600",
                     validationError &&
-                      activeSection === "duration" &&
-                      selectedPeriod === "custom" &&
-                      "border-error"
+                    activeSection === "duration" &&
+                    selectedPeriod === "custom" &&
+                    "border-error"
                   )}
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -751,7 +829,7 @@ export function TimeDropdown({
             </Button>
             <Button
               variant="primary/small"
-              shortcut={{
+              shortcut={applyShortcut ? applyShortcut : {
                 modifiers: ["mod"],
                 key: "Enter",
                 enabledOnInputElements: true,
@@ -786,10 +864,9 @@ export function appliedSummary(values: string[], maxValues = 3) {
 export function dateFromString(value: string | undefined | null): Date | undefined {
   if (!value) return;
 
-  //is it an int?
-  const int = parseInt(value);
-  if (!isNaN(int)) {
-    return new Date(int);
+  // Only treat as timestamp if the string is purely numeric
+  if (/^\d+$/.test(value)) {
+    return new Date(parseInt(value));
   }
 
   return new Date(value);

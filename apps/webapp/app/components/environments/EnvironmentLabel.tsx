@@ -140,6 +140,10 @@ export function EnvironmentLabel({
   return content;
 }
 
+export function EnvironmentSlug({ environment }: { environment: Environment & { slug: string } }) {
+  return <span className={environmentTextClassName(environment)}>{environment.slug}</span>;
+}
+
 export function environmentTitle(environment: Environment, username?: string) {
   if (environment.branchName) {
     return environment.branchName;
