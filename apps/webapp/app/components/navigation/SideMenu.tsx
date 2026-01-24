@@ -43,8 +43,7 @@ import { type MatchedProject } from "~/hooks/useProject";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { ShortcutKey } from "../primitives/ShortcutKey";
-import { type User } from "~/models/user.server";
-import { type DashboardPreferences } from "~/services/dashboardPreferences.server";
+import { type UserWithDashboardPreferences } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
 import { IncidentStatusPanel } from "~/routes/resources.incidents";
@@ -105,9 +104,8 @@ import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
 
-type SideMenuUser = Pick<User, "email" | "admin"> & {
+type SideMenuUser = Pick<UserWithDashboardPreferences, "email" | "admin" | "dashboardPreferences"> & {
   isImpersonating: boolean;
-  dashboardPreferences: DashboardPreferences;
 };
 export type SideMenuProject = Pick<
   MatchedProject,
