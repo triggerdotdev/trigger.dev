@@ -1349,27 +1349,26 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         masterQueueKey: this.keys.masterQueueKey(this.masterQueue.getShardForQueue(queueId)),
       }));
 
-      // Release concurrency for each reclaimed message
+      // Release concurrency for all reclaimed messages in a single batch
       // This is critical: when a message times out, its concurrency slot must be freed
       // so the message can be processed again when it's re-claimed from the queue
       if (this.concurrencyManager && reclaimedMessages.length > 0) {
-        for (const msg of reclaimedMessages) {
-          try {
-            await this.concurrencyManager.release(
-              {
+        try {
+          await this.concurrencyManager.releaseBatch(
+            reclaimedMessages.map((msg) => ({
+              queue: {
                 id: msg.queueId,
                 tenantId: msg.tenantId,
                 metadata: msg.metadata ?? {},
               },
-              msg.messageId
-            );
-          } catch (error) {
-            this.logger.error("Failed to release concurrency for reclaimed message", {
               messageId: msg.messageId,
-              queueId: msg.queueId,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
+            }))
+          );
+        } catch (error) {
+          this.logger.error("Failed to release concurrency for reclaimed messages", {
+            count: reclaimedMessages.length,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
 
