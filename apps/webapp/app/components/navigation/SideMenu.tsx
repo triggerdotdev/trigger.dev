@@ -986,7 +986,7 @@ function CollapseToggle({
               onMouseEnter={() => setIsHovering(true)}
               onMouseLeave={() => setIsHovering(false)}
               className={cn(
-                "group flex h-12 w-6 items-center justify-center rounded-md text-text-dimmed transition-all duration-200",
+                "group flex h-12 w-6 items-center justify-center rounded-md text-text-dimmed transition-all duration-200 focus-custom",
                 isHovering
                   ? "border border-grid-bright bg-background-bright shadow-md hover:bg-charcoal-750 hover:text-text-bright"
                   : "border border-transparent bg-transparent"
