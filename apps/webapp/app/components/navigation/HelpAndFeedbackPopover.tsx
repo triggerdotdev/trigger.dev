@@ -49,14 +49,18 @@ export function HelpAndFeedback({
   });
 
   return (
-    <motion.div layout="position" transition={{ duration: 0.2, ease: "easeInOut" }}>
+    <motion.div
+      layout="position"
+      transition={{ duration: 0.2, ease: "easeInOut" }}
+      className={isCollapsed ? undefined : "flex-1"}
+    >
       <Popover open={isHelpMenuOpen} onOpenChange={setHelpMenuOpen}>
       <SimpleTooltip
         button={
           <PopoverTrigger
             className={cn(
               "group flex h-8 items-center gap-1.5 rounded pl-[0.4375rem] pr-2 transition-colors hover:bg-charcoal-750",
-              isCollapsed ? "w-full" : "flex-1 justify-between"
+              isCollapsed ? "w-full" : "w-full justify-between"
             )}
           >
             <span className="flex items-center gap-1.5 overflow-hidden">
@@ -89,7 +93,7 @@ export function HelpAndFeedback({
         side="right"
         sideOffset={8}
         hidden={!isCollapsed}
-        buttonClassName={isCollapsed ? "!h-8 w-full" : "!h-8 flex-1"}
+        buttonClassName="!h-8 w-full"
         asChild
         disableHoverableContent
       />
