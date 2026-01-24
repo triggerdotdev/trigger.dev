@@ -160,17 +160,18 @@ export function SideMenu({
   return (
     <div
       className={cn(
-        "relative grid h-full grid-cols-[100%] grid-rows-[2.5rem_1fr_auto] border-r border-grid-bright bg-background-bright transition-all duration-200",
+        "relative h-full border-r border-grid-bright bg-background-bright transition-all duration-200",
         isCollapsed ? "w-[2.75rem]" : "w-56"
       )}
     >
       <CollapseToggle isCollapsed={isCollapsed} onToggle={() => setIsCollapsed(!isCollapsed)} />
-      <div
-        className={cn(
-          "flex min-w-0 items-center overflow-hidden border-b px-1 py-1 transition duration-300",
-          showHeaderDivider || isCollapsed ? "border-grid-bright" : "border-transparent"
-        )}
-      >
+      <div className="absolute inset-0 grid grid-cols-[100%] grid-rows-[2.5rem_1fr_auto] overflow-hidden">
+        <div
+          className={cn(
+            "flex min-w-0 items-center overflow-hidden border-b px-1 py-1 transition duration-300",
+            showHeaderDivider || isCollapsed ? "border-grid-bright" : "border-transparent"
+          )}
+        >
         <div className={cn("min-w-0", !isCollapsed && "flex-1")}>
           <ProjectSelector
             organizations={organizations}
@@ -200,7 +201,12 @@ export function SideMenu({
         ) : null}
       </div>
       <div
-        className="overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className={cn(
+          "min-h-0 overflow-y-auto pt-2",
+          isCollapsed
+            ? "scrollbar-none"
+            : "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        )}
         ref={borderRef}
       >
         <div className="mb-6 flex w-full flex-col gap-4 overflow-hidden px-1">
@@ -427,6 +433,7 @@ export function SideMenu({
             </CollapsibleHeight>
           )}
         </motion.div>
+      </div>
       </div>
     </div>
   );
