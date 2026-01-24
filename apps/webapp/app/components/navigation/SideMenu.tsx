@@ -22,9 +22,9 @@ import {
   TableCellsIcon,
   UsersIcon
 } from "@heroicons/react/20/solid";
-import { Link, useNavigation } from "@remix-run/react";
+import { Link, useFetcher, useNavigation } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
@@ -44,6 +44,7 @@ import { useHasAdminAccess } from "~/hooks/useUser";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { ShortcutKey } from "../primitives/ShortcutKey";
 import { type User } from "~/models/user.server";
+import { type DashboardPreferences } from "~/services/dashboardPreferences.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
 import { IncidentStatusPanel } from "~/routes/resources.incidents";
@@ -104,7 +105,10 @@ import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
 
-type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
+type SideMenuUser = Pick<User, "email" | "admin"> & {
+  isImpersonating: boolean;
+  dashboardPreferences: DashboardPreferences;
+};
 export type SideMenuProject = Pick<
   MatchedProject,
   "id" | "name" | "slug" | "version" | "environments" | "engine"
@@ -130,7 +134,15 @@ export function SideMenu({
 }: SideMenuProps) {
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(
+    user.dashboardPreferences.sideMenu?.isCollapsed ?? false
+  );
+  const preferencesFetcher = useFetcher();
+  const pendingPreferencesRef = useRef<{
+    isCollapsed?: boolean;
+    manageSectionCollapsed?: boolean;
+  }>({});
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentPlan = useCurrentPlan();
   const { isConnected } = useDevPresence();
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
@@ -138,9 +150,66 @@ export function SideMenu({
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
 
+  const persistSideMenuPreferences = useCallback(
+    (data: { isCollapsed?: boolean; manageSectionCollapsed?: boolean }) => {
+      if (user.isImpersonating) return;
+
+      // Merge with any pending changes
+      pendingPreferencesRef.current = {
+        ...pendingPreferencesRef.current,
+        ...data,
+      };
+
+      // Clear existing timeout
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+
+      // Debounce the actual submission by 500ms
+      debounceTimeoutRef.current = setTimeout(() => {
+        const pending = pendingPreferencesRef.current;
+        const formData = new FormData();
+        if (pending.isCollapsed !== undefined) {
+          formData.append("isCollapsed", String(pending.isCollapsed));
+        }
+        if (pending.manageSectionCollapsed !== undefined) {
+          formData.append("manageSectionCollapsed", String(pending.manageSectionCollapsed));
+        }
+        preferencesFetcher.submit(formData, {
+          method: "POST",
+          action: "/resources/preferences/sidemenu",
+        });
+        pendingPreferencesRef.current = {};
+      }, 500);
+    },
+    [user.isImpersonating, preferencesFetcher]
+  );
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleToggleCollapsed = () => {
+    const newIsCollapsed = !isCollapsed;
+    setIsCollapsed(newIsCollapsed);
+    persistSideMenuPreferences({ isCollapsed: newIsCollapsed });
+  };
+
+  const handleManageSectionToggle = useCallback(
+    (collapsed: boolean) => {
+      persistSideMenuPreferences({ manageSectionCollapsed: collapsed });
+    },
+    [persistSideMenuPreferences]
+  );
+
   useShortcutKeys({
     shortcut: { modifiers: ["mod"], key: "b", enabledOnInputElements: true },
-    action: () => setIsCollapsed((prev) => !prev),
+    action: handleToggleCollapsed,
   });
 
   useEffect(() => {
@@ -164,7 +233,7 @@ export function SideMenu({
         isCollapsed ? "w-[2.75rem]" : "w-56"
       )}
     >
-      <CollapseToggle isCollapsed={isCollapsed} onToggle={() => setIsCollapsed(!isCollapsed)} />
+      <CollapseToggle isCollapsed={isCollapsed} onToggle={handleToggleCollapsed} />
       <div className="absolute inset-0 grid grid-cols-[100%] grid-rows-[2.5rem_1fr_auto] overflow-hidden">
         <div
           className={cn(
@@ -353,6 +422,8 @@ export function SideMenu({
             title="Manage"
             isSideMenuCollapsed={isCollapsed}
             itemSpacingClassName="space-y-0"
+            initialCollapsed={user.dashboardPreferences.sideMenu?.manageSectionCollapsed ?? false}
+            onCollapseToggle={handleManageSectionToggle}
           >
             <SideMenuItem
               name="Bulk actions"

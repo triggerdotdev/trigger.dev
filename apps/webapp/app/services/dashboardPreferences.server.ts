@@ -3,6 +3,13 @@ import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
 import { type UserFromSession } from "./session.server";
 
+const SideMenuPreferences = z.object({
+  isCollapsed: z.boolean(),
+  manageSectionCollapsed: z.boolean(),
+});
+
+export type SideMenuPreferences = z.infer<typeof SideMenuPreferences>;
+
 const DashboardPreferences = z.object({
   version: z.literal("1"),
   currentProjectId: z.string().optional(),
@@ -12,6 +19,7 @@ const DashboardPreferences = z.object({
       currentEnvironment: z.object({ id: z.string() }),
     })
   ),
+  sideMenu: SideMenuPreferences.optional(),
 });
 
 export type DashboardPreferences = z.infer<typeof DashboardPreferences>;
@@ -88,6 +96,52 @@ export async function clearCurrentProject({ user }: { user: UserFromSession }) {
   const updatedPreferences: DashboardPreferences = {
     ...user.dashboardPreferences,
     currentProjectId: undefined,
+  };
+
+  return prisma.user.update({
+    where: {
+      id: user.id,
+    },
+    data: {
+      dashboardPreferences: updatedPreferences,
+    },
+  });
+}
+
+export async function updateSideMenuPreferences({
+  user,
+  isCollapsed,
+  manageSectionCollapsed,
+}: {
+  user: UserFromSession;
+  isCollapsed?: boolean;
+  manageSectionCollapsed?: boolean;
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  const currentSideMenu = user.dashboardPreferences.sideMenu ?? {
+    isCollapsed: false,
+    manageSectionCollapsed: false,
+  };
+
+  const updatedSideMenu: SideMenuPreferences = {
+    isCollapsed: isCollapsed ?? currentSideMenu.isCollapsed,
+    manageSectionCollapsed: manageSectionCollapsed ?? currentSideMenu.manageSectionCollapsed,
+  };
+
+  // Only update if something changed
+  if (
+    updatedSideMenu.isCollapsed === currentSideMenu.isCollapsed &&
+    updatedSideMenu.manageSectionCollapsed === currentSideMenu.manageSectionCollapsed
+  ) {
+    return;
+  }
+
+  const updatedPreferences: DashboardPreferences = {
+    ...user.dashboardPreferences,
+    sideMenu: updatedSideMenu,
   };
 
   return prisma.user.update({
