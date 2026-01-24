@@ -110,6 +110,7 @@ export class ReplayTaskRunService extends BaseService {
               overrideOptions.version === "latest" ? undefined : overrideOptions.version,
             bulkActionId: overrideOptions?.bulkActionId,
             region,
+            priority: overrideOptions.prioritySeconds,
           },
         },
         {
