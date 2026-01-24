@@ -55,12 +55,12 @@ export function SideMenuSection({
             <ToggleArrowIcon className="size-2" />
           </motion.div>
         </motion.div>
-        {/* Divider - absolutely positioned, visible when sidebar is collapsed */}
+        {/* Divider - absolutely positioned, visible when sidebar is collapsed but section is expanded */}
         <motion.div
           className="absolute left-2 right-2 top-1 h-px bg-charcoal-600"
           initial={false}
           animate={{
-            opacity: isSideMenuCollapsed ? 1 : 0,
+            opacity: isSideMenuCollapsed && !isCollapsed ? 1 : 0,
           }}
           transition={{ duration: 0.15, ease: "easeOut" }}
         />
@@ -69,7 +69,7 @@ export function SideMenuSection({
         <motion.div
           className="w-full"
           initial={isCollapsed ? "collapsed" : "expanded"}
-          animate={isCollapsed && !isSideMenuCollapsed ? "collapsed" : "expanded"}
+          animate={isCollapsed ? "collapsed" : "expanded"}
           exit="collapsed"
           variants={{
             expanded: {
