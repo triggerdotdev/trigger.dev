@@ -217,6 +217,7 @@ export function SideMenu({
                 organization={organization}
                 project={project}
                 environment={environment}
+                className="w-full"
                 isCollapsed={isCollapsed}
               />
               {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
@@ -251,7 +252,7 @@ export function SideMenu({
             </div>
           </div>
 
-          <div className="w-full space-y-px">
+          <div className="w-full">
             <SideMenuItem
               name="Tasks"
               icon={TaskIconSmall}
@@ -348,7 +349,11 @@ export function SideMenu({
             )}
           </div>
 
-          <SideMenuSection title="Manage" isSideMenuCollapsed={isCollapsed}>
+          <SideMenuSection
+            title="Manage"
+            isSideMenuCollapsed={isCollapsed}
+            itemSpacingClassName="space-y-0"
+          >
             <SideMenuItem
               name="Bulk actions"
               icon={ListCheckedIcon}

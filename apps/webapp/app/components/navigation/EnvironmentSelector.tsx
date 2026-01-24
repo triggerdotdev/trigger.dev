@@ -57,7 +57,7 @@ export function EnvironmentSelector({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 w-full items-center rounded pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
+              "group flex h-8 items-center rounded pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
               isCollapsed ? "justify-center pr-0.5" : "justify-between pr-1",
               className
             )}
@@ -87,7 +87,7 @@ export function EnvironmentSelector({
         side="right"
         sideOffset={8}
         hidden={!isCollapsed}
-        buttonClassName="!h-8 w-full"
+        buttonClassName="!h-8"
         asChild
         disableHoverableContent
       />

@@ -9,6 +9,7 @@ type Props = {
   children: React.ReactNode;
   /** When true, hides the section header and shows only children */
   isSideMenuCollapsed?: boolean;
+  itemSpacingClassName?: string;
 };
 
 /** A collapsible section for the side menu
@@ -20,6 +21,7 @@ export function SideMenuSection({
   onCollapseToggle,
   children,
   isSideMenuCollapsed = false,
+  itemSpacingClassName = "space-y-px",
 }: Props) {
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed);
 
@@ -86,7 +88,7 @@ export function SideMenuSection({
           style={{ overflow: "hidden" }}
         >
           <motion.div
-            className="w-full space-y-px"
+            className={`w-full ${itemSpacingClassName}`}
             variants={{
               expanded: {
                 translateY: 0,
