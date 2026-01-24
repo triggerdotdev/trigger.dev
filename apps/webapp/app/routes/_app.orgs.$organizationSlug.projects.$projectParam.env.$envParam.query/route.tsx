@@ -743,6 +743,8 @@ export default function Page() {
           <ResizablePanel
             id="query-help"
             min="200px"
+            collapsible
+            collapsedSize="20px"
             default="400px"
             max="500px"
             className="w-full"
