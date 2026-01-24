@@ -98,7 +98,6 @@ import { TextLink } from "../primitives/TextLink";
 import { SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { ShortcutsAutoOpen } from "../Shortcuts";
 import { UserProfilePhoto } from "../UserProfilePhoto";
-import { V4Badge } from "../V4Badge";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
@@ -286,14 +285,13 @@ export function SideMenu({
               data-action="queues"
               isCollapsed={isCollapsed}
             />
-              <SideMenuItem
-                name="Waitpoint tokens"
-                icon={WaitpointTokenIcon}
-                activeIconColor="text-sky-500"
-                to={v3WaitpointTokensPath(organization, project, environment)}
-                badge={<V4Badge />}
-                isCollapsed={isCollapsed}
-              />
+            <SideMenuItem
+              name="Waitpoint tokens"
+              icon={WaitpointTokenIcon}
+              activeIconColor="text-sky-500"
+              to={v3WaitpointTokensPath(organization, project, environment)}
+              isCollapsed={isCollapsed}
+            />
             <SideMenuItem
               name="Deployments"
               icon={ServerStackIcon}
@@ -373,7 +371,6 @@ export function SideMenu({
               activeIconColor="text-preview"
               to={branchesPath(organization, project, environment)}
               data-action="preview-branches"
-              badge={<V4Badge />}
               isCollapsed={isCollapsed}
             />
             {isManagedCloud && (
@@ -392,7 +389,6 @@ export function SideMenu({
               activeIconColor="text-regions"
               to={regionsPath(organization, project, environment)}
               data-action="regions"
-              badge={<V4Badge />}
               isCollapsed={isCollapsed}
             />
             <SideMenuItem
