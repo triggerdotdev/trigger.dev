@@ -256,6 +256,7 @@ export function SideMenu({
               name="Tasks"
               icon={TaskIconSmall}
               activeIconColor="text-tasks"
+              inactiveIconColor="text-tasks"
               to={v3EnvironmentPath(organization, project, environment)}
               data-action="tasks"
               isCollapsed={isCollapsed}
@@ -264,6 +265,7 @@ export function SideMenu({
               name="Runs"
               icon={RunsIconExtraSmall}
               activeIconColor="text-runs"
+              inactiveIconColor="text-runs"
               to={v3RunsPath(organization, project, environment)}
               isCollapsed={isCollapsed}
             />
@@ -271,6 +273,7 @@ export function SideMenu({
               name="Batches"
               icon={Squares2X2Icon}
               activeIconColor="text-batches"
+              inactiveIconColor="text-batches"
               to={v3BatchesPath(organization, project, environment)}
               data-action="batches"
               isCollapsed={isCollapsed}
@@ -279,6 +282,7 @@ export function SideMenu({
               name="Schedules"
               icon={ClockIcon}
               activeIconColor="text-schedules"
+              inactiveIconColor="text-schedules"
               to={v3SchedulesPath(organization, project, environment)}
               data-action="schedules"
               isCollapsed={isCollapsed}
@@ -287,6 +291,7 @@ export function SideMenu({
               name="Queues"
               icon={RectangleStackIcon}
               activeIconColor="text-queues"
+              inactiveIconColor="text-queues"
               to={v3QueuesPath(organization, project, environment)}
               data-action="queues"
               isCollapsed={isCollapsed}
@@ -295,6 +300,7 @@ export function SideMenu({
               name="Waitpoint tokens"
               icon={WaitpointTokenIcon}
               activeIconColor="text-sky-500"
+              inactiveIconColor="text-sky-500"
               to={v3WaitpointTokensPath(organization, project, environment)}
               isCollapsed={isCollapsed}
             />
@@ -302,6 +308,7 @@ export function SideMenu({
               name="Deployments"
               icon={ServerStackIcon}
               activeIconColor="text-deployments"
+              inactiveIconColor="text-deployments"
               to={v3DeploymentsPath(organization, project, environment)}
               data-action="deployments"
               isCollapsed={isCollapsed}
@@ -311,6 +318,7 @@ export function SideMenu({
                 name="Logs"
                 icon={LogsIcon}
                 activeIconColor="text-logs"
+                inactiveIconColor="text-logs"
                 to={v3LogsPath(organization, project, environment)}
                 data-action="logs"
                 badge={<AlphaBadge />}
@@ -321,6 +329,7 @@ export function SideMenu({
               name="Test"
               icon={BeakerIcon}
               activeIconColor="text-tests"
+              inactiveIconColor="text-tests"
               to={v3TestPath(organization, project, environment)}
               data-action="test"
               isCollapsed={isCollapsed}
@@ -330,6 +339,7 @@ export function SideMenu({
                 name="Query"
                 icon={TableCellsIcon}
                 activeIconColor="text-purple-500"
+                inactiveIconColor="text-purple-500"
                 to={queryPath(organization, project, environment)}
                 data-action="query"
                 badge={<AlphaBadge />}
@@ -342,7 +352,8 @@ export function SideMenu({
             <SideMenuItem
               name="Bulk actions"
               icon={ListCheckedIcon}
-              activeIconColor="text-bulkActions"
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
               to={v3BulkActionsPath(organization, project, environment)}
               data-action="bulk actions"
               isCollapsed={isCollapsed}
@@ -350,7 +361,8 @@ export function SideMenu({
             <SideMenuItem
               name="API keys"
               icon={KeyIcon}
-              activeIconColor="text-apiKeys"
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
               to={v3ApiKeysPath(organization, project, environment)}
               data-action="api keys"
               isCollapsed={isCollapsed}
@@ -358,7 +370,8 @@ export function SideMenu({
             <SideMenuItem
               name="Environment variables"
               icon={IdentificationIcon}
-              activeIconColor="text-environmentVariables"
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
               to={v3EnvironmentVariablesPath(organization, project, environment)}
               data-action="environment variables"
               isCollapsed={isCollapsed}
@@ -366,7 +379,8 @@ export function SideMenu({
             <SideMenuItem
               name="Alerts"
               icon={BellAlertIcon}
-              activeIconColor="text-alerts"
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
               to={v3ProjectAlertsPath(organization, project, environment)}
               data-action="alerts"
               isCollapsed={isCollapsed}
@@ -374,7 +388,8 @@ export function SideMenu({
             <SideMenuItem
               name="Preview branches"
               icon={BranchEnvironmentIconSmall}
-              activeIconColor="text-preview"
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
               to={branchesPath(organization, project, environment)}
               data-action="preview-branches"
               isCollapsed={isCollapsed}
@@ -383,7 +398,8 @@ export function SideMenu({
               <SideMenuItem
                 name="Concurrency"
                 icon={ConcurrencyIcon}
-                activeIconColor="text-concurrency"
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
                 to={concurrencyPath(organization, project, environment)}
                 data-action="concurrency"
                 isCollapsed={isCollapsed}
@@ -392,7 +408,8 @@ export function SideMenu({
             <SideMenuItem
               name="Regions"
               icon={GlobeAmericasIcon}
-              activeIconColor="text-regions"
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
               to={regionsPath(organization, project, environment)}
               data-action="regions"
               isCollapsed={isCollapsed}
@@ -400,7 +417,8 @@ export function SideMenu({
             <SideMenuItem
               name="Limits"
               icon={AdjustmentsHorizontalIcon}
-              activeIconColor="text-limits"
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
               to={limitsPath(organization, project, environment)}
               data-action="limits"
               isCollapsed={isCollapsed}
@@ -408,7 +426,8 @@ export function SideMenu({
             <SideMenuItem
               name="Project settings"
               icon={Cog8ToothIcon}
-              activeIconColor="text-projectSettings"
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
               to={v3ProjectSettingsPath(organization, project, environment)}
               data-action="project-settings"
               isCollapsed={isCollapsed}
