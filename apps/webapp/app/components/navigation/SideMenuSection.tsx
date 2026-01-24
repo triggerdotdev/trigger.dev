@@ -55,7 +55,7 @@ export function SideMenuSection({
         </motion.div>
         {/* Divider - absolutely positioned, visible when sidebar is collapsed */}
         <motion.div
-          className="absolute left-2 right-2 top-1 h-px bg-grid-bright"
+          className="absolute left-2 right-2 top-1 h-px bg-charcoal-600"
           initial={false}
           animate={{
             opacity: isSideMenuCollapsed ? 1 : 0,

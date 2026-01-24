@@ -47,36 +47,31 @@ export function AskAI({ isCollapsed = false }: { isCollapsed?: boolean }) {
   }
 
   return (
-    <div
-      className={cn(
-        "transition-opacity duration-200",
-        isCollapsed ? "pointer-events-none opacity-0" : "opacity-100"
-      )}
+    <ClientOnly
+      fallback={
+        <Button
+          variant="small-menu-item"
+          data-action="ask-ai"
+          hideShortcutKey
+          data-modal-override-open-class-ask-ai="true"
+          disabled
+          className={isCollapsed ? "w-full justify-center" : ""}
+        >
+          <AISparkleIcon className="size-5" />
+        </Button>
+      }
     >
-      <ClientOnly
-        fallback={
-          <Button
-            variant="small-menu-item"
-            data-action="ask-ai"
-            hideShortcutKey
-            data-modal-override-open-class-ask-ai="true"
-            disabled
-          >
-            <AISparkleIcon className="size-5" />
-          </Button>
-        }
-      >
-        {() => <AskAIProvider websiteId={websiteId} />}
-      </ClientOnly>
-    </div>
+      {() => <AskAIProvider websiteId={websiteId} isCollapsed={isCollapsed} />}
+    </ClientOnly>
   );
 }
 
 type AskAIProviderProps = {
   websiteId: string;
+  isCollapsed?: boolean;
 };
 
-function AskAIProvider({ websiteId }: AskAIProviderProps) {
+function AskAIProvider({ websiteId, isCollapsed = false }: AskAIProviderProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [initialQuery, setInitialQuery] = useState<string | undefined>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -120,28 +115,38 @@ function AskAIProvider({ websiteId }: AskAIProviderProps) {
       }}
       botProtectionMechanism="hcaptcha"
     >
-      <TooltipProvider disableHoverableContent>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="inline-flex">
-              <Button
-                variant="small-menu-item"
-                data-action="ask-ai"
-                shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
-                hideShortcutKey
-                data-modal-override-open-class-ask-ai="true"
-                onClick={() => openAskAI()}
-              >
-                <AISparkleIcon className="size-5" />
-              </Button>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs">
-            Ask AI
-            <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <motion.div layout="position" transition={{ duration: 0.2, ease: "easeInOut" }}>
+        <TooltipProvider disableHoverableContent>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className={isCollapsed ? "w-full" : "inline-flex"}>
+                <Button
+                  variant="small-menu-item"
+                  data-action="ask-ai"
+                  shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
+                  hideShortcutKey
+                  data-modal-override-open-class-ask-ai="true"
+                  onClick={() => openAskAI()}
+                  className={isCollapsed ? "w-full justify-center" : ""}
+                >
+                  <AISparkleIcon className="size-5" />
+                </Button>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent
+              side={isCollapsed ? "right" : "top"}
+              sideOffset={isCollapsed ? 8 : 4}
+              className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs"
+            >
+              Ask AI
+              <span className="flex items-center">
+                <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
+                <ShortcutKey shortcut={{ key: "/" }} variant="medium/bright" />
+              </span>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </motion.div>
       <AskAIDialog
         initialQuery={initialQuery}
         isOpen={isOpen}

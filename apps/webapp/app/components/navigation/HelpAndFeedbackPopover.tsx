@@ -11,6 +11,7 @@ import {
 import { cn } from "~/utils/cn";
 import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useState } from "react";
+import { motion } from "framer-motion";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { Feedback } from "../Feedback";
@@ -48,7 +49,8 @@ export function HelpAndFeedback({
   });
 
   return (
-    <Popover open={isHelpMenuOpen} onOpenChange={setHelpMenuOpen}>
+    <motion.div layout="position" transition={{ duration: 0.2, ease: "easeInOut" }}>
+      <Popover open={isHelpMenuOpen} onOpenChange={setHelpMenuOpen}>
       <SimpleTooltip
         button={
           <PopoverTrigger
@@ -58,7 +60,7 @@ export function HelpAndFeedback({
             )}
           >
             <span className="flex items-center gap-1.5 overflow-hidden">
-              <QuestionMarkCircleIcon className="size-5 shrink-0 text-success" />
+              <QuestionMarkCircleIcon className="size-5 min-w-5 shrink-0 text-success" />
               <span
                 className={cn(
                   "overflow-hidden whitespace-nowrap text-2sm text-text-bright transition-all duration-150",
@@ -74,14 +76,14 @@ export function HelpAndFeedback({
                 isCollapsed ? "hidden" : ""
               )}
               shortcut={{ key: "h" }}
-              variant="small"
+              variant="medium/bright"
             />
           </PopoverTrigger>
         }
         content={
           <span className="flex items-center gap-1">
             Help & Feedback
-            <ShortcutKey shortcut={{ key: "h" }} variant="small" />
+            <ShortcutKey shortcut={{ key: "h" }} variant="medium/bright" />
           </span>
         }
         side="right"
@@ -242,6 +244,7 @@ export function HelpAndFeedback({
           </div>
         </Fragment>
       </PopoverContent>
-    </Popover>
+      </Popover>
+    </motion.div>
   );
 }

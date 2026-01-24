@@ -23,7 +23,7 @@ import {
   UsersIcon
 } from "@heroicons/react/20/solid";
 import { Link, useNavigation } from "@remix-run/react";
-import { motion } from "framer-motion";
+import { LayoutGroup, motion } from "framer-motion";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
@@ -412,10 +412,12 @@ export function SideMenu({
       </div>
       <div>
         <IncidentStatusPanel isCollapsed={isCollapsed} />
-        <div className={cn("flex flex-col gap-1 border-t border-grid-bright p-1", isCollapsed && "items-center")}>
-          <div className="flex w-full items-center justify-between">
-            <HelpAndAI isCollapsed={isCollapsed} />
-          </div>
+        <motion.div
+          layout
+          transition={{ duration: 0.2, ease: "easeInOut" }}
+          className={cn("flex flex-col gap-1 border-t border-grid-bright p-1", isCollapsed && "items-center")}
+        >
+          <HelpAndAI isCollapsed={isCollapsed} />
           {isFreeUser && (
             <CollapsibleHeight isCollapsed={isCollapsed}>
               <FreePlanUsage
@@ -424,7 +426,7 @@ export function SideMenu({
               />
             </CollapsibleHeight>
           )}
-        </div>
+        </motion.div>
       </div>
     </div>
   );
@@ -771,11 +773,13 @@ function CollapsibleHeight({
 
 function HelpAndAI({ isCollapsed }: { isCollapsed: boolean }) {
   return (
-    <>
-      <ShortcutsAutoOpen />
-      <HelpAndFeedback isCollapsed={isCollapsed} />
-      <AskAI isCollapsed={isCollapsed} />
-    </>
+    <LayoutGroup>
+      <div className={cn("flex w-full", isCollapsed ? "flex-col-reverse gap-1" : "items-center justify-between")}>
+        <ShortcutsAutoOpen />
+        <HelpAndFeedback isCollapsed={isCollapsed} />
+        <AskAI isCollapsed={isCollapsed} />
+      </div>
+    </LayoutGroup>
   );
 }
 
@@ -894,8 +898,8 @@ function CollapseToggle({
           <TooltipContent side="right" className="flex items-center gap-2 text-xs">
             {isCollapsed ? "Expand" : "Collapse"}
             <span className="flex items-center">
-              <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="small" />
-              <ShortcutKey shortcut={{ key: "b" }} variant="small" />
+              <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
+              <ShortcutKey shortcut={{ key: "b" }} variant="medium/bright" />
             </span>
           </TooltipContent>
         </Tooltip>
