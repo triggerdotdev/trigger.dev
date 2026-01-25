@@ -36,9 +36,14 @@ const SQL_KEYWORDS = [
 ];
 
 function highlightSQL(query: string): React.ReactNode[] {
-  // Normalize whitespace for display (let CSS line-clamp handle truncation)
-  const normalized = query.replace(/\s+/g, " ").slice(0, 200);
-  const suffix = "";
+  // Normalize: collapse multiple spaces/tabs to single space, but preserve newlines
+  // Then trim each line and limit total length
+  const normalized = query
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .filter((line) => line.length > 0)
+    .join("\n")
+    .slice(0, 500);
 
   // Create a regex pattern that matches keywords as whole words (case insensitive)
   const keywordPattern = new RegExp(
@@ -67,10 +72,6 @@ function highlightSQL(query: string): React.ReactNode[] {
   // Add remaining text
   if (lastIndex < normalized.length) {
     parts.push(normalized.slice(lastIndex));
-  }
-
-  if (suffix) {
-    parts.push(suffix);
   }
 
   return parts;
@@ -118,10 +119,21 @@ export function QueryHistoryPopover({
                   }}
                   className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900"
                 >
-                  <div className="flex flex-1 flex-col items-start overflow-hidden">
-                    <p className="line-clamp-2 w-full break-words text-left font-mono text-xs text-[#9b99ff]">
-                      {highlightSQL(item.query)}
-                    </p>
+                  <div className="flex flex-1 flex-col items-start gap-0.5 overflow-hidden">
+                    {item.title ? (
+                      <>
+                        <p className="w-full truncate text-left text-sm font-medium text-text-bright">
+                          {item.title}
+                        </p>
+                        <p className="line-clamp-4 w-full whitespace-pre-wrap text-left font-mono text-xs text-text-dimmed">
+                          {highlightSQL(item.query)}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="line-clamp-4 w-full whitespace-pre-wrap text-left font-mono text-xs text-[#9b99ff]">
+                        {highlightSQL(item.query)}
+                      </p>
+                    )}
                     <div className="flex items-center gap-1.5 text-xs text-text-dimmed">
                       <span className="capitalize">{item.scope}</span>
                       {valueLabel && <span>· {valueLabel}</span>}

@@ -289,7 +289,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   try {
-    const [error, result] = await executeQuery({
+    const [error, result, queryId] = await executeQuery({
       name: "query-page",
       query,
       schema: z.record(z.any()),
@@ -327,6 +327,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           hiddenColumns: null,
           explainOutput: null,
           generatedSql: null,
+          queryId: null,
         },
         { status: 400 }
       );
@@ -340,6 +341,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       hiddenColumns: result.hiddenColumns ?? null,
       explainOutput: result.explainOutput ?? null,
       generatedSql: result.generatedSql ?? null,
+      queryId,
     });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error executing query";
@@ -352,6 +354,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         hiddenColumns: null,
         explainOutput: null,
         generatedSql: null,
+        queryId: null,
       },
       { status: 500 }
     );
@@ -571,6 +574,7 @@ export default function Page() {
     if (
       results?.rows &&
       !results.error &&
+      results.queryId &&
       shouldGenerateTitle &&
       !historyTitle &&
       titleFetcher.state === "idle"
@@ -578,7 +582,7 @@ export default function Page() {
       const currentQuery = editorRef.current?.getQuery();
       if (currentQuery) {
         titleFetcher.submit(
-          { query: currentQuery },
+          { query: currentQuery, queryId: results.queryId },
           {
             method: "POST",
             action: `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/query/ai-title`,

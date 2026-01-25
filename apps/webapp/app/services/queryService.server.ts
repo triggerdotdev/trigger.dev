@@ -90,12 +90,20 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
 };
 
 /**
+ * Extended result type that includes the optional queryId when saved to history
+ */
+export type ExecuteQueryResult<T> =
+  | [error: Error, result: null, queryId: null]
+  | [error: null, result: T, queryId: string | null];
+
+/**
  * Execute a TSQL query against ClickHouse with tenant isolation
  * Handles building tenant options, field mappings, and optionally saves to history
+ * Returns [error, result, queryId] where queryId is the CustomerQuery ID if saved to history
  */
 export async function executeQuery<TOut extends z.ZodSchema>(
   options: ExecuteQueryOptions<TOut>
-): Promise<TSQLQueryResult<z.output<TOut>>> {
+): Promise<ExecuteQueryResult<Exclude<TSQLQueryResult<z.output<TOut>>[1], null>>> {
   const {
     scope,
     organizationId,
@@ -112,20 +120,20 @@ export async function executeQuery<TOut extends z.ZodSchema>(
   const orgLimit = customOrgConcurrencyLimit ?? DEFAULT_ORG_CONCURRENCY_LIMIT;
 
   // Acquire concurrency slot
-  const acquireResult = await queryConcurrencyLimiter.acquire({
-    key: organizationId,
-    requestId,
-    keyLimit: orgLimit,
-    globalLimit: GLOBAL_CONCURRENCY_LIMIT,
-  });
+    const acquireResult = await queryConcurrencyLimiter.acquire({
+      key: organizationId,
+      requestId,
+      keyLimit: orgLimit,
+      globalLimit: GLOBAL_CONCURRENCY_LIMIT,
+    });
 
-  if (!acquireResult.success) {
-    const errorMessage =
-      acquireResult.reason === "key_limit"
-        ? `You've exceeded your query concurrency of ${orgLimit} for this organization. Please try again later.`
-        : "We're experiencing a lot of queries at the moment. Please try again later.";
-    return [new QueryError(errorMessage, { query: options.query }), null];
-  }
+    if (!acquireResult.success) {
+      const errorMessage =
+        acquireResult.reason === "key_limit"
+          ? `You've exceeded your query concurrency of ${orgLimit} for this organization. Please try again later.`
+          : "We're experiencing a lot of queries at the moment. Please try again later.";
+      return [new QueryError(errorMessage, { query: options.query }), null, null];
+    }
 
   try {
     // Build tenant IDs based on scope
@@ -172,9 +180,16 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       },
     });
 
+    // If query failed, return early with no queryId
+    if (result[0] !== null) {
+      return [result[0], null, null];
+    }
+
+    let queryId: string | null = null;
+
     // If query succeeded and history options provided, save to history
     // Skip history for EXPLAIN queries (admin debugging) and when explicitly skipped (e.g., impersonating)
-    if (result[0] === null && history && !history.skip && !baseOptions.explain) {
+    if (history && !history.skip && !baseOptions.explain) {
       // Check if this query is the same as the last one saved (avoid duplicate history entries)
       const lastQuery = await prisma.customerQuery.findFirst({
         where: {
@@ -183,7 +198,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
           userId: history.userId ?? null,
         },
         orderBy: { createdAt: "desc" },
-        select: { query: true, scope: true, filterPeriod: true, filterFrom: true, filterTo: true },
+        select: { id: true, query: true, scope: true, filterPeriod: true, filterFrom: true, filterTo: true },
       });
 
       const timeFilter = history.timeFilter;
@@ -195,8 +210,11 @@ export async function executeQuery<TOut extends z.ZodSchema>(
         lastQuery.filterFrom?.getTime() === (timeFilter?.from?.getTime() ?? undefined) &&
         lastQuery.filterTo?.getTime() === (timeFilter?.to?.getTime() ?? undefined);
 
-      if (!isDuplicate) {
-        await prisma.customerQuery.create({
+      if (isDuplicate && lastQuery) {
+        // Return the existing query's ID for duplicate queries
+        queryId = lastQuery.id;
+      } else {
+        const created = await prisma.customerQuery.create({
           data: {
             query: options.query,
             scope: scopeToEnum[scope],
@@ -211,10 +229,11 @@ export async function executeQuery<TOut extends z.ZodSchema>(
             filterTo: history.timeFilter?.to ?? null,
           },
         });
+        queryId = created.id;
       }
     }
 
-    return result;
+    return [null, result[1], queryId];
   } finally {
     // Always release the concurrency slot
     await queryConcurrencyLimiter.release({
