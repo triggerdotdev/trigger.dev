@@ -59,7 +59,10 @@ model User {
   deployments          WorkerDeployment[]
   backupCodes          MfaBackupCode[]
   bulkActions          BulkActionGroup[]
-  customerQueries      CustomerQuery[]
+
+  impersonationsPerformed ImpersonationAuditLog[] @relation("ImpersonationAdmin")
+  impersonationsReceived  ImpersonationAuditLog[] @relation("ImpersonationTarget")
+  customerQueries         CustomerQuery[]
 }
 
 model MfaBackupCode {
@@ -404,7 +407,8 @@ model Project {
   connectedGithubRepository ConnectedGithubRepository?
   customerQueries           CustomerQuery[]
 
-  buildSettings Json?
+  buildSettings         Json?
+  taskScheduleInstances TaskScheduleInstance[]
 }
 
 enum ProjectVersion {
@@ -585,11 +589,13 @@ model TaskRun {
 
   idempotencyKey          String?
   idempotencyKeyExpiresAt DateTime?
+  /// Stores the user-provided key and scope: { key: string, scope: "run" | "attempt" | "global" }
+  idempotencyKeyOptions   Json?
 
   /// Debounce options: { key: string, delay: string, createdAt: Date }
   debounce Json?
 
-  taskIdentifier          String
+  taskIdentifier String
 
   isTest Boolean @default(false)
 
@@ -1945,6 +1951,9 @@ model TaskScheduleInstance {
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
 
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1955,6 +1964,8 @@ model TaskScheduleInstance {
 
   //you can only have a schedule attached to each environment once
   @@unique([taskScheduleId, environmentId])
+  @@index([environmentId])
+  @@index([projectId, active])
 }
 
 model RuntimeEnvironmentSession {
@@ -2391,6 +2402,33 @@ model ConnectedGithubRepository {
   @@index([repositoryId])
 }
 
+enum ImpersonationAuditLogAction {
+  START
+  STOP
+}
+
+model ImpersonationAuditLog {
+  id String @id @default(cuid())
+
+  action ImpersonationAuditLogAction
+
+  /// The admin user who initiated/ended the impersonation
+  admin   User   @relation("ImpersonationAdmin", fields: [adminId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  adminId String
+
+  /// The user being impersonated
+  target   User   @relation("ImpersonationTarget", fields: [targetId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  targetId String
+
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([targetId])
+  @@index([createdAt])
+}
+
 enum CustomerQuerySource {
   DASHBOARD
   API
@@ -2432,6 +2470,14 @@ model CustomerQuery {
   /// Optional user who executed the query (null for API calls)
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   userId String?
+
+  /// Time filter settings used when the query was executed
+  /// Period like "7d", "24h", etc.
+  filterPeriod String?
+  /// Custom start date (ISO 8601)
+  filterFrom   DateTime?
+  /// Custom end date (ISO 8601)
+  filterTo     DateTime?
 
   createdAt DateTime @default(now())
 

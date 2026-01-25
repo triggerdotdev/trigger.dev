@@ -27,7 +27,6 @@ import { PopoverMenuItem } from "~/components/primitives/Popover";
 
 type LogsTableProps = {
   logs: LogEntry[];
-  hasFilters: boolean;
   searchTerm?: string;
   isLoading?: boolean;
   isLoadingMore?: boolean;
@@ -59,7 +58,6 @@ function getLevelBorderColor(level: LogEntry["level"]): string {
 
 export function LogsTable({
   logs,
-  hasFilters,
   searchTerm,
   isLoading = false,
   isLoadingMore = false,
@@ -126,11 +124,7 @@ export function LogsTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {logs.length === 0 && !hasFilters ? (
-            <TableBlankRow colSpan={6}>
-              {!isLoading && <NoLogs title="No logs found" />}
-            </TableBlankRow>
-          ) : logs.length === 0 ? (
+          {logs.length === 0 ? (
             <BlankState isLoading={isLoading} onRefresh={() => window.location.reload()} />
           ) : (
             logs.map((log) => {
@@ -210,14 +204,6 @@ export function LogsTable({
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function NoLogs({ title }: { title: string }) {
-  return (
-    <div className="flex items-center justify-center">
-      <Paragraph className="w-auto">{title}</Paragraph>
     </div>
   );
 }

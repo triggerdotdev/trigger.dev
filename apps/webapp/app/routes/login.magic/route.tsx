@@ -30,6 +30,7 @@ import {
 } from "~/services/magicLinkRateLimiter.server";
 import { logger, tryCatch } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
+import { extractClientIp } from "~/utils/extractClientIp.server";
 
 export const meta: MetaFunction = ({ matches }) => {
   const parentMeta = matches
@@ -168,13 +169,6 @@ export async function action({ request }: ActionFunctionArgs) {
     }
   }
 }
-
-const extractClientIp = (xff: string | null) => {
-  if (!xff) return null;
-
-  const parts = xff.split(",").map((p) => p.trim());
-  return parts[parts.length - 1]; // take last item, ALB appends the real client IP by default
-};
 
 export default function LoginMagicLinkPage() {
   const { magicLinkSent, magicLinkError } = useTypedLoaderData<typeof loader>();

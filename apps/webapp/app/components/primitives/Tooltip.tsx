@@ -123,7 +123,7 @@ export function InfoIconTooltip({
   enabled?: boolean;
 }) {
   const icon = (
-    <InformationCircleIcon className={cn("size-3.5 text-text-dimmed", buttonClassName)} />
+    <InformationCircleIcon className={cn("size-3.5 text-text-dimmed flex-0", buttonClassName)} />
   );
 
   if (!enabled) return icon;

@@ -3,13 +3,16 @@ import { Attributes } from "@opentelemetry/api";
 export const NULL_SENTINEL = "$@null((";
 export const CIRCULAR_REFERENCE_SENTINEL = "$@circular((";
 
+const DEFAULT_MAX_DEPTH = 128;
+
 export function flattenAttributes(
   obj: unknown,
   prefix?: string,
-  maxAttributeCount?: number
+  maxAttributeCount?: number,
+  maxDepth: number = DEFAULT_MAX_DEPTH
 ): Attributes {
-  const flattener = new AttributeFlattener(maxAttributeCount);
-  flattener.doFlatten(obj, prefix);
+  const flattener = new AttributeFlattener(maxAttributeCount, maxDepth);
+  flattener.doFlatten(obj, prefix, 0);
   return flattener.attributes;
 }
 
@@ -18,7 +21,10 @@ class AttributeFlattener {
   private attributeCounter: number = 0;
   private result: Attributes = {};
 
-  constructor(private maxAttributeCount?: number) {}
+  constructor(
+    private maxAttributeCount?: number,
+    private maxDepth: number = DEFAULT_MAX_DEPTH
+  ) {}
 
   get attributes(): Attributes {
     return this.result;
@@ -37,8 +43,13 @@ class AttributeFlattener {
     return true;
   }
 
-  doFlatten(obj: unknown, prefix?: string) {
+  doFlatten(obj: unknown, prefix?: string, depth: number = 0) {
     if (!this.canAddMoreAttributes()) {
+      return;
+    }
+
+    // Check depth limit to prevent stack overflow
+    if (depth > this.maxDepth) {
       return;
     }
 
@@ -94,7 +105,7 @@ class AttributeFlattener {
       let index = 0;
       for (const item of obj) {
         if (!this.canAddMoreAttributes()) break;
-        this.#processValue(item, `${prefix || "set"}.[${index}]`);
+        this.#processValue(item, `${prefix || "set"}.[${index}]`, depth);
         index++;
       }
       return;
@@ -106,7 +117,7 @@ class AttributeFlattener {
         if (!this.canAddMoreAttributes()) break;
         // Use the key directly if it's a string, otherwise convert it
         const keyStr = typeof key === "string" ? key : String(key);
-        this.#processValue(value, `${prefix || "map"}.${keyStr}`);
+        this.#processValue(value, `${prefix || "map"}.${keyStr}`, depth);
       }
       return;
     }
@@ -196,15 +207,15 @@ class AttributeFlattener {
           if (!this.canAddMoreAttributes()) {
             break;
           }
-          this.#processValue(value[i], `${newPrefix}.[${i}]`);
+          this.#processValue(value[i], `${newPrefix}.[${i}]`, depth);
         }
       } else {
-        this.#processValue(value, newPrefix);
+        this.#processValue(value, newPrefix, depth);
       }
     }
   }
 
-  #processValue(value: unknown, prefix: string) {
+  #processValue(value: unknown, prefix: string, depth: number) {
     if (!this.canAddMoreAttributes()) {
       return;
     }
@@ -224,9 +235,9 @@ class AttributeFlattener {
       return;
     }
 
-    // Handle non-primitive values by recursing
+    // Handle non-primitive values by recursing (increment depth)
     if (typeof value === "object" || typeof value === "function") {
-      this.doFlatten(value as any, prefix);
+      this.doFlatten(value as any, prefix, depth + 1);
     } else {
       // Convert other types to strings (bigint, symbol, etc.)
       this.addAttribute(prefix, String(value));
@@ -240,7 +251,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function unflattenAttributes(
   obj: Attributes,
-  filteredKeys?: string[]
+  filteredKeys?: string[],
+  maxDepth: number = DEFAULT_MAX_DEPTH
 ): Record<string, unknown> | string | number | boolean | null | undefined {
   if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
     return obj;
@@ -284,6 +296,11 @@ export function unflattenAttributes(
       },
       [] as (string | number)[]
     );
+
+    // Skip keys that exceed max depth to prevent memory exhaustion
+    if (parts.length > maxDepth) {
+      continue;
+    }
 
     let current: any = result;
     for (let i = 0; i < parts.length - 1; i++) {

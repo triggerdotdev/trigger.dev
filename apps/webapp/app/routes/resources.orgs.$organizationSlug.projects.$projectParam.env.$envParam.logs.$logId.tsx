@@ -7,6 +7,7 @@ import { LogDetailPresenter } from "~/presenters/v3/LogDetailPresenter.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { $replica } from "~/db.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 const LogIdParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -43,14 +44,22 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const presenter = new LogDetailPresenter($replica, clickhouseClient);
 
-  const result = await presenter.call({
-    environmentId: environment.id,
-    organizationId: project.organizationId,
-    projectId: project.id,
-    spanId,
-    traceId,
-    startTime,
-  });
+  let result;
+  try {
+    result = await presenter.call({
+      environmentId: environment.id,
+      organizationId: project.organizationId,
+      projectId: project.id,
+      spanId,
+      traceId,
+      startTime,
+    });
+  } catch (error) {
+    if (error instanceof ServiceValidationError) {
+      throw new Response(error.message, { status: 400 });
+    }
+    throw error;
+  }
 
   if (!result) {
     throw new Response("Log not found", { status: 404 });
