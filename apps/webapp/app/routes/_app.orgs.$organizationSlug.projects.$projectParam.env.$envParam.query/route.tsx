@@ -677,7 +677,7 @@ export default function Page() {
                 <ClientTabs
                   value={resultsView}
                   onValueChange={(v) => setResultsView(v as "table" | "graph")}
-                  className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden"
+                  className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden max-h-full h-full"
                 >
                   <ClientTabsList
                     variant="underline"
