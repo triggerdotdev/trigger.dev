@@ -1,4 +1,6 @@
-import { ArrowDownTrayIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon, ArrowTrendingUpIcon, ClipboardIcon } from "@heroicons/react/20/solid";
+import { ArrowDownTrayIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon, ArrowTrendingUpIcon, ClipboardIcon, TableCellsIcon } from "@heroicons/react/20/solid";
+import { useFetcher } from "@remix-run/react";
+import type { action as titleAction } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query.ai-title";
 import type { OutputColumnMetadata, WhereClauseFallback } from "@internal/clickhouse";
 import {
   redirect,
@@ -374,12 +376,23 @@ const QueryEditorForm = forwardRef<
     history: QueryHistoryItem[];
     fetcher: ReturnType<typeof useTypedFetcher<typeof action>>;
     isAdmin: boolean;
+    onQuerySubmit?: () => void;
+    onHistorySelected?: (item: QueryHistoryItem) => void;
   }
->(function QueryEditorForm({ defaultQuery, defaultScope, defaultTimeFilter, history, fetcher, isAdmin }, ref) {
+>(function QueryEditorForm({ defaultQuery, defaultScope, defaultTimeFilter, history, fetcher, isAdmin, onQuerySubmit, onHistorySelected }, ref) {
   const isLoading = fetcher.state === "submitting" || fetcher.state === "loading";
   const [query, setQuery] = useState(defaultQuery);
   const [scope, setScope] = useState<QueryScope>(defaultScope);
   const formRef = useRef<HTMLFormElement>(null);
+  const prevFetcherState = useRef(fetcher.state);
+
+  // Notify parent when query is submitted (for title generation)
+  useEffect(() => {
+    if (prevFetcherState.current !== "submitting" && fetcher.state === "submitting") {
+      onQuerySubmit?.();
+    }
+    prevFetcherState.current = fetcher.state;
+  }, [fetcher.state, onQuerySubmit]);
 
   // Get time filter values - initialize from props (which may come from history)
   const [period, setPeriod] = useState<string | undefined>(defaultTimeFilter?.period);
@@ -414,7 +427,9 @@ const QueryEditorForm = forwardRef<
     setPeriod(item.filterPeriod ?? undefined);
     setFrom(item.filterFrom ? toISOString(item.filterFrom) : undefined);
     setTo(item.filterTo ? toISOString(item.filterTo) : undefined);
-  }, []);
+    // Notify parent about history selection (for title)
+    onHistorySelected?.(item);
+  }, [onHistorySelected]);
 
   return (
     <div className="flex h-full flex-col gap-2 bg-charcoal-900 pb-2">
@@ -514,6 +529,10 @@ export default function Page() {
   const results = fetcher.data;
   const { replace: replaceSearchParams } = useSearchParams();
 
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
   // Use most recent history item if available, otherwise fall back to defaults
   const initialQuery = history.length > 0 ? history[0].query : defaultQuery;
   const initialScope: QueryScope = history.length > 0 ? history[0].scope : "environment";
@@ -532,6 +551,44 @@ export default function Page() {
   const [chartConfig, setChartConfig] = useState<ChartConfiguration>(defaultChartConfig);
   const [sidebarTab, setSidebarTab] = useState<string>("ai");
   const [aiFixRequest, setAiFixRequest] = useState<{ prompt: string; key: number } | null>(null);
+
+  // Title generation state
+  const titleFetcher = useFetcher<typeof titleAction>();
+  const isTitleLoading = titleFetcher.state !== "idle";
+  const generatedTitle = titleFetcher.data?.title;
+  const [historyTitle, setHistoryTitle] = useState<string | null>(
+    history.length > 0 ? history[0].title ?? null : null
+  );
+
+  // Effective title: history title takes precedence, then generated
+  const queryTitle = historyTitle ?? generatedTitle ?? null;
+
+  // Track whether we should generate a title for the current results
+  const [shouldGenerateTitle, setShouldGenerateTitle] = useState(false);
+
+  // Trigger title generation when query succeeds (only for new queries, not history)
+  useEffect(() => {
+    if (
+      results?.rows &&
+      !results.error &&
+      shouldGenerateTitle &&
+      !historyTitle &&
+      titleFetcher.state === "idle"
+    ) {
+      const currentQuery = editorRef.current?.getQuery();
+      if (currentQuery) {
+        titleFetcher.submit(
+          { query: currentQuery },
+          {
+            method: "POST",
+            action: `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/query/ai-title`,
+            encType: "application/json",
+          }
+        );
+        setShouldGenerateTitle(false);
+      }
+    }
+  }, [results, shouldGenerateTitle, historyTitle, titleFetcher, organization.slug, project.slug, environment.slug]);
 
   const handleTryFixError = useCallback((errorMessage: string) => {
     setSidebarTab("ai");
@@ -575,6 +632,18 @@ export default function Page() {
     setChartConfig(config);
   }, []);
 
+  // Handle query submission - prepare for title generation
+  const handleQuerySubmit = useCallback(() => {
+    setHistoryTitle(null); // Clear history title when running a new query
+    setShouldGenerateTitle(true); // Enable title generation for new results
+  }, []);
+
+  // Handle history selection - use existing title if available
+  const handleHistorySelected = useCallback((item: QueryHistoryItem) => {
+    setHistoryTitle(item.title ?? null);
+    setShouldGenerateTitle(false); // Don't generate title for history items
+  }, []);
+
   return (
     <PageContainer>
       <NavBar>
@@ -594,6 +663,8 @@ export default function Page() {
                   history={history}
                   fetcher={fetcher}
                   isAdmin={isAdmin}
+                  onQuerySubmit={handleQuerySubmit}
+                  onHistorySelected={handleHistorySelected}
                 />
               </ResizablePanel>
               <ResizableHandle id="query-editor-handle" />
@@ -701,7 +772,19 @@ export default function Page() {
                           </Callout>
                         )}
                         <div className="h-full bg-charcoal-900 p-2">
-                          <Card className="h-full overflow-hidden p-0">
+                          <Card className="h-full overflow-hidden px-0 pb-0">
+                            <Card.Header>
+                              <div className="flex items-center gap-1.5">
+                                <TableCellsIcon className="size-5 text-indigo-500" />
+                                {isTitleLoading ? (
+                                  <span className="flex items-center gap-2 text-text-dimmed">
+                                    <Spinner className="size-3" /> Generating title...
+                                  </span>
+                                ) : (
+                                  queryTitle ?? "Results"
+                                )}
+                              </div>
+                            </Card.Header>
                             <Card.Content className="min-h-0 flex-1 overflow-hidden p-0">
                               <TSQLResultsTable
                                 rows={results.rows}
@@ -728,6 +811,8 @@ export default function Page() {
                         columns={results.columns}
                         chartConfig={chartConfig}
                         onChartConfigChange={handleChartConfigChange}
+                        queryTitle={queryTitle}
+                        isTitleLoading={isTitleLoading}
                       />
                     ) : (
                       <Paragraph variant="small" className="p-4 text-text-dimmed">
@@ -853,13 +938,25 @@ function ResultsChart({
   columns,
   chartConfig,
   onChartConfigChange,
+  queryTitle,
+  isTitleLoading,
 }: {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
   chartConfig: ChartConfiguration;
   onChartConfigChange: (config: ChartConfiguration) => void;
+  queryTitle: string | null;
+  isTitleLoading: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+
+  const titleContent = isTitleLoading ? (
+    <span className="flex items-center gap-2 text-text-dimmed">
+      <Spinner className="size-3" /> Generating title...
+    </span>
+  ) : (
+    queryTitle ?? "Chart"
+  );
 
   return (
     <><ResizablePanelGroup className="h-full overflow-hidden">
@@ -869,7 +966,7 @@ function ResultsChart({
             <Card.Header>
               <div className="flex items-center gap-1.5">
                 <ArrowTrendingUpIcon className="size-5 text-indigo-500" />
-                Chart
+                {titleContent}
               </div>
               <Card.Accessory>
                 <Button variant="minimal/small" LeadingIcon={ArrowsPointingOutIcon} onClick={() => setIsOpen(true)} />
@@ -890,7 +987,7 @@ function ResultsChart({
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent fullscreen>
           <DialogHeader>
-            Chart
+            {queryTitle ?? "Chart"}
           </DialogHeader>
           <div className="h-full min-h-0 flex-1 overflow-hidden w-full pt-4">
             <QueryResultsChart rows={rows} columns={columns} config={chartConfig} fullLegend={true} />

@@ -196,16 +196,11 @@ export async function executeQuery<TOut extends z.ZodSchema>(
         lastQuery.filterTo?.getTime() === (timeFilter?.to?.getTime() ?? undefined);
 
       if (!isDuplicate) {
-        const stats = result[1].stats;
-        const byteSeconds = parseFloat(stats.byte_seconds) || 0;
-        const costInCents = byteSeconds * env.CENTS_PER_QUERY_BYTE_SECOND;
-
         await prisma.customerQuery.create({
           data: {
             query: options.query,
             scope: scopeToEnum[scope],
-            stats: { ...stats },
-            costInCents,
+            stats: { ...result[1].stats },
             source: history.source,
             organizationId,
             projectId: scope === "project" || scope === "environment" ? projectId : null,
