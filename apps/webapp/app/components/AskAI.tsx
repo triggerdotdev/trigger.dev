@@ -118,8 +118,8 @@ function AskAIProvider({ websiteId, isCollapsed = false }: AskAIProviderProps) {
       <motion.div layout="position" transition={{ duration: 0.2, ease: "easeInOut" }}>
         <TooltipProvider disableHoverableContent>
           <Tooltip>
-            <TooltipTrigger asChild>
-              <div className={isCollapsed ? "w-full" : "inline-flex"}>
+            <div className={isCollapsed ? "w-full" : "inline-flex"}>
+              <TooltipTrigger asChild>
                 <Button
                   variant="small-menu-item"
                   data-action="ask-ai"
@@ -131,8 +131,8 @@ function AskAIProvider({ websiteId, isCollapsed = false }: AskAIProviderProps) {
                 >
                   <AISparkleIcon className="size-5" />
                 </Button>
-              </div>
-            </TooltipTrigger>
+              </TooltipTrigger>
+            </div>
             <TooltipContent
               side={isCollapsed ? "right" : "top"}
               sideOffset={isCollapsed ? 8 : 4}
