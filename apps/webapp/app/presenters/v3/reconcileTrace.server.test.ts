@@ -90,6 +90,16 @@ describe("reconcileTraceWithRunLifecycle", () => {
         expect(rootEvent?.data.isPartial).toBe(false);
     });
 
+    it("should reconcile expired runs correctly", () => {
+        const expiredRun = { ...runData, status: "EXPIRED" };
+        const result = reconcileTraceWithRunLifecycle(expiredRun, rootSpanId, initialEvents as any, millisecondsToNanoseconds(1000));
+
+        expect(result.rootSpanStatus).toBe("failed");
+        const rootEvent = result.events.find((e: any) => e.id === rootSpanId);
+        expect(rootEvent?.data.isError).toBe(true);
+        expect(rootEvent?.data.isPartial).toBe(false);
+    });
+
     it("should use rootTaskRun createdAt if available for duration calculation", () => {
         const rootTaskCreatedAt = new Date("2023-12-31T23:59:50Z"); // 10s before run.createdAt
         const runDataWithRoot: any = {

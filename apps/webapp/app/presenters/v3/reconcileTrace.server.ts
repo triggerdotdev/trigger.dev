@@ -61,6 +61,8 @@ export function reconcileTraceWithRunLifecycle(
 
     const updatedTotalDuration = Math.max(totalDuration, postgresRunDuration);
 
+    const isError = isFailedRunStatus(runData.status) || runData.status === "EXPIRED";
+
     // We only need to potentially update the root event (the first one) if it matches our ID
     if (isActualRoot && rootEvent && rootEvent.data.isPartial) {
         const updatedEvents = [...events];
@@ -70,20 +72,20 @@ export function reconcileTraceWithRunLifecycle(
                 ...rootEvent.data,
                 isPartial: false,
                 duration: Math.max(rootEvent.data.duration ?? 0, postgresRunDuration),
-                isError: isFailedRunStatus(runData.status),
+                isError,
             },
         };
 
         return {
             events: updatedEvents,
             totalDuration: updatedTotalDuration,
-            rootSpanStatus: isFailedRunStatus(runData.status) ? "failed" : "completed",
+            rootSpanStatus: isError ? "failed" : "completed",
         };
     }
 
     return {
         events,
         totalDuration: updatedTotalDuration,
-        rootSpanStatus: isFailedRunStatus(runData.status) ? "failed" : "completed",
+        rootSpanStatus: isError ? "failed" : "completed",
     };
 }
