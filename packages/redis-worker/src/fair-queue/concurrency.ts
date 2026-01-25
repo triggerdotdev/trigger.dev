@@ -107,6 +107,30 @@ export class ConcurrencyManager {
   }
 
   /**
+   * Release concurrency slots for multiple messages in a single pipeline.
+   * More efficient than calling release() multiple times.
+   */
+  async releaseBatch(
+    messages: Array<{ queue: QueueDescriptor; messageId: string }>
+  ): Promise<void> {
+    if (messages.length === 0) {
+      return;
+    }
+
+    const pipeline = this.redis.pipeline();
+
+    for (const { queue, messageId } of messages) {
+      for (const group of this.groups) {
+        const groupId = group.extractGroupId(queue);
+        const key = this.keys.concurrencyKey(group.name, groupId);
+        pipeline.srem(key, messageId);
+      }
+    }
+
+    await pipeline.exec();
+  }
+
+  /**
    * Get current concurrency for a specific group.
    */
   async getCurrentConcurrency(groupName: string, groupId: string): Promise<number> {

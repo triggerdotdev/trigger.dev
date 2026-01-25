@@ -1343,13 +1343,36 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     let totalReclaimed = 0;
 
     for (let shardId = 0; shardId < this.shardCount; shardId++) {
-      const reclaimed = await this.visibilityManager.reclaimTimedOut(shardId, (queueId) => ({
+      const reclaimedMessages = await this.visibilityManager.reclaimTimedOut(shardId, (queueId) => ({
         queueKey: this.keys.queueKey(queueId),
         queueItemsKey: this.keys.queueItemsKey(queueId),
         masterQueueKey: this.keys.masterQueueKey(this.masterQueue.getShardForQueue(queueId)),
       }));
 
-      totalReclaimed += reclaimed;
+      // Release concurrency for all reclaimed messages in a single batch
+      // This is critical: when a message times out, its concurrency slot must be freed
+      // so the message can be processed again when it's re-claimed from the queue
+      if (this.concurrencyManager && reclaimedMessages.length > 0) {
+        try {
+          await this.concurrencyManager.releaseBatch(
+            reclaimedMessages.map((msg) => ({
+              queue: {
+                id: msg.queueId,
+                tenantId: msg.tenantId,
+                metadata: msg.metadata ?? {},
+              },
+              messageId: msg.messageId,
+            }))
+          );
+        } catch (error) {
+          this.logger.error("Failed to release concurrency for reclaimed messages", {
+            count: reclaimedMessages.length,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      totalReclaimed += reclaimedMessages.length;
     }
 
     if (totalReclaimed > 0) {

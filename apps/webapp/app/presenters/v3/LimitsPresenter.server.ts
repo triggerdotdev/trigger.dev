@@ -83,10 +83,12 @@ export class LimitsPresenter extends BasePresenter {
   public async call({
     organizationId,
     projectId,
+    environmentId,
     environmentApiKey,
   }: {
     organizationId: string;
     projectId: string;
+    environmentId: string;
     environmentApiKey: string;
   }): Promise<LimitsResult> {
     // Get organization with all limit-related fields
@@ -159,9 +161,9 @@ export class LimitsPresenter extends BasePresenter {
       environmentApiKey,
       apiRateLimitConfig
     );
-    const batchRateLimitTokens = await getRateLimitRemainingTokens(
-      "batch",
-      environmentApiKey,
+    // Batch rate limiter uses environment ID directly (not hashed) with a different key prefix
+    const batchRateLimitTokens = await getBatchRateLimitRemainingTokens(
+      environmentId,
       batchRateLimitConfig
     );
 
@@ -414,6 +416,39 @@ async function getRateLimitRemainingTokens(
   } catch (error) {
     logger.warn("Failed to get rate limit remaining tokens", {
       keyPrefix,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+/**
+ * Query the current remaining tokens for the batch rate limiter.
+ * The batch rate limiter uses environment ID directly (not hashed) and has a different key prefix.
+ */
+async function getBatchRateLimitRemainingTokens(
+  environmentId: string,
+  config: RateLimiterConfig
+): Promise<number | null> {
+  try {
+    // Create a Ratelimit instance with the same configuration as the batch rate limiter
+    const limiter = createLimiterFromConfig(config);
+    const ratelimit = new Ratelimit({
+      redis: rateLimitRedisClient,
+      limiter,
+      ephemeralCache: new Map(),
+      analytics: false,
+      // The batch rate limiter uses "ratelimit:batch" as keyPrefix in RateLimiter,
+      // which adds another "ratelimit:" prefix, resulting in "ratelimit:ratelimit:batch"
+      prefix: `ratelimit:ratelimit:batch`,
+    });
+
+    // Batch rate limiter uses environment ID directly (not hashed)
+    const remaining = await ratelimit.getRemaining(environmentId);
+    return remaining;
+  } catch (error) {
+    logger.warn("Failed to get batch rate limit remaining tokens", {
+      environmentId,
       error: error instanceof Error ? error.message : String(error),
     });
     return null;

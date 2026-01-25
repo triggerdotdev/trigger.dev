@@ -199,6 +199,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       idempotencyKeyTTLSeconds: submission.value.idempotencyKeyTTLSeconds,
       ttlSeconds: submission.value.ttlSeconds,
       version: submission.value.version,
+      prioritySeconds: submission.value.prioritySeconds,
     });
 
     if (!newRun) {
