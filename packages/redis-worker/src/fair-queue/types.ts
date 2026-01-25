@@ -134,6 +134,25 @@ export interface ConcurrencyCheckResult {
 }
 
 // ============================================================================
+// Visibility Types
+// ============================================================================
+
+/**
+ * Information about a reclaimed message from visibility timeout.
+ * Used to release concurrency after a message is returned to the queue.
+ */
+export interface ReclaimedMessageInfo {
+  /** Message ID */
+  messageId: string;
+  /** Queue ID */
+  queueId: string;
+  /** Tenant ID for concurrency release */
+  tenantId: string;
+  /** Additional metadata for concurrency group extraction */
+  metadata?: Record<string, unknown>;
+}
+
+// ============================================================================
 // Scheduler Types
 // ============================================================================
 
