@@ -183,14 +183,30 @@ export function SideMenu({
     [user.isImpersonating, preferencesFetcher]
   );
 
-  // Cleanup timeout on unmount
+  // Flush pending preferences on unmount to avoid losing the last toggle
   useEffect(() => {
     return () => {
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
+      if (user.isImpersonating) return;
+      const pending = pendingPreferencesRef.current;
+      if (pending.isCollapsed !== undefined || pending.manageSectionCollapsed !== undefined) {
+        const formData = new FormData();
+        if (pending.isCollapsed !== undefined) {
+          formData.append("isCollapsed", String(pending.isCollapsed));
+        }
+        if (pending.manageSectionCollapsed !== undefined) {
+          formData.append("manageSectionCollapsed", String(pending.manageSectionCollapsed));
+        }
+        preferencesFetcher.submit(formData, {
+          method: "POST",
+          action: "/resources/preferences/sidemenu",
+        });
+        pendingPreferencesRef.current = {};
+      }
     };
-  }, []);
+  }, [preferencesFetcher, user.isImpersonating]);
 
   const handleToggleCollapsed = () => {
     const newIsCollapsed = !isCollapsed;
