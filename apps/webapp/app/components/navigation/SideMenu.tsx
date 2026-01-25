@@ -611,7 +611,7 @@ function ProjectSelector({
             </span>
           </PopoverTrigger>
         }
-        content={`${organization.title} / ${project.name}`}
+        content={`${organization.title} / ${project.name ?? "Select a project"}`}
         side="right"
         sideOffset={8}
         hidden={!isCollapsed}
@@ -998,6 +998,8 @@ function CollapseToggle({
         <Tooltip>
           <TooltipTrigger asChild>
             <button
+              type="button"
+              aria-label={isCollapsed ? "Expand side menu" : "Collapse side menu"}
               onClick={onToggle}
               onMouseEnter={() => setIsHovering(true)}
               onMouseLeave={() => setIsHovering(false)}
