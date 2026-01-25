@@ -1,9 +1,8 @@
 import * as Ariakit from "@ariakit/react";
-import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
-import { type ReactNode, useMemo } from "react";
+import { IconListTree } from "@tabler/icons-react";
+import { type ReactNode } from "react";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import {
-  ComboBox,
   SelectItem,
   SelectList,
   SelectPopover,
@@ -12,7 +11,7 @@ import {
   shortcutFromIndex,
 } from "~/components/primitives/Select";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { FilterMenuProvider, appliedSummary } from "~/components/runs/v3/SharedFilters";
+import { appliedSummary } from "~/components/runs/v3/SharedFilters";
 import type { LogLevel } from "~/presenters/v3/LogsListPresenter.server";
 import { cn } from "~/utils/cn";
 
@@ -63,71 +62,43 @@ export function LogsLevelFilter({ showDebug = false }: { showDebug?: boolean }) 
   }
 
   return (
-    <FilterMenuProvider>
-      {(search, setSearch) => (
-        <LevelDropdown
-          trigger={
-            <SelectTrigger
-              icon={<ExclamationTriangleIcon className="size-4" />}
-              variant="secondary/small"
-              shortcut={shortcut}
-              tooltipTitle="Filter by level"
-            >
-              Level
-            </SelectTrigger>
-          }
-          searchValue={search}
-          clearSearchValue={() => setSearch("")}
-          showDebug={showDebug}
-        />
-      )}
-    </FilterMenuProvider>
+    <LevelDropdown
+      trigger={
+        <SelectTrigger
+          icon={<IconListTree className="size-4" />}
+          variant="secondary/small"
+          shortcut={shortcut}
+          tooltipTitle="Filter by level"
+        >
+          Level
+        </SelectTrigger>
+      }
+      showDebug={showDebug}
+    />
   );
 }
 
 function LevelDropdown({
   trigger,
-  clearSearchValue,
-  searchValue,
-  onClose,
   showDebug = false,
 }: {
   trigger: ReactNode;
-  clearSearchValue: () => void;
-  searchValue: string;
-  onClose?: () => void;
   showDebug?: boolean;
 }) {
   const { values, replace } = useSearchParams();
 
   const handleChange = (values: string[]) => {
-    clearSearchValue();
     replace({ levels: values, cursor: undefined, direction: undefined });
   };
 
   const availableLevels = getAvailableLevels(showDebug);
-  const filtered = useMemo(() => {
-    return availableLevels.filter((item) =>
-      item.label.toLowerCase().includes(searchValue.toLowerCase())
-    );
-  }, [searchValue, availableLevels]);
 
   return (
     <SelectProvider value={values("levels")} setValue={handleChange} virtualFocus={true}>
       {trigger}
-      <SelectPopover
-        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
-        hideOnEscape={() => {
-          if (onClose) {
-            onClose();
-            return false;
-          }
-          return true;
-        }}
-      >
-        <ComboBox placeholder="Filter by level..." value={searchValue} />
+      <SelectPopover className="min-w-0 max-w-[min(240px,var(--popover-available-width))]">
         <SelectList>
-          {filtered.map((item, index) => (
+          {availableLevels.map((item, index) => (
             <SelectItem
               key={item.level}
               value={item.level}
@@ -158,25 +129,19 @@ function AppliedLevelFilter({ showDebug = false }: { showDebug?: boolean }) {
   }
 
   return (
-    <FilterMenuProvider>
-      {(search, setSearch) => (
-        <LevelDropdown
-          trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter
-                label="Level"
-                icon={<ExclamationTriangleIcon className="size-4" />}
-                value={appliedSummary(levels)}
-                onRemove={() => del(["levels", "cursor", "direction"])}
-                variant="secondary/small"
-              />
-            </Ariakit.Select>
-          }
-          searchValue={search}
-          clearSearchValue={() => setSearch("")}
-          showDebug={showDebug}
-        />
-      )}
-    </FilterMenuProvider>
+    <LevelDropdown
+      trigger={
+        <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+          <AppliedFilter
+            label="Level"
+            icon={<IconListTree className="size-4" />}
+            value={appliedSummary(levels)}
+            onRemove={() => del(["levels", "cursor", "direction"])}
+            variant="secondary/small"
+          />
+        </Ariakit.Select>
+      }
+      showDebug={showDebug}
+    />
   );
 }

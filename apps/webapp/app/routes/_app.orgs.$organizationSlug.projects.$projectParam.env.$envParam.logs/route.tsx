@@ -1,4 +1,4 @@
-import { type LoaderFunctionArgs , redirect} from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { type MetaFunction, useFetcher, useNavigation, useLocation } from "@remix-run/react";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
@@ -39,6 +39,8 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { Switch } from "~/components/primitives/Switch";
+import { Button } from "~/components/primitives/Buttons";
+import { ArrowPathIcon } from "@heroicons/react/20/solid";
 import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags.server";
 
 // Valid log levels for filtering
@@ -97,7 +99,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = user.id;
   const isAdmin = user.admin || user.isImpersonating;
 
-
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
   const canAccess = await hasLogsPageAccess(
@@ -131,20 +132,22 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const presenter = new LogsListPresenter($replica, clickhouseClient);
 
-  const listPromise = presenter.call(project.organizationId, environment.id, {
-    userId,
-    projectId: project.id,
-    ...filters,
-    search,
-    levels,
-    includeDebugLogs: isAdmin && showDebug,
-    defaultPeriod: "1h",
-  }).catch((error) => {
-    if (error instanceof ServiceValidationError) {
-      return { error: "Failed to load logs. Please refresh and try again." };
-    }
-    throw error;
-  });
+  const listPromise = presenter
+    .call(project.organizationId, environment.id, {
+      userId,
+      projectId: project.id,
+      ...filters,
+      search,
+      levels,
+      includeDebugLogs: isAdmin && showDebug,
+      defaultPeriod: "1h",
+    })
+    .catch((error) => {
+      if (error instanceof ServiceValidationError) {
+        return { error: "Failed to load logs. Please refresh and try again." };
+      }
+      throw error;
+    });
 
   const session = await setRootOnlyFilterPreference(filters.rootOnly, request);
   const cookieValue = await uiPreferencesStorage.commitSession(session);
@@ -167,7 +170,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { data, rootOnlyDefault, isAdmin, showDebug, defaultPeriod } = useTypedLoaderData<typeof loader>();
+  const { data, rootOnlyDefault, isAdmin, showDebug, defaultPeriod } =
+    useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
@@ -183,7 +187,7 @@ export default function Page() {
               <div className="my-2 flex items-center justify-center">
                 <div className="mx-auto flex items-center gap-2">
                   <Spinner />
-                  <Paragraph variant="small">Loading logs</Paragraph>
+                  <Paragraph variant="small">Loading logs…</Paragraph>
                 </div>
               </div>
             </div>
@@ -192,10 +196,18 @@ export default function Page() {
           <TypedAwait
             resolve={data}
             errorElement={
-              <div className="flex items-center justify-center px-3 py-12">
-                <Callout variant="error" className="max-w-fit">
-                  Unable to load your logs. Please refresh the page or try again in a moment.
-                </Callout>
+              <div className="grid h-full max-h-full grid-rows-[2.5rem_auto_1fr] overflow-hidden">
+                <FiltersBar
+                  rootOnlyDefault={rootOnlyDefault}
+                  isAdmin={isAdmin}
+                  showDebug={showDebug}
+                  defaultPeriod={defaultPeriod}
+                />
+                <div className="flex items-center justify-center px-3 py-12">
+                  <Callout variant="error" className="max-w-fit">
+                    Unable to load your logs. Please refresh the page or try again in a moment.
+                  </Callout>
+                </div>
               </div>
             }
           >
@@ -203,27 +215,111 @@ export default function Page() {
               // Check if result contains an error
               if ("error" in result) {
                 return (
-                  <div className="flex items-center justify-center px-3 py-12">
-                    <Callout variant="error" className="max-w-fit">
-                      {result.error}
-                    </Callout>
+                  <div className="grid h-full max-h-full grid-rows-[2.5rem_auto_1fr] overflow-hidden">
+                    <FiltersBar
+                      list={result}
+                      rootOnlyDefault={rootOnlyDefault}
+                      isAdmin={isAdmin}
+                      showDebug={showDebug}
+                      defaultPeriod={defaultPeriod}
+                    />
+                    <div className="flex items-center justify-center px-3 py-12">
+                      <Callout variant="error" className="max-w-fit">
+                        {result.error}
+                      </Callout>
+                    </div>
                   </div>
                 );
               }
               return (
-                <LogsList
-                  list={result}
-                  rootOnlyDefault={rootOnlyDefault}
-                  isAdmin={isAdmin}
-                  showDebug={showDebug}
-                  defaultPeriod={defaultPeriod}
-                />
+                <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden">
+                  <FiltersBar
+                    list={result}
+                    rootOnlyDefault={rootOnlyDefault}
+                    isAdmin={isAdmin}
+                    showDebug={showDebug}
+                    defaultPeriod={defaultPeriod}
+                  />
+                  <LogsList
+                    list={result}
+                    rootOnlyDefault={rootOnlyDefault}
+                    isAdmin={isAdmin}
+                    showDebug={showDebug}
+                    defaultPeriod={defaultPeriod}
+                  />
+                </div>
               );
             }}
           </TypedAwait>
         </Suspense>
       </PageBody>
     </PageContainer>
+  );
+}
+
+function FiltersBar({
+  list,
+  rootOnlyDefault,
+  isAdmin,
+  showDebug,
+  defaultPeriod,
+}: {
+  list?: Exclude<Awaited<UseDataFunctionReturn<typeof loader>["data"]>, { error: string }>;
+  rootOnlyDefault: boolean;
+  isAdmin: boolean;
+  showDebug: boolean;
+  defaultPeriod?: string;
+}) {
+  const handleDebugToggle = useCallback((checked: boolean) => {
+    const url = new URL(window.location.href);
+    if (checked) {
+      url.searchParams.set("showDebug", "true");
+    } else {
+      url.searchParams.delete("showDebug");
+    }
+    window.location.href = url.toString();
+  }, []);
+
+  return (
+    <div className="flex items-start justify-between gap-x-2 border-b border-grid-bright p-2">
+      <div className="flex flex-row flex-wrap items-center gap-1">
+        {list ? (
+          <>
+            <RunsFilters
+              possibleTasks={list.possibleTasks}
+              bulkActions={list.bulkActions}
+              hasFilters={list.hasFilters}
+              rootOnlyDefault={rootOnlyDefault}
+              hideSearch
+              defaultPeriod={defaultPeriod}
+            />
+            <LogsLevelFilter showDebug={showDebug} />
+            <LogsSearchInput />
+          </>
+        ) : (
+          <>
+            <RunsFilters
+              possibleTasks={[]}
+              bulkActions={[]}
+              hasFilters={false}
+              rootOnlyDefault={rootOnlyDefault}
+              hideSearch
+              defaultPeriod={defaultPeriod}
+            />
+            <LogsLevelFilter showDebug={showDebug} />
+            <LogsSearchInput />
+          </>
+        )}
+      </div>
+      {isAdmin && (
+        <Switch
+          variant="small"
+          label="Debug"
+          checked={showDebug}
+          onCheckedChange={handleDebugToggle}
+        />
+      )}
+    </div>
   );
 }
 
@@ -253,25 +349,24 @@ function LogsList({
   // Selected log state - managed locally to avoid triggering navigation
   const [selectedLogId, setSelectedLogId] = useState<string | undefined>();
 
-  const handleDebugToggle = useCallback(
-    (checked: boolean) => {
-      const url = new URL(window.location.href);
-      if (checked) {
-        url.searchParams.set("showDebug", "true");
-      } else {
-        url.searchParams.delete("showDebug");
-      }
-      window.location.href = url.toString();
-    },
-    []
-  );
-
-
-  // Reset accumulated logs when the initial list changes (e.g., filters change)
+  // Reset accumulated logs when filters change (by watching URL search params)
   useEffect(() => {
     setAccumulatedLogs(list.logs);
     setNextCursor(list.pagination.next);
-  }, [list.logs, list.pagination.next]);
+    // Close side panel when filters change to avoid showing a log that's no longer visible
+    setSelectedLogId(undefined);
+  }, [location.search]);
+
+  // Clear log parameter from URL when selectedLogId is cleared
+  useEffect(() => {
+    if (!selectedLogId) {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("log")) {
+        url.searchParams.delete("log");
+        window.history.replaceState(null, "", url.toString());
+      }
+    }
+  }, [selectedLogId]);
 
   // Append new logs when fetcher completes (with deduplication)
   useEffect(() => {
@@ -306,18 +401,15 @@ function LogsList({
     return accumulatedLogs.find((log) => log.id === selectedLogId);
   }, [selectedLogId, accumulatedLogs]);
 
-  const updateUrlWithLog = useCallback(
-    (logId: string | undefined) => {
-      const url = new URL(window.location.href);
-      if (logId) {
-        url.searchParams.set("log", logId);
-      } else {
-        url.searchParams.delete("log");
-      }
-      window.history.replaceState(null, "", url.toString());
-    },
-    []
-  );
+  const updateUrlWithLog = useCallback((logId: string | undefined) => {
+    const url = new URL(window.location.href);
+    if (logId) {
+      url.searchParams.set("log", logId);
+    } else {
+      url.searchParams.delete("log");
+    }
+    window.history.replaceState(null, "", url.toString());
+  }, []);
 
   const handleLogSelect = useCallback(
     (logId: string) => {
@@ -339,43 +431,16 @@ function LogsList({
   return (
     <ResizablePanelGroup orientation="horizontal" className="max-h-full">
       <ResizablePanel id="logs-main" min="200px">
-        <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
-          {/* Filters */}
-          <div className="flex items-start justify-between gap-x-2 p-2">
-            <div className="flex flex-row flex-wrap items-center gap-1">
-              <RunsFilters
-                possibleTasks={list.possibleTasks}
-                bulkActions={list.bulkActions}
-                hasFilters={list.hasFilters}
-                rootOnlyDefault={rootOnlyDefault}
-                hideSearch
-                defaultPeriod={defaultPeriod}
-              />
-              <LogsLevelFilter showDebug={showDebug} />
-              <LogsSearchInput />
-            </div>
-            {isAdmin && (
-              <Switch
-                variant="small"
-                label="Debug"
-                checked={showDebug}
-                onCheckedChange={handleDebugToggle}
-              />
-            )}
-          </div>
-
-          {/* Table */}
-          <LogsTable
-            logs={accumulatedLogs}
-            searchTerm={list.searchTerm}
-            isLoading={isLoading}
-            isLoadingMore={fetcher.state === "loading"}
-            hasMore={!!nextCursor}
-            onLoadMore={handleLoadMore}
-            selectedLogId={selectedLogId}
-            onLogSelect={handleLogSelect}
-          />
-        </div>
+        <LogsTable
+          logs={accumulatedLogs}
+          searchTerm={list.searchTerm}
+          isLoading={isLoading}
+          isLoadingMore={fetcher.state === "loading"}
+          hasMore={!!nextCursor}
+          onLoadMore={handleLoadMore}
+          selectedLogId={selectedLogId}
+          onLogSelect={handleLogSelect}
+        />
       </ResizablePanel>
 
       {/* Side panel for log details */}
@@ -383,7 +448,13 @@ function LogsList({
         <>
           <ResizableHandle id="logs-handle" />
           <ResizablePanel id="log-detail" min="300px" default="430px" max="600px" isStaticAtRest>
-            <Suspense fallback={<div className="flex h-full items-center justify-center"><Spinner /></div>}>
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center">
+                  <Spinner />
+                </div>
+              }
+            >
               <LogDetailView
                 logId={selectedLogId}
                 initialLog={selectedLog}

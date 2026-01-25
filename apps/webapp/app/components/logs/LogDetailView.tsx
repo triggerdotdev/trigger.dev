@@ -21,7 +21,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
-import { getLevelColor, getKindColor, getKindLabel } from "~/utils/logUtils";
+import { getLevelColor } from "~/utils/logUtils";
 import { v3RunSpanPath, v3RunsPath, v3DeploymentVersionPath } from "~/utils/pathBuilder";
 import type { loader as logDetailLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.logs.$logId";
 import { TaskRunStatusCombo, descriptionForTaskRunStatus } from "~/components/runs/v3/TaskRunStatus";
@@ -140,25 +140,15 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-grid-dimmed px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium",
-              getKindColor(log.kind)
-            )}
-          >
-            {getKindLabel(log.kind)}
-          </span>
-          <span
-            className={cn(
-              "inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium uppercase",
-              getLevelColor(log.level)
-            )}
-          >
-            {log.level}
-          </span>
-        </div>
+      <div className="flex items-center justify-between border-b border-grid-dimmed px-2 py-2">
+        <span
+          className={cn(
+            "inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium uppercase tracking-wider",
+            getLevelColor(log.level)
+          )}
+        >
+          {log.level}
+        </span>
         <Button variant="minimal/small" onClick={onClose} shortcut={{ key: "esc" }}>
           <XMarkIcon className="size-5" />
         </Button>
@@ -185,8 +175,8 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
           </TabButton>
         </TabContainer>
         <Link to={runPath} target="_blank" rel="noopener noreferrer">
-          <Button variant="secondary/small" LeadingIcon={ArrowTopRightOnSquareIcon}>
-            View Full Run
+          <Button variant="minimal/small" LeadingIcon={ArrowTopRightOnSquareIcon}>
+            View full run
           </Button>
         </Link>
       </div>

@@ -117,39 +117,3 @@ export function getLevelColor(level: LogLevel): string {
       return "text-text-dimmed bg-charcoal-750 border-charcoal-700";
   }
 }
-
-// Event kind badge color styles
-export function getKindColor(kind: string): string {
-  if (kind === "SPAN") {
-    return "text-purple-400 bg-purple-500/10 border-purple-500/20";
-  }
-  if (kind === "SPAN_EVENT") {
-    return "text-amber-400 bg-amber-500/10 border-amber-500/20";
-  }
-  if (kind.startsWith("LOG_")) {
-    return "text-blue-400 bg-blue-500/10 border-blue-500/20";
-  }
-  return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
-}
-
-// Get human readable kind label
-export function getKindLabel(kind: string): string {
-  switch (kind) {
-    case "SPAN":
-      return "Span";
-    case "SPAN_EVENT":
-      return "Event";
-    case "LOG_DEBUG":
-    case "LOG_INFO":
-    case "LOG_WARN":
-    case "LOG_ERROR":
-    case "LOG_LOG":
-      return "Log";
-    case "DEBUG_EVENT":
-      return "Debug";
-    case "ANCESTOR_OVERRIDE":
-      return "Override";
-    default:
-      return kind;
-  }
-}

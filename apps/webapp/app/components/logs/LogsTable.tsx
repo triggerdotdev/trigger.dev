@@ -12,6 +12,7 @@ import { DateTime } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Spinner } from "../primitives/Spinner";
 import { TruncatedCopyableValue } from "../primitives/TruncatedCopyableValue";
+import { LogLevelTooltipInfo } from "~/components/LogLevelTooltipInfo";
 import {
   Table,
   TableBlankRow,
@@ -24,6 +25,7 @@ import {
   type TableVariant,
 } from "../primitives/Table";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
+import { Link } from "@remix-run/react";
 
 type LogsTableProps = {
   logs: LogEntry[];
@@ -37,23 +39,24 @@ type LogsTableProps = {
   onLogSelect?: (logId: string) => void;
 };
 
-// Left border color for error highlighting
-function getLevelBorderColor(level: LogEntry["level"]): string {
+// Inner shadow for level highlighting (better scroll performance than border-l)
+function getLevelBoxShadow(level: LogEntry["level"]): string {
   switch (level) {
     case "ERROR":
-      return "border-l-error";
+      return "inset 2px 0 0 0 rgb(239, 68, 68)";
     case "WARN":
-      return "border-l-warning";
+      return "inset 2px 0 0 0 rgb(234, 179, 8)";
     case "INFO":
-      return "border-l-blue-500";
+      return "inset 2px 0 0 0 rgb(59, 130, 246)";
     case "CANCELLED":
-      return "border-l-charcoal-600";
+      return "inset 2px 0 0 0 rgb(65, 65, 75)";
     case "DEBUG":
     case "TRACE":
     default:
-      return "border-l-transparent hover:border-l-charcoal-800";
+      return "none";
   }
 }
+
 
 
 export function LogsTable({
@@ -112,14 +115,19 @@ export function LogsTable({
   }, [hasMore, isLoadingMore, onLoadMore]);
 
   return (
-    <div className="relative h-full overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-      <Table variant="compact/mono" containerClassName="overflow-visible">
+    <div className="relative h-full overflow-auto border-t scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <Table variant="compact/mono" containerClassName="overflow-visible" showTopBorder={false}>
         <TableHeader className="sticky top-0 z-10">
           <TableRow>
             <TableHeaderCell className="min-w-48 whitespace-nowrap">Time</TableHeaderCell>
             <TableHeaderCell className="min-w-24 whitespace-nowrap">Run</TableHeaderCell>
             <TableHeaderCell className="min-w-32 whitespace-nowrap">Task</TableHeaderCell>
-            <TableHeaderCell className="min-w-24 whitespace-nowrap">Level</TableHeaderCell>
+            <TableHeaderCell
+              className="min-w-24 whitespace-nowrap"
+              tooltip={<LogLevelTooltipInfo />}
+            >
+              Level
+            </TableHeaderCell>
             <TableHeaderCell className="w-full min-w-0">Message</TableHeaderCell>
           </TableRow>
         </TableHeader>
@@ -143,8 +151,7 @@ export function LogsTable({
                 <TableRow
                   key={log.id}
                   className={cn(
-                    "cursor-pointer border-l-2 transition-colors",
-                    getLevelBorderColor(log.level),
+                    "cursor-pointer transition-colors",
                     isSelected ? "bg-charcoal-750" : "hover:bg-charcoal-850"
                   )}
                   isSelected={isSelected}
@@ -153,6 +160,9 @@ export function LogsTable({
                     className="whitespace-nowrap tabular-nums"
                     onClick={handleRowClick}
                     hasAction
+                    style={{
+                      boxShadow: getLevelBoxShadow(log.level),
+                    }}
                   >
                     <DateTime date={log.startTime} />
                   </TableCell>
@@ -180,12 +190,11 @@ export function LogsTable({
                   <TableCellMenu
                     className="pl-32"
                     hiddenButtons={
-                      <PopoverMenuItem
-                        openInNewTab={true}
-                        to={runPath}
-                        icon={ArrowTopRightOnSquareIcon}
-                        title="View Run"
-                      />
+                      <Link to={runPath} target="_blank" rel="noopener noreferrer">
+                        <Button variant="minimal/small" TrailingIcon={ArrowTopRightOnSquareIcon}>
+                          View run
+                        </Button>
+                      </Link>
                     }
                   />
                 </TableRow>
@@ -196,12 +205,23 @@ export function LogsTable({
       </Table>
       {/* Infinite scroll trigger */}
       {hasMore && logs.length > 0 && (
-        <div ref={loadMoreRef} className="flex items-center justify-center py-4">
-          {showLoadMoreSpinner && (
-            <div className="flex items-center gap-2">
-              <Spinner /> <span className="text-text-dimmed">Loading more…</span>
-            </div>
-          )}
+        <div ref={loadMoreRef} className="flex items-center justify-center py-12">
+          <div
+            className={cn(
+              "flex items-center gap-2",
+              !showLoadMoreSpinner && "invisible"
+            )}
+          >
+            <Spinner /> <span className="text-text-dimmed">Loading more…</span>
+          </div>
+        </div>
+      )}
+      {/* Show all logs message */}
+      {!hasMore && logs.length > 0 && (
+        <div className="flex items-center justify-center py-12">
+          <div className="flex items-center gap-2">
+            <span className="text-text-dimmed">Showing all {logs.length} logs</span>
+          </div>
         </div>
       )}
     </div>
