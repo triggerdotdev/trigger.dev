@@ -46,6 +46,11 @@ export const RunOptionsData = z.object({
       message: "Each tag must be at most 128 characters long",
     }),
   version: z.string().optional(),
+  prioritySeconds: z
+    .number()
+    .min(0)
+    .optional()
+    .transform((val) => (val === 0 ? undefined : val)),
 });
 
 export type RunOptionsData = z.infer<typeof RunOptionsData>;

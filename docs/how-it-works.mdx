@@ -430,7 +430,9 @@ When you run `npx trigger.dev@latest dev`, we run your task code locally on your
 
 ## Staging and production environments
 
-Trigger.dev supports deploying to multiple "deployed" environments, such as staging and production. This allows you to test your tasks in a staging environment before deploying them to production. You can deploy to a new environment by running `npx trigger.dev@latest deploy --env <env>`, where `<env>` is the name of the environment you want to deploy to. Each environment has its own API Key, which you can use to trigger tasks in that environment.
+Trigger.dev supports deploying to `prod` and `staging` environments. This allows you to test your tasks in a staging environment before deploying them to production. You can deploy to a different environment by running `npx trigger.dev@latest deploy --env <env>`, where `<env>` is either `prod` or `staging`. Each environment has its own API Key, which you can use to trigger tasks in that environment.
+
+For additional isolated environments, you can use [preview branches](/deployment/preview-branches), which allow you to create separate environments for each branch of your code.
 
 ## OpenTelemetry
 

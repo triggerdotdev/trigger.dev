@@ -201,6 +201,7 @@ function ReplayForm({
       tags,
       version,
       machine,
+      prioritySeconds,
     },
   ] = useForm({
     id: "replay-task",
@@ -498,6 +499,12 @@ function ReplayForm({
                 <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
                 <Hint>Delays run by a specific duration.</Hint>
                 <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label variant="small">Priority</Label>
+                <DurationPicker name={prioritySeconds.name} id={prioritySeconds.id} />
+                <Hint>Sets the priority of the run. Higher values mean higher priority.</Hint>
+                <FormError id={prioritySeconds.errorId}>{prioritySeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label variant="small">TTL</Label>
