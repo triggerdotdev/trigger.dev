@@ -24,6 +24,8 @@ Versions numbers are incremented each time a new version is created for that dat
 
 When a task run starts it is locked to the latest version of the code (for that environment). Once locked it won't change versions, even if you deploy new versions. This is to ensure that a task run is not affected by changes to the code.
 
+Delayed runs are locked to the version that's active when they begin executing, not when they're enqueued.
+
 ### Child tasks and version locking
 
 Trigger and wait functions version lock child task runs to the parent task run version. This ensures the results from child runs match what the parent task is expecting. If you don't wait then version locking doesn't apply.
