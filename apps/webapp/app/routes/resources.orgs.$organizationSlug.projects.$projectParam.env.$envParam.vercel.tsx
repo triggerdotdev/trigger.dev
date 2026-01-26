@@ -44,6 +44,7 @@ import {
   TooltipTrigger,
   TooltipProvider
 } from "~/components/primitives/Tooltip";
+import { VercelLogo } from "~/components/integrations/VercelLogo";
 import {
   EnvironmentIcon,
   environmentFullTitle,
@@ -483,18 +484,6 @@ export function vercelResourcePath(
   return `/resources/orgs/${organizationSlug}/projects/${projectSlug}/env/${environmentSlug}/vercel`;
 }
 
-function VercelIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 76 65"
-      fill="currentColor"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d="M37.5274 0L75.0548 65H0L37.5274 0Z" />
-    </svg>
-  );
-}
 
 function VercelConnectionPrompt({
   organizationSlug,
@@ -538,7 +527,7 @@ function VercelConnectionPrompt({
                   LeadingIcon={
                     isLoadingProjects
                       ? () => <SpinnerWhite className="size-4" />
-                      : () => <VercelIcon className="size-4 -mx-1" />
+                      : () => <VercelLogo className="size-4 -mx-1" />
                   }
                 >
                   {isLoadingProjects ? "Loading projects..." : "Connect Vercel project"}
@@ -557,7 +546,7 @@ function VercelConnectionPrompt({
                 <LinkButton
                   to={installPath}
                   variant="secondary/medium"
-                  LeadingIcon={() => <VercelIcon className="size-4 -mx-1" />}
+                  LeadingIcon={() => <VercelLogo className="size-4 -mx-1" />}
                 >
                   Install Vercel app
                 </LinkButton>
@@ -708,7 +697,7 @@ function ConnectedVercelProjectForm({
       {/* Connected project info */}
       <div className="mb-4 flex items-center justify-between rounded-sm border bg-grid-dimmed p-2">
         <div className="flex items-center gap-2">
-          <VercelIcon className="size-4" />
+          <VercelLogo className="size-4" />
           <span className="max-w-52 truncate text-sm text-text-bright">
             {connectedProject.vercelProjectName}
           </span>
@@ -1535,7 +1524,7 @@ function VercelOnboardingModal({
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <div className="flex items-center gap-2">
-              <VercelIcon className="size-5" />
+              <VercelLogo className="size-5" />
               <span>Set up Vercel Integration</span>
             </div>
           </DialogHeader>
@@ -1558,7 +1547,7 @@ function VercelOnboardingModal({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <VercelIcon className="size-5" />
+            <VercelLogo className="size-5" />
             <span>Set up Vercel Integration</span>
           </div>
         </DialogHeader>

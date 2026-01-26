@@ -1395,6 +1395,10 @@ export class VercelIntegrationRepository {
                 key: v.key,
                 value: v.value,
               })),
+              lastUpdatedBy: {
+                type: "integration",
+                integration: "vercel",
+              },
             });
 
             if (result.success) {
@@ -1423,6 +1427,10 @@ export class VercelIntegrationRepository {
                 key: v.key,
                 value: v.value,
               })),
+              lastUpdatedBy: {
+                type: "integration",
+                integration: "vercel",
+              },
             });
 
             if (result.success) {

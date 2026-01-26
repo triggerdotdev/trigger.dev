@@ -19,10 +19,12 @@ import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { CopyableText } from "~/components/primitives/CopyableText";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -70,6 +72,7 @@ import {
   EditEnvironmentVariableValue,
   EnvironmentVariable,
 } from "~/v3/environmentVariables/repository";
+import { UserAvatar } from "~/components/UserProfilePhoto";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { shouldSyncEnvVar, isPullEnvVarsEnabledForEnvironment, type TriggerEnvironmentType } from "~/v3/vercel/vercelProjectIntegrationSchema";
 
@@ -160,7 +163,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   switch (submission.value.action) {
     case "edit": {
       const repository = new EnvironmentVariablesRepository(prisma);
-      const result = await repository.editValue(project.id, submission.value);
+      const result = await repository.editValue(project.id, {
+        ...submission.value,
+        lastUpdatedBy: {
+          type: "user",
+          userId,
+        },
+      });
 
       if (!result.success) {
         submission.error.key = [result.error];
@@ -307,17 +316,17 @@ export default function Page() {
           <Table containerClassName={cn(filteredItems.length === 0 && "border-t-0")}>
             <TableHeader>
               <TableRow>
-                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[22%]" : "w-[25%]"}>
+                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[21%]" : "w-[24%]"}>
                   Key
                 </TableHeaderCell>
-                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[45%]" : "w-[55%]"}>
+                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[30%]" : "w-[35%]"}>
                   Value
                 </TableHeaderCell>
-                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[18%]" : "w-[20%]"}>
+                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[12%]" : "w-[15%]"}>
                   Environment
                 </TableHeaderCell>
                 {vercelIntegration?.enabled && (
-                  <TableHeaderCell className="w-[10%]">
+                  <TableHeaderCell className="w-[8%]">
                     <SimpleTooltip
                       button={
                         <span className="flex items-center gap-1">
@@ -329,7 +338,10 @@ export default function Page() {
                     />
                   </TableHeaderCell>
                 )}
-                <TableHeaderCell hiddenLabel className="pl-24">
+                <TableHeaderCell className="w-[3%]">Ver</TableHeaderCell>
+                <TableHeaderCell className="w-[15%]">Updated by</TableHeaderCell>
+                <TableHeaderCell className="w-[14%]">Updated at</TableHeaderCell>
+                <TableHeaderCell hiddenLabel className="w-[1%] min-w-[3rem]">
                   Actions
                 </TableHeaderCell>
               </TableRow>
@@ -407,8 +419,36 @@ export default function Page() {
                           )}
                         </TableCell>
                       )}
+                      <TableCell className={cn(cellClassName, borderedCellClassName)}>
+                        <span className="text-sm text-text-dimmed">{variable.version}</span>
+                      </TableCell>
+                      <TableCell className={cn(cellClassName, borderedCellClassName)}>
+                        {variable.updatedByUser ? (
+                          <div className="flex items-center gap-2">
+                            <UserAvatar
+                              avatarUrl={variable.updatedByUser.avatarUrl}
+                              name={variable.updatedByUser.name}
+                              className="size-5"
+                            />
+                            <span className="text-sm">{variable.updatedByUser.name}</span>
+                          </div>
+                        ) : variable.lastUpdatedBy?.type === "integration" ? (
+                          <div className="flex items-center gap-2">
+                            <VercelLogo className="size-4 text-text-dimmed group-hover/table-row:text-text-bright transition-colors" />
+                            <span className="text-sm text-text-dimmed group-hover/table-row:text-text-bright capitalize transition-colors">
+                              {variable.lastUpdatedBy.integration}
+                            </span>
+                          </div>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className={cn(cellClassName, borderedCellClassName)}>
+                        {variable.updatedAt ? (
+                          <DateTime date={variable.updatedAt} includeSeconds={false} />
+                        ) : null}
+                      </TableCell>
                       <TableCellMenu
                         isSticky
+                        className="w-[1%] min-w-[3rem] [&:has(.group-hover/table-row:block)]:w-auto"
                         hiddenButtons={
                           <>
                             <EditEnvironmentVariablePanel
@@ -424,7 +464,7 @@ export default function Page() {
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={4}>
+                  <TableCell colSpan={vercelIntegration?.enabled ? 8 : 7}>
                     {environmentVariables.length === 0 ? (
                       <div className="flex flex-col items-center justify-center gap-y-4 py-8">
                         <Header2>You haven't set any environment variables yet.</Header2>
