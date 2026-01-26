@@ -122,7 +122,10 @@ export function MiddleTruncate({ text, className }: MiddleTruncateProps) {
   }, [calculateTruncation]);
 
   const content = (
-    <span ref={containerRef} className={cn("block", className)}>
+    <span
+      ref={containerRef}
+      className={cn("block", isTruncated && "min-w-[360px]", className)}
+    >
       {/* Hidden span for measuring text width */}
       <span
         ref={measureRef}
