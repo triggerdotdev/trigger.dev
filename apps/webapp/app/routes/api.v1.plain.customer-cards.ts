@@ -6,6 +6,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { generateImpersonationToken } from "~/services/impersonation.server";
 
 // Schema for the request body from Plain
 const PlainCustomerCardRequestSchema = z.object({
@@ -142,8 +143,10 @@ export async function action({ request }: ActionFunctionArgs) {
     for (const cardKey of cardKeys) {
       switch (cardKey) {
         case "account-details": {
-          // Build the impersonate URL
-          const impersonateUrl = `${env.APP_ORIGIN}/admin?impersonate=${user.id}`;
+          // Generate a signed one-time token for impersonation
+          const impersonationToken = await generateImpersonationToken(user.id);
+          // Build the impersonate URL with token for CSRF protection
+          const impersonateUrl = `${env.APP_ORIGIN}/admin?impersonate=${user.id}&impersonationToken=${encodeURIComponent(impersonationToken)}`;
 
           cards.push({
             key: "account-details",

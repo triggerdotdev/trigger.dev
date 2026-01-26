@@ -22,7 +22,11 @@ import {
 import { useUser } from "~/hooks/useUser";
 import { adminGetUsers, redirectWithImpersonation } from "~/models/admin.server";
 import { requireUser, requireUserId } from "~/services/session.server";
+import {
+  validateAndConsumeImpersonationToken,
+} from "~/services/impersonation.server";
 import { createSearchParams } from "~/utils/searchParams";
+import { logger } from "~/services/logger.server";
 
 export const SearchParams = z.object({
   page: z.coerce.number().optional(),
@@ -48,8 +52,23 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Check if this is an impersonation request via query parameter (e.g., from Plain customer cards)
   const url = new URL(request.url);
   const impersonateUserId = url.searchParams.get("impersonate");
+  const impersonationToken = url.searchParams.get("impersonationToken");
 
   if (impersonateUserId) {
+    // Require both userId and token for GET-based impersonation
+    if (!impersonationToken) {
+      logger.warn("Impersonation request missing token");
+      return redirect("/");
+    }
+
+    // Validate and consume the token (prevents replay attacks)
+    const validatedUserId = await validateAndConsumeImpersonationToken(impersonationToken);
+
+    if (!validatedUserId || validatedUserId !== impersonateUserId) {
+      logger.warn("Invalid or expired impersonation token");
+      return redirect("/");
+    }
+
     return handleImpersonationRequest(request, impersonateUserId);
   }
 
