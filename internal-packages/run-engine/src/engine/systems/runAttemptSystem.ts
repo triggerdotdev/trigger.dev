@@ -1,8 +1,7 @@
 import {
   createCache,
-  createMemoryStore,
+  createLRUMemoryStore,
   DefaultStatefulContext,
-  MemoryStore,
   Namespace,
   RedisCacheStore,
   UnkeyCache,
@@ -130,7 +129,7 @@ export class RunAttemptSystem {
     this.delayedRunSystem = options.delayedRunSystem;
 
     const ctx = new DefaultStatefulContext();
-    const memory = createMemoryStore(5000, 0.001);
+    const memory = createLRUMemoryStore(5000);
     const redisCacheStore = new RedisCacheStore({
       name: "run-attempt-system",
       connection: {

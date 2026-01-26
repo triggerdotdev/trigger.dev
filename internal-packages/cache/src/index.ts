@@ -8,3 +8,8 @@ export {
 export { type Result, Ok, Err } from "@unkey/error";
 export { RedisCacheStore } from "./stores/redis.js";
 export { createMemoryStore, type MemoryStore } from "./stores/memory.js";
+export {
+  LRUMemoryStore,
+  createLRUMemoryStore,
+  type LRUMemoryStoreConfig,
+} from "./stores/lruMemory.js";

@@ -1,4 +1,4 @@
-import { createCache, createMemoryStore, DefaultStatefulContext, Namespace } from "@internal/cache";
+import { createCache, createLRUMemoryStore, DefaultStatefulContext, Namespace } from "@internal/cache";
 import {
   CheckpointInput,
   CompleteRunAttemptResult,
@@ -39,7 +39,7 @@ function createAuthenticatedWorkerInstanceCache() {
     authenticatedWorkerInstance: new Namespace<AuthenticatedWorkerInstance>(
       new DefaultStatefulContext(),
       {
-        stores: [createMemoryStore(1000, 0.001)],
+        stores: [createLRUMemoryStore(1000)],
         fresh: 60_000 * 10, // 10 minutes
         stale: 60_000 * 11, // 11 minutes
       }
