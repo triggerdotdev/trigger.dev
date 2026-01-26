@@ -53,13 +53,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ success: false as const, error: result.error, title: null }, { status: 500 });
   }
 
+  // Strip leading/trailing quotes that AI sometimes adds
+  const title = result.title.replace(/^["']|["']$/g, "");
+
   // If a queryId was provided, update the CustomerQuery record with the title
   if (queryId) {
     await prisma.customerQuery.update({
       where: { id: queryId },
-      data: { title: result.title },
+      data: { title },
     });
   }
 
-  return json({ success: true as const, title: result.title, error: null });
+  return json({ success: true as const, title, error: null });
 }

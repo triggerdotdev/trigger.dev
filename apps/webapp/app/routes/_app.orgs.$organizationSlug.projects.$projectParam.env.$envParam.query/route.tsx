@@ -770,14 +770,16 @@ export default function Page() {
                     ) : results?.rows && results?.columns ? (
                       <div className="flex h-full flex-col overflow-hidden">
                         {results.hiddenColumns && results.hiddenColumns.length > 0 && (
-                          <Callout variant="warning" className="m-2 shrink-0 text-sm">
-                            <code>SELECT *</code> doesn't return all columns because it's slow. The
-                            following columns are not shown:{" "}
-                            <span className="font-mono text-xs">
-                              {results.hiddenColumns.join(", ")}
-                            </span>
-                            . Specify them explicitly to include them.
-                          </Callout>
+                          <div className="p-2">
+                            <Callout variant="warning" className="shrink-0 text-sm">
+                              <code>SELECT *</code> doesn't return all columns because it's slow. The
+                              following columns are not shown:{" "}
+                              <span className="font-mono text-xs">
+                                {results.hiddenColumns.join(", ")}
+                              </span>
+                              . Specify them explicitly to include them.
+                            </Callout>
+                          </div>
                         )}
                         <div className="h-full bg-charcoal-900 p-2">
                           <Card className="h-full overflow-hidden px-0 pb-0">
