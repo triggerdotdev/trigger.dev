@@ -356,6 +356,8 @@ function getInitialCustomDuration(period?: string): { value: string; unit: strin
   return { value: "", unit: "m" };
 }
 
+type SectionType = "duration" | "dateRange";
+
 export function TimeDropdown({
   trigger,
   period,
@@ -366,6 +368,7 @@ export function TimeDropdown({
   applyShortcut,
   onApply,
   onValueChange,
+  maxPeriodDays
 }: {
   trigger: ReactNode;
   period?: string;
@@ -377,6 +380,8 @@ export function TimeDropdown({
   onApply?: (values: TimeFilterApplyValues) => void;
   /** When provided, the component operates in controlled mode and skips URL navigation */
   onValueChange?: (values: TimeFilterApplyValues) => void;
+  /** When set an upgrade message will be shown if you select a period further back than this number of days */
+  maxPeriodDays?: number;
 }) {
   const [open, setOpen] = useState<boolean | undefined>();
   const { replace } = useSearchParams();
@@ -384,7 +389,6 @@ export function TimeDropdown({
   const [toValue, setToValue] = useState(to);
 
   // Section selection state: "duration" or "dateRange"
-  type SectionType = "duration" | "dateRange";
   const initialSection: SectionType = from || to ? "dateRange" : "duration";
   const [activeSection, setActiveSection] = useState<SectionType>(initialSection);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -683,7 +687,7 @@ export function TimeDropdown({
                 />
               </div>
               {/* Quick select date ranges */}
-              <div className="mt-2 grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="mt-2 grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
                 <QuickDateButton
                   label="Yesterday"
                   isActive={selectedQuickDate === "yesterday"}
@@ -708,6 +712,8 @@ export function TimeDropdown({
                     setSelectedQuickDate("today");
                   }}
                 />
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
                 <QuickDateButton
                   label="This week"
                   isActive={selectedQuickDate === "thisWeek"}
@@ -730,18 +736,6 @@ export function TimeDropdown({
                     setActiveSection("dateRange");
                     setValidationError(null);
                     setSelectedQuickDate("lastWeek");
-                  }}
-                />
-                <QuickDateButton
-                  label="Last month"
-                  isActive={selectedQuickDate === "lastMonth"}
-                  onClick={() => {
-                    const lastMonth = subMonths(new Date(), 1);
-                    setFromValue(startOfMonth(lastMonth));
-                    setToValue(endOfMonth(lastMonth));
-                    setActiveSection("dateRange");
-                    setValidationError(null);
-                    setSelectedQuickDate("lastMonth");
                   }}
                 />
                 <QuickDateButton
