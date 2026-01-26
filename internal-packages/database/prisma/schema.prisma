@@ -1713,6 +1713,9 @@ model EnvironmentVariableValue {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  version       Int                    @default(1)
+  lastUpdatedBy Json?
+
   @@unique([variableId, environmentId])
 }
 
