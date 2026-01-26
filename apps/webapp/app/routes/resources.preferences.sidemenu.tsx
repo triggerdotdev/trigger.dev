@@ -3,9 +3,15 @@ import { z } from "zod";
 import { updateSideMenuPreferences } from "~/services/dashboardPreferences.server";
 import { requireUser } from "~/services/session.server";
 
+// Transforms form data string "true"/"false" to boolean, or undefined if not present
+const booleanFromFormData = z
+  .enum(["true", "false"])
+  .transform((val) => val === "true")
+  .optional();
+
 const RequestSchema = z.object({
-  isCollapsed: z.boolean().optional(),
-  manageSectionCollapsed: z.boolean().optional(),
+  isCollapsed: booleanFromFormData,
+  manageSectionCollapsed: booleanFromFormData,
 });
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -14,17 +20,7 @@ export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
   const rawData = Object.fromEntries(formData);
 
-  // Parse booleans from form data strings
-  const data = {
-    isCollapsed:
-      rawData.isCollapsed !== undefined ? rawData.isCollapsed === "true" : undefined,
-    manageSectionCollapsed:
-      rawData.manageSectionCollapsed !== undefined
-        ? rawData.manageSectionCollapsed === "true"
-        : undefined,
-  };
-
-  const result = RequestSchema.safeParse(data);
+  const result = RequestSchema.safeParse(rawData);
   if (!result.success) {
     return json({ success: false, error: "Invalid request data" }, { status: 400 });
   }

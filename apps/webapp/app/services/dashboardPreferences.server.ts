@@ -4,9 +4,11 @@ import { logger } from "./logger.server";
 import { type UserFromSession } from "./session.server";
 
 const SideMenuPreferences = z.object({
-  isCollapsed: z.boolean(),
-  manageSectionCollapsed: z.boolean(),
+  isCollapsed: z.boolean().default(false),
+  manageSectionCollapsed: z.boolean().default(false),
 });
+
+export const SideMenuPreferencesDefaults = SideMenuPreferences.parse({});
 
 export type SideMenuPreferences = z.infer<typeof SideMenuPreferences>;
 
@@ -121,10 +123,7 @@ export async function updateSideMenuPreferences({
     return;
   }
 
-  const currentSideMenu = user.dashboardPreferences.sideMenu ?? {
-    isCollapsed: false,
-    manageSectionCollapsed: false,
-  };
+  const currentSideMenu = user.dashboardPreferences.sideMenu ?? SideMenuPreferencesDefaults;
 
   const updatedSideMenu: SideMenuPreferences = {
     isCollapsed: isCollapsed ?? currentSideMenu.isCollapsed,
