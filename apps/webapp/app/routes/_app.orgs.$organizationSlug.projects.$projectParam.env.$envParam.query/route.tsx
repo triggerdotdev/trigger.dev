@@ -72,6 +72,7 @@ import parse from "parse-duration";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogPortal, DialogTrigger } from "~/components/primitives/Dialog";
 import { DialogOverlay } from "@radix-ui/react-dialog";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {
@@ -388,6 +389,8 @@ const QueryEditorForm = forwardRef<
   const [scope, setScope] = useState<QueryScope>(defaultScope);
   const formRef = useRef<HTMLFormElement>(null);
   const prevFetcherState = useRef(fetcher.state);
+  const plan = useCurrentPlan();
+  const maxPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
 
   // Notify parent when query is submitted (for title generation)
   useEffect(() => {
@@ -509,6 +512,7 @@ const QueryEditorForm = forwardRef<
                   fetcher.submit(formRef.current);
                 }
               }}
+              maxPeriodDays={maxPeriodDays}
             />
           )}
           <Button
