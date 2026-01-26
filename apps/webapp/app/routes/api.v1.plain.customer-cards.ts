@@ -31,12 +31,13 @@ const PlainCustomerCardRequestSchema = z.object({
     .optional(),
 });
 
-// Sanitize headers to remove sensitive information before logging
-function sanitizeHeaders(request: Request, skipHeaders = ["authorization", "cookie"]): Partial<Record<string, string>> {
+function sanitizeHeaders(request: Request, skipHeaders?: string[]): Partial<Record<string, string>> {
+  const authHeaderName = (env.PLAIN_CUSTOMER_CARDS_HEADERS || "Authorization").toLowerCase();
+  const defaultSkipHeaders = skipHeaders || [authHeaderName, "cookie"];
   const sanitizedHeaders: Partial<Record<string, string>> = {};
 
   for (const [key, value] of request.headers.entries()) {
-    if (!skipHeaders.includes(key.toLowerCase())) {
+    if (!defaultSkipHeaders.includes(key.toLowerCase())) {
       sanitizedHeaders[key] = value;
     }
   }
@@ -46,7 +47,8 @@ function sanitizeHeaders(request: Request, skipHeaders = ["authorization", "cook
 
 // Authenticate the request from Plain
 function authenticatePlainRequest(request: Request): boolean {
-  const authHeader = request.headers.get("Authorization");
+  const authHeaderName = env.PLAIN_CUSTOMER_CARDS_HEADERS || "Authorization";
+  const authHeader = request.headers.get(authHeaderName);
   const expectedSecret = env.PLAIN_CUSTOMER_CARDS_SECRET;
   if (!expectedSecret) {
     logger.warn("PLAIN_CUSTOMER_CARDS_SECRET not configured");
@@ -177,17 +179,18 @@ export async function action({ request }: ActionFunctionArgs) {
     // Build cards based on requested cardKeys
     const cards = [];
 
+    const accountDetailsKey = env.PLAIN_CUSTOMER_CARDS_KEY || "account-details";
     for (const cardKey of cardKeys) {
       switch (cardKey) {
-        case "account-details": {
+        case accountDetailsKey: {
           // Generate a signed one-time token for impersonation
           const impersonationToken = await generateImpersonationToken(user.id);
           // Build the impersonate URL with token for CSRF protection
           const impersonateUrl = `${env.APP_ORIGIN}/admin?impersonate=${user.id}&impersonationToken=${encodeURIComponent(impersonationToken)}`;
 
           cards.push({
-            key: "account-details",
-            timeToLiveSeconds: 10, 
+            key: accountDetailsKey,
+            timeToLiveSeconds: 15, 
             components: [
               uiComponent.container({
                 content: [

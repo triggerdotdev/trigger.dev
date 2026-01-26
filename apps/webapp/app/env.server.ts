@@ -108,6 +108,8 @@ const EnvironmentSchema = z
 
     PLAIN_API_KEY: z.string().optional(),
     PLAIN_CUSTOMER_CARDS_SECRET: z.string().optional(),
+    PLAIN_CUSTOMER_CARDS_KEY: z.string().optional(),
+    PLAIN_CUSTOMER_CARDS_HEADERS: z.string().optional(),
     WORKER_SCHEMA: z.string().default("graphile_worker"),
     WORKER_CONCURRENCY: z.coerce.number().int().default(10),
     WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
