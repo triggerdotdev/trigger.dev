@@ -23,7 +23,7 @@ const PlainCustomerCardRequestSchema = z.object({
 
 // Authenticate the request from Plain
 function authenticatePlainRequest(request: Request): boolean {
-  const authHeader = request.headers.get("PLAIN_AUTH");
+  const authHeader = request.headers.get("Authorization");
   const expectedSecret = env.PLAIN_CUSTOMER_CARDS_SECRET;
   if (!expectedSecret) {
     logger.warn("PLAIN_CUSTOMER_CARDS_SECRET not configured");
