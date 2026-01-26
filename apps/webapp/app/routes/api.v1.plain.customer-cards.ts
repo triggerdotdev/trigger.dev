@@ -23,6 +23,19 @@ const PlainCustomerCardRequestSchema = z.object({
     .optional(),
 });
 
+// Sanitize headers to remove sensitive information before logging
+function sanitizeHeaders(request: Request, skipHeaders = ["authorization", "cookie"]): Partial<Record<string, string>> {
+  const sanitizedHeaders: Partial<Record<string, string>> = {};
+
+  for (const [key, value] of request.headers.entries()) {
+    if (!skipHeaders.includes(key.toLowerCase())) {
+      sanitizedHeaders[key] = value;
+    }
+  }
+
+  return sanitizedHeaders;
+}
+
 // Authenticate the request from Plain
 function authenticatePlainRequest(request: Request): boolean {
   const authHeader = request.headers.get("Authorization");
@@ -58,7 +71,7 @@ export async function action({ request }: ActionFunctionArgs) {
   // Authenticate the request
   if (!authenticatePlainRequest(request)) {
     logger.warn("Unauthorized Plain customer card request", {
-      headers: Object.fromEntries(request.headers.entries()),
+      headers: sanitizeHeaders(request),
     });
     return json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -166,7 +179,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
           cards.push({
             key: "account-details",
-            timeToLiveSeconds: 300, // Cache for 5 minutes
+            timeToLiveSeconds: 10, 
             components: [
               uiComponent.container({
                 content: [
