@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
+import { timingSafeEqual } from "crypto";
 import { uiComponent } from "@team-plain/typescript-sdk";
 import { z } from "zod";
 import { prisma } from "~/db.server";
@@ -37,7 +38,14 @@ function authenticatePlainRequest(request: Request): boolean {
   // Support both "Bearer <token>" and plain token formats
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
 
-  return token === expectedSecret;
+  // Use constant-time comparison to prevent timing attacks
+  const encoder = new TextEncoder();
+  const tokenBuffer = encoder.encode(token);
+  const secretBuffer = encoder.encode(expectedSecret);
+  if (tokenBuffer.byteLength !== secretBuffer.byteLength) {
+    return false;
+  }
+  return timingSafeEqual(tokenBuffer, secretBuffer);
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -76,6 +84,9 @@ export async function action({ request }: ActionFunctionArgs) {
         where: { id: customer.externalId },
         include: {
           orgMemberships: {
+            where: {
+              organization: { deletedAt: null },
+            },
             include: {
               organization: {
                 include: {
@@ -96,6 +107,9 @@ export async function action({ request }: ActionFunctionArgs) {
         where: { email: customer.email },
         include: {
           orgMemberships: {
+            where: {
+              organization: { deletedAt: null },
+            },
             include: {
               organization: {
                 include: {
@@ -129,7 +143,7 @@ export async function action({ request }: ActionFunctionArgs) {
       switch (cardKey) {
         case "account-details": {
           // Build the impersonate URL
-          const impersonateUrl = `${env.APP_ORIGIN || "https://cloud.trigger.dev"}/admin?impersonate=${user.id}`;
+          const impersonateUrl = `${env.APP_ORIGIN}/admin?impersonate=${user.id}`;
 
           cards.push({
             key: "account-details",
@@ -283,7 +297,7 @@ export async function action({ request }: ActionFunctionArgs) {
                 uiComponent.spacer({ size: "XS" }),
                 uiComponent.linkButton({
                   label: "View in Dashboard",
-                  url: `https://cloud.trigger.dev/@/orgs/${org.slug}`,
+                  url: `${env.APP_ORIGIN}/@/orgs/${org.slug}`,
                 }),
               ];
             }
@@ -365,7 +379,7 @@ export async function action({ request }: ActionFunctionArgs) {
                   asideContent: [
                     uiComponent.linkButton({
                       label: "View",
-                      url: `https://cloud.trigger.dev/orgs/${project.orgSlug}/projects/${project.slug}`,
+                      url: `${env.APP_ORIGIN}/orgs/${project.orgSlug}/projects/${project.slug}`,
                     }),
                   ],
                 }),

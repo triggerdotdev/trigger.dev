@@ -78,7 +78,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
 export default function AdminDashboardRoute() {
   const user = useUser();
-  const { users, filters, page, pageCount } = useTypedLoaderData<typeof loader>();
+  const { users, filters, page, pageCount } = useTypedLoaderData<typeof loader>() as any;
 
   return (
     <main
