@@ -196,22 +196,6 @@ export async function action({ request }: ActionFunctionArgs) {
                   uiComponent.row({
                     mainContent: [
                       uiComponent.text({
-                        text: "Admin",
-                        size: "S",
-                        color: "MUTED",
-                      }),
-                    ],
-                    asideContent: [
-                      uiComponent.badge({
-                        label: user.admin ? "Yes" : "No",
-                        color: user.admin ? "BLUE" : "GREY",
-                      }),
-                    ],
-                  }),
-                  uiComponent.spacer({ size: "S" }),
-                  uiComponent.row({
-                    mainContent: [
-                      uiComponent.text({
                         text: "Member Since",
                         size: "S",
                         color: "MUTED",
