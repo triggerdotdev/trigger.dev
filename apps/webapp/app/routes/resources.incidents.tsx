@@ -25,10 +25,6 @@ export async function loader() {
 
 export function IncidentStatusPanel({ isCollapsed = false }: { isCollapsed?: boolean }) {
   const { isManagedCloud } = useFeatures();
-  if (!isManagedCloud) {
-    return null;
-  }
-
   const fetcher = useFetcher<typeof loader>();
 
   const fetchIncidents = useCallback(() => {
@@ -38,16 +34,18 @@ export function IncidentStatusPanel({ isCollapsed = false }: { isCollapsed?: boo
   }, [fetcher]);
 
   useEffect(() => {
+    if (!isManagedCloud) return;
+
     fetchIncidents();
 
     const interval = setInterval(fetchIncidents, 60 * 1000); // 1 minute
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isManagedCloud, fetchIncidents]);
 
   const operational = fetcher.data?.operational ?? true;
 
-  if (operational) {
+  if (!isManagedCloud || operational) {
     return null;
   }
 
