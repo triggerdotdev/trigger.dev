@@ -5,9 +5,10 @@ import { Chart } from "~/components/primitives/charts/ChartCompound";
 import { Paragraph } from "../primitives/Paragraph";
 import type { AggregationType, ChartConfiguration } from "./ChartConfigPanel";
 
-// Color palette for chart series
+// Color palette for chart series - 30 distinct colors for large datasets
 const CHART_COLORS = [
-  "#7655fd", // Primary purple
+  // Primary colors
+  "#7655fd", // Purple
   "#22c55e", // Green
   "#f59e0b", // Amber
   "#ef4444", // Red
@@ -17,6 +18,28 @@ const CHART_COLORS = [
   "#14b8a6", // Teal
   "#f97316", // Orange
   "#6366f1", // Indigo
+  // Extended palette
+  "#84cc16", // Lime
+  "#0ea5e9", // Sky
+  "#f43f5e", // Rose
+  "#a855f7", // Fuchsia
+  "#eab308", // Yellow
+  "#10b981", // Emerald
+  "#3b82f6", // Blue
+  "#d946ef", // Magenta
+  "#78716c", // Stone
+  "#facc15", // Gold
+  // Additional distinct colors
+  "#2dd4bf", // Turquoise
+  "#fb923c", // Light orange
+  "#a3e635", // Yellow-green
+  "#38bdf8", // Light blue
+  "#c084fc", // Light purple
+  "#4ade80", // Light green
+  "#fbbf24", // Light amber
+  "#f472b6", // Light pink
+  "#67e8f9", // Light cyan
+  "#818cf8", // Light indigo
 ];
 
 function getSeriesColor(index: number): string {
