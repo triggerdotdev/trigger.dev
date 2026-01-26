@@ -190,6 +190,13 @@ export class EnvironmentVariablesRepository implements Repository {
           for (const environmentId of options.environmentIds) {
             const key = secretKey(projectId, environmentId, variable.key);
 
+            // Check if value already exists and is the same - skip update if unchanged
+            const existingSecret = await secretStore.getSecret(SecretValue, key);
+            if (existingSecret && existingSecret.secret === variable.value) {
+              // Value is unchanged, skip this variable for this environment
+              continue;
+            }
+
             //create the secret reference
             const secretReference = await tx.secretReference.upsert({
               where: {

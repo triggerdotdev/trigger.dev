@@ -1301,9 +1301,11 @@ export class VercelIntegrationRepository {
             continue;
           }
 
-          // Query existing env vars to check which ones are already secrets
-          // We need to preserve the secret status when overriding
+          // Query existing env vars to check which ones are already secrets and get their current values
+          // We need to preserve the secret status when overriding and skip unchanged values
           const existingSecretKeys = new Set<string>();
+          const existingValues = new Map<string, string>();
+
           const existingVarValues = await prisma.environmentVariableValue.findMany({
             where: {
               environmentId: mapping.runtimeEnvironmentId,
@@ -1316,6 +1318,11 @@ export class VercelIntegrationRepository {
             },
             select: {
               isSecret: true,
+              valueReference: {
+                select: {
+                  key: true,
+                },
+              },
               variable: {
                 select: {
                   key: true,
@@ -1324,15 +1331,59 @@ export class VercelIntegrationRepository {
             },
           });
 
-          for (const varValue of existingVarValues) {
-            if (varValue.isSecret) {
-              existingSecretKeys.add(varValue.variable.key);
+          // Get existing values from the secret store
+          if (existingVarValues.length > 0) {
+            const secretStore = getSecretStore("DATABASE", { prismaClient: prisma });
+            const SecretValue = z.object({ secret: z.string() });
+
+            for (const varValue of existingVarValues) {
+              if (varValue.isSecret) {
+                existingSecretKeys.add(varValue.variable.key);
+              }
+
+              // Fetch the current value from the secret store
+              if (varValue.valueReference?.key) {
+                try {
+                  const existingSecret = await secretStore.getSecret(SecretValue, varValue.valueReference.key);
+                  if (existingSecret) {
+                    existingValues.set(varValue.variable.key, existingSecret.secret);
+                  }
+                } catch {
+                  // If we can't read the existing value, we'll update it anyway
+                }
+              }
             }
           }
 
+          // Filter out vars that haven't changed
+          const changedVars = varsToSync.filter((v) => {
+            const existingValue = existingValues.get(v.key);
+            // Include if: no existing value, or value is different
+            return existingValue === undefined || existingValue !== v.value;
+          });
+
+          if (changedVars.length === 0) {
+            logger.info("Vercel pullEnvVarsFromVercel: no changes detected, skipping", {
+              projectId: params.projectId,
+              vercelTarget: mapping.vercelTarget,
+              triggerEnvType: mapping.triggerEnvType,
+              skippedCount: varsToSync.length,
+            });
+            continue;
+          }
+
+          logger.info("Vercel pullEnvVarsFromVercel: updating changed vars", {
+            projectId: params.projectId,
+            vercelTarget: mapping.vercelTarget,
+            triggerEnvType: mapping.triggerEnvType,
+            changedCount: changedVars.length,
+            unchangedCount: varsToSync.length - changedVars.length,
+            changedKeys: changedVars.map((v) => v.key),
+          });
+
           // Split vars into secret and non-secret groups
-          const secretVars = varsToSync.filter((v) => existingSecretKeys.has(v.key));
-          const nonSecretVars = varsToSync.filter((v) => !existingSecretKeys.has(v.key));
+          const secretVars = changedVars.filter((v) => existingSecretKeys.has(v.key));
+          const nonSecretVars = changedVars.filter((v) => !existingSecretKeys.has(v.key));
 
           // Create non-secret vars
           if (nonSecretVars.length > 0) {

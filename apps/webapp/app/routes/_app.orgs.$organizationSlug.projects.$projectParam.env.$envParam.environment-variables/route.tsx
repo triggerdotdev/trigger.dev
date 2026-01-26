@@ -408,7 +408,6 @@ export default function Page() {
                         </TableCell>
                       )}
                       <TableCellMenu
-                        className={cn(cellClassName, borderedCellClassName)}
                         isSticky
                         hiddenButtons={
                           <>
