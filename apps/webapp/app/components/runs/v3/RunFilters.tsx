@@ -31,6 +31,7 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { FormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
+import { MiddleTruncate } from "~/components/primitives/MiddleTruncate";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ComboBox,
@@ -654,7 +655,7 @@ function TasksDropdown({
                 <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
               }
             >
-              {item.slug}
+              <MiddleTruncate text={item.slug} />
             </SelectItem>
           ))}
         </SelectList>
