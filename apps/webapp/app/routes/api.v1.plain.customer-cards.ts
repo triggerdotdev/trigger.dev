@@ -63,18 +63,34 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Parse JSON with separate error handling for malformed JSON
+  let body: unknown;
   try {
-    // Parse and validate the request body
-    const body = await request.json();
-    const parsed = PlainCustomerCardRequestSchema.safeParse(body);
-
-    if (!parsed.success) {
-      logger.warn("Invalid Plain customer card request", {
-        errors: parsed.error.errors,
-        body,
+    body = await request.json();
+  } catch (error) {
+    // Handle JSON parsing errors as client errors (400) instead of server errors (500)
+    if (error instanceof SyntaxError || error instanceof TypeError) {
+      logger.warn("Malformed JSON in Plain customer card request", {
+        error: error.message,
       });
-      return json({ error: "Invalid request body" }, { status: 400 });
+      return json({ error: "Invalid JSON in request body" }, { status: 400 });
     }
+    // Re-throw unexpected errors to be caught by outer catch
+    throw error;
+  }
+
+  // Validate the request body schema
+  const parsed = PlainCustomerCardRequestSchema.safeParse(body);
+
+  if (!parsed.success) {
+    logger.warn("Invalid Plain customer card request", {
+      errors: parsed.error.errors,
+      body,
+    });
+    return json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  try {
 
     const { customer, cardKeys } = parsed.data;
 
