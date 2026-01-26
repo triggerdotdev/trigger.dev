@@ -11,11 +11,19 @@ import { generateImpersonationToken } from "~/services/impersonation.server";
 // Schema for the request body from Plain
 const PlainCustomerCardRequestSchema = z.object({
   cardKeys: z.array(z.string()),
-  customer: z.object({
-    id: z.string(),
-    email: z.string().optional(),
-    externalId: z.string().optional(),
-  }),
+  customer: z
+    .object({
+      id: z.string(),
+      email: z.string().optional(),
+      externalId: z.string().optional(),
+    })
+    .refine(
+      (data) => data.email || data.externalId,
+      {
+        message: "Either customer.email or customer.externalId must be provided",
+        path: ["customer"],
+      }
+    ),
   thread: z
     .object({
       id: z.string(),
@@ -320,7 +328,7 @@ export async function action({ request }: ActionFunctionArgs) {
                   ],
                   asideContent: [
                     uiComponent.text({
-                      text: `${projectCount} project${projectCount !== 1 ? "s" : ""}`,
+                      text: `${projectCount} recent project${projectCount !== 1 ? "s" : ""}`,
                       size: "S",
                       color: "MUTED",
                     }),
