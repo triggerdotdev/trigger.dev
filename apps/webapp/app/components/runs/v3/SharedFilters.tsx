@@ -96,6 +96,10 @@ const timePeriods = [
     value: "3d",
   },
   {
+    label: "5 days",
+    value: "5d",
+  },
+  {
     label: "7 days",
     value: "7d",
   },
@@ -106,11 +110,7 @@ const timePeriods = [
   {
     label: "30 days",
     value: "30d",
-  },
-  {
-    label: "90 days",
-    value: "90d",
-  },
+  }
 ];
 
 const timeUnits = [
@@ -702,7 +702,7 @@ export function TimeDropdown({
                   onClick={() => {
                     const today = new Date();
                     setFromValue(startOfDay(today));
-                    setToValue(today);
+                    setToValue(endOfDay(today));
                     setActiveSection("dateRange");
                     setValidationError(null);
                     setSelectedQuickDate("today");
@@ -714,31 +714,10 @@ export function TimeDropdown({
                   onClick={() => {
                     const now = new Date();
                     setFromValue(startOfWeek(now, { weekStartsOn: 1 }));
-                    setToValue(now);
+                    setToValue(endOfWeek(now, { weekStartsOn: 1 }));
                     setActiveSection("dateRange");
                     setValidationError(null);
                     setSelectedQuickDate("thisWeek");
-                  }}
-                />
-                <QuickDateButton
-                  label="Last weekend"
-                  isActive={selectedQuickDate === "lastWeekend"}
-                  onClick={() => {
-                    const now = new Date();
-                    let saturday: Date;
-                    if (isSaturday(now)) {
-                      saturday = subDays(now, 7);
-                    } else if (isSunday(now)) {
-                      saturday = subDays(now, 8);
-                    } else {
-                      saturday = previousSaturday(now);
-                    }
-                    const sunday = endOfDay(subDays(saturday, -1));
-                    setFromValue(startOfDay(saturday));
-                    setToValue(sunday);
-                    setActiveSection("dateRange");
-                    setValidationError(null);
-                    setSelectedQuickDate("lastWeekend");
                   }}
                 />
                 <QuickDateButton
@@ -751,20 +730,6 @@ export function TimeDropdown({
                     setActiveSection("dateRange");
                     setValidationError(null);
                     setSelectedQuickDate("lastWeek");
-                  }}
-                />
-                <QuickDateButton
-                  label="Last weekdays"
-                  isActive={selectedQuickDate === "lastWeekdays"}
-                  onClick={() => {
-                    const lastWeek = subWeeks(new Date(), 1);
-                    const monday = startOfWeek(lastWeek, { weekStartsOn: 1 });
-                    const friday = endOfDay(subDays(monday, -4)); // Monday + 4 days = Friday
-                    setFromValue(startOfDay(monday));
-                    setToValue(friday);
-                    setActiveSection("dateRange");
-                    setValidationError(null);
-                    setSelectedQuickDate("lastWeekdays");
                   }}
                 />
                 <QuickDateButton
@@ -785,22 +750,10 @@ export function TimeDropdown({
                   onClick={() => {
                     const now = new Date();
                     setFromValue(startOfMonth(now));
-                    setToValue(now);
+                    setToValue(endOfMonth(now));
                     setActiveSection("dateRange");
                     setValidationError(null);
                     setSelectedQuickDate("thisMonth");
-                  }}
-                />
-                <QuickDateButton
-                  label="Year to date"
-                  isActive={selectedQuickDate === "yearToDate"}
-                  onClick={() => {
-                    const now = new Date();
-                    setFromValue(startOfYear(now));
-                    setToValue(now);
-                    setActiveSection("dateRange");
-                    setValidationError(null);
-                    setSelectedQuickDate("yearToDate");
                   }}
                 />
               </div>
