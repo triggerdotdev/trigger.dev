@@ -119,14 +119,14 @@ export default function AdminDashboardRoute() {
                 <Paragraph>No users found for search</Paragraph>
               </TableBlankRow>
             ) : (
-              users.map((user) => {
+              users.map((user: (typeof users)[0]) => {
                 return (
                   <TableRow key={user.id}>
                     <TableCell>
                       <CopyableText value={user.email} />
                     </TableCell>
                     <TableCell>
-                      {user.orgMemberships.map((org) => (
+                      {user.orgMemberships.map((org: (typeof user.orgMemberships)[0]) => (
                         <LinkButton
                           key={org.organization.slug}
                           variant="minimal/small"

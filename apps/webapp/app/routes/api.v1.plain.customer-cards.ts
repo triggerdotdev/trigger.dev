@@ -23,9 +23,8 @@ const PlainCustomerCardRequestSchema = z.object({
 
 // Authenticate the request from Plain
 function authenticatePlainRequest(request: Request): boolean {
-  const authHeader = request.headers.get("Authorization");
+  const authHeader = request.headers.get("PLAIN_AUTH");
   const expectedSecret = env.PLAIN_CUSTOMER_CARDS_SECRET;
-
   if (!expectedSecret) {
     logger.warn("PLAIN_CUSTOMER_CARDS_SECRET not configured");
     return false;
@@ -137,82 +136,101 @@ export async function action({ request }: ActionFunctionArgs) {
             timeToLiveSeconds: 300, // Cache for 5 minutes
             components: [
               uiComponent.container({
-                components: [
+                content: [
                   uiComponent.text({
                     text: "Account Details",
-                    textSize: "L",
-                    textColor: "NORMAL",
+                    size: "L",
+                    color: "NORMAL",
                   }),
-                  uiComponent.spacer({ spacerSize: "M" }),
+                  uiComponent.spacer({ size: "M" }),
                   uiComponent.row({
-                    left: uiComponent.text({
-                      text: "User ID",
-                      textSize: "S",
-                      textColor: "MUTED",
-                    }),
-                    right: uiComponent.copyButton({
-                      textToCopy: user.id,
-                      buttonLabel: "Copy",
-                    }),
+                    mainContent: [
+                      uiComponent.text({
+                        text: "User ID",
+                        size: "S",
+                        color: "MUTED",
+                      }),
+                    ],
+                    asideContent: [
+                      uiComponent.copyButton({
+                        value: user.id,
+                        tooltip: "Copy",
+                      }),
+                    ],
                   }),
-                  uiComponent.spacer({ spacerSize: "S" }),
+                  uiComponent.spacer({ size: "S" }),
                   uiComponent.row({
-                    left: uiComponent.text({
-                      text: "Email",
-                      textSize: "S",
-                      textColor: "MUTED",
-                    }),
-                    right: uiComponent.text({
-                      text: user.email,
-                      textSize: "S",
-                      textColor: "NORMAL",
-                    }),
+                    mainContent: [
+                      uiComponent.text({
+                        text: "Email",
+                        size: "S",
+                        color: "MUTED",
+                      }),
+                    ],
+                    asideContent: [
+                      uiComponent.text({
+                        text: user.email,
+                        size: "S",
+                        color: "NORMAL",
+                      }),
+                    ],
                   }),
-                  uiComponent.spacer({ spacerSize: "S" }),
+                  uiComponent.spacer({ size: "S" }),
                   uiComponent.row({
-                    left: uiComponent.text({
-                      text: "Name",
-                      textSize: "S",
-                      textColor: "MUTED",
-                    }),
-                    right: uiComponent.text({
-                      text: user.name || user.displayName || "N/A",
-                      textSize: "S",
-                      textColor: "NORMAL",
-                    }),
+                    mainContent: [
+                      uiComponent.text({
+                        text: "Name",
+                        size: "S",
+                        color: "MUTED",
+                      }),
+                    ],
+                    asideContent: [
+                      uiComponent.text({
+                        text: user.name || user.displayName || "N/A",
+                        size: "S",
+                        color: "NORMAL",
+                      }),
+                    ],
                   }),
-                  uiComponent.spacer({ spacerSize: "S" }),
+                  uiComponent.spacer({ size: "S" }),
                   uiComponent.row({
-                    left: uiComponent.text({
-                      text: "Admin",
-                      textSize: "S",
-                      textColor: "MUTED",
-                    }),
-                    right: uiComponent.badge({
-                      badgeLabel: user.admin ? "Yes" : "No",
-                      badgeColor: user.admin ? "BLUE" : "GRAY",
-                    }),
+                    mainContent: [
+                      uiComponent.text({
+                        text: "Admin",
+                        size: "S",
+                        color: "MUTED",
+                      }),
+                    ],
+                    asideContent: [
+                      uiComponent.badge({
+                        label: user.admin ? "Yes" : "No",
+                        color: user.admin ? "BLUE" : "GREY",
+                      }),
+                    ],
                   }),
-                  uiComponent.spacer({ spacerSize: "S" }),
+                  uiComponent.spacer({ size: "S" }),
                   uiComponent.row({
-                    left: uiComponent.text({
-                      text: "Member Since",
-                      textSize: "S",
-                      textColor: "MUTED",
-                    }),
-                    right: uiComponent.text({
-                      text: new Date(user.createdAt).toLocaleDateString(),
-                      textSize: "S",
-                      textColor: "NORMAL",
-                    }),
+                    mainContent: [
+                      uiComponent.text({
+                        text: "Member Since",
+                        size: "S",
+                        color: "MUTED",
+                      }),
+                    ],
+                    asideContent: [
+                      uiComponent.text({
+                        text: new Date(user.createdAt).toLocaleDateString(),
+                        size: "S",
+                        color: "NORMAL",
+                      }),
+                    ],
                   }),
-                  uiComponent.spacer({ spacerSize: "M" }),
-                  uiComponent.divider(),
-                  uiComponent.spacer({ spacerSize: "M" }),
+                  uiComponent.spacer({ size: "M" }),
+                  uiComponent.divider({ spacingSize: "M" }),
+                  uiComponent.spacer({ size: "M" }),
                   uiComponent.linkButton({
-                    buttonLabel: "Impersonate User",
-                    buttonUrl: impersonateUrl,
-                    buttonStyle: "PRIMARY",
+                    label: "Impersonate User",
+                    url: impersonateUrl,
                   }),
                 ],
               }),
@@ -228,17 +246,17 @@ export async function action({ request }: ActionFunctionArgs) {
               timeToLiveSeconds: 300,
               components: [
                 uiComponent.container({
-                  components: [
+                  content: [
                     uiComponent.text({
                       text: "Organizations",
-                      textSize: "L",
-                      textColor: "NORMAL",
+                      size: "L",
+                      color: "NORMAL",
                     }),
-                    uiComponent.spacer({ spacerSize: "M" }),
+                    uiComponent.spacer({ size: "M" }),
                     uiComponent.text({
                       text: "No organizations found",
-                      textSize: "S",
-                      textColor: "MUTED",
+                      size: "S",
+                      color: "MUTED",
                     }),
                   ],
                 }),
@@ -247,50 +265,58 @@ export async function action({ request }: ActionFunctionArgs) {
             break;
           }
 
-          const orgComponents = user.orgMemberships.flatMap((membership, index) => {
-            const org = membership.organization;
-            const projectCount = org.projects.length;
+          const orgComponents = user.orgMemberships.flatMap(
+            (
+              membership: (typeof user.orgMemberships)[0],
+              index: number
+            ) => {
+              const org = membership.organization;
+              const projectCount = org.projects.length;
 
-            return [
-              ...(index > 0 ? [uiComponent.divider()] : []),
-              uiComponent.text({
-                text: org.title,
-                textSize: "M",
-                textColor: "NORMAL",
-              }),
-              uiComponent.spacer({ spacerSize: "XS" }),
-              uiComponent.row({
-                left: uiComponent.badge({
-                  badgeLabel: membership.role,
-                  badgeColor: membership.role === "ADMIN" ? "BLUE" : "GRAY",
+              return [
+                ...(index > 0 ? [uiComponent.divider({ spacingSize: "M" })] : []),
+                uiComponent.text({
+                  text: org.title,
+                  size: "M",
+                  color: "NORMAL",
                 }),
-                right: uiComponent.text({
-                  text: `${projectCount} project${projectCount !== 1 ? "s" : ""}`,
-                  textSize: "S",
-                  textColor: "MUTED",
+                uiComponent.spacer({ size: "XS" }),
+                uiComponent.row({
+                  mainContent: [
+                    uiComponent.badge({
+                      label: membership.role,
+                      color: membership.role === "ADMIN" ? "BLUE" : "GREY",
+                    }),
+                  ],
+                  asideContent: [
+                    uiComponent.text({
+                      text: `${projectCount} project${projectCount !== 1 ? "s" : ""}`,
+                      size: "S",
+                      color: "MUTED",
+                    }),
+                  ],
                 }),
-              }),
-              uiComponent.spacer({ spacerSize: "XS" }),
-              uiComponent.linkButton({
-                buttonLabel: "View in Dashboard",
-                buttonUrl: `https://cloud.trigger.dev/orgs/${org.slug}`,
-                buttonStyle: "SECONDARY",
-              }),
-            ];
-          });
+                uiComponent.spacer({ size: "XS" }),
+                uiComponent.linkButton({
+                  label: "View in Dashboard",
+                  url: `https://cloud.trigger.dev/@/orgs/${org.slug}`,
+                }),
+              ];
+            }
+          );
 
           cards.push({
             key: "organizations",
             timeToLiveSeconds: 300,
             components: [
               uiComponent.container({
-                components: [
+                content: [
                   uiComponent.text({
                     text: "Organizations",
-                    textSize: "L",
-                    textColor: "NORMAL",
+                    size: "L",
+                    color: "NORMAL",
                   }),
-                  uiComponent.spacer({ spacerSize: "M" }),
+                  uiComponent.spacer({ size: "M" }),
                   ...orgComponents,
                 ],
               }),
@@ -311,19 +337,19 @@ export async function action({ request }: ActionFunctionArgs) {
             cards.push({
               key: "projects",
               timeToLiveSeconds: 300,
-              components: [
-                uiComponent.container({
-                  components: [
-                    uiComponent.text({
-                      text: "Projects",
-                      textSize: "L",
-                      textColor: "NORMAL",
+            components: [
+              uiComponent.container({
+                content: [
+                  uiComponent.text({
+                    text: "Projects",
+                      size: "L",
+                      color: "NORMAL",
                     }),
-                    uiComponent.spacer({ spacerSize: "M" }),
+                    uiComponent.spacer({ size: "M" }),
                     uiComponent.text({
                       text: "No projects found",
-                      textSize: "S",
-                      textColor: "MUTED",
+                      size: "S",
+                      color: "MUTED",
                     }),
                   ],
                 }),
@@ -332,41 +358,49 @@ export async function action({ request }: ActionFunctionArgs) {
             break;
           }
 
-          const projectComponents = allProjects.slice(0, 10).flatMap((project, index) => {
-            return [
-              ...(index > 0 ? [uiComponent.divider()] : []),
-              uiComponent.text({
-                text: project.name,
-                textSize: "M",
-                textColor: "NORMAL",
-              }),
-              uiComponent.spacer({ spacerSize: "XS" }),
-              uiComponent.row({
-                left: uiComponent.badge({
-                  badgeLabel: project.version,
-                  badgeColor: project.version === "V3" ? "GREEN" : "GRAY",
+          const projectComponents = allProjects.slice(0, 10).flatMap(
+            (
+              project: typeof allProjects[0] & { orgSlug: string },
+              index: number
+            ) => {
+              return [
+                ...(index > 0 ? [uiComponent.divider({ spacingSize: "M" })] : []),
+                uiComponent.text({
+                  text: project.name,
+                  size: "M",
+                  color: "NORMAL",
                 }),
-                right: uiComponent.linkButton({
-                  buttonLabel: "View",
-                  buttonUrl: `https://cloud.trigger.dev/orgs/${project.orgSlug}/projects/${project.slug}`,
-                  buttonStyle: "SECONDARY",
+                uiComponent.spacer({ size: "XS" }),
+                uiComponent.row({
+                  mainContent: [
+                    uiComponent.badge({
+                      label: project.version,
+                      color: project.version === "V3" ? "GREEN" : "GREY",
+                    }),
+                  ],
+                  asideContent: [
+                    uiComponent.linkButton({
+                      label: "View",
+                      url: `https://cloud.trigger.dev/orgs/${project.orgSlug}/projects/${project.slug}`,
+                    }),
+                  ],
                 }),
-              }),
-            ];
-          });
+              ];
+            }
+          );
 
           cards.push({
             key: "projects",
             timeToLiveSeconds: 300,
             components: [
               uiComponent.container({
-                components: [
+                content: [
                   uiComponent.text({
                     text: "Projects",
-                    textSize: "L",
-                    textColor: "NORMAL",
+                    size: "L",
+                    color: "NORMAL",
                   }),
-                  uiComponent.spacer({ spacerSize: "M" }),
+                  uiComponent.spacer({ size: "M" }),
                   ...projectComponents,
                 ],
               }),
