@@ -71,8 +71,7 @@ import {
   EnvironmentVariable,
 } from "~/v3/environmentVariables/repository";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
-import { Callout } from "~/components/primitives/Callout";
-import { shouldSyncEnvVar, type TriggerEnvironmentType } from "~/v3/vercel/vercelProjectIntegrationSchema";
+import { shouldSyncEnvVar, isPullEnvVarsEnabledForEnvironment, type TriggerEnvironmentType } from "~/v3/vercel/vercelProjectIntegrationSchema";
 
 export const meta: MetaFunction = () => {
   return [
@@ -305,16 +304,6 @@ export default function Page() {
               </div>
             </div>
           )}
-          {/* Vercel sync info callout */}
-          {vercelIntegration?.enabled && vercelIntegration?.pullEnvVarsEnabled && (
-            <div className="mt-2 px-2 pb-2">
-              <Callout variant="info" className="text-xs">
-                Environment variables with Vercel sync enabled will be pulled from Vercel during builds.
-                Uncheck the "Vercel Sync" box to exclude specific variables from syncing.
-              </Callout>
-            </div>
-          )}
-
           <Table containerClassName={cn(filteredItems.length === 0 && "border-t-0")}>
             <TableHeader>
               <TableRow>
@@ -332,11 +321,11 @@ export default function Page() {
                     <SimpleTooltip
                       button={
                         <span className="flex items-center gap-1">
-                          Vercel Sync
+                          Pull from Vercel
                           <InformationCircleIcon className="size-4 text-text-dimmed" />
                         </span>
                       }
-                      content="When enabled, this variable will be synced from Vercel during builds. Requires 'Sync environment variables from Vercel' to be enabled in settings."
+                      content="When enabled, this variable will be pulled from Vercel during builds. Requires 'Pull env vars before build' to be enabled in settings."
                     />
                   </TableHeaderCell>
                 )}
@@ -401,16 +390,21 @@ export default function Page() {
                       </TableCell>
                       {vercelIntegration?.enabled && (
                         <TableCell className={cn(cellClassName, borderedCellClassName)}>
-                          <VercelSyncCheckbox
-                            envVarKey={variable.key}
-                            environmentType={variable.environment.type as TriggerEnvironmentType}
-                            syncEnabled={shouldSyncEnvVar(
-                              vercelIntegration.syncEnvVarsMapping,
-                              variable.key,
-                              variable.environment.type as TriggerEnvironmentType
-                            )}
-                            pullEnvVarsEnabled={vercelIntegration.pullEnvVarsEnabled}
-                          />
+                          {variable.environment.type !== "DEVELOPMENT" && (
+                            <VercelSyncCheckbox
+                              envVarKey={variable.key}
+                              environmentType={variable.environment.type as TriggerEnvironmentType}
+                              syncEnabled={shouldSyncEnvVar(
+                                vercelIntegration.syncEnvVarsMapping,
+                                variable.key,
+                                variable.environment.type as TriggerEnvironmentType
+                              )}
+                              pullEnvVarsEnabledForEnv={isPullEnvVarsEnabledForEnvironment(
+                                vercelIntegration.pullEnvVarsBeforeBuild,
+                                variable.environment.type as TriggerEnvironmentType
+                              )}
+                            />
+                          )}
                         </TableCell>
                       )}
                       <TableCellMenu
@@ -605,24 +599,24 @@ function DeleteEnvironmentVariableButton({
 }
 
 /**
- * Toggle component for toggling Vercel sync for an environment variable.
- * 
- * When Vercel sync is enabled for a variable, it will be pulled from Vercel during builds.
- * By default, all variables are synced unless explicitly disabled.
- * 
- * Note: If the env var name is missing from syncEnvVarsMapping, it's synced by default.
- * Only when syncEnvVarsMapping[envVarName] = false, the env var is skipped during builds.
+ * Toggle component for controlling whether an environment variable is pulled from Vercel.
+ *
+ * When enabled, the variable will be pulled from Vercel during builds.
+ * By default, all variables are pulled unless explicitly disabled.
+ *
+ * Note: If the env slug is missing from syncEnvVarsMapping, all vars are pulled by default.
+ * Only when syncEnvVarsMapping[envSlug][envVarName] = false, the env var is skipped during builds.
  */
 function VercelSyncCheckbox({
   envVarKey,
   environmentType,
   syncEnabled,
-  pullEnvVarsEnabled,
+  pullEnvVarsEnabledForEnv,
 }: {
   envVarKey: string;
   environmentType: "PRODUCTION" | "STAGING" | "PREVIEW" | "DEVELOPMENT";
   syncEnabled: boolean;
-  pullEnvVarsEnabled: boolean;
+  pullEnvVarsEnabledForEnv: boolean;
 }) {
   const fetcher = useFetcher();
   const revalidator = useRevalidator();
@@ -651,8 +645,8 @@ function VercelSyncCheckbox({
     );
   };
 
-  // If pull env vars is disabled globally, show disabled state
-  if (!pullEnvVarsEnabled) {
+  // If pull env vars is disabled for this environment, show disabled state
+  if (!pullEnvVarsEnabledForEnv) {
     return (
       <SimpleTooltip
         button={
@@ -663,7 +657,7 @@ function VercelSyncCheckbox({
             onCheckedChange={() => {}}
           />
         }
-        content="Enable 'Sync environment variables from Vercel' in settings to enable individual variable sync."
+        content="Enable 'Pull env vars before build' for this environment in Vercel settings."
       />
     );
   }

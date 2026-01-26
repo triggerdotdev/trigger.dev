@@ -5,6 +5,7 @@ import { filterOrphanedEnvironments, sortEnvironments } from "~/utils/environmen
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import {
   SyncEnvVarsMapping,
+  EnvSlug,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 
@@ -102,11 +103,11 @@ export class EnvironmentVariablesPresenter {
     const vercelIntegration = await vercelService.getVercelProjectIntegration(project.id, true);
 
     let vercelSyncEnvVarsMapping: SyncEnvVarsMapping = {};
-    let vercelPullEnvVarsEnabled = false;
+    let vercelPullEnvVarsBeforeBuild: EnvSlug[] | null = null;
 
     if (vercelIntegration) {
       vercelSyncEnvVarsMapping = vercelIntegration.parsedIntegrationData.syncEnvVarsMapping;
-      vercelPullEnvVarsEnabled = vercelIntegration.parsedIntegrationData.config.pullEnvVarsFromVercel;
+      vercelPullEnvVarsBeforeBuild = vercelIntegration.parsedIntegrationData.config.pullEnvVarsBeforeBuild ?? null;
     }
 
     return {
@@ -146,7 +147,7 @@ export class EnvironmentVariablesPresenter {
       vercelIntegration: vercelIntegration
         ? {
             enabled: true,
-            pullEnvVarsEnabled: vercelPullEnvVarsEnabled,
+            pullEnvVarsBeforeBuild: vercelPullEnvVarsBeforeBuild,
             syncEnvVarsMapping: vercelSyncEnvVarsMapping,
           }
         : null,

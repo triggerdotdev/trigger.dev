@@ -12,6 +12,8 @@ import {
   VercelIntegrationConfig,
   SyncEnvVarsMapping,
   TriggerEnvironmentType,
+  EnvSlug,
+  envTypeToSlug,
   createDefaultVercelIntegrationData,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 
@@ -290,14 +292,15 @@ export class VercelIntegrationService {
     }
 
     const currentMapping = existing.parsedIntegrationData.syncEnvVarsMapping || {};
+    const envSlug = envTypeToSlug(environmentType);
 
-    const currentEnvVarSettings = currentMapping[envVarKey] || {};
+    const currentEnvSettings = currentMapping[envSlug] || {};
 
     const updatedMapping: SyncEnvVarsMapping = {
       ...currentMapping,
-      [envVarKey]: {
-        ...currentEnvVarSettings,
-        [environmentType]: syncEnabled,
+      [envSlug]: {
+        ...currentEnvSettings,
+        [envVarKey]: syncEnabled,
       },
     };
 
@@ -323,8 +326,8 @@ export class VercelIntegrationService {
     projectId: string,
     params: {
       vercelStagingEnvironment?: string | null;
-      vercelStagingName?: string | null;
-      pullEnvVarsFromVercel: boolean;
+      pullEnvVarsBeforeBuild?: EnvSlug[] | null;
+      atomicBuilds?: EnvSlug[] | null;
       syncEnvVarsMapping: SyncEnvVarsMapping;
     }
   ): Promise<VercelProjectIntegrationWithParsedData | null> {
@@ -337,11 +340,13 @@ export class VercelIntegrationService {
       ...existing.parsedIntegrationData,
       config: {
         ...existing.parsedIntegrationData.config,
-        pullEnvVarsFromVercel: params.pullEnvVarsFromVercel,
+        pullEnvVarsBeforeBuild: params.pullEnvVarsBeforeBuild ?? null,
+        atomicBuilds: params.atomicBuilds ?? null,
         vercelStagingEnvironment: params.vercelStagingEnvironment ?? null,
-        vercelStagingName: params.vercelStagingName ?? null,
       },
-      syncEnvVarsMapping: params.syncEnvVarsMapping,
+      // Don't save syncEnvVarsMapping - it's only used for the one-time pull during onboarding
+      // Keep the existing mapping (or empty default)
+      syncEnvVarsMapping: existing.parsedIntegrationData.syncEnvVarsMapping,
     };
 
     const updated = await this.#prismaClient.organizationProjectIntegration.update({
@@ -351,51 +356,61 @@ export class VercelIntegrationService {
       },
     });
 
-    if (params.pullEnvVarsFromVercel) {
-      try {
-        // Get the org integration with token reference
-        const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(
-          projectId
-        );
+    // Pull env vars now (one-time sync during onboarding)
+    // Always attempt to pull - the pullEnvVarsFromVercel function will filter based on the mapping.
+    // We can't easily check hasEnabledVars because vars NOT in the mapping are enabled by default,
+    // so a mapping like { "dev": { "VAR1": false } } still means VAR2, VAR3, etc. should be synced.
+    try {
+      // Get the org integration with token reference
+      const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(
+        projectId
+      );
 
-        if (orgIntegration) {
-          const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
+      if (orgIntegration) {
+        const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
 
-          const pullResult = await VercelIntegrationRepository.pullEnvVarsFromVercel({
-            projectId,
-            vercelProjectId: updatedData.vercelProjectId,
-            teamId,
-            vercelStagingEnvironment: params.vercelStagingEnvironment,
-            syncEnvVarsMapping: params.syncEnvVarsMapping,
-            orgIntegration,
-          });
-
-          if (!pullResult.success) {
-            logger.warn("Some errors occurred while pulling env vars from Vercel", {
-              projectId,
-              vercelProjectId: updatedData.vercelProjectId,
-              errors: pullResult.errors,
-              syncedCount: pullResult.syncedCount,
-            });
-          } else {
-            logger.info("Successfully pulled env vars from Vercel", {
-              projectId,
-              vercelProjectId: updatedData.vercelProjectId,
-              syncedCount: pullResult.syncedCount,
-            });
-          }
-        } else {
-          logger.warn("No org integration found when trying to pull env vars from Vercel", {
-            projectId,
-          });
-        }
-      } catch (error) {
-        logger.error("Failed to pull env vars from Vercel during onboarding", {
+        logger.info("Vercel onboarding: pulling env vars from Vercel", {
           projectId,
           vercelProjectId: updatedData.vercelProjectId,
-          error,
+          teamId,
+          vercelStagingEnvironment: params.vercelStagingEnvironment,
+          syncEnvVarsMappingKeys: Object.keys(params.syncEnvVarsMapping),
+        });
+
+        const pullResult = await VercelIntegrationRepository.pullEnvVarsFromVercel({
+          projectId,
+          vercelProjectId: updatedData.vercelProjectId,
+          teamId,
+          vercelStagingEnvironment: params.vercelStagingEnvironment,
+          syncEnvVarsMapping: params.syncEnvVarsMapping,
+          orgIntegration,
+        });
+
+        if (!pullResult.success) {
+          logger.warn("Some errors occurred while pulling env vars from Vercel", {
+            projectId,
+            vercelProjectId: updatedData.vercelProjectId,
+            errors: pullResult.errors,
+            syncedCount: pullResult.syncedCount,
+          });
+        } else {
+          logger.info("Successfully pulled env vars from Vercel", {
+            projectId,
+            vercelProjectId: updatedData.vercelProjectId,
+            syncedCount: pullResult.syncedCount,
+          });
+        }
+      } else {
+        logger.warn("No org integration found when trying to pull env vars from Vercel", {
+          projectId,
         });
       }
+    } catch (error) {
+      logger.error("Failed to pull env vars from Vercel during onboarding", {
+        projectId,
+        vercelProjectId: updatedData.vercelProjectId,
+        error,
+      });
     }
 
     return {

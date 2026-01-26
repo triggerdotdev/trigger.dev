@@ -1,4 +1,4 @@
-import { type PrismaClient, type RuntimeEnvironmentType } from "@trigger.dev/database";
+import { type PrismaClient } from "@trigger.dev/database";
 import { fromPromise, ok, ResultAsync } from "neverthrow";
 import { env } from "~/env.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
@@ -40,13 +40,29 @@ export type VercelAvailableProject = {
   name: string;
 };
 
+export type GitHubAppInstallationForVercel = {
+  id: string;
+  appInstallationId: bigint;
+  targetType: string;
+  accountHandle: string;
+  repositories: Array<{
+    id: string;
+    name: string;
+    fullName: string;
+    private: boolean;
+    htmlUrl: string;
+  }>;
+};
+
 export type VercelOnboardingData = {
   customEnvironments: VercelCustomEnvironment[];
   environmentVariables: VercelEnvironmentVariable[];
   availableProjects: VercelAvailableProject[];
   hasProjectSelected: boolean;
   authInvalid?: boolean;
-  existingVariables: Record<string, { environments: RuntimeEnvironmentType[] }>;
+  existingVariables: Record<string, { environments: string[] }>; // Environment slugs (non-archived only)
+  gitHubAppInstallations: GitHubAppInstallationForVercel[];
+  isGitHubConnected: boolean;
 };
 
 export class VercelSettingsPresenter extends BasePresenter {
@@ -234,11 +250,71 @@ export class VercelSettingsPresenter extends BasePresenter {
    * Get data needed for the onboarding modal (custom environments and env vars)
    */
   public async getOnboardingData(
-    projectId: string, 
+    projectId: string,
     organizationId: string,
     vercelEnvironmentId?: string
   ): Promise<VercelOnboardingData | null> {
     try {
+      // Fetch GitHub app installations and connected repo in parallel with Vercel data
+      const [gitHubInstallations, connectedGitHubRepo] = await Promise.all([
+        (this._replica as PrismaClient).githubAppInstallation.findMany({
+          where: {
+            organizationId,
+            deletedAt: null,
+            suspendedAt: null,
+          },
+          select: {
+            id: true,
+            accountHandle: true,
+            targetType: true,
+            appInstallationId: true,
+            repositories: {
+              select: {
+                id: true,
+                name: true,
+                fullName: true,
+                htmlUrl: true,
+                private: true,
+              },
+              take: 200,
+            },
+          },
+          take: 20,
+          orderBy: {
+            createdAt: "desc",
+          },
+        }),
+        (this._replica as PrismaClient).connectedGithubRepository.findFirst({
+          where: {
+            projectId,
+            repository: {
+              installation: {
+                deletedAt: null,
+                suspendedAt: null,
+              },
+            },
+          },
+          select: {
+            id: true,
+          },
+        }),
+      ]);
+
+      const isGitHubConnected = connectedGitHubRepo !== null;
+      const gitHubAppInstallations: GitHubAppInstallationForVercel[] = gitHubInstallations.map((installation) => ({
+        id: installation.id,
+        appInstallationId: installation.appInstallationId,
+        targetType: installation.targetType,
+        accountHandle: installation.accountHandle,
+        repositories: installation.repositories.map((repo) => ({
+          id: repo.id,
+          name: repo.name,
+          fullName: repo.fullName,
+          private: repo.private,
+          htmlUrl: repo.htmlUrl,
+        })),
+      }));
+
       const orgIntegration = await (this._replica as PrismaClient).organizationIntegration.findFirst({
         where: {
           organizationId,
@@ -263,6 +339,8 @@ export class VercelSettingsPresenter extends BasePresenter {
           hasProjectSelected: false,
           authInvalid: true,
           existingVariables: {},
+          gitHubAppInstallations,
+          isGitHubConnected,
         };
       }
 
@@ -292,6 +370,8 @@ export class VercelSettingsPresenter extends BasePresenter {
           hasProjectSelected: false,
           authInvalid: availableProjectsResult.authInvalid,
           existingVariables: {},
+          gitHubAppInstallations,
+          isGitHubConnected,
         };
       }
 
@@ -303,6 +383,8 @@ export class VercelSettingsPresenter extends BasePresenter {
           availableProjects: availableProjectsResult.data,
           hasProjectSelected: false,
           existingVariables: {},
+          gitHubAppInstallations,
+          isGitHubConnected,
         };
       }
 
@@ -341,6 +423,8 @@ export class VercelSettingsPresenter extends BasePresenter {
           hasProjectSelected: true,
           authInvalid: true,
           existingVariables: {},
+          gitHubAppInstallations,
+          isGitHubConnected,
         };
       }
 
@@ -388,13 +472,34 @@ export class VercelSettingsPresenter extends BasePresenter {
       );
 
     // Get existing environment variables in Trigger.dev
+      // Fetch environments with their slugs and archived status to filter properly
+      const projectEnvs = await (this._replica as PrismaClient).runtimeEnvironment.findMany({
+        where: {
+          projectId,
+          archivedAt: null, // Filter out archived environments
+        },
+        select: {
+          id: true,
+          slug: true,
+          type: true,
+        },
+      });
+      const envIdToSlug = new Map(projectEnvs.map((e) => [e.id, e.slug]));
+      const activeEnvIds = new Set(projectEnvs.map((e) => e.id));
+
       const envVarRepository = new EnvironmentVariablesRepository(this._replica as PrismaClient);
       const existingVariables = await envVarRepository.getProject(projectId);
-      const existingVariablesRecord: Record<string, { environments: RuntimeEnvironmentType[] }> = {};
+      const existingVariablesRecord: Record<string, { environments: string[] }> = {};
       for (const v of existingVariables) {
-        existingVariablesRecord[v.key] = {
-          environments: v.values.map((val) => val.environment.type),
-        };
+        // Filter out archived environments and map to slugs
+        const activeEnvSlugs = v.values
+          .filter((val) => activeEnvIds.has(val.environment.id))
+          .map((val) => envIdToSlug.get(val.environment.id) || val.environment.type.toLowerCase());
+        if (activeEnvSlugs.length > 0) {
+          existingVariablesRecord[v.key] = {
+            environments: activeEnvSlugs,
+          };
+        }
       }
 
       return {
@@ -403,6 +508,8 @@ export class VercelSettingsPresenter extends BasePresenter {
         availableProjects: availableProjectsResult.data,
         hasProjectSelected: true,
         existingVariables: existingVariablesRecord,
+        gitHubAppInstallations,
+        isGitHubConnected,
       };
     } catch (error) {
       console.error("Error in getOnboardingData:", error);

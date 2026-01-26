@@ -51,6 +51,8 @@ export class EnvironmentVariablesRepository implements Repository {
       override: boolean;
       environmentIds: string[];
       isSecret?: boolean;
+      // When creating variables for a branch environment, inherit isSecret from parent if not explicitly set
+      parentEnvironmentId?: string;
       variables: {
         key: string;
         value: string;
@@ -164,6 +166,26 @@ export class EnvironmentVariablesRepository implements Repository {
             prismaClient: tx,
           });
 
+          // If parentEnvironmentId is provided and isSecret is not explicitly set,
+          // look up if the parent has this variable marked as secret
+          let inheritedIsSecret: boolean | undefined = undefined;
+          if (options.isSecret === undefined && options.parentEnvironmentId) {
+            const parentVariableValue = await tx.environmentVariableValue.findFirst({
+              where: {
+                variableId: environmentVariable.id,
+                environmentId: options.parentEnvironmentId,
+              },
+              select: {
+                isSecret: true,
+              },
+            });
+            if (parentVariableValue?.isSecret) {
+              inheritedIsSecret = true;
+            }
+          }
+
+          const effectiveIsSecret = options.isSecret ?? inheritedIsSecret;
+
           //set the secret values and references
           for (const environmentId of options.environmentIds) {
             const key = secretKey(projectId, environmentId, variable.key);
@@ -191,11 +213,15 @@ export class EnvironmentVariablesRepository implements Repository {
                 variableId: environmentVariable.id,
                 environmentId: environmentId,
                 valueReferenceId: secretReference.id,
-                isSecret: options.isSecret,
+                isSecret: effectiveIsSecret,
               },
-              update: {
-                isSecret: options.isSecret,
-              },
+              // Only update isSecret if explicitly provided, otherwise preserve existing value
+              update:
+                options.isSecret !== undefined
+                  ? {
+                      isSecret: options.isSecret,
+                    }
+                  : {},
             });
 
             await secretStore.setSecret<{ secret: string }>(key, {

@@ -1187,6 +1187,15 @@ export class VercelIntegrationRepository {
         }
       }
 
+      logger.info("Vercel pullEnvVarsFromVercel: environment mapping", {
+        projectId: params.projectId,
+        vercelProjectId: params.vercelProjectId,
+        envMappingCount: envMapping.length,
+        envMapping: envMapping.map(m => ({ type: m.triggerEnvType, target: m.vercelTarget })),
+        runtimeEnvironmentsCount: runtimeEnvironments.length,
+        runtimeEnvironments: runtimeEnvironments.map(e => e.type),
+      });
+
       if (envMapping.length === 0) {
         logger.warn("No environments to sync for Vercel integration", {
           projectId: params.projectId,
@@ -1252,6 +1261,16 @@ export class VercelIntegrationRepository {
             continue;
           }
 
+          logger.info("Vercel pullEnvVarsFromVercel: fetched env vars for target", {
+            projectId: params.projectId,
+            vercelTarget: mapping.vercelTarget,
+            triggerEnvType: mapping.triggerEnvType,
+            projectEnvVarsCount: projectEnvVars.length,
+            sharedEnvVarsCount: filteredSharedEnvVars.length,
+            mergedEnvVarsCount: mergedEnvVars.length,
+            mergedEnvVarKeys: mergedEnvVars.map(v => v.key),
+          });
+
           // Filter env vars based on syncEnvVarsMapping and exclude TRIGGER_SECRET_KEY
           const varsToSync = mergedEnvVars.filter((envVar) => {
             // Skip secrets (they don't have values anyway)
@@ -1270,34 +1289,105 @@ export class VercelIntegrationRepository {
             );
           });
 
+          logger.info("Vercel pullEnvVarsFromVercel: filtered vars to sync", {
+            projectId: params.projectId,
+            vercelTarget: mapping.vercelTarget,
+            triggerEnvType: mapping.triggerEnvType,
+            varsToSyncCount: varsToSync.length,
+            varsToSyncKeys: varsToSync.map(v => v.key),
+          });
+
           if (varsToSync.length === 0) {
             continue;
           }
 
-          // Create env vars in Trigger.dev
-          const result = await envVarRepository.create(params.projectId, {
-            override: true, // Override existing vars
-            environmentIds: [mapping.runtimeEnvironmentId],
-            isSecret: false, // Vercel env vars we can read are not secrets in our system
-            variables: varsToSync.map((v) => ({
-              key: v.key,
-              value: v.value,
-            })),
+          // Query existing env vars to check which ones are already secrets
+          // We need to preserve the secret status when overriding
+          const existingSecretKeys = new Set<string>();
+          const existingVarValues = await prisma.environmentVariableValue.findMany({
+            where: {
+              environmentId: mapping.runtimeEnvironmentId,
+              variable: {
+                projectId: params.projectId,
+                key: {
+                  in: varsToSync.map((v) => v.key),
+                },
+              },
+            },
+            select: {
+              isSecret: true,
+              variable: {
+                select: {
+                  key: true,
+                },
+              },
+            },
           });
 
-          if (result.success) {
-            syncedCount += varsToSync.length;
-          } else {
-            const errorMsg = `Failed to sync env vars for ${mapping.triggerEnvType}: ${result.error}`;
-            errors.push(errorMsg);
-            logger.error(errorMsg, {
-              projectId: params.projectId,
-              vercelProjectId: params.vercelProjectId,
-              vercelTarget: mapping.vercelTarget,
-              error: result.error,
-              variableErrors: result.variableErrors,
-              attemptedKeys: varsToSync.map((v) => v.key),
+          for (const varValue of existingVarValues) {
+            if (varValue.isSecret) {
+              existingSecretKeys.add(varValue.variable.key);
+            }
+          }
+
+          // Split vars into secret and non-secret groups
+          const secretVars = varsToSync.filter((v) => existingSecretKeys.has(v.key));
+          const nonSecretVars = varsToSync.filter((v) => !existingSecretKeys.has(v.key));
+
+          // Create non-secret vars
+          if (nonSecretVars.length > 0) {
+            const result = await envVarRepository.create(params.projectId, {
+              override: true,
+              environmentIds: [mapping.runtimeEnvironmentId],
+              isSecret: false,
+              variables: nonSecretVars.map((v) => ({
+                key: v.key,
+                value: v.value,
+              })),
             });
+
+            if (result.success) {
+              syncedCount += nonSecretVars.length;
+            } else {
+              const errorMsg = `Failed to sync env vars for ${mapping.triggerEnvType}: ${result.error}`;
+              errors.push(errorMsg);
+              logger.error(errorMsg, {
+                projectId: params.projectId,
+                vercelProjectId: params.vercelProjectId,
+                vercelTarget: mapping.vercelTarget,
+                error: result.error,
+                variableErrors: result.variableErrors,
+                attemptedKeys: nonSecretVars.map((v) => v.key),
+              });
+            }
+          }
+
+          // Create secret vars (preserve their secret status)
+          if (secretVars.length > 0) {
+            const result = await envVarRepository.create(params.projectId, {
+              override: true,
+              environmentIds: [mapping.runtimeEnvironmentId],
+              isSecret: true, // Preserve secret status
+              variables: secretVars.map((v) => ({
+                key: v.key,
+                value: v.value,
+              })),
+            });
+
+            if (result.success) {
+              syncedCount += secretVars.length;
+            } else {
+              const errorMsg = `Failed to sync secret env vars for ${mapping.triggerEnvType}: ${result.error}`;
+              errors.push(errorMsg);
+              logger.error(errorMsg, {
+                projectId: params.projectId,
+                vercelProjectId: params.vercelProjectId,
+                vercelTarget: mapping.vercelTarget,
+                error: result.error,
+                variableErrors: result.variableErrors,
+                attemptedKeys: secretVars.map((v) => v.key),
+              });
+            }
           }
         } catch (envError) {
           const errorMsg = `Failed to process env vars for ${mapping.triggerEnvType}: ${envError instanceof Error ? envError.message : "Unknown error"}`;

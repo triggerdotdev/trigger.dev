@@ -93,9 +93,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           teamId: parsedIntegrationData.vercelTeamId,
         },
         config: {
-          pullEnvVarsFromVercel: parsedIntegrationData.config.pullEnvVarsFromVercel,
-          spawnDeploymentOnVercelEvent: parsedIntegrationData.config.spawnDeploymentOnVercelEvent,
-          spawnBuildOnVercelEvent: parsedIntegrationData.config.spawnBuildOnVercelEvent,
+          atomicBuilds: parsedIntegrationData.config.atomicBuilds,
+          pullEnvVarsBeforeBuild: parsedIntegrationData.config.pullEnvVarsBeforeBuild,
           vercelStagingEnvironment: parsedIntegrationData.config.vercelStagingEnvironment,
         },
         syncEnvVarsMapping: parsedIntegrationData.syncEnvVarsMapping,

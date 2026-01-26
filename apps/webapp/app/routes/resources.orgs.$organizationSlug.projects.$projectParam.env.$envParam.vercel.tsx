@@ -45,6 +45,16 @@ import {
   TooltipProvider
 } from "~/components/primitives/Tooltip";
 import {
+  EnvironmentIcon,
+  environmentFullTitle,
+  environmentTextClassName,
+} from "~/components/environments/EnvironmentLabel";
+import { OctoKitty } from "~/components/GitHubLoginButton";
+import {
+  ConnectGitHubRepoModal,
+  type GitHubAppInstallation,
+} from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
+import {
   redirectBackWithErrorMessage,
   redirectWithSuccessMessage,
   redirectWithErrorMessage,
@@ -53,7 +63,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema, v3ProjectSettingsPath, vercelAppInstallPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3ProjectSettingsPath, vercelAppInstallPath, githubAppInstallPath } from "~/utils/pathBuilder";
 import {
   VercelSettingsPresenter,
   type VercelOnboardingData,
@@ -66,23 +76,11 @@ import {
 import {
   type VercelProjectIntegrationData,
   type SyncEnvVarsMapping,
+  type EnvSlug,
   shouldSyncEnvVarForAnyEnvironment,
+  envTypeToSlug,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
-
-function shortEnvironmentLabel(environment: RuntimeEnvironmentType) {
-  switch (environment.toUpperCase()) {
-    case "PRODUCTION":
-      return "Prod";
-    case "STAGING":
-      return "Staging";
-    case "DEVELOPMENT":
-      return "Dev";
-    case "PREVIEW":
-      return "Preview";
-  }
-}
 
 export type ConnectedVercelProject = {
   id: string;
@@ -151,22 +149,29 @@ async function lookupVercelEnvironmentName(
   }
 }
 
+const EnvSlugSchema = z.enum(["dev", "stg", "prod", "preview"]);
+
 const UpdateVercelConfigFormSchema = z.object({
   action: z.literal("update-config"),
-  pullEnvVarsFromVercel: z
-    .string()
-    .optional()
-    .transform((val) => val === "on"),
-  spawnDeploymentOnVercelEvent: z
-    .string()
-    .optional()
-    .transform((val) => val === "on"),
-  spawnBuildOnVercelEvent: z
-    .string()
-    .optional()
-    .transform((val) => val === "on"),
+  atomicBuilds: z.string().optional().transform((val) => {
+    if (!val) return null;
+    try {
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }),
+  pullEnvVarsBeforeBuild: z.string().optional().transform((val) => {
+    if (!val) return null;
+    try {
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }),
   vercelStagingEnvironment: z.string().nullable().optional(),
-  vercelStagingName: z.string().nullable().optional(),
 });
 
 const DisconnectVercelFormSchema = z.object({
@@ -176,11 +181,24 @@ const DisconnectVercelFormSchema = z.object({
 const CompleteOnboardingFormSchema = z.object({
   action: z.literal("complete-onboarding"),
   vercelStagingEnvironment: z.string().nullable().optional(),
-  vercelStagingName: z.string().nullable().optional(),
-  pullEnvVarsFromVercel: z
-    .string()
-    .optional()
-    .transform((val) => val === "on"),
+  pullEnvVarsBeforeBuild: z.string().optional().transform((val) => {
+    if (!val) return null;
+    try {
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }),
+  atomicBuilds: z.string().optional().transform((val) => {
+    if (!val) return null;
+    try {
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }),
   syncEnvVarsMapping: z.string().optional(), // JSON-encoded mapping
   next: z.string().optional(),
 });
@@ -198,7 +216,6 @@ const SelectVercelProjectFormSchema = z.object({
 const UpdateEnvMappingFormSchema = z.object({
   action: z.literal("update-env-mapping"),
   vercelStagingEnvironment: z.string().nullable().optional(),
-  vercelStagingName: z.string().nullable().optional(),
 });
 
 const VercelActionSchema = z.discriminatedUnion("action", [
@@ -309,25 +326,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // Handle update-config action
   if (actionType === "update-config") {
     const {
-      pullEnvVarsFromVercel,
-      spawnDeploymentOnVercelEvent,
-      spawnBuildOnVercelEvent,
+      atomicBuilds,
+      pullEnvVarsBeforeBuild,
       vercelStagingEnvironment,
-      vercelStagingName,
     } = submission.value;
 
-    // If vercelStagingName is not provided, look it up from the environment ID
-    let stagingName = vercelStagingName ?? null;
-    if (vercelStagingEnvironment && !stagingName) {
-      stagingName = await lookupVercelEnvironmentName(project.id, vercelStagingEnvironment);
-    }
-
     const result = await vercelService.updateVercelIntegrationConfig(project.id, {
-      pullEnvVarsFromVercel,
-      spawnDeploymentOnVercelEvent,
-      spawnBuildOnVercelEvent,
+      atomicBuilds: atomicBuilds as EnvSlug[] | null,
+      pullEnvVarsBeforeBuild: pullEnvVarsBeforeBuild as EnvSlug[] | null,
       vercelStagingEnvironment: vercelStagingEnvironment ?? null,
-      vercelStagingName: stagingName,
     });
 
     if (result) {
@@ -352,8 +359,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
   if (actionType === "complete-onboarding") {
     const {
       vercelStagingEnvironment,
-      vercelStagingName,
-      pullEnvVarsFromVercel,
+      pullEnvVarsBeforeBuild,
+      atomicBuilds,
       syncEnvVarsMapping,
       next,
     } = submission.value;
@@ -367,16 +374,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
       }
     }
 
-    // If vercelStagingName is not provided, look it up from the environment ID
-    let stagingName = vercelStagingName ?? null;
-    if (vercelStagingEnvironment && !stagingName) {
-      stagingName = await lookupVercelEnvironmentName(project.id, vercelStagingEnvironment);
-    }
+    logger.info("Vercel complete-onboarding action: received params", {
+      projectId: project.id,
+      vercelStagingEnvironment,
+      pullEnvVarsBeforeBuild,
+      atomicBuilds,
+      syncEnvVarsMappingRaw: syncEnvVarsMapping,
+      parsedMappingKeys: Object.keys(parsedMapping),
+    });
 
     const result = await vercelService.completeOnboarding(project.id, {
       vercelStagingEnvironment: vercelStagingEnvironment ?? null,
-      vercelStagingName: stagingName,
-      pullEnvVarsFromVercel: pullEnvVarsFromVercel ?? true,
+      pullEnvVarsBeforeBuild: pullEnvVarsBeforeBuild as EnvSlug[] | null,
+      atomicBuilds: atomicBuilds as EnvSlug[] | null,
       syncEnvVarsMapping: parsedMapping,
     });
 
@@ -407,17 +417,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   // Handle update-env-mapping action (during onboarding)
   if (actionType === "update-env-mapping") {
-    const { vercelStagingEnvironment, vercelStagingName } = submission.value;
-
-    // If vercelStagingName is not provided, look it up from the environment ID
-    let stagingName = vercelStagingName ?? null;
-    if (vercelStagingEnvironment && !stagingName) {
-      stagingName = await lookupVercelEnvironmentName(project.id, vercelStagingEnvironment);
-    }
+    const { vercelStagingEnvironment } = submission.value;
 
     const result = await vercelService.updateVercelIntegrationConfig(project.id, {
       vercelStagingEnvironment: vercelStagingEnvironment ?? null,
-      vercelStagingName: stagingName,
     });
 
     if (result) {
@@ -603,11 +606,26 @@ function VercelGitHubWarning() {
   return (
     <Callout variant="warning" className="mb-4">
       <p className="font-sans text-xs font-normal text-text-dimmed">
-        GitHub integration is not connected. Vercel integration cannot sync environment variables or
+        GitHub integration is not connected. Vercel integration cannot pull environment variables or
         spawn Trigger.dev builds without a properly installed GitHub integration.
       </p>
     </Callout>
   );
+}
+
+const ALL_ENV_SLUGS: EnvSlug[] = ["prod", "stg", "preview", "dev"];
+
+function envSlugLabel(slug: EnvSlug): string {
+  switch (slug) {
+    case "prod":
+      return "Production";
+    case "stg":
+      return "Staging";
+    case "preview":
+      return "Preview";
+    case "dev":
+      return "Development";
+  }
 }
 
 function ConnectedVercelProjectForm({
@@ -630,29 +648,28 @@ function ConnectedVercelProjectForm({
 
   const [hasConfigChanges, setHasConfigChanges] = useState(false);
   const [configValues, setConfigValues] = useState({
-    pullEnvVarsFromVercel: connectedProject.integrationData.config.pullEnvVarsFromVercel,
-    spawnDeploymentOnVercelEvent:
-      connectedProject.integrationData.config.spawnDeploymentOnVercelEvent,
-    spawnBuildOnVercelEvent: connectedProject.integrationData.config.spawnBuildOnVercelEvent,
+    atomicBuilds: connectedProject.integrationData.config.atomicBuilds ?? [],
+    pullEnvVarsBeforeBuild: connectedProject.integrationData.config.pullEnvVarsBeforeBuild ?? [],
     vercelStagingEnvironment:
       connectedProject.integrationData.config.vercelStagingEnvironment || "",
-    vercelStagingName: connectedProject.integrationData.config.vercelStagingName || null,
   });
 
+  // Track original values for comparison
+  const originalAtomicBuilds = connectedProject.integrationData.config.atomicBuilds ?? [];
+  const originalPullEnvVars = connectedProject.integrationData.config.pullEnvVarsBeforeBuild ?? [];
+  const originalStagingEnv = connectedProject.integrationData.config.vercelStagingEnvironment || "";
+
   useEffect(() => {
-    const hasChanges =
-      configValues.pullEnvVarsFromVercel !==
-        connectedProject.integrationData.config.pullEnvVarsFromVercel ||
-      configValues.spawnDeploymentOnVercelEvent !==
-        connectedProject.integrationData.config.spawnDeploymentOnVercelEvent ||
-      configValues.spawnBuildOnVercelEvent !==
-        connectedProject.integrationData.config.spawnBuildOnVercelEvent ||
-      configValues.vercelStagingEnvironment !==
-        (connectedProject.integrationData.config.vercelStagingEnvironment || "") ||
-      configValues.vercelStagingName !==
-        (connectedProject.integrationData.config.vercelStagingName || null);
-    setHasConfigChanges(hasChanges);
-  }, [configValues, connectedProject.integrationData.config]);
+    const atomicBuildsChanged =
+      JSON.stringify([...configValues.atomicBuilds].sort()) !==
+      JSON.stringify([...originalAtomicBuilds].sort());
+    const pullEnvVarsChanged =
+      JSON.stringify([...configValues.pullEnvVarsBeforeBuild].sort()) !==
+      JSON.stringify([...originalPullEnvVars].sort());
+    const stagingEnvChanged = configValues.vercelStagingEnvironment !== originalStagingEnv;
+
+    setHasConfigChanges(atomicBuildsChanged || pullEnvVarsChanged || stagingEnvChanged);
+  }, [configValues, originalAtomicBuilds, originalPullEnvVars, originalStagingEnv]);
 
   const [configForm, fields] = useForm({
     id: "update-vercel-config",
@@ -670,6 +687,21 @@ function ConnectedVercelProjectForm({
     (navigation.state === "submitting" || navigation.state === "loading");
 
   const actionUrl = vercelResourcePath(organizationSlug, projectSlug, environmentSlug);
+
+  // Filter out staging if no staging environment exists
+  const availableEnvSlugs = hasStagingEnvironment
+    ? ALL_ENV_SLUGS
+    : ALL_ENV_SLUGS.filter((s) => s !== "stg");
+
+  // For pull env vars and atomic deployments, exclude "dev" (not needed for development)
+  const availableEnvSlugsForBuildSettings = availableEnvSlugs.filter((s) => s !== "dev");
+
+  // Format selected environments for display
+  const formatSelectedEnvs = (selected: EnvSlug[], availableSlugs: EnvSlug[] = availableEnvSlugs): string => {
+    if (selected.length === 0) return "None selected";
+    if (selected.length === availableSlugs.length) return "All environments";
+    return selected.map(envSlugLabel).join(", ");
+  };
 
   return (
     <>
@@ -700,7 +732,7 @@ function ConnectedVercelProjectForm({
               <Paragraph className="mb-1">
                 Are you sure you want to disconnect{" "}
                 <span className="font-semibold">{connectedProject.vercelProjectName}</span>?
-                This will stop syncing environment variables and disable Vercel-triggered builds.
+                This will stop pulling environment variables and disable atomic deployments.
               </Paragraph>
               <FormButtons
                 confirmButton={
@@ -724,97 +756,25 @@ function ConnectedVercelProjectForm({
 
       {/* Configuration form */}
       <Form method="post" action={actionUrl} {...configForm.props}>
+        <input
+          type="hidden"
+          name="atomicBuilds"
+          value={JSON.stringify(configValues.atomicBuilds)}
+        />
+        <input
+          type="hidden"
+          name="pullEnvVarsBeforeBuild"
+          value={JSON.stringify(configValues.pullEnvVarsBeforeBuild)}
+        />
+        <input
+          type="hidden"
+          name="vercelStagingEnvironment"
+          value={configValues.vercelStagingEnvironment}
+        />
+
         <Fieldset>
           <InputGroup fullWidth>
             <div className="flex flex-col gap-4">
-              {/* Staging environment mapping info */}
-              {hasStagingEnvironment &&
-                connectedProject.integrationData.config.vercelStagingEnvironment &&
-                connectedProject.integrationData.config.vercelStagingEnvironment !== "" &&
-                connectedProject.integrationData.config.vercelStagingName && (
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <Label>Staging environment mapping</Label>
-                      <Hint>
-                        Vercel environment mapped to Trigger.dev's Staging environment.
-                      </Hint>
-                    </div>
-                    <span className="font-mono text-sm text-text-bright break-all">
-                      {connectedProject.integrationData.config.vercelStagingName}
-                    </span>
-                  </div>
-                )}
-
-              {/* Pull env vars toggle */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Sync environment variables from Vercel</Label>
-                  <Hint>
-                    When enabled, environment variables will be pulled from Vercel during builds.
-                    Configure which variables to sync on the{" "}
-                    <TextLink to={`/orgs/${organizationSlug}/projects/${projectSlug}/environment-variables`}>
-                      environment variables page
-                    </TextLink>
-                    .
-                  </Hint>
-                </div>
-                <Switch
-                  name="pullEnvVarsFromVercel"
-                  variant="small"
-                  defaultChecked={connectedProject.integrationData.config.pullEnvVarsFromVercel}
-                  onCheckedChange={(checked) => {
-                    setConfigValues((prev) => ({
-                      ...prev,
-                      pullEnvVarsFromVercel: checked,
-                    }));
-                  }}
-                />
-              </div>
-
-              {/* Spawn deployment toggle */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Spawn deployment on Vercel deployment</Label>
-                  <Hint>
-                    When enabled, a Trigger.dev deployment will be created when Vercel deploys.
-                  </Hint>
-                </div>
-                <Switch
-                  name="spawnDeploymentOnVercelEvent"
-                  variant="small"
-                  defaultChecked={
-                    connectedProject.integrationData.config.spawnDeploymentOnVercelEvent
-                  }
-                  onCheckedChange={(checked) => {
-                    setConfigValues((prev) => ({
-                      ...prev,
-                      spawnDeploymentOnVercelEvent: checked,
-                    }));
-                  }}
-                />
-              </div>
-
-              {/* Spawn build toggle */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Spawn build on Vercel build</Label>
-                  <Hint>
-                    When enabled, a Trigger.dev build will be triggered when Vercel builds.
-                  </Hint>
-                </div>
-                <Switch
-                  name="spawnBuildOnVercelEvent"
-                  variant="small"
-                  defaultChecked={connectedProject.integrationData.config.spawnBuildOnVercelEvent}
-                  onCheckedChange={(checked) => {
-                    setConfigValues((prev) => ({
-                      ...prev,
-                      spawnBuildOnVercelEvent: checked,
-                    }));
-                  }}
-                />
-              </div>
-
               {/* Staging environment mapping */}
               {hasStagingEnvironment && customEnvironments && customEnvironments.length > 0 && (
                 <div>
@@ -824,15 +784,12 @@ function ConnectedVercelProjectForm({
                     environment.
                   </Hint>
                   <Select
-                    name="vercelStagingEnvironment"
                     value={configValues.vercelStagingEnvironment}
                     setValue={(value) => {
                       if (!Array.isArray(value)) {
-                        const environment = customEnvironments.find((e) => e.id === value);
                         setConfigValues((prev) => ({
                           ...prev,
                           vercelStagingEnvironment: value,
-                          vercelStagingName: environment?.slug || null,
                         }));
                       }
                     }}
@@ -859,15 +816,114 @@ function ConnectedVercelProjectForm({
                       )),
                     ]}
                   </Select>
-                  {configValues.vercelStagingName && (
-                    <input
-                      type="hidden"
-                      name="vercelStagingName"
-                      value={configValues.vercelStagingName}
-                    />
-                  )}
                 </div>
               )}
+
+              {/* Pull env vars before build */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <Label>Pull env vars before build</Label>
+                    <Hint>
+                      Select which environments should pull environment variables from Vercel before
+                      each build.{" "}
+                      <TextLink
+                        to={`/orgs/${organizationSlug}/projects/${projectSlug}/environment-variables`}
+                      >
+                        Configure which variables to pull
+                      </TextLink>
+                      .
+                    </Hint>
+                  </div>
+                  <Switch
+                    variant="small"
+                    checked={configValues.pullEnvVarsBeforeBuild.length === availableEnvSlugsForBuildSettings.length}
+                    onCheckedChange={(checked) => {
+                      setConfigValues((prev) => ({
+                        ...prev,
+                        pullEnvVarsBeforeBuild: checked ? [...availableEnvSlugsForBuildSettings] : [],
+                      }));
+                    }}
+                  />
+                </div>
+                <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
+                  {availableEnvSlugsForBuildSettings.map((slug) => {
+                    const envType = slug === "prod" ? "PRODUCTION" : slug === "stg" ? "STAGING" : "PREVIEW";
+                    return (
+                      <div key={slug} className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <EnvironmentIcon environment={{ type: envType }} className="size-4" />
+                          <span className={`text-sm ${environmentTextClassName({ type: envType })}`}>
+                            {environmentFullTitle({ type: envType })}
+                          </span>
+                        </div>
+                        <Switch
+                          variant="small"
+                          checked={configValues.pullEnvVarsBeforeBuild.includes(slug)}
+                          onCheckedChange={(checked) => {
+                            setConfigValues((prev) => ({
+                              ...prev,
+                              pullEnvVarsBeforeBuild: checked
+                                ? [...prev.pullEnvVarsBeforeBuild, slug]
+                                : prev.pullEnvVarsBeforeBuild.filter((s) => s !== slug),
+                            }));
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Atomic deployments */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <Label>Atomic deployments</Label>
+                    <Hint>
+                      Select which environments should wait for Vercel deployment to complete before
+                      promoting the Trigger.dev deployment.
+                    </Hint>
+                  </div>
+                  <Switch
+                    variant="small"
+                    checked={configValues.atomicBuilds.length === availableEnvSlugsForBuildSettings.length}
+                    onCheckedChange={(checked) => {
+                      setConfigValues((prev) => ({
+                        ...prev,
+                        atomicBuilds: checked ? [...availableEnvSlugsForBuildSettings] : [],
+                      }));
+                    }}
+                  />
+                </div>
+                <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
+                  {availableEnvSlugsForBuildSettings.map((slug) => {
+                    const envType = slug === "prod" ? "PRODUCTION" : slug === "stg" ? "STAGING" : "PREVIEW";
+                    return (
+                      <div key={slug} className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <EnvironmentIcon environment={{ type: envType }} className="size-4" />
+                          <span className={`text-sm ${environmentTextClassName({ type: envType })}`}>
+                            {environmentFullTitle({ type: envType })}
+                          </span>
+                        </div>
+                        <Switch
+                          variant="small"
+                          checked={configValues.atomicBuilds.includes(slug)}
+                          onCheckedChange={(checked) => {
+                            setConfigValues((prev) => ({
+                              ...prev,
+                              atomicBuilds: checked
+                                ? [...prev.atomicBuilds, slug]
+                                : prev.atomicBuilds.filter((s) => s !== slug),
+                            }));
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             <FormError>{configForm.error}</FormError>
@@ -990,12 +1046,12 @@ function VercelSettingsPanel({
           />
           <Hint>
             {data.hasOrgIntegration
-              ? "Connect your Vercel project to sync environment variables and trigger builds automatically."
-              : "Install the Vercel app to connect your projects and sync environment variables."}
+              ? "Connect your Vercel project to pull environment variables and trigger builds automatically."
+              : "Install the Vercel app to connect your projects and pull environment variables."}
           </Hint>
           {!data.isGitHubConnected && (
             <Hint>
-              GitHub integration is not connected. Vercel integration cannot sync environment variables or
+              GitHub integration is not connected. Vercel integration cannot pull environment variables or
               spawn Trigger.dev builds without a properly installed GitHub integration.
             </Hint>
           )}
@@ -1013,7 +1069,9 @@ type OnboardingState =
   | "loading-env-mapping" // After project selection, checking for custom envs
   | "env-mapping" // Showing custom environment mapping UI
   | "loading-env-vars" // Loading environment variables
-  | "env-var-sync" // Showing environment variable sync UI
+  | "env-var-sync" // Showing environment variable sync UI (one-time sync now)
+  | "build-settings" // Configure pullEnvVarsBeforeBuild and atomicBuilds
+  | "github-connection" // Connect GitHub repository
   | "completed"; // Onboarding complete (closes modal)
 
 function VercelOnboardingModal({
@@ -1083,10 +1141,13 @@ function VercelOnboardingModal({
 
   // Update state when modal opens or data changes
   const prevIsOpenRef = useRef(isOpen);
+  // Track if we've synced staging for pull env vars (reset when modal reopens)
+  const hasSyncedStagingRef = useRef(false);
   useEffect(() => {
     if (isOpen && !prevIsOpenRef.current) {
-      // Modal just opened, compute initial state
+      // Modal just opened, compute initial state and reset staging sync flag
       setState(computeInitialState());
+      hasSyncedStagingRef.current = false;
     } else if (isOpen && state === "idle") {
       // Modal is open but in idle state, compute initial state
       setState(computeInitialState());
@@ -1099,13 +1160,49 @@ function VercelOnboardingModal({
     name: string;
   } | null>(null);
   const [vercelStagingEnvironment, setVercelStagingEnvironment] = useState<string>("");
-  const [pullEnvVarsFromVercel, setPullEnvVarsFromVercel] = useState(true);
+  // Available env slugs based on staging environment
+  const availableEnvSlugsForOnboarding: EnvSlug[] = hasStagingEnvironment
+    ? ["prod", "stg", "preview", "dev"]
+    : ["prod", "preview", "dev"];
+  // For build settings (pull env vars and atomic deployments), exclude "dev" (not needed for development)
+  const availableEnvSlugsForOnboardingBuildSettings: EnvSlug[] = availableEnvSlugsForOnboarding.filter(
+    (s) => s !== "dev"
+  );
+  // Build settings state (for build-settings step)
+  // Default: pull env vars enabled for all environments
+  const [pullEnvVarsBeforeBuild, setPullEnvVarsBeforeBuild] = useState<EnvSlug[]>(
+    () => (hasStagingEnvironment ? ["prod", "stg", "preview"] : ["prod", "preview"])
+  );
+  const [atomicBuilds, setAtomicBuilds] = useState<EnvSlug[]>([]);
+
+  // Sync pullEnvVarsBeforeBuild when hasStagingEnvironment becomes true (once)
+  // This ensures staging is included when it becomes available, but respects user changes after
+  useEffect(() => {
+    if (hasStagingEnvironment && !hasSyncedStagingRef.current) {
+      hasSyncedStagingRef.current = true;
+      setPullEnvVarsBeforeBuild((prev) => {
+        if (!prev.includes("stg")) {
+          return [...prev, "stg"];
+        }
+        return prev;
+      });
+    }
+  }, [hasStagingEnvironment]);
+  // Env var sync state (for env-var-sync step - one-time sync)
   const [syncEnvVarsMapping, setSyncEnvVarsMapping] = useState<SyncEnvVarsMapping>({});
   const [expandedEnvVars, setExpandedEnvVars] = useState(false);
   const [projectSelectionError, setProjectSelectionError] = useState<string | null>(null);
 
+  // GitHub connection state (for github-connection step)
+  const gitHubAppInstallations = onboardingData?.gitHubAppInstallations ?? [];
+  const isGitHubConnectedForOnboarding = onboardingData?.isGitHubConnected ?? false;
+
+  // Track if we've triggered a reload for the current loading state to prevent infinite loops
+  const loadingStateRef = useRef<OnboardingState | null>(null);
+
   useEffect(() => {
     if (!isOpen || state === "idle") {
+      loadingStateRef.current = null;
       return;
     }
 
@@ -1114,10 +1211,16 @@ function VercelOnboardingModal({
       return;
     }
 
+    // Skip if we've already triggered a reload for this state
+    if (loadingStateRef.current === state) {
+      return;
+    }
+
     switch (state) {
 
       case "loading-projects":
         // Trigger data reload to fetch projects
+        loadingStateRef.current = state;
         if (onDataReload) {
           onDataReload();
         }
@@ -1126,6 +1229,7 @@ function VercelOnboardingModal({
 
       case "loading-env-mapping":
         // After project selection, reload data to get custom environments
+        loadingStateRef.current = state;
         if (onDataReload) {
           onDataReload();
         }
@@ -1134,6 +1238,7 @@ function VercelOnboardingModal({
 
       case "loading-env-vars":
         // Reload data to get environment variables
+        loadingStateRef.current = state;
         if (onDataReload) {
           onDataReload(vercelStagingEnvironment || undefined);
         }
@@ -1146,9 +1251,12 @@ function VercelOnboardingModal({
       case "env-mapping":
       case "env-var-sync":
       case "completed":
+      case "build-settings":
+      case "github-connection":
+        loadingStateRef.current = null;
         break;
     }
-  }, [isOpen, state, hasOrgIntegration, hasProjectSelected, onboardingData, hasCustomEnvs, hasStagingEnvironment, vercelStagingEnvironment, onDataReload]);
+  }, [isOpen, state, onboardingData?.authInvalid, vercelStagingEnvironment, onDataReload, onClose]);
 
   // Watch for data loading completion
   useEffect(() => {
@@ -1207,32 +1315,53 @@ function VercelOnboardingModal({
 
   const actionUrl = vercelResourcePath(organizationSlug, projectSlug, environmentSlug);
 
+  // Toggle individual env var for the one-time sync
   const handleToggleEnvVar = useCallback((key: string, enabled: boolean) => {
     setSyncEnvVarsMapping((prev) => {
+      const newMapping = { ...prev };
+
       if (enabled) {
-        // Remove from mapping (default is enabled for all environments)
-        const { [key]: _, ...rest } = prev;
-        return rest;
+        // Remove this key from all environment mappings (default is enabled)
+        for (const envSlug of ALL_ENV_SLUGS) {
+          if (newMapping[envSlug]) {
+            const { [key]: _, ...rest } = newMapping[envSlug];
+            if (Object.keys(rest).length === 0) {
+              delete newMapping[envSlug];
+            } else {
+              newMapping[envSlug] = rest;
+            }
+          }
+        }
+      } else {
+        // Disable for all environments
+        for (const envSlug of ALL_ENV_SLUGS) {
+          newMapping[envSlug] = {
+            ...(newMapping[envSlug] || {}),
+            [key]: false,
+          };
+        }
       }
-      // Disable for all environments
-      return {
-        ...prev,
-        [key]: {
-          PRODUCTION: false,
-          STAGING: false,
-          PREVIEW: false,
-          DEVELOPMENT: false,
-        },
-      };
+
+      return newMapping;
     });
   }, []);
 
-  const handleToggleAll = useCallback(
-    (enabled: boolean) => {
-      setPullEnvVarsFromVercel(enabled);
+  // Toggle all env vars for the one-time sync (select/deselect all)
+  const handleToggleAllEnvVars = useCallback(
+    (enabled: boolean, syncableVars: Array<{ key: string }>) => {
       if (enabled) {
         // Reset all mappings (default to sync all)
         setSyncEnvVarsMapping({});
+      } else {
+        // Disable all syncable vars for all environments
+        const newMapping: SyncEnvVarsMapping = {};
+        for (const envSlug of ALL_ENV_SLUGS) {
+          newMapping[envSlug] = {};
+          for (const v of syncableVars) {
+            newMapping[envSlug][v.key] = false;
+          }
+        }
+        setSyncEnvVarsMapping(newMapping);
       }
     },
     []
@@ -1288,17 +1417,36 @@ function VercelOnboardingModal({
     const formData = new FormData();
     formData.append("action", "update-env-mapping");
     formData.append("vercelStagingEnvironment", vercelStagingEnvironment);
-    const environment = customEnvironments.find((env) => env.id === vercelStagingEnvironment);
-    if (environment) {
-      formData.append("vercelStagingName", environment.slug);
-    }
 
     envMappingFetcher.submit(formData, {
       method: "post",
       action: actionUrl,
     });
-    
-  }, [vercelStagingEnvironment, customEnvironments, envMappingFetcher, actionUrl, onDataReload]);
+
+  }, [vercelStagingEnvironment, envMappingFetcher, actionUrl]);
+
+  const handleBuildSettingsNext = useCallback(() => {
+    // Build the form data to complete onboarding (save settings and sync env vars)
+    const formData = new FormData();
+    formData.append("action", "complete-onboarding");
+    formData.append("vercelStagingEnvironment", vercelStagingEnvironment || "");
+    formData.append("pullEnvVarsBeforeBuild", JSON.stringify(pullEnvVarsBeforeBuild));
+    formData.append("atomicBuilds", JSON.stringify(atomicBuilds));
+    formData.append("syncEnvVarsMapping", JSON.stringify(syncEnvVarsMapping));
+    if (nextUrl && fromMarketplaceContext && isGitHubConnectedForOnboarding) {
+      formData.append("next", nextUrl);
+    }
+
+    completeOnboardingFetcher.submit(formData, {
+      method: "post",
+      action: actionUrl,
+    });
+
+    // If GitHub is not connected, transition to GitHub step after saving
+    if (!isGitHubConnectedForOnboarding) {
+      setState("github-connection");
+    }
+  }, [vercelStagingEnvironment, pullEnvVarsBeforeBuild, atomicBuilds, syncEnvVarsMapping, nextUrl, fromMarketplaceContext, isGitHubConnectedForOnboarding, completeOnboardingFetcher, actionUrl]);
 
   const handleFinishOnboarding = useCallback((e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1313,6 +1461,10 @@ function VercelOnboardingModal({
   // Handle successful onboarding completion
   useEffect(() => {
     if (completeOnboardingFetcher.data && typeof completeOnboardingFetcher.data === "object" && "success" in completeOnboardingFetcher.data && completeOnboardingFetcher.data.success && completeOnboardingFetcher.state === "idle") {
+      // Don't close modal if we're on the github-connection step (user still needs to connect GitHub)
+      if (state === "github-connection") {
+        return;
+      }
       // Check if we need to redirect to a specific URL
       if ("redirectTo" in completeOnboardingFetcher.data && typeof completeOnboardingFetcher.data.redirectTo === "string") {
         // Navigate to the redirect URL (handles both internal and external URLs)
@@ -1322,7 +1474,7 @@ function VercelOnboardingModal({
       // No redirect, just close the modal
       setState("completed");
     }
-  }, [completeOnboardingFetcher.data, completeOnboardingFetcher.state]);
+  }, [completeOnboardingFetcher.data, completeOnboardingFetcher.state, state]);
 
   // Handle completed state - close modal
   useEffect(() => {
@@ -1398,6 +1550,8 @@ function VercelOnboardingModal({
   const showProjectSelection = state === "project-selection";
   const showEnvMapping = state === "env-mapping";
   const showEnvVarSync = state === "env-var-sync";
+  const showBuildSettings = state === "build-settings";
+  const showGitHubConnection = state === "github-connection";
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !fromMarketplaceContext && onClose()}>
@@ -1537,182 +1691,339 @@ function VercelOnboardingModal({
           )}
 
           {showEnvVarSync && (
-            <CompleteOnboardingForm method="post" action={actionUrl} onSubmit={handleFinishOnboarding}>
-              <input type="hidden" name="action" value="complete-onboarding" />
-              <input
-                type="hidden"
-                name="vercelStagingEnvironment"
-                value={vercelStagingEnvironment || ""}
-              />
-              {vercelStagingEnvironment && (
-                <input
-                  type="hidden"
-                  name="vercelStagingName"
-                  value={
-                    customEnvironments.find((e) => e.id === vercelStagingEnvironment)?.slug || ""
-                  }
-                />
-              )}
-              <input
-                type="hidden"
-                name="syncEnvVarsMapping"
-                value={JSON.stringify(syncEnvVarsMapping)}
-              />
-              {nextUrl && fromMarketplaceContext && (
-                <input
-                  type="hidden"
-                  name="next"
-                  value={nextUrl}
-                />
-              )}
+            <div className="flex flex-col gap-4">
+              <Header3>Pull Environment Variables</Header3>
+              <Paragraph className="text-sm">
+                Select which environment variables to pull from Vercel now. This is a one-time pull.
+              </Paragraph>
 
-              <div className="flex flex-col gap-4">
-                <Header3>Sync Environment Variables</Header3>
-
-                {/* Stats */}
-                <div className="flex gap-4 text-sm">
+              {/* Stats */}
+              <div className="flex gap-4 text-sm">
+                <div className="rounded border bg-charcoal-750 px-3 py-2">
+                  <span className="font-medium text-text-bright">{syncableEnvVars.length}</span>
+                  <span className="text-text-dimmed"> can be pulled</span>
+                </div>
+                {secretEnvVars.length > 0 && (
                   <div className="rounded border bg-charcoal-750 px-3 py-2">
-                    <span className="font-medium text-text-bright">{syncableEnvVars.length}</span>
-                    <span className="text-text-dimmed"> can be synced</span>
+                    <span className="font-medium text-amber-400">{secretEnvVars.length}</span>
+                    <span className="text-text-dimmed"> secret (cannot pull)</span>
                   </div>
-                  {secretEnvVars.length > 0 && (
-                    <div className="rounded border bg-charcoal-750 px-3 py-2">
-                      <span className="font-medium text-amber-400">{secretEnvVars.length}</span>
-                      <span className="text-text-dimmed"> secret (cannot sync)</span>
+                )}
+              </div>
+
+              {/* Main toggle - controls selecting/deselecting all env vars */}
+              <div className="flex items-center justify-between rounded border bg-charcoal-800 p-3">
+                <div>
+                  <Label>Pull all environment variables now</Label>
+                  <Hint>Select all variables to pull from Vercel.</Hint>
+                </div>
+                <Switch
+                  variant="small"
+                  checked={enabledEnvVars.length === syncableEnvVars.length}
+                  onCheckedChange={(checked) => handleToggleAllEnvVars(checked, syncableEnvVars)}
+                />
+              </div>
+
+              {/* Expandable env var list */}
+              {envVars.length > 0 && (
+                <div className="rounded border">
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between p-3 text-left"
+                    onClick={() => setExpandedEnvVars(!expandedEnvVars)}
+                  >
+                    <span className="text-sm text-text-dimmed">
+                      {enabledEnvVars.length} of {syncableEnvVars.length} variables will be pulled
+                    </span>
+                    {expandedEnvVars ? (
+                      <ChevronUpIcon className="size-4" />
+                    ) : (
+                      <ChevronDownIcon className="size-4" />
+                    )}
+                  </button>
+
+                  {expandedEnvVars && (
+                    <div className="max-h-64 overflow-y-auto border-t">
+                      {envVars.map((envVar) => (
+                        <div
+                          key={envVar.id}
+                          className="flex items-center justify-between gap-2 border-b px-3 py-2 last:border-b-0"
+                        >
+                          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                            {existingVars[envVar.key] ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="min-w-0 max-w-full cursor-default text-left truncate font-mono text-xs underline decoration-yellow-500 decoration-dotted underline-offset-2">
+                                      {envVar.key}
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="flex items-center gap-1 text-xs">
+                                    {`This variable is going to be replaced in: ${existingVars[
+                                      envVar.key
+                                    ].environments.join(", ")}`}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <span className="truncate font-mono text-xs">{envVar.key}</span>
+                            )}
+                            {envVar.target && envVar.target.length > 0 && (
+                              <span className="text-xs text-text-dimmed">
+                                {formatVercelTargets(envVar.target)}
+                                {envVar.isShared && " · Shared"}
+                              </span>
+                            )}
+                          </div>
+                          {envVar.isSecret ? (
+                            <span className="shrink-0 text-xs text-amber-400">Secret</span>
+                          ) : (
+                            <Switch
+                              variant="small"
+                              checked={shouldSyncEnvVarForAnyEnvironment(syncEnvVarsMapping, envVar.key)}
+                              onCheckedChange={(checked) =>
+                                handleToggleEnvVar(envVar.key, checked)
+                              }
+                            />
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
+              )}
 
-                {/* Main toggle */}
-                <div className="flex items-center justify-between rounded border bg-charcoal-800 p-3">
+              {overlappingEnvVarsCount > 0 && enabledEnvVars.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <ExclamationTriangleIcon className="h-4 w-4 text-amber-500" />
+                  <span className="text-xs text-text-dimmed">
+                    {overlappingEnvVarsCount} env vars are going to be updated (marked with{" "}
+                    <span className="underline decoration-yellow-500 decoration-dotted underline-offset-2">
+                      underline
+                    </span>
+                    )
+                  </span>
+                </div>
+              )}
+
+              <FormButtons
+                confirmButton={
+                  <Button
+                    variant="primary/medium"
+                    onClick={() => setState("build-settings")}
+                  >
+                    Next
+                  </Button>
+                }
+                cancelButton={
+                  hasCustomEnvs ? (
+                    <Button
+                      variant="tertiary/medium"
+                      onClick={() => setState("env-mapping")}
+                    >
+                      Back
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="tertiary/medium"
+                      onClick={handleSkipOnboarding}
+                      disabled={fetcher.state !== "idle"}
+                    >
+                      Cancel
+                    </Button>
+                  )
+                }
+              />
+            </div>
+          )}
+
+          {showBuildSettings && (
+            <div className="flex flex-col gap-4">
+              <Header3>Build Settings</Header3>
+              <Paragraph className="text-sm">
+                Configure how environment variables are pulled during builds and atomic deployments.
+              </Paragraph>
+
+              {/* Pull env vars before build */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
                   <div>
-                    <Label>Sync all environment variables</Label>
-                    <Hint>Enable syncing of environment variables from Vercel during builds.</Hint>
+                    <Label>Pull env vars before build</Label>
+                    <Hint>
+                      Select which environments should automatically pull environment variables from
+                      Vercel before each build.
+                    </Hint>
                   </div>
                   <Switch
-                    name="pullEnvVarsFromVercel"
                     variant="small"
-                    checked={pullEnvVarsFromVercel}
-                    onCheckedChange={handleToggleAll}
+                    checked={pullEnvVarsBeforeBuild.length === availableEnvSlugsForOnboardingBuildSettings.length}
+                    onCheckedChange={(checked) => {
+                      setPullEnvVarsBeforeBuild(checked ? [...availableEnvSlugsForOnboardingBuildSettings] : []);
+                    }}
                   />
                 </div>
-
-                {/* Expandable env var list */}
-                {pullEnvVarsFromVercel && envVars.length > 0 && (
-                  <div className="rounded border">
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between p-3 text-left"
-                      onClick={() => setExpandedEnvVars(!expandedEnvVars)}
-                    >
-                      <span className="text-sm text-text-dimmed">
-                        {enabledEnvVars.length} of {syncableEnvVars.length} variables will be synced
-                      </span>
-                      {expandedEnvVars ? (
-                        <ChevronUpIcon className="size-4" />
-                      ) : (
-                        <ChevronDownIcon className="size-4" />
-                      )}
-                    </button>
-
-                    {expandedEnvVars && (
-                      <div className="max-h-64 overflow-y-auto border-t">
-                        {envVars.map((envVar) => (
-                          <div
-                            key={envVar.id}
-                            className="flex items-center justify-between gap-2 border-b px-3 py-2 last:border-b-0"
-                          >
-                            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                              {existingVars[envVar.key] ? (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className="min-w-0 max-w-full cursor-default text-left truncate font-mono text-xs underline decoration-yellow-500 decoration-dotted underline-offset-2">
-                                        {envVar.key}
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="flex items-center gap-1 text-xs">
-                                      {`This variable is going to be replaced in: ${existingVars[
-                                        envVar.key
-                                      ].environments
-                                        .map((e) => shortEnvironmentLabel(e))
-                                        .join(", ")}`}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              ) : (
-                                <span className="truncate font-mono text-xs">{envVar.key}</span>
-                              )}
-                              {envVar.target && envVar.target.length > 0 && (
-                                <span className="text-xs text-text-dimmed">
-                                  {formatVercelTargets(envVar.target)}
-                                  {envVar.isShared && " · Shared"}
-                                </span>
-                              )}
-                            </div>
-                            {envVar.isSecret ? (
-                              <span className="shrink-0 text-xs text-amber-400">Secret</span>
-                            ) : (
-                              <Switch
-                                variant="small"
-                                checked={shouldSyncEnvVarForAnyEnvironment(syncEnvVarsMapping, envVar.key)}
-                                onCheckedChange={(checked) =>
-                                  handleToggleEnvVar(envVar.key, checked)
-                                }
-                              />
-                            )}
-                          </div>
-                        ))}
+                <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
+                  {availableEnvSlugsForOnboardingBuildSettings.map((slug) => {
+                    const envType = slug === "prod" ? "PRODUCTION" : slug === "stg" ? "STAGING" : "PREVIEW";
+                    return (
+                      <div key={slug} className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <EnvironmentIcon environment={{ type: envType }} className="size-4" />
+                          <span className={`text-sm ${environmentTextClassName({ type: envType })}`}>
+                            {environmentFullTitle({ type: envType })}
+                          </span>
+                        </div>
+                        <Switch
+                          variant="small"
+                          checked={pullEnvVarsBeforeBuild.includes(slug)}
+                          onCheckedChange={(checked) => {
+                            setPullEnvVarsBeforeBuild((prev) =>
+                              checked ? [...prev, slug] : prev.filter((s) => s !== slug)
+                            );
+                          }}
+                        />
                       </div>
-                    )}
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Atomic deployments */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <Label>Atomic deployments</Label>
+                    <Hint>
+                      Select which environments should wait for Vercel deployment to complete before
+                      promoting the Trigger.dev deployment.
+                    </Hint>
                   </div>
-                )}
-              
-                {overlappingEnvVarsCount > 0 && pullEnvVarsFromVercel && (
-                  <div className="flex items-center gap-2">
-                    <ExclamationTriangleIcon className="h-4 w-4 text-amber-500" />
-                    <span className="text-xs text-text-dimmed">
-                      {overlappingEnvVarsCount} env vars are going to be updated (marked with{" "}
-                      <span className="underline decoration-yellow-500 decoration-dotted underline-offset-2">
-                        underline
-                      </span>
-                      )
+                  <Switch
+                    variant="small"
+                    checked={atomicBuilds.length === availableEnvSlugsForOnboardingBuildSettings.length}
+                    onCheckedChange={(checked) => {
+                      setAtomicBuilds(checked ? [...availableEnvSlugsForOnboardingBuildSettings] : []);
+                    }}
+                  />
+                </div>
+                <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
+                  {availableEnvSlugsForOnboardingBuildSettings.map((slug) => {
+                    const envType = slug === "prod" ? "PRODUCTION" : slug === "stg" ? "STAGING" : "PREVIEW";
+                    return (
+                      <div key={slug} className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <EnvironmentIcon environment={{ type: envType }} className="size-4" />
+                          <span className={`text-sm ${environmentTextClassName({ type: envType })}`}>
+                            {environmentFullTitle({ type: envType })}
+                          </span>
+                        </div>
+                        <Switch
+                          variant="small"
+                          checked={atomicBuilds.includes(slug)}
+                          onCheckedChange={(checked) => {
+                            setAtomicBuilds((prev) =>
+                              checked ? [...prev, slug] : prev.filter((s) => s !== slug)
+                            );
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <FormButtons
+                confirmButton={
+                  <Button
+                    variant="primary/medium"
+                    onClick={handleBuildSettingsNext}
+                    disabled={completeOnboardingFetcher.state !== "idle"}
+                    LeadingIcon={completeOnboardingFetcher.state !== "idle" ? SpinnerWhite : undefined}
+                  >
+                    {isGitHubConnectedForOnboarding ? "Finish" : "Next"}
+                  </Button>
+                }
+                cancelButton={
+                  <Button
+                    variant="tertiary/medium"
+                    onClick={() => setState("env-var-sync")}
+                  >
+                    Back
+                  </Button>
+                }
+              />
+            </div>
+          )}
+
+          {showGitHubConnection && (
+            <div className="flex flex-col gap-4">
+              <Header3>Connect GitHub Repository</Header3>
+              <Paragraph className="text-sm">
+                To fully integrate with Vercel, Trigger.dev needs access to your source code.
+                This allows automatic deployments and build synchronization.
+              </Paragraph>
+
+              <Callout variant="info">
+                <p className="text-xs">
+                  Connecting your GitHub repository enables Trigger.dev to read your source code
+                  and automatically create deployments when you push changes to Vercel.
+                </p>
+              </Callout>
+
+              {gitHubAppInstallations.length === 0 ? (
+                <div className="flex flex-col gap-3">
+                  <LinkButton
+                    to={githubAppInstallPath(
+                      organizationSlug,
+                      `${v3ProjectSettingsPath(
+                        { slug: organizationSlug },
+                        { slug: projectSlug },
+                        { slug: environmentSlug }
+                      )}?openGithubRepoModal=1`
+                    )}
+                    variant="secondary/medium"
+                    LeadingIcon={OctoKitty}
+                  >
+                    Install GitHub app
+                  </LinkButton>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <ConnectGitHubRepoModal
+                      gitHubAppInstallations={gitHubAppInstallations as GitHubAppInstallation[]}
+                      organizationSlug={organizationSlug}
+                      projectSlug={projectSlug}
+                      environmentSlug={environmentSlug}
+                      redirectUrl={v3ProjectSettingsPath(
+                        { slug: organizationSlug },
+                        { slug: projectSlug },
+                        { slug: environmentSlug }
+                      )}
+                    />
+                    <span className="flex items-center gap-1 text-xs text-text-dimmed">
+                      <CheckCircleIcon className="size-4 text-success" /> GitHub app is installed
                     </span>
                   </div>
-                )}
+                </div>
+              )}
 
-                <FormButtons
-                  confirmButton={
-                    <Button
-                      type="submit"
-                      variant="primary/medium"
-                      disabled={completeOnboardingFetcher.state !== "idle"}
-                      LeadingIcon={completeOnboardingFetcher.state !== "idle" ? SpinnerWhite : undefined}
-                    >
-                      Finish
-                    </Button>
-                  }
-                  cancelButton={
-                    hasCustomEnvs ? (
-                      <Button
-                        variant="tertiary/medium"
-                        onClick={() => setState("env-mapping")}
-                      >
-                        Back
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="tertiary/medium"
-                        onClick={handleSkipOnboarding}
-                        disabled={fetcher.state !== "idle"}
-                      >
-                        Cancel
-                      </Button>
-                    )
-                  }
-                />
-              </div>
-            </CompleteOnboardingForm>
+              <FormButtons
+                confirmButton={
+                  <Button
+                    variant="tertiary/medium"
+                    onClick={() => {
+                      setState("completed");
+                      if (fromMarketplaceContext && nextUrl) {
+                        window.location.href = nextUrl;
+                      }
+                    }}
+                  >
+                    Skip for now
+                  </Button>
+                }
+              />
+            </div>
           )}
         </div>
       </DialogContent>
