@@ -1,6 +1,6 @@
 import { nanoid, customAlphabet } from "nanoid";
 import slug from "slug";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import type { Project } from "@trigger.dev/database";
 import { Organization, createEnvironment } from "./organization.server";
 import { env } from "~/env.server";
@@ -135,7 +135,7 @@ export async function createProject(
 
 export async function findProjectBySlug(orgSlug: string, projectSlug: string, userId: string) {
   // Find the project scoped to the organization, making sure the user belongs to that org
-  return await prisma.project.findFirst({
+  return await $replica.project.findFirst({
     where: {
       slug: projectSlug,
       organization: {
@@ -148,7 +148,7 @@ export async function findProjectBySlug(orgSlug: string, projectSlug: string, us
 
 export async function findProjectByRef(externalRef: string, userId: string) {
   // Find the project scoped to the organization, making sure the user belongs to that org
-  return await prisma.project.findFirst({
+  return await $replica.project.findFirst({
     where: {
       externalRef,
       organization: {
