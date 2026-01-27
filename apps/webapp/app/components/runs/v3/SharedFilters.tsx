@@ -537,6 +537,8 @@ export function TimeDropdown({
     replace,
     onApply,
     onValueChange,
+    exceedsMaxPeriod,
+    maxPeriodDays
   ]);
 
   return (
