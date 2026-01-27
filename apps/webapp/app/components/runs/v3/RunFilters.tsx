@@ -31,6 +31,7 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { FormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
+import { MiddleTruncate } from "~/components/primitives/MiddleTruncate";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ComboBox,
@@ -634,7 +635,7 @@ function TasksDropdown({
     <SelectProvider value={values("tasks")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
-        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        className="min-w-0 max-w-[min(360px,var(--popover-available-width))]"
         hideOnEscape={() => {
           if (onClose) {
             onClose();
@@ -654,7 +655,7 @@ function TasksDropdown({
                 <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
               }
             >
-              {item.slug}
+              <MiddleTruncate text={item.slug}/>
             </SelectItem>
           ))}
         </SelectList>
