@@ -164,12 +164,20 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typedjson({
     defaultQuery,
+    defaultPeriod: await getDefaultPeriod(project.organizationId),
     history,
     isAdmin,
   });
 };
 
-const DEFAULT_PERIOD = "7d";
+async function getDefaultPeriod(organizationId: string): Promise<string> {
+  const idealDefaultPeriodDays = 7;
+  const maxQueryPeriod = await getLimit(organizationId, "queryPeriodDays", 30);
+  if (maxQueryPeriod < idealDefaultPeriodDays) {
+    return `${maxQueryPeriod}d`;
+  }
+  return `${idealDefaultPeriodDays}d`;
+}
 
 const ActionSchema = z.object({
   query: z.string().min(1, "Query is required"),
@@ -272,11 +280,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const explain = explainParam === "true" && isAdmin;
 
   // Build time filter fallback for triggered_at column
+  const defaultPeriod = await getDefaultPeriod(project.organizationId);
   const timeFilter = timeFilters({
     period: period ?? undefined,
     from: from ?? undefined,
     to: to ?? undefined,
-    defaultPeriod: DEFAULT_PERIOD,
+    defaultPeriod,
   });
 
   // Calculate the effective "from" date the user is requesting (for period clipping check)
@@ -286,7 +295,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     requestedFromDate = new Date(timeFilter.from);
   } else if (!timeFilter.to) {
     // Period specified (or default) - calculate from now
-    const periodMs = parse(timeFilter.period ?? DEFAULT_PERIOD) ?? 7 * 24 * 60 * 60 * 1000;
+    const periodMs = parse(timeFilter.period ?? defaultPeriod) ?? 7 * 24 * 60 * 60 * 1000;
     requestedFromDate = new Date(Date.now() - periodMs);
   }
 
@@ -405,6 +414,7 @@ interface QueryEditorFormHandle {
 const QueryEditorForm = forwardRef<
   QueryEditorFormHandle,
   {
+    defaultPeriod: string;
     defaultQuery: string;
     defaultScope: QueryScope;
     defaultTimeFilter?: { period?: string; from?: string; to?: string };
@@ -414,7 +424,7 @@ const QueryEditorForm = forwardRef<
     onQuerySubmit?: () => void;
     onHistorySelected?: (item: QueryHistoryItem) => void;
   }
->(function QueryEditorForm({ defaultQuery, defaultScope, defaultTimeFilter, history, fetcher, isAdmin, onQuerySubmit, onHistorySelected }, ref) {
+>(function QueryEditorForm({ defaultPeriod, defaultQuery, defaultScope, defaultTimeFilter, history, fetcher, isAdmin, onQuerySubmit, onHistorySelected }, ref) {
   const isLoading = fetcher.state === "submitting" || fetcher.state === "loading";
   const [query, setQuery] = useState(defaultQuery);
   const [scope, setScope] = useState<QueryScope>(defaultScope);
@@ -526,7 +536,7 @@ const QueryEditorForm = forwardRef<
             />
           ) : (
             <TimeFilter
-              defaultPeriod={DEFAULT_PERIOD}
+              defaultPeriod={defaultPeriod}
               labelName="Triggered"
               hideLabel
               period={period}
@@ -562,7 +572,7 @@ const QueryEditorForm = forwardRef<
 });
 
 export default function Page() {
-  const { defaultQuery, history, isAdmin } = useTypedLoaderData<typeof loader>();
+  const { defaultPeriod, defaultQuery, history, isAdmin } = useTypedLoaderData<typeof loader>();
   const fetcher = useTypedFetcher<typeof action>();
   const results = fetcher.data;
   const { replace: replaceSearchParams } = useSearchParams();
@@ -696,6 +706,7 @@ export default function Page() {
               <ResizablePanel id="query-editor" min="100px" default="300px" className="overflow-hidden">
                 <QueryEditorForm
                   ref={editorRef}
+                  defaultPeriod={defaultPeriod}
                   defaultQuery={initialQuery}
                   defaultScope={initialScope}
                   defaultTimeFilter={initialTimeFilter}
