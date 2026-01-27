@@ -2,10 +2,10 @@ import { useRef, useState, useLayoutEffect, useCallback } from "react";
 import { cn } from "~/utils/cn";
 import { SimpleTooltip } from "./Tooltip";
 
-interface MiddleTruncateProps {
+type MiddleTruncateProps = {
   text: string;
   className?: string;
-}
+};
 
 /**
  * A component that truncates text in the middle, showing the beginning and end.
@@ -84,11 +84,24 @@ export function MiddleTruncate({ text, className }: MiddleTruncateProps) {
 
     // Ensure minimum characters on each side for readability
     const minChars = 4;
+    const prevStartChars = startChars;
+    const prevEndChars = endChars;
+
     if (startChars < minChars && text.length > minChars * 2 + 1) {
       startChars = minChars;
     }
     if (endChars < minChars && text.length > minChars * 2 + 1) {
       endChars = minChars;
+    }
+
+    // Re-measure after enforcing minChars to prevent overflow
+    if (startChars !== prevStartChars || endChars !== prevEndChars) {
+      measure.textContent = text.slice(0, startChars) + ellipsis + text.slice(-endChars);
+      if (measure.offsetWidth > targetWidth) {
+        // Revert to previous values if minChars enforcement causes overflow
+        startChars = prevStartChars;
+        endChars = prevEndChars;
+      }
     }
 
     // If combined chars would exceed text length, show full text
@@ -124,7 +137,7 @@ export function MiddleTruncate({ text, className }: MiddleTruncateProps) {
   const content = (
     <span
       ref={containerRef}
-      className={cn("block", isTruncated && "min-w-[360px]", className)}
+      className={cn("block", isTruncated && "min-w-full", className)}
     >
       {/* Hidden span for measuring text width */}
       <span
