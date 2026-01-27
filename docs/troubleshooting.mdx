@@ -151,6 +151,10 @@ Your code is deployed separately from the rest of your app(s) so you need to mak
 
 Prisma uses code generation to create the client from your schema file. This means you need to add a bit of config so we can generate this file before your tasks run: [Read the guide](/config/extensions/prismaExtension).
 
+### Database connection requires IPv4
+
+Trigger.dev currently only supports IPv4 database connections. If your database provider only provides an IPv6 connection string, you'll need to use an IPv4 address instead. [Upvote IPv6 support](https://triggerdev.featurebase.app/p/support-ipv6-database-connections).
+
 ### `Parallel waits are not supported`
 
 In the current version, you can't perform more that one "wait" in parallel.
