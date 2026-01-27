@@ -1,5 +1,5 @@
 import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } from "@unkey/cache";
-import { MemoryStore } from "@unkey/cache/stores";
+import { createLRUMemoryStore } from "@internal/cache";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
 import { createHash } from "node:crypto";
@@ -157,10 +157,7 @@ export function authorizationRateLimitMiddleware({
   limiterConfigOverride,
 }: Options) {
   const ctx = new DefaultStatefulContext();
-  const memory = new MemoryStore({
-    persistentMap: new Map(),
-    unstableEvictOnSet: { frequency: 0.001, maxItems: limiterCache?.maxItems ?? 1000 },
-  });
+  const memory = createLRUMemoryStore(limiterCache?.maxItems ?? 1000);
   const redisCacheStore = new RedisCacheStore({
     connection: {
       keyPrefix: `cache:${keyPrefix}:rate-limit-cache:`,

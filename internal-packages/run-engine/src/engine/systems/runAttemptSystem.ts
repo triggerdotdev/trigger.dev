@@ -1,8 +1,7 @@
 import {
   createCache,
-  createMemoryStore,
+  createLRUMemoryStore,
   DefaultStatefulContext,
-  MemoryStore,
   Namespace,
   RedisCacheStore,
   UnkeyCache,
@@ -130,7 +129,7 @@ export class RunAttemptSystem {
     this.delayedRunSystem = options.delayedRunSystem;
 
     const ctx = new DefaultStatefulContext();
-    const memory = createMemoryStore(5000, 0.001);
+    const memory = createLRUMemoryStore(5000);
     const redisCacheStore = new RedisCacheStore({
       name: "run-attempt-system",
       connection: {
@@ -237,7 +236,6 @@ export class RunAttemptSystem {
           filePath: "unknown",
         }),
       this.#resolveTaskRunExecutionQueue({
-        runId,
         lockedQueueId: run.lockedQueueId ?? undefined,
         queueName: run.queue,
         runtimeEnvironmentId: run.runtimeEnvironment.id,
@@ -538,7 +536,6 @@ export class RunAttemptSystem {
               }),
               this.#resolveTaskRunExecutionTask(taskRun.lockedById),
               this.#resolveTaskRunExecutionQueue({
-                runId,
                 lockedQueueId: updatedRun.lockedQueueId ?? undefined,
                 queueName: updatedRun.queue,
                 runtimeEnvironmentId: updatedRun.runtimeEnvironment.id,
@@ -1868,12 +1865,14 @@ export class RunAttemptSystem {
   }
 
   async #resolveTaskRunExecutionQueue(params: {
-    runId: string;
     lockedQueueId?: string;
     queueName: string;
     runtimeEnvironmentId: string;
   }): Promise<TaskRunExecutionQueue> {
-    const result = await this.cache.queues.swr(params.runId, async () => {
+    // Cache key should be based on queue identity, not run ID
+    // Using lockedQueueId if available, otherwise environment + queue name
+    const cacheKey = params.lockedQueueId ?? `${params.runtimeEnvironmentId}:${params.queueName}`;
+    const result = await this.cache.queues.swr(cacheKey, async () => {
       const queue = params.lockedQueueId
         ? await this.$.readOnlyPrisma.taskQueue.findFirst({
           where: {
