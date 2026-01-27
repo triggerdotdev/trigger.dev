@@ -31,7 +31,7 @@ export function IncidentStatusPanel({ isCollapsed = false }: { isCollapsed?: boo
     if (fetcher.state === "idle") {
       fetcher.load("/resources/incidents");
     }
-  }, [fetcher]);
+  }, []);
 
   useEffect(() => {
     if (!isManagedCloud) return;
