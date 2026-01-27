@@ -370,7 +370,7 @@ export class LogsListPresenter extends BasePresenter {
       );
     }
 
-    queryBuilder.orderBy("environment_id, toUnixTimestamp(start_time), trace_id");
+    queryBuilder.orderBy("environment_id, toUnixTimestamp(start_time), trace_id DESC");
 
     // Limit + 1 to check if there are more results
     queryBuilder.limit(pageSize + 1);

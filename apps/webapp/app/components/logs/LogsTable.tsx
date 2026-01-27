@@ -48,10 +48,7 @@ function getLevelBoxShadow(level: LogEntry["level"]): string {
       return "inset 2px 0 0 0 rgb(234, 179, 8)";
     case "INFO":
       return "inset 2px 0 0 0 rgb(59, 130, 246)";
-    case "CANCELLED":
-      return "inset 2px 0 0 0 rgb(65, 65, 75)";
     case "DEBUG":
-    case "TRACE":
     default:
       return "none";
   }
