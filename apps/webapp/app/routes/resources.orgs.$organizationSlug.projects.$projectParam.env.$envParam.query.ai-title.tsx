@@ -59,7 +59,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // If a queryId was provided, update the CustomerQuery record with the title
   if (queryId) {
     await prisma.customerQuery.update({
-      where: { id: queryId },
+      where: { id: queryId, organizationId: project.organizationId },
       data: { title },
     });
   }
