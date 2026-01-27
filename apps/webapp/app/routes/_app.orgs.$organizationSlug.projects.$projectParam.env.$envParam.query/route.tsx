@@ -1,6 +1,6 @@
 import { ArrowDownTrayIcon, ArrowsPointingOutIcon, ArrowTrendingUpIcon, ClipboardIcon, TableCellsIcon } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
-import { WhereClauseCondition } from "@internal/tsql";
+import { type WhereClauseCondition } from "@internal/tsql";
 import { useFetcher } from "@remix-run/react";
 import {
   redirect,
@@ -11,6 +11,7 @@ import parse from "parse-duration";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
+import simplur from "simplur";
 import { z } from "zod";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { AlphaTitle } from "~/components/AlphaBadge";
@@ -24,7 +25,7 @@ import { autoFormatSQL, TSQLEditor } from "~/components/code/TSQLEditor";
 import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Card } from "~/components/primitives/charts/Card";
 import {
@@ -62,10 +63,11 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueryPresenter, type QueryHistoryItem } from "~/presenters/v3/QueryPresenter.server";
 import type { action as titleAction } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query.ai-title";
+import { getLimit } from "~/services/platform.v3.server";
 import { executeQuery, type QueryScope } from "~/services/queryService.server";
 import { requireUser } from "~/services/session.server";
 import { downloadFile, rowsToCSV, rowsToJSON } from "~/utils/dataExport";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, organizationBillingPath } from "~/utils/pathBuilder";
 import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags.server";
 import { querySchemas } from "~/v3/querySchemas";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
@@ -73,7 +75,6 @@ import { QueryHelpSidebar } from "./QueryHelpSidebar";
 import { QueryHistoryPopover } from "./QueryHistoryPopover";
 import type { AITimeFilter } from "./types";
 import { formatQueryStats } from "./utils";
-import { getLimit } from "~/services/platform.v3.server";
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {
@@ -199,6 +200,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         hiddenColumns: null,
         explainOutput: null,
         generatedSql: null,
+        periodClipped: null,
       },
       { status: 403 }
     );
@@ -215,6 +217,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         hiddenColumns: null,
         explainOutput: null,
         generatedSql: null,
+        periodClipped: null,
       },
       { status: 404 }
     );
@@ -231,6 +234,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         hiddenColumns: null,
         explainOutput: null,
         generatedSql: null,
+        periodClipped: null,
       },
       { status: 404 }
     );
@@ -256,6 +260,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         hiddenColumns: null,
         explainOutput: null,
         generatedSql: null,
+        periodClipped: null,
       },
       { status: 400 }
     );
@@ -274,30 +279,41 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     defaultPeriod: DEFAULT_PERIOD,
   });
 
-  let triggeredAtFallback: WhereClauseCondition;
-  if (timeFilter.from && timeFilter.to) {
-    // Both from and to specified - use BETWEEN
-    triggeredAtFallback = { op: "between", low: timeFilter.from, high: timeFilter.to };
-  } else if (timeFilter.from) {
-    // Only from specified
-    triggeredAtFallback = { op: "gte", value: timeFilter.from };
-  } else if (timeFilter.to) {
-    // Only to specified
-    triggeredAtFallback = { op: "lte", value: timeFilter.to };
-  } else {
+  // Calculate the effective "from" date the user is requesting (for period clipping check)
+  // This is null only when the user specifies just a "to" date (rare case)
+  let requestedFromDate: Date | null = null;
+  if (timeFilter.from) {
+    requestedFromDate = new Date(timeFilter.from);
+  } else if (!timeFilter.to) {
     // Period specified (or default) - calculate from now
     const periodMs = parse(timeFilter.period ?? DEFAULT_PERIOD) ?? 7 * 24 * 60 * 60 * 1000;
-    triggeredAtFallback = { op: "gte", value: new Date(Date.now() - periodMs) };
+    requestedFromDate = new Date(Date.now() - periodMs);
   }
 
-  const maxQueryPeriod = await getLimit(project.organizationId, "queryPeriodDays", 5);
+  // Build the fallback WHERE condition based on what the user specified
+  let triggeredAtFallback: WhereClauseCondition;
+  if (timeFilter.from && timeFilter.to) {
+    triggeredAtFallback = { op: "between", low: timeFilter.from, high: timeFilter.to };
+  } else if (timeFilter.from) {
+    triggeredAtFallback = { op: "gte", value: timeFilter.from };
+  } else if (timeFilter.to) {
+    triggeredAtFallback = { op: "lte", value: timeFilter.to };
+  } else {
+    triggeredAtFallback = { op: "gte", value: requestedFromDate! };
+  }
+
+  const maxQueryPeriod = await getLimit(project.organizationId, "queryPeriodDays", 30);
+  const maxQueryPeriodDate = new Date(Date.now() - maxQueryPeriod * 24 * 60 * 60 * 1000);
+
+  // Check if the requested time period exceeds the plan limit
+  const periodClipped = requestedFromDate !== null && requestedFromDate < maxQueryPeriodDate;
 
   // Force tenant isolation and time period limits
   const enforcedWhereClause = {
     organization_id: { op: "eq", value: project.organizationId },
     project_id: scope === "project" || scope === "environment" ? { op: "eq", value: project.id } : undefined,
     environment_id: scope === "environment" ? { op: "eq", value: environment.id } : undefined,
-    triggered_at: { op: "gte", value: new Date(Date.now() - maxQueryPeriod * 24 * 60 * 60 * 1000) }
+    triggered_at: { op: "gte", value: maxQueryPeriodDate },
   } satisfies Record<string, WhereClauseCondition | undefined>;
 
   try {
@@ -341,6 +357,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           explainOutput: null,
           generatedSql: null,
           queryId: null,
+          periodClipped: null,
         },
         { status: 400 }
       );
@@ -355,6 +372,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       explainOutput: result.explainOutput ?? null,
       generatedSql: result.generatedSql ?? null,
       queryId,
+      periodClipped: periodClipped ? maxQueryPeriod : null,
     });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error executing query";
@@ -368,6 +386,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         explainOutput: null,
         generatedSql: null,
         queryId: null,
+        periodClipped: null,
       },
       { status: 500 }
     );
@@ -781,16 +800,27 @@ export default function Page() {
                       </div>
                     ) : results?.rows && results?.columns ? (
                       <div className="flex h-full flex-col overflow-hidden">
-                        {results.hiddenColumns && results.hiddenColumns.length > 0 && (
-                          <div className="p-2">
-                            <Callout variant="warning" className="shrink-0 text-sm">
-                              <code>SELECT *</code> doesn't return all columns because it's slow. The
-                              following columns are not shown:{" "}
-                              <span className="font-mono text-xs">
-                                {results.hiddenColumns.join(", ")}
-                              </span>
-                              . Specify them explicitly to include them.
-                            </Callout>
+                        {(results.hiddenColumns?.length || results.periodClipped) && (
+                          <div className="flex flex-col gap-2 p-2">
+                            {results.hiddenColumns && results.hiddenColumns.length > 0 && (
+                              <Callout variant="warning" className="shrink-0 text-sm">
+                                <code>SELECT *</code> doesn't return all columns because it's slow. The
+                                following columns are not shown:{" "}
+                                <span className="font-mono text-xs">
+                                  {results.hiddenColumns.join(", ")}
+                                </span>
+                                . Specify them explicitly to include them.
+                              </Callout>
+                            )}
+                            {results.periodClipped && (
+                              <Callout
+                                variant="pricing"
+                                cta={<LinkButton variant="primary/small" to={organizationBillingPath({ slug: organization.slug })}>Upgrade</LinkButton>}
+                                className="items-center"
+                              >
+                                {simplur`Results are limited to the last ${results.periodClipped} day[|s] based on your plan.`}
+                              </Callout>
+                            )}
                           </div>
                         )}
                         <div className="h-full bg-charcoal-900 p-2">
