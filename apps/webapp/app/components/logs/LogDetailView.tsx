@@ -94,16 +94,26 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
   const isLoading = fetcher.state === "loading";
   const log = fetcher.data ?? initialLog;
 
-  // Handle Escape key to close panel
+  const runPath = v3RunSpanPath(
+    organization,
+    project,
+    environment,
+    { friendlyId: log?.runId ?? "" },
+    { spanId: log?.spanId ?? "" }
+  );
+
+  // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         onClose();
+      } else if ((e.key === "v" || e.key === "V") && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !isLoading && log) {
+        window.open(runPath, "_blank");
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [onClose, log, runPath, isLoading]);
 
   if (isLoading && !log) {
     return (
@@ -128,14 +138,6 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
       </div>
     );
   }
-
-  const runPath = v3RunSpanPath(
-    organization,
-    project,
-    environment,
-    { friendlyId: log.runId },
-    { spanId: log.spanId }
-  );
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -175,7 +177,7 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
           </TabButton>
         </TabContainer>
         <Link to={runPath} target="_blank" rel="noopener noreferrer">
-          <Button variant="minimal/small" LeadingIcon={ArrowTopRightOnSquareIcon}>
+          <Button variant="minimal/small" LeadingIcon={ArrowTopRightOnSquareIcon} shortcut={{ key: "v" }}>
             View full run
           </Button>
         </Link>

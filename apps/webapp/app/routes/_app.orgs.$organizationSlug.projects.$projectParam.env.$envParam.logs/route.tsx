@@ -1,5 +1,6 @@
 import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
-import { type MetaFunction, useFetcher, useNavigation, useLocation } from "@remix-run/react";
+import { type MetaFunction, useFetcher, useNavigation, useLocation, Form } from "@remix-run/react";
+import { XMarkIcon } from "@heroicons/react/20/solid";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
   TypedAwait,
@@ -8,31 +9,30 @@ import {
   useTypedLoaderData,
 } from "remix-typedjson";
 import { requireUser } from "~/services/session.server";
+import { getCurrentPlan } from "~/services/platform.v3.server";
 
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { LogsListPresenter } from "~/presenters/v3/LogsListPresenter.server";
 import type { LogLevel } from "~/utils/logUtils";
 import { $replica, prisma } from "~/db.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
-import {
-  setRootOnlyFilterPreference,
-  uiPreferencesStorage,
-} from "~/services/preferences/uiPreferences.server";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Suspense, useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Callout } from "~/components/primitives/Callout";
-import { RunsFilters } from "~/components/runs/v3/RunFilters";
 import { LogsTable } from "~/components/logs/LogsTable";
 import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
 import { LogDetailView } from "~/components/logs/LogDetailView";
 import { LogsSearchInput } from "~/components/logs/LogsSearchInput";
 import { LogsLevelFilter } from "~/components/logs/LogsLevelFilter";
+import { LogsTaskFilter } from "~/components/logs/LogsTaskFilter";
+import { LogsRunIdFilter } from "~/components/logs/LogsRunIdFilter";
+import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -40,11 +40,10 @@ import {
 } from "~/components/primitives/Resizable";
 import { Switch } from "~/components/primitives/Switch";
 import { Button } from "~/components/primitives/Buttons";
-import { ArrowPathIcon } from "@heroicons/react/20/solid";
 import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags.server";
 
 // Valid log levels for filtering
-const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "CANCELLED"];
+const validLevels: LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR"];
 
 function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
   const levelParams = url.searchParams.getAll("levels").filter((v) => v.length > 0);
@@ -122,13 +121,22 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Environment not found", { status: 404 });
   }
 
-  const filters = await getRunFiltersFromRequest(request);
-
-  // Get search term, levels, and showDebug from query params
+  // Get filters from query params
   const url = new URL(request.url);
+  const tasks = url.searchParams.getAll("tasks").filter((t) => t.length > 0);
+  const runId = url.searchParams.get("runId") ?? undefined;
   const search = url.searchParams.get("search") ?? undefined;
   const levels = parseLevelsFromUrl(url);
   const showDebug = url.searchParams.get("showDebug") === "true";
+  const period = url.searchParams.get("period") ?? undefined;
+  const fromStr = url.searchParams.get("from");
+  const toStr = url.searchParams.get("to");
+  const from = fromStr ? parseInt(fromStr, 10) : undefined;
+  const to = toStr ? parseInt(toStr, 10) : undefined;
+
+  // Get the user's plan to determine log retention limit
+  const plan = await getCurrentPlan(project.organizationId);
+  const retentionLimitDays = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
 
   const presenter = new LogsListPresenter($replica, clickhouseClient);
 
@@ -136,41 +144,34 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     .call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,
-      ...filters,
+      tasks: tasks.length > 0 ? tasks : undefined,
+      runId,
       search,
       levels,
+      period,
+      from,
+      to,
       includeDebugLogs: isAdmin && showDebug,
       defaultPeriod: "1h",
+      retentionLimitDays,
     })
     .catch((error) => {
       if (error instanceof ServiceValidationError) {
-        return { error: "Failed to load logs. Please refresh and try again." };
+        return { error: error.message };
       }
       throw error;
     });
 
-  const session = await setRootOnlyFilterPreference(filters.rootOnly, request);
-  const cookieValue = await uiPreferencesStorage.commitSession(session);
-
-  return typeddefer(
-    {
-      data: listPromise,
-      rootOnlyDefault: filters.rootOnly,
-      filters,
-      isAdmin,
-      showDebug,
-      defaultPeriod: "1h",
-    },
-    {
-      headers: {
-        "Set-Cookie": cookieValue,
-      },
-    }
-  );
+  return typeddefer({
+    data: listPromise,
+    isAdmin,
+    showDebug,
+    defaultPeriod: "1h",
+  });
 };
 
 export default function Page() {
-  const { data, rootOnlyDefault, isAdmin, showDebug, defaultPeriod } =
+  const { data, isAdmin, showDebug, defaultPeriod } =
     useTypedLoaderData<typeof loader>();
 
   return (
@@ -198,7 +199,6 @@ export default function Page() {
             errorElement={
               <div className="grid h-full max-h-full grid-rows-[2.5rem_auto_1fr] overflow-hidden">
                 <FiltersBar
-                  rootOnlyDefault={rootOnlyDefault}
                   isAdmin={isAdmin}
                   showDebug={showDebug}
                   defaultPeriod={defaultPeriod}
@@ -217,8 +217,6 @@ export default function Page() {
                 return (
                   <div className="grid h-full max-h-full grid-rows-[2.5rem_auto_1fr] overflow-hidden">
                     <FiltersBar
-                      list={result}
-                      rootOnlyDefault={rootOnlyDefault}
                       isAdmin={isAdmin}
                       showDebug={showDebug}
                       defaultPeriod={defaultPeriod}
@@ -235,14 +233,12 @@ export default function Page() {
                 <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden">
                   <FiltersBar
                     list={result}
-                    rootOnlyDefault={rootOnlyDefault}
                     isAdmin={isAdmin}
                     showDebug={showDebug}
                     defaultPeriod={defaultPeriod}
                   />
                   <LogsList
                     list={result}
-                    rootOnlyDefault={rootOnlyDefault}
                     isAdmin={isAdmin}
                     showDebug={showDebug}
                     defaultPeriod={defaultPeriod}
@@ -257,19 +253,52 @@ export default function Page() {
   );
 }
 
+function RetentionNotice({
+  logCount,
+  retentionDays,
+}: {
+  logCount: number;
+  retentionDays: number;
+}) {
+  return (
+    <Paragraph variant="extra-small" className="flex items-center gap-1 whitespace-nowrap">
+      <span className="text-text-dimmed">
+        {logCount.toLocaleString()} logs found, Showing last {retentionDays} {retentionDays === 1 ? 'day' : 'days'}
+      </span>
+      <a
+        href="https://trigger.dev/pricing"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-text-link hover:underline"
+      >
+        Upgrade
+      </a>
+    </Paragraph>
+  );
+}
+
 function FiltersBar({
   list,
-  rootOnlyDefault,
   isAdmin,
   showDebug,
   defaultPeriod,
 }: {
   list?: Exclude<Awaited<UseDataFunctionReturn<typeof loader>["data"]>, { error: string }>;
-  rootOnlyDefault: boolean;
   isAdmin: boolean;
   showDebug: boolean;
   defaultPeriod?: string;
 }) {
+  const location = useOptimisticLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const hasFilters =
+    searchParams.has("tasks") ||
+    searchParams.has("runId") ||
+    searchParams.has("search") ||
+    searchParams.has("levels") ||
+    searchParams.has("period") ||
+    searchParams.has("from") ||
+    searchParams.has("to");
+
   const handleDebugToggle = useCallback((checked: boolean) => {
     const url = new URL(window.location.href);
     if (checked) {
@@ -285,53 +314,59 @@ function FiltersBar({
       <div className="flex flex-row flex-wrap items-center gap-1">
         {list ? (
           <>
-            <RunsFilters
-              possibleTasks={list.possibleTasks}
-              bulkActions={list.bulkActions}
-              hasFilters={list.hasFilters}
-              rootOnlyDefault={rootOnlyDefault}
-              hideSearch
-              defaultPeriod={defaultPeriod}
-            />
-            <LogsLevelFilter showDebug={showDebug} />
+            <LogsTaskFilter possibleTasks={list.possibleTasks} />
+            <LogsRunIdFilter />
+            <TimeFilter defaultPeriod={defaultPeriod} />
+            <LogsLevelFilter/>
             <LogsSearchInput />
+            {hasFilters && (
+              <Form className="h-6">
+                <Button variant="secondary/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
+              </Form>
+            )}
           </>
         ) : (
           <>
-            <RunsFilters
-              possibleTasks={[]}
-              bulkActions={[]}
-              hasFilters={false}
-              rootOnlyDefault={rootOnlyDefault}
-              hideSearch
-              defaultPeriod={defaultPeriod}
-            />
-            <LogsLevelFilter showDebug={showDebug} />
+            <LogsTaskFilter possibleTasks={[]} />
+            <LogsRunIdFilter />
+            <TimeFilter defaultPeriod={defaultPeriod} />
+            <LogsLevelFilter/>
             <LogsSearchInput />
+            {hasFilters && (
+              <Form className="h-6">
+                <Button variant="secondary/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
+              </Form>
+            )}
           </>
         )}
       </div>
-      {isAdmin && (
-        <Switch
-          variant="small"
-          label="Debug"
-          checked={showDebug}
-          onCheckedChange={handleDebugToggle}
-        />
-      )}
+      <div className="flex items-center gap-2">
+        {list?.retention?.wasClamped && (
+          <RetentionNotice
+            logCount={list.logs.length}
+            retentionDays={list.retention.limitDays}
+          />
+        )}
+        {isAdmin && (
+          <Switch
+            variant="small"
+            label="Debug"
+            checked={showDebug}
+            onCheckedChange={handleDebugToggle}
+          />
+        )}
+      </div>
     </div>
   );
 }
 
 function LogsList({
   list,
-  rootOnlyDefault,
   isAdmin,
   showDebug,
   defaultPeriod,
 }: {
   list: Exclude<Awaited<UseDataFunctionReturn<typeof loader>["data"]>, { error: string }>; //exclude error, it is handled
-  rootOnlyDefault: boolean;
   isAdmin: boolean;
   showDebug: boolean;
   defaultPeriod?: string;
@@ -349,13 +384,22 @@ function LogsList({
   // Selected log state - managed locally to avoid triggering navigation
   const [selectedLogId, setSelectedLogId] = useState<string | undefined>();
 
-  // Reset accumulated logs when filters change (by watching URL search params)
+  // Track which filter state (search params) the current fetcher request corresponds to
+  const fetcherFilterStateRef = useRef<string>(location.search);
+
+  // Clear accumulated logs immediately when filters change (for instant visual feedback)
   useEffect(() => {
-    setAccumulatedLogs(list.logs);
-    setNextCursor(list.pagination.next);
+    setAccumulatedLogs([]);
+    setNextCursor(undefined);
     // Close side panel when filters change to avoid showing a log that's no longer visible
     setSelectedLogId(undefined);
   }, [location.search]);
+
+  // Populate accumulated logs when new data arrives
+  useEffect(() => {
+    setAccumulatedLogs(list.logs);
+    setNextCursor(list.pagination.next);
+  }, [list.logs, list.pagination.next]);
 
   // Clear log parameter from URL when selectedLogId is cleared
   useEffect(() => {
@@ -371,6 +415,11 @@ function LogsList({
   // Append new logs when fetcher completes (with deduplication)
   useEffect(() => {
     if (fetcher.data && fetcher.state === "idle") {
+      // Ignore fetcher data if it was loaded for a different filter state
+      if (fetcherFilterStateRef.current !== location.search) {
+        return;
+      }
+
       const existingIds = new Set(accumulatedLogs.map((log) => log.id));
       const newLogs = fetcher.data.logs.filter((log) => !existingIds.has(log.id));
       if (newLogs.length > 0) {
@@ -378,7 +427,7 @@ function LogsList({
         setNextCursor(fetcher.data.pagination.next);
       }
     }
-  }, [fetcher.data, fetcher.state, accumulatedLogs]);
+  }, [fetcher.data, fetcher.state, accumulatedLogs, location.search]);
 
   // Build resource URL for loading more
   const loadMoreUrl = useMemo(() => {
@@ -392,9 +441,11 @@ function LogsList({
 
   const handleLoadMore = useCallback(() => {
     if (loadMoreUrl && fetcher.state === "idle") {
+      // Store the current filter state before loading
+      fetcherFilterStateRef.current = location.search;
       fetcher.load(loadMoreUrl);
     }
-  }, [loadMoreUrl, fetcher]);
+  }, [loadMoreUrl, fetcher, location.search]);
 
   const selectedLog = useMemo(() => {
     if (!selectedLogId) return undefined;
@@ -432,6 +483,7 @@ function LogsList({
     <ResizablePanelGroup orientation="horizontal" className="max-h-full">
       <ResizablePanel id="logs-main" min="200px">
         <LogsTable
+          key={location.search}
           logs={accumulatedLogs}
           searchTerm={list.searchTerm}
           isLoading={isLoading}

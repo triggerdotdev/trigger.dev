@@ -1,10 +1,10 @@
 import { createElement, Fragment, type ReactNode } from "react";
 import { z } from "zod";
 
-export const LogLevelSchema = z.enum(["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "CANCELLED"]);
+export const LogLevelSchema = z.enum(["DEBUG", "INFO", "WARN", "ERROR"]);
 export type LogLevel = z.infer<typeof LogLevelSchema>;
 
-export const validLogLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "CANCELLED"];
+export const validLogLevels: LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR",];
 
 // Default styles for search highlighting
 const DEFAULT_HIGHLIGHT_STYLES: React.CSSProperties = {
@@ -71,10 +71,6 @@ export function highlightSearchText(
 
 // Convert ClickHouse kind to display level
 export function kindToLevel(kind: string, status: string): LogLevel {
-  if (status === "CANCELLED") {
-    return "CANCELLED";
-  }
-
   // ERROR can come from either kind or status
   if (kind === "LOG_ERROR" || status === "ERROR") {
     return "ERROR";
@@ -94,7 +90,7 @@ export function kindToLevel(kind: string, status: string): LogLevel {
     case "ANCESTOR_OVERRIDE":
     case "SPAN_EVENT":
     default:
-      return "TRACE";
+      return "INFO";
   }
 }
 
@@ -109,10 +105,6 @@ export function getLevelColor(level: LogLevel): string {
       return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
     case "INFO":
       return "text-blue-400 bg-blue-500/10 border-blue-500/20";
-    case "TRACE":
-      return "text-charcoal-500 bg-charcoal-800 border-charcoal-700";
-    case "CANCELLED":
-      return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
     default:
       return "text-text-dimmed bg-charcoal-750 border-charcoal-700";
   }

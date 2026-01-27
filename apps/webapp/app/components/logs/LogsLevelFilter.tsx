@@ -16,19 +16,15 @@ import type { LogLevel } from "~/presenters/v3/LogsListPresenter.server";
 import { cn } from "~/utils/cn";
 
 const allLogLevels: { level: LogLevel; label: string; color: string }[] = [
-  { level: "ERROR", label: "Error", color: "text-error" },
-  { level: "WARN", label: "Warning", color: "text-warning" },
   { level: "INFO", label: "Info", color: "text-blue-400" },
-  { level: "CANCELLED", label: "Cancelled", color: "text-charcoal-400" },
+  { level: "WARN", label: "Warning", color: "text-warning" },
+  { level: "ERROR", label: "Error", color: "text-error" },
   { level: "DEBUG", label: "Debug", color: "text-charcoal-400" },
-  { level: "TRACE", label: "Trace", color: "text-charcoal-500" },
 ];
 
-function getAvailableLevels(showDebug: boolean): typeof allLogLevels {
-  if (showDebug) {
-    return allLogLevels;
-  }
-  return allLogLevels.filter((level) => level.level !== "DEBUG");
+// In the future we might add other levels or change which are available
+function getAvailableLevels(): typeof allLogLevels {
+  return allLogLevels;
 }
 
 function getLevelBadgeColor(level: LogLevel): string {
@@ -41,10 +37,6 @@ function getLevelBadgeColor(level: LogLevel): string {
       return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
     case "INFO":
       return "text-blue-400 bg-blue-500/10 border-blue-500/20";
-    case "TRACE":
-      return "text-charcoal-500 bg-charcoal-800 border-charcoal-700";
-    case "CANCELLED":
-      return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
     default:
       return "text-text-dimmed bg-charcoal-750 border-charcoal-700";
   }
@@ -52,13 +44,13 @@ function getLevelBadgeColor(level: LogLevel): string {
 
 const shortcut = { key: "l" };
 
-export function LogsLevelFilter({ showDebug = false }: { showDebug?: boolean }) {
+export function LogsLevelFilter() {
   const { values } = useSearchParams();
   const selectedLevels = values("levels");
   const hasLevels = selectedLevels.length > 0 && selectedLevels.some((v) => v !== "");
 
   if (hasLevels) {
-    return <AppliedLevelFilter showDebug={showDebug} />;
+    return <AppliedLevelFilter/>;
   }
 
   return (
@@ -73,17 +65,14 @@ export function LogsLevelFilter({ showDebug = false }: { showDebug?: boolean }) 
           Level
         </SelectTrigger>
       }
-      showDebug={showDebug}
     />
   );
 }
 
 function LevelDropdown({
   trigger,
-  showDebug = false,
 }: {
   trigger: ReactNode;
-  showDebug?: boolean;
 }) {
   const { values, replace } = useSearchParams();
 
@@ -91,7 +80,7 @@ function LevelDropdown({
     replace({ levels: values, cursor: undefined, direction: undefined });
   };
 
-  const availableLevels = getAvailableLevels(showDebug);
+  const availableLevels = getAvailableLevels();
 
   return (
     <SelectProvider value={values("levels")} setValue={handleChange} virtualFocus={true}>
@@ -120,7 +109,7 @@ function LevelDropdown({
   );
 }
 
-function AppliedLevelFilter({ showDebug = false }: { showDebug?: boolean }) {
+function AppliedLevelFilter() {
   const { values, del } = useSearchParams();
   const levels = values("levels");
 
@@ -141,7 +130,6 @@ function AppliedLevelFilter({ showDebug = false }: { showDebug?: boolean }) {
           />
         </Ariakit.Select>
       }
-      showDebug={showDebug}
     />
   );
 }

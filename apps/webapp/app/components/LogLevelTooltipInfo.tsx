@@ -14,14 +14,6 @@ export function LogLevelTooltipInfo() {
       </div>
       <div>
         <div className="mb-0.5">
-          <Header3 className="text-blue-400">Debug</Header3>
-        </div>
-        <Paragraph variant="small" className="text-text-dimmed">
-          Detailed diagnostic information for development and debugging.
-        </Paragraph>
-      </div>
-      <div>
-        <div className="mb-0.5">
           <Header3 className="text-blue-400">Info</Header3>
         </div>
         <Paragraph variant="small" className="text-text-dimmed">
@@ -46,17 +38,17 @@ export function LogLevelTooltipInfo() {
       </div>
       <div>
         <div className="mb-0.5">
-          <Header3 className="text-charcoal-400">Cancelled</Header3>
+          <Header3 className="text-charcoal-400">Debug</Header3>
         </div>
         <Paragraph variant="small" className="text-text-dimmed">
-          Messages logged when a task run is cancelled before completion.
+          Detailed diagnostic information for development and debugging.
         </Paragraph>
       </div>
       <div className="border-t border-charcoal-700 pt-4">
         <Header3>Tracing & Spans</Header3>
         <Paragraph variant="small" className="text-text-dimmed">
-          Automatically track the flow of your code through task triggers, attempts, and HTTP requests.
-          Create custom traces to monitor specific operations.
+          Automatically track the flow of your code through task triggers, attempts, and HTTP
+          requests. Create custom traces to monitor specific operations.
         </Paragraph>
       </div>
       <LinkButton
