@@ -177,7 +177,7 @@ Make sure that you always use `await` when you call `trigger`, `triggerAndWait`,
 
 ### `COULD_NOT_FIND_EXECUTOR` 
 
-If you see a `COULD_NOT_FIND_EXECUTOR` error when triggering a task via `batchTrigger` or `batchTriggerAndWait`, it may be caused by dynamically importing the child task. When tasks are dynamically imported, the executor may not be properly registered.
+If you see a `COULD_NOT_FIND_EXECUTOR` error when triggering a task, it may be caused by dynamically importing the child task. When tasks are dynamically imported, the executor may not be properly registered.
 
 Use a top-level import instead:
 
@@ -187,12 +187,12 @@ import { myChildTask } from "~/trigger/my-child-task";
 export const myTask = task({
   id: "my-task",
   run: async (payload: string) => {
-    await myChildTask.batchTrigger([{ payload: "data" }]);
+    await myChildTask.trigger({ payload: "data" });
   },
 });
 ```
 
-Alternatively, use `batch.triggerAndWait()` without importing the task:
+Alternatively, use `tasks.trigger()` or `batch.triggerAndWait()` without importing the task:
 
 ```ts
 import { batch } from "@trigger.dev/sdk";
