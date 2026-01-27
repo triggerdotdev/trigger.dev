@@ -655,7 +655,7 @@ function TasksDropdown({
                 <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
               }
             >
-              <MiddleTruncate text={item.slug} />
+              <MiddleTruncate text={item.slug} className="min-w-[360px]"/>
             </SelectItem>
           ))}
         </SelectList>
