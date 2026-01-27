@@ -1,0 +1,11 @@
+{
+  "name": "cloudflare-worker-fixture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "wrangler deploy --dry-run --outdir dist"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
