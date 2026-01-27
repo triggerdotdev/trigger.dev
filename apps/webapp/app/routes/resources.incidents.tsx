@@ -2,7 +2,7 @@ import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { json } from "@remix-run/node";
 import { useFetcher } from "@remix-run/react";
 import { motion } from "framer-motion";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
@@ -26,12 +26,14 @@ export async function loader() {
 export function IncidentStatusPanel({ isCollapsed = false }: { isCollapsed?: boolean }) {
   const { isManagedCloud } = useFeatures();
   const fetcher = useFetcher<typeof loader>();
+  const fetcherRef = useRef(fetcher);
+  fetcherRef.current = fetcher;
 
   const fetchIncidents = useCallback(() => {
-    if (fetcher.state === "idle") {
-      fetcher.load("/resources/incidents");
+    if (fetcherRef.current.state === "idle") {
+      fetcherRef.current.load("/resources/incidents");
     }
-  }, [fetcher]);
+  }, []);
 
   useEffect(() => {
     if (!isManagedCloud) return;
