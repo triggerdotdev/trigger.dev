@@ -27,6 +27,11 @@ type ErrorAttributes = {
   [key: string]: unknown;
 };
 
+function escapeClickHouseString(val: string): string {
+  return val.replace(/\//g, "\\/");
+}
+
+
 export type LogsListOptions = {
   userId?: string;
   projectId: string;
@@ -294,11 +299,11 @@ export class LogsListPresenter extends BasePresenter {
 
     // Case-insensitive search in message, attributes, and status fields
     if (search && search.trim() !== "") {
-      const searchTerm = search.trim();
+      const searchTerm = escapeClickHouseString(search.trim()).toLowerCase();
       queryBuilder.where(
         "(lower(message) like {searchPattern: String} OR lower(attributes_text) like {searchPattern: String})",
         {
-          searchPattern: `%${searchTerm.toLowerCase()}%`
+          searchPattern: `%${searchTerm}%`
         }
       );
     }
@@ -361,7 +366,7 @@ export class LogsListPresenter extends BasePresenter {
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
     if (decodedCursor) {
       queryBuilder.where(
-        "(environment_id, toUnixTimestamp(start_time), trace_id) > ({cursorEnvId: String}, {cursorUnixTimestamp: Int64}, {cursorTraceId: String})",
+        "(environment_id, toUnixTimestamp(start_time), trace_id) < ({cursorEnvId: String}, {cursorUnixTimestamp: Int64}, {cursorTraceId: String})",
         {
           cursorEnvId: decodedCursor.environmentId,
           cursorUnixTimestamp: decodedCursor.unixTimestamp,

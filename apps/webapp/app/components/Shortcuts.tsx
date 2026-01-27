@@ -162,6 +162,37 @@ function ShortcutContent() {
             </Shortcut>
           </div>
           <div className="space-y-3">
+            <Header3>Logs page</Header3>
+            <Shortcut name="Filter by task">
+              <ShortcutKey shortcut={{ key: "t" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="Filter by run ID">
+              <ShortcutKey shortcut={{ key: "i" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="Filter by level">
+              <ShortcutKey shortcut={{ key: "l" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="Select log level">
+              <ShortcutKey shortcut={{ key: "1" }} variant="medium/bright" />
+              <Paragraph variant="small" className="ml-1.5">
+                to
+              </Paragraph>
+              <ShortcutKey shortcut={{ key: "4" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="Close detail panel">
+              <ShortcutKey shortcut={{ key: "esc" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="Details tab">
+              <ShortcutKey shortcut={{ key: "d" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="Run tab">
+              <ShortcutKey shortcut={{ key: "r" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="View full run">
+              <ShortcutKey shortcut={{ key: "v" }} variant="medium/bright" />
+            </Shortcut>
+          </div>
+          <div className="space-y-3">
             <Header3>Schedules page</Header3>
             <Shortcut name="New schedule">
               <ShortcutKey shortcut={{ key: "n" }} variant="medium/bright" />
