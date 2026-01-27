@@ -8,8 +8,6 @@ const SideMenuPreferences = z.object({
   manageSectionCollapsed: z.boolean().default(false),
 });
 
-export const SideMenuPreferencesDefaults = SideMenuPreferences.parse({});
-
 export type SideMenuPreferences = z.infer<typeof SideMenuPreferences>;
 
 const DashboardPreferences = z.object({
@@ -123,12 +121,13 @@ export async function updateSideMenuPreferences({
     return;
   }
 
-  const currentSideMenu = user.dashboardPreferences.sideMenu ?? SideMenuPreferencesDefaults;
-
-  const updatedSideMenu: SideMenuPreferences = {
-    isCollapsed: isCollapsed ?? currentSideMenu.isCollapsed,
-    manageSectionCollapsed: manageSectionCollapsed ?? currentSideMenu.manageSectionCollapsed,
-  };
+  // Parse with schema to apply defaults, then overlay any new values
+  const currentSideMenu = SideMenuPreferences.parse(user.dashboardPreferences.sideMenu ?? {});
+  const updatedSideMenu = SideMenuPreferences.parse({
+    ...currentSideMenu,
+    ...(isCollapsed !== undefined && { isCollapsed }),
+    ...(manageSectionCollapsed !== undefined && { manageSectionCollapsed }),
+  });
 
   // Only update if something changed
   if (
