@@ -810,31 +810,13 @@ export default function Page() {
                         </div>
                       </div>
                     ) : results?.rows && results?.columns ? (
-                      <div className="flex h-full flex-col overflow-hidden">
-                        {(results.hiddenColumns?.length || results.periodClipped) && (
-                          <div className="flex flex-col gap-2 p-2">
-                            {results.hiddenColumns && results.hiddenColumns.length > 0 && (
-                              <Callout variant="warning" className="shrink-0 text-sm">
-                                <code>SELECT *</code> doesn't return all columns because it's slow. The
-                                following columns are not shown:{" "}
-                                <span className="font-mono text-xs">
-                                  {results.hiddenColumns.join(", ")}
-                                </span>
-                                . Specify them explicitly to include them.
-                              </Callout>
-                            )}
-                            {results.periodClipped && (
-                              <Callout
-                                variant="pricing"
-                                cta={<LinkButton variant="primary/small" to={organizationBillingPath({ slug: organization.slug })}>Upgrade</LinkButton>}
-                                className="items-center"
-                              >
-                                {simplur`Results are limited to the last ${results.periodClipped} day[|s] based on your plan.`}
-                              </Callout>
-                            )}
-                          </div>
-                        )}
-                        <div className="h-full bg-charcoal-900 p-2">
+                      <div className={`bg-charcoal-900 grid h-full max-h-full overflow-hidden ${hasQueryResultsCallouts(results.hiddenColumns, results.periodClipped) ? "grid-rows-[auto_1fr]" : "grid-rows-[1fr]"}`}>
+                        <QueryResultsCallouts
+                          hiddenColumns={results.hiddenColumns}
+                          periodClipped={results.periodClipped}
+                          organizationSlug={organization.slug}
+                        />
+                        <div className="p-2 overflow-hidden">
                           <Card className="h-full overflow-hidden px-0 pb-0">
                             <Card.Header>
                               <div className="flex items-center gap-1.5">
@@ -866,17 +848,24 @@ export default function Page() {
                   </ClientTabsContent>
                   <ClientTabsContent
                     value="graph"
-                    className="m-0 grid min-h-0 grid-rows-[1fr] overflow-hidden"
+                    className={`bg-charcoal-900 m-0 grid min-h-0 f-full max-h-full overflow-hidden ${results?.rows && results.rows.length > 0 && hasQueryResultsCallouts(results.hiddenColumns, results.periodClipped) ? "grid-rows-[auto_1fr]" : "grid-rows-[1fr]"}`}
                   >
                     {results?.rows && results?.columns && results.rows.length > 0 ? (
-                      <ResultsChart
-                        rows={results.rows}
-                        columns={results.columns}
-                        chartConfig={chartConfig}
-                        onChartConfigChange={handleChartConfigChange}
-                        queryTitle={queryTitle}
-                        isTitleLoading={isTitleLoading}
-                      />
+                      <>
+                        <QueryResultsCallouts
+                          hiddenColumns={results.hiddenColumns}
+                          periodClipped={results.periodClipped}
+                          organizationSlug={organization.slug}
+                        />
+                        <ResultsChart
+                          rows={results.rows}
+                          columns={results.columns}
+                          chartConfig={chartConfig}
+                          onChartConfigChange={handleChartConfigChange}
+                          queryTitle={queryTitle}
+                          isTitleLoading={isTitleLoading}
+                        />
+                      </>
                     ) : (
                       <Paragraph variant="small" className="p-4 text-text-dimmed">
                         Run a query to visualize results.
@@ -996,6 +985,53 @@ function ScopeItem({ scope }: { scope: QueryScope }) {
   }
 }
 
+function QueryResultsCallouts({
+  hiddenColumns,
+  periodClipped,
+  organizationSlug,
+}: {
+  hiddenColumns: string[] | null | undefined;
+  periodClipped: number | null | undefined;
+  organizationSlug: string;
+}) {
+  const hasCallouts = (hiddenColumns && hiddenColumns.length > 0) || periodClipped;
+
+  if (!hasCallouts) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-2 pt-2 px-2">
+      {hiddenColumns && hiddenColumns.length > 0 && (
+        <Callout variant="warning" className="shrink-0 text-sm">
+          <code>SELECT *</code> doesn't return all columns because it's slow. The
+          following columns are not shown:{" "}
+          <span className="font-mono text-xs">
+            {hiddenColumns.join(", ")}
+          </span>
+          . Specify them explicitly to include them.
+        </Callout>
+      )}
+      {periodClipped && (
+        <Callout
+          variant="pricing"
+          cta={<LinkButton variant="primary/small" to={organizationBillingPath({ slug: organizationSlug })}>Upgrade</LinkButton>}
+          className="items-center"
+        >
+          {simplur`Results are limited to the last ${periodClipped} day[|s] based on your plan.`}
+        </Callout>
+      )}
+    </div>
+  );
+}
+
+function hasQueryResultsCallouts(
+  hiddenColumns: string[] | null | undefined,
+  periodClipped: number | null | undefined
+): boolean {
+  return (hiddenColumns && hiddenColumns.length > 0) || !!periodClipped;
+}
+
 function ResultsChart({
   rows,
   columns,
@@ -1022,7 +1058,7 @@ function ResultsChart({
   );
 
   return (
-    <><ResizablePanelGroup className="h-full overflow-hidden">
+    <><ResizablePanelGroup className="overflow-hidden">
       <ResizablePanel id="chart-results">
         <div className="h-full bg-charcoal-900 p-2 overflow-hidden">
           <Card className="h-full">
