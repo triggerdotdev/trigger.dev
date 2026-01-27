@@ -8,6 +8,7 @@ volumes:
   clickhouse-logs:
   prometheus-data:
   grafana-data:
+  minio-data:
 
 networks:
   app_network:
@@ -214,3 +215,40 @@ services:
       - app_network
     depends_on:
       - prometheus
+
+  minio:
+    container_name: minio
+    image: minio/minio:latest
+    restart: always
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: adminpassword
+    networks:
+      - app_network
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-setup:
+    container_name: minio-setup
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - app_network
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 admin adminpassword;
+      mc mb --ignore-existing local/snapshots;
+      mc mb --ignore-existing local/packets;
+      exit 0;
+      "
