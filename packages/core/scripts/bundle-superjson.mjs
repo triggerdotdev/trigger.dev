@@ -8,6 +8,9 @@
  * - Node.js versions before 22.12.0 (require(ESM) not enabled by default)
  * - AWS Lambda (intentionally disables require(ESM))
  *
+ * The output files are gitignored and regenerated during each build.
+ * This script runs automatically as part of `pnpm run build`.
+ *
  * Usage:
  *   node scripts/bundle-superjson.mjs          # Bundle to src/v3/vendor
  *   node scripts/bundle-superjson.mjs --copy   # Also copy to dist directories

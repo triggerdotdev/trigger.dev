@@ -162,7 +162,8 @@
     "bundle-vendor": "node scripts/bundle-superjson.mjs",
     "build": "pnpm run bundle-vendor && tshy && node scripts/bundle-superjson.mjs --copy && pnpm run update-version",
     "dev": "pnpm run bundle-vendor && tshy --watch",
-    "typecheck": "tsc --noEmit -p tsconfig.src.json",
+    "typecheck": "pnpm run bundle-vendor && tsc --noEmit -p tsconfig.src.json",
+    "pretest": "pnpm run bundle-vendor",
     "test": "vitest",
     "check-exports": "attw --pack ."
   },
