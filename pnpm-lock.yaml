@@ -1726,9 +1726,6 @@ importers:
       std-env:
         specifier: ^3.8.1
         version: 3.8.1
-      superjson:
-        specifier: ^2.2.1
-        version: 2.2.1
       tinyexec:
         specifier: ^0.3.2
         version: 0.3.2
@@ -1778,6 +1775,9 @@ importers:
       rimraf:
         specifier: ^3.0.2
         version: 3.0.2
+      superjson:
+        specifier: ^2.2.1
+        version: 2.2.1
       ts-essentials:
         specifier: 10.0.1
         version: 10.0.1(typescript@5.5.4)
