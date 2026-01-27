@@ -2,7 +2,7 @@
  * TSQL Query Execution for ClickHouse
  *
  * This module provides a safe interface for executing TSQL queries against ClickHouse
- * with automatic tenant isolation and SQL injection protection.
+ * with enforced WHERE clause conditions (tenant isolation + plan limits) and SQL injection protection.
  */
 
 import type { ClickHouseSettings } from "@clickhouse/client";
@@ -14,7 +14,7 @@ import {
   type TableSchema,
   type QuerySettings,
   type FieldMappings,
-  type WhereClauseFallback,
+  type WhereClauseCondition
 } from "@internal/tsql";
 import type { ClickhouseReader, QueryStats } from "./types.js";
 import { QueryError } from "./errors.js";
@@ -25,7 +25,7 @@ const logger = new Logger("tsql", "info");
 
 export type { QueryStats };
 
-export type { TableSchema, QuerySettings, FieldMappings, WhereClauseFallback };
+export type { TableSchema, QuerySettings, FieldMappings, WhereClauseCondition };
 
 /**
  * Options for executing a TSQL query
@@ -37,14 +37,26 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
   query: string;
   /** The Zod schema for validating output rows */
   schema: TOut;
-  /** The organization ID for tenant isolation (required) */
-  organizationId: string;
-  /** The project ID for tenant isolation (optional - omit to query across all projects) */
-  projectId?: string;
-  /** The environment ID for tenant isolation (optional - omit to query across all environments) */
-  environmentId?: string;
   /** Schema registry defining allowed tables and columns */
   tableSchema: TableSchema[];
+  /**
+   * REQUIRED: Conditions always applied at the table level.
+   * Must include tenant columns (e.g., organization_id) for multi-tenant tables.
+   * Applied to every table reference including subqueries, CTEs, and JOINs.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   // Tenant isolation
+   *   organization_id: { op: "eq", value: "org_123" },
+   *   project_id: { op: "eq", value: "proj_456" },
+   *   environment_id: { op: "eq", value: "env_789" },
+   *   // Plan-based time limit
+   *   triggered_at: { op: "gte", value: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+   * }
+   * ```
+   */
+  enforcedWhereClause: Record<string, WhereClauseCondition>;
   /** Optional ClickHouse query settings */
   clickhouseSettings?: ClickHouseSettings;
   /** Optional TSQL query settings (maxRows, timezone, etc.) */
@@ -78,6 +90,7 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
   /**
    * Fallback WHERE conditions to apply when the user hasn't filtered on a column.
    * Key is the column name, value is the fallback condition.
+   * These are applied at the AST level (top-level query only).
    *
    * @example
    * ```typescript
@@ -87,7 +100,7 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
    * }
    * ```
    */
-  whereClauseFallback?: Record<string, WhereClauseFallback>;
+  whereClauseFallback?: Record<string, WhereClauseCondition>;
 }
 
 /**
@@ -123,7 +136,7 @@ export type TSQLQueryResult<T> = [QueryError, null] | [null, TSQLQuerySuccess<T>
  * Execute a TSQL query against ClickHouse
  *
  * This function:
- * 1. Compiles the TSQL query to ClickHouse SQL (parse, validate, inject tenant guards)
+ * 1. Compiles the TSQL query to ClickHouse SQL (parse, validate, inject enforced WHERE clauses)
  * 2. Executes the query and returns validated results
  *
  * @example
@@ -132,10 +145,12 @@ export type TSQLQueryResult<T> = [QueryError, null] | [null, TSQLQuerySuccess<T>
  *   name: "get_task_runs",
  *   query: "SELECT id, status FROM task_runs WHERE status = 'completed' ORDER BY created_at DESC LIMIT 100",
  *   schema: z.object({ id: z.string(), status: z.string() }),
- *   organizationId: "org_123",
- *   projectId: "proj_456",
- *   environmentId: "env_789",
  *   tableSchema: [taskRunsSchema],
+ *   enforcedWhereClause: {
+ *     organization_id: { op: "eq", value: "org_123" },
+ *     project_id: { op: "eq", value: "proj_456" },
+ *     environment_id: { op: "eq", value: "env_789" },
+ *   },
  * });
  * ```
  */
@@ -152,10 +167,8 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
   try {
     // 1. Compile the TSQL query to ClickHouse SQL
     const { sql, params, columns, hiddenColumns } = compileTSQL(options.query, {
-      organizationId: options.organizationId,
-      projectId: options.projectId,
-      environmentId: options.environmentId,
       tableSchema: options.tableSchema,
+      enforcedWhereClause: options.enforcedWhereClause,
       settings: options.querySettings,
       fieldMappings: options.fieldMappings,
       whereClauseFallback: options.whereClauseFallback,
@@ -284,9 +297,11 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
  *   name: "get_task_runs",
  *   query: "SELECT * FROM task_runs LIMIT 10",
  *   schema: taskRunRowSchema,
- *   organizationId: "org_123",
- *   projectId: "proj_456",
- *   environmentId: "env_789",
+ *   enforcedWhereClause: {
+ *     organization_id: { op: "eq", value: "org_123" },
+ *     project_id: { op: "eq", value: "proj_456" },
+ *     environment_id: { op: "eq", value: "env_789" },
+ *   },
  * });
  * ```
  */

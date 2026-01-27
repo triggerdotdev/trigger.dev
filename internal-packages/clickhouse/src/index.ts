@@ -56,7 +56,7 @@ export {
   type TSQLQuerySuccess,
   type QueryStats,
   type FieldMappings,
-  type WhereClauseFallback,
+  type WhereClauseCondition,
 } from "./client/tsql.js";
 export type { OutputColumnMetadata } from "@internal/tsql";
 

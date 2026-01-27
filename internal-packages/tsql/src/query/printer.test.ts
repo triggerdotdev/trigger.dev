@@ -85,10 +85,12 @@ function createTestContext(
 ): PrinterContext {
   const schema = createSchemaRegistry([taskRunsSchema, taskEventsSchema]);
   return createPrinterContext({
-    organizationId: "org_test123",
-    projectId: "proj_test456",
-    environmentId: "env_test789",
     schema,
+    enforcedWhereClause: {
+      organization_id: { op: "eq", value: "org_test123" },
+      project_id: { op: "eq", value: "proj_test456" },
+      environment_id: { op: "eq", value: "env_test789" },
+    },
     ...overrides,
   });
 }
@@ -153,10 +155,12 @@ describe("ClickHousePrinter", () => {
     it("should expand SELECT * with column name mapping", () => {
       const schema = createSchemaRegistry([runsSchema]);
       const ctx = createPrinterContext({
-        organizationId: "org_test",
-        projectId: "proj_test",
-        environmentId: "env_test",
         schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test" },
+          project_id: { op: "eq", value: "proj_test" },
+          environment_id: { op: "eq", value: "env_test" },
+        },
       });
 
       const { sql, columns } = printQuery("SELECT * FROM runs", ctx);
@@ -216,10 +220,12 @@ describe("ClickHousePrinter", () => {
 
       const schema = createSchemaRegistry([schemaWithVirtual]);
       const ctx = createPrinterContext({
-        organizationId: "org_test",
-        projectId: "proj_test",
-        environmentId: "env_test",
         schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test" },
+          project_id: { op: "eq", value: "proj_test" },
+          environment_id: { op: "eq", value: "env_test" },
+        },
       });
 
       const { sql, columns } = printQuery("SELECT * FROM runs", ctx);
@@ -241,15 +247,17 @@ describe("ClickHousePrinter", () => {
   describe("Table and column name mapping", () => {
     function createMappedContext() {
       const schema = createSchemaRegistry([runsSchema]);
-      return createPrinterContext({
-        organizationId: "org_test",
-        projectId: "proj_test",
-        environmentId: "env_test",
-        schema,
-      });
-    }
+    return createPrinterContext({
+      schema,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test" },
+        project_id: { op: "eq", value: "proj_test" },
+        environment_id: { op: "eq", value: "env_test" },
+      },
+    });
+  }
 
-    it("should map user-friendly table name to ClickHouse name", () => {
+  it("should map user-friendly table name to ClickHouse name", () => {
       const ctx = createMappedContext();
       const { sql } = printQuery("SELECT * FROM runs", ctx);
 
@@ -472,15 +480,17 @@ describe("ClickHousePrinter", () => {
 
     function createJsonContext() {
       const schema = createSchemaRegistry([jsonSchema]);
-      return createPrinterContext({
-        organizationId: "org_test",
-        projectId: "proj_test",
-        environmentId: "env_test",
-        schema,
-      });
-    }
+    return createPrinterContext({
+      schema,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test" },
+        project_id: { op: "eq", value: "proj_test" },
+        environment_id: { op: "eq", value: "env_test" },
+      },
+    });
+  }
 
-    it("should transform IS NULL to equals empty object for JSON columns with nullValue", () => {
+  it("should transform IS NULL to equals empty object for JSON columns with nullValue", () => {
       const ctx = createJsonContext();
       const { sql } = printQuery("SELECT * FROM runs WHERE error IS NULL", ctx);
 
@@ -686,16 +696,18 @@ describe("ClickHousePrinter", () => {
 
     function createTextColumnContext() {
       const schema = createSchemaRegistry([textColumnSchema]);
-      return createPrinterContext({
-        organizationId: "org_test",
-        projectId: "proj_test",
-        environmentId: "env_test",
-        schema,
-      });
-    }
+    return createPrinterContext({
+      schema,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test" },
+        project_id: { op: "eq", value: "proj_test" },
+        environment_id: { op: "eq", value: "env_test" },
+      },
+    });
+  }
 
-    describe("SELECT clause", () => {
-      it("should use text column when selecting bare JSON column", () => {
+  describe("SELECT clause", () => {
+    it("should use text column when selecting bare JSON column", () => {
         const ctx = createTextColumnContext();
         const { sql } = printQuery("SELECT output FROM runs", ctx);
 
@@ -875,16 +887,18 @@ describe("ClickHousePrinter", () => {
 
     function createDataPrefixContext() {
       const schema = createSchemaRegistry([dataPrefixSchema]);
-      return createPrinterContext({
-        organizationId: "org_test",
-        projectId: "proj_test",
-        environmentId: "env_test",
-        schema,
-      });
-    }
+    return createPrinterContext({
+      schema,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test" },
+        project_id: { op: "eq", value: "proj_test" },
+        environment_id: { op: "eq", value: "env_test" },
+      },
+    });
+  }
 
-    describe("SELECT clause", () => {
-      it("should inject dataPrefix into JSON subfield path", () => {
+  describe("SELECT clause", () => {
+    it("should inject dataPrefix into JSON subfield path", () => {
         const ctx = createDataPrefixContext();
         const { sql } = printQuery("SELECT output.message FROM runs", ctx);
 
@@ -1135,9 +1149,11 @@ describe("ClickHousePrinter", () => {
   describe("Tenant isolation", () => {
     it("should inject tenant guards for single table", () => {
       const context = createTestContext({
-        organizationId: "org_abc",
-        projectId: "proj_def",
-        environmentId: "env_ghi",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_abc" },
+          project_id: { op: "eq", value: "proj_def" },
+          environment_id: { op: "eq", value: "env_ghi" },
+        },
       });
       const { sql, params } = printQuery("SELECT * FROM task_runs", context);
 
@@ -1450,15 +1466,17 @@ describe("Value mapping (valueMap)", () => {
 
   function createValueMapContext() {
     const schema = createSchemaRegistry([statusMappedSchema]);
-    return createPrinterContext({
-      organizationId: "org_test",
-      projectId: "proj_test",
-      environmentId: "env_test",
-      schema,
-    });
-  }
+  return createPrinterContext({
+    schema,
+    enforcedWhereClause: {
+      organization_id: { op: "eq", value: "org_test" },
+      project_id: { op: "eq", value: "proj_test" },
+      environment_id: { op: "eq", value: "env_test" },
+    },
+  });
+}
 
-  it("should transform user-friendly value to internal value in equality comparison", () => {
+it("should transform user-friendly value to internal value in equality comparison", () => {
     const ctx = createValueMapContext();
     const { sql, params } = printQuery("SELECT * FROM runs WHERE status = 'Completed'", ctx);
 
@@ -1566,15 +1584,17 @@ describe("WHERE transform (whereTransform)", () => {
 
   function createPrefixedContext() {
     const schema = createSchemaRegistry([prefixedIdSchema]);
-    return createPrinterContext({
-      organizationId: "org_test123",
-      projectId: "proj_test456",
-      environmentId: "env_test789",
-      schema,
-    });
-  }
+  return createPrinterContext({
+    schema,
+    enforcedWhereClause: {
+      organization_id: { op: "eq", value: "org_test123" },
+      project_id: { op: "eq", value: "proj_test456" },
+      environment_id: { op: "eq", value: "env_test789" },
+    },
+  });
+}
 
-  it("should strip prefix from value in equality comparison", () => {
+it("should strip prefix from value in equality comparison", () => {
     const ctx = createPrefixedContext();
     const { params } = printQuery("SELECT * FROM runs WHERE batch_id = 'batch_abc123'", ctx);
 
@@ -1790,16 +1810,18 @@ describe("Virtual columns", () => {
 
   function createVirtualColumnContext() {
     const schema = createSchemaRegistry([virtualColumnSchema]);
-    return createPrinterContext({
-      organizationId: "org_test",
-      projectId: "proj_test",
-      environmentId: "env_test",
-      schema,
-    });
-  }
+  return createPrinterContext({
+    schema,
+    enforcedWhereClause: {
+      organization_id: { op: "eq", value: "org_test" },
+      project_id: { op: "eq", value: "proj_test" },
+      environment_id: { op: "eq", value: "env_test" },
+    },
+  });
+}
 
-  describe("SELECT clause", () => {
-    it("should expand bare virtual column to expression with alias", () => {
+describe("SELECT clause", () => {
+  it("should expand bare virtual column to expression with alias", () => {
       const ctx = createVirtualColumnContext();
       const { sql } = printQuery("SELECT execution_duration FROM runs", ctx);
 
@@ -2031,16 +2053,18 @@ describe("Expression columns with division (cost/invocation_cost pattern)", () =
 
   function createCostExpressionContext() {
     const schema = createSchemaRegistry([costExpressionSchema]);
-    return createPrinterContext({
-      organizationId: "org_test",
-      projectId: "proj_test",
-      environmentId: "env_test",
-      schema,
-    });
-  }
+  return createPrinterContext({
+    schema,
+    enforcedWhereClause: {
+      organization_id: { op: "eq", value: "org_test" },
+      project_id: { op: "eq", value: "proj_test" },
+      environment_id: { op: "eq", value: "env_test" },
+    },
+  });
+}
 
-  describe("WHERE clause with division expression columns", () => {
-    it("should expand invocation_cost > 100 to (base_cost_in_cents / 100.0) > 100", () => {
+describe("WHERE clause with division expression columns", () => {
+  it("should expand invocation_cost > 100 to (base_cost_in_cents / 100.0) > 100", () => {
       const ctx = createCostExpressionContext();
       const { sql } = printQuery("SELECT * FROM runs WHERE invocation_cost > 100", ctx);
 
@@ -2175,16 +2199,18 @@ describe("Column metadata", () => {
 
   function createMetadataTestContext() {
     const schema = createSchemaRegistry([schemaWithRenderTypes]);
-    return createPrinterContext({
-      organizationId: "org_test",
-      projectId: "proj_test",
-      environmentId: "env_test",
-      schema,
-    });
-  }
+  return createPrinterContext({
+    schema,
+    enforcedWhereClause: {
+      organization_id: { op: "eq", value: "org_test" },
+      project_id: { op: "eq", value: "proj_test" },
+      environment_id: { op: "eq", value: "env_test" },
+    },
+  });
+}
 
-  describe("Basic column metadata", () => {
-    it("should return column metadata for simple field references", () => {
+describe("Basic column metadata", () => {
+  it("should return column metadata for simple field references", () => {
       const ctx = createMetadataTestContext();
       const { columns } = printQuery("SELECT run_id, created_at FROM runs", ctx);
 
@@ -2586,10 +2612,12 @@ describe("Unknown column blocking", () => {
       // Using the internal name directly should be blocked
       const schema = createSchemaRegistry([runsSchema]);
       const ctx = createPrinterContext({
-        organizationId: "org_test",
-        projectId: "proj_test",
-        environmentId: "env_test",
         schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test" },
+          project_id: { op: "eq", value: "proj_test" },
+          environment_id: { op: "eq", value: "env_test" },
+        },
       });
 
       // 'created_at' is not in runsSchema - only 'created' which maps to 'created_at'
@@ -2603,10 +2631,12 @@ describe("Unknown column blocking", () => {
       // When user types 'created_at', we should suggest 'created'
       const schema = createSchemaRegistry([runsSchema]);
       const ctx = createPrinterContext({
-        organizationId: "org_test",
-        projectId: "proj_test",
-        environmentId: "env_test",
         schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test" },
+          project_id: { op: "eq", value: "proj_test" },
+          environment_id: { op: "eq", value: "env_test" },
+        },
       });
 
       expect(() => {
@@ -2739,9 +2769,6 @@ describe("Field Mapping Value Transformation", () => {
   function createFieldMappingContext(): PrinterContext {
     const schemaRegistry = createSchemaRegistry([fieldMappingSchema]);
     return new PrinterContext(
-      "org_123",
-      "proj_456",
-      "env_789",
       schemaRegistry,
       {},
       {
@@ -2749,6 +2776,11 @@ describe("Field Mapping Value Transformation", () => {
           proj_tenant1: "my-project-ref",
           proj_other: "other-project",
         },
+      },
+      {
+        organization_id: { op: "eq", value: "org_123" },
+        project_id: { op: "eq", value: "proj_456" },
+        environment_id: { op: "eq", value: "env_789" },
       }
     );
   }
@@ -2867,20 +2899,24 @@ describe("Internal-only column blocking", () => {
   function createHiddenTenantContext(): PrinterContext {
     const schema = createSchemaRegistry([hiddenTenantSchema]);
     return createPrinterContext({
-      organizationId: "org_test",
-      projectId: "proj_test",
-      environmentId: "env_test",
       schema,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test" },
+        project_id: { op: "eq", value: "proj_test" },
+        environment_id: { op: "eq", value: "env_test" },
+      },
     });
   }
 
   function createHiddenFilterContext(): PrinterContext {
     const schema = createSchemaRegistry([hiddenFilterSchema]);
     return createPrinterContext({
-      organizationId: "org_test",
-      projectId: "proj_test",
-      environmentId: "env_test",
       schema,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test" },
+        project_id: { op: "eq", value: "proj_test" },
+        environment_id: { op: "eq", value: "env_test" },
+      },
     });
   }
 
@@ -3048,10 +3084,12 @@ describe("Required Filters", () => {
   function createRequiredFiltersContext(): PrinterContext {
     const schemaRegistry = createSchemaRegistry([schemaWithRequiredFilters]);
     return createPrinterContext({
-      organizationId: "org_test123",
-      projectId: "proj_test456",
-      environmentId: "env_test789",
       schema: schemaRegistry,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test123" },
+        project_id: { op: "eq", value: "proj_test456" },
+        environment_id: { op: "eq", value: "env_test789" },
+      },
     });
   }
 

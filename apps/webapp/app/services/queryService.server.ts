@@ -7,7 +7,7 @@ import {
   type TSQLQueryResult,
 } from "@internal/clickhouse";
 import type { CustomerQuerySource } from "@trigger.dev/database";
-import type { TableSchema } from "@internal/tsql";
+import type { TableSchema, WhereClauseCondition } from "@internal/tsql";
 import { type z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -56,7 +56,7 @@ function getDefaultClickhouseSettings(): ClickHouseSettings {
 
 export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   ExecuteTSQLOptions<TOut>,
-  "tableSchema" | "organizationId" | "projectId" | "environmentId" | "fieldMappings"
+  "tableSchema" | "organizationId" | "projectId" | "environmentId" | "fieldMappings" | "enforcedWhereClause"
 > & {
   tableSchema: TableSchema[];
   /** The scope of the query - determines tenant isolation */
@@ -137,21 +137,16 @@ export async function executeQuery<TOut extends z.ZodSchema>(
 
   try {
     // Build tenant IDs based on scope
-    const tenantOptions: {
-      organizationId: string;
-      projectId?: string;
-      environmentId?: string;
+    const enforcedWhereClause: {
+      organization_id: WhereClauseCondition;
+      project_id?: WhereClauseCondition;
+      environment_id?: WhereClauseCondition;
     } = {
-      organizationId,
+      organization_id: { op: "eq", value: organizationId },
+      project_id: scope === "project" || scope === "environment" ? { op: "eq", value: projectId } : undefined,
+      environment_id: scope === "environment" ? { op: "eq", value: environmentId } : undefined,
+      //todo add plan-based time limit
     };
-
-    if (scope === "project" || scope === "environment") {
-      tenantOptions.projectId = projectId;
-    }
-
-    if (scope === "environment") {
-      tenantOptions.environmentId = environmentId;
-    }
 
     // Build field mappings for project_ref → project_id and environment_id → slug translation
     const projects = await prisma.project.findMany({
@@ -171,7 +166,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
 
     const result = await executeTSQL(clickhouseClient.reader, {
       ...baseOptions,
-      ...tenantOptions,
+      enforcedWhereClause,
       fieldMappings,
       whereClauseFallback,
       clickhouseSettings: {

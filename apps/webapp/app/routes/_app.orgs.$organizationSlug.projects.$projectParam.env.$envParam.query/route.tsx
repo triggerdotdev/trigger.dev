@@ -1,12 +1,13 @@
-import { ArrowDownTrayIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon, ArrowTrendingUpIcon, ClipboardIcon, TableCellsIcon } from "@heroicons/react/20/solid";
+import { ArrowDownTrayIcon, ArrowsPointingOutIcon, ArrowTrendingUpIcon, ClipboardIcon, TableCellsIcon } from "@heroicons/react/20/solid";
+import type { OutputColumnMetadata } from "@internal/clickhouse";
+import { WhereClauseCondition } from "@internal/tsql";
 import { useFetcher } from "@remix-run/react";
-import type { action as titleAction } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query.ai-title";
-import type { OutputColumnMetadata, WhereClauseFallback } from "@internal/clickhouse";
 import {
   redirect,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "@remix-run/server-runtime";
+import parse from "parse-duration";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
@@ -23,8 +24,6 @@ import { autoFormatSQL, TSQLEditor } from "~/components/code/TSQLEditor";
 import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { TimeFilter, timeFilters } from "~/components/runs/v3/SharedFilters";
-import { useSearchParams } from "~/hooks/useSearchParam";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Card } from "~/components/primitives/charts/Card";
@@ -34,6 +33,7 @@ import {
   ClientTabsList,
   ClientTabsTrigger,
 } from "~/components/primitives/ClientTabs";
+import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -51,28 +51,28 @@ import {
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TimeFilter, timeFilters } from "~/components/runs/v3/SharedFilters";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueryPresenter, type QueryHistoryItem } from "~/presenters/v3/QueryPresenter.server";
+import type { action as titleAction } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query.ai-title";
 import { executeQuery, type QueryScope } from "~/services/queryService.server";
+import { requireUser } from "~/services/session.server";
 import { downloadFile, rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags.server";
 import { querySchemas } from "~/v3/querySchemas";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { QueryHelpSidebar } from "./QueryHelpSidebar";
 import { QueryHistoryPopover } from "./QueryHistoryPopover";
 import type { AITimeFilter } from "./types";
 import { formatQueryStats } from "./utils";
-import { requireUser } from "~/services/session.server";
-import parse from "parse-duration";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { Dialog, DialogContent, DialogHeader, DialogPortal, DialogTrigger } from "~/components/primitives/Dialog";
-import { DialogOverlay } from "@radix-ui/react-dialog";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {
@@ -273,7 +273,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     defaultPeriod: DEFAULT_PERIOD,
   });
 
-  let triggeredAtFallback: WhereClauseFallback;
+  let triggeredAtFallback: WhereClauseCondition;
   if (timeFilter.from && timeFilter.to) {
     // Both from and to specified - use BETWEEN
     triggeredAtFallback = { op: "between", low: timeFilter.from, high: timeFilter.to };

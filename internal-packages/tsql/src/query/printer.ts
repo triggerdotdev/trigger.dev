@@ -46,7 +46,7 @@ import {
   findTSQLFunction,
   validateFunctionArgs,
 } from "./functions";
-import { PrinterContext } from "./printer_context";
+import { PrinterContext, WhereClauseCondition } from "./printer_context";
 import {
   findTable,
   validateTable,
@@ -1476,6 +1476,9 @@ export class ClickHousePrinter {
         // Look up table schema and get ClickHouse table name
         const tableSchema = this.lookupTable(tableName);
 
+        // Validate that required tenant columns are present in enforcedWhereClause
+        this.validateRequiredTenantColumns(tableSchema);
+
         // Always add the TSQL table name as an alias if no explicit alias is provided
         // This ensures table-qualified column references work in WHERE clauses
         // (needed to avoid alias conflicts when columns have expressions)
@@ -1524,8 +1527,8 @@ export class ClickHousePrinter {
           }
         }
 
-        // Add tenant isolation guard
-        extraWhere = this.createTenantGuard(tableSchema, effectiveAlias);
+        // Add enforced WHERE clause guard (tenant isolation + plan limits)
+        extraWhere = this.createEnforcedGuard(tableSchema, effectiveAlias);
       } else if (
         (tableExpr as SelectQuery).expression_type === "select_query" ||
         (tableExpr as SelectSetQuery).expression_type === "select_set_query"
@@ -1572,56 +1575,164 @@ export class ClickHousePrinter {
   }
 
   // ============================================================
-  // Tenant Isolation
+  // Enforced WHERE Clause
   // ============================================================
 
   /**
-   * Create a WHERE clause expression for tenant isolation and required filters
-   * Note: We use just the column name without table prefix since ClickHouse
-   * requires the actual table name (task_runs_v2), not the TSQL alias (task_runs)
+   * Validate that required tenant columns are present in enforcedWhereClause.
    *
-   * Organization ID is always required. Project ID and Environment ID are optional -
-   * if not provided, the query will return results across all projects/environments.
+   * If a table defines `tenantColumns.organizationId`, the `enforcedWhereClause`
+   * MUST include that column to ensure tenant isolation. This prevents accidental
+   * data leaks when the caller forgets to include tenant isolation conditions.
    *
-   * Required filters from the table schema are also always included.
+   * @throws QueryError if a required tenant column is missing
    */
-  private createTenantGuard(tableSchema: TableSchema, _tableAlias: string): And | CompareOperation {
-    const { tenantColumns, requiredFilters } = tableSchema;
+  private validateRequiredTenantColumns(tableSchema: TableSchema): void {
+    const { tenantColumns } = tableSchema;
+    if (!tenantColumns) return;
 
-    // Organization guard is always required
-    const orgGuard: CompareOperation = {
-      expression_type: "compare_operation",
-      op: CompareOperationOp.Eq,
-      left: { expression_type: "field", chain: [tenantColumns.organizationId] } as Field,
-      right: { expression_type: "constant", value: this.context.organizationId } as Constant,
+    // Organization ID is always required if the table defines it
+    if (tenantColumns.organizationId) {
+      const orgColumn = tenantColumns.organizationId;
+      if (!this.context.enforcedWhereClause[orgColumn]) {
+        throw new QueryError(
+          `Table '${tableSchema.name}' requires '${orgColumn}' in enforcedWhereClause for tenant isolation`
+        );
+      }
+    }
+    // Note: projectId and environmentId are optional - no validation needed
+  }
+
+  /**
+   * Format a Date as a ClickHouse-compatible DateTime64 string.
+   * ClickHouse expects format: 'YYYY-MM-DD HH:MM:SS.mmm' (in UTC)
+   */
+  private formatDateForClickHouse(date: Date): string {
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(date.getUTCDate()).padStart(2, "0");
+    const hours = String(date.getUTCHours()).padStart(2, "0");
+    const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+    const seconds = String(date.getUTCSeconds()).padStart(2, "0");
+    const ms = String(date.getUTCMilliseconds()).padStart(3, "0");
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms}`;
+  }
+
+  /**
+   * Create an AST expression for a value.
+   * Date values are wrapped in toDateTime64() for ClickHouse compatibility.
+   */
+  private createValueExpression(value: Date | string | number): Expression {
+    if (value instanceof Date) {
+      // Wrap Date in toDateTime64(formatted_string, 3) for ClickHouse DateTime64(3) columns
+      return {
+        expression_type: "call",
+        name: "toDateTime64",
+        args: [
+          { expression_type: "constant", value: this.formatDateForClickHouse(value) } as Constant,
+          { expression_type: "constant", value: 3 } as Constant,
+        ],
+      } as Call;
+    }
+    return { expression_type: "constant", value } as Constant;
+  }
+
+  /**
+   * Map condition operator to CompareOperationOp
+   */
+  private mapConditionOpToCompareOp(
+    op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte"
+  ): CompareOperationOp {
+    switch (op) {
+      case "eq":
+        return CompareOperationOp.Eq;
+      case "neq":
+        return CompareOperationOp.NotEq;
+      case "gt":
+        return CompareOperationOp.Gt;
+      case "gte":
+        return CompareOperationOp.GtEq;
+      case "lt":
+        return CompareOperationOp.Lt;
+      case "lte":
+        return CompareOperationOp.LtEq;
+    }
+  }
+
+  /**
+   * Create an AST expression from a WhereClauseCondition
+   *
+   * @param column - The column name
+   * @param condition - The condition to apply
+   * @returns The AST expression for the condition
+   */
+  private createConditionExpression(column: string, condition: WhereClauseCondition): Expression {
+    const fieldExpr: Field = {
+      expression_type: "field",
+      chain: [column],
     };
 
-    // Collect all guards - org is always included
-    const guards: CompareOperation[] = [orgGuard];
-
-    // Only add project guard if projectId is provided
-    if (this.context.projectId !== undefined) {
-      const projectGuard: CompareOperation = {
-        expression_type: "compare_operation",
-        op: CompareOperationOp.Eq,
-        left: { expression_type: "field", chain: [tenantColumns.projectId] } as Field,
-        right: { expression_type: "constant", value: this.context.projectId } as Constant,
+    if (condition.op === "between") {
+      const betweenExpr: BetweenExpr = {
+        expression_type: "between_expr",
+        expr: fieldExpr,
+        low: this.createValueExpression(condition.low),
+        high: this.createValueExpression(condition.high),
       };
-      guards.push(projectGuard);
+      return betweenExpr;
     }
 
-    // Only add environment guard if environmentId is provided
-    if (this.context.environmentId !== undefined) {
-      const envGuard: CompareOperation = {
-        expression_type: "compare_operation",
-        op: CompareOperationOp.Eq,
-        left: { expression_type: "field", chain: [tenantColumns.environmentId] } as Field,
-        right: { expression_type: "constant", value: this.context.environmentId } as Constant,
-      };
-      guards.push(envGuard);
+    // Simple comparison
+    const compareExpr: CompareOperation = {
+      expression_type: "compare_operation",
+      left: fieldExpr,
+      right: this.createValueExpression(condition.value),
+      op: this.mapConditionOpToCompareOp(condition.op),
+    };
+    return compareExpr;
+  }
+
+  /**
+   * Create a WHERE clause expression for enforced conditions and required filters.
+   *
+   * This method applies:
+   * 1. All conditions from enforcedWhereClause (tenant isolation + plan limits)
+   * 2. Required filters from the table schema (e.g., engine = 'V2')
+   *
+   * Conditions are applied if the column exists in either:
+   * - The exposed columns (tableSchema.columns)
+   * - The tenant columns (tableSchema.tenantColumns)
+   *
+   * This ensures the same enforcedWhereClause can be used across different tables.
+   *
+   * Note: We use just the column name without table prefix since ClickHouse
+   * requires the actual table name (task_runs_v2), not the TSQL alias (task_runs)
+   */
+  private createEnforcedGuard(tableSchema: TableSchema, _tableAlias: string): Expression | null {
+    const { requiredFilters, tenantColumns } = tableSchema;
+    const guards: Expression[] = [];
+
+    // Build a set of valid columns for this table (exposed + tenant columns)
+    const validColumns = new Set<string>(Object.keys(tableSchema.columns));
+    if (tenantColumns) {
+      if (tenantColumns.organizationId) validColumns.add(tenantColumns.organizationId);
+      if (tenantColumns.projectId) validColumns.add(tenantColumns.projectId);
+      if (tenantColumns.environmentId) validColumns.add(tenantColumns.environmentId);
     }
 
-    // Add required filters from the table schema
+    // Apply all enforced conditions for columns that exist in this table
+    for (const [column, condition] of Object.entries(this.context.enforcedWhereClause)) {
+      // Skip undefined/null conditions (allows conditional inclusion like project_id?: condition)
+      if (condition === undefined || condition === null) {
+        continue;
+      }
+      // Only apply if column exists in this table's schema or is a tenant column
+      if (validColumns.has(column)) {
+        guards.push(this.createConditionExpression(column, condition));
+      }
+    }
+
+    // Add required filters from the table schema (e.g., engine = 'V2')
     if (requiredFilters && requiredFilters.length > 0) {
       for (const filter of requiredFilters) {
         const filterGuard: CompareOperation = {
@@ -1634,15 +1745,20 @@ export class ClickHousePrinter {
       }
     }
 
-    // If only org guard, return it directly (no need for AND wrapper)
+    // Return null if no guards (empty enforcedWhereClause and no requiredFilters)
+    if (guards.length === 0) {
+      return null;
+    }
+
+    // If only one guard, return it directly (no need for AND wrapper)
     if (guards.length === 1) {
-      return orgGuard;
+      return guards[0];
     }
 
     return {
       expression_type: "and",
       exprs: guards,
-    };
+    } as And;
   }
 
   // ============================================================

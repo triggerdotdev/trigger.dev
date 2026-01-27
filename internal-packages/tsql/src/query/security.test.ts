@@ -53,10 +53,12 @@ const taskEventsSchema: TableSchema = {
 };
 
 const defaultOptions: CompileTSQLOptions = {
-  organizationId: "org_tenant1",
-  projectId: "proj_tenant1",
-  environmentId: "env_tenant1",
   tableSchema: [taskRunsSchema, taskEventsSchema],
+  enforcedWhereClause: {
+    organization_id: { op: "eq", value: "org_tenant1" },
+    project_id: { op: "eq", value: "proj_tenant1" },
+    environment_id: { op: "eq", value: "env_tenant1" },
+  },
 };
 
 function compile(query: string, options: Partial<CompileTSQLOptions> = {}) {
@@ -412,8 +414,10 @@ describe("Optional Tenant Filters", () => {
   describe("Organization ID is always required", () => {
     it("should always inject organization guard even with optional project/env", () => {
       const { sql, params } = compile("SELECT * FROM task_runs", {
-        projectId: undefined,
-        environmentId: undefined,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          // project_id and environment_id omitted
+        },
       });
 
       const whereClause = getWhereClause(sql);
@@ -431,8 +435,11 @@ describe("Optional Tenant Filters", () => {
   describe("Project ID is optional", () => {
     it("should inject org and project guards when project is provided", () => {
       const { sql, params } = compile("SELECT * FROM task_runs", {
-        projectId: "proj_tenant1",
-        environmentId: undefined,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          // environment_id omitted
+        },
       });
 
       const whereClause = getWhereClause(sql);
@@ -449,8 +456,10 @@ describe("Optional Tenant Filters", () => {
 
     it("should allow querying across all projects when projectId is omitted", () => {
       const { sql, params } = compile("SELECT * FROM task_runs", {
-        projectId: undefined,
-        environmentId: undefined,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          // project_id and environment_id omitted
+        },
       });
 
       const whereClause = getWhereClause(sql);
@@ -479,8 +488,11 @@ describe("Optional Tenant Filters", () => {
 
     it("should allow querying across all environments when environmentId is omitted", () => {
       const { sql, params } = compile("SELECT * FROM task_runs", {
-        projectId: "proj_tenant1",
-        environmentId: undefined,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          // environment_id omitted
+        },
       });
 
       const whereClause = getWhereClause(sql);
@@ -501,8 +513,10 @@ describe("Optional Tenant Filters", () => {
       const { sql, params } = compile(
         "SELECT * FROM task_runs WHERE organization_id = 'org_other'",
         {
-          projectId: undefined,
-          environmentId: undefined,
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_tenant1" },
+            // project_id and environment_id omitted
+          },
         }
       );
 
@@ -518,8 +532,10 @@ describe("Optional Tenant Filters", () => {
         JOIN task_events e ON r.id = e.run_id
       `,
         {
-          projectId: undefined,
-          environmentId: undefined,
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_tenant1" },
+            // project_id and environment_id omitted
+          },
         }
       );
 
@@ -540,8 +556,10 @@ describe("Optional Tenant Filters", () => {
         SELECT id, status FROM task_runs WHERE status = 'failed'
       `,
         {
-          projectId: undefined,
-          environmentId: undefined,
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_tenant1" },
+            // project_id and environment_id omitted
+          },
         }
       );
 
@@ -557,8 +575,10 @@ describe("Optional Tenant Filters", () => {
         WHERE id IN (SELECT run_id FROM task_events)
       `,
         {
-          projectId: undefined,
-          environmentId: undefined,
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_tenant1" },
+            // project_id and environment_id omitted
+          },
         }
       );
 

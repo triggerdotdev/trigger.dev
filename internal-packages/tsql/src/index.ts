@@ -23,7 +23,13 @@ import { CompareOperationOp } from "./query/ast.js";
 import { SyntaxError as TSQLSyntaxError } from "./query/errors.js";
 import { TSQLParseTreeConverter } from "./query/parser.js";
 import { printToClickHouse, type PrintResult } from "./query/printer.js";
-import { createPrinterContext, type QuerySettings } from "./query/printer_context.js";
+import {
+  createPrinterContext,
+  type BetweenCondition,
+  type QuerySettings,
+  type SimpleComparisonCondition,
+  type WhereClauseCondition,
+} from "./query/printer_context.js";
 import { createSchemaRegistry, type FieldMappings, type TableSchema } from "./query/schema.js";
 
 /**
@@ -113,9 +119,12 @@ export {
   createPrinterContext,
   DEFAULT_QUERY_SETTINGS,
   PrinterContext,
+  type BetweenCondition,
   type PrinterContextOptions,
   type QueryNotice,
   type QuerySettings,
+  type SimpleComparisonCondition,
+  type WhereClauseCondition,
 } from "./query/printer_context.js";
 
 // Re-export printer
@@ -304,7 +313,7 @@ function createValueExpression(value: Date | string | number): Expression {
 /**
  * Map fallback operator to CompareOperationOp
  */
-function mapFallbackOpToCompareOp(op: SimpleComparisonFallback["op"]): CompareOperationOp {
+function mapFallbackOpToCompareOp(op: SimpleComparisonCondition["op"]): CompareOperationOp {
   switch (op) {
     case "eq":
       return CompareOperationOp.Eq;
@@ -330,7 +339,7 @@ function mapFallbackOpToCompareOp(op: SimpleComparisonFallback["op"]): CompareOp
  */
 export function createFallbackExpression(
   column: string,
-  fallback: WhereClauseFallback
+  fallback: WhereClauseCondition
 ): Expression {
   const fieldExpr: Field = {
     expression_type: "field",
@@ -367,7 +376,7 @@ export function createFallbackExpression(
  */
 export function injectFallbackConditions(
   ast: SelectQuery | SelectSetQuery,
-  fallbacks: Record<string, WhereClauseFallback>
+  fallbacks: Record<string, WhereClauseCondition>
 ): SelectQuery | SelectSetQuery {
   // Handle SelectSetQuery (UNION, etc.) - apply to each query in the set
   if (ast.expression_type === "select_set_query") {
@@ -434,46 +443,31 @@ export function injectFallbackConditions(
   };
 }
 
-/**
- * A simple comparison fallback condition (e.g., column > value)
- */
-export interface SimpleComparisonFallback {
-  /** The comparison operator */
-  op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte";
-  /** The value to compare against */
-  value: Date | string | number;
-}
-
-/**
- * A between fallback condition (e.g., column BETWEEN low AND high)
- */
-export interface BetweenFallback {
-  /** The between operator */
-  op: "between";
-  /** The low bound of the range */
-  low: Date | string | number;
-  /** The high bound of the range */
-  high: Date | string | number;
-}
-
-/**
- * A WHERE clause fallback condition.
- * Used to apply default filters when the user hasn't specified one for a column.
- */
-export type WhereClauseFallback = SimpleComparisonFallback | BetweenFallback;
 
 /**
  * Options for compiling a TSQL query to ClickHouse SQL
  */
 export interface CompileTSQLOptions {
-  /** The organization ID for tenant isolation (required) */
-  organizationId: string;
-  /** The project ID for tenant isolation (optional - omit to query across all projects) */
-  projectId?: string;
-  /** The environment ID for tenant isolation (optional - omit to query across all environments) */
-  environmentId?: string;
   /** Schema definitions for allowed tables and columns */
   tableSchema: TableSchema[];
+  /**
+   * REQUIRED: Conditions always applied at the table level.
+   * Must include tenant columns (e.g., organization_id) for multi-tenant tables.
+   * Applied to every table reference including subqueries, CTEs, and JOINs.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   // Tenant isolation
+   *   organization_id: { op: "eq", value: "org_123" },
+   *   project_id: { op: "eq", value: "proj_456" },
+   *   environment_id: { op: "eq", value: "env_789" },
+   *   // Plan-based time limit
+   *   triggered_at: { op: "gte", value: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+   * }
+   * ```
+   */
+  enforcedWhereClause: Record<string, WhereClauseCondition>;
   /** Optional query settings */
   settings?: Partial<QuerySettings>;
   /**
@@ -491,6 +485,7 @@ export interface CompileTSQLOptions {
   /**
    * Fallback WHERE conditions to apply when the user hasn't filtered on a column.
    * Key is the column name, value is the fallback condition.
+   * These are applied at the AST level (top-level query only).
    *
    * @example
    * ```typescript
@@ -505,7 +500,7 @@ export interface CompileTSQLOptions {
    * }
    * ```
    */
-  whereClauseFallback?: Record<string, WhereClauseFallback>;
+  whereClauseFallback?: Record<string, WhereClauseCondition>;
 }
 
 /**
@@ -514,24 +509,28 @@ export interface CompileTSQLOptions {
  * This function:
  * 1. Parses the TSQL query into an AST
  * 2. Validates tables and columns against the schema
- * 3. Injects tenant isolation WHERE clauses
- * 4. Generates parameterized ClickHouse SQL
+ * 3. Injects enforced WHERE clauses (tenant isolation + plan limits) at printer level
+ * 4. Optionally injects fallback WHERE conditions at AST level
+ * 5. Generates parameterized ClickHouse SQL
  *
  * @param query - The TSQL query string to compile
- * @param options - Compilation options including tenant IDs and schema
+ * @param options - Compilation options including enforcedWhereClause and schema
  * @returns The compiled SQL and parameters
  * @throws TSQLSyntaxError if the query is invalid
- * @throws QueryError if tables/columns are not allowed
+ * @throws QueryError if tables/columns are not allowed or required tenant columns are missing
  *
  * @example
  * ```typescript
  * const { sql, params } = compileTSQL(
  *   "SELECT * FROM task_runs WHERE status = 'completed' LIMIT 100",
  *   {
- *     organizationId: "org_123",
- *     projectId: "proj_456",
- *     environmentId: "env_789",
  *     tableSchema: [taskRunsSchema],
+ *     enforcedWhereClause: {
+ *       organization_id: { op: "eq", value: "org_123" },
+ *       project_id: { op: "eq", value: "proj_456" },
+ *       environment_id: { op: "eq", value: "env_789" },
+ *       triggered_at: { op: "gte", value: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+ *     },
  *   }
  * );
  * ```
@@ -540,7 +539,7 @@ export function compileTSQL(query: string, options: CompileTSQLOptions): PrintRe
   // 1. Parse the TSQL query
   let ast = parseTSQLSelect(query);
 
-  // 2. Inject fallback WHERE conditions if provided
+  // 2. Inject fallback WHERE conditions if provided (applied at AST level - top-level query only)
   if (options.whereClauseFallback && Object.keys(options.whereClauseFallback).length > 0) {
     ast = injectFallbackConditions(ast, options.whereClauseFallback);
   }
@@ -548,16 +547,14 @@ export function compileTSQL(query: string, options: CompileTSQLOptions): PrintRe
   // 3. Create schema registry from table schemas
   const schemaRegistry = createSchemaRegistry(options.tableSchema);
 
-  // 4. Create printer context with tenant IDs and field mappings
+  // 4. Create printer context with enforced WHERE clause and field mappings
   const context = createPrinterContext({
-    organizationId: options.organizationId,
-    projectId: options.projectId,
-    environmentId: options.environmentId,
     schema: schemaRegistry,
     settings: options.settings,
     fieldMappings: options.fieldMappings,
+    enforcedWhereClause: options.enforcedWhereClause,
   });
 
-  // 5. Print the AST to ClickHouse SQL
+  // 5. Print the AST to ClickHouse SQL (enforced conditions applied at printer level)
   return printToClickHouse(ast, context);
 }
