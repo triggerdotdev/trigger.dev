@@ -59,6 +59,7 @@ export const meta: MetaFunction = () => {
   ];
 };
 
+// TODO: Move this to a more appropriate shared location
 async function hasLogsPageAccess(
   userId: string,
   isAdmin: boolean,
@@ -263,7 +264,7 @@ function RetentionNotice({
   return (
     <Paragraph variant="extra-small" className="flex items-center gap-1 whitespace-nowrap">
       <span className="text-text-dimmed">
-        {logCount.toLocaleString()} logs found, Showing last {retentionDays} {retentionDays === 1 ? 'day' : 'days'}
+       Showing last {retentionDays} {retentionDays === 1 ? 'day' : 'days'}
       </span>
       <a
         href="https://trigger.dev/pricing"
@@ -362,9 +363,6 @@ function FiltersBar({
 
 function LogsList({
   list,
-  isAdmin,
-  showDebug,
-  defaultPeriod,
 }: {
   list: Exclude<Awaited<UseDataFunctionReturn<typeof loader>["data"]>, { error: string }>; //exclude error, it is handled
   isAdmin: boolean;
@@ -424,8 +422,8 @@ function LogsList({
       const newLogs = fetcher.data.logs.filter((log) => !existingIds.has(log.id));
       if (newLogs.length > 0) {
         setAccumulatedLogs((prev) => [...prev, ...newLogs]);
-        setNextCursor(fetcher.data.pagination.next);
       }
+      setNextCursor(fetcher.data.pagination.next);
     }
   }, [fetcher.data, fetcher.state, accumulatedLogs, location.search]);
 
@@ -494,7 +492,6 @@ function LogsList({
           onLogSelect={handleLogSelect}
         />
       </ResizablePanel>
-
       {/* Side panel for log details */}
       {selectedLogId && (
         <>

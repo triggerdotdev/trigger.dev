@@ -12,6 +12,7 @@ import {
 } from "~/components/primitives/Select";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSource";
+import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { appliedSummary, FilterMenuProvider } from "~/components/runs/v3/SharedFilters";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 
@@ -37,7 +38,7 @@ export function LogsTaskFilter({ possibleTasks }: LogsTaskFilterProps) {
           <TasksDropdown
             trigger={
               <SelectTrigger
-                icon={<TaskTriggerSourceIcon source="STANDARD" className="size-4" />}
+                icon={<TaskIcon className="size-4" />}
                 variant="secondary/small"
                 shortcut={shortcut}
                 tooltipTitle="Filter by task"
@@ -62,7 +63,7 @@ export function LogsTaskFilter({ possibleTasks }: LogsTaskFilterProps) {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Task"
-                icon={<TaskTriggerSourceIcon source="STANDARD" className="size-4" />}
+                icon={<TaskIcon className="size-4" />}
                 value={appliedSummary(
                   selectedTasks.map((v) => {
                     const task = possibleTasks.find((task) => task.slug === v);
