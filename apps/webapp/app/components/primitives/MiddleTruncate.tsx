@@ -58,7 +58,7 @@ export function MiddleTruncate({ text, className }: MiddleTruncateProps) {
       return;
     }
 
-    // Binary search for optimal character counts
+    // Incrementally find the optimal character counts
     let startChars = 0;
     let endChars = 0;
 
@@ -119,7 +119,11 @@ export function MiddleTruncate({ text, className }: MiddleTruncateProps) {
   useLayoutEffect(() => {
     calculateTruncation();
 
-    // Recalculate on resize
+    // Recalculate on resize (guard for jsdom/older browsers)
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
     const resizeObserver = new ResizeObserver(() => {
       calculateTruncation();
     });
