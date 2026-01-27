@@ -15,6 +15,9 @@ out/
 dist
 packages/**/dist
 
+# vendored bundles (generated during build)
+packages/**/src/**/vendor
+
 # Tailwind
 apps/**/styles/tailwind.css
 packages/**/styles/tailwind.css
