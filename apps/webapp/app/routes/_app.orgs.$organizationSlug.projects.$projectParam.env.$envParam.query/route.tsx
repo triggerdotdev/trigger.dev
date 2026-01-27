@@ -1053,7 +1053,7 @@ function ResultsChart({
             {queryTitle ?? "Chart"}
           </DialogHeader>
           <div className="h-full min-h-0 flex-1 overflow-hidden w-full pt-4">
-            <QueryResultsChart rows={rows} columns={columns} config={chartConfig} fullLegend={true} />
+            <QueryResultsChart rows={rows} columns={columns} config={chartConfig} fullLegend={true} legendScrollable={true} />
           </div>
         </DialogContent>
       </Dialog>
