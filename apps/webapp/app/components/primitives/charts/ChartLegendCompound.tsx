@@ -177,11 +177,11 @@ export function ChartLegendCompound({
                   style={{ backgroundColor: item.color }}
                 />
               )}
-              <div className="relative flex w-full items-center justify-between gap-2">
+              <div className="relative flex w-full items-center justify-between gap-3">
                 <div className="flex items-center gap-1.5">
                   {item.color && (
                     <div
-                      className="h-3 w-1 shrink-0 rounded-[2px]"
+                      className="w-1 shrink-0 self-stretch rounded-[2px]"
                       style={{ backgroundColor: item.color }}
                     />
                   )}
@@ -190,7 +190,10 @@ export function ChartLegendCompound({
                   </span>
                 </div>
                 <span
-                  className={cn("tabular-nums", isActive ? "text-text-bright" : "text-text-dimmed")}
+                  className={cn(
+                    "self-start tabular-nums",
+                    isActive ? "text-text-bright" : "text-text-dimmed"
+                  )}
                 >
                   <AnimatedNumber value={total} duration={0.25} />
                 </span>
