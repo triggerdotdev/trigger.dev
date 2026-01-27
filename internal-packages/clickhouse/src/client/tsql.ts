@@ -56,7 +56,7 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
    * }
    * ```
    */
-  enforcedWhereClause: Record<string, WhereClauseCondition>;
+  enforcedWhereClause: Record<string, WhereClauseCondition | undefined>;
   /** Optional ClickHouse query settings */
   clickhouseSettings?: ClickHouseSettings;
   /** Optional TSQL query settings (maxRows, timezone, etc.) */

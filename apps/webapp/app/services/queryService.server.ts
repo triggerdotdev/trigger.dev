@@ -56,17 +56,14 @@ function getDefaultClickhouseSettings(): ClickHouseSettings {
 
 export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   ExecuteTSQLOptions<TOut>,
-  "tableSchema" | "organizationId" | "projectId" | "environmentId" | "fieldMappings" | "enforcedWhereClause"
+  "tableSchema" | "fieldMappings"
 > & {
+  organizationId: string;
+  projectId?: string;
+  environmentId?: string;
   tableSchema: TableSchema[];
   /** The scope of the query - determines tenant isolation */
   scope: QueryScope;
-  /** Organization ID (required) */
-  organizationId: string;
-  /** Project ID (required for project/environment scope) */
-  projectId: string;
-  /** Environment ID (required for environment scope) */
-  environmentId: string;
   /** History options for saving query to billing/audit */
   history?: {
     /** Where the query originated from */
@@ -109,6 +106,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     organizationId,
     projectId,
     environmentId,
+    enforcedWhereClause,
     history,
     customOrgConcurrencyLimit,
     whereClauseFallback,
@@ -136,18 +134,6 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     }
 
   try {
-    // Build tenant IDs based on scope
-    const enforcedWhereClause: {
-      organization_id: WhereClauseCondition;
-      project_id?: WhereClauseCondition;
-      environment_id?: WhereClauseCondition;
-    } = {
-      organization_id: { op: "eq", value: organizationId },
-      project_id: scope === "project" || scope === "environment" ? { op: "eq", value: projectId } : undefined,
-      environment_id: scope === "environment" ? { op: "eq", value: environmentId } : undefined,
-      //todo add plan-based time limit
-    };
-
     // Build field mappings for project_ref → project_id and environment_id → slug translation
     const projects = await prisma.project.findMany({
       where: { organizationId },

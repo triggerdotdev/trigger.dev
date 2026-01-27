@@ -73,6 +73,7 @@ import { QueryHelpSidebar } from "./QueryHelpSidebar";
 import { QueryHistoryPopover } from "./QueryHistoryPopover";
 import type { AITimeFilter } from "./types";
 import { formatQueryStats } from "./utils";
+import { getLimit } from "~/services/platform.v3.server";
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {
@@ -289,6 +290,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     triggeredAtFallback = { op: "gte", value: new Date(Date.now() - periodMs) };
   }
 
+  const maxQueryPeriod = await getLimit(project.organizationId, "queryPeriodDays", 5);
+
+  // Force tenant isolation and time period limits
+  const enforcedWhereClause = {
+    organization_id: { op: "eq", value: project.organizationId },
+    project_id: scope === "project" || scope === "environment" ? { op: "eq", value: project.id } : undefined,
+    environment_id: scope === "environment" ? { op: "eq", value: environment.id } : undefined,
+    triggered_at: { op: "gte", value: new Date(Date.now() - maxQueryPeriod * 24 * 60 * 60 * 1000) }
+  } satisfies Record<string, WhereClauseCondition | undefined>;
+
   try {
     const [error, result, queryId] = await executeQuery({
       name: "query-page",
@@ -301,6 +312,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       projectId: project.id,
       environmentId: environment.id,
       explain,
+      enforcedWhereClause,
       whereClauseFallback: {
         triggered_at: triggeredAtFallback,
       },

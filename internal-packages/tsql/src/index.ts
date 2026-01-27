@@ -467,7 +467,7 @@ export interface CompileTSQLOptions {
    * }
    * ```
    */
-  enforcedWhereClause: Record<string, WhereClauseCondition>;
+  enforcedWhereClause: Record<string, WhereClauseCondition | undefined>;
   /** Optional query settings */
   settings?: Partial<QuerySettings>;
   /**
@@ -547,14 +547,20 @@ export function compileTSQL(query: string, options: CompileTSQLOptions): PrintRe
   // 3. Create schema registry from table schemas
   const schemaRegistry = createSchemaRegistry(options.tableSchema);
 
-  // 4. Create printer context with enforced WHERE clause and field mappings
+
+  // 4. Strip undefined values from enforcedWhereClause
+  const enforcedWhereClause = Object.fromEntries(
+    Object.entries(options.enforcedWhereClause).filter(([_, value]) => value !== undefined)
+  ) as Record<string, WhereClauseCondition>;
+
+  // 5. Create printer context with enforced WHERE clause and field mappings
   const context = createPrinterContext({
     schema: schemaRegistry,
     settings: options.settings,
     fieldMappings: options.fieldMappings,
-    enforcedWhereClause: options.enforcedWhereClause,
+    enforcedWhereClause,
   });
 
-  // 5. Print the AST to ClickHouse SQL (enforced conditions applied at printer level)
+  // 6. Print the AST to ClickHouse SQL (enforced conditions applied at printer level)
   return printToClickHouse(ast, context);
 }
