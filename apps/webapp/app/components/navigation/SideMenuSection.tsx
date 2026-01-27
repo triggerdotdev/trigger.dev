@@ -7,6 +7,9 @@ type Props = {
   initialCollapsed?: boolean;
   onCollapseToggle?: (isCollapsed: boolean) => void;
   children: React.ReactNode;
+  /** When true, hides the section header and shows only children */
+  isSideMenuCollapsed?: boolean;
+  itemSpacingClassName?: string;
 };
 
 /** A collapsible section for the side menu
@@ -17,6 +20,8 @@ export function SideMenuSection({
   initialCollapsed = false,
   onCollapseToggle,
   children,
+  isSideMenuCollapsed = false,
+  itemSpacingClassName = "space-y-px",
 }: Props) {
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed);
 
@@ -27,22 +32,42 @@ export function SideMenuSection({
   }, [isCollapsed, onCollapseToggle]);
 
   return (
-    <div>
-      <div
-        className="flex cursor-pointer items-center gap-1 rounded-sm py-1 pl-1.5 text-text-dimmed transition hover:bg-charcoal-750 hover:text-text-bright"
-        onClick={handleToggle}
-      >
-        <h2 className="text-xs">{title}</h2>
+    <div className="w-full overflow-hidden">
+      {/* Header container - stays in DOM to preserve height */}
+      <div className="relative w-full">
+        {/* Header - fades out when sidebar is collapsed */}
         <motion.div
-          initial={isCollapsed}
-          animate={{ rotate: isCollapsed ? -90 : 0 }}
-          transition={{ duration: 0.2 }}
+          className="flex cursor-pointer items-center gap-1 overflow-hidden rounded-sm py-1 pl-1.5 text-text-dimmed transition hover:bg-charcoal-750 hover:text-text-bright"
+          onClick={isSideMenuCollapsed ? undefined : handleToggle}
+          style={{ cursor: isSideMenuCollapsed ? "default" : "pointer" }}
+          initial={false}
+          animate={{
+            opacity: isSideMenuCollapsed ? 0 : 1,
+          }}
+          transition={{ duration: 0.15, ease: "easeOut" }}
         >
-          <ToggleArrowIcon className="size-2" />
+          <h2 className="text-xs whitespace-nowrap">{title}</h2>
+          <motion.div
+            initial={isCollapsed}
+            animate={{ rotate: isCollapsed ? -90 : 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <ToggleArrowIcon className="size-2" />
+          </motion.div>
         </motion.div>
+        {/* Divider - absolutely positioned, visible when sidebar is collapsed but section is expanded */}
+        <motion.div
+          className="absolute left-2 right-2 top-1 h-px bg-charcoal-600"
+          initial={false}
+          animate={{
+            opacity: isSideMenuCollapsed && !isCollapsed ? 1 : 0,
+          }}
+          transition={{ duration: 0.15, ease: "easeOut" }}
+        />
       </div>
       <AnimatePresence initial={false}>
         <motion.div
+          className="w-full"
           initial={isCollapsed ? "collapsed" : "expanded"}
           animate={isCollapsed ? "collapsed" : "expanded"}
           exit="collapsed"
@@ -63,6 +88,7 @@ export function SideMenuSection({
           style={{ overflow: "hidden" }}
         >
           <motion.div
+            className={`w-full ${itemSpacingClassName}`}
             variants={{
               expanded: {
                 translateY: 0,
