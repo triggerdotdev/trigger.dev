@@ -306,7 +306,6 @@ export class LogsListPresenter extends BasePresenter {
     if (levels && levels.length > 0) {
       const conditions: string[] = [];
       const params: Record<string, string[]> = {};
-      const hasErrorOrCancelledLevel = levels.includes("ERROR") || levels.includes("CANCELLED");
 
       for (const level of levels) {
         const filter = levelToKindsAndStatuses(level);
