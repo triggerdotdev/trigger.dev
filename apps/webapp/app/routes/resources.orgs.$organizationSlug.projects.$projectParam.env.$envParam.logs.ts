@@ -19,7 +19,10 @@ function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
 }
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  const userId = user.id;
+  const isAdmin = user?.admin || user?.isImpersonating;
+
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
@@ -31,9 +34,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!environment) {
     throw new Response("Environment not found", { status: 404 });
   }
-
-  const user = await requireUser(request);
-  const isAdmin = user?.admin || user?.isImpersonating;
 
   // Get the user's plan to determine log retention limit
   const plan = await getCurrentPlan(project.organizationId);

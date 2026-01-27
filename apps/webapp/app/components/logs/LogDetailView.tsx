@@ -117,8 +117,6 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
 
       if (e.key === "Escape") {
         onClose();
-      } else if ((e.key === "v" || e.key === "V") && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !isLoading && log) {
-        window.open(runPath, "_blank");
       }
     };
     window.addEventListener("keydown", handleKeyDown);
