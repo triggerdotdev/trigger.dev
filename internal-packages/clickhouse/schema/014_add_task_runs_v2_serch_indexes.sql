@@ -7,7 +7,7 @@ ALTER TABLE trigger_dev.task_events_v2
     GRANULARITY 1;
 
 ALTER TABLE trigger_dev.task_events_v2
-    ADD INDEX IF NOT EXISTS message_text_search lower(message)
+    ADD INDEX IF NOT EXISTS idx_message_text_search lower(message)
     TYPE ngrambf_v1(3, 32768, 2, 0)
     GRANULARITY 1;
 

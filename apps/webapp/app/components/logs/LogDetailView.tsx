@@ -105,6 +105,16 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.contentEditable === "true"
+      )) {
+        return;
+      }
+
       if (e.key === "Escape") {
         onClose();
       } else if ((e.key === "v" || e.key === "V") && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !isLoading && log) {

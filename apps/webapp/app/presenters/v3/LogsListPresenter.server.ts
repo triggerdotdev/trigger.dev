@@ -298,8 +298,7 @@ export class LogsListPresenter extends BasePresenter {
       queryBuilder.where(
         "(lower(message) like {searchPattern: String} OR lower(attributes_text) like {searchPattern: String})",
         {
-          searchPattern: `%${searchTerm.toLowerCase()}%`,
-          statusTerm: searchTerm.toUpperCase(),
+          searchPattern: `%${searchTerm.toLowerCase()}%`
         }
       );
     }

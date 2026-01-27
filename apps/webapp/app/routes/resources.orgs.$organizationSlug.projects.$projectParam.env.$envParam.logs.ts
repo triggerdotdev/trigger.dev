@@ -50,8 +50,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const period = url.searchParams.get("period") ?? undefined;
   const fromStr = url.searchParams.get("from");
   const toStr = url.searchParams.get("to");
-  const from = fromStr ? parseInt(fromStr, 10) : undefined;
-  const to = toStr ? parseInt(toStr, 10) : undefined;
+  let from = fromStr ? parseInt(fromStr, 10) : undefined;
+  let to = toStr ? parseInt(toStr, 10) : undefined;
+
+  if (Number.isNaN(from)) from = undefined;
+  if (Number.isNaN(to)) to = undefined;
 
   const options = LogsListOptionsSchema.parse({
     userId,
