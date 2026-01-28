@@ -393,15 +393,6 @@ export interface IEventRepository {
     options?: { includeDebugLogs?: boolean }
   ): Promise<SpanDetail | undefined>;
 
-  getSpanOriginalRunId(
-    storeTable: TaskEventStoreTable,
-    environmentId: string,
-    spanId: string,
-    traceId: string,
-    startCreatedAt: Date,
-    endCreatedAt?: Date
-  ): Promise<string | undefined>;
-
   // Event recording methods
   recordEvent(
     message: string,

@@ -1,6 +1,6 @@
 import { type ApiResult, wrapZodFetch } from "@trigger.dev/core/v3/zodfetch";
 import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
-import { MemoryStore } from "@unkey/cache/stores";
+import { createLRUMemoryStore } from "@internal/cache";
 import { z } from "zod";
 import { env } from "~/env.server";
 
@@ -17,7 +17,7 @@ const IncidentSchema = z.object({
 export type Incident = z.infer<typeof IncidentSchema>;
 
 const ctx = new DefaultStatefulContext();
-const memory = new MemoryStore({ persistentMap: new Map() });
+const memory = createLRUMemoryStore(100);
 
 const cache = createCache({
   query: new Namespace<ApiResult<Incident>>(ctx, {

@@ -151,7 +151,7 @@ spec:
               {{- else }}
               value: {{ .Values.supervisor.bootstrap.workerToken.value | quote }}
               {{- end }}
-            {{- if .Values.secrets.enabled }}
+            {{- if or .Values.secrets.enabled .Values.secrets.existingSecret }}
             - name: MANAGED_WORKER_SECRET
               valueFrom:
                 secretKeyRef:

@@ -1,6 +1,7 @@
 import { sql, StandardSQL } from "@codemirror/lang-sql";
-import { autocompletion } from "@codemirror/autocomplete";
+import { autocompletion, startCompletion } from "@codemirror/autocomplete";
 import { linter, lintGutter } from "@codemirror/lint";
+import { EditorView } from "@codemirror/view";
 import type { ViewUpdate } from "@codemirror/view";
 import { CheckIcon, ClipboardIcon, SparklesIcon, TrashIcon } from "@heroicons/react/20/solid";
 import {
@@ -101,6 +102,23 @@ export function TSQLEditor(opts: TSQLEditorProps) {
           override: [createTSQLCompletion(schema)],
           activateOnTyping: true,
           maxRenderedOptions: 50,
+        })
+      );
+
+      // Trigger autocomplete when ' is typed in value context
+      // CodeMirror's activateOnTyping only triggers on alphanumeric characters,
+      // so we manually trigger for quotes after comparison operators
+      exts.push(
+        EditorView.domEventHandlers({
+          keyup: (event, view) => {
+            // Trigger on quote key (both ' and shift+' on some keyboards)
+            if (event.key === "'" || event.key === '"' || event.code === "Quote") {
+              setTimeout(() => {
+                startCompletion(view);
+              }, 50);
+            }
+            return false;
+          },
         })
       );
     }

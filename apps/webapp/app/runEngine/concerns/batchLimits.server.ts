@@ -1,8 +1,10 @@
 import { Organization } from "@trigger.dev/database";
-import { Ratelimit } from "@upstash/ratelimit";
 import { z } from "zod";
 import { env } from "~/env.server";
-import { RateLimiterConfig } from "~/services/authorizationRateLimitMiddleware.server";
+import {
+  RateLimiterConfig,
+  createLimiterFromConfig,
+} from "~/services/authorizationRateLimitMiddleware.server";
 import { createRedisRateLimitClient, Duration, RateLimiter } from "~/services/rateLimiter.server";
 import { singleton } from "~/utils/singleton";
 
@@ -33,16 +35,7 @@ function createBatchLimitsRedisClient() {
 function createOrganizationRateLimiter(organization: Organization): RateLimiter {
   const limiterConfig = resolveBatchRateLimitConfig(organization.batchRateLimitConfig);
 
-  const limiter =
-    limiterConfig.type === "fixedWindow"
-      ? Ratelimit.fixedWindow(limiterConfig.tokens, limiterConfig.window)
-      : limiterConfig.type === "tokenBucket"
-      ? Ratelimit.tokenBucket(
-          limiterConfig.refillRate,
-          limiterConfig.interval,
-          limiterConfig.maxTokens
-        )
-      : Ratelimit.slidingWindow(limiterConfig.tokens, limiterConfig.window);
+  const limiter = createLimiterFromConfig(limiterConfig);
 
   return new RateLimiter({
     redisClient: batchLimitsRedisClient,

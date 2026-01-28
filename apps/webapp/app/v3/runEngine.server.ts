@@ -179,6 +179,7 @@ function createRunEngine() {
         : undefined,
       consumerCount: env.BATCH_QUEUE_CONSUMER_COUNT,
       consumerIntervalMs: env.BATCH_QUEUE_CONSUMER_INTERVAL_MS,
+      consumerEnabled: env.BATCH_QUEUE_WORKER_ENABLED,
       // Default processing concurrency when no specific limit is set
       // This is overridden per-batch based on the plan type at batch creation
       defaultConcurrency: env.BATCH_CONCURRENCY_LIMIT_DEFAULT,

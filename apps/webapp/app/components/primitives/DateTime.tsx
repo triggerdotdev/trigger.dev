@@ -1,6 +1,6 @@
 import { GlobeAltIcon, GlobeAmericasIcon } from "@heroicons/react/20/solid";
 import { Laptop } from "lucide-react";
-import { Fragment, memo, type ReactNode, useMemo, useSyncExternalStore } from "react";
+import { memo, type ReactNode, useMemo, useSyncExternalStore } from "react";
 import { CopyButton } from "./CopyButton";
 import { useLocales } from "./LocaleProvider";
 import { Paragraph } from "./Paragraph";
@@ -19,7 +19,7 @@ function getLocalTimeZone(): string {
 // For SSR compatibility: returns "UTC" on server, actual timezone on client
 function subscribeToTimeZone() {
   // No-op - timezone doesn't change
-  return () => {};
+  return () => { };
 }
 
 function getTimeZoneSnapshot(): string {
@@ -44,6 +44,7 @@ type DateTimeProps = {
   timeZone?: string;
   includeSeconds?: boolean;
   includeTime?: boolean;
+  includeDate?: boolean;
   showTimezone?: boolean;
   showTooltip?: boolean;
   hideDate?: boolean;
@@ -56,6 +57,7 @@ export const DateTime = ({
   timeZone,
   includeSeconds = true,
   includeTime = true,
+  includeDate = true,
   showTimezone = false,
   showTooltip = true,
   hour12 = true,
@@ -66,17 +68,18 @@ export const DateTime = ({
   const realDate = useMemo(() => (typeof date === "string" ? new Date(date) : date), [date]);
 
   const formattedDateTime = (
-    <Fragment>
+    <span suppressHydrationWarning>
       {formatDateTime(
         realDate,
         timeZone ?? localTimeZone,
         locales,
         includeSeconds,
         includeTime,
+        includeDate,
         hour12
       ).replace(/\s/g, String.fromCharCode(32))}
       {showTimezone ? ` (${timeZone ?? "UTC"})` : null}
-    </Fragment>
+    </span>
   );
 
   if (!showTooltip) return formattedDateTime;
@@ -93,6 +96,7 @@ export const DateTime = ({
         />
       }
       side="right"
+      asChild={true}
     />
   );
 };
@@ -103,12 +107,13 @@ export function formatDateTime(
   locales: string[],
   includeSeconds: boolean,
   includeTime: boolean,
+  includeDate: boolean = true,
   hour12: boolean = true
 ): string {
   return new Intl.DateTimeFormat(locales, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
+    year: includeDate ? "numeric" : undefined,
+    month: includeDate ? "short" : undefined,
+    day: includeDate ? "numeric" : undefined,
     hour: includeTime ? "numeric" : undefined,
     minute: includeTime ? "numeric" : undefined,
     second: includeTime && includeSeconds ? "numeric" : undefined,
@@ -178,7 +183,7 @@ export const SmartDateTime = ({ date, previousDate = null, hour12 = true }: Date
     ? formatSmartDateTime(realDate, localTimeZone, locales, hour12)
     : formatTimeOnly(realDate, localTimeZone, locales, hour12);
 
-  return <Fragment>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</Fragment>;
+  return <span suppressHydrationWarning>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</span>;
 };
 
 // Helper function to check if two dates are on the same day
@@ -250,14 +255,14 @@ const DateTimeAccurateInner = ({
     return hideDate
       ? formatTimeOnly(realDate, localTimeZone, locales, hour12)
       : realPrevDate
-      ? isSameDay(realDate, realPrevDate)
-        ? formatTimeOnly(realDate, localTimeZone, locales, hour12)
-        : formatDateTimeAccurate(realDate, localTimeZone, locales, hour12)
-      : formatDateTimeAccurate(realDate, localTimeZone, locales, hour12);
+        ? isSameDay(realDate, realPrevDate)
+          ? formatTimeOnly(realDate, localTimeZone, locales, hour12)
+          : formatDateTimeAccurate(realDate, localTimeZone, locales, hour12)
+        : formatDateTimeAccurate(realDate, localTimeZone, locales, hour12);
   }, [realDate, localTimeZone, locales, hour12, hideDate, previousDate]);
 
   if (!showTooltip)
-    return <Fragment>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</Fragment>;
+    return <span suppressHydrationWarning>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</span>;
 
   const tooltipContent = (
     <TooltipContent
@@ -270,9 +275,10 @@ const DateTimeAccurateInner = ({
 
   return (
     <SimpleTooltip
-      button={<Fragment>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</Fragment>}
+      button={<span suppressHydrationWarning>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</span>}
       content={tooltipContent}
       side="right"
+      asChild={true}
     />
   );
 };
@@ -326,7 +332,7 @@ export const DateTimeShort = ({ date, hour12 = true }: DateTimeProps) => {
   const realDate = typeof date === "string" ? new Date(date) : date;
   const formattedDateTime = formatDateTimeShort(realDate, localTimeZone, locales, hour12);
 
-  return <Fragment>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</Fragment>;
+  return <span suppressHydrationWarning>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</span>;
 };
 
 function formatDateTimeShort(
@@ -407,20 +413,20 @@ function TooltipContent({
         {timeZone && timeZone !== "UTC" && (
           <DateTimeTooltipContent
             title={timeZone}
-            dateTime={formatDateTime(realDate, timeZone, locales, true, true)}
+            dateTime={formatDateTime(realDate, timeZone, locales, true, true, true)}
             isoDateTime={formatDateTimeISO(realDate, timeZone)}
             icon={<GlobeAmericasIcon className="size-4 text-purple-500" />}
           />
         )}
         <DateTimeTooltipContent
           title="UTC"
-          dateTime={formatDateTime(realDate, "UTC", locales, true, true)}
+          dateTime={formatDateTime(realDate, "UTC", locales, true, true, true)}
           isoDateTime={formatDateTimeISO(realDate, "UTC")}
           icon={<GlobeAltIcon className="size-4 text-blue-500" />}
         />
         <DateTimeTooltipContent
           title="Local"
-          dateTime={formatDateTime(realDate, localTimeZone, locales, true, true)}
+          dateTime={formatDateTime(realDate, localTimeZone, locales, true, true, true)}
           isoDateTime={formatDateTimeISO(realDate, localTimeZone)}
           icon={<Laptop className="size-4 text-green-500" />}
         />

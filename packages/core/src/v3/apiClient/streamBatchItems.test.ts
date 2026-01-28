@@ -398,6 +398,58 @@ describe("streamBatchItems stream cancellation on retry", () => {
     expect(cancelCallCount).toBeGreaterThanOrEqual(1);
   });
 
+  it("handles locked stream when connection error occurs mid-read", async () => {
+    // This test simulates the real-world scenario where fetch throws an error
+    // while still holding the reader lock on the request body stream.
+    // This can happen with connection resets, timeouts, or network failures.
+    let callIndex = 0;
+
+    const mockFetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      const currentAttempt = callIndex;
+      callIndex++;
+
+      if (init?.body && init.body instanceof ReadableStream) {
+        if (currentAttempt === 0) {
+          // First attempt: Get a reader and start reading, but throw while still holding the lock.
+          // This simulates a connection error that happens mid-transfer.
+          const reader = init.body.getReader();
+          await reader.read(); // Start reading
+          // DON'T release the lock - this simulates fetch crashing mid-read
+          throw new TypeError("Connection reset by peer");
+        }
+
+        // Subsequent attempts: consume and release normally
+        await consumeAndRelease(init.body);
+      }
+
+      // Second attempt: success
+      return {
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            id: "batch_test123",
+            itemsAccepted: 10,
+            itemsDeduplicated: 0,
+            sealed: true,
+          }),
+      };
+    });
+    globalThis.fetch = mockFetch;
+
+    const client = new ApiClient("http://localhost:3030", "tr_test_key");
+
+    // This should NOT throw "ReadableStream is locked" error
+    // Instead it should gracefully handle the locked stream and retry
+    const result = await client.streamBatchItems(
+      "batch_test123",
+      [{ index: 0, task: "test-task", payload: "{}" }],
+      { retry: { maxAttempts: 3, minTimeoutInMs: 10, maxTimeoutInMs: 50 } }
+    );
+
+    expect(result.sealed).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
   it("does not leak memory by leaving tee branches unconsumed during multiple retries", async () => {
     let cancelCallCount = 0;
     let callIndex = 0;

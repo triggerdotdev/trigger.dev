@@ -1,14 +1,13 @@
 import {
   createCache,
+  createLRUMemoryStore,
   DefaultStatefulContext,
-  MemoryStore,
   Namespace,
   Ok,
   RedisCacheStore,
   type UnkeyCache,
   type CacheError,
   type Result,
-  createMemoryStore,
 } from "@internal/cache";
 import type { RedisOptions } from "@internal/redis";
 import type { Logger } from "@trigger.dev/core/logger";
@@ -53,7 +52,7 @@ export class BillingCache {
 
     this.cache = createCache({
       currentPlan: new Namespace<BillingPlan>(ctx, {
-        stores: [createMemoryStore(1000), redisCacheStore],
+        stores: [createLRUMemoryStore(1000), redisCacheStore],
         fresh: BILLING_FRESH_TTL,
         stale: BILLING_STALE_TTL,
       }),

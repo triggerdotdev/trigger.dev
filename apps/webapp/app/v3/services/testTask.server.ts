@@ -29,6 +29,7 @@ export class TestTaskService extends BaseService {
             tags: data.tags,
             machine: data.machine,
             lockToVersion: data.version === "latest" ? undefined : data.version,
+            priority: data.prioritySeconds,
           },
         });
 
@@ -66,6 +67,7 @@ export class TestTaskService extends BaseService {
               tags: data.tags,
               machine: data.machine,
               lockToVersion: data.version === "latest" ? undefined : data.version,
+              priority: data.prioritySeconds,
             },
           },
           { customIcon: "scheduled" }

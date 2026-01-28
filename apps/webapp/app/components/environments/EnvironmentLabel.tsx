@@ -80,11 +80,13 @@ export function EnvironmentLabel({
   className,
   tooltipSideOffset = 34,
   tooltipSide = "right",
+  disableTooltip = false,
 }: {
   environment: Environment;
   className?: string;
   tooltipSideOffset?: number;
   tooltipSide?: "top" | "right" | "bottom" | "left";
+  disableTooltip?: boolean;
 }) {
   const spanRef = useRef<HTMLSpanElement>(null);
   const [isTruncated, setIsTruncated] = useState(false);
@@ -117,7 +119,7 @@ export function EnvironmentLabel({
     </span>
   );
 
-  if (isTruncated) {
+  if (isTruncated && !disableTooltip) {
     return (
       <SimpleTooltip
         asChild
@@ -136,6 +138,10 @@ export function EnvironmentLabel({
   }
 
   return content;
+}
+
+export function EnvironmentSlug({ environment }: { environment: Environment & { slug: string } }) {
+  return <span className={environmentTextClassName(environment)}>{environment.slug}</span>;
 }
 
 export function environmentTitle(environment: Environment, username?: string) {

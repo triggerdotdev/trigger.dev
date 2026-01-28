@@ -18,27 +18,35 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import type { AITimeFilter } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/types";
 import { cn } from "~/utils/cn";
 
 type StreamEventType =
   | { type: "thinking"; content: string }
   | { type: "tool_call"; tool: string; args: unknown }
-  | { type: "result"; success: true; query: string }
+  | { type: "time_filter"; filter: AITimeFilter }
+  | { type: "result"; success: true; query: string; timeFilter?: AITimeFilter }
   | { type: "result"; success: false; error: string };
 
 export type AIQueryMode = "new" | "edit";
 
 interface AIQueryInputProps {
   onQueryGenerated: (query: string) => void;
+  /** Called when the AI sets a time filter - updates URL search params */
+  onTimeFilterChange?: (filter: AITimeFilter) => void;
   /** Set this to a prompt to auto-populate and immediately submit */
   autoSubmitPrompt?: string;
+  /** Change this to force re-submission even if prompt is the same */
+  autoSubmitKey?: number;
   /** Get the current query in the editor (used for edit mode) */
   getCurrentQuery?: () => string;
 }
 
 export function AIQueryInput({
   onQueryGenerated,
+  onTimeFilterChange,
   autoSubmitPrompt,
+  autoSubmitKey,
   getCurrentQuery,
 }: AIQueryInputProps) {
   const [prompt, setPrompt] = useState("");
@@ -50,7 +58,7 @@ export function AIQueryInput({
   const [lastResult, setLastResult] = useState<"success" | "error" | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const lastAutoSubmitRef = useRef<string | null>(null);
+  const lastAutoSubmitRef = useRef<{ prompt: string; key?: number } | null>(null);
 
   const organization = useOrganization();
   const project = useProject();
@@ -171,10 +179,32 @@ export function AIQueryInput({
           setThinking((prev) => prev + event.content);
           break;
         case "tool_call":
-          setThinking((prev) => prev + `\nValidating query...\n`);
+          if (event.tool === "setTimeFilter") {
+            setThinking((prev) => {
+              if (prev.trimEnd().endsWith("Setting time filter...")) {
+                return prev;
+              }
+              return prev + `\nSetting time filter...\n`;
+            });
+          } else {
+            setThinking((prev) => {
+              if (prev.trimEnd().endsWith("Validating query...")) {
+                return prev;
+              }
+              return prev + `\nValidating query...\n`;
+            });
+          }
+          break;
+        case "time_filter":
+          // Apply time filter immediately when the AI sets it
+          onTimeFilterChange?.(event.filter);
           break;
         case "result":
           if (event.success) {
+            // Apply time filter if included in result (backup in case time_filter event was missed)
+            if (event.timeFilter) {
+              onTimeFilterChange?.(event.timeFilter);
+            }
             onQueryGenerated(event.query);
             setPrompt("");
             setLastResult("success");
@@ -186,7 +216,7 @@ export function AIQueryInput({
           break;
       }
     },
-    [onQueryGenerated]
+    [onQueryGenerated, onTimeFilterChange]
   );
 
   const handleSubmit = useCallback(
@@ -197,19 +227,22 @@ export function AIQueryInput({
     [prompt, submitQuery]
   );
 
-  // Auto-submit when autoSubmitPrompt changes
+  // Auto-submit when autoSubmitPrompt or autoSubmitKey changes
   useEffect(() => {
-    if (
-      autoSubmitPrompt &&
-      autoSubmitPrompt.trim() &&
-      autoSubmitPrompt !== lastAutoSubmitRef.current &&
-      !isLoading
-    ) {
-      lastAutoSubmitRef.current = autoSubmitPrompt;
+    if (!autoSubmitPrompt || !autoSubmitPrompt.trim() || isLoading) {
+      return;
+    }
+
+    const last = lastAutoSubmitRef.current;
+    const isDifferent =
+      last === null || autoSubmitPrompt !== last.prompt || autoSubmitKey !== last.key;
+
+    if (isDifferent) {
+      lastAutoSubmitRef.current = { prompt: autoSubmitPrompt, key: autoSubmitKey };
       setPrompt(autoSubmitPrompt);
       submitQuery(autoSubmitPrompt);
     }
-  }, [autoSubmitPrompt, isLoading, submitQuery]);
+  }, [autoSubmitPrompt, autoSubmitKey, isLoading, submitQuery]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -353,10 +386,10 @@ export function AIQueryInput({
                     {isLoading
                       ? "AI is thinking..."
                       : lastResult === "success"
-                      ? "Query generated"
-                      : lastResult === "error"
-                      ? "Generation failed"
-                      : "AI response"}
+                        ? "Query generated"
+                        : lastResult === "error"
+                          ? "Generation failed"
+                          : "AI response"}
                   </span>
                 </div>
                 {isLoading ? (

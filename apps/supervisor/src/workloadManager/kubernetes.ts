@@ -4,7 +4,12 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
-import type { EnvironmentType, MachinePreset, PlacementTag } from "@trigger.dev/core/v3";
+import type {
+  EnvironmentType,
+  MachinePreset,
+  MachinePresetName,
+  PlacementTag,
+} from "@trigger.dev/core/v3";
 import { PlacementTagProcessor } from "@trigger.dev/core/v3/serverOnly";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
@@ -12,6 +17,26 @@ import { getRunnerId } from "../util.js";
 
 type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
+};
+
+const cpuRequestRatioByMachinePreset: Record<MachinePresetName, number | undefined> = {
+  micro: env.KUBERNETES_CPU_REQUEST_RATIO_MICRO,
+  "small-1x": env.KUBERNETES_CPU_REQUEST_RATIO_SMALL_1X,
+  "small-2x": env.KUBERNETES_CPU_REQUEST_RATIO_SMALL_2X,
+  "medium-1x": env.KUBERNETES_CPU_REQUEST_RATIO_MEDIUM_1X,
+  "medium-2x": env.KUBERNETES_CPU_REQUEST_RATIO_MEDIUM_2X,
+  "large-1x": env.KUBERNETES_CPU_REQUEST_RATIO_LARGE_1X,
+  "large-2x": env.KUBERNETES_CPU_REQUEST_RATIO_LARGE_2X,
+};
+
+const memoryRequestRatioByMachinePreset: Record<MachinePresetName, number | undefined> = {
+  micro: env.KUBERNETES_MEMORY_REQUEST_RATIO_MICRO,
+  "small-1x": env.KUBERNETES_MEMORY_REQUEST_RATIO_SMALL_1X,
+  "small-2x": env.KUBERNETES_MEMORY_REQUEST_RATIO_SMALL_2X,
+  "medium-1x": env.KUBERNETES_MEMORY_REQUEST_RATIO_MEDIUM_1X,
+  "medium-2x": env.KUBERNETES_MEMORY_REQUEST_RATIO_MEDIUM_2X,
+  "large-1x": env.KUBERNETES_MEMORY_REQUEST_RATIO_LARGE_1X,
+  "large-2x": env.KUBERNETES_MEMORY_REQUEST_RATIO_LARGE_2X,
 };
 
 export class KubernetesWorkloadManager implements WorkloadManager {
@@ -95,6 +120,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
           },
           spec: {
             ...this.addPlacementTags(this.#defaultPodSpec, opts.placementTags),
+            affinity: this.#getNodeAffinity(opts.machine),
             terminationGracePeriodSeconds: 60 * 60,
             containers: [
               {
@@ -320,8 +346,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   }
 
   #getResourceRequestsForMachine(preset: MachinePreset): ResourceQuantities {
-    const cpuRequest = preset.cpu * this.cpuRequestRatio;
-    const memoryRequest = preset.memory * this.memoryRequestRatio;
+    const cpuRatio = cpuRequestRatioByMachinePreset[preset.name] ?? this.cpuRequestRatio;
+    const memoryRatio = memoryRequestRatioByMachinePreset[preset.name] ?? this.memoryRequestRatio;
+
+    const cpuRequest = preset.cpu * cpuRatio;
+    const memoryRequest = preset.memory * memoryRatio;
 
     // Clamp between min and max
     const clampedCpu = this.clamp(cpuRequest, this.cpuRequestMinCores, preset.cpu);
@@ -353,6 +382,57 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       limits: {
         ...this.#defaultResourceLimits,
         ...this.#getResourceLimitsForMachine(preset),
+      },
+    };
+  }
+
+  #isLargeMachine(preset: MachinePreset): boolean {
+    return preset.name.startsWith("large-");
+  }
+
+  #getNodeAffinity(preset: MachinePreset): k8s.V1Affinity | undefined {
+    if (!env.KUBERNETES_LARGE_MACHINE_POOL_LABEL) {
+      return undefined;
+    }
+
+    if (this.#isLargeMachine(preset)) {
+      // soft preference for the large-machine pool, falls back to standard if unavailable
+      return {
+        nodeAffinity: {
+          preferredDuringSchedulingIgnoredDuringExecution: [
+            {
+              weight: 100,
+              preference: {
+                matchExpressions: [
+                  {
+                    key: "node.cluster.x-k8s.io/machinepool",
+                    operator: "In",
+                    values: [env.KUBERNETES_LARGE_MACHINE_POOL_LABEL],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      };
+    }
+
+    // not schedulable in the large-machine pool
+    return {
+      nodeAffinity: {
+        requiredDuringSchedulingIgnoredDuringExecution: {
+          nodeSelectorTerms: [
+            {
+              matchExpressions: [
+                {
+                  key: "node.cluster.x-k8s.io/machinepool",
+                  operator: "NotIn",
+                  values: [env.KUBERNETES_LARGE_MACHINE_POOL_LABEL],
+                },
+              ],
+            },
+          ],
+        },
       },
     };
   }

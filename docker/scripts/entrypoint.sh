@@ -5,10 +5,13 @@ if [ -n "$DATABASE_HOST" ]; then
   scripts/wait-for-it.sh ${DATABASE_HOST} -- echo "database is up"
 fi
 
-# Run migrations
-echo "Running prisma migrations"
-pnpm --filter @trigger.dev/database db:migrate:deploy
-echo "Prisma migrations done"
+if [ "$SKIP_POSTGRES_MIGRATIONS" != "1" ]; then
+  echo "Running prisma migrations"
+  pnpm --filter @trigger.dev/database db:migrate:deploy
+  echo "Prisma migrations done"
+else
+  echo "SKIP_POSTGRES_MIGRATIONS=1, skipping Postgres migrations."
+fi
 
 if [ -n "$CLICKHOUSE_URL" ] && [ "$SKIP_CLICKHOUSE_MIGRATIONS" != "1" ]; then
   # Run ClickHouse migrations

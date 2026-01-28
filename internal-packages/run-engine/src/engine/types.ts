@@ -80,6 +80,7 @@ export type RunEngineOptions = {
     shardCount?: number;
     /** Worker queue blocking timeout in seconds (enables two-stage processing) */
     workerQueueBlockingTimeoutSeconds?: number;
+    consumerEnabled?: boolean;
     consumerCount?: number;
     consumerIntervalMs?: number;
     /** Default processing concurrency per environment when no specific limit is set */
@@ -124,6 +125,8 @@ export type TriggerParams = {
   environment: MinimalAuthenticatedEnvironment;
   idempotencyKey?: string;
   idempotencyKeyExpiresAt?: Date;
+  /** The original user-provided idempotency key and scope */
+  idempotencyKeyOptions?: { key: string; scope: "run" | "attempt" | "global" };
   taskIdentifier: string;
   payload: string;
   payloadType: string;

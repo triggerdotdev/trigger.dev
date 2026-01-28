@@ -1,6 +1,12 @@
 import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
 import { jumpHash } from "@trigger.dev/core/v3/serverOnly";
-import type { ClaimResult, FairQueueKeyProducer, InFlightMessage } from "./types.js";
+import type {
+  ClaimResult,
+  FairQueueKeyProducer,
+  InFlightMessage,
+  ReclaimedMessageInfo,
+  StoredMessage,
+} from "./types.js";
 
 export interface VisibilityManagerOptions {
   redis: RedisOptions;
@@ -39,8 +45,8 @@ export class VisibilityManager {
     this.shardCount = options.shardCount;
     this.defaultTimeoutMs = options.defaultTimeoutMs;
     this.logger = options.logger ?? {
-      debug: () => {},
-      error: () => {},
+      debug: () => { },
+      error: () => { },
     };
 
     this.#registerCommands();
@@ -368,7 +374,7 @@ export class VisibilityManager {
    *
    * @param shardId - The shard to check
    * @param getQueueKeys - Function to get queue keys for a queue ID
-   * @returns Number of messages reclaimed
+   * @returns Array of reclaimed message info for concurrency release
    */
   async reclaimTimedOut(
     shardId: number,
@@ -377,7 +383,7 @@ export class VisibilityManager {
       queueItemsKey: string;
       masterQueueKey: string;
     }
-  ): Promise<number> {
+  ): Promise<ReclaimedMessageInfo[]> {
     const inflightKey = this.keys.inflightKey(shardId);
     const inflightDataKey = this.keys.inflightDataKey(shardId);
     const now = Date.now();
@@ -393,20 +399,32 @@ export class VisibilityManager {
       100 // Process in batches
     );
 
-    let reclaimed = 0;
+    const reclaimedMessages: ReclaimedMessageInfo[] = [];
 
     for (let i = 0; i < timedOut.length; i += 2) {
       const member = timedOut[i];
-      const originalScore = timedOut[i + 1];
-      if (!member || !originalScore) {
+      const _deadlineScore = timedOut[i + 1]; // This is the visibility deadline, not the original timestamp
+      if (!member || !_deadlineScore) {
         continue;
       }
       const { messageId, queueId } = this.#parseMember(member);
       const { queueKey, queueItemsKey, masterQueueKey } = getQueueKeys(queueId);
 
       try {
-        // Re-add to queue with original score (or now if not available)
-        const score = parseFloat(originalScore) || now;
+        // Get message data BEFORE releasing so we can extract tenantId for concurrency release
+        const dataJson = await this.redis.hget(inflightDataKey, messageId);
+        let storedMessage: StoredMessage | null = null;
+        if (dataJson) {
+          try {
+            storedMessage = JSON.parse(dataJson);
+          } catch {
+            // Ignore parse error, proceed with reclaim
+          }
+        }
+
+        // Re-add to queue with original timestamp to preserve priority
+        // Fall back to now if we can't get the original timestamp
+        const score = storedMessage?.timestamp ?? now;
         await this.redis.releaseMessage(
           inflightKey,
           inflightDataKey,
@@ -419,12 +437,34 @@ export class VisibilityManager {
           queueId
         );
 
-        reclaimed++;
+        // Track reclaimed message for concurrency release
+        // Always add to reclaimedMessages to avoid concurrency leaks
+        if (storedMessage) {
+          reclaimedMessages.push({
+            messageId,
+            queueId,
+            tenantId: storedMessage.tenantId,
+            metadata: storedMessage.metadata,
+          });
+        } else {
+          // Fallback: extract tenantId from queueId when message data is missing or corrupted
+          // This ensures concurrency is released even if we can't get the full metadata
+          this.logger.error("Missing or corrupted message data during reclaim, using fallback", {
+            messageId,
+            queueId,
+          });
+          reclaimedMessages.push({
+            messageId,
+            queueId,
+            tenantId: this.keys.extractTenantId(queueId),
+            metadata: {},
+          });
+        }
 
         this.logger.debug("Reclaimed timed-out message", {
           messageId,
           queueId,
-          originalScore,
+          deadline: _deadlineScore,
         });
       } catch (error) {
         this.logger.error("Failed to reclaim message", {
@@ -435,7 +475,7 @@ export class VisibilityManager {
       }
     }
 
-    return reclaimed;
+    return reclaimedMessages;
   }
 
   /**

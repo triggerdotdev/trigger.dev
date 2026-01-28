@@ -70,6 +70,11 @@ export interface PrintResult {
   params: Record<string, unknown>;
   /** Metadata for each column in the SELECT clause, in order */
   columns: OutputColumnMetadata[];
+  /**
+   * Columns that were hidden when SELECT * was used.
+   * Only populated when SELECT * is transformed to core columns only.
+   */
+  hiddenColumns?: string[];
 }
 
 /**
@@ -109,6 +114,29 @@ export class ClickHousePrinter {
   private outputColumns: OutputColumnMetadata[] = [];
   /** Whether we're currently processing GROUP BY expressions */
   private inGroupByContext = false;
+  /** Columns hidden when SELECT * is expanded to core columns only */
+  private hiddenColumns: string[] = [];
+  /**
+   * Set of column aliases defined in the current SELECT clause.
+   * Used to allow ORDER BY/HAVING to reference aliased columns.
+   */
+  private selectAliases: Set<string> = new Set();
+  /**
+   * Set of internal ClickHouse column names that are allowed (e.g., tenant columns).
+   * These are populated from tableSchema.tenantColumns when processing joins.
+   */
+  private allowedInternalColumns: Set<string> = new Set();
+  /**
+   * Set of internal-only column names that are NOT user-queryable.
+   * These are tenant columns and required filter columns that are not exposed in tableSchema.columns.
+   * Used to block user queries from accessing internal columns in SELECT, ORDER BY, GROUP BY, HAVING.
+   */
+  private internalOnlyColumns: Set<string> = new Set();
+  /**
+   * Whether we're currently processing user projection clauses (SELECT, ORDER BY, GROUP BY, HAVING).
+   * When true, internal-only columns will be rejected.
+   */
+  private inProjectionContext = false;
 
   constructor(
     private context: PrinterContext,
@@ -122,12 +150,17 @@ export class ClickHousePrinter {
    */
   print(node: SelectQuery | SelectSetQuery): PrintResult {
     this.outputColumns = [];
+    this.hiddenColumns = [];
     const sql = this.visit(node);
-    return {
+    const result: PrintResult = {
       sql,
       params: this.context.getParams(),
       columns: this.outputColumns,
     };
+    if (this.hiddenColumns.length > 0) {
+      result.hiddenColumns = this.hiddenColumns;
+    }
+    return result;
   }
 
   /**
@@ -298,9 +331,21 @@ export class ClickHousePrinter {
     const isTopLevelQuery =
       this.stack.length <= 1 || (this.stack.length === 2 && partOfSelectUnion);
 
-    // Clear table contexts for top-level queries (subqueries inherit parent context)
+    // Save and clear table contexts
+    // Top-level queries clear contexts; subqueries save parent context and create fresh context
+    const savedTableContexts = new Map(this.tableContexts);
+    const savedInternalColumns = new Set(this.allowedInternalColumns);
+    const savedInternalOnlyColumns = new Set(this.internalOnlyColumns);
     if (isTopLevelQuery) {
       this.tableContexts.clear();
+      this.allowedInternalColumns.clear();
+      this.internalOnlyColumns.clear();
+    } else {
+      // Subqueries get fresh contexts - they don't inherit parent tables
+      // (the parent will restore its context after the subquery is processed)
+      this.tableContexts = new Map();
+      this.allowedInternalColumns = new Set();
+      this.internalOnlyColumns = new Set();
     }
 
     // Build WHERE clause starting with any existing where
@@ -337,17 +382,30 @@ export class ClickHousePrinter {
       nextJoin = nextJoin.next_join;
     }
 
+    // Extract SELECT column aliases BEFORE visiting columns
+    // This allows ORDER BY/HAVING to reference aliased columns
+    const savedAliases = this.selectAliases;
+    this.selectAliases = new Set();
+    if (node.select) {
+      for (const col of node.select) {
+        this.extractSelectAlias(col);
+      }
+    }
+
     // Process SELECT columns and collect metadata
     // Using flatMap because asterisk expansion can return multiple columns
+    // Set inProjectionContext to block internal-only columns in user projections
     let columns: string[];
     if (node.select && node.select.length > 0) {
       // Only collect metadata for top-level queries (not subqueries)
       if (isTopLevelQuery) {
         this.outputColumns = [];
       }
+      this.inProjectionContext = true;
       columns = node.select.flatMap((col) =>
         this.visitSelectColumnWithMetadata(col, isTopLevelQuery)
       );
+      this.inProjectionContext = false;
     } else {
       columns = ["1"];
     }
@@ -365,16 +423,33 @@ export class ClickHousePrinter {
     const prewhere = node.prewhere ? this.visit(node.prewhere) : null;
     const whereStr = where ? this.visit(where) : null;
 
-    // Process GROUP BY with context flag to use raw columns for whereTransform columns
+    // Process GROUP BY with context flags:
+    // - inGroupByContext: use raw columns for whereTransform columns
+    // - inProjectionContext: block internal-only columns
     let groupBy: string[] | null = null;
     if (node.group_by) {
       this.inGroupByContext = true;
+      this.inProjectionContext = true;
       groupBy = node.group_by.map((col) => this.visit(col));
+      this.inProjectionContext = false;
       this.inGroupByContext = false;
     }
 
-    const having = node.having ? this.visit(node.having) : null;
-    const orderBy = node.order_by ? node.order_by.map((col) => this.visit(col)) : null;
+    // Process HAVING with inProjectionContext to block internal-only columns
+    let having: string | null = null;
+    if (node.having) {
+      this.inProjectionContext = true;
+      having = this.visit(node.having);
+      this.inProjectionContext = false;
+    }
+
+    // Process ORDER BY with inProjectionContext to block internal-only columns
+    let orderBy: string[] | null = null;
+    if (node.order_by) {
+      this.inProjectionContext = true;
+      orderBy = node.order_by.map((col) => this.visit(col));
+      this.inProjectionContext = false;
+    }
 
     // Process ARRAY JOIN
     let arrayJoin = "";
@@ -466,7 +541,55 @@ export class ClickHousePrinter {
       response = this.pretty ? `(${response.trim()})` : `(${response})`;
     }
 
+    // Restore saved contexts (for nested queries)
+    this.selectAliases = savedAliases;
+    this.tableContexts = savedTableContexts;
+    this.allowedInternalColumns = savedInternalColumns;
+    this.internalOnlyColumns = savedInternalOnlyColumns;
+
     return response;
+  }
+
+  /**
+   * Extract column aliases from a SELECT expression.
+   * Handles explicit aliases (AS name) and implicit names from aggregations/functions.
+   *
+   * NOTE: We intentionally do NOT add field names as aliases here.
+   * Field names (e.g., SELECT status) are columns from the table, not aliases.
+   * Only explicit aliases (SELECT x AS name) and implicit function names
+   * (SELECT COUNT() → 'count') should be added.
+   */
+  private extractSelectAlias(expr: Expression): void {
+    // Handle explicit Alias: SELECT ... AS name
+    if ((expr as Alias).expression_type === "alias") {
+      this.selectAliases.add((expr as Alias).alias);
+      return;
+    }
+
+    // Handle implicit names from function calls (e.g., COUNT() → 'count')
+    if ((expr as Call).expression_type === "call") {
+      const call = expr as Call;
+      // Aggregations and functions get implicit lowercase names
+      this.selectAliases.add(call.name.toLowerCase());
+      return;
+    }
+
+    // Handle implicit names from arithmetic operations (e.g., a + b → 'plus')
+    if ((expr as ArithmeticOperation).expression_type === "arithmetic_operation") {
+      const op = expr as ArithmeticOperation;
+      const opNames: Record<ArithmeticOperationOp, string> = {
+        [ArithmeticOperationOp.Add]: "plus",
+        [ArithmeticOperationOp.Sub]: "minus",
+        [ArithmeticOperationOp.Mult]: "multiply",
+        [ArithmeticOperationOp.Div]: "divide",
+        [ArithmeticOperationOp.Mod]: "modulo",
+      };
+      this.selectAliases.add(opNames[op.op]);
+      return;
+    }
+
+    // Field references (e.g., SELECT status) are NOT aliases - they're columns
+    // that will be validated against the table schema. Don't add them here.
   }
 
   /**
@@ -605,7 +728,8 @@ export class ClickHousePrinter {
   }
 
   /**
-   * Expand SELECT * to all selectable columns from all tables in context
+   * Expand SELECT * to core columns only from all tables in context.
+   * Non-core columns are tracked in hiddenColumns for user notification.
    */
   private expandAllTableColumns(collectMetadata: boolean): string[] {
     const results: string[] = [];
@@ -615,7 +739,8 @@ export class ClickHousePrinter {
       const tableColumns = this.getSelectableColumnsFromSchema(
         tableSchema,
         tableAlias,
-        collectMetadata
+        collectMetadata,
+        true // onlyCoreColumns - SELECT * only returns core columns
       );
       results.push(...tableColumns);
     }
@@ -629,7 +754,8 @@ export class ClickHousePrinter {
   }
 
   /**
-   * Expand table.* to all selectable columns from a specific table
+   * Expand table.* to core columns only from a specific table.
+   * Non-core columns are tracked in hiddenColumns for user notification.
    */
   private expandTableColumns(tableAlias: string, collectMetadata: boolean): string[] {
     const tableSchema = this.tableContexts.get(tableAlias);
@@ -639,27 +765,48 @@ export class ClickHousePrinter {
       return [`${this.printIdentifier(tableAlias)}.*`];
     }
 
-    return this.getSelectableColumnsFromSchema(tableSchema, tableAlias, collectMetadata);
+    return this.getSelectableColumnsFromSchema(
+      tableSchema,
+      tableAlias,
+      collectMetadata,
+      true // onlyCoreColumns - table.* only returns core columns
+    );
   }
 
   /**
-   * Get all selectable columns from a table schema as SQL strings
+   * Get selectable columns from a table schema as SQL strings
    *
    * @param tableSchema - The table schema
    * @param tableAlias - The alias used for the table in the query (for table-qualified columns)
    * @param collectMetadata - Whether to collect column metadata
+   * @param onlyCoreColumns - If true, only return core columns and track hidden columns (but falls back to all columns if no core columns are defined)
    * @returns Array of SQL column strings
    */
   private getSelectableColumnsFromSchema(
     tableSchema: TableSchema,
     tableAlias: string,
-    collectMetadata: boolean
+    collectMetadata: boolean,
+    onlyCoreColumns = false
   ): string[] {
     const results: string[] = [];
+
+    // Check if any core columns exist - if not, we'll return all columns as a fallback
+    const hasCoreColumns = Object.values(tableSchema.columns).some(
+      (col) => col.coreColumn === true && col.selectable !== false
+    );
+
+    // Only filter to core columns if the schema defines some core columns
+    const shouldFilterToCoreOnly = onlyCoreColumns && hasCoreColumns;
 
     for (const [columnName, columnSchema] of Object.entries(tableSchema.columns)) {
       // Skip non-selectable columns
       if (columnSchema.selectable === false) {
+        continue;
+      }
+
+      // If filtering to core columns only, skip non-core and track them
+      if (shouldFilterToCoreOnly && !columnSchema.coreColumn) {
+        this.hiddenColumns.push(columnName);
         continue;
       }
 
@@ -1301,6 +1448,43 @@ export class ClickHousePrinter {
 
         // Register this table context for column name resolution
         this.tableContexts.set(effectiveAlias, tableSchema);
+
+        // Register tenant columns as allowed internal columns
+        // These are ClickHouse column names used for tenant isolation
+        // Also mark them as internal-only if they're not exposed in tableSchema.columns
+        if (tableSchema.tenantColumns) {
+          const { organizationId, projectId, environmentId } = tableSchema.tenantColumns;
+          if (organizationId) {
+            this.allowedInternalColumns.add(organizationId);
+            if (!this.isColumnExposedInSchema(tableSchema, organizationId)) {
+              this.internalOnlyColumns.add(organizationId);
+            }
+          }
+          if (projectId) {
+            this.allowedInternalColumns.add(projectId);
+            if (!this.isColumnExposedInSchema(tableSchema, projectId)) {
+              this.internalOnlyColumns.add(projectId);
+            }
+          }
+          if (environmentId) {
+            this.allowedInternalColumns.add(environmentId);
+            if (!this.isColumnExposedInSchema(tableSchema, environmentId)) {
+              this.internalOnlyColumns.add(environmentId);
+            }
+          }
+        }
+
+        // Register required filter columns as allowed internal columns
+        // These are ClickHouse columns used for internal filtering (e.g., engine = 'V2')
+        // Also mark them as internal-only if they're not exposed in tableSchema.columns
+        if (tableSchema.requiredFilters) {
+          for (const filter of tableSchema.requiredFilters) {
+            this.allowedInternalColumns.add(filter.column);
+            if (!this.isColumnExposedInSchema(tableSchema, filter.column)) {
+              this.internalOnlyColumns.add(filter.column);
+            }
+          }
+        }
 
         // Add tenant isolation guard
         extraWhere = this.createTenantGuard(tableSchema, effectiveAlias);
@@ -2045,6 +2229,8 @@ export class ClickHousePrinter {
   /**
    * Resolve field chain to use ClickHouse column names where applicable
    * Handles both qualified (table.column) and unqualified (column) references
+   *
+   * @throws QueryError if the column is not found in any table schema and is not a SELECT alias
    */
   private resolveFieldChain(chain: Array<string | number>): Array<string | number> {
     if (chain.length === 0) {
@@ -2065,11 +2251,11 @@ export class ClickHousePrinter {
         // This is a table.column reference
         const columnName = chain[1];
         if (typeof columnName === "string") {
-          const resolvedColumn = this.resolveColumnName(tableSchema, columnName);
+          const resolvedColumn = this.resolveColumnName(tableSchema, columnName, tableAlias);
           return [tableAlias, resolvedColumn, ...chain.slice(2)];
         }
       }
-      // Not a known table alias, might be a nested field - return as-is
+      // Not a known table alias, might be a nested field or JSON path - return as-is
       return chain;
     }
 
@@ -2083,20 +2269,130 @@ export class ClickHousePrinter {
       }
     }
 
-    // Column not found in any table context - return as-is (might be a function, subquery alias, etc.)
+    // Check if it's a SELECT alias (e.g., from COUNT() or explicit AS)
+    if (this.selectAliases.has(columnName)) {
+      return chain; // Valid alias reference
+    }
+
+    // Check if this is an internal-only column being accessed in a user projection context
+    // (SELECT, ORDER BY, GROUP BY, HAVING). These columns are used internally for
+    // tenant isolation but should not be user-queryable unless explicitly exposed.
+    if (this.inProjectionContext && this.internalOnlyColumns.has(columnName)) {
+      const availableColumns = this.getAvailableColumnNames();
+      throw new QueryError(
+        `Column "${columnName}" is not available for querying. Available columns: ${availableColumns.join(
+          ", "
+        )}`
+      );
+    }
+
+    // Check if this is an allowed internal column (e.g., tenant columns)
+    // These are ClickHouse column names that are allowed for internal use only
+    // (e.g., in WHERE clauses for tenant isolation)
+    if (this.allowedInternalColumns.has(columnName)) {
+      return chain;
+    }
+
+    // Column not found in any table context and not a SELECT alias
+    // This is a security issue - block access to unknown columns
+    if (this.tableContexts.size > 0) {
+      // Only throw if we have tables in context (otherwise might be subquery)
+      // Check if the user typed a ClickHouse column name instead of the TSQL name
+      const suggestion = this.findTSQLNameForClickHouseName(columnName);
+      if (suggestion) {
+        throw new QueryError(`Unknown column "${columnName}". Did you mean "${suggestion}"?`);
+      }
+
+      const availableColumns = this.getAvailableColumnNames();
+      throw new QueryError(
+        `Unknown column "${columnName}". Available columns: ${availableColumns.join(", ")}`
+      );
+    }
+
+    // No tables in context (might be FROM subquery without alias) - return as-is
     return chain;
   }
 
   /**
-   * Resolve a column name to its ClickHouse name using the table schema
+   * Get list of available column names from all tables in context
    */
-  private resolveColumnName(tableSchema: TableSchema, columnName: string): string {
+  private getAvailableColumnNames(): string[] {
+    const columns: string[] = [];
+    for (const tableSchema of this.tableContexts.values()) {
+      columns.push(...Object.keys(tableSchema.columns));
+    }
+    return [...new Set(columns)].sort();
+  }
+
+  /**
+   * Check if a ClickHouse column name is exposed in the table schema's public columns.
+   * A column is considered exposed if:
+   * - It exists as a column name in tableSchema.columns, OR
+   * - It is the clickhouseName of a column in tableSchema.columns
+   *
+   * @param tableSchema The table schema to check
+   * @param clickhouseColumnName The ClickHouse column name to check
+   * @returns true if the column is exposed to users, false if it's internal-only
+   */
+  private isColumnExposedInSchema(tableSchema: TableSchema, clickhouseColumnName: string): boolean {
+    for (const [tsqlName, columnSchema] of Object.entries(tableSchema.columns)) {
+      // Check if the ClickHouse column name matches either:
+      // 1. The TSQL name (if no clickhouseName mapping exists)
+      // 2. The explicit clickhouseName mapping
+      const actualClickhouseName = columnSchema.clickhouseName || tsqlName;
+      if (actualClickhouseName === clickhouseColumnName) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Find the TSQL column name for a given ClickHouse column name.
+   * This is used to provide helpful suggestions when users accidentally
+   * use internal ClickHouse column names instead of TSQL names.
+   *
+   * @returns The TSQL column name if found, null otherwise
+   */
+  private findTSQLNameForClickHouseName(clickhouseName: string): string | null {
+    for (const tableSchema of this.tableContexts.values()) {
+      for (const [tsqlName, columnSchema] of Object.entries(tableSchema.columns)) {
+        if (columnSchema.clickhouseName === clickhouseName) {
+          return tsqlName;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Resolve a column name to its ClickHouse name using the table schema
+   *
+   * @throws QueryError if the column is not found in the table schema
+   */
+  private resolveColumnName(
+    tableSchema: TableSchema,
+    columnName: string,
+    tableAlias?: string
+  ): string {
     const columnSchema = tableSchema.columns[columnName];
     if (columnSchema) {
       return columnSchema.clickhouseName || columnSchema.name;
     }
-    // Column not in schema - return as-is (might be a computed column, etc.)
-    return columnName;
+
+    // Column not in schema - this is a security issue, block access
+    // Check if the user typed a ClickHouse column name instead of the TSQL name
+    for (const [tsqlName, colSchema] of Object.entries(tableSchema.columns)) {
+      if (colSchema.clickhouseName === columnName) {
+        throw new QueryError(`Unknown column "${columnName}". Did you mean "${tsqlName}"?`);
+      }
+    }
+
+    const availableColumns = Object.keys(tableSchema.columns).sort().join(", ");
+    const tableName = tableAlias || tableSchema.name;
+    throw new QueryError(
+      `Unknown column "${columnName}" on table "${tableName}". Available columns: ${availableColumns}`
+    );
   }
 
   private visitPlaceholder(node: Placeholder): string {
