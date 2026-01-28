@@ -39,7 +39,11 @@ export function registerTools(context: McpContext) {
     context.server.registerTool(
       tool.name,
       {
-        annotations: { title: tool.title },
+        annotations: {
+          title: tool.title,
+          readOnlyHint: tool.readOnlyHint,
+          destructiveHint: tool.destructiveHint,
+        },
         description: tool.description,
         inputSchema: tool.inputSchema,
       },
