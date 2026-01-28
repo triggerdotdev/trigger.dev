@@ -19,6 +19,34 @@ export interface QuerySettings {
 }
 
 /**
+ * A simple comparison condition (e.g., column > value)
+ */
+export interface SimpleComparisonCondition {
+  /** The comparison operator */
+  op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte";
+  /** The value to compare against */
+  value: Date | string | number;
+}
+
+/**
+ * A between condition (e.g., column BETWEEN low AND high)
+ */
+export interface BetweenCondition {
+  /** The between operator */
+  op: "between";
+  /** The low bound of the range */
+  low: Date | string | number;
+  /** The high bound of the range */
+  high: Date | string | number;
+}
+
+/**
+ * A WHERE clause condition that can be either a simple comparison or a BETWEEN.
+ * Used for both enforcedWhereClause (always applied) and whereClauseFallback (default when user doesn't filter).
+ */
+export type WhereClauseCondition = SimpleComparisonCondition | BetweenCondition;
+
+/**
  * Default query settings
  */
 export const DEFAULT_QUERY_SETTINGS: Required<QuerySettings> = {
@@ -42,7 +70,7 @@ export interface QueryNotice {
  * Context for the TSQL to ClickHouse printer
  *
  * Holds:
- * - Tenant IDs for automatic WHERE clause injection
+ * - Enforced WHERE conditions for tenant isolation and plan limits
  * - Schema registry for table/column validation
  * - Parameter accumulator for SQL injection safety
  * - Query settings and execution options
@@ -64,23 +92,30 @@ export class PrinterContext {
   /** Runtime field mappings for dynamic value translation */
   readonly fieldMappings: FieldMappings;
 
+  /**
+   * Enforced WHERE conditions that are ALWAYS applied at the table level.
+   * Used for tenant isolation (org_id, project_id, env_id) and plan-based limits.
+   * Applied to every table reference including subqueries, CTEs, and JOINs.
+   */
+  readonly enforcedWhereClause: Record<string, WhereClauseCondition>;
+
   constructor(
-    /** The organization ID for tenant isolation (required) */
-    public readonly organizationId: string,
-    /** The project ID for tenant isolation (optional - omit to query across all projects) */
-    public readonly projectId: string | undefined,
-    /** The environment ID for tenant isolation (optional - omit to query across all environments) */
-    public readonly environmentId: string | undefined,
     /** Schema registry containing allowed tables and columns */
     public readonly schema: SchemaRegistry,
     /** Query execution settings */
     public readonly settings: QuerySettings = {},
     /** Runtime field mappings for dynamic value translation */
-    fieldMappings: FieldMappings = {}
+    fieldMappings: FieldMappings = {},
+    /**
+     * Enforced WHERE conditions that are ALWAYS applied at the table level.
+     * Must include tenant columns (e.g., organization_id) for multi-tenant tables.
+     */
+    enforcedWhereClause: Record<string, WhereClauseCondition> = {}
   ) {
     // Initialize with default settings
     this.settings = { ...DEFAULT_QUERY_SETTINGS, ...settings };
     this.fieldMappings = fieldMappings;
+    this.enforcedWhereClause = enforcedWhereClause;
   }
 
   /**
@@ -157,12 +192,10 @@ export class PrinterContext {
    */
   createChildContext(): PrinterContext {
     const child = new PrinterContext(
-      this.organizationId,
-      this.projectId,
-      this.environmentId,
       this.schema,
       this.settings,
-      this.fieldMappings
+      this.fieldMappings,
+      this.enforcedWhereClause
     );
     // Share the same values map so parameters are unified
     child.values = this.values;
@@ -184,19 +217,30 @@ export class PrinterContext {
  * Options for creating a printer context
  */
 export interface PrinterContextOptions {
-  /** The organization ID for tenant isolation (required) */
-  organizationId: string;
-  /** The project ID for tenant isolation (optional - omit to query across all projects) */
-  projectId?: string;
-  /** The environment ID for tenant isolation (optional - omit to query across all environments) */
-  environmentId?: string;
+  /** Schema registry containing allowed tables and columns */
   schema: SchemaRegistry;
+  /** Query execution settings */
   settings?: QuerySettings;
   /**
    * Runtime field mappings for dynamic value translation.
    * Maps internal ClickHouse values to external user-facing values.
    */
   fieldMappings?: FieldMappings;
+  /**
+   * REQUIRED: Conditions always applied at the table level.
+   * Must include tenant columns (e.g., organization_id) for multi-tenant tables.
+   * Applied to every table reference including subqueries, CTEs, and JOINs.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   organization_id: { op: "eq", value: "org_123" },
+   *   project_id: { op: "eq", value: "proj_456" },
+   *   triggered_at: { op: "gte", value: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+   * }
+   * ```
+   */
+  enforcedWhereClause: Record<string, WhereClauseCondition>;
 }
 
 /**
@@ -204,12 +248,10 @@ export interface PrinterContextOptions {
  */
 export function createPrinterContext(options: PrinterContextOptions): PrinterContext {
   return new PrinterContext(
-    options.organizationId,
-    options.projectId,
-    options.environmentId,
     options.schema,
     options.settings,
-    options.fieldMappings
+    options.fieldMappings,
+    options.enforcedWhereClause
   );
 }
 

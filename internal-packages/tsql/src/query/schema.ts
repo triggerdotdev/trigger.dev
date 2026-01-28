@@ -214,6 +214,42 @@ export interface ColumnSchema {
    * ```
    */
   nullValue?: string;
+  /**
+   * Alternative text column to use when selecting or comparing the full JSON value.
+   *
+   * For JSON columns, this allows using a pre-materialized string column
+   * which is more efficient than reading from the JSON column directly.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   name: "output",
+   *   type: "JSON",
+   *   textColumn: "output_text",
+   * }
+   * ```
+   */
+  textColumn?: string;
+  /**
+   * Prefix path for JSON column data access.
+   *
+   * When set, user paths like `output.message` are automatically transformed
+   * to `output.data.message` in the actual query, and result aliases exclude
+   * the prefix (e.g., `output_message` instead of `output_data_message`).
+   *
+   * This is useful when JSON data is stored wrapped in a container object
+   * (e.g., `{"data": actualData}`) to handle arrays and primitives.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   name: "output",
+   *   type: "JSON",
+   *   dataPrefix: "data",  // output.message → output.data.message
+   * }
+   * ```
+   */
+  dataPrefix?: string;
 }
 
 /**

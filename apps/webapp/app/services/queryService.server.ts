@@ -7,7 +7,7 @@ import {
   type TSQLQueryResult,
 } from "@internal/clickhouse";
 import type { CustomerQuerySource } from "@trigger.dev/database";
-import type { TableSchema } from "@internal/tsql";
+import type { TableSchema, WhereClauseCondition } from "@internal/tsql";
 import { type z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -56,17 +56,14 @@ function getDefaultClickhouseSettings(): ClickHouseSettings {
 
 export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   ExecuteTSQLOptions<TOut>,
-  "tableSchema" | "organizationId" | "projectId" | "environmentId" | "fieldMappings"
+  "tableSchema" | "fieldMappings"
 > & {
+  organizationId: string;
+  projectId?: string;
+  environmentId?: string;
   tableSchema: TableSchema[];
   /** The scope of the query - determines tenant isolation */
   scope: QueryScope;
-  /** Organization ID (required) */
-  organizationId: string;
-  /** Project ID (required for project/environment scope) */
-  projectId: string;
-  /** Environment ID (required for environment scope) */
-  environmentId: string;
   /** History options for saving query to billing/audit */
   history?: {
     /** Where the query originated from */
@@ -90,17 +87,26 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
 };
 
 /**
+ * Extended result type that includes the optional queryId when saved to history
+ */
+export type ExecuteQueryResult<T> =
+  | [error: Error, result: null, queryId: null]
+  | [error: null, result: T, queryId: string | null];
+
+/**
  * Execute a TSQL query against ClickHouse with tenant isolation
  * Handles building tenant options, field mappings, and optionally saves to history
+ * Returns [error, result, queryId] where queryId is the CustomerQuery ID if saved to history
  */
 export async function executeQuery<TOut extends z.ZodSchema>(
   options: ExecuteQueryOptions<TOut>
-): Promise<TSQLQueryResult<z.output<TOut>>> {
+): Promise<ExecuteQueryResult<Exclude<TSQLQueryResult<z.output<TOut>>[1], null>>> {
   const {
     scope,
     organizationId,
     projectId,
     environmentId,
+    enforcedWhereClause,
     history,
     customOrgConcurrencyLimit,
     whereClauseFallback,
@@ -112,39 +118,22 @@ export async function executeQuery<TOut extends z.ZodSchema>(
   const orgLimit = customOrgConcurrencyLimit ?? DEFAULT_ORG_CONCURRENCY_LIMIT;
 
   // Acquire concurrency slot
-  const acquireResult = await queryConcurrencyLimiter.acquire({
-    key: organizationId,
-    requestId,
-    keyLimit: orgLimit,
-    globalLimit: GLOBAL_CONCURRENCY_LIMIT,
-  });
+    const acquireResult = await queryConcurrencyLimiter.acquire({
+      key: organizationId,
+      requestId,
+      keyLimit: orgLimit,
+      globalLimit: GLOBAL_CONCURRENCY_LIMIT,
+    });
 
-  if (!acquireResult.success) {
-    const errorMessage =
-      acquireResult.reason === "key_limit"
-        ? `You've exceeded your query concurrency of ${orgLimit} for this organization. Please try again later.`
-        : "We're experiencing a lot of queries at the moment. Please try again later.";
-    return [new QueryError(errorMessage, { query: options.query }), null];
-  }
+    if (!acquireResult.success) {
+      const errorMessage =
+        acquireResult.reason === "key_limit"
+          ? `You've exceeded your query concurrency of ${orgLimit} for this organization. Please try again later.`
+          : "We're experiencing a lot of queries at the moment. Please try again later.";
+      return [new QueryError(errorMessage, { query: options.query }), null, null];
+    }
 
   try {
-    // Build tenant IDs based on scope
-    const tenantOptions: {
-      organizationId: string;
-      projectId?: string;
-      environmentId?: string;
-    } = {
-      organizationId,
-    };
-
-    if (scope === "project" || scope === "environment") {
-      tenantOptions.projectId = projectId;
-    }
-
-    if (scope === "environment") {
-      tenantOptions.environmentId = environmentId;
-    }
-
     // Build field mappings for project_ref → project_id and environment_id → slug translation
     const projects = await prisma.project.findMany({
       where: { organizationId },
@@ -163,18 +152,29 @@ export async function executeQuery<TOut extends z.ZodSchema>(
 
     const result = await executeTSQL(clickhouseClient.reader, {
       ...baseOptions,
-      ...tenantOptions,
+      enforcedWhereClause,
       fieldMappings,
       whereClauseFallback,
       clickhouseSettings: {
         ...getDefaultClickhouseSettings(),
         ...baseOptions.clickhouseSettings, // Allow caller overrides if needed
       },
+      querySettings: {
+        maxRows: env.QUERY_CLICKHOUSE_MAX_RETURNED_ROWS,
+        ...baseOptions.querySettings, // Allow caller overrides if needed
+      },
     });
+
+    // If query failed, return early with no queryId
+    if (result[0] !== null) {
+      return [result[0], null, null];
+    }
+
+    let queryId: string | null = null;
 
     // If query succeeded and history options provided, save to history
     // Skip history for EXPLAIN queries (admin debugging) and when explicitly skipped (e.g., impersonating)
-    if (result[0] === null && history && !history.skip && !baseOptions.explain) {
+    if (history && !history.skip && !baseOptions.explain) {
       // Check if this query is the same as the last one saved (avoid duplicate history entries)
       const lastQuery = await prisma.customerQuery.findFirst({
         where: {
@@ -183,7 +183,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
           userId: history.userId ?? null,
         },
         orderBy: { createdAt: "desc" },
-        select: { query: true, scope: true, filterPeriod: true, filterFrom: true, filterTo: true },
+        select: { id: true, query: true, scope: true, filterPeriod: true, filterFrom: true, filterTo: true },
       });
 
       const timeFilter = history.timeFilter;
@@ -195,17 +195,15 @@ export async function executeQuery<TOut extends z.ZodSchema>(
         lastQuery.filterFrom?.getTime() === (timeFilter?.from?.getTime() ?? undefined) &&
         lastQuery.filterTo?.getTime() === (timeFilter?.to?.getTime() ?? undefined);
 
-      if (!isDuplicate) {
-        const stats = result[1].stats;
-        const byteSeconds = parseFloat(stats.byte_seconds) || 0;
-        const costInCents = byteSeconds * env.CENTS_PER_QUERY_BYTE_SECOND;
-
-        await prisma.customerQuery.create({
+      if (isDuplicate && lastQuery) {
+        // Return the existing query's ID for duplicate queries
+        queryId = lastQuery.id;
+      } else {
+        const created = await prisma.customerQuery.create({
           data: {
             query: options.query,
             scope: scopeToEnum[scope],
-            stats: { ...stats },
-            costInCents,
+            stats: { ...result[1].stats },
             source: history.source,
             organizationId,
             projectId: scope === "project" || scope === "environment" ? projectId : null,
@@ -216,10 +214,11 @@ export async function executeQuery<TOut extends z.ZodSchema>(
             filterTo: history.timeFilter?.to ?? null,
           },
         });
+        queryId = created.id;
       }
     }
 
-    return result;
+    return [null, result[1], queryId];
   } finally {
     // Always release the concurrency slot
     await queryConcurrencyLimiter.release({

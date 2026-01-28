@@ -172,7 +172,7 @@ export function ChartLineRenderer({
             stroke={config[key]?.color}
             fill={config[key]?.color}
             fillOpacity={0.6}
-            strokeWidth={2}
+            strokeWidth={1}
             stackId="stack"
             isAnimationActive={false}
           />
@@ -220,7 +220,7 @@ export function ChartLineRenderer({
           dataKey={key}
           type={lineType}
           stroke={config[key]?.color}
-          strokeWidth={2}
+          strokeWidth={1}
           dot={false}
           activeDot={{ r: 4 }}
           isAnimationActive={false}

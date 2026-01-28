@@ -36,53 +36,82 @@ export function QueryHelpSidebar({
         onValueChange={onTabChange}
         className="flex min-h-0 flex-col overflow-hidden pt-1"
       >
-        <ClientTabsList variant="underline" className="mx-3 shrink-0">
-          <ClientTabsTrigger value="ai" variant="underline" layoutId="query-help-tabs">
-            <div className="flex items-center gap-0.5">
-              <AISparkleIcon className="size-4" /> AI
-            </div>
-          </ClientTabsTrigger>
-          <ClientTabsTrigger value="guide" variant="underline" layoutId="query-help-tabs">
-            Writing TRQL
-          </ClientTabsTrigger>
-          <ClientTabsTrigger value="schema" variant="underline" layoutId="query-help-tabs">
-            Table schema
-          </ClientTabsTrigger>
-          <ClientTabsTrigger value="examples" variant="underline" layoutId="query-help-tabs">
-            Examples
-          </ClientTabsTrigger>
-        </ClientTabsList>
+        <div className="h-fit overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <ClientTabsList variant="underline" className="mx-3 shrink-0">
+            <ClientTabsTrigger
+              value="ai"
+              variant="underline"
+              layoutId="query-help-tabs"
+              className="shrink-0"
+            >
+              <div className="flex items-center gap-0.5">
+                <AISparkleIcon className="size-4" /> AI
+              </div>
+            </ClientTabsTrigger>
+            <ClientTabsTrigger
+              value="guide"
+              variant="underline"
+              layoutId="query-help-tabs"
+              className="shrink-0"
+            >
+              Writing TRQL
+            </ClientTabsTrigger>
+            <ClientTabsTrigger
+              value="schema"
+              variant="underline"
+              layoutId="query-help-tabs"
+              className="shrink-0"
+            >
+              Table schema
+            </ClientTabsTrigger>
+            <ClientTabsTrigger
+              value="examples"
+              variant="underline"
+              layoutId="query-help-tabs"
+              className="shrink-0"
+            >
+              Examples
+            </ClientTabsTrigger>
+          </ClientTabsList>
+        </div>
         <ClientTabsContent
           value="ai"
-          className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
-          <AITabContent
-            onQueryGenerated={onQueryGenerated}
-            onTimeFilterChange={onTimeFilterChange}
-            getCurrentQuery={getCurrentQuery}
-            aiFixRequest={aiFixRequest}
-          />
+          <div className="min-w-64 p-3">
+            <AITabContent
+              onQueryGenerated={onQueryGenerated}
+              onTimeFilterChange={onTimeFilterChange}
+              getCurrentQuery={getCurrentQuery}
+              aiFixRequest={aiFixRequest}
+            />
+          </div>
         </ClientTabsContent>
         <ClientTabsContent
           value="guide"
-          className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
-          <TRQLGuideContent onTryExample={onTryExample} />
+          <div className="min-w-64 p-3">
+            <TRQLGuideContent onTryExample={onTryExample} />
+          </div>
         </ClientTabsContent>
         <ClientTabsContent
           value="schema"
-          className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
-          <TableSchemaContent />
+          <div className="min-w-64 p-3">
+            <TableSchemaContent />
+          </div>
         </ClientTabsContent>
         <ClientTabsContent
           value="examples"
-          className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
-          <ExamplesContent onTryExample={onTryExample} />
+          <div className="min-w-64 p-3">
+            <ExamplesContent onTryExample={onTryExample} />
+          </div>
         </ClientTabsContent>
       </ClientTabs>
     </div>
   );
 }
-

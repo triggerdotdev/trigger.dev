@@ -497,8 +497,8 @@ importers:
         specifier: workspace:*
         version: link:../../internal-packages/otlp-importer
       '@trigger.dev/platform':
-        specifier: 1.0.21
-        version: 1.0.21
+        specifier: 1.0.22
+        version: 1.0.22
       '@trigger.dev/redis-worker':
         specifier: workspace:*
         version: link:../../packages/redis-worker
@@ -10301,8 +10301,8 @@ packages:
       react: ^18.2.0
       react-dom: 18.2.0
 
-  '@trigger.dev/platform@1.0.21':
-    resolution: {integrity: sha512-D1p+Y5pj21Un8hhN7oS/X7c+mhHKL58w1nwI9XYxbKUK1cNIIVhEMNZ0IyYmYuLelSARUXYePlKSl0v4hlusZg==}
+  '@trigger.dev/platform@1.0.22':
+    resolution: {integrity: sha512-tvPf40wqEDcQCZsHt/9A+WoQ08z+uObSWQ+oahqCgp3dSgKOUH8NdzZ/2ISSRiCkN2jURixNiUyDJmgsZipExg==}
 
   '@types/acorn@4.0.6':
     resolution: {integrity: sha512-veQTnWP+1D/xbxVrPC3zHnCZRjSrKfhbMUlEA43iMZLu7EsnTtkJklIuwrCPbOi8YkvDQAiW05VQQFvvz9oieQ==}
@@ -30255,7 +30255,7 @@ snapshots:
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
 
-  '@trigger.dev/platform@1.0.21':
+  '@trigger.dev/platform@1.0.22':
     dependencies:
       zod: 3.23.8
 

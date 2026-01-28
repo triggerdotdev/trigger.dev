@@ -31,6 +31,8 @@ export type ChartRootProps = {
   legendTotalLabel?: string;
   /** Callback when "View all" legend button is clicked */
   onViewAllLegendItems?: () => void;
+  /** When true, constrains legend to max 50% height with scrolling */
+  legendScrollable?: boolean;
   /** When true, chart fills its parent container height and distributes space between chart and legend */
   fillContainer?: boolean;
   children: React.ComponentProps<typeof RechartsPrimitive.ResponsiveContainer>["children"];
@@ -72,6 +74,7 @@ export function ChartRoot({
   maxLegendItems = 5,
   legendTotalLabel,
   onViewAllLegendItems,
+  legendScrollable = false,
   fillContainer = false,
   children,
 }: ChartRootProps) {
@@ -94,6 +97,7 @@ export function ChartRoot({
         maxLegendItems={maxLegendItems}
         legendTotalLabel={legendTotalLabel}
         onViewAllLegendItems={onViewAllLegendItems}
+        legendScrollable={legendScrollable}
         fillContainer={fillContainer}
       >
         {children}
@@ -109,6 +113,7 @@ type ChartRootInnerProps = {
   maxLegendItems?: number;
   legendTotalLabel?: string;
   onViewAllLegendItems?: () => void;
+  legendScrollable?: boolean;
   fillContainer?: boolean;
   children: React.ComponentProps<typeof RechartsPrimitive.ResponsiveContainer>["children"];
 };
@@ -120,6 +125,7 @@ function ChartRootInner({
   maxLegendItems = 5,
   legendTotalLabel,
   onViewAllLegendItems,
+  legendScrollable = false,
   fillContainer = false,
   children,
 }: ChartRootInnerProps) {
@@ -160,6 +166,7 @@ function ChartRootInner({
           maxItems={maxLegendItems}
           totalLabel={legendTotalLabel}
           onViewAllLegendItems={onViewAllLegendItems}
+          scrollable={legendScrollable}
         />
       )}
     </div>

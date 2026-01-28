@@ -17,6 +17,8 @@ export type ChartLegendCompoundProps = {
   totalLabel?: string;
   /** Callback when "View all" button is clicked */
   onViewAllLegendItems?: () => void;
+  /** When true, constrains legend to max 50% height with scrolling */
+  scrollable?: boolean;
 };
 
 /**
@@ -37,6 +39,7 @@ export function ChartLegendCompound({
   className,
   totalLabel = "Total",
   onViewAllLegendItems,
+  scrollable = false,
 }: ChartLegendCompoundProps) {
   const { config, dataKey, dataKeys, highlight, labelFormatter } = useChartContext();
   const totals = useSeriesTotal();
@@ -128,11 +131,17 @@ export function ChartLegendCompound({
   const isHovering = (highlight.activePayload?.length ?? 0) > 0;
 
   return (
-    <div className={cn("flex flex-col pt-4 text-sm", className)}>
+    <div
+      className={cn(
+        "flex flex-col pt-4 text-sm",
+        scrollable && "max-h-[50%] min-h-0",
+        className
+      )}
+    >
       {/* Total row */}
       <div
         className={cn(
-          "flex w-full items-center justify-between gap-2 rounded px-2 py-1 transition",
+          "flex w-full shrink-0 items-center justify-between gap-2 rounded px-2 py-1 transition",
           isHovering ? "text-text-bright" : "text-text-dimmed"
         )}
       >
@@ -143,62 +152,68 @@ export function ChartLegendCompound({
       </div>
 
       {/* Separator */}
-      <div className="mx-2 my-1 border-t border-charcoal-750" />
+      <div className="mx-2 my-1 shrink-0 border-t border-charcoal-750" />
 
-      {legendItems.visible.map((item) => {
-        const total = currentData[item.dataKey] ?? 0;
-        const isActive = highlight.activeBarKey === item.dataKey;
+      {/* Legend items - scrollable when scrollable prop is true */}
+      <div className={cn("flex flex-col", scrollable && "min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600")}>
+        {legendItems.visible.map((item) => {
+          const total = currentData[item.dataKey] ?? 0;
+          const isActive = highlight.activeBarKey === item.dataKey;
 
-        return (
-          <div
-            key={item.dataKey}
-            className={cn(
-              "relative flex w-full cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 transition",
-              total === 0 && "opacity-50"
-            )}
-            onMouseEnter={() => highlight.setHoveredLegendItem(item.dataKey)}
-            onMouseLeave={() => highlight.reset()}
-          >
-            {/* Active highlight background */}
-            {isActive && item.color && (
-              <div
-                className="absolute inset-0 rounded opacity-10"
-                style={{ backgroundColor: item.color }}
-              />
-            )}
-            <div className="relative flex w-full items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5">
-                {item.color && (
-                  <div
-                    className="h-3 w-1 shrink-0 rounded-[2px]"
-                    style={{ backgroundColor: item.color }}
-                  />
-                )}
-                <span className={isActive ? "text-text-bright" : "text-text-dimmed"}>
-                  {item.label}
+          return (
+            <div
+              key={item.dataKey}
+              className={cn(
+                "relative flex w-full cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 transition",
+                total === 0 && "opacity-50"
+              )}
+              onMouseEnter={() => highlight.setHoveredLegendItem(item.dataKey)}
+              onMouseLeave={() => highlight.reset()}
+            >
+              {/* Active highlight background */}
+              {isActive && item.color && (
+                <div
+                  className="absolute inset-0 rounded opacity-10"
+                  style={{ backgroundColor: item.color }}
+                />
+              )}
+              <div className="relative flex w-full items-center justify-between gap-3">
+                <div className="flex items-center gap-1.5">
+                  {item.color && (
+                    <div
+                      className="w-1 shrink-0 self-stretch rounded-[2px]"
+                      style={{ backgroundColor: item.color }}
+                    />
+                  )}
+                  <span className={isActive ? "text-text-bright" : "text-text-dimmed"}>
+                    {item.label}
+                  </span>
+                </div>
+                <span
+                  className={cn(
+                    "self-start tabular-nums",
+                    isActive ? "text-text-bright" : "text-text-dimmed"
+                  )}
+                >
+                  <AnimatedNumber value={total} duration={0.25} />
                 </span>
               </div>
-              <span
-                className={cn("tabular-nums", isActive ? "text-text-bright" : "text-text-dimmed")}
-              >
-                <AnimatedNumber value={total} duration={0.25} />
-              </span>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
 
-      {/* View more row - replaced by hovered hidden item when applicable */}
-      {legendItems.remaining > 0 &&
-        (legendItems.hoveredHiddenItem ? (
-          <HoveredHiddenItemRow
-            item={legendItems.hoveredHiddenItem}
-            value={currentData[legendItems.hoveredHiddenItem.dataKey] ?? 0}
-            remainingCount={legendItems.remaining - 1}
-          />
-        ) : (
-          <ViewAllDataRow remainingCount={legendItems.remaining} onViewAll={onViewAllLegendItems} />
-        ))}
+        {/* View more row - replaced by hovered hidden item when applicable */}
+        {legendItems.remaining > 0 &&
+          (legendItems.hoveredHiddenItem ? (
+            <HoveredHiddenItemRow
+              item={legendItems.hoveredHiddenItem}
+              value={currentData[legendItems.hoveredHiddenItem.dataKey] ?? 0}
+              remainingCount={legendItems.remaining - 1}
+            />
+          ) : (
+            <ViewAllDataRow remainingCount={legendItems.remaining} onViewAll={onViewAllLegendItems} />
+          ))}
+      </div>
     </div>
   );
 }

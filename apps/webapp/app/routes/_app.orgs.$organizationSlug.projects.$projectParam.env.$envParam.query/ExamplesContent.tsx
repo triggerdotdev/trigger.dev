@@ -48,7 +48,7 @@ LIMIT 20`,
   total_cost,
   usage_duration,
   machine,
-  created_at
+  triggered_at
 FROM runs
 WHERE triggered_at > now() - INTERVAL 7 DAY
 ORDER BY total_cost DESC
@@ -79,4 +79,3 @@ export function ExamplesContent({
     </div>
   );
 }
-

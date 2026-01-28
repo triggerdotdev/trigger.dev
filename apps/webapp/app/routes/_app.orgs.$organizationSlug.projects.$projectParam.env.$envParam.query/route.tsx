@@ -1,13 +1,23 @@
-import { ArrowDownTrayIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon, ArrowTrendingUpIcon, ClipboardIcon } from "@heroicons/react/20/solid";
-import type { OutputColumnMetadata, WhereClauseFallback } from "@internal/clickhouse";
+import {
+  ArrowDownTrayIcon,
+  ArrowsPointingOutIcon,
+  ArrowTrendingUpIcon,
+  ClipboardIcon,
+  TableCellsIcon,
+} from "@heroicons/react/20/solid";
+import type { OutputColumnMetadata } from "@internal/clickhouse";
+import { type WhereClauseCondition } from "@internal/tsql";
+import { useFetcher } from "@remix-run/react";
 import {
   redirect,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "@remix-run/server-runtime";
+import parse from "parse-duration";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
+import simplur from "simplur";
 import { z } from "zod";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { AlphaTitle } from "~/components/AlphaBadge";
@@ -21,9 +31,7 @@ import { autoFormatSQL, TSQLEditor } from "~/components/code/TSQLEditor";
 import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { TimeFilter, timeFilters } from "~/components/runs/v3/SharedFilters";
-import { useSearchParams } from "~/hooks/useSearchParam";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Card } from "~/components/primitives/charts/Card";
 import {
@@ -32,6 +40,7 @@ import {
   ClientTabsList,
   ClientTabsTrigger,
 } from "~/components/primitives/ClientTabs";
+import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -49,27 +58,30 @@ import {
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TimeFilter, timeFilters } from "~/components/runs/v3/SharedFilters";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueryPresenter, type QueryHistoryItem } from "~/presenters/v3/QueryPresenter.server";
+import type { action as titleAction } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query.ai-title";
+import { getLimit } from "~/services/platform.v3.server";
 import { executeQuery, type QueryScope } from "~/services/queryService.server";
+import { requireUser } from "~/services/session.server";
 import { downloadFile, rowsToCSV, rowsToJSON } from "~/utils/dataExport";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, organizationBillingPath } from "~/utils/pathBuilder";
 import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags.server";
 import { querySchemas } from "~/v3/querySchemas";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { QueryHelpSidebar } from "./QueryHelpSidebar";
 import { QueryHistoryPopover } from "./QueryHistoryPopover";
 import type { AITimeFilter } from "./types";
-import { formatQueryStats } from "./utils";
-import { requireUser } from "~/services/session.server";
-import parse from "parse-duration";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { Dialog, DialogContent, DialogHeader, DialogPortal, DialogTrigger } from "~/components/primitives/Dialog";
-import { DialogOverlay } from "@radix-ui/react-dialog";
+import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {
@@ -159,12 +171,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typedjson({
     defaultQuery,
+    defaultPeriod: await getDefaultPeriod(project.organizationId),
     history,
     isAdmin,
+    maxRows: env.QUERY_CLICKHOUSE_MAX_RETURNED_ROWS,
   });
 };
 
-const DEFAULT_PERIOD = "7d";
+async function getDefaultPeriod(organizationId: string): Promise<string> {
+  const idealDefaultPeriodDays = 7;
+  const maxQueryPeriod = await getLimit(organizationId, "queryPeriodDays", 30);
+  if (maxQueryPeriod < idealDefaultPeriodDays) {
+    return `${maxQueryPeriod}d`;
+  }
+  return `${idealDefaultPeriodDays}d`;
+}
 
 const ActionSchema = z.object({
   query: z.string().min(1, "Query is required"),
@@ -193,8 +214,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         columns: null,
         stats: null,
         hiddenColumns: null,
+        reachedMaxRows: null,
         explainOutput: null,
         generatedSql: null,
+        periodClipped: null,
       },
       { status: 403 }
     );
@@ -209,8 +232,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         columns: null,
         stats: null,
         hiddenColumns: null,
+        reachedMaxRows: null,
         explainOutput: null,
         generatedSql: null,
+        periodClipped: null,
       },
       { status: 404 }
     );
@@ -225,8 +250,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         columns: null,
         stats: null,
         hiddenColumns: null,
+        reachedMaxRows: null,
         explainOutput: null,
         generatedSql: null,
+        periodClipped: null,
       },
       { status: 404 }
     );
@@ -250,8 +277,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         columns: null,
         stats: null,
         hiddenColumns: null,
+        reachedMaxRows: null,
         explainOutput: null,
         generatedSql: null,
+        periodClipped: null,
       },
       { status: 400 }
     );
@@ -263,31 +292,54 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const explain = explainParam === "true" && isAdmin;
 
   // Build time filter fallback for triggered_at column
+  const defaultPeriod = await getDefaultPeriod(project.organizationId);
   const timeFilter = timeFilters({
     period: period ?? undefined,
     from: from ?? undefined,
     to: to ?? undefined,
-    defaultPeriod: DEFAULT_PERIOD,
+    defaultPeriod,
   });
 
-  let triggeredAtFallback: WhereClauseFallback;
-  if (timeFilter.from && timeFilter.to) {
-    // Both from and to specified - use BETWEEN
-    triggeredAtFallback = { op: "between", low: timeFilter.from, high: timeFilter.to };
-  } else if (timeFilter.from) {
-    // Only from specified
-    triggeredAtFallback = { op: "gte", value: timeFilter.from };
-  } else if (timeFilter.to) {
-    // Only to specified
-    triggeredAtFallback = { op: "lte", value: timeFilter.to };
-  } else {
+  // Calculate the effective "from" date the user is requesting (for period clipping check)
+  // This is null only when the user specifies just a "to" date (rare case)
+  let requestedFromDate: Date | null = null;
+  if (timeFilter.from) {
+    requestedFromDate = new Date(timeFilter.from);
+  } else if (!timeFilter.to) {
     // Period specified (or default) - calculate from now
-    const periodMs = parse(timeFilter.period ?? DEFAULT_PERIOD) ?? 7 * 24 * 60 * 60 * 1000;
-    triggeredAtFallback = { op: "gte", value: new Date(Date.now() - periodMs) };
+    const periodMs = parse(timeFilter.period ?? defaultPeriod) ?? 7 * 24 * 60 * 60 * 1000;
+    requestedFromDate = new Date(Date.now() - periodMs);
   }
 
+  // Build the fallback WHERE condition based on what the user specified
+  let triggeredAtFallback: WhereClauseCondition;
+  if (timeFilter.from && timeFilter.to) {
+    triggeredAtFallback = { op: "between", low: timeFilter.from, high: timeFilter.to };
+  } else if (timeFilter.from) {
+    triggeredAtFallback = { op: "gte", value: timeFilter.from };
+  } else if (timeFilter.to) {
+    triggeredAtFallback = { op: "lte", value: timeFilter.to };
+  } else {
+    triggeredAtFallback = { op: "gte", value: requestedFromDate! };
+  }
+
+  const maxQueryPeriod = await getLimit(project.organizationId, "queryPeriodDays", 30);
+  const maxQueryPeriodDate = new Date(Date.now() - maxQueryPeriod * 24 * 60 * 60 * 1000);
+
+  // Check if the requested time period exceeds the plan limit
+  const periodClipped = requestedFromDate !== null && requestedFromDate < maxQueryPeriodDate;
+
+  // Force tenant isolation and time period limits
+  const enforcedWhereClause = {
+    organization_id: { op: "eq", value: project.organizationId },
+    project_id:
+      scope === "project" || scope === "environment" ? { op: "eq", value: project.id } : undefined,
+    environment_id: scope === "environment" ? { op: "eq", value: environment.id } : undefined,
+    triggered_at: { op: "gte", value: maxQueryPeriodDate },
+  } satisfies Record<string, WhereClauseCondition | undefined>;
+
   try {
-    const [error, result] = await executeQuery({
+    const [error, result, queryId] = await executeQuery({
       name: "query-page",
       query,
       schema: z.record(z.any()),
@@ -298,6 +350,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       projectId: project.id,
       environmentId: environment.id,
       explain,
+      enforcedWhereClause,
       whereClauseFallback: {
         triggered_at: triggeredAtFallback,
       },
@@ -323,8 +376,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           columns: null,
           stats: null,
           hiddenColumns: null,
+          reachedMaxRows: null,
           explainOutput: null,
           generatedSql: null,
+          queryId: null,
+          periodClipped: null,
         },
         { status: 400 }
       );
@@ -336,8 +392,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       columns: result.columns,
       stats: result.stats,
       hiddenColumns: result.hiddenColumns ?? null,
+      reachedMaxRows: result.reachedMaxRows,
       explainOutput: result.explainOutput ?? null,
       generatedSql: result.generatedSql ?? null,
+      queryId,
+      periodClipped: periodClipped ? maxQueryPeriod : null,
     });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error executing query";
@@ -348,8 +407,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         columns: null,
         stats: null,
         hiddenColumns: null,
+        reachedMaxRows: null,
         explainOutput: null,
         generatedSql: null,
+        queryId: null,
+        periodClipped: null,
       },
       { status: 500 }
     );
@@ -368,18 +430,45 @@ interface QueryEditorFormHandle {
 const QueryEditorForm = forwardRef<
   QueryEditorFormHandle,
   {
+    defaultPeriod: string;
     defaultQuery: string;
     defaultScope: QueryScope;
     defaultTimeFilter?: { period?: string; from?: string; to?: string };
     history: QueryHistoryItem[];
     fetcher: ReturnType<typeof useTypedFetcher<typeof action>>;
     isAdmin: boolean;
+    onQuerySubmit?: () => void;
+    onHistorySelected?: (item: QueryHistoryItem) => void;
   }
->(function QueryEditorForm({ defaultQuery, defaultScope, defaultTimeFilter, history, fetcher, isAdmin }, ref) {
+>(function QueryEditorForm(
+  {
+    defaultPeriod,
+    defaultQuery,
+    defaultScope,
+    defaultTimeFilter,
+    history,
+    fetcher,
+    isAdmin,
+    onQuerySubmit,
+    onHistorySelected,
+  },
+  ref
+) {
   const isLoading = fetcher.state === "submitting" || fetcher.state === "loading";
   const [query, setQuery] = useState(defaultQuery);
   const [scope, setScope] = useState<QueryScope>(defaultScope);
   const formRef = useRef<HTMLFormElement>(null);
+  const prevFetcherState = useRef(fetcher.state);
+  const plan = useCurrentPlan();
+  const maxPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
+
+  // Notify parent when query is submitted (for title generation)
+  useEffect(() => {
+    if (prevFetcherState.current !== "submitting" && fetcher.state === "submitting") {
+      onQuerySubmit?.();
+    }
+    prevFetcherState.current = fetcher.state;
+  }, [fetcher.state, onQuerySubmit]);
 
   // Get time filter values - initialize from props (which may come from history)
   const [period, setPeriod] = useState<string | undefined>(defaultTimeFilter?.period);
@@ -406,18 +495,23 @@ const QueryEditorForm = forwardRef<
     [query]
   );
 
-  const handleHistorySelected = useCallback((item: QueryHistoryItem) => {
-    setQuery(item.query);
-    setScope(item.scope);
-    // Apply time filter from history item
-    // Note: filterFrom/filterTo might be Date objects or ISO strings depending on serialization
-    setPeriod(item.filterPeriod ?? undefined);
-    setFrom(item.filterFrom ? toISOString(item.filterFrom) : undefined);
-    setTo(item.filterTo ? toISOString(item.filterTo) : undefined);
-  }, []);
+  const handleHistorySelected = useCallback(
+    (item: QueryHistoryItem) => {
+      setQuery(item.query);
+      setScope(item.scope);
+      // Apply time filter from history item
+      // Note: filterFrom/filterTo might be Date objects or ISO strings depending on serialization
+      setPeriod(item.filterPeriod ?? undefined);
+      setFrom(item.filterFrom ? toISOString(item.filterFrom) : undefined);
+      setTo(item.filterTo ? toISOString(item.filterTo) : undefined);
+      // Notify parent about history selection (for title)
+      onHistorySelected?.(item);
+    },
+    [onHistorySelected]
+  );
 
   return (
-    <div className="flex flex-col gap-2 bg-charcoal-900 pb-2">
+    <div className="flex h-full flex-col gap-2 bg-charcoal-900 pb-2">
       <TSQLEditor
         defaultValue={query}
         onChange={setQuery}
@@ -425,10 +519,13 @@ const QueryEditorForm = forwardRef<
         linterEnabled={true}
         showCopyButton={true}
         showClearButton={true}
-        minHeight="200px"
-        className="min-h-[200px]"
+        className="min-h-0 flex-1"
       />
-      <fetcher.Form ref={formRef} method="post" className="flex items-center justify-between gap-2 px-2">
+      <fetcher.Form
+        ref={formRef}
+        method="post"
+        className="flex items-center justify-between gap-2 px-2"
+      >
         <input type="hidden" name="query" value={query} />
         <input type="hidden" name="scope" value={scope} />
         {/* Pass time filter values to action */}
@@ -468,14 +565,16 @@ const QueryEditorForm = forwardRef<
           </Select>
           {queryHasTriggeredAt ? (
             <SimpleTooltip
-              button={<Button variant="tertiary/small" disabled={true} type="button">
-                Set in query
-              </Button>}
+              button={
+                <Button variant="tertiary/small" disabled={true} type="button">
+                  Set in query
+                </Button>
+              }
               content="Your query includes a WHERE clause with triggered_at so this filter is disabled."
             />
           ) : (
             <TimeFilter
-              defaultPeriod={DEFAULT_PERIOD}
+              defaultPeriod={defaultPeriod}
               labelName="Triggered"
               hideLabel
               period={period}
@@ -492,6 +591,7 @@ const QueryEditorForm = forwardRef<
                   fetcher.submit(formRef.current);
                 }
               }}
+              maxPeriodDays={maxPeriodDays}
             />
           )}
           <Button
@@ -510,22 +610,28 @@ const QueryEditorForm = forwardRef<
 });
 
 export default function Page() {
-  const { defaultQuery, history, isAdmin } = useTypedLoaderData<typeof loader>();
+  const { defaultPeriod, defaultQuery, history, isAdmin, maxRows } =
+    useTypedLoaderData<typeof loader>();
   const fetcher = useTypedFetcher<typeof action>();
   const results = fetcher.data;
   const { replace: replaceSearchParams } = useSearchParams();
 
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
   // Use most recent history item if available, otherwise fall back to defaults
   const initialQuery = history.length > 0 ? history[0].query : defaultQuery;
   const initialScope: QueryScope = history.length > 0 ? history[0].scope : "environment";
-  const initialTimeFilter = history.length > 0
-    ? {
-      period: history[0].filterPeriod ?? undefined,
-      // Note: filterFrom/filterTo might be Date objects or ISO strings depending on serialization
-      from: history[0].filterFrom ? toISOString(history[0].filterFrom) : undefined,
-      to: history[0].filterTo ? toISOString(history[0].filterTo) : undefined,
-    }
-    : undefined;
+  const initialTimeFilter =
+    history.length > 0
+      ? {
+          period: history[0].filterPeriod ?? undefined,
+          // Note: filterFrom/filterTo might be Date objects or ISO strings depending on serialization
+          from: history[0].filterFrom ? toISOString(history[0].filterFrom) : undefined,
+          to: history[0].filterTo ? toISOString(history[0].filterTo) : undefined,
+        }
+      : undefined;
 
   const editorRef = useRef<QueryEditorFormHandle>(null);
   const [prettyFormatting, setPrettyFormatting] = useState(true);
@@ -533,6 +639,53 @@ export default function Page() {
   const [chartConfig, setChartConfig] = useState<ChartConfiguration>(defaultChartConfig);
   const [sidebarTab, setSidebarTab] = useState<string>("ai");
   const [aiFixRequest, setAiFixRequest] = useState<{ prompt: string; key: number } | null>(null);
+
+  // Title generation state
+  const titleFetcher = useFetcher<typeof titleAction>();
+  const isTitleLoading = titleFetcher.state !== "idle";
+  const generatedTitle = titleFetcher.data?.title;
+  const [historyTitle, setHistoryTitle] = useState<string | null>(
+    history.length > 0 ? history[0].title ?? null : null
+  );
+
+  // Effective title: history title takes precedence, then generated
+  const queryTitle = historyTitle ?? generatedTitle ?? null;
+
+  // Track whether we should generate a title for the current results
+  const [shouldGenerateTitle, setShouldGenerateTitle] = useState(false);
+
+  // Trigger title generation when query succeeds (only for new queries, not history)
+  useEffect(() => {
+    if (
+      results?.rows &&
+      !results.error &&
+      results.queryId &&
+      shouldGenerateTitle &&
+      !historyTitle &&
+      titleFetcher.state === "idle"
+    ) {
+      const currentQuery = editorRef.current?.getQuery();
+      if (currentQuery) {
+        titleFetcher.submit(
+          { query: currentQuery, queryId: results.queryId },
+          {
+            method: "POST",
+            action: `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/query/ai-title`,
+            encType: "application/json",
+          }
+        );
+        setShouldGenerateTitle(false);
+      }
+    }
+  }, [
+    results,
+    shouldGenerateTitle,
+    historyTitle,
+    titleFetcher,
+    organization.slug,
+    project.slug,
+    environment.slug,
+  ]);
 
   const handleTryFixError = useCallback((errorMessage: string) => {
     setSidebarTab("ai");
@@ -576,6 +729,18 @@ export default function Page() {
     setChartConfig(config);
   }, []);
 
+  // Handle query submission - prepare for title generation
+  const handleQuerySubmit = useCallback(() => {
+    setHistoryTitle(null); // Clear history title when running a new query
+    setShouldGenerateTitle(true); // Enable title generation for new results
+  }, []);
+
+  // Handle history selection - use existing title if available
+  const handleHistorySelected = useCallback((item: QueryHistoryItem) => {
+    setHistoryTitle(item.title ?? null);
+    setShouldGenerateTitle(false); // Don't generate title for history items
+  }, []);
+
   return (
     <PageContainer>
       <NavBar>
@@ -584,23 +749,38 @@ export default function Page() {
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full bg-charcoal-800">
           <ResizablePanel id="query-main" className="h-full">
-            <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+            <ResizablePanelGroup orientation="vertical" className="h-full overflow-hidden">
               {/* Query editor - isolated component to prevent re-renders */}
-              <QueryEditorForm
-                ref={editorRef}
-                defaultQuery={initialQuery}
-                defaultScope={initialScope}
-                defaultTimeFilter={initialTimeFilter}
-                history={history}
-                fetcher={fetcher}
-                isAdmin={isAdmin}
-              />
+              <ResizablePanel
+                id="query-editor"
+                min="100px"
+                default="300px"
+                className="overflow-hidden"
+              >
+                <QueryEditorForm
+                  ref={editorRef}
+                  defaultPeriod={defaultPeriod}
+                  defaultQuery={initialQuery}
+                  defaultScope={initialScope}
+                  defaultTimeFilter={initialTimeFilter}
+                  history={history}
+                  fetcher={fetcher}
+                  isAdmin={isAdmin}
+                  onQuerySubmit={handleQuerySubmit}
+                  onHistorySelected={handleHistorySelected}
+                />
+              </ResizablePanel>
+              <ResizableHandle id="query-editor-handle" />
               {/* Results */}
-              <div className="grid max-h-full grid-rows-[1fr] overflow-hidden border-t border-grid-dimmed bg-charcoal-800">
+              <ResizablePanel
+                id="query-results"
+                min="200px"
+                className="overflow-hidden bg-charcoal-800"
+              >
                 <ClientTabs
                   value={resultsView}
                   onValueChange={(v) => setResultsView(v as "table" | "graph")}
-                  className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden"
+                  className="grid h-full max-h-full min-h-0 grid-rows-[auto_1fr] overflow-hidden"
                 >
                   <ClientTabsList
                     variant="underline"
@@ -620,12 +800,22 @@ export default function Page() {
                     {results?.rows ? (
                       <div className="flex flex-1 items-center justify-end gap-2 overflow-hidden border-b border-grid-dimmed pl-3">
                         <div className="flex items-center gap-2 overflow-hidden truncate">
-                          <span className="text-xs text-text-dimmed">
-                            {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
-                          </span>
+                          {results.reachedMaxRows ? (
+                            <SimpleTooltip
+                              buttonClassName="text-warning text-xs"
+                              button={`${results.rows.length.toLocaleString()} Results`}
+                              content={`Results are limited to ${maxRows.toLocaleString()} rows maximum.`}
+                            />
+                          ) : (
+                            <span className="text-xs text-text-dimmed">
+                              {results.rows.length > 0
+                                ? `${results.rows.length.toLocaleString()} Results`
+                                : "Results"}
+                            </span>
+                          )}
                           {results?.stats && (
                             <span className="text-xs text-text-dimmed">
-                              {formatQueryStats(results.stats)}
+                              {formatDurationNanoseconds(parseInt(results.stats.elapsed_ns, 10))}
                             </span>
                           )}
                         </div>
@@ -687,19 +877,32 @@ export default function Page() {
                         </div>
                       </div>
                     ) : results?.rows && results?.columns ? (
-                      <div className="flex h-full flex-col overflow-hidden">
-                        {results.hiddenColumns && results.hiddenColumns.length > 0 && (
-                          <Callout variant="warning" className="m-2 shrink-0 text-sm">
-                            <code>SELECT *</code> doesn't return all columns because it's slow. The
-                            following columns are not shown:{" "}
-                            <span className="font-mono text-xs">
-                              {results.hiddenColumns.join(", ")}
-                            </span>
-                            . Specify them explicitly to include them.
-                          </Callout>
-                        )}
-                        <div className="h-full bg-charcoal-900 p-2">
-                          <Card className="h-full overflow-hidden p-0">
+                      <div
+                        className={`grid h-full max-h-full overflow-hidden bg-charcoal-900 ${
+                          hasQueryResultsCallouts(results.hiddenColumns, results.periodClipped)
+                            ? "grid-rows-[auto_1fr]"
+                            : "grid-rows-[1fr]"
+                        }`}
+                      >
+                        <QueryResultsCallouts
+                          hiddenColumns={results.hiddenColumns}
+                          periodClipped={results.periodClipped}
+                          organizationSlug={organization.slug}
+                        />
+                        <div className="overflow-hidden p-2">
+                          <Card className="h-full overflow-hidden px-0 pb-0">
+                            <Card.Header>
+                              <div className="flex items-center gap-1.5">
+                                <TableCellsIcon className="size-5 text-indigo-500" />
+                                {isTitleLoading ? (
+                                  <span className="flex items-center gap-2 text-text-dimmed">
+                                    <Spinner className="size-3" /> Generating title...
+                                  </span>
+                                ) : (
+                                  queryTitle ?? "Results"
+                                )}
+                              </div>
+                            </Card.Header>
                             <Card.Content className="min-h-0 flex-1 overflow-hidden p-0">
                               <TSQLResultsTable
                                 rows={results.rows}
@@ -718,15 +921,30 @@ export default function Page() {
                   </ClientTabsContent>
                   <ClientTabsContent
                     value="graph"
-                    className="m-0 grid min-h-0 grid-rows-[1fr] overflow-hidden"
+                    className={`m-0 grid h-full max-h-full min-h-0 overflow-hidden bg-charcoal-900 ${
+                      results?.rows &&
+                      results.rows.length > 0 &&
+                      hasQueryResultsCallouts(results.hiddenColumns, results.periodClipped)
+                        ? "grid-rows-[auto_1fr]"
+                        : "grid-rows-[1fr]"
+                    }`}
                   >
                     {results?.rows && results?.columns && results.rows.length > 0 ? (
-                      <ResultsChart
-                        rows={results.rows}
-                        columns={results.columns}
-                        chartConfig={chartConfig}
-                        onChartConfigChange={handleChartConfigChange}
-                      />
+                      <>
+                        <QueryResultsCallouts
+                          hiddenColumns={results.hiddenColumns}
+                          periodClipped={results.periodClipped}
+                          organizationSlug={organization.slug}
+                        />
+                        <ResultsChart
+                          rows={results.rows}
+                          columns={results.columns}
+                          chartConfig={chartConfig}
+                          onChartConfigChange={handleChartConfigChange}
+                          queryTitle={queryTitle}
+                          isTitleLoading={isTitleLoading}
+                        />
+                      </>
                     ) : (
                       <Paragraph variant="small" className="p-4 text-text-dimmed">
                         Run a query to visualize results.
@@ -734,13 +952,15 @@ export default function Page() {
                     )}
                   </ClientTabsContent>
                 </ClientTabs>
-              </div>
-            </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
           </ResizablePanel>
           <ResizableHandle id="query-handle" />
           <ResizablePanel
             id="query-help"
             min="200px"
+            collapsible
+            collapsedSize="20px"
             default="400px"
             max="500px"
             className="w-full"
@@ -844,52 +1064,128 @@ function ScopeItem({ scope }: { scope: QueryScope }) {
   }
 }
 
+function QueryResultsCallouts({
+  hiddenColumns,
+  periodClipped,
+  organizationSlug,
+}: {
+  hiddenColumns: string[] | null | undefined;
+  periodClipped: number | null | undefined;
+  organizationSlug: string;
+}) {
+  const hasCallouts = (hiddenColumns && hiddenColumns.length > 0) || periodClipped;
+
+  if (!hasCallouts) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-2 px-2 pt-2">
+      {hiddenColumns && hiddenColumns.length > 0 && (
+        <Callout variant="warning" className="shrink-0 text-sm">
+          <code>SELECT *</code> doesn't return all columns because it's slow. The following columns
+          are not shown: <span className="font-mono text-xs">{hiddenColumns.join(", ")}</span>.
+          Specify them explicitly to include them.
+        </Callout>
+      )}
+      {periodClipped && (
+        <Callout
+          variant="pricing"
+          cta={
+            <LinkButton
+              variant="primary/small"
+              to={organizationBillingPath({ slug: organizationSlug })}
+            >
+              Upgrade
+            </LinkButton>
+          }
+          className="items-center"
+        >
+          {simplur`Results are limited to the last ${periodClipped} day[|s] based on your plan.`}
+        </Callout>
+      )}
+    </div>
+  );
+}
+
+function hasQueryResultsCallouts(
+  hiddenColumns: string[] | null | undefined,
+  periodClipped: number | null | undefined
+): boolean {
+  return (hiddenColumns && hiddenColumns.length > 0) || !!periodClipped;
+}
+
 function ResultsChart({
   rows,
   columns,
   chartConfig,
   onChartConfigChange,
+  queryTitle,
+  isTitleLoading,
 }: {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
   chartConfig: ChartConfiguration;
   onChartConfigChange: (config: ChartConfiguration) => void;
+  queryTitle: string | null;
+  isTitleLoading: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
-  return (
-    <><ResizablePanelGroup className="h-full overflow-hidden">
-      <ResizablePanel id="chart-results">
-        <div className="h-full bg-charcoal-900 p-2 overflow-hidden">
-          <Card className="h-full">
-            <Card.Header>
-              <div className="flex items-center gap-1.5">
-                <ArrowTrendingUpIcon className="size-5 text-indigo-500" />
-                Chart
-              </div>
-              <Card.Accessory>
-                <Button variant="minimal/small" LeadingIcon={ArrowsPointingOutIcon} onClick={() => setIsOpen(true)} />
-              </Card.Accessory>
-            </Card.Header>
-            <Card.Content className="h-full flex-1 min-h-0">
-              <QueryResultsChart rows={rows} columns={columns} config={chartConfig} onViewAllLegendItems={() => setIsOpen(true)} />
-            </Card.Content>
-          </Card>
+  const titleContent = isTitleLoading ? (
+    <span className="flex items-center gap-2 text-text-dimmed">
+      <Spinner className="size-3" /> Generating title...
+    </span>
+  ) : (
+    queryTitle ?? "Chart"
+  );
 
-        </div>
-      </ResizablePanel>
-      <ResizableHandle id="chart-split" />
-      <ResizablePanel id="chart-config" min="50px" default="200px">
-        <ChartConfigPanel columns={columns} config={chartConfig} onChange={onChartConfigChange} />
-      </ResizablePanel>
-    </ResizablePanelGroup>
+  return (
+    <>
+      <ResizablePanelGroup className="overflow-hidden">
+        <ResizablePanel id="chart-results">
+          <div className="h-full overflow-hidden bg-charcoal-900 p-2">
+            <Card className="h-full">
+              <Card.Header>
+                <div className="flex items-center gap-1.5">
+                  <ArrowTrendingUpIcon className="size-5 text-indigo-500" />
+                  {titleContent}
+                </div>
+                <Card.Accessory>
+                  <Button
+                    variant="minimal/small"
+                    LeadingIcon={ArrowsPointingOutIcon}
+                    onClick={() => setIsOpen(true)}
+                  />
+                </Card.Accessory>
+              </Card.Header>
+              <Card.Content className="h-full min-h-0 flex-1">
+                <QueryResultsChart
+                  rows={rows}
+                  columns={columns}
+                  config={chartConfig}
+                  onViewAllLegendItems={() => setIsOpen(true)}
+                />
+              </Card.Content>
+            </Card>
+          </div>
+        </ResizablePanel>
+        <ResizableHandle id="chart-split" />
+        <ResizablePanel id="chart-config" min="50px" default="200px">
+          <ChartConfigPanel columns={columns} config={chartConfig} onChange={onChartConfigChange} />
+        </ResizablePanel>
+      </ResizablePanelGroup>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent fullscreen>
-          <DialogHeader>
-            Chart
-          </DialogHeader>
-          <div className="h-full min-h-0 flex-1 overflow-hidden w-full pt-4">
-            <QueryResultsChart rows={rows} columns={columns} config={chartConfig} fullLegend={true} />
+          <DialogHeader>{queryTitle ?? "Chart"}</DialogHeader>
+          <div className="h-full min-h-0 w-full flex-1 overflow-hidden pt-4">
+            <QueryResultsChart
+              rows={rows}
+              columns={columns}
+              config={chartConfig}
+              fullLegend={true}
+              legendScrollable={true}
+            />
           </div>
         </DialogContent>
       </Dialog>

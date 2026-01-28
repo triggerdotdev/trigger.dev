@@ -8,6 +8,8 @@ export type QueryHistoryItem = {
   scope: QueryScope;
   createdAt: Date;
   userName: string | null;
+  /** AI-generated title summarizing the query */
+  title: string | null;
   /** Time filter settings */
   filterPeriod: string | null;
   filterFrom: Date | null;
@@ -24,6 +26,7 @@ export class QueryPresenter extends BasePresenter {
         id: true,
         query: true,
         scope: true,
+        title: true,
         createdAt: true,
         filterPeriod: true,
         filterFrom: true,
@@ -43,6 +46,7 @@ export class QueryPresenter extends BasePresenter {
           scope: q.scope.toLowerCase() as QueryScope,
           createdAt: q.createdAt,
           userName: q.user?.displayName ?? q.user?.name ?? null,
+          title: q.title,
           filterPeriod: q.filterPeriod,
           filterFrom: q.filterFrom,
           filterTo: q.filterTo,

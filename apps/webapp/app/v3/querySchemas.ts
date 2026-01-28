@@ -167,10 +167,14 @@ export const runsSchema: TableSchema = {
       expression: "if(depth > 0, true, false)",
     },
 
-    // Useless until we show the user-provided key
     idempotency_key: {
       name: "idempotency_key",
-      ...column("String", { description: "Idempotency key", example: "user-123-action-456" }),
+      clickhouseName: "idempotency_key_user",
+      ...column("String", { description: "Idempotency key (available from 4.3.3)", example: "user-123-action-456" }),
+    },
+    idempotency_key_scope: {
+      name: "idempotency_key_scope",
+      ...column("String", { description: "The idempotency key scope determines whether a task should be considered unique within a parent run, a specific attempt, or globally. An empty value means there's no idempotency key set (available from 4.3.3).", example: "run", allowedValues: ["global", "run", "attempt"], }),
     },
     region: {
       name: "region",
@@ -325,6 +329,8 @@ export const runsSchema: TableSchema = {
     // Output & error (JSON columns)
     // For JSON columns, NULL checks are transformed to check for empty object '{}'
     // So `error IS NULL` becomes `error = '{}'` and `error IS NOT NULL` becomes `error != '{}'`
+    // textColumn uses the pre-materialized text columns for better performance
+    // dataPrefix handles the internal {"data": ...} wrapper transparently
     output: {
       name: "output",
       ...column("JSON", {
@@ -332,6 +338,8 @@ export const runsSchema: TableSchema = {
         example: '{"result": "success"}',
       }),
       nullValue: "'{}'", // Transform NULL checks to compare against empty object
+      textColumn: "output_text", // Use output_text for full JSON value queries
+      dataPrefix: "data", // Internal data is wrapped in {"data": ...}
     },
     error: {
       name: "error",
@@ -341,6 +349,8 @@ export const runsSchema: TableSchema = {
         example: '{"message": "Task failed"}',
       }),
       nullValue: "'{}'", // Transform NULL checks to compare against empty object
+      textColumn: "error_text", // Use error_text for full JSON value queries
+      dataPrefix: "data", // Internal data is wrapped in {"data": ...}
     },
 
     // Tags & versions

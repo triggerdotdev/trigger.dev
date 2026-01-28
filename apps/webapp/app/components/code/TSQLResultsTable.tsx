@@ -672,7 +672,9 @@ function EnvironmentCellValue({ value }: { value: string }) {
 }
 
 function JSONCellValue({ value }: { value: unknown }) {
-  const jsonString = JSON.stringify(value);
+  // If the value is already a string (e.g., from a textColumn optimization),
+  // use it directly without double-stringifying
+  const jsonString = typeof value === "string" ? value : JSON.stringify(value);
   const isTruncated = jsonString.length > MAX_STRING_DISPLAY_LENGTH;
 
   if (isTruncated) {
@@ -1137,6 +1139,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
             height: `${rowVirtualizer.getTotalSize()}px`,
             position: "relative",
           }}
+          className="bg-background-dimmed divide-y divide-charcoal-700"
         >
           {rowVirtualizer.getVirtualItems().map((virtualRow) => {
             const row = tableRows[virtualRow.index];

@@ -2452,8 +2452,8 @@ model CustomerQuery {
   /// Query execution statistics from ClickHouse
   stats Json
 
-  /// Cost of the query in cents (for Stripe metering)
-  costInCents Float @default(0)
+  /// AI-generated title summarizing the query
+  title String?
 
   /// Where the query originated from
   source CustomerQuerySource @default(DASHBOARD)
