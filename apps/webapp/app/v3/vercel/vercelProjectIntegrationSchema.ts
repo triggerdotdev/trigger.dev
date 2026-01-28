@@ -50,6 +50,17 @@ export const VercelIntegrationConfigSchema = z.object({
    * When null, no custom environment is mapped to staging.
    */
   vercelStagingEnvironment: z.string().nullable().optional(),
+
+  /**
+   * When enabled, discovers and creates new env vars from Vercel during builds.
+   * This allows new environment variables added in Vercel to be automatically
+   * pulled into Trigger.dev.
+   *
+   * Default: true (enabled)
+   * null/undefined = defaults to enabled
+   * false = only sync existing variables, don't discover new ones
+   */
+  pullNewEnvVars: z.boolean().nullable().optional(),
 });
 
 export type VercelIntegrationConfig = z.infer<typeof VercelIntegrationConfigSchema>;
@@ -127,6 +138,7 @@ export type VercelProjectIntegrationData = z.infer<typeof VercelProjectIntegrati
 
 /**
  * Helper function to create default integration data for a new Vercel project connection.
+ * Defaults to having atomic builds and pull env vars enabled for all non-dev environments.
  */
 export function createDefaultVercelIntegrationData(
   vercelProjectId: string,
@@ -135,8 +147,9 @@ export function createDefaultVercelIntegrationData(
 ): VercelProjectIntegrationData {
   return {
     config: {
-      atomicBuilds: null,
-      pullEnvVarsBeforeBuild: null,
+      atomicBuilds: ["prod", "stg", "preview"],
+      pullEnvVarsBeforeBuild: ["prod", "stg", "preview"],
+      pullNewEnvVars: true,
       vercelStagingEnvironment: null,
     },
     syncEnvVarsMapping: {},
@@ -144,6 +157,16 @@ export function createDefaultVercelIntegrationData(
     vercelProjectName,
     vercelTeamId,
   };
+}
+
+/**
+ * Check if pull new env vars is enabled.
+ * Defaults to true if not explicitly set to false.
+ */
+export function isPullNewEnvVarsEnabled(
+  pullNewEnvVars: boolean | null | undefined
+): boolean {
+  return pullNewEnvVars !== false;
 }
 
 /**

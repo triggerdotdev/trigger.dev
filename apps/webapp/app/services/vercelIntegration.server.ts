@@ -328,6 +328,7 @@ export class VercelIntegrationService {
       vercelStagingEnvironment?: string | null;
       pullEnvVarsBeforeBuild?: EnvSlug[] | null;
       atomicBuilds?: EnvSlug[] | null;
+      pullNewEnvVars?: boolean | null;
       syncEnvVarsMapping: SyncEnvVarsMapping;
     }
   ): Promise<VercelProjectIntegrationWithParsedData | null> {
@@ -342,6 +343,7 @@ export class VercelIntegrationService {
         ...existing.parsedIntegrationData.config,
         pullEnvVarsBeforeBuild: params.pullEnvVarsBeforeBuild ?? null,
         atomicBuilds: params.atomicBuilds ?? null,
+        pullNewEnvVars: params.pullNewEnvVars ?? null,
         vercelStagingEnvironment: params.vercelStagingEnvironment ?? null,
       },
       // Don't save syncEnvVarsMapping - it's only used for the one-time pull during onboarding

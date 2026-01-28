@@ -172,6 +172,10 @@ const UpdateVercelConfigFormSchema = z.object({
       return null;
     }
   }),
+  pullNewEnvVars: z.string().optional().transform((val) => {
+    if (val === undefined || val === "") return null;
+    return val === "true";
+  }),
   vercelStagingEnvironment: z.string().nullable().optional(),
 });
 
@@ -200,8 +204,14 @@ const CompleteOnboardingFormSchema = z.object({
       return null;
     }
   }),
+  pullNewEnvVars: z.string().optional().transform((val) => {
+    if (val === undefined || val === "") return null;
+    return val === "true";
+  }),
   syncEnvVarsMapping: z.string().optional(), // JSON-encoded mapping
   next: z.string().optional(),
+  // When true, returns JSON instead of redirecting (used when transitioning to github-connection step)
+  skipRedirect: z.string().optional().transform((val) => val === "true"),
 });
 
 const SkipOnboardingFormSchema = z.object({
@@ -329,12 +339,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const {
       atomicBuilds,
       pullEnvVarsBeforeBuild,
+      pullNewEnvVars,
       vercelStagingEnvironment,
     } = submission.value;
 
     const result = await vercelService.updateVercelIntegrationConfig(project.id, {
       atomicBuilds: atomicBuilds as EnvSlug[] | null,
       pullEnvVarsBeforeBuild: pullEnvVarsBeforeBuild as EnvSlug[] | null,
+      pullNewEnvVars: pullNewEnvVars,
       vercelStagingEnvironment: vercelStagingEnvironment ?? null,
     });
 
@@ -362,8 +374,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
       vercelStagingEnvironment,
       pullEnvVarsBeforeBuild,
       atomicBuilds,
+      pullNewEnvVars,
       syncEnvVarsMapping,
       next,
+      skipRedirect,
     } = submission.value;
 
     let parsedMapping: SyncEnvVarsMapping = {};
@@ -380,6 +394,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       vercelStagingEnvironment,
       pullEnvVarsBeforeBuild,
       atomicBuilds,
+      pullNewEnvVars,
       syncEnvVarsMappingRaw: syncEnvVarsMapping,
       parsedMappingKeys: Object.keys(parsedMapping),
     });
@@ -388,10 +403,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
       vercelStagingEnvironment: vercelStagingEnvironment ?? null,
       pullEnvVarsBeforeBuild: pullEnvVarsBeforeBuild as EnvSlug[] | null,
       atomicBuilds: atomicBuilds as EnvSlug[] | null,
+      pullNewEnvVars: pullNewEnvVars,
       syncEnvVarsMapping: parsedMapping,
     });
 
     if (result) {
+      // If skipRedirect is true, return success without redirect (used when transitioning to github-connection step)
+      if (skipRedirect) {
+        return json({ success: true });
+      }
+
       // Check if we should redirect to the 'next' URL
       if (next) {
         try {
@@ -639,6 +660,7 @@ function ConnectedVercelProjectForm({
   const [configValues, setConfigValues] = useState({
     atomicBuilds: connectedProject.integrationData.config.atomicBuilds ?? [],
     pullEnvVarsBeforeBuild: connectedProject.integrationData.config.pullEnvVarsBeforeBuild ?? [],
+    pullNewEnvVars: connectedProject.integrationData.config.pullNewEnvVars !== false,
     vercelStagingEnvironment:
       connectedProject.integrationData.config.vercelStagingEnvironment || "",
   });
@@ -646,6 +668,7 @@ function ConnectedVercelProjectForm({
   // Track original values for comparison
   const originalAtomicBuilds = connectedProject.integrationData.config.atomicBuilds ?? [];
   const originalPullEnvVars = connectedProject.integrationData.config.pullEnvVarsBeforeBuild ?? [];
+  const originalPullNewEnvVars = connectedProject.integrationData.config.pullNewEnvVars !== false;
   const originalStagingEnv = connectedProject.integrationData.config.vercelStagingEnvironment || "";
 
   useEffect(() => {
@@ -655,10 +678,11 @@ function ConnectedVercelProjectForm({
     const pullEnvVarsChanged =
       JSON.stringify([...configValues.pullEnvVarsBeforeBuild].sort()) !==
       JSON.stringify([...originalPullEnvVars].sort());
+    const pullNewEnvVarsChanged = configValues.pullNewEnvVars !== originalPullNewEnvVars;
     const stagingEnvChanged = configValues.vercelStagingEnvironment !== originalStagingEnv;
 
-    setHasConfigChanges(atomicBuildsChanged || pullEnvVarsChanged || stagingEnvChanged);
-  }, [configValues, originalAtomicBuilds, originalPullEnvVars, originalStagingEnv]);
+    setHasConfigChanges(atomicBuildsChanged || pullEnvVarsChanged || pullNewEnvVarsChanged || stagingEnvChanged);
+  }, [configValues, originalAtomicBuilds, originalPullEnvVars, originalPullNewEnvVars, originalStagingEnv]);
 
   const [configForm, fields] = useForm({
     id: "update-vercel-config",
@@ -754,6 +778,11 @@ function ConnectedVercelProjectForm({
           type="hidden"
           name="pullEnvVarsBeforeBuild"
           value={JSON.stringify(configValues.pullEnvVarsBeforeBuild)}
+        />
+        <input
+          type="hidden"
+          name="pullNewEnvVars"
+          value={String(configValues.pullNewEnvVars)}
         />
         <input
           type="hidden"
@@ -862,7 +891,34 @@ function ConnectedVercelProjectForm({
                     );
                   })}
                 </div>
+
               </div>
+
+              {/* Discover new env vars */}
+              {(() => {
+                const isPullEnvVarsDisabled = configValues.pullEnvVarsBeforeBuild.length === 0;
+                return (
+                  <div className={isPullEnvVarsDisabled ? "opacity-50" : ""}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label>Discover new env vars</Label>
+                        <Hint>
+                          When enabled, automatically discovers and creates new environment variables
+                          from Vercel that don't exist in Trigger.dev yet during builds.
+                        </Hint>
+                      </div>
+                      <Switch
+                        variant="small"
+                        checked={configValues.pullNewEnvVars}
+                        disabled={isPullEnvVarsDisabled}
+                        onCheckedChange={(checked) =>
+                          setConfigValues((prev) => ({ ...prev, pullNewEnvVars: checked }))
+                        }
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Atomic deployments */}
               <div>
@@ -1112,15 +1168,18 @@ function VercelOnboardingModal({
       }
       return "project-selection";
     }
-    const customEnvs = (onboardingData?.customEnvironments?.length ?? 0) > 0 && hasStagingEnvironment;
-    if (customEnvs) {
-      return "env-mapping";
+    // For marketplace origin, skip env-mapping step and go directly to env-var-sync
+    if (!fromMarketplaceContext) {
+      const customEnvs = (onboardingData?.customEnvironments?.length ?? 0) > 0 && hasStagingEnvironment;
+      if (customEnvs) {
+        return "env-mapping";
+      }
     }
     if (!onboardingData?.environmentVariables || onboardingData.environmentVariables.length === 0) {
       return "loading-env-vars";
     }
     return "env-var-sync";
-  }, [hasOrgIntegration, onboardingData, hasStagingEnvironment]);
+  }, [hasOrgIntegration, onboardingData, hasStagingEnvironment, fromMarketplaceContext]);
 
   // Initialize state based on current data when modal opens
   const [state, setState] = useState<OnboardingState>(() => {
@@ -1158,18 +1217,27 @@ function VercelOnboardingModal({
     (s) => s !== "dev"
   );
   // Build settings state (for build-settings step)
-  // Default: pull env vars enabled for all environments
+  // Default: pull env vars and atomic builds enabled for all non-dev environments
   const [pullEnvVarsBeforeBuild, setPullEnvVarsBeforeBuild] = useState<EnvSlug[]>(
     () => (hasStagingEnvironment ? ["prod", "stg", "preview"] : ["prod", "preview"])
   );
-  const [atomicBuilds, setAtomicBuilds] = useState<EnvSlug[]>([]);
+  const [atomicBuilds, setAtomicBuilds] = useState<EnvSlug[]>(
+    () => (hasStagingEnvironment ? ["prod", "stg", "preview"] : ["prod", "preview"])
+  );
+  const [pullNewEnvVars, setPullNewEnvVars] = useState<boolean>(true);
 
-  // Sync pullEnvVarsBeforeBuild when hasStagingEnvironment becomes true (once)
+  // Sync pullEnvVarsBeforeBuild and atomicBuilds when hasStagingEnvironment becomes true (once)
   // This ensures staging is included when it becomes available, but respects user changes after
   useEffect(() => {
     if (hasStagingEnvironment && !hasSyncedStagingRef.current) {
       hasSyncedStagingRef.current = true;
       setPullEnvVarsBeforeBuild((prev) => {
+        if (!prev.includes("stg")) {
+          return [...prev, "stg"];
+        }
+        return prev;
+      });
+      setAtomicBuilds((prev) => {
         if (!prev.includes("stg")) {
           return [...prev, "stg"];
         }
@@ -1185,6 +1253,44 @@ function VercelOnboardingModal({
   // GitHub connection state (for github-connection step)
   const gitHubAppInstallations = onboardingData?.gitHubAppInstallations ?? [];
   const isGitHubConnectedForOnboarding = onboardingData?.isGitHubConnected ?? false;
+
+  // Track if we've triggered a redirect for marketplace completion
+  const hasTriggeredMarketplaceRedirectRef = useRef(false);
+
+  // Auto-redirect for marketplace flow when returning from GitHub with everything complete
+  useEffect(() => {
+    // Only trigger once per session to prevent redirect loops
+    if (hasTriggeredMarketplaceRedirectRef.current) {
+      return;
+    }
+
+    // Check if all conditions are met for auto-redirect:
+    // - Modal is open
+    // - Coming from marketplace
+    // - Has nextUrl to redirect to
+    // - Project is already connected (onboarding settings saved)
+    // - GitHub is now connected
+    if (
+      isOpen &&
+      fromMarketplaceContext &&
+      nextUrl &&
+      hasProjectSelected &&
+      isGitHubConnectedForOnboarding
+    ) {
+      hasTriggeredMarketplaceRedirectRef.current = true;
+      // Small delay to ensure state is settled before redirect
+      setTimeout(() => {
+        window.location.href = nextUrl;
+      }, 100);
+    }
+  }, [isOpen, fromMarketplaceContext, nextUrl, hasProjectSelected, isGitHubConnectedForOnboarding]);
+
+  // Reset the redirect ref when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      hasTriggeredMarketplaceRedirectRef.current = false;
+    }
+  }, [isOpen]);
 
   // Track if we've triggered a reload for the current loading state to prevent infinite loops
   const loadingStateRef = useRef<OnboardingState | null>(null);
@@ -1278,13 +1384,14 @@ function VercelOnboardingModal({
   }, [state, fetcher.data, fetcher.state, onDataReload]);
 
   // Handle loading-env-mapping completion - check for custom environments
+  // For marketplace origin, skip env-mapping step
   useEffect(() => {
     if (state === "loading-env-mapping" && onboardingData) {
       const hasCustomEnvs = (onboardingData.customEnvironments?.length ?? 0) > 0 && hasStagingEnvironment;
-      if (hasCustomEnvs) {
+      if (hasCustomEnvs && !fromMarketplaceContext) {
         setState("env-mapping");
       } else {
-        // No custom envs, load env vars
+        // No custom envs or marketplace flow, load env vars
         setState("loading-env-vars");
       }
     }
@@ -1421,9 +1528,15 @@ function VercelOnboardingModal({
     formData.append("vercelStagingEnvironment", vercelStagingEnvironment || "");
     formData.append("pullEnvVarsBeforeBuild", JSON.stringify(pullEnvVarsBeforeBuild));
     formData.append("atomicBuilds", JSON.stringify(atomicBuilds));
+    formData.append("pullNewEnvVars", String(pullNewEnvVars));
     formData.append("syncEnvVarsMapping", JSON.stringify(syncEnvVarsMapping));
     if (nextUrl && fromMarketplaceContext && isGitHubConnectedForOnboarding) {
       formData.append("next", nextUrl);
+    }
+
+    // If GitHub is not connected, skip redirect to stay on modal and transition to github-connection step
+    if (!isGitHubConnectedForOnboarding) {
+      formData.append("skipRedirect", "true");
     }
 
     completeOnboardingFetcher.submit(formData, {
@@ -1435,7 +1548,7 @@ function VercelOnboardingModal({
     if (!isGitHubConnectedForOnboarding) {
       setState("github-connection");
     }
-  }, [vercelStagingEnvironment, pullEnvVarsBeforeBuild, atomicBuilds, syncEnvVarsMapping, nextUrl, fromMarketplaceContext, isGitHubConnectedForOnboarding, completeOnboardingFetcher, actionUrl]);
+  }, [vercelStagingEnvironment, pullEnvVarsBeforeBuild, atomicBuilds, pullNewEnvVars, syncEnvVarsMapping, nextUrl, fromMarketplaceContext, isGitHubConnectedForOnboarding, completeOnboardingFetcher, actionUrl]);
 
   const handleFinishOnboarding = useCallback((e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1660,12 +1773,15 @@ function VercelOnboardingModal({
                   Cancel
                 </Button>
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="tertiary/medium"
-                    onClick={handleSkipEnvMapping}
-                  >
-                    Skip
-                  </Button>
+                  {/* Skip button only shown for dashboard flow */}
+                  {!fromMarketplaceContext && (
+                    <Button
+                      variant="tertiary/medium"
+                      onClick={handleSkipEnvMapping}
+                    >
+                      Skip
+                    </Button>
+                  )}
                   <Button
                     variant="primary/medium"
                     onClick={handleUpdateEnvMapping}
@@ -1799,13 +1915,22 @@ function VercelOnboardingModal({
                 confirmButton={
                   <Button
                     variant="primary/medium"
-                    onClick={() => setState("build-settings")}
+                    onClick={() => {
+                      if (fromMarketplaceContext) {
+                        // Marketplace flow: skip build-settings, use defaults and go to github or complete
+                        handleBuildSettingsNext();
+                      } else {
+                        setState("build-settings");
+                      }
+                    }}
+                    disabled={fromMarketplaceContext && completeOnboardingFetcher.state !== "idle"}
+                    LeadingIcon={fromMarketplaceContext && completeOnboardingFetcher.state !== "idle" ? SpinnerWhite : undefined}
                   >
-                    Next
+                    {fromMarketplaceContext ? (isGitHubConnectedForOnboarding ? "Finish" : "Next") : "Next"}
                   </Button>
                 }
                 cancelButton={
-                  hasCustomEnvs ? (
+                  hasCustomEnvs && !fromMarketplaceContext ? (
                     <Button
                       variant="tertiary/medium"
                       onClick={() => setState("env-mapping")}
@@ -1876,6 +2001,30 @@ function VercelOnboardingModal({
                   })}
                 </div>
               </div>
+
+              {/* Discover new env vars */}
+              {(() => {
+                const isPullEnvVarsDisabled = pullEnvVarsBeforeBuild.length === 0;
+                return (
+                  <div className={isPullEnvVarsDisabled ? "opacity-50" : ""}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label>Discover new env vars</Label>
+                        <Hint>
+                          When enabled, automatically discovers and creates new environment variables
+                          from Vercel that don't exist in Trigger.dev yet during builds.
+                        </Hint>
+                      </div>
+                      <Switch
+                        variant="small"
+                        checked={pullNewEnvVars}
+                        disabled={isPullEnvVarsDisabled}
+                        onCheckedChange={setPullNewEnvVars}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Atomic deployments */}
               <div>
@@ -1959,57 +2108,93 @@ function VercelOnboardingModal({
                 </p>
               </Callout>
 
-              {gitHubAppInstallations.length === 0 ? (
-                <div className="flex flex-col gap-3">
-                  <LinkButton
-                    to={githubAppInstallPath(
-                      organizationSlug,
-                      `${v3ProjectSettingsPath(
-                        { slug: organizationSlug },
-                        { slug: projectSlug },
-                        { slug: environmentSlug }
-                      )}?openGithubRepoModal=1`
-                    )}
-                    variant="secondary/medium"
-                    LeadingIcon={OctoKitty}
-                  >
-                    Install GitHub app
-                  </LinkButton>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <ConnectGitHubRepoModal
-                      gitHubAppInstallations={gitHubAppInstallations as GitHubAppInstallation[]}
-                      organizationSlug={organizationSlug}
-                      projectSlug={projectSlug}
-                      environmentSlug={environmentSlug}
-                      redirectUrl={v3ProjectSettingsPath(
-                        { slug: organizationSlug },
-                        { slug: projectSlug },
-                        { slug: environmentSlug }
+              {(() => {
+                // Build redirect URL that preserves Vercel marketplace context
+                const baseSettingsPath = v3ProjectSettingsPath(
+                  { slug: organizationSlug },
+                  { slug: projectSlug },
+                  { slug: environmentSlug }
+                );
+                const redirectParams = new URLSearchParams();
+                redirectParams.set("vercelOnboarding", "true");
+                if (fromMarketplaceContext) {
+                  redirectParams.set("origin", "marketplace");
+                }
+                if (nextUrl) {
+                  redirectParams.set("next", nextUrl);
+                }
+                const redirectUrlWithContext = `${baseSettingsPath}?${redirectParams.toString()}`;
+
+                return gitHubAppInstallations.length === 0 ? (
+                  <div className="flex flex-col gap-3">
+                    <LinkButton
+                      to={githubAppInstallPath(
+                        organizationSlug,
+                        `${redirectUrlWithContext}&openGithubRepoModal=1`
                       )}
-                    />
-                    <span className="flex items-center gap-1 text-xs text-text-dimmed">
-                      <CheckCircleIcon className="size-4 text-success" /> GitHub app is installed
-                    </span>
+                      variant="secondary/medium"
+                      LeadingIcon={OctoKitty}
+                    >
+                      Install GitHub app
+                    </LinkButton>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-3">
+                      <ConnectGitHubRepoModal
+                        gitHubAppInstallations={gitHubAppInstallations as GitHubAppInstallation[]}
+                        organizationSlug={organizationSlug}
+                        projectSlug={projectSlug}
+                        environmentSlug={environmentSlug}
+                        redirectUrl={redirectUrlWithContext}
+                        preventDismiss={fromMarketplaceContext}
+                      />
+                      <span className="flex items-center gap-1 text-xs text-text-dimmed">
+                        <CheckCircleIcon className="size-4 text-success" /> GitHub app is installed
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <FormButtons
                 confirmButton={
-                  <Button
-                    variant="tertiary/medium"
-                    onClick={() => {
-                      setState("completed");
-                      if (fromMarketplaceContext && nextUrl) {
+                  isGitHubConnectedForOnboarding && fromMarketplaceContext && nextUrl ? (
+                    <Button
+                      variant="primary/medium"
+                      onClick={() => {
+                        setState("completed");
                         window.location.href = nextUrl;
-                      }
-                    }}
-                  >
-                    Skip for now
-                  </Button>
+                      }}
+                    >
+                      Complete
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="tertiary/medium"
+                      onClick={() => {
+                        setState("completed");
+                        if (fromMarketplaceContext && nextUrl) {
+                          window.location.href = nextUrl;
+                        }
+                      }}
+                    >
+                      Skip for now
+                    </Button>
+                  )
+                }
+                cancelButton={
+                  isGitHubConnectedForOnboarding && fromMarketplaceContext && nextUrl ? (
+                    <Button
+                      variant="tertiary/medium"
+                      onClick={() => {
+                        setState("completed");
+                        // Skip GitHub, just close
+                      }}
+                    >
+                      Skip for now
+                    </Button>
+                  ) : undefined
                 }
               />
             </div>

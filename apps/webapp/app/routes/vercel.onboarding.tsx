@@ -1,16 +1,20 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json, redirect } from "@remix-run/server-runtime";
 import { useState } from "react";
-import { Form, useLoaderData, useNavigation } from "@remix-run/react";
+import { Form, useNavigation } from "@remix-run/react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { BuildingOfficeIcon, FolderIcon } from "@heroicons/react/20/solid";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
-import { Button } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormTitle } from "~/components/primitives/FormTitle";
+import { InputGroup } from "~/components/primitives/InputGroup";
+import { Label } from "~/components/primitives/Label";
 import { Select, SelectItem } from "~/components/primitives/Select";
+import { ButtonSpinner } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
@@ -30,7 +34,7 @@ const SelectOrgActionSchema = z.object({
   action: z.literal("select-org"),
   organizationId: z.string(),
   code: z.string(),
-  configurationId: z.string(),
+  configurationId: z.string().optional().nullable(),
   next: z.string().optional(),
 });
 
@@ -39,7 +43,7 @@ const SelectProjectActionSchema = z.object({
   projectId: z.string(),
   organizationId: z.string(),
   code: z.string(),
-  configurationId: z.string(),
+  configurationId: z.string().optional().nullable(),
   next: z.string().optional().nullable(),
 });
 
@@ -62,7 +66,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   if (!params.success) {
     logger.error("Invalid params for Vercel onboarding", { error: params.error });
-    return redirectWithErrorMessage(
+    throw redirectWithErrorMessage(
       "/",
       request,
       "Invalid installation parameters. Please try again from Vercel."
@@ -71,12 +75,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const { error } = params.data;
   if (error === "expired") {
-    return json({
+    return typedjson({
       step: "error" as const,
       error: "Your installation session has expired. Please start the installation again.",
       code: params.data.code,
-      configurationId: params.data.configurationId,
-      next: params.data.next,
+      configurationId: params.data.configurationId ?? null,
+      next: params.data.next ?? null,
     });
   }
 
@@ -112,15 +116,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   // New user: no organizations
   if (organizations.length === 0) {
-    const onboardingParams = new URLSearchParams({
-      code: params.data.code,
-      configurationId: params.data.configurationId,
-      integration: "vercel",
-    });
+    const onboardingParams = new URLSearchParams();
+    onboardingParams.set("code", params.data.code);
+    if (params.data.configurationId) {
+      onboardingParams.set("configurationId", params.data.configurationId);
+    }
+    onboardingParams.set("integration", "vercel");
     if (params.data.next) {
       onboardingParams.set("next", params.data.next);
     }
-    return redirect(`${confirmBasicDetailsPath()}?${onboardingParams.toString()}`);
+    throw redirect(`${confirmBasicDetailsPath()}?${onboardingParams.toString()}`);
   }
 
   // If organizationId is provided, show project selection
@@ -132,29 +137,29 @@ export async function loader({ request }: LoaderFunctionArgs) {
         organizationId: params.data.organizationId,
         userId,
       });
-      return redirectWithErrorMessage(
+      throw redirectWithErrorMessage(
         "/",
         request,
         "Organization not found. Please try again."
       );
     }
 
-    return json({
+    return typedjson({
       step: "project" as const,
       organization,
       organizations,
       code: params.data.code,
-      configurationId: params.data.configurationId,
-      next: params.data.next,
+      configurationId: params.data.configurationId ?? null,
+      next: params.data.next ?? null,
     });
   }
 
-  return json({
+  return typedjson({
     step: "org" as const,
     organizations,
     code: params.data.code,
-    configurationId: params.data.configurationId,
-    next: params.data.next,
+    configurationId: params.data.configurationId ?? null,
+    next: params.data.next ?? null,
   });
 }
 
@@ -181,11 +186,12 @@ export async function action({ request }: ActionFunctionArgs) {
   if (submission.data.action === "select-org") {
     const { organizationId } = submission.data;
 
-    const projectParams = new URLSearchParams({
-      organizationId,
-      code,
-      configurationId,
-    });
+    const projectParams = new URLSearchParams();
+    projectParams.set("organizationId", organizationId);
+    projectParams.set("code", code);
+    if (configurationId) {
+      projectParams.set("configurationId", configurationId);
+    }
     if (next) {
       projectParams.set("next", next);
     }
@@ -237,12 +243,13 @@ export async function action({ request }: ActionFunctionArgs) {
       projectSlug: project.slug,
     });
 
-    const params = new URLSearchParams({
-      state,
-      code,
-      configurationId,
-      origin: "marketplace",
-    });
+    const params = new URLSearchParams();
+    params.set("state", state);
+    params.set("code", code);
+    if (configurationId) {
+      params.set("configurationId", configurationId);
+    }
+    params.set("origin", "marketplace");
     if (next) {
       params.set("next", next);
     }
@@ -255,7 +262,7 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function VercelOnboardingPage() {
-  const data = useLoaderData<typeof loader>();
+  const data = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
   const [isInstalling, setIsInstalling] = useState(false);
@@ -280,67 +287,71 @@ export default function VercelOnboardingPage() {
   }
 
   if (data.step === "org") {
+    const newOrgUrl = (() => {
+      const params = new URLSearchParams();
+      params.set("code", data.code);
+      if (data.configurationId) {
+        params.set("configurationId", data.configurationId);
+      }
+      params.set("integration", "vercel");
+      if (data.next) {
+        params.set("next", data.next);
+      }
+      return `/orgs/new?${params.toString()}`;
+    })();
+
     return (
       <AppContainer className="bg-charcoal-900">
         <BackgroundWrapper>
           <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
             <FormTitle
+              LeadingIcon={<BuildingOfficeIcon className="size-7 text-indigo-500" />}
               title="Select Organization"
               description="Choose which organization to install the Vercel integration into."
             />
             <Form method="post">
               <input type="hidden" name="action" value="select-org" />
               <input type="hidden" name="code" value={data.code} />
-              <input type="hidden" name="configurationId" value={data.configurationId} />
+              {data.configurationId && (
+                <input type="hidden" name="configurationId" value={data.configurationId} />
+              )}
               {data.next && <input type="hidden" name="next" value={data.next} />}
 
               <Fieldset>
-                <Select
-                  name="organizationId"
-                  placeholder="Choose an organization"
-                  required
-                  variant="tertiary/medium"
-                  dropdownIcon
-                  defaultValue={data.organizations[0]?.id}
-                  text={(v) =>
-                    typeof v === "string"
-                      ? data.organizations.find((o) => o.id === v)?.title || "Choose an organization"
-                      : "Choose an organization"
+                <InputGroup>
+                  <Label>Organization</Label>
+                  <Select
+                    name="organizationId"
+                    placeholder="Choose an organization"
+                    required
+                    variant="tertiary/medium"
+                    dropdownIcon
+                    defaultValue={data.organizations[0]?.id}
+                    text={(v) =>
+                      typeof v === "string"
+                        ? data.organizations.find((o) => o.id === v)?.title || "Choose an organization"
+                        : "Choose an organization"
+                    }
+                  >
+                    {data.organizations.map((org) => (
+                      <SelectItem key={org.id} value={org.id}>
+                        {org.title}
+                      </SelectItem>
+                    ))}
+                  </Select>
+                </InputGroup>
+                <FormButtons
+                  confirmButton={
+                    <div className="flex items-center gap-2">
+                      <LinkButton to={newOrgUrl} variant="tertiary/small">
+                        + New Organization
+                      </LinkButton>
+                      <Button type="submit" variant="primary/small">
+                        Continue
+                      </Button>
+                    </div>
                   }
-                >
-                  {data.organizations.map((org) => (
-                    <SelectItem key={org.id} value={org.id}>
-                      {org.title}
-                    </SelectItem>
-                  ))}
-                </Select>
-                <div className="mt-2 flex w-full justify-between gap-2">
-                  <Button variant="tertiary/medium" onClick={() => window.close()} className="w-full">
-                    Cancel
-                  </Button>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="secondary/medium"
-                      className="flex-1"
-                      onClick={() => {
-                        const params = new URLSearchParams({
-                          code: data.code,
-                          configurationId: data.configurationId,
-                          integration: "vercel",
-                        });
-                        if (data.next) {
-                          params.set("next", data.next);
-                        }
-                        window.location.href = `/orgs/new?${params.toString()}`;
-                      }}
-                    >
-                      + New Organization
-                    </Button>
-                    <Button type="submit" variant="primary/medium" className="flex-1">
-                      Continue
-                    </Button>
-                  </div>
-                </div>
+                />
               </Fieldset>
             </Form>
           </MainCenteredContainer>
@@ -349,71 +360,80 @@ export default function VercelOnboardingPage() {
     );
   }
 
+  const newProjectUrl = (() => {
+    const params = new URLSearchParams();
+    params.set("code", data.code);
+    if (data.configurationId) {
+      params.set("configurationId", data.configurationId);
+    }
+    params.set("integration", "vercel");
+    params.set("organizationId", data.organization.id);
+    if (data.next) {
+      params.set("next", data.next);
+    }
+    return `${newProjectPath({ slug: data.organization.slug })}?${params.toString()}`;
+  })();
+
+  const isLoading = isSubmitting || isInstalling;
+
   return (
     <AppContainer className="bg-charcoal-900">
       <BackgroundWrapper>
         <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
           <FormTitle
+            LeadingIcon={<FolderIcon className="size-7 text-indigo-500" />}
             title="Select Project"
-            description={`Choose which project in ${data.organization.title} to install the Vercel integration into.`}
+            description={`Choose which project in "${data.organization.title}" to install the Vercel integration into.`}
           />
           <Form method="post" onSubmit={() => setIsInstalling(true)}>
             <input type="hidden" name="action" value="select-project" />
             <input type="hidden" name="organizationId" value={data.organization.id} />
             <input type="hidden" name="code" value={data.code} />
-            <input type="hidden" name="configurationId" value={data.configurationId} />
+            {data.configurationId && (
+              <input type="hidden" name="configurationId" value={data.configurationId} />
+            )}
             {data.next && <input type="hidden" name="next" value={data.next} />}
 
             <Fieldset>
-              <Select
-                name="projectId"
-                placeholder="Choose a project"
-                required
-                variant="tertiary/medium"
-                dropdownIcon
-                defaultValue={data.organization.projects[0]?.id}
-                text={(v) =>
-                  typeof v === "string"
-                    ? data.organization.projects.find((p) => p.id === v)?.name || "Choose a project"
-                    : "Choose a project"
+              <InputGroup>
+                <Label>Project</Label>
+                <Select
+                  name="projectId"
+                  placeholder="Choose a project"
+                  required
+                  variant="tertiary/medium"
+                  dropdownIcon
+                  defaultValue={data.organization.projects[0]?.id}
+                  text={(v) =>
+                    typeof v === "string"
+                      ? data.organization.projects.find((p) => p.id === v)?.name || "Choose a project"
+                      : "Choose a project"
+                  }
+                >
+                  {data.organization.projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </Select>
+              </InputGroup>
+              <FormButtons
+                confirmButton={
+                  <div className="flex items-center gap-2">
+                    <LinkButton to={newProjectUrl} variant="tertiary/small" disabled={isLoading}>
+                      + New Project
+                    </LinkButton>
+                    <Button
+                      type="submit"
+                      variant="primary/small"
+                      disabled={isLoading}
+                      TrailingIcon={isLoading ? ButtonSpinner : undefined}
+                    >
+                      {isLoading ? "Continuing…" : "Continue"}
+                    </Button>
+                  </div>
                 }
-              >
-                {data.organization.projects.map((project) => (
-                  <SelectItem key={project.id} value={project.id}>
-                    {project.name}
-                  </SelectItem>
-                ))}
-              </Select>
-
-              <div className="mt-2 flex w-full justify-between gap-2">
-                <Button variant="tertiary/medium" onClick={() => window.close()} disabled={isSubmitting || isInstalling}>
-                  Cancel
-                </Button>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="secondary/medium"
-                    className="flex-1"
-                    disabled={isSubmitting || isInstalling}
-                    onClick={() => {
-                      const params = new URLSearchParams({
-                        code: data.code,
-                        configurationId: data.configurationId,
-                        integration: "vercel",
-                        organizationId: data.organization.id,
-                      });
-                      if (data.next) {
-                        params.set("next", data.next);
-                      }
-                      window.location.href = `${newProjectPath({ slug: data.organization.slug })}?${params.toString()}`;
-                    }}
-                  >
-                    + New Project
-                  </Button>
-                  <Button type="submit" variant="primary/medium" disabled={isSubmitting || isInstalling} className="flex-1">
-                    {(isSubmitting || isInstalling) ? "Installing..." : "Install Integration"}
-                  </Button>
-                </div>
-              </div>
+              />
             </Fieldset>
           </Form>
         </MainCenteredContainer>
