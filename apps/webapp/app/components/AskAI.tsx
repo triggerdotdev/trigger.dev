@@ -123,7 +123,7 @@ function AskAIProvider({ websiteId, isCollapsed = false }: AskAIProviderProps) {
                 <Button
                   variant="small-menu-item"
                   data-action="ask-ai"
-                  shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
+                  shortcut={{ modifiers: ["mod"], key: "i", enabledOnInputElements: true }}
                   hideShortcutKey
                   data-modal-override-open-class-ask-ai="true"
                   onClick={() => openAskAI()}
@@ -142,7 +142,7 @@ function AskAIProvider({ websiteId, isCollapsed = false }: AskAIProviderProps) {
               Ask AI
               <span className="flex items-center">
                 <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
-                <ShortcutKey shortcut={{ key: "/" }} variant="medium/bright" />
+                <ShortcutKey shortcut={{ key: "i" }} variant="medium/bright" />
               </span>
             </TooltipContent>
           </Tooltip>

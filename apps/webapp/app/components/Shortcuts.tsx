@@ -76,7 +76,8 @@ function ShortcutContent() {
               <ShortcutKey shortcut={{ key: "enter" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="Ask AI">
-              <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
+              <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
+              <ShortcutKey shortcut={{ key: "i" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="Filter">
               <ShortcutKey shortcut={{ key: "f" }} variant="medium/bright" />
