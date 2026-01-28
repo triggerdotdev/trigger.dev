@@ -1390,6 +1390,44 @@ paths:
                     ]
                   }'
 
+  "/api/v1/deployments/{deploymentVersion}/promote":
+    post:
+      operationId: promote_deployment_v1
+      summary: Promote deployment
+      description: Promote a deployment to become the current deployment for the environment. This makes all tasks in the specified deployment version the active version that will be used when new runs are triggered.
+      parameters:
+        - in: path
+          name: deploymentVersion
+          required: true
+          schema:
+            type: string
+          description: The version of the deployment to promote (e.g., "20240101.1").
+          example: "20240101.1"
+      responses:
+        "200":
+          description: Deployment promoted successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/PromoteDeploymentResponse"
+        "400":
+          description: Invalid request parameters or deployment cannot be promoted
+        "401":
+          description: Unauthorized - Invalid or missing API key
+        "404":
+          description: Deployment not found
+        "500":
+          description: Internal server error
+      tags:
+        - deployments
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/deployments/20240101.1/promote" \
+              -H "Authorization: Bearer tr_dev_1234"
+
 components:
   parameters:
     taskIdentifier:
@@ -2703,6 +2741,25 @@ components:
           type: string
         userName:
           type: string
+    PromoteDeploymentResponse:
+      type: object
+      required:
+        - id
+        - version
+        - shortCode
+      properties:
+        id:
+          type: string
+          description: The unique identifier of the promoted deployment.
+          example: deployment_1234
+        version:
+          type: string
+          description: The version string of the deployment.
+          example: "20240101.1"
+        shortCode:
+          type: string
+          description: The short code of the deployment.
+          example: "abc123"
     SerializedError:
       type: object
       required:
