@@ -19,7 +19,7 @@ export default function Project() {
 
   return (
     <>
-      <div className="grid grid-cols-[14rem_1fr] overflow-hidden">
+      <div className="grid grid-cols-[auto_1fr] overflow-hidden">
         <DevPresenceProvider enabled={environment.type === "DEVELOPMENT"}>
           <SideMenu
             user={{ ...user, isImpersonating }}

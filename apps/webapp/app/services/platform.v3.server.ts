@@ -15,7 +15,7 @@ import {
   type CurrentPlan,
 } from "@trigger.dev/platform";
 import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
-import { MemoryStore } from "@unkey/cache/stores";
+import { createLRUMemoryStore } from "@internal/cache";
 import { existsSync, readFileSync } from "node:fs";
 import { redirect } from "remix-typedjson";
 import { z } from "zod";
@@ -45,13 +45,7 @@ const client = singleton("billingClient", initializeClient);
 
 function initializePlatformCache() {
   const ctx = new DefaultStatefulContext();
-  const memory = new MemoryStore({
-    persistentMap: new Map(),
-    unstableEvictOnSet: {
-      frequency: 0.01,
-      maxItems: 1000,
-    },
-  });
+  const memory = createLRUMemoryStore(1000);
   const redisCacheStore = new RedisCacheStore({
     connection: {
       keyPrefix: "tr:cache:platform:v3",
