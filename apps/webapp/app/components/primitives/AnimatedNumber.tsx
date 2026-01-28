@@ -19,6 +19,19 @@ function getDecimalPlaces(value: number): number {
   return 4;
 }
 
+/**
+ * Sanitizes a decimal places value to ensure it's valid for toLocaleString.
+ * - Coerces to a finite number (handles NaN, Infinity, -Infinity)
+ * - Rounds to an integer
+ * - Clamps to the valid 0-20 range for toLocaleString options
+ */
+function sanitizeDecimals(decimals: number): number {
+  if (!Number.isFinite(decimals)) {
+    return 0;
+  }
+  return Math.min(20, Math.max(0, Math.round(decimals)));
+}
+
 export function AnimatedNumber({
   value,
   duration = 0.5,
@@ -31,19 +44,19 @@ export function AnimatedNumber({
 }) {
   const motionValue = useMotionValue(value);
 
-  // Determine decimal places - use provided value or auto-detect
-  const decimals = useMemo(
-    () => (decimalPlaces !== undefined ? decimalPlaces : getDecimalPlaces(value)),
-    [decimalPlaces, value]
-  );
+  // Determine decimal places - use provided value or auto-detect, then sanitize
+  const safeDecimals = useMemo(() => {
+    const rawDecimals = decimalPlaces !== undefined ? decimalPlaces : getDecimalPlaces(value);
+    return sanitizeDecimals(rawDecimals);
+  }, [decimalPlaces, value]);
 
   const display = useTransform(motionValue, (current) => {
-    if (decimals === 0) {
+    if (safeDecimals === 0) {
       return Math.round(current).toLocaleString();
     }
     return current.toLocaleString(undefined, {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
+      minimumFractionDigits: safeDecimals,
+      maximumFractionDigits: safeDecimals,
     });
   });
 
