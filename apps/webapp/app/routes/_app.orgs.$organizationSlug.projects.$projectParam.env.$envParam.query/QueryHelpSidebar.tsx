@@ -38,18 +38,38 @@ export function QueryHelpSidebar({
       >
         <div className="h-fit overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <ClientTabsList variant="underline" className="mx-3 shrink-0">
-            <ClientTabsTrigger value="ai" variant="underline" layoutId="query-help-tabs" className="shrink-0">
+            <ClientTabsTrigger
+              value="ai"
+              variant="underline"
+              layoutId="query-help-tabs"
+              className="shrink-0"
+            >
               <div className="flex items-center gap-0.5">
                 <AISparkleIcon className="size-4" /> AI
               </div>
             </ClientTabsTrigger>
-            <ClientTabsTrigger value="guide" variant="underline" layoutId="query-help-tabs" className="shrink-0">
+            <ClientTabsTrigger
+              value="guide"
+              variant="underline"
+              layoutId="query-help-tabs"
+              className="shrink-0"
+            >
               Writing TRQL
             </ClientTabsTrigger>
-            <ClientTabsTrigger value="schema" variant="underline" layoutId="query-help-tabs" className="shrink-0">
+            <ClientTabsTrigger
+              value="schema"
+              variant="underline"
+              layoutId="query-help-tabs"
+              className="shrink-0"
+            >
               Table schema
             </ClientTabsTrigger>
-            <ClientTabsTrigger value="examples" variant="underline" layoutId="query-help-tabs" className="shrink-0">
+            <ClientTabsTrigger
+              value="examples"
+              variant="underline"
+              layoutId="query-help-tabs"
+              className="shrink-0"
+            >
               Examples
             </ClientTabsTrigger>
           </ClientTabsList>
@@ -69,7 +89,7 @@ export function QueryHelpSidebar({
         </ClientTabsContent>
         <ClientTabsContent
           value="guide"
-          className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
           <div className="min-w-64 p-3">
             <TRQLGuideContent onTryExample={onTryExample} />
@@ -77,7 +97,7 @@ export function QueryHelpSidebar({
         </ClientTabsContent>
         <ClientTabsContent
           value="schema"
-          className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
           <div className="min-w-64 p-3">
             <TableSchemaContent />
@@ -85,7 +105,7 @@ export function QueryHelpSidebar({
         </ClientTabsContent>
         <ClientTabsContent
           value="examples"
-          className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
           <div className="min-w-64 p-3">
             <ExamplesContent onTryExample={onTryExample} />
@@ -95,4 +115,3 @@ export function QueryHelpSidebar({
     </div>
   );
 }
-
