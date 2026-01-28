@@ -159,6 +159,10 @@ export async function executeQuery<TOut extends z.ZodSchema>(
         ...getDefaultClickhouseSettings(),
         ...baseOptions.clickhouseSettings, // Allow caller overrides if needed
       },
+      querySettings: {
+        maxRows: env.QUERY_CLICKHOUSE_MAX_RETURNED_ROWS,
+        ...baseOptions.querySettings, // Allow caller overrides if needed
+      },
     });
 
     // If query failed, return early with no queryId
