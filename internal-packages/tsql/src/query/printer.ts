@@ -1664,12 +1664,21 @@ export class ClickHousePrinter {
    *
    * @param column - The column name
    * @param condition - The condition to apply
+   * @param tableAlias - Optional table alias to qualify the column reference.
+   *                     When provided, constructs the field chain as [tableAlias, column]
+   *                     so resolveFieldChain will resolve to the correct table in multi-join queries.
    * @returns The AST expression for the condition
    */
-  private createConditionExpression(column: string, condition: WhereClauseCondition): Expression {
+  private createConditionExpression(
+    column: string,
+    condition: WhereClauseCondition,
+    tableAlias?: string
+  ): Expression {
+    // When tableAlias is provided, qualify the field chain to ensure it binds
+    // to the correct table in multi-join queries
     const fieldExpr: Field = {
       expression_type: "field",
-      chain: [column],
+      chain: tableAlias ? [tableAlias, column] : [column],
     };
 
     if (condition.op === "between") {
@@ -1705,10 +1714,11 @@ export class ClickHousePrinter {
    *
    * This ensures the same enforcedWhereClause can be used across different tables.
    *
-   * Note: We use just the column name without table prefix since ClickHouse
-   * requires the actual table name (task_runs_v2), not the TSQL alias (task_runs)
+   * All guard expressions are qualified with the table alias to ensure they bind
+   * to the correct table in multi-join queries, preventing potential security
+   * issues where an unqualified column reference could bind to the wrong table.
    */
-  private createEnforcedGuard(tableSchema: TableSchema, _tableAlias: string): Expression | null {
+  private createEnforcedGuard(tableSchema: TableSchema, tableAlias: string): Expression | null {
     const { requiredFilters, tenantColumns } = tableSchema;
     const guards: Expression[] = [];
 
@@ -1721,6 +1731,7 @@ export class ClickHousePrinter {
     }
 
     // Apply all enforced conditions for columns that exist in this table
+    // Pass tableAlias to ensure guards are qualified and bind to the correct table
     for (const [column, condition] of Object.entries(this.context.enforcedWhereClause)) {
       // Skip undefined/null conditions (allows conditional inclusion like project_id?: condition)
       if (condition === undefined || condition === null) {
@@ -1728,17 +1739,18 @@ export class ClickHousePrinter {
       }
       // Only apply if column exists in this table's schema or is a tenant column
       if (validColumns.has(column)) {
-        guards.push(this.createConditionExpression(column, condition));
+        guards.push(this.createConditionExpression(column, condition, tableAlias));
       }
     }
 
     // Add required filters from the table schema (e.g., engine = 'V2')
+    // Also qualified with table alias to ensure correct binding in multi-join queries
     if (requiredFilters && requiredFilters.length > 0) {
       for (const filter of requiredFilters) {
         const filterGuard: CompareOperation = {
           expression_type: "compare_operation",
           op: CompareOperationOp.Eq,
-          left: { expression_type: "field", chain: [filter.column] } as Field,
+          left: { expression_type: "field", chain: [tableAlias, filter.column] } as Field,
           right: { expression_type: "constant", value: filter.value } as Constant,
         };
         guards.push(filterGuard);
@@ -2690,6 +2702,31 @@ export class ClickHousePrinter {
     const columnSchema = tableSchema.columns[columnName];
     if (columnSchema) {
       return columnSchema.clickhouseName || columnSchema.name;
+    }
+
+    // Check if this is a tenant column that's not exposed in the schema's columns
+    // These are internal columns used for tenant isolation guards
+    const { tenantColumns, requiredFilters } = tableSchema;
+    if (tenantColumns) {
+      if (
+        columnName === tenantColumns.organizationId ||
+        columnName === tenantColumns.projectId ||
+        columnName === tenantColumns.environmentId
+      ) {
+        // Tenant columns are already ClickHouse column names, return as-is
+        return columnName;
+      }
+    }
+
+    // Check if this is a required filter column (e.g., engine = 'V2')
+    // These are internal columns used for enforced filters
+    if (requiredFilters) {
+      for (const filter of requiredFilters) {
+        if (columnName === filter.column) {
+          // Required filter columns are already ClickHouse column names, return as-is
+          return columnName;
+        }
+      }
     }
 
     // Column not in schema - this is a security issue, block access
