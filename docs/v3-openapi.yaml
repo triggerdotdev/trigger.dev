@@ -505,6 +505,177 @@ paths:
 
             await runs.cancel("run_1234");
 
+  "/api/v1/deployments/{deploymentId}":
+    parameters:
+      - in: path
+        name: deploymentId
+        required: true
+        schema:
+          type: string
+        description: The deployment ID.
+    get:
+      operationId: get_deployment_v1
+      summary: Get deployment
+      description: Retrieve information about a specific deployment by its ID.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: The deployment ID
+                  status:
+                    type: string
+                    enum: ["PENDING", "INSTALLING", "BUILDING", "DEPLOYING", "DEPLOYED", "FAILED", "CANCELED", "TIMED_OUT"]
+                    description: The current status of the deployment
+                  contentHash:
+                    type: string
+                    description: Hash of the deployment content
+                  shortCode:
+                    type: string
+                    description: The short code for the deployment
+                  version:
+                    type: string
+                    description: The deployment version (e.g., "20250228.1")
+                  imageReference:
+                    type: string
+                    nullable: true
+                    description: Reference to the deployment image
+                  imagePlatform:
+                    type: string
+                    description: Platform of the deployment image
+                  externalBuildData:
+                    type: object
+                    nullable: true
+                    description: External build data if applicable
+                  errorData:
+                    type: object
+                    nullable: true
+                    description: Error data if the deployment failed
+                  worker:
+                    type: object
+                    nullable: true
+                    description: Worker information if available
+                    properties:
+                      id:
+                        type: string
+                      version:
+                        type: string
+                      tasks:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            slug:
+                              type: string
+                            filePath:
+                              type: string
+                            exportName:
+                              type: string
+        "401":
+          description: Unauthorized - Access token is missing or invalid
+        "404":
+          description: Deployment not found
+      tags:
+        - deployments
+      security:
+        - personalAccessToken: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            // Note: This endpoint requires a personal access token, not a secret key
+            const response = await fetch(
+              `https://api.trigger.dev/api/v1/deployments/${deploymentId}`,
+              {
+                method: "GET",
+                headers: {
+                  "Authorization": `Bearer ${personalAccessToken}`,
+                },
+              }
+            );
+            const deployment = await response.json();
+        - lang: curl
+          source: |-
+            curl -X GET "https://api.trigger.dev/api/v1/deployments/deployment_1234" \
+              -H "Authorization: Bearer your_personal_access_token"
+
+  "/api/v1/deployments/latest":
+    get:
+      operationId: get_latest_deployment_v1
+      summary: Get latest deployment
+      description: Retrieve information about the latest unmanaged deployment for the authenticated project.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: The deployment ID
+                  status:
+                    type: string
+                    enum: ["PENDING", "INSTALLING", "BUILDING", "DEPLOYING", "DEPLOYED", "FAILED", "CANCELED", "TIMED_OUT"]
+                    description: The current status of the deployment
+                  contentHash:
+                    type: string
+                    description: Hash of the deployment content
+                  shortCode:
+                    type: string
+                    description: The short code for the deployment
+                  version:
+                    type: string
+                    description: The deployment version (e.g., "20250228.1")
+                  imageReference:
+                    type: string
+                    nullable: true
+                    description: Reference to the deployment image
+                  imagePlatform:
+                    type: string
+                    description: Platform of the deployment image
+                  externalBuildData:
+                    type: object
+                    nullable: true
+                    description: External build data if applicable
+                  errorData:
+                    type: object
+                    nullable: true
+                    description: Error data if the deployment failed
+        "401":
+          description: Unauthorized - Access token is missing or invalid
+        "404":
+          description: No deployment found
+      tags:
+        - deployments
+      security:
+        - personalAccessToken: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            // Note: This endpoint requires a personal access token, not a secret key
+            const response = await fetch(
+              "https://api.trigger.dev/api/v1/deployments/latest",
+              {
+                method: "GET",
+                headers: {
+                  "Authorization": `Bearer ${personalAccessToken}`,
+                },
+              }
+            );
+            const deployment = await response.json();
+        - lang: curl
+          source: |-
+            curl -X GET "https://api.trigger.dev/api/v1/deployments/latest" \
+              -H "Authorization: Bearer your_personal_access_token"
+
   "/api/v1/deployments/{version}/promote":
     parameters:
       - in: path

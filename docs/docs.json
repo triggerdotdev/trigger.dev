@@ -272,7 +272,11 @@
           },
           {
             "group": "Deployments API",
-            "pages": ["management/deployments/promote"]
+            "pages": [
+              "management/deployments/retrieve",
+              "management/deployments/get-latest",
+              "management/deployments/promote"
+            ]
           }
         ]
       },
