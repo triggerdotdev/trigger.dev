@@ -88,8 +88,7 @@ function ReplayContent({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) 
       }
 
       queueFetcher.load(
-        `/resources/orgs/${params.organizationSlug}/projects/${
-          params.projectParam
+        `/resources/orgs/${params.organizationSlug}/projects/${params.projectParam
         }/env/${envSlug}/queues?${searchParams.toString()}`
       );
     }
@@ -163,9 +162,9 @@ function ReplayForm({
 
   const isSubmitting = navigation.formAction === formAction;
 
-  const editablePayload =
-    replayData.payloadType === "application/json" ||
-    replayData.payloadType === "application/super+json";
+  const isLargePayload = replayData.payloadType === "application/store";
+  const isTooLargeToEdit = (replayData.payload?.length ?? 0) > 512 * 1024;
+  const editablePayload = !isLargePayload && !isTooLargeToEdit;
 
   const [tab, setTab] = useState<"payload" | "metadata">(editablePayload ? "payload" : "metadata");
 
@@ -275,10 +274,16 @@ function ReplayForm({
                         <InfoIconTooltip
                           content={
                             <span className="text-sm">
-                              Payload is not editable for runs with{" "}
-                              <TextLink to={docsPath("triggering#large-payloads")}>
-                                large payloads.
-                              </TextLink>
+                              {isLargePayload ? (
+                                <>
+                                  Payload is not editable for runs with{" "}
+                                  <TextLink to={docsPath("triggering#large-payloads")}>
+                                    large payloads.
+                                  </TextLink>
+                                </>
+                              ) : (
+                                "Payload is too large to edit."
+                              )}
                             </span>
                           }
                         />
