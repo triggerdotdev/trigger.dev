@@ -1890,7 +1890,26 @@ export class ClickHousePrinter {
     const useTextColumn = textColumnOps.includes(node.op);
     const leftTextColumn = useTextColumn ? this.getTextColumnForExpression(node.left) : null;
 
-    const left = leftTextColumn ? this.printIdentifier(leftTextColumn) : this.visit(node.left);
+    // Build the left side, qualifying the text column with table alias if present
+    let left: string;
+    if (leftTextColumn) {
+      // Check if the field is qualified with a table alias (e.g., r.output)
+      // and prepend that alias to the text column to avoid ambiguity in JOINs
+      const fieldNode = node.left as Field;
+      if (fieldNode.expression_type === "field" && fieldNode.chain.length >= 2) {
+        const firstPart = fieldNode.chain[0];
+        if (typeof firstPart === "string" && this.tableContexts.has(firstPart)) {
+          // The field is qualified with a table alias, prepend it to the text column
+          left = this.printIdentifier(firstPart) + "." + this.printIdentifier(leftTextColumn);
+        } else {
+          left = this.printIdentifier(leftTextColumn);
+        }
+      } else {
+        left = this.printIdentifier(leftTextColumn);
+      }
+    } else {
+      left = this.visit(node.left);
+    }
     const right = this.visit(transformedRight);
 
     switch (node.op) {

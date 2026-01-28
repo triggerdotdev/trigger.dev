@@ -852,6 +852,104 @@ describe("ClickHousePrinter", () => {
         expect(sql).toContain("like(output_text,");
       });
     });
+
+    describe("JOINs with textColumn", () => {
+      // Create a second schema with the same JSON column names to test JOIN ambiguity
+      const runsSchemaWithTextColumn: TableSchema = {
+        name: "runs",
+        clickhouseName: "trigger_dev.task_runs_v2",
+        columns: {
+          id: { name: "id", ...column("String") },
+          output: {
+            name: "output",
+            ...column("JSON"),
+            nullValue: "'{}'",
+            textColumn: "output_text",
+          },
+          organization_id: { name: "organization_id", ...column("String") },
+          project_id: { name: "project_id", ...column("String") },
+          environment_id: { name: "environment_id", ...column("String") },
+        },
+        tenantColumns: {
+          organizationId: "organization_id",
+          projectId: "project_id",
+          environmentId: "environment_id",
+        },
+      };
+
+      const eventsSchemaWithTextColumn: TableSchema = {
+        name: "events",
+        clickhouseName: "trigger_dev.task_events_v2",
+        columns: {
+          id: { name: "id", ...column("String") },
+          run_id: { name: "run_id", ...column("String") },
+          output: {
+            name: "output",
+            ...column("JSON"),
+            nullValue: "'{}'",
+            textColumn: "output_text",
+          },
+          organization_id: { name: "organization_id", ...column("String") },
+          project_id: { name: "project_id", ...column("String") },
+          environment_id: { name: "environment_id", ...column("String") },
+        },
+        tenantColumns: {
+          organizationId: "organization_id",
+          projectId: "project_id",
+          environmentId: "environment_id",
+        },
+      };
+
+      function createJoinTextColumnContext() {
+        const schema = createSchemaRegistry([runsSchemaWithTextColumn, eventsSchemaWithTextColumn]);
+        return createPrinterContext({
+          schema,
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_test" },
+            project_id: { op: "eq", value: "proj_test" },
+            environment_id: { op: "eq", value: "env_test" },
+          },
+        });
+      }
+
+      it("should qualify text column with table alias in JOIN WHERE clause to avoid ambiguity", () => {
+        const ctx = createJoinTextColumnContext();
+        const { sql } = printQuery(
+          `SELECT r.id FROM runs r JOIN events e ON r.id = e.run_id WHERE r.output = '{}'`,
+          ctx
+        );
+
+        // The text column should be table-qualified to avoid ambiguity
+        // since both tables have an output_text column
+        expect(sql).toContain("equals(r.output_text,");
+        // Should NOT have unqualified output_text in the comparison
+        expect(sql).not.toMatch(/equals\(output_text,/);
+      });
+
+      it("should qualify text column with table alias for LIKE in JOIN", () => {
+        const ctx = createJoinTextColumnContext();
+        const { sql } = printQuery(
+          `SELECT r.id FROM runs r JOIN events e ON r.id = e.run_id WHERE e.output LIKE '%error%'`,
+          ctx
+        );
+
+        // Should use table-qualified text column
+        expect(sql).toContain("like(e.output_text,");
+        expect(sql).not.toMatch(/like\(output_text,/);
+      });
+
+      it("should handle multiple qualified text column comparisons in JOIN", () => {
+        const ctx = createJoinTextColumnContext();
+        const { sql } = printQuery(
+          `SELECT r.id FROM runs r JOIN events e ON r.id = e.run_id WHERE r.output = '{}' AND e.output != '{}'`,
+          ctx
+        );
+
+        // Both comparisons should be table-qualified
+        expect(sql).toContain("equals(r.output_text,");
+        expect(sql).toContain("notEquals(e.output_text,");
+      });
+    });
   });
 
   describe("dataPrefix for JSON columns", () => {
