@@ -1,4 +1,10 @@
-import { ArrowDownTrayIcon, ArrowsPointingOutIcon, ArrowTrendingUpIcon, ClipboardIcon, TableCellsIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowDownTrayIcon,
+  ArrowsPointingOutIcon,
+  ArrowTrendingUpIcon,
+  ClipboardIcon,
+  TableCellsIcon,
+} from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { type WhereClauseCondition } from "@internal/tsql";
 import { useFetcher } from "@remix-run/react";
@@ -55,6 +61,7 @@ import { Switch } from "~/components/primitives/Switch";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { TimeFilter, timeFilters } from "~/components/runs/v3/SharedFilters";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -74,7 +81,7 @@ import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { QueryHelpSidebar } from "./QueryHelpSidebar";
 import { QueryHistoryPopover } from "./QueryHistoryPopover";
 import type { AITimeFilter } from "./types";
-import { formatQueryStats } from "./utils";
+import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {
@@ -167,6 +174,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     defaultPeriod: await getDefaultPeriod(project.organizationId),
     history,
     isAdmin,
+    maxRows: env.QUERY_CLICKHOUSE_MAX_RETURNED_ROWS,
   });
 };
 
@@ -206,6 +214,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         columns: null,
         stats: null,
         hiddenColumns: null,
+        reachedMaxRows: null,
         explainOutput: null,
         generatedSql: null,
         periodClipped: null,
@@ -223,6 +232,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         columns: null,
         stats: null,
         hiddenColumns: null,
+        reachedMaxRows: null,
         explainOutput: null,
         generatedSql: null,
         periodClipped: null,
@@ -240,6 +250,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         columns: null,
         stats: null,
         hiddenColumns: null,
+        reachedMaxRows: null,
         explainOutput: null,
         generatedSql: null,
         periodClipped: null,
@@ -266,6 +277,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         columns: null,
         stats: null,
         hiddenColumns: null,
+        reachedMaxRows: null,
         explainOutput: null,
         generatedSql: null,
         periodClipped: null,
@@ -320,7 +332,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   // Force tenant isolation and time period limits
   const enforcedWhereClause = {
     organization_id: { op: "eq", value: project.organizationId },
-    project_id: scope === "project" || scope === "environment" ? { op: "eq", value: project.id } : undefined,
+    project_id:
+      scope === "project" || scope === "environment" ? { op: "eq", value: project.id } : undefined,
     environment_id: scope === "environment" ? { op: "eq", value: environment.id } : undefined,
     triggered_at: { op: "gte", value: maxQueryPeriodDate },
   } satisfies Record<string, WhereClauseCondition | undefined>;
@@ -363,6 +376,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           columns: null,
           stats: null,
           hiddenColumns: null,
+          reachedMaxRows: null,
           explainOutput: null,
           generatedSql: null,
           queryId: null,
@@ -378,6 +392,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       columns: result.columns,
       stats: result.stats,
       hiddenColumns: result.hiddenColumns ?? null,
+      reachedMaxRows: result.reachedMaxRows,
       explainOutput: result.explainOutput ?? null,
       generatedSql: result.generatedSql ?? null,
       queryId,
@@ -392,6 +407,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         columns: null,
         stats: null,
         hiddenColumns: null,
+        reachedMaxRows: null,
         explainOutput: null,
         generatedSql: null,
         queryId: null,
@@ -424,7 +440,20 @@ const QueryEditorForm = forwardRef<
     onQuerySubmit?: () => void;
     onHistorySelected?: (item: QueryHistoryItem) => void;
   }
->(function QueryEditorForm({ defaultPeriod, defaultQuery, defaultScope, defaultTimeFilter, history, fetcher, isAdmin, onQuerySubmit, onHistorySelected }, ref) {
+>(function QueryEditorForm(
+  {
+    defaultPeriod,
+    defaultQuery,
+    defaultScope,
+    defaultTimeFilter,
+    history,
+    fetcher,
+    isAdmin,
+    onQuerySubmit,
+    onHistorySelected,
+  },
+  ref
+) {
   const isLoading = fetcher.state === "submitting" || fetcher.state === "loading";
   const [query, setQuery] = useState(defaultQuery);
   const [scope, setScope] = useState<QueryScope>(defaultScope);
@@ -466,17 +495,20 @@ const QueryEditorForm = forwardRef<
     [query]
   );
 
-  const handleHistorySelected = useCallback((item: QueryHistoryItem) => {
-    setQuery(item.query);
-    setScope(item.scope);
-    // Apply time filter from history item
-    // Note: filterFrom/filterTo might be Date objects or ISO strings depending on serialization
-    setPeriod(item.filterPeriod ?? undefined);
-    setFrom(item.filterFrom ? toISOString(item.filterFrom) : undefined);
-    setTo(item.filterTo ? toISOString(item.filterTo) : undefined);
-    // Notify parent about history selection (for title)
-    onHistorySelected?.(item);
-  }, [onHistorySelected]);
+  const handleHistorySelected = useCallback(
+    (item: QueryHistoryItem) => {
+      setQuery(item.query);
+      setScope(item.scope);
+      // Apply time filter from history item
+      // Note: filterFrom/filterTo might be Date objects or ISO strings depending on serialization
+      setPeriod(item.filterPeriod ?? undefined);
+      setFrom(item.filterFrom ? toISOString(item.filterFrom) : undefined);
+      setTo(item.filterTo ? toISOString(item.filterTo) : undefined);
+      // Notify parent about history selection (for title)
+      onHistorySelected?.(item);
+    },
+    [onHistorySelected]
+  );
 
   return (
     <div className="flex h-full flex-col gap-2 bg-charcoal-900 pb-2">
@@ -489,7 +521,11 @@ const QueryEditorForm = forwardRef<
         showClearButton={true}
         className="min-h-0 flex-1"
       />
-      <fetcher.Form ref={formRef} method="post" className="flex items-center justify-between gap-2 px-2">
+      <fetcher.Form
+        ref={formRef}
+        method="post"
+        className="flex items-center justify-between gap-2 px-2"
+      >
         <input type="hidden" name="query" value={query} />
         <input type="hidden" name="scope" value={scope} />
         {/* Pass time filter values to action */}
@@ -529,9 +565,11 @@ const QueryEditorForm = forwardRef<
           </Select>
           {queryHasTriggeredAt ? (
             <SimpleTooltip
-              button={<Button variant="tertiary/small" disabled={true} type="button">
-                Set in query
-              </Button>}
+              button={
+                <Button variant="tertiary/small" disabled={true} type="button">
+                  Set in query
+                </Button>
+              }
               content="Your query includes a WHERE clause with triggered_at so this filter is disabled."
             />
           ) : (
@@ -572,7 +610,8 @@ const QueryEditorForm = forwardRef<
 });
 
 export default function Page() {
-  const { defaultPeriod, defaultQuery, history, isAdmin } = useTypedLoaderData<typeof loader>();
+  const { defaultPeriod, defaultQuery, history, isAdmin, maxRows } =
+    useTypedLoaderData<typeof loader>();
   const fetcher = useTypedFetcher<typeof action>();
   const results = fetcher.data;
   const { replace: replaceSearchParams } = useSearchParams();
@@ -584,14 +623,15 @@ export default function Page() {
   // Use most recent history item if available, otherwise fall back to defaults
   const initialQuery = history.length > 0 ? history[0].query : defaultQuery;
   const initialScope: QueryScope = history.length > 0 ? history[0].scope : "environment";
-  const initialTimeFilter = history.length > 0
-    ? {
-      period: history[0].filterPeriod ?? undefined,
-      // Note: filterFrom/filterTo might be Date objects or ISO strings depending on serialization
-      from: history[0].filterFrom ? toISOString(history[0].filterFrom) : undefined,
-      to: history[0].filterTo ? toISOString(history[0].filterTo) : undefined,
-    }
-    : undefined;
+  const initialTimeFilter =
+    history.length > 0
+      ? {
+          period: history[0].filterPeriod ?? undefined,
+          // Note: filterFrom/filterTo might be Date objects or ISO strings depending on serialization
+          from: history[0].filterFrom ? toISOString(history[0].filterFrom) : undefined,
+          to: history[0].filterTo ? toISOString(history[0].filterTo) : undefined,
+        }
+      : undefined;
 
   const editorRef = useRef<QueryEditorFormHandle>(null);
   const [prettyFormatting, setPrettyFormatting] = useState(true);
@@ -637,7 +677,15 @@ export default function Page() {
         setShouldGenerateTitle(false);
       }
     }
-  }, [results, shouldGenerateTitle, historyTitle, titleFetcher, organization.slug, project.slug, environment.slug]);
+  }, [
+    results,
+    shouldGenerateTitle,
+    historyTitle,
+    titleFetcher,
+    organization.slug,
+    project.slug,
+    environment.slug,
+  ]);
 
   const handleTryFixError = useCallback((errorMessage: string) => {
     setSidebarTab("ai");
@@ -703,7 +751,12 @@ export default function Page() {
           <ResizablePanel id="query-main" className="h-full">
             <ResizablePanelGroup orientation="vertical" className="h-full overflow-hidden">
               {/* Query editor - isolated component to prevent re-renders */}
-              <ResizablePanel id="query-editor" min="100px" default="300px" className="overflow-hidden">
+              <ResizablePanel
+                id="query-editor"
+                min="100px"
+                default="300px"
+                className="overflow-hidden"
+              >
                 <QueryEditorForm
                   ref={editorRef}
                   defaultPeriod={defaultPeriod}
@@ -719,11 +772,15 @@ export default function Page() {
               </ResizablePanel>
               <ResizableHandle id="query-editor-handle" />
               {/* Results */}
-              <ResizablePanel id="query-results" min="200px" className="overflow-hidden bg-charcoal-800">
+              <ResizablePanel
+                id="query-results"
+                min="200px"
+                className="overflow-hidden bg-charcoal-800"
+              >
                 <ClientTabs
                   value={resultsView}
                   onValueChange={(v) => setResultsView(v as "table" | "graph")}
-                  className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden max-h-full h-full"
+                  className="grid h-full max-h-full min-h-0 grid-rows-[auto_1fr] overflow-hidden"
                 >
                   <ClientTabsList
                     variant="underline"
@@ -743,12 +800,22 @@ export default function Page() {
                     {results?.rows ? (
                       <div className="flex flex-1 items-center justify-end gap-2 overflow-hidden border-b border-grid-dimmed pl-3">
                         <div className="flex items-center gap-2 overflow-hidden truncate">
-                          <span className="text-xs text-text-dimmed">
-                            {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
-                          </span>
+                          {results.reachedMaxRows ? (
+                            <SimpleTooltip
+                              buttonClassName="text-warning text-xs"
+                              button={`${results.rows.length.toLocaleString()} Results`}
+                              content={`Results are limited to ${maxRows.toLocaleString()} rows maximum.`}
+                            />
+                          ) : (
+                            <span className="text-xs text-text-dimmed">
+                              {results.rows.length > 0
+                                ? `${results.rows.length.toLocaleString()} Results`
+                                : "Results"}
+                            </span>
+                          )}
                           {results?.stats && (
                             <span className="text-xs text-text-dimmed">
-                              {formatQueryStats(results.stats)}
+                              {formatDurationNanoseconds(parseInt(results.stats.elapsed_ns, 10))}
                             </span>
                           )}
                         </div>
@@ -810,13 +877,19 @@ export default function Page() {
                         </div>
                       </div>
                     ) : results?.rows && results?.columns ? (
-                      <div className={`bg-charcoal-900 grid h-full max-h-full overflow-hidden ${hasQueryResultsCallouts(results.hiddenColumns, results.periodClipped) ? "grid-rows-[auto_1fr]" : "grid-rows-[1fr]"}`}>
+                      <div
+                        className={`grid h-full max-h-full overflow-hidden bg-charcoal-900 ${
+                          hasQueryResultsCallouts(results.hiddenColumns, results.periodClipped)
+                            ? "grid-rows-[auto_1fr]"
+                            : "grid-rows-[1fr]"
+                        }`}
+                      >
                         <QueryResultsCallouts
                           hiddenColumns={results.hiddenColumns}
                           periodClipped={results.periodClipped}
                           organizationSlug={organization.slug}
                         />
-                        <div className="p-2 overflow-hidden">
+                        <div className="overflow-hidden p-2">
                           <Card className="h-full overflow-hidden px-0 pb-0">
                             <Card.Header>
                               <div className="flex items-center gap-1.5">
@@ -848,7 +921,13 @@ export default function Page() {
                   </ClientTabsContent>
                   <ClientTabsContent
                     value="graph"
-                    className={`bg-charcoal-900 m-0 grid min-h-0 f-full max-h-full overflow-hidden ${results?.rows && results.rows.length > 0 && hasQueryResultsCallouts(results.hiddenColumns, results.periodClipped) ? "grid-rows-[auto_1fr]" : "grid-rows-[1fr]"}`}
+                    className={`f-full m-0 grid max-h-full min-h-0 overflow-hidden bg-charcoal-900 ${
+                      results?.rows &&
+                      results.rows.length > 0 &&
+                      hasQueryResultsCallouts(results.hiddenColumns, results.periodClipped)
+                        ? "grid-rows-[auto_1fr]"
+                        : "grid-rows-[1fr]"
+                    }`}
                   >
                     {results?.rows && results?.columns && results.rows.length > 0 ? (
                       <>
@@ -1001,21 +1080,25 @@ function QueryResultsCallouts({
   }
 
   return (
-    <div className="flex flex-col gap-2 pt-2 px-2">
+    <div className="flex flex-col gap-2 px-2 pt-2">
       {hiddenColumns && hiddenColumns.length > 0 && (
         <Callout variant="warning" className="shrink-0 text-sm">
-          <code>SELECT *</code> doesn't return all columns because it's slow. The
-          following columns are not shown:{" "}
-          <span className="font-mono text-xs">
-            {hiddenColumns.join(", ")}
-          </span>
-          . Specify them explicitly to include them.
+          <code>SELECT *</code> doesn't return all columns because it's slow. The following columns
+          are not shown: <span className="font-mono text-xs">{hiddenColumns.join(", ")}</span>.
+          Specify them explicitly to include them.
         </Callout>
       )}
       {periodClipped && (
         <Callout
           variant="pricing"
-          cta={<LinkButton variant="primary/small" to={organizationBillingPath({ slug: organizationSlug })}>Upgrade</LinkButton>}
+          cta={
+            <LinkButton
+              variant="primary/small"
+              to={organizationBillingPath({ slug: organizationSlug })}
+            >
+              Upgrade
+            </LinkButton>
+          }
           className="items-center"
         >
           {simplur`Results are limited to the last ${periodClipped} day[|s] based on your plan.`}
@@ -1058,38 +1141,51 @@ function ResultsChart({
   );
 
   return (
-    <><ResizablePanelGroup className="overflow-hidden">
-      <ResizablePanel id="chart-results">
-        <div className="h-full bg-charcoal-900 p-2 overflow-hidden">
-          <Card className="h-full">
-            <Card.Header>
-              <div className="flex items-center gap-1.5">
-                <ArrowTrendingUpIcon className="size-5 text-indigo-500" />
-                {titleContent}
-              </div>
-              <Card.Accessory>
-                <Button variant="minimal/small" LeadingIcon={ArrowsPointingOutIcon} onClick={() => setIsOpen(true)} />
-              </Card.Accessory>
-            </Card.Header>
-            <Card.Content className="h-full flex-1 min-h-0">
-              <QueryResultsChart rows={rows} columns={columns} config={chartConfig} onViewAllLegendItems={() => setIsOpen(true)} />
-            </Card.Content>
-          </Card>
-
-        </div>
-      </ResizablePanel>
-      <ResizableHandle id="chart-split" />
-      <ResizablePanel id="chart-config" min="50px" default="200px">
-        <ChartConfigPanel columns={columns} config={chartConfig} onChange={onChartConfigChange} />
-      </ResizablePanel>
-    </ResizablePanelGroup>
+    <>
+      <ResizablePanelGroup className="overflow-hidden">
+        <ResizablePanel id="chart-results">
+          <div className="h-full overflow-hidden bg-charcoal-900 p-2">
+            <Card className="h-full">
+              <Card.Header>
+                <div className="flex items-center gap-1.5">
+                  <ArrowTrendingUpIcon className="size-5 text-indigo-500" />
+                  {titleContent}
+                </div>
+                <Card.Accessory>
+                  <Button
+                    variant="minimal/small"
+                    LeadingIcon={ArrowsPointingOutIcon}
+                    onClick={() => setIsOpen(true)}
+                  />
+                </Card.Accessory>
+              </Card.Header>
+              <Card.Content className="h-full min-h-0 flex-1">
+                <QueryResultsChart
+                  rows={rows}
+                  columns={columns}
+                  config={chartConfig}
+                  onViewAllLegendItems={() => setIsOpen(true)}
+                />
+              </Card.Content>
+            </Card>
+          </div>
+        </ResizablePanel>
+        <ResizableHandle id="chart-split" />
+        <ResizablePanel id="chart-config" min="50px" default="200px">
+          <ChartConfigPanel columns={columns} config={chartConfig} onChange={onChartConfigChange} />
+        </ResizablePanel>
+      </ResizablePanelGroup>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent fullscreen>
-          <DialogHeader>
-            {queryTitle ?? "Chart"}
-          </DialogHeader>
-          <div className="h-full min-h-0 flex-1 overflow-hidden w-full pt-4">
-            <QueryResultsChart rows={rows} columns={columns} config={chartConfig} fullLegend={true} legendScrollable={true} />
+          <DialogHeader>{queryTitle ?? "Chart"}</DialogHeader>
+          <div className="h-full min-h-0 w-full flex-1 overflow-hidden pt-4">
+            <QueryResultsChart
+              rows={rows}
+              columns={columns}
+              config={chartConfig}
+              fullLegend={true}
+              legendScrollable={true}
+            />
           </div>
         </DialogContent>
       </Dialog>

@@ -116,6 +116,11 @@ export interface TSQLQuerySuccess<T> {
    */
   hiddenColumns?: string[];
   /**
+   * Whether the result count equals the maxRows limit.
+   * When true, the results may be truncated and more rows may exist.
+   */
+  reachedMaxRows: boolean;
+  /**
    * The raw EXPLAIN output from ClickHouse.
    * Only populated when `explain: true` is passed.
    */
@@ -160,16 +165,22 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
 ): Promise<TSQLQueryResult<z.output<TOut>>> {
   const shouldTransformValues = options.transformValues ?? true;
   const isExplain = options.explain ?? false;
+  const maxRows = options.querySettings?.maxRows;
 
   let generatedSql: string | undefined;
   let generatedParams: Record<string, unknown> | undefined;
 
   try {
     // 1. Compile the TSQL query to ClickHouse SQL
+    // Pass maxRows + 1 to fetch one extra row for overflow detection
+    const compiledSettings = maxRows !== undefined
+      ? { ...options.querySettings, maxRows: maxRows + 1 }
+      : options.querySettings;
+
     const { sql, params, columns, hiddenColumns } = compileTSQL(options.query, {
       tableSchema: options.tableSchema,
       enforcedWhereClause: options.enforcedWhereClause,
-      settings: options.querySettings,
+      settings: compiledSettings,
       fieldMappings: options.fieldMappings,
       whereClauseFallback: options.whereClauseFallback,
     });
@@ -244,26 +255,36 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
           columns: [],
           stats,
           hiddenColumns,
+          reachedMaxRows: false,
           explainOutput: combinedOutput,
           generatedSql,
         },
       ];
     }
 
+    // Determine if we exceeded maxRows (we fetched maxRows + 1 to detect overflow)
+    const reachedMaxRows = maxRows !== undefined && rows !== undefined && rows.length > maxRows;
+
+    // Remove the overflow row if we got one (pop is O(1), slice would be O(n))
+    const finalRows = rows ?? [];
+    if (reachedMaxRows) {
+      finalRows.pop();
+    }
+
     // Build the result, including hiddenColumns if present
-    const baseResult = { columns, stats, hiddenColumns };
+    const baseResult = { columns, stats, hiddenColumns, reachedMaxRows };
 
     // 3. Transform result values if enabled
-    if (shouldTransformValues && rows) {
+    if (shouldTransformValues && finalRows.length > 0) {
       const transformedRows = transformResults(
-        rows as Record<string, unknown>[],
+        finalRows as Record<string, unknown>[],
         options.tableSchema,
         { fieldMappings: options.fieldMappings }
       );
       return [null, { rows: transformedRows as z.output<TOut>[], ...baseResult }];
     }
 
-    return [null, { rows: rows ?? [], ...baseResult }];
+    return [null, { rows: finalRows as z.output<TOut>[], ...baseResult }];
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
