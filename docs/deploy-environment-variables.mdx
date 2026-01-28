@@ -361,3 +361,54 @@ This will read your .env.production file using dotenvx and sync the variables to
 - Trigger.dev does not automatically detect .env.production or dotenvx files
 - You can paste them manually into the dashboard
 - Or sync them automatically using a build extension
+
+## Multi-tenant applications
+
+If you're building a multi-tenant application where each tenant needs different environment variables (like tenant-specific API keys or database credentials), you don't need a separate project for each tenant. Instead, use a single project and load tenant-specific secrets at runtime.
+
+<Note>
+  This is different from [syncing environment variables at deploy time](#sync-env-vars-from-another-service). 
+  Here, secrets are loaded dynamically during task execution, not synced to Trigger.dev's environment variables.
+</Note>
+
+### Recommended approach
+
+Use a secrets service (Infisical, AWS Secrets Manager, HashiCorp Vault, etc.) to store tenant-specific secrets, then retrieve them at the start of each task run based on the tenant identifier in your payload or context.
+
+**Important:** Never pass secrets in the task payload, as payloads are logged and visible in the dashboard.
+
+### Example implementation
+
+```ts
+import { task } from "@trigger.dev/sdk";
+import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
+
+export const processTenantData = task({
+  id: "process-tenant-data",
+  run: async (payload: { tenantId: string; data: unknown }) => {
+    // Retrieve tenant-specific secret at runtime
+    const client = new SecretsManagerClient({ region: "us-east-1" });
+    const response = await client.send(
+      new GetSecretValueCommand({
+        SecretId: `tenants/${payload.tenantId}/supabase-key`,
+      })
+    );
+
+    const supabaseKey = JSON.parse(response.SecretString!).SUPABASE_SERVICE_KEY;
+
+    // Your task logic using the tenant-specific secret
+    // ...
+  },
+});
+```
+
+You can use any secrets service - see the [sync env vars section](#sync-env-vars-from-another-service) for an example with Infisical.
+
+### Benefits
+
+- **Single codebase** - Deploy once, works for all tenants
+- **Secure** - Secrets never appear in payloads or logs
+- **Scalable** - No project limit constraints
+- **Flexible** - Easy to add new tenants without redeploying
+
+This approach allows you to support unlimited tenants with a single Trigger.dev project, avoiding the [project limit](/limits#projects) while maintaining security and separation of tenant data.

@@ -177,6 +177,16 @@ Make sure that you always use `await` when you call `trigger`, `triggerAndWait`,
 
 View the [rate limits](/limits) page for more information.
 
+### Runs waiting in queue due to concurrency limits
+
+If runs are staying in the `QUEUED` state for extended periods, check your concurrency usage in the dashboard. Review how many runs are `EXECUTING` or `DEQUEUED` (these count against limits) and check if any runs are stuck in `EXECUTING` state, as they may be blocking new runs.
+
+**Solutions:**
+
+- **Increase concurrency limits** - If you're on a paid plan, increase your environment concurrency limit via the dashboard
+- **Review queue concurrency limits** - Check if individual queues have restrictive `concurrencyLimit` settings
+- **Check for stuck runs** - See if stalled runs are blocking new executions
+
 ### `Crypto is not defined`
 
 This can happen in different situations, for example when using plain strings as idempotency keys. Support for `Crypto` without a special flag was added in Node `v19.0.0`. You will have to upgrade Node - we recommend even-numbered major releases, e.g. `v20` or `v22`. Alternatively, you can switch from plain strings to the `idempotencyKeys.create` SDK function. [Read the guide](/idempotency).
