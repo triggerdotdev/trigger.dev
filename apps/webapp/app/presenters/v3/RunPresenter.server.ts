@@ -8,6 +8,7 @@ import { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import { env } from "~/env.server";
+import { reconcileTraceWithRunLifecycle } from "./reconcileTrace.server";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
 export type Run = Result["run"];
@@ -124,6 +125,7 @@ export class RunPresenter {
       isFinished: isFinalRunStatus(run.status),
       startedAt: run.startedAt,
       completedAt: run.completedAt,
+      createdAt: run.createdAt,
       logsDeletedAt: showDeletedLogs ? null : run.logsDeletedAt,
       rootTaskRun: run.rootTaskRun,
       parentTaskRun: run.parentTaskRun,
@@ -214,56 +216,60 @@ export class RunPresenter {
     const linkedRunIdBySpanId: Record<string, string> = {};
 
     const events = tree
-      ? flattenTree(tree).map((n) => {
-          const offset = millisecondsToNanoseconds(
-            n.data.startTime.getTime() - treeRootStartTimeMs
-          );
-          //only let non-debug events extend the total duration
-          if (!n.data.isDebug) {
-            totalDuration = Math.max(totalDuration, offset + n.data.duration);
-          }
+      ? flattenTree(tree).map((n, index) => {
+        const isRoot = index === 0;
+        const offset = millisecondsToNanoseconds(n.data.startTime.getTime() - treeRootStartTimeMs);
 
-          // For cached spans, store the mapping from spanId to the linked run's ID
-          if (n.data.style?.icon === "task-cached" && n.runId) {
-            linkedRunIdBySpanId[n.id] = n.runId;
-          }
+        let nIsPartial = n.data.isPartial;
+        let nDuration = n.data.duration;
+        let nIsError = n.data.isError;
 
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              timelineEvents: createTimelineSpanEventsFromSpanEvents(
-                n.data.events,
-                user?.admin ?? false,
-                treeRootStartTimeMs
-              ),
-              //set partial nodes to null duration
-              duration: n.data.isPartial ? null : n.data.duration,
-              offset,
-              isRoot: n.id === traceSummary.rootSpan.id,
-            },
-          };
-        })
+        //only let non-debug events extend the total duration
+        if (!n.data.isDebug) {
+          totalDuration = Math.max(totalDuration, offset + (nIsPartial ? 0 : nDuration));
+        }
+
+        // For cached spans, store the mapping from spanId to the linked run's ID
+        if (n.data.style?.icon === "task-cached" && n.runId) {
+          linkedRunIdBySpanId[n.id] = n.runId;
+        }
+
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            timelineEvents: createTimelineSpanEventsFromSpanEvents(
+              n.data.events,
+              user?.admin ?? false,
+              treeRootStartTimeMs
+            ),
+            //set partial nodes to null duration
+            duration: nIsPartial ? null : nDuration,
+            isPartial: nIsPartial,
+            isError: nIsError,
+            offset,
+            isRoot,
+          },
+        };
+      })
       : [];
 
     //total duration should be a minimum of 1ms
     totalDuration = Math.max(totalDuration, millisecondsToNanoseconds(1));
 
-    let rootSpanStatus: "executing" | "completed" | "failed" = "executing";
-    if (events[0]) {
-      if (events[0].data.isError) {
-        rootSpanStatus = "failed";
-      } else if (!events[0].data.isPartial) {
-        rootSpanStatus = "completed";
-      }
-    }
+    const reconciled = reconcileTraceWithRunLifecycle(
+      runData,
+      traceSummary.rootSpan.id,
+      events,
+      totalDuration
+    );
 
     return {
       run: runData,
       trace: {
-        rootSpanStatus,
-        events: events,
-        duration: totalDuration,
+        rootSpanStatus: reconciled.rootSpanStatus,
+        events: reconciled.events,
+        duration: reconciled.totalDuration,
         rootStartedAt: tree?.data.startTime,
         startedAt: run.startedAt,
         queuedDuration: run.startedAt
@@ -276,3 +282,4 @@ export class RunPresenter {
     };
   }
 }
+
