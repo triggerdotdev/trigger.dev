@@ -28,7 +28,11 @@ type ErrorAttributes = {
 };
 
 function escapeClickHouseString(val: string): string {
-  return val.replace(/\//g, "\\/");
+  return val
+    .replace(/\//g, "\\/")
+    .replace(/\\/g, "\\\\")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_");
 }
 
 
