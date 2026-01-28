@@ -1,5 +1,6 @@
 import { openai } from "@ai-sdk/openai";
 import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -19,21 +20,33 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   // Parse the request body
-  const data = await request.json();
+  const [error, data] = await tryCatch(request.json());
+  if (error) {
+    return json({ success: false as const, error: error.message, title: null }, { status: 400 });
+  }
   const submission = RequestSchema.safeParse(data);
 
   if (!submission.success) {
-    return json({ success: false as const, error: "Invalid request data", title: null }, { status: 400 });
+    return json(
+      { success: false as const, error: "Invalid request data", title: null },
+      { status: 400 }
+    );
   }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
-    return json({ success: false as const, error: "Project not found", title: null }, { status: 404 });
+    return json(
+      { success: false as const, error: "Project not found", title: null },
+      { status: 404 }
+    );
   }
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
-    return json({ success: false as const, error: "Environment not found", title: null }, { status: 404 });
+    return json(
+      { success: false as const, error: "Environment not found", title: null },
+      { status: 404 }
+    );
   }
 
   if (!env.OPENAI_API_KEY) {
