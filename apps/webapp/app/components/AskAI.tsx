@@ -115,15 +115,11 @@ function AskAIProvider({ websiteId, isCollapsed = false }: AskAIProviderProps) {
       }}
       botProtectionMechanism="hcaptcha"
     >
-      <motion.div
-        layout="position"
-        transition={{ duration: 0.2, ease: "easeInOut" }}
-        className={isCollapsed ? "w-full" : undefined}
-      >
+      <motion.div layout="position" transition={{ duration: 0.2, ease: "easeInOut" }}>
         <TooltipProvider disableHoverableContent>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className={isCollapsed ? "flex w-full" : "inline-flex"}>
+              <span className={cn("inline-flex h-8", isCollapsed && "w-full")}>
                 <Button
                   variant="small-menu-item"
                   data-action="ask-ai"
@@ -131,7 +127,8 @@ function AskAIProvider({ websiteId, isCollapsed = false }: AskAIProviderProps) {
                   hideShortcutKey
                   data-modal-override-open-class-ask-ai="true"
                   onClick={() => openAskAI()}
-                  className={isCollapsed ? "w-full justify-center" : ""}
+                  fullWidth={isCollapsed}
+                  className={cn("h-full", isCollapsed && "justify-center")}
                 >
                   <AISparkleIcon className="size-5" />
                 </Button>
