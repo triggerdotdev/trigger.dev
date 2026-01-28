@@ -921,7 +921,7 @@ export default function Page() {
                   </ClientTabsContent>
                   <ClientTabsContent
                     value="graph"
-                    className={`f-full m-0 grid max-h-full min-h-0 overflow-hidden bg-charcoal-900 ${
+                    className={`m-0 grid h-full max-h-full min-h-0 overflow-hidden bg-charcoal-900 ${
                       results?.rows &&
                       results.rows.length > 0 &&
                       hasQueryResultsCallouts(results.hiddenColumns, results.periodClipped)
