@@ -1190,6 +1190,9 @@ const EnvironmentSchema = z
     CLICKHOUSE_LOGS_DETAIL_MAX_THREADS: z.coerce.number().int().default(2),
     CLICKHOUSE_LOGS_DETAIL_MAX_EXECUTION_TIME: z.coerce.number().int().default(60),
 
+    // Query feature flag
+    QUERY_FEATURE_ENABLED: z.string().default("1"),
+
     // Query page ClickHouse limits (for TSQL queries)
     QUERY_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().default(10),
     QUERY_CLICKHOUSE_MAX_MEMORY_USAGE: z.coerce.number().int().default(1_073_741_824), // 1GB in bytes
