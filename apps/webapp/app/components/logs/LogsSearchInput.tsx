@@ -1,5 +1,6 @@
 import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
+import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Input } from "~/components/primitives/Input";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
@@ -52,7 +53,16 @@ export function LogsSearchInput() {
 
   return (
     <div className="flex items-center gap-1">
-      <div className="relative h-6 min-w-52">
+      <motion.div
+        initial={{ width: "auto" }}
+        animate={{ width: isFocused && text.length > 0 ? "24rem" : "auto" }}
+        transition={{
+          type: "spring",
+          stiffness: 300,
+          damping: 30,
+        }}
+        className="relative h-6 min-w-52"
+      >
         <Input
           type="text"
           ref={inputRef}
@@ -80,7 +90,7 @@ export function LogsSearchInput() {
             ) : undefined
           }
         />
-      </div>
+      </motion.div>
 
       {text.length > 0 && (
         <button
