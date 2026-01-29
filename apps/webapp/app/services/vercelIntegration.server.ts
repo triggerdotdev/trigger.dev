@@ -325,7 +325,7 @@ export class VercelIntegrationService {
   async completeOnboarding(
     projectId: string,
     params: {
-      vercelStagingEnvironment?: string | null;
+      vercelStagingEnvironment?: { environmentId: string; displayName: string } | null;
       pullEnvVarsBeforeBuild?: EnvSlug[] | null;
       atomicBuilds?: EnvSlug[] | null;
       pullNewEnvVars?: boolean | null;

@@ -71,7 +71,6 @@ import {
 } from "~/presenters/v3/VercelSettingsPresenter.server";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import {
-  VercelIntegrationRepository,
   type VercelCustomEnvironment,
 } from "~/models/vercelIntegration.server";
 import {
@@ -105,47 +104,17 @@ function formatVercelTargets(targets: string[]): string {
     .join(", ");
 }
 
-async function lookupVercelEnvironmentName(
-  projectId: string,
-  environmentId: string | null
-): Promise<string | null> {
-  if (!environmentId) {
-    return null;
-  }
-
+function parseVercelStagingEnvironment(
+  value: string | null | undefined
+): { environmentId: string; displayName: string } | null {
+  if (!value) return null;
   try {
-    const vercelService = new VercelIntegrationService();
-    const projectIntegration = await vercelService.getVercelProjectIntegration(projectId);
-    if (!projectIntegration) {
-      return null;
+    const parsed = JSON.parse(value) as { environmentId?: string; displayName?: string };
+    if (parsed?.environmentId && parsed?.displayName) {
+      return { environmentId: parsed.environmentId, displayName: parsed.displayName };
     }
-
-    const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(projectId);
-    if (!orgIntegration) {
-      return null;
-    }
-
-    const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
-    const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
-
-    const customEnvironmentsResult = await VercelIntegrationRepository.getVercelCustomEnvironments(
-      client,
-      projectIntegration.parsedIntegrationData.vercelProjectId,
-      teamId
-    );
-
-    if (!customEnvironmentsResult.success) {
-      return null;
-    }
-
-    const environment = customEnvironmentsResult.data.find((env: VercelCustomEnvironment) => env.id === environmentId);
-    return environment?.slug || null;
-  } catch (error) {
-    logger.error("Failed to look up Vercel environment name", {
-      projectId,
-      environmentId,
-      error,
-    });
+    return null;
+  } catch {
     return null;
   }
 }
@@ -343,11 +312,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
       vercelStagingEnvironment,
     } = submission.value;
 
+    const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
+
     const result = await vercelService.updateVercelIntegrationConfig(project.id, {
       atomicBuilds: atomicBuilds as EnvSlug[] | null,
       pullEnvVarsBeforeBuild: pullEnvVarsBeforeBuild as EnvSlug[] | null,
       pullNewEnvVars: pullNewEnvVars,
-      vercelStagingEnvironment: vercelStagingEnvironment ?? null,
+      vercelStagingEnvironment: parsedStagingEnv,
     });
 
     if (result) {
@@ -399,8 +370,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
       parsedMappingKeys: Object.keys(parsedMapping),
     });
 
+    const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
+
     const result = await vercelService.completeOnboarding(project.id, {
-      vercelStagingEnvironment: vercelStagingEnvironment ?? null,
+      vercelStagingEnvironment: parsedStagingEnv,
       pullEnvVarsBeforeBuild: pullEnvVarsBeforeBuild as EnvSlug[] | null,
       atomicBuilds: atomicBuilds as EnvSlug[] | null,
       pullNewEnvVars: pullNewEnvVars,
@@ -441,8 +414,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   if (actionType === "update-env-mapping") {
     const { vercelStagingEnvironment } = submission.value;
 
+    const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
+
     const result = await vercelService.updateVercelIntegrationConfig(project.id, {
-      vercelStagingEnvironment: vercelStagingEnvironment ?? null,
+      vercelStagingEnvironment: parsedStagingEnv,
     });
 
     if (result) {
@@ -641,6 +616,7 @@ function envSlugLabel(slug: EnvSlug): string {
 function ConnectedVercelProjectForm({
   connectedProject,
   hasStagingEnvironment,
+  hasPreviewEnvironment,
   customEnvironments,
   organizationSlug,
   projectSlug,
@@ -648,7 +624,8 @@ function ConnectedVercelProjectForm({
 }: {
   connectedProject: ConnectedVercelProject;
   hasStagingEnvironment: boolean;
-  customEnvironments?: Array<{ id: string; slug: string }>;
+  hasPreviewEnvironment: boolean;
+  customEnvironments: Array<{ id: string; slug: string }>;
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
@@ -662,14 +639,14 @@ function ConnectedVercelProjectForm({
     pullEnvVarsBeforeBuild: connectedProject.integrationData.config.pullEnvVarsBeforeBuild ?? [],
     pullNewEnvVars: connectedProject.integrationData.config.pullNewEnvVars !== false,
     vercelStagingEnvironment:
-      connectedProject.integrationData.config.vercelStagingEnvironment || "",
+      connectedProject.integrationData.config.vercelStagingEnvironment ?? null,
   });
 
   // Track original values for comparison
   const originalAtomicBuilds = connectedProject.integrationData.config.atomicBuilds ?? [];
   const originalPullEnvVars = connectedProject.integrationData.config.pullEnvVarsBeforeBuild ?? [];
   const originalPullNewEnvVars = connectedProject.integrationData.config.pullNewEnvVars !== false;
-  const originalStagingEnv = connectedProject.integrationData.config.vercelStagingEnvironment || "";
+  const originalStagingEnv = connectedProject.integrationData.config.vercelStagingEnvironment ?? null;
 
   useEffect(() => {
     const atomicBuildsChanged =
@@ -679,7 +656,7 @@ function ConnectedVercelProjectForm({
       JSON.stringify([...configValues.pullEnvVarsBeforeBuild].sort()) !==
       JSON.stringify([...originalPullEnvVars].sort());
     const pullNewEnvVarsChanged = configValues.pullNewEnvVars !== originalPullNewEnvVars;
-    const stagingEnvChanged = configValues.vercelStagingEnvironment !== originalStagingEnv;
+    const stagingEnvChanged = configValues.vercelStagingEnvironment?.environmentId !== originalStagingEnv?.environmentId;
 
     setHasConfigChanges(atomicBuildsChanged || pullEnvVarsChanged || pullNewEnvVarsChanged || stagingEnvChanged);
   }, [configValues, originalAtomicBuilds, originalPullEnvVars, originalPullNewEnvVars, originalStagingEnv]);
@@ -701,10 +678,12 @@ function ConnectedVercelProjectForm({
 
   const actionUrl = vercelResourcePath(organizationSlug, projectSlug, environmentSlug);
 
-  // Filter out staging if no staging environment exists
-  const availableEnvSlugs = hasStagingEnvironment
-    ? ALL_ENV_SLUGS
-    : ALL_ENV_SLUGS.filter((s) => s !== "stg");
+  // Filter out environments that don't exist for this project
+  const availableEnvSlugs = ALL_ENV_SLUGS.filter((s) => {
+    if (s === "stg" && !hasStagingEnvironment) return false;
+    if (s === "preview" && !hasPreviewEnvironment) return false;
+    return true;
+  });
 
   // For pull env vars and atomic deployments, exclude "dev" (not needed for development)
   const availableEnvSlugsForBuildSettings = availableEnvSlugs.filter((s) => s !== "dev");
@@ -787,7 +766,7 @@ function ConnectedVercelProjectForm({
         <input
           type="hidden"
           name="vercelStagingEnvironment"
-          value={configValues.vercelStagingEnvironment}
+          value={configValues.vercelStagingEnvironment ? JSON.stringify(configValues.vercelStagingEnvironment) : ""}
         />
 
         <Fieldset>
@@ -802,12 +781,15 @@ function ConnectedVercelProjectForm({
                     environment.
                   </Hint>
                   <Select
-                    value={configValues.vercelStagingEnvironment}
+                    value={configValues.vercelStagingEnvironment?.environmentId || ""}
                     setValue={(value) => {
                       if (!Array.isArray(value)) {
+                        const env = customEnvironments?.find((e) => e.id === value);
                         setConfigValues((prev) => ({
                           ...prev,
-                          vercelStagingEnvironment: value,
+                          vercelStagingEnvironment: env
+                            ? { environmentId: env.id, displayName: env.slug }
+                            : null,
                         }));
                       }
                     }}
@@ -815,13 +797,7 @@ function ConnectedVercelProjectForm({
                     variant="tertiary/small"
                     placeholder="Select environment"
                     dropdownIcon
-                    text={
-                      configValues.vercelStagingEnvironment
-                        ? customEnvironments.find(
-                            (e) => e.id === configValues.vercelStagingEnvironment
-                          )?.slug || "None"
-                        : "None"
-                    }
+                    text={configValues.vercelStagingEnvironment?.displayName || "None"}
                   >
                     {[
                       <SelectItem key="" value="">
@@ -853,16 +829,18 @@ function ConnectedVercelProjectForm({
                       .
                     </Hint>
                   </div>
-                  <Switch
-                    variant="small"
-                    checked={configValues.pullEnvVarsBeforeBuild.length === availableEnvSlugsForBuildSettings.length}
-                    onCheckedChange={(checked) => {
-                      setConfigValues((prev) => ({
-                        ...prev,
-                        pullEnvVarsBeforeBuild: checked ? [...availableEnvSlugsForBuildSettings] : [],
-                      }));
-                    }}
-                  />
+                  {availableEnvSlugsForBuildSettings.length > 1 && (
+                    <Switch
+                      variant="small"
+                      checked={availableEnvSlugsForBuildSettings.length > 0 && availableEnvSlugsForBuildSettings.every((s) => configValues.pullEnvVarsBeforeBuild.includes(s))}
+                      onCheckedChange={(checked) => {
+                        setConfigValues((prev) => ({
+                          ...prev,
+                          pullEnvVarsBeforeBuild: checked ? [...availableEnvSlugsForBuildSettings] : [],
+                        }));
+                      }}
+                    />
+                  )}
                 </div>
                 <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
                   {availableEnvSlugsForBuildSettings.map((slug) => {
@@ -896,7 +874,7 @@ function ConnectedVercelProjectForm({
 
               {/* Discover new env vars */}
               {(() => {
-                const isPullEnvVarsDisabled = configValues.pullEnvVarsBeforeBuild.length === 0;
+                const isPullEnvVarsDisabled = !availableEnvSlugsForBuildSettings.some((s) => configValues.pullEnvVarsBeforeBuild.includes(s));
                 return (
                   <div className={isPullEnvVarsDisabled ? "opacity-50" : ""}>
                     <div className="flex items-center justify-between">
@@ -930,16 +908,18 @@ function ConnectedVercelProjectForm({
                       promoting the Trigger.dev deployment.
                     </Hint>
                   </div>
-                  <Switch
-                    variant="small"
-                    checked={configValues.atomicBuilds.length === availableEnvSlugsForBuildSettings.length}
-                    onCheckedChange={(checked) => {
-                      setConfigValues((prev) => ({
-                        ...prev,
-                        atomicBuilds: checked ? [...availableEnvSlugsForBuildSettings] : [],
-                      }));
-                    }}
-                  />
+                  {availableEnvSlugsForBuildSettings.length > 1 && (
+                    <Switch
+                      variant="small"
+                      checked={availableEnvSlugsForBuildSettings.length > 0 && availableEnvSlugsForBuildSettings.every((s) => configValues.atomicBuilds.includes(s))}
+                      onCheckedChange={(checked) => {
+                        setConfigValues((prev) => ({
+                          ...prev,
+                          atomicBuilds: checked ? [...availableEnvSlugsForBuildSettings] : [],
+                        }));
+                      }}
+                    />
+                  )}
                 </div>
                 <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
                   {availableEnvSlugsForBuildSettings.map((slug) => {
@@ -1066,7 +1046,8 @@ function VercelSettingsPanel({
         {!showAuthInvalid && (<ConnectedVercelProjectForm
           connectedProject={data.connectedProject}
           hasStagingEnvironment={data.hasStagingEnvironment}
-          customEnvironments={data.onboardingData?.customEnvironments}
+          hasPreviewEnvironment={data.hasPreviewEnvironment}
+          customEnvironments={data.customEnvironments}
           organizationSlug={organizationSlug}
           projectSlug={projectSlug}
           environmentSlug={environmentSlug}
@@ -1127,6 +1108,7 @@ function VercelOnboardingModal({
   projectSlug,
   environmentSlug,
   hasStagingEnvironment,
+  hasPreviewEnvironment,
   hasOrgIntegration,
   nextUrl,
   onDataReload,
@@ -1138,6 +1120,7 @@ function VercelOnboardingModal({
   projectSlug: string;
   environmentSlug: string;
   hasStagingEnvironment: boolean;
+  hasPreviewEnvironment: boolean;
   hasOrgIntegration: boolean;
   nextUrl?: string;
   onDataReload?: (vercelStagingEnvironment?: string) => void;
@@ -1189,13 +1172,15 @@ function VercelOnboardingModal({
 
   // Update state when modal opens or data changes
   const prevIsOpenRef = useRef(isOpen);
-  // Track if we've synced staging for pull env vars (reset when modal reopens)
+  // Track if we've synced staging/preview for pull env vars (reset when modal reopens)
   const hasSyncedStagingRef = useRef(false);
+  const hasSyncedPreviewRef = useRef(false);
   useEffect(() => {
     if (isOpen && !prevIsOpenRef.current) {
-      // Modal just opened, compute initial state and reset staging sync flag
+      // Modal just opened, compute initial state and reset sync flags
       setState(computeInitialState());
       hasSyncedStagingRef.current = false;
+      hasSyncedPreviewRef.current = false;
     } else if (isOpen && state === "idle") {
       // Modal is open but in idle state, compute initial state
       setState(computeInitialState());
@@ -1207,11 +1192,16 @@ function VercelOnboardingModal({
     id: string;
     name: string;
   } | null>(null);
-  const [vercelStagingEnvironment, setVercelStagingEnvironment] = useState<string>("");
-  // Available env slugs based on staging environment
-  const availableEnvSlugsForOnboarding: EnvSlug[] = hasStagingEnvironment
-    ? ["prod", "stg", "preview", "dev"]
-    : ["prod", "preview", "dev"];
+  const [vercelStagingEnvironment, setVercelStagingEnvironment] = useState<{
+    environmentId: string;
+    displayName: string;
+  } | null>(null);
+  // Available env slugs based on staging and preview environment existence
+  const availableEnvSlugsForOnboarding: EnvSlug[] = ALL_ENV_SLUGS.filter((s) => {
+    if (s === "stg" && !hasStagingEnvironment) return false;
+    if (s === "preview" && !hasPreviewEnvironment) return false;
+    return true;
+  });
   // For build settings (pull env vars and atomic deployments), exclude "dev" (not needed for development)
   const availableEnvSlugsForOnboardingBuildSettings: EnvSlug[] = availableEnvSlugsForOnboarding.filter(
     (s) => s !== "dev"
@@ -1219,10 +1209,10 @@ function VercelOnboardingModal({
   // Build settings state (for build-settings step)
   // Default: pull env vars and atomic builds enabled for all non-dev environments
   const [pullEnvVarsBeforeBuild, setPullEnvVarsBeforeBuild] = useState<EnvSlug[]>(
-    () => (hasStagingEnvironment ? ["prod", "stg", "preview"] : ["prod", "preview"])
+    () => availableEnvSlugsForOnboardingBuildSettings
   );
   const [atomicBuilds, setAtomicBuilds] = useState<EnvSlug[]>(
-    () => (hasStagingEnvironment ? ["prod", "stg", "preview"] : ["prod", "preview"])
+    () => availableEnvSlugsForOnboardingBuildSettings
   );
   const [pullNewEnvVars, setPullNewEnvVars] = useState<boolean>(true);
 
@@ -1245,6 +1235,26 @@ function VercelOnboardingModal({
       });
     }
   }, [hasStagingEnvironment]);
+
+  // Sync pullEnvVarsBeforeBuild and atomicBuilds when hasPreviewEnvironment becomes true (once)
+  // This ensures preview is included when it becomes available, but respects user changes after
+  useEffect(() => {
+    if (hasPreviewEnvironment && !hasSyncedPreviewRef.current) {
+      hasSyncedPreviewRef.current = true;
+      setPullEnvVarsBeforeBuild((prev) => {
+        if (!prev.includes("preview")) {
+          return [...prev, "preview"];
+        }
+        return prev;
+      });
+      setAtomicBuilds((prev) => {
+        if (!prev.includes("preview")) {
+          return [...prev, "preview"];
+        }
+        return prev;
+      });
+    }
+  }, [hasPreviewEnvironment]);
   // Env var sync state (for env-var-sync step - one-time sync)
   const [syncEnvVarsMapping, setSyncEnvVarsMapping] = useState<SyncEnvVarsMapping>({});
   const [expandedEnvVars, setExpandedEnvVars] = useState(false);
@@ -1335,7 +1345,7 @@ function VercelOnboardingModal({
         // Reload data to get environment variables
         loadingStateRef.current = state;
         if (onDataReload) {
-          onDataReload(vercelStagingEnvironment || undefined);
+          onDataReload(vercelStagingEnvironment?.environmentId || undefined);
         }
         // Transition to env-var-sync when data is ready (handled by another effect)
         break;
@@ -1499,7 +1509,7 @@ function VercelOnboardingModal({
 
   const handleSkipEnvMapping = useCallback(() => {
     // Skip the env mapping step and go directly to loading env vars
-    setVercelStagingEnvironment("");
+    setVercelStagingEnvironment(null);
     setState("loading-env-vars");
   }, []);
 
@@ -1512,7 +1522,7 @@ function VercelOnboardingModal({
     // Save the environment mapping first
     const formData = new FormData();
     formData.append("action", "update-env-mapping");
-    formData.append("vercelStagingEnvironment", vercelStagingEnvironment);
+    formData.append("vercelStagingEnvironment", JSON.stringify(vercelStagingEnvironment));
 
     envMappingFetcher.submit(formData, {
       method: "post",
@@ -1525,7 +1535,7 @@ function VercelOnboardingModal({
     // Build the form data to complete onboarding (save settings and sync env vars)
     const formData = new FormData();
     formData.append("action", "complete-onboarding");
-    formData.append("vercelStagingEnvironment", vercelStagingEnvironment || "");
+    formData.append("vercelStagingEnvironment", vercelStagingEnvironment ? JSON.stringify(vercelStagingEnvironment) : "");
     formData.append("pullEnvVarsBeforeBuild", JSON.stringify(pullEnvVarsBeforeBuild));
     formData.append("atomicBuilds", JSON.stringify(atomicBuilds));
     formData.append("pullNewEnvVars", String(pullNewEnvVars));
@@ -1603,20 +1613,20 @@ function VercelOnboardingModal({
   // Preselect environment in env-mapping state
   useEffect(() => {
     if (state === "env-mapping" && customEnvironments.length > 0 && !vercelStagingEnvironment) {
-      let selectedId = "";
-      
+      let selectedEnv: VercelCustomEnvironment;
+
       if (customEnvironments.length === 1) {
         // Only one environment, preselect it
-        selectedId = customEnvironments[0].id;
+        selectedEnv = customEnvironments[0];
       } else {
         // Multiple environments, check for 'staging' (case-insensitive)
         const stagingEnv = customEnvironments.find(
           (env) => env.slug.toLowerCase() === "staging"
         );
-        selectedId = stagingEnv ? stagingEnv.id : customEnvironments[0].id;
+        selectedEnv = stagingEnv ?? customEnvironments[0];
       }
-      
-      setVercelStagingEnvironment(selectedId);
+
+      setVercelStagingEnvironment({ environmentId: selectedEnv.id, displayName: selectedEnv.slug });
     }
   }, [state, customEnvironments, vercelStagingEnvironment]);
 
@@ -1743,20 +1753,20 @@ function VercelOnboardingModal({
               </Paragraph>
 
               <Select
-                value={vercelStagingEnvironment}
+                value={vercelStagingEnvironment?.environmentId || ""}
                 setValue={(value) => {
                   if (!Array.isArray(value)) {
-                    setVercelStagingEnvironment(value);
+                    const env = customEnvironments.find((e) => e.id === value);
+                    setVercelStagingEnvironment(
+                      env ? { environmentId: env.id, displayName: env.slug } : null
+                    );
                   }
                 }}
                 items={customEnvironments}
                 variant="tertiary/medium"
                 placeholder="Select environment"
                 dropdownIcon
-                text={
-                  customEnvironments.find((e) => e.id === vercelStagingEnvironment)?.slug ||
-                  "Select environment"
-                }
+                text={vercelStagingEnvironment?.displayName || "Select environment"}
               >
                 {customEnvironments.map((env) => (
                   <SelectItem key={env.id} value={env.id}>
@@ -1968,13 +1978,15 @@ function VercelOnboardingModal({
                       Vercel before each build.
                     </Hint>
                   </div>
-                  <Switch
-                    variant="small"
-                    checked={pullEnvVarsBeforeBuild.length === availableEnvSlugsForOnboardingBuildSettings.length}
-                    onCheckedChange={(checked) => {
-                      setPullEnvVarsBeforeBuild(checked ? [...availableEnvSlugsForOnboardingBuildSettings] : []);
-                    }}
-                  />
+                  {availableEnvSlugsForOnboardingBuildSettings.length > 1 && (
+                    <Switch
+                      variant="small"
+                      checked={availableEnvSlugsForOnboardingBuildSettings.length > 0 && availableEnvSlugsForOnboardingBuildSettings.every((s) => pullEnvVarsBeforeBuild.includes(s))}
+                      onCheckedChange={(checked) => {
+                        setPullEnvVarsBeforeBuild(checked ? [...availableEnvSlugsForOnboardingBuildSettings] : []);
+                      }}
+                    />
+                  )}
                 </div>
                 <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
                   {availableEnvSlugsForOnboardingBuildSettings.map((slug) => {
@@ -2004,7 +2016,7 @@ function VercelOnboardingModal({
 
               {/* Discover new env vars */}
               {(() => {
-                const isPullEnvVarsDisabled = pullEnvVarsBeforeBuild.length === 0;
+                const isPullEnvVarsDisabled = !availableEnvSlugsForOnboardingBuildSettings.some((s) => pullEnvVarsBeforeBuild.includes(s));
                 return (
                   <div className={isPullEnvVarsDisabled ? "opacity-50" : ""}>
                     <div className="flex items-center justify-between">
@@ -2036,13 +2048,15 @@ function VercelOnboardingModal({
                       promoting the Trigger.dev deployment.
                     </Hint>
                   </div>
-                  <Switch
-                    variant="small"
-                    checked={atomicBuilds.length === availableEnvSlugsForOnboardingBuildSettings.length}
-                    onCheckedChange={(checked) => {
-                      setAtomicBuilds(checked ? [...availableEnvSlugsForOnboardingBuildSettings] : []);
-                    }}
-                  />
+                  {availableEnvSlugsForOnboardingBuildSettings.length > 1 && (
+                    <Switch
+                      variant="small"
+                      checked={availableEnvSlugsForOnboardingBuildSettings.length > 0 && availableEnvSlugsForOnboardingBuildSettings.every((s) => atomicBuilds.includes(s))}
+                      onCheckedChange={(checked) => {
+                        setAtomicBuilds(checked ? [...availableEnvSlugsForOnboardingBuildSettings] : []);
+                      }}
+                    />
+                  )}
                 </div>
                 <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
                   {availableEnvSlugsForOnboardingBuildSettings.map((slug) => {

@@ -49,7 +49,10 @@ export const VercelIntegrationConfigSchema = z.object({
    * This field stores the custom Vercel environment ID that maps to staging.
    * When null, no custom environment is mapped to staging.
    */
-  vercelStagingEnvironment: z.string().nullable().optional(),
+  vercelStagingEnvironment: z.object({
+    environmentId: z.string(),
+    displayName: z.string(),
+  }).nullable().optional(),
 
   /**
    * When enabled, discovers and creates new env vars from Vercel during builds.

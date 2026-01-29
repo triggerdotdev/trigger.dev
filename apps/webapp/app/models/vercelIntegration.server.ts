@@ -904,7 +904,7 @@ export class VercelIntegrationRepository {
     projectId: string;
     vercelProjectId: string;
     teamId: string | null;
-    vercelStagingEnvironment?: string | null;
+    vercelStagingEnvironment?: { environmentId: string; displayName: string } | null;
     orgIntegration: OrganizationIntegration & { tokenReference: SecretReference };
   }): Promise<{ success: boolean; errors: string[] }> {
     const errors: string[] = [];
@@ -952,7 +952,7 @@ export class VercelIntegrationRepository {
               });
               continue;
             }
-            vercelTarget = [params.vercelStagingEnvironment];
+            vercelTarget = [params.vercelStagingEnvironment.environmentId];
             break;
           case "PREVIEW":
             vercelTarget = ["preview"];
@@ -1073,7 +1073,7 @@ export class VercelIntegrationRepository {
             });
             return { success: true };
           }
-          vercelTarget = [vercelStagingEnvironment];
+          vercelTarget = [vercelStagingEnvironment.environmentId];
           break;
         case "PREVIEW":
           vercelTarget = ["preview"];
@@ -1120,7 +1120,7 @@ export class VercelIntegrationRepository {
     projectId: string;
     vercelProjectId: string;
     teamId: string | null;
-    vercelStagingEnvironment?: string | null;
+    vercelStagingEnvironment?: { environmentId: string; displayName: string } | null;
     syncEnvVarsMapping: SyncEnvVarsMapping;
     orgIntegration: OrganizationIntegration & { tokenReference: SecretReference };
   }): Promise<{ success: boolean; errors: string[]; syncedCount: number }> {
@@ -1172,7 +1172,7 @@ export class VercelIntegrationRepository {
             if (params.vercelStagingEnvironment) {
               envMapping.push({
                 triggerEnvType: "STAGING",
-                vercelTarget: params.vercelStagingEnvironment,
+                vercelTarget: params.vercelStagingEnvironment.environmentId,
                 runtimeEnvironmentId: env.id,
               });
             }

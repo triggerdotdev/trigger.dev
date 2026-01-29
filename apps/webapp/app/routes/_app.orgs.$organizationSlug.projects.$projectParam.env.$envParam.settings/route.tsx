@@ -621,6 +621,7 @@ export default function Page() {
           projectSlug={project.slug}
           environmentSlug={environment.slug}
           hasStagingEnvironment={vercelFetcher.data?.hasStagingEnvironment ?? false}
+          hasPreviewEnvironment={vercelFetcher.data?.hasPreviewEnvironment ?? false}
           hasOrgIntegration={vercelFetcher.data?.hasOrgIntegration ?? false}
           nextUrl={nextUrl ?? undefined}
           onDataReload={(vercelEnvironmentId) => {

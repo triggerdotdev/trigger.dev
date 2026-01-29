@@ -33,6 +33,8 @@ export type VercelSettingsResult = {
   };
   isGitHubConnected: boolean;
   hasStagingEnvironment: boolean;
+  hasPreviewEnvironment: boolean;
+  customEnvironments: VercelCustomEnvironment[];
 };
 
 export type VercelAvailableProject = {
@@ -81,6 +83,8 @@ export class VercelSettingsPresenter extends BasePresenter {
           connectedProject: undefined,
           isGitHubConnected: false,
           hasStagingEnvironment: false,
+          hasPreviewEnvironment: false,
+          customEnvironments: [],
         } as VercelSettingsResult);
       }
 
@@ -107,6 +111,8 @@ export class VercelSettingsPresenter extends BasePresenter {
             connectedProject: undefined,
             isGitHubConnected: false,
             hasStagingEnvironment: false,
+            hasPreviewEnvironment: false,
+            customEnvironments: [],
           } as VercelSettingsResult);
         }
       }
@@ -151,6 +157,24 @@ export class VercelSettingsPresenter extends BasePresenter {
             where: {
               projectId,
               type: "STAGING",
+            },
+          }),
+          (error) => ({
+            type: "other" as const,
+            cause: error,
+          })
+        ).map((env) => env !== null);
+
+      // Check if preview environment exists
+      const checkPreviewEnvironment = () =>
+        fromPromise(
+          (this._replica as PrismaClient).runtimeEnvironment.findFirst({
+            select: {
+              id: true,
+            },
+            where: {
+              projectId,
+              type: "PREVIEW",
             },
           }),
           (error) => ({
@@ -207,15 +231,39 @@ export class VercelSettingsPresenter extends BasePresenter {
           checkOrgIntegration(),
           checkGitHubConnection(),
           checkStagingEnvironment(),
+          checkPreviewEnvironment(),
           getVercelProjectIntegration(),
-        ]).map(([hasOrgIntegration, isGitHubConnected, hasStagingEnvironment, connectedProject]) => ({
-          enabled: true,
-          hasOrgIntegration,
-          authInvalid: false,
-          connectedProject,
-          isGitHubConnected,
-          hasStagingEnvironment,
-        })).mapErr((error) => {
+        ]).andThen(([hasOrgIntegration, isGitHubConnected, hasStagingEnvironment, hasPreviewEnvironment, connectedProject]) => {
+          const fetchCustomEnvs = async (): Promise<VercelCustomEnvironment[]> => {
+            if (!connectedProject || !orgIntegration) return [];
+            try {
+              const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
+              const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
+              const result = await VercelIntegrationRepository.getVercelCustomEnvironments(
+                client,
+                connectedProject.vercelProjectId,
+                teamId
+              );
+              return result.success ? result.data : [];
+            } catch {
+              return [];
+            }
+          };
+
+          return fromPromise(
+            fetchCustomEnvs(),
+            (error) => ({ type: "other" as const, cause: error })
+          ).map((customEnvironments) => ({
+            enabled: true,
+            hasOrgIntegration,
+            authInvalid: false,
+            connectedProject,
+            isGitHubConnected,
+            hasStagingEnvironment,
+            hasPreviewEnvironment,
+            customEnvironments,
+          } as VercelSettingsResult));
+        }).mapErr((error) => {
           // Log the error and return a safe fallback
           console.error("Error in VercelSettingsPresenter.call:", error);
           return error;
@@ -230,6 +278,8 @@ export class VercelSettingsPresenter extends BasePresenter {
           connectedProject: undefined,
           isGitHubConnected: false,
           hasStagingEnvironment: false,
+          hasPreviewEnvironment: false,
+          customEnvironments: [],
         } as VercelSettingsResult);
       }
     } catch (error) {
@@ -242,6 +292,8 @@ export class VercelSettingsPresenter extends BasePresenter {
         connectedProject: undefined,
         isGitHubConnected: false,
         hasStagingEnvironment: false,
+        hasPreviewEnvironment: false,
+        customEnvironments: [],
       } as VercelSettingsResult);
     }
   }
