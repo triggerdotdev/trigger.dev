@@ -446,6 +446,11 @@
       "display": "simple"
     }
   },
+  "styling": {
+    "codeblocks": {
+      "theme": "css-variables"
+    }
+  },
   "appearance": {
     "default": "dark",
     "strict": true
