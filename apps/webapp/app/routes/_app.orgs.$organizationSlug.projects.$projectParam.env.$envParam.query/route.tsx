@@ -71,7 +71,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueryPresenter, type QueryHistoryItem } from "~/presenters/v3/QueryPresenter.server";
 import type { action as titleAction } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query.ai-title";
 import { getLimit } from "~/services/platform.v3.server";
-import { executeQuery, type QueryScope } from "~/services/queryService.server";
+import { executeQuery, getDefaultPeriod, type QueryScope } from "~/services/queryService.server";
 import { requireUser } from "~/services/session.server";
 import { downloadFile, rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { EnvironmentParamSchema, organizationBillingPath } from "~/utils/pathBuilder";
@@ -143,15 +143,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     maxRows: env.QUERY_CLICKHOUSE_MAX_RETURNED_ROWS,
   });
 };
-
-async function getDefaultPeriod(organizationId: string): Promise<string> {
-  const idealDefaultPeriodDays = 7;
-  const maxQueryPeriod = await getLimit(organizationId, "queryPeriodDays", 30);
-  if (maxQueryPeriod < idealDefaultPeriodDays) {
-    return `${maxQueryPeriod}d`;
-  }
-  return `${idealDefaultPeriodDays}d`;
-}
 
 const ActionSchema = z.object({
   query: z.string().min(1, "Query is required"),
@@ -257,87 +248,29 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const isAdmin = user.admin || user.isImpersonating;
   const explain = explainParam === "true" && isAdmin;
 
-  // Build time filter fallback for triggered_at column
-  const defaultPeriod = await getDefaultPeriod(project.organizationId);
-  const timeFilter = timeFilters({
-    period: period ?? undefined,
-    from: from ?? undefined,
-    to: to ?? undefined,
-    defaultPeriod,
-  });
-
-  // Calculate the effective "from" date the user is requesting (for period clipping check)
-  // This is null only when the user specifies just a "to" date (rare case)
-  let requestedFromDate: Date | null = null;
-  if (timeFilter.from) {
-    requestedFromDate = new Date(timeFilter.from);
-  } else if (!timeFilter.to) {
-    // Period specified (or default) - calculate from now
-    const periodMs = parse(timeFilter.period ?? defaultPeriod) ?? 7 * 24 * 60 * 60 * 1000;
-    requestedFromDate = new Date(Date.now() - periodMs);
-  }
-
-  // Build the fallback WHERE condition based on what the user specified
-  let triggeredAtFallback: WhereClauseCondition;
-  if (timeFilter.from && timeFilter.to) {
-    triggeredAtFallback = { op: "between", low: timeFilter.from, high: timeFilter.to };
-  } else if (timeFilter.from) {
-    triggeredAtFallback = { op: "gte", value: timeFilter.from };
-  } else if (timeFilter.to) {
-    triggeredAtFallback = { op: "lte", value: timeFilter.to };
-  } else {
-    triggeredAtFallback = { op: "gte", value: requestedFromDate! };
-  }
-
-  const maxQueryPeriod = await getLimit(project.organizationId, "queryPeriodDays", 30);
-  const maxQueryPeriodDate = new Date(Date.now() - maxQueryPeriod * 24 * 60 * 60 * 1000);
-
-  // Check if the requested time period exceeds the plan limit
-  const periodClipped = requestedFromDate !== null && requestedFromDate < maxQueryPeriodDate;
-
-  // Force tenant isolation and time period limits
-  const enforcedWhereClause = {
-    organization_id: { op: "eq", value: project.organizationId },
-    project_id:
-      scope === "project" || scope === "environment" ? { op: "eq", value: project.id } : undefined,
-    environment_id: scope === "environment" ? { op: "eq", value: environment.id } : undefined,
-    triggered_at: { op: "gte", value: maxQueryPeriodDate },
-  } satisfies Record<string, WhereClauseCondition | undefined>;
-
   try {
-    const [error, result, queryId] = await executeQuery({
+    const queryResult = await executeQuery({
       name: "query-page",
       query,
-      schema: z.record(z.any()),
-      tableSchema: querySchemas,
-      transformValues: true,
       scope,
       organizationId: project.organizationId,
       projectId: project.id,
       environmentId: environment.id,
       explain,
-      enforcedWhereClause,
-      whereClauseFallback: {
-        triggered_at: triggeredAtFallback,
-      },
+      period,
+      from,
+      to,
       history: {
         source: "DASHBOARD",
         userId: user.id,
         skip: user.isImpersonating,
-        timeFilter: {
-          // Save the effective period used for the query (timeFilters() handles defaults)
-          // Only save period if no custom from/to range was specified
-          period: timeFilter.from || timeFilter.to ? undefined : timeFilter.period,
-          from: timeFilter.from,
-          to: timeFilter.to,
-        },
       },
     });
 
-    if (error) {
+    if (!queryResult.success) {
       return typedjson(
         {
-          error: error.message,
+          error: queryResult.error.message,
           rows: null,
           columns: null,
           stats: null,
@@ -354,15 +287,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     return typedjson({
       error: null,
-      rows: result.rows,
-      columns: result.columns,
-      stats: result.stats,
-      hiddenColumns: result.hiddenColumns ?? null,
-      reachedMaxRows: result.reachedMaxRows,
-      explainOutput: result.explainOutput ?? null,
-      generatedSql: result.generatedSql ?? null,
-      queryId,
-      periodClipped: periodClipped ? maxQueryPeriod : null,
+      rows: queryResult.result.rows,
+      columns: queryResult.result.columns,
+      stats: queryResult.result.stats,
+      hiddenColumns: queryResult.result.hiddenColumns ?? null,
+      reachedMaxRows: queryResult.result.reachedMaxRows,
+      explainOutput: queryResult.result.explainOutput ?? null,
+      generatedSql: queryResult.result.generatedSql ?? null,
+      queryId: queryResult.queryId,
+      periodClipped: queryResult.periodClipped,
+      maxQueryPeriod: queryResult.maxQueryPeriod,
     });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error executing query";
@@ -1036,7 +970,7 @@ function QueryResultsCallouts({
   organizationSlug,
 }: {
   hiddenColumns: string[] | null | undefined;
-  periodClipped: number | null | undefined;
+  periodClipped: number | null;
   organizationSlug: string;
 }) {
   const hasCallouts = (hiddenColumns && hiddenColumns.length > 0) || periodClipped;
@@ -1076,7 +1010,7 @@ function QueryResultsCallouts({
 
 function hasQueryResultsCallouts(
   hiddenColumns: string[] | null | undefined,
-  periodClipped: number | null | undefined
+  periodClipped: number | null
 ): boolean {
   return (hiddenColumns && hiddenColumns.length > 0) || !!periodClipped;
 }
