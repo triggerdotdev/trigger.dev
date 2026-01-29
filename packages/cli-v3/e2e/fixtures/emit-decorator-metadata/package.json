@@ -15,7 +15,7 @@
   },
   "devDependencies": {
     "@trigger.dev/build": "0.0.0-prerelease-20250321122618",
-    "@types/node": "22.5.4",
+    "@types/node": "20.14.14",
     "typescript": "5.5.4"
   }
 }
