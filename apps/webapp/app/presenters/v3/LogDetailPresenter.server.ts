@@ -36,10 +36,7 @@ export class LogDetailPresenter {
       );
     }
 
-    const isClickhouseV2 = store === "clickhouse_v2";
-    const queryBuilder = isClickhouseV2
-      ? this.clickhouse.taskEventsV2.logDetailQueryBuilder()
-      : this.clickhouse.taskEvents.logDetailQueryBuilder();
+    const queryBuilder = this.clickhouse.taskEventsV2.logDetailQueryBuilder();
 
     // Required filters - spanId, traceId, and startTime uniquely identify the log
     // Multiple events can share the same spanId (span, span events, logs), so startTime is needed
