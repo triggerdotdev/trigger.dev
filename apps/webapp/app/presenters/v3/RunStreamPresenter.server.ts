@@ -53,7 +53,7 @@ export class RunStreamPresenter {
         const throttledSend = throttle(
           (args: { send: SendFunction; event?: string; data: string }) => {
             try {
-              args.send(args);
+              args.send({ event: args.event, data: args.data });
             } catch (error) {
               if (error instanceof Error) {
                 if (error.name !== "TypeError") {
