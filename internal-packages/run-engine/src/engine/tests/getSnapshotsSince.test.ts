@@ -213,7 +213,7 @@ describe("RunEngine getSnapshotsSince", () => {
 
         // The latest snapshot should have completedWaitpoints
         const latest = result![result!.length - 1];
-        expect(latest.completedWaitpoints.length).toBeGreaterThanOrEqual(0);
+        expect(latest.completedWaitpoints.length).toBeGreaterThan(0);
 
         // Earlier snapshots should have empty waitpoints (optimization)
         for (let i = 0; i < result!.length - 1; i++) {

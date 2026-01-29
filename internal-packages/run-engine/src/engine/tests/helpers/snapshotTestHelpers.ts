@@ -287,8 +287,9 @@ export async function setupTestScenario(
       checkpoints.push({ id: checkpoint.id });
     }
 
-    // Increment attempt number when entering EXECUTING
-    if (config.status === "EXECUTING" || config.status === "PENDING_EXECUTING") {
+    // Increment attempt number when entering a new execution attempt
+    // PENDING_EXECUTING is the entry point - EXECUTING follows within the same attempt
+    if (config.status === "PENDING_EXECUTING") {
       attemptNumber++;
     }
 
