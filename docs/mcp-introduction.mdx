@@ -196,12 +196,10 @@ Each client has a slightly different config format. Copy the snippet for your cl
 
     ```json
     {
-      "amp": {
-        "mcpServers": {
-          "trigger": {
-            "command": "npx",
-            "args": ["trigger.dev@latest", "mcp"]
-          }
+      "amp.mcpServers": {
+        "trigger": {
+          "command": "npx",
+          "args": ["trigger.dev@latest", "mcp"]
         }
       }
     }
@@ -231,7 +229,7 @@ Each client has a slightly different config format. Copy the snippet for your cl
     npx trigger.dev@latest install-mcp --client crush
     ```
 
-    Or add this configuration to `~/.config/crush/crush.json` (user), `./crush.json` (project), or `./.crush.json` (local):
+    Or add this configuration to `.crush.json` (project), `crush.json`, or `~/.config/crush/crush.json` (user). Files are loaded in priority order: `.crush.json` → `crush.json` → `$HOME/.config/crush/crush.json`.
 
     ```json
     {
