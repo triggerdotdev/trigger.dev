@@ -521,7 +521,6 @@ const EnvironmentSchema = z
     PROD_USAGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
     CENTS_PER_RUN: z.coerce.number().default(0),
-    CENTS_PER_QUERY_BYTE_SECOND: z.coerce.number().default(0),
 
     EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
     RESOURCE_MONITOR_ENABLED: z.string().default("0"),
@@ -1197,6 +1196,7 @@ const EnvironmentSchema = z
     QUERY_CLICKHOUSE_MAX_AST_ELEMENTS: z.coerce.number().int().default(4_000_000),
     QUERY_CLICKHOUSE_MAX_EXPANDED_AST_ELEMENTS: z.coerce.number().int().default(4_000_000),
     QUERY_CLICKHOUSE_MAX_BYTES_BEFORE_EXTERNAL_GROUP_BY: z.coerce.number().int().default(0),
+    QUERY_CLICKHOUSE_MAX_RETURNED_ROWS: z.coerce.number().int().default(10_000),
 
     // Query page concurrency limits
     QUERY_DEFAULT_ORG_CONCURRENCY_LIMIT: z.coerce.number().int().default(3),

@@ -106,9 +106,11 @@ describe("TSQL Integration Tests", () => {
       name: "test-simple-select",
       query: "SELECT run_id, status FROM task_runs",
       schema: z.object({ run_id: z.string(), status: z.string() }),
-      organizationId: "org_tenant1",
-      projectId: "proj_tenant1",
-      environmentId: "env_tenant1",
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+        project_id: { op: "eq", value: "proj_tenant1" },
+        environment_id: { op: "eq", value: "env_tenant1" },
+      },
       tableSchema: [taskRunsSchema],
     });
 
@@ -145,9 +147,11 @@ describe("TSQL Integration Tests", () => {
       name: "test-where-clause",
       query: "SELECT run_id, status FROM task_runs WHERE status = 'COMPLETED_SUCCESSFULLY'",
       schema: z.object({ run_id: z.string(), status: z.string() }),
-      organizationId: "org_tenant1",
-      projectId: "proj_tenant1",
-      environmentId: "env_tenant1",
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+        project_id: { op: "eq", value: "proj_tenant1" },
+        environment_id: { op: "eq", value: "env_tenant1" },
+      },
       tableSchema: [taskRunsSchema],
     });
 
@@ -197,9 +201,11 @@ describe("TSQL Integration Tests", () => {
       name: "test-tenant-isolation-1",
       query: "SELECT run_id FROM task_runs",
       schema: z.object({ run_id: z.string() }),
-      organizationId: "org_tenant1",
-      projectId: "proj_tenant1",
-      environmentId: "env_tenant1",
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+        project_id: { op: "eq", value: "proj_tenant1" },
+        environment_id: { op: "eq", value: "env_tenant1" },
+      },
       tableSchema: [taskRunsSchema],
     });
 
@@ -212,9 +218,11 @@ describe("TSQL Integration Tests", () => {
       name: "test-tenant-isolation-2",
       query: "SELECT run_id FROM task_runs",
       schema: z.object({ run_id: z.string() }),
-      organizationId: "org_tenant2",
-      projectId: "proj_tenant2",
-      environmentId: "env_tenant2",
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant2" },
+        project_id: { op: "eq", value: "proj_tenant2" },
+        environment_id: { op: "eq", value: "env_tenant2" },
+      },
       tableSchema: [taskRunsSchema],
     });
 
@@ -254,9 +262,11 @@ describe("TSQL Integration Tests", () => {
         name: "test-cross-tenant-attack",
         query: "SELECT run_id, status FROM task_runs WHERE status = 'COMPLETED' OR 1=1",
         schema: z.object({ run_id: z.string(), status: z.string() }),
-        organizationId: "org_attacker",
-        projectId: "proj_attacker",
-        environmentId: "env_attacker",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_attacker" },
+          project_id: { op: "eq", value: "proj_attacker" },
+          environment_id: { op: "eq", value: "env_attacker" },
+        },
         tableSchema: [taskRunsSchema],
       });
 
@@ -288,9 +298,11 @@ describe("TSQL Integration Tests", () => {
       query:
         "SELECT status, count(*) as cnt FROM task_runs GROUP BY status ORDER BY cnt DESC, status ASC",
       schema: z.object({ status: z.string(), cnt: z.coerce.number() }),
-      organizationId: "org_tenant1",
-      projectId: "proj_tenant1",
-      environmentId: "env_tenant1",
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+        project_id: { op: "eq", value: "proj_tenant1" },
+        environment_id: { op: "eq", value: "env_tenant1" },
+      },
       tableSchema: [taskRunsSchema],
     });
 
@@ -325,9 +337,11 @@ describe("TSQL Integration Tests", () => {
       name: "test-order-limit",
       query: "SELECT run_id FROM task_runs ORDER BY created_at DESC LIMIT 2",
       schema: z.object({ run_id: z.string() }),
-      organizationId: "org_tenant1",
-      projectId: "proj_tenant1",
-      environmentId: "env_tenant1",
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+        project_id: { op: "eq", value: "proj_tenant1" },
+        environment_id: { op: "eq", value: "env_tenant1" },
+      },
       tableSchema: [taskRunsSchema],
     });
 
@@ -347,9 +361,11 @@ describe("TSQL Integration Tests", () => {
       name: "test-unknown-table",
       query: "SELECT * FROM unknown_table",
       schema: z.object({ id: z.string() }),
-      organizationId: "org_tenant1",
-      projectId: "proj_tenant1",
-      environmentId: "env_tenant1",
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+        project_id: { op: "eq", value: "proj_tenant1" },
+        environment_id: { op: "eq", value: "env_tenant1" },
+      },
       tableSchema: [taskRunsSchema],
     });
 
@@ -378,9 +394,11 @@ describe("TSQL Integration Tests", () => {
       name: "test-executor",
       query: "SELECT run_id, status FROM task_runs WHERE status = 'PENDING'",
       schema: z.object({ run_id: z.string(), status: z.string() }),
-      organizationId: "org_tenant1",
-      projectId: "proj_tenant1",
-      environmentId: "env_tenant1",
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+        project_id: { op: "eq", value: "proj_tenant1" },
+        environment_id: { op: "eq", value: "env_tenant1" },
+      },
     });
 
     expect(error).toBeNull();
@@ -406,9 +424,11 @@ describe("TSQL Integration Tests", () => {
       name: "test-injection",
       query: "SELECT run_id, status FROM task_runs WHERE status = 'DROP TABLE task_runs'",
       schema: z.object({ run_id: z.string(), status: z.string() }),
-      organizationId: "org_tenant1",
-      projectId: "proj_tenant1",
-      environmentId: "env_tenant1",
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+        project_id: { op: "eq", value: "proj_tenant1" },
+        environment_id: { op: "eq", value: "env_tenant1" },
+      },
       tableSchema: [taskRunsSchema],
     });
 
@@ -438,9 +458,11 @@ describe("TSQL Integration Tests", () => {
       query:
         "SELECT run_id, status FROM task_runs WHERE status IN ('COMPLETED_SUCCESSFULLY', 'FAILED')",
       schema: z.object({ run_id: z.string(), status: z.string() }),
-      organizationId: "org_tenant1",
-      projectId: "proj_tenant1",
-      environmentId: "env_tenant1",
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+        project_id: { op: "eq", value: "proj_tenant1" },
+        environment_id: { op: "eq", value: "env_tenant1" },
+      },
       tableSchema: [taskRunsSchema],
     });
 
@@ -467,9 +489,11 @@ describe("TSQL Integration Tests", () => {
       name: "test-like-query",
       query: "SELECT run_id, task_identifier FROM task_runs WHERE task_identifier LIKE 'email%'",
       schema: z.object({ run_id: z.string(), task_identifier: z.string() }),
-      organizationId: "org_tenant1",
-      projectId: "proj_tenant1",
-      environmentId: "env_tenant1",
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+        project_id: { op: "eq", value: "proj_tenant1" },
+        environment_id: { op: "eq", value: "env_tenant1" },
+      },
       tableSchema: [taskRunsSchema],
     });
 
@@ -530,8 +554,10 @@ describe("TSQL Optional Tenant Filter Tests", () => {
         name: "test-cross-project-query",
         query: "SELECT run_id FROM task_runs",
         schema: z.object({ run_id: z.string() }),
-        organizationId: "org_multi",
-        // projectId and environmentId omitted - query across all
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_multi" },
+          // project_id and environment_id omitted - query across all
+        },
         tableSchema: [taskRunsSchema],
       });
 
@@ -590,9 +616,11 @@ describe("TSQL Optional Tenant Filter Tests", () => {
         name: "test-cross-env-query",
         query: "SELECT run_id FROM task_runs",
         schema: z.object({ run_id: z.string() }),
-        organizationId: "org_envtest",
-        projectId: "proj_envtest",
-        // environmentId omitted - query across all environments
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_envtest" },
+          project_id: { op: "eq", value: "proj_envtest" },
+          // environment_id omitted - query across all environments
+        },
         tableSchema: [taskRunsSchema],
       });
 
@@ -649,8 +677,10 @@ describe("TSQL Optional Tenant Filter Tests", () => {
         name: "test-org-isolation-1",
         query: "SELECT run_id FROM task_runs",
         schema: z.object({ run_id: z.string() }),
-        organizationId: "org_isolation_1",
-        // projectId and environmentId omitted
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_isolation_1" },
+          // project_id and environment_id omitted
+        },
         tableSchema: [taskRunsSchema],
       });
 
@@ -663,8 +693,10 @@ describe("TSQL Optional Tenant Filter Tests", () => {
         name: "test-org-isolation-2",
         query: "SELECT run_id FROM task_runs",
         schema: z.object({ run_id: z.string() }),
-        organizationId: "org_isolation_2",
-        // projectId and environmentId omitted
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_isolation_2" },
+          // project_id and environment_id omitted
+        },
         tableSchema: [taskRunsSchema],
       });
 
@@ -706,8 +738,10 @@ describe("TSQL Optional Tenant Filter Tests", () => {
         name: "test-or-bypass-attempt",
         query: "SELECT run_id, status FROM task_runs WHERE status = 'COMPLETED' OR 1=1",
         schema: z.object({ run_id: z.string(), status: z.string() }),
-        organizationId: "org_attacker",
-        // No project/env filter - but org filter should still protect
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_attacker" },
+          // No project/env filter - but org filter should still protect
+        },
         tableSchema: [taskRunsSchema],
       });
 
@@ -751,8 +785,10 @@ describe("TSQL Optional Tenant Filter Tests", () => {
         name: "test-executor-optional",
         query: "SELECT run_id FROM task_runs",
         schema: z.object({ run_id: z.string() }),
-        organizationId: "org_executor_test",
-        // projectId and environmentId omitted
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_executor_test" },
+          // project_id and environment_id omitted
+        },
       });
 
       expect(error).toBeNull();
@@ -839,9 +875,11 @@ describe("TSQL Virtual Column Tests", () => {
           execution_duration: z.number().nullable(),
           usage_duration_seconds: z.number(),
         }),
-        organizationId: "org_tenant1",
-        projectId: "proj_tenant1",
-        environmentId: "env_tenant1",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          environment_id: { op: "eq", value: "env_tenant1" },
+        },
         tableSchema: [virtualColumnSchema],
       });
 
@@ -889,9 +927,11 @@ describe("TSQL Virtual Column Tests", () => {
         name: "test-virtual-column-where",
         query: "SELECT run_id FROM task_runs WHERE execution_duration > 5000",
         schema: z.object({ run_id: z.string() }),
-        organizationId: "org_tenant1",
-        projectId: "proj_tenant1",
-        environmentId: "env_tenant1",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          environment_id: { op: "eq", value: "env_tenant1" },
+        },
         tableSchema: [virtualColumnSchema],
       });
 
@@ -935,9 +975,11 @@ describe("TSQL Virtual Column Tests", () => {
         run_id: z.string(),
         usage_duration_seconds: z.number(),
       }),
-      organizationId: "org_tenant1",
-      projectId: "proj_tenant1",
-      environmentId: "env_tenant1",
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+        project_id: { op: "eq", value: "proj_tenant1" },
+        environment_id: { op: "eq", value: "env_tenant1" },
+      },
       tableSchema: [virtualColumnSchema],
     });
 
@@ -977,9 +1019,11 @@ describe("TSQL Virtual Column Tests", () => {
           run_id: z.string(),
           dur_sec: z.number(),
         }),
-        organizationId: "org_tenant1",
-        projectId: "proj_tenant1",
-        environmentId: "env_tenant1",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          environment_id: { op: "eq", value: "env_tenant1" },
+        },
         tableSchema: [virtualColumnSchema],
       });
 
@@ -1013,9 +1057,11 @@ describe("TSQL Virtual Column Tests", () => {
           run_id: z.string(),
           execution_duration: z.number().nullable(),
         }),
-        organizationId: "org_tenant1",
-        projectId: "proj_tenant1",
-        environmentId: "env_tenant1",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          environment_id: { op: "eq", value: "env_tenant1" },
+        },
         tableSchema: [virtualColumnSchema],
       });
 
@@ -1110,9 +1156,11 @@ describe("TSQL Virtual Column Tests", () => {
         name: "test-expression-division-where",
         query: "SELECT run_id, invocation_cost FROM task_runs WHERE invocation_cost > 1.0",
         schema: z.object({ run_id: z.string(), invocation_cost: z.number() }),
-        organizationId: "org_tenant1",
-        projectId: "proj_tenant1",
-        environmentId: "env_tenant1",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          environment_id: { op: "eq", value: "env_tenant1" },
+        },
         tableSchema: [costExpressionSchema],
       });
 
@@ -1153,9 +1201,11 @@ describe("TSQL Virtual Column Tests", () => {
         name: "test-expression-gte-where",
         query: "SELECT run_id, invocation_cost FROM task_runs WHERE invocation_cost >= 1.0",
         schema: z.object({ run_id: z.string(), invocation_cost: z.number() }),
-        organizationId: "org_tenant1",
-        projectId: "proj_tenant1",
-        environmentId: "env_tenant1",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          environment_id: { op: "eq", value: "env_tenant1" },
+        },
         tableSchema: [costExpressionSchema],
       });
 
@@ -1192,9 +1242,11 @@ describe("TSQL Virtual Column Tests", () => {
         name: "test-expression-lt-where",
         query: "SELECT run_id, invocation_cost FROM task_runs WHERE invocation_cost < 1.0",
         schema: z.object({ run_id: z.string(), invocation_cost: z.number() }),
-        organizationId: "org_tenant1",
-        projectId: "proj_tenant1",
-        environmentId: "env_tenant1",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          environment_id: { op: "eq", value: "env_tenant1" },
+        },
         tableSchema: [costExpressionSchema],
       });
 
@@ -1236,9 +1288,11 @@ describe("TSQL Virtual Column Tests", () => {
         query:
           "SELECT run_id, invocation_cost FROM task_runs WHERE invocation_cost BETWEEN 1.0 AND 2.0",
         schema: z.object({ run_id: z.string(), invocation_cost: z.number() }),
-        organizationId: "org_tenant1",
-        projectId: "proj_tenant1",
-        environmentId: "env_tenant1",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          environment_id: { op: "eq", value: "env_tenant1" },
+        },
         tableSchema: [costExpressionSchema],
       });
 
@@ -1282,9 +1336,11 @@ describe("TSQL Virtual Column Tests", () => {
         query:
           "SELECT run_id FROM task_runs WHERE status = 'COMPLETED_SUCCESSFULLY' AND invocation_cost > 2.0",
         schema: z.object({ run_id: z.string() }),
-        organizationId: "org_tenant1",
-        projectId: "proj_tenant1",
-        environmentId: "env_tenant1",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          environment_id: { op: "eq", value: "env_tenant1" },
+        },
         tableSchema: [costExpressionSchema],
       });
 
@@ -1328,9 +1384,11 @@ describe("TSQL Virtual Column Tests", () => {
         name: "test-expression-large-integer-where",
         query: "SELECT run_id, invocation_cost FROM task_runs WHERE invocation_cost > 100",
         schema: z.object({ run_id: z.string(), invocation_cost: z.number() }),
-        organizationId: "org_tenant1",
-        projectId: "proj_tenant1",
-        environmentId: "env_tenant1",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          environment_id: { op: "eq", value: "env_tenant1" },
+        },
         tableSchema: [costExpressionSchema],
       });
 
@@ -1393,9 +1451,11 @@ describe("Field Mapping Tests", () => {
         name: "test-field-mapping-select",
         query: "SELECT run_id, project_ref FROM task_runs",
         schema: z.object({ run_id: z.string(), project_ref: z.string().nullable() }),
-        organizationId: "org_tenant1",
-        projectId: "proj_tenant1",
-        environmentId: "env_tenant1",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          environment_id: { op: "eq", value: "env_tenant1" },
+        },
         tableSchema: [fieldMappingSchema],
         fieldMappings: {
           project: {
@@ -1434,9 +1494,11 @@ describe("Field Mapping Tests", () => {
         name: "test-field-mapping-unmapped",
         query: "SELECT run_id, project_ref FROM task_runs WHERE run_id = 'run_fm_unmapped'",
         schema: z.object({ run_id: z.string(), project_ref: z.string().nullable() }),
-        organizationId: "org_tenant1",
-        projectId: "proj_tenant1",
-        environmentId: "env_tenant1",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          environment_id: { op: "eq", value: "env_tenant1" },
+        },
         tableSchema: [fieldMappingSchema],
         fieldMappings: {
           project: {
@@ -1481,9 +1543,11 @@ describe("Field Mapping Tests", () => {
         name: "test-field-mapping-where",
         query: "SELECT run_id FROM task_runs WHERE project_ref = 'my-project-ref'",
         schema: z.object({ run_id: z.string() }),
-        organizationId: "org_tenant1",
-        projectId: "proj_tenant1",
-        environmentId: "env_tenant1",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          environment_id: { op: "eq", value: "env_tenant1" },
+        },
         tableSchema: [fieldMappingSchema],
         fieldMappings: {
           project: {
@@ -1530,7 +1594,9 @@ describe("Field Mapping Tests", () => {
         query:
           "SELECT run_id FROM task_runs WHERE project_ref IN ('my-project-ref', 'other-project')",
         schema: z.object({ run_id: z.string() }),
-        organizationId: "org_tenant1",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+        },
         tableSchema: [fieldMappingSchema],
         fieldMappings: {
           project: {
