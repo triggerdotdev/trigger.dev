@@ -505,6 +505,7 @@ export class EnvironmentVariablesRepository implements Repository {
               increment: 1,
             },
             lastUpdatedBy: options.lastUpdatedBy ? options.lastUpdatedBy : undefined,
+            isSecret: options.isSecret ? true : undefined,
           },
         });
       });
