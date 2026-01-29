@@ -14,14 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node: ["18.20", "20.20", "22.12"]
-        exclude:
-          # Skip Node 18 on macOS/Windows to reduce CI time
-          # Linux coverage is sufficient for Node 18 compatibility
-          - os: macos-latest
-            node: "18.20"
-          - os: windows-latest
-            node: "18.20"
+        node: ["20.20", "22.12"]
 
     steps:
       - name: ⬇️ Checkout repo
@@ -47,12 +40,15 @@ jobs:
         run: pnpm run generate
 
       - name: 🔨 Build SDK dependencies
-        run: pnpm run build --filter @trigger.dev/sdk^...
+        shell: bash
+        run: pnpm run build --filter '@trigger.dev/sdk^...'
 
       - name: 🔨 Build SDK
-        run: pnpm run build --filter @trigger.dev/sdk
+        shell: bash
+        run: pnpm run build --filter '@trigger.dev/sdk'
 
       - name: 🧪 Run SDK Compatibility Tests
+        shell: bash
         run: pnpm --filter @internal/sdk-compat-tests test
 
   bun-compat:
@@ -179,4 +175,4 @@ jobs:
 
       - name: 🧪 Run Cloudflare Workers Compatibility Test (dry-run)
         working-directory: internal-packages/sdk-compat-tests/src/fixtures/cloudflare-worker
-        run: pnpm exec wrangler deploy --dry-run --outdir dist
+        run: npx wrangler deploy --dry-run --outdir dist
