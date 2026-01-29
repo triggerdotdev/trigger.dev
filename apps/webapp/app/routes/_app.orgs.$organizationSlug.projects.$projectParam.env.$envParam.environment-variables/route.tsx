@@ -28,6 +28,7 @@ import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
+import { Hint } from "~/components/primitives/Hint";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -68,7 +69,6 @@ import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/enviro
 import {
   DeleteEnvironmentVariableValue,
   EditEnvironmentVariableValue,
-  EnvironmentVariable,
 } from "~/v3/environmentVariables/repository";
 
 export const meta: MetaFunction = () => {
@@ -404,6 +404,7 @@ function EditEnvironmentVariablePanel({
   revealAll: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isSecret, setIsSecret] = useState(variable.isSecret);
   const fetcher = useFetcher<typeof action>();
   const lastSubmission = fetcher.data as any;
 
@@ -437,6 +438,7 @@ function EditEnvironmentVariablePanel({
         <DialogHeader>Edit environment variable</DialogHeader>
         <fetcher.Form method="post" {...form.props}>
           <input type="hidden" name="action" value="edit" />
+          <input type="hidden" name="isSecret" value={isSecret ? "true" : "false"} />
           <input {...conform.input(id, { type: "hidden" })} value={variable.id} />
           <input
             {...conform.input(environmentId, { type: "hidden" })}
@@ -453,6 +455,22 @@ function EditEnvironmentVariablePanel({
             <InputGroup fullWidth>
               <Label>Environment</Label>
               <EnvironmentCombo environment={variable.environment} className="text-sm" />
+            </InputGroup>
+
+            <InputGroup className="w-auto">
+              <Switch
+                variant="medium"
+                label={<span className="text-text-bright">Secret value</span>}
+                checked={isSecret}
+                disabled={variable.isSecret}
+                className="-ml-2 inline-flex w-fit"
+                onCheckedChange={setIsSecret}
+              />
+              <Hint className="-mt-1">
+                {variable.isSecret
+                  ? "This variable is secret and cannot be changed back."
+                  : "Once enabled, the value will be hidden and cannot be revealed again."}
+              </Hint>
             </InputGroup>
 
             <InputGroup fullWidth>
