@@ -122,21 +122,21 @@ export async function getV3EventRepository(
 async function resolveTaskEventRepositoryFlag(
   featureFlags: Record<string, unknown> | undefined
 ): Promise<"clickhouse" | "clickhouse_v2" | "postgres"> {
-  const flag = await flag({
+  const flagResult = await flag({
     key: FEATURE_FLAG.taskEventRepository,
     defaultValue: env.EVENT_REPOSITORY_DEFAULT_STORE,
     overrides: featureFlags,
   });
 
-  if (flag === "clickhouse_v2") {
+  if (flagResult === "clickhouse_v2") {
     return "clickhouse_v2";
   }
 
-  if (flag === "clickhouse") {
+  if (flagResult === "clickhouse") {
     return "clickhouse";
   }
 
-  return flag;
+  return flagResult;
 }
 
 export async function recordRunDebugLog(
