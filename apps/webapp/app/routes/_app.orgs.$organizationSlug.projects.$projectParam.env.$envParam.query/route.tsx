@@ -75,7 +75,7 @@ import { executeQuery, type QueryScope } from "~/services/queryService.server";
 import { requireUser } from "~/services/session.server";
 import { downloadFile, rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { EnvironmentParamSchema, organizationBillingPath } from "~/utils/pathBuilder";
-import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags.server";
+import { canAccessQuery } from "~/v3/canAccessQuery.server";
 import { querySchemas } from "~/v3/querySchemas";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { QueryHelpSidebar } from "./QueryHelpSidebar";
@@ -91,40 +91,6 @@ function toISOString(value: Date | string): string {
   return value.toISOString();
 }
 
-async function hasQueryAccess(
-  userId: string,
-  isAdmin: boolean,
-  isImpersonating: boolean,
-  organizationSlug: string
-): Promise<boolean> {
-  if (isAdmin || isImpersonating) {
-    return true;
-  }
-
-  // Check organization feature flags
-  const organization = await prisma.organization.findFirst({
-    where: {
-      slug: organizationSlug,
-      members: { some: { userId } },
-    },
-    select: {
-      featureFlags: true,
-    },
-  });
-
-  if (!organization?.featureFlags) {
-    return false;
-  }
-
-  const flags = organization.featureFlags as Record<string, unknown>;
-  const hasQueryAccessResult = validateFeatureFlagValue(
-    FEATURE_FLAG.hasQueryAccess,
-    flags.hasQueryAccess
-  );
-
-  return hasQueryAccessResult.success && hasQueryAccessResult.data === true;
-}
-
 const scopeOptions = [
   { value: "environment", label: "Environment" },
   { value: "project", label: "Project" },
@@ -135,12 +101,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
-  const canAccess = await hasQueryAccess(
-    user.id,
-    user.admin,
-    user.isImpersonating,
-    organizationSlug
-  );
+  const canAccess = await canAccessQuery({
+    userId: user.id,
+    isAdmin: user.admin,
+    isImpersonating: user.isImpersonating,
+    organizationSlug,
+  });
   if (!canAccess) {
     throw redirect("/");
   }
@@ -200,12 +166,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const user = await requireUser(request);
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
-  const canAccess = await hasQueryAccess(
-    user.id,
-    user.admin,
-    user.isImpersonating,
-    organizationSlug
-  );
+  const canAccess = await canAccessQuery({
+    userId: user.id,
+    isAdmin: user.admin,
+    isImpersonating: user.isImpersonating,
+    organizationSlug,
+  });
   if (!canAccess) {
     return typedjson(
       {
