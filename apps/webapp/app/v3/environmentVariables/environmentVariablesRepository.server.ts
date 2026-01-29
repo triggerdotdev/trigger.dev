@@ -366,6 +366,7 @@ export class EnvironmentVariablesRepository implements Repository {
       id: string;
       environmentId: string;
       value: string;
+      isSecret?: boolean;
     }
   ): Promise<Result> {
     const project = await this.prismaClient.project.findFirst({
@@ -426,6 +427,20 @@ export class EnvironmentVariablesRepository implements Repository {
         await secretStore.setSecret<{ secret: string }>(key, {
           secret: options.value,
         });
+
+        if (options.isSecret) {
+          await tx.environmentVariableValue.update({
+            where: {
+              variableId_environmentId: {
+                variableId: environmentVariable.id,
+                environmentId: options.environmentId,
+              },
+            },
+            data: {
+              isSecret: true,
+            },
+          });
+        }
       });
 
       return {
