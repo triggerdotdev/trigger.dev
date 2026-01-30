@@ -1,10 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { SharedRuntimeManager } from "./sharedRuntimeManager.js";
 import { CompletedWaitpoint } from "../schemas/index.js";
 
 describe("SharedRuntimeManager", () => {
     const mockIpc = {
-        send: vi.fn(),
+        send: () => { },
     } as any;
 
     const manager = new SharedRuntimeManager(mockIpc, false);
