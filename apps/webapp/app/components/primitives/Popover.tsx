@@ -47,7 +47,7 @@ function PopoverSectionHeader({
   variant?: ParagraphVariant;
 }) {
   return (
-    <Paragraph variant={variant} className="bg-charcoal-750 px-2.5 py-1.5">
+    <Paragraph variant={variant} className="bg-hover px-2.5 py-1.5">
       {title}
     </Paragraph>
   );
@@ -91,8 +91,8 @@ const PopoverMenuItem = React.forwardRef<
       textAlignLeft: true,
       TrailingIcon: isSelected ? CheckIcon : undefined,
       className: cn(
-        "group-hover:bg-charcoal-700",
-        isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined,
+        "group-hover:bg-hover-bright",
+        isSelected ? "bg-hover group-hover:bg-secondary" : undefined,
         className
       ),
     } as const;
@@ -140,7 +140,7 @@ function PopoverCustomTrigger({
     <PopoverTrigger
       {...props}
       className={cn(
-        "group flex items-center justify-end gap-1 rounded text-text-dimmed transition focus-custom hover:bg-charcoal-850 hover:text-text-bright",
+        "group flex items-center justify-end gap-1 rounded text-text-dimmed transition focus-custom hover:bg-hover hover:text-text-bright",
         className
       )}
     >
@@ -178,7 +178,7 @@ function PopoverSideMenuTrigger({
       {...props}
       ref={ref}
       className={cn(
-        "flex h-[1.8rem] shrink-0 select-none items-center rounded-sm bg-transparent pl-[0.4rem] pr-2.5 text-center font-sans text-2sm font-normal text-text-bright transition duration-150 focus-custom hover:bg-charcoal-750",
+        "flex h-[1.8rem] shrink-0 select-none items-center rounded-sm bg-transparent pl-[0.4rem] pr-2.5 text-center font-sans text-2sm font-normal text-text-bright transition duration-150 focus-custom hover:bg-hover",
         shortcut && !hideShortcutKey ? "justify-between gap-x-1.5" : "",
         className
       )}
@@ -193,12 +193,12 @@ function PopoverSideMenuTrigger({
 
 const popoverArrowTriggerVariants = {
   minimal: {
-    trigger: "text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright",
+    trigger: "text-text-dimmed hover:bg-hover-bright hover:text-text-bright",
     text: "group-hover:text-text-bright",
     icon: "text-text-dimmed group-hover:text-text-bright",
   },
   tertiary: {
-    trigger: "bg-tertiary text-text-bright hover:bg-charcoal-600",
+    trigger: "bg-tertiary text-text-bright hover:bg-secondary",
     text: "text-text-bright",
     icon: "text-text-bright",
   },

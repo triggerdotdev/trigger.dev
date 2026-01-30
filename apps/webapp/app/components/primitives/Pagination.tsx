@@ -103,7 +103,7 @@ function pageUrl(location: ReturnType<typeof useLocation>, page: number): string
 const baseClass =
   "flex items-center justify-center border border-transparent min-w-6 h-6 px-1 text-xs font-medium transition text-text-dimmed rounded-sm focus-visible:focus-custom";
 const unselectedClass = "hover:bg-tertiary hover:text-text-bright";
-const selectedClass = "border-charcoal-600 bg-tertiary text-text-bright hover:bg-charcoal-600/50";
+const selectedClass = "border-charcoal-600 bg-tertiary text-text-bright hover:bg-secondary";
 
 function PageLinkComponent({
   page,

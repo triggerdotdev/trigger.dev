@@ -22,7 +22,7 @@ export const variantClasses = {
     className: "border-charcoal-700 bg-charcoal-800",
     icon: <InformationCircleIcon className="h-5 w-5 shrink-0 text-text-dimmed" />,
     textColor: "text-text-bright",
-    linkClassName: "transition hover:bg-charcoal-750",
+    linkClassName: "transition hover:bg-hover",
   },
   warning: {
     className: "border-warning/20 bg-warning/10",

@@ -155,7 +155,7 @@ const SheetContent = React.forwardRef<
     >
       <div className="grid max-h-full grid-rows-[2.75rem_1fr] overflow-hidden">
         <div className="flex items-center gap-2 border-b border-grid-bright p-2">
-          <SheetPrimitive.Close className="rounded-sm p-1 transition hover:bg-charcoal-800 disabled:pointer-events-none">
+          <SheetPrimitive.Close className="rounded-sm p-1 transition hover:bg-hover disabled:pointer-events-none">
             <XMarkIcon className="size-4 text-text-dimmed" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>

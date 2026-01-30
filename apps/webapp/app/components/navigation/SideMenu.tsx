@@ -584,7 +584,7 @@ function ProjectSelector({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center rounded pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
+              "group flex h-8 items-center rounded pl-[0.4375rem] transition-colors hover:bg-hover",
               isCollapsed ? "justify-center pr-0.5" : "w-full justify-between pr-1"
             )}
           >
@@ -780,7 +780,7 @@ function SwitchOrganizations({
         <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
           <ButtonContent
             variant="small-menu-item"
-            className="hover:bg-charcoal-750"
+            className="hover:bg-hover"
             LeadingIcon={ArrowPathRoundedSquareIcon}
             leadingIconClassName="text-text-dimmed"
             TrailingIcon={ChevronRightIcon}
@@ -1010,7 +1010,7 @@ function CollapseToggle({
               className={cn(
                 "group flex h-12 w-6 items-center justify-center rounded-md text-text-dimmed transition-all duration-200 focus-custom",
                 isHovering
-                  ? "border border-grid-bright bg-background-bright shadow-md hover:bg-charcoal-750 hover:text-text-bright"
+                  ? "border border-grid-bright bg-background-bright shadow-md hover:bg-hover hover:text-text-bright"
                   : "border border-transparent bg-transparent"
               )}
             >

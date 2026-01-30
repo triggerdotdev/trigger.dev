@@ -632,7 +632,7 @@ function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
           role="button"
           onClick={() => setIsVideoDialogOpen(true)}
           className={cn(
-            "group flex w-full items-center justify-between gap-2 rounded-md p-1 pr-3 transition hover:bg-charcoal-750",
+            "group flex w-full items-center justify-between gap-2 rounded-md p-1 pr-3 transition hover:bg-hover",
             variants["withIcon"].container
           )}
         >
@@ -827,7 +827,7 @@ function LinkWithIcon({
       target={isExternal ? "_blank" : undefined}
       rel={isExternal ? "noreferrer" : undefined}
       className={cn(
-        "group flex w-full items-center justify-between gap-2 rounded-md p-1 pr-3 transition hover:bg-charcoal-750",
+        "group flex w-full items-center justify-between gap-2 rounded-md p-1 pr-3 transition hover:bg-hover",
         variation.container
       )}
     >

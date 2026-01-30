@@ -269,7 +269,7 @@ export function DeploymentsNoneDev() {
           organization={organization}
           project={project}
           environment={environment}
-          className="w-fit border border-charcoal-600 bg-secondary hover:border-charcoal-550 hover:bg-charcoal-600"
+          className="w-fit border border-charcoal-600 bg-secondary hover:border-charcoal-550 hover:bg-secondary"
         />
       </StepContentContainer>
     </>

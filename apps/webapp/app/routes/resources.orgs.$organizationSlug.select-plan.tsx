@@ -827,7 +827,7 @@ export function TierEnterprise() {
           <Feedback
             defaultValue="enterprise"
             button={
-              <div className="flex h-10 w-full cursor-pointer items-center justify-center rounded border border-charcoal-600 bg-tertiary px-8 text-base font-medium transition hover:border-charcoal-550 hover:bg-charcoal-600">
+              <div className="flex h-10 w-full cursor-pointer items-center justify-center rounded border border-charcoal-600 bg-tertiary px-8 text-base font-medium transition hover:border-charcoal-550 hover:bg-secondary">
                 <span className="text-center text-text-bright">Contact us</span>
               </div>
             }

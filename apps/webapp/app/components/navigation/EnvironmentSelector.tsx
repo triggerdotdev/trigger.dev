@@ -57,7 +57,7 @@ export function EnvironmentSelector({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center rounded pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
+              "group flex h-8 items-center rounded pl-[0.4375rem] transition-colors hover:bg-hover",
               isCollapsed ? "justify-center pr-0.5" : "justify-between pr-1",
               className
             )}
@@ -230,7 +230,7 @@ function Branches({
         <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
           <ButtonContent
             variant="small-menu-item"
-            className="hover:bg-charcoal-750"
+            className="hover:bg-hover"
             TrailingIcon={ChevronRightIcon}
             trailingIconClassName="text-text-dimmed"
             textAlignLeft

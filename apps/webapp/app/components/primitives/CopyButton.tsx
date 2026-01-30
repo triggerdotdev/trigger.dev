@@ -50,10 +50,10 @@ export function CopyButton({
         onClick={copy}
         className={cn(
           buttonSize,
-          "flex items-center justify-center rounded border border-charcoal-650 bg-charcoal-750",
+          "flex items-center justify-center rounded border border-grid-bright bg-tertiary",
           copied
             ? "text-green-500"
-            : "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-text-bright",
+            : "text-text-dimmed hover:border-grid-bright hover:bg-hover-bright hover:text-text-bright",
           buttonClassName
         )}
       >

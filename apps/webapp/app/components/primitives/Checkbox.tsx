@@ -23,28 +23,28 @@ const variants = {
   },
   "button/small": {
     button:
-      "flex items-center w-fit h-8 pl-2 pr-3 rounded border border-charcoal-600 hover:bg-charcoal-850 hover:border-charcoal-500 transition",
+      "flex items-center w-fit h-8 pl-2 pr-3 rounded border border-charcoal-600 hover:bg-hover hover:border-charcoal-500 transition",
     label: "text-sm text-text-bright select-none",
     description: "text-text-dimmed",
     inputPosition: "mt-0",
-    isChecked: "bg-charcoal-850 border-charcoal-750 hover:!bg-charcoal-850",
+    isChecked: "bg-hover border-charcoal-750 hover:!bg-hover",
     isDisabled: "opacity-70 hover:bg-transparent",
   },
   button: {
     button:
-      "w-fit py-2 pl-3 pr-4 rounded border border-charcoal-600 hover:bg-charcoal-850 hover:border-charcoal-500 transition",
+      "w-fit py-2 pl-3 pr-4 rounded border border-charcoal-600 hover:bg-hover hover:border-charcoal-500 transition",
     label: "text-text-bright select-none",
     description: "text-text-dimmed",
     inputPosition: "mt-1",
-    isChecked: "bg-charcoal-850 border-charcoal-750 hover:!bg-charcoal-850",
+    isChecked: "bg-hover border-charcoal-750 hover:!bg-hover",
     isDisabled: "opacity-70 hover:bg-transparent",
   },
   description: {
-    button: "w-full py-2 pl-3 pr-4 checked:hover:bg-charcoal-850 transition",
+    button: "w-full py-2 pl-3 pr-4 checked:hover:bg-hover transition",
     label: "text-text-bright font-semibold",
     description: "text-text-dimmed",
     inputPosition: "mt-1",
-    isChecked: "bg-charcoal-850",
+    isChecked: "bg-hover",
     isDisabled: "opacity-70",
   },
 };
@@ -139,7 +139,7 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
           className={cn(
             inputPositionClasses,
             props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
-            "read-only:border-charcoal-650 disabled:border-charcoal-650 rounded-sm border border-charcoal-600 bg-transparent transition checked:!bg-indigo-500 read-only:!bg-charcoal-700 group-hover:bg-charcoal-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none  focus-visible:ring-indigo-500 disabled:!bg-charcoal-700"
+            "read-only:border-charcoal-650 disabled:border-charcoal-650 rounded-sm border border-charcoal-600 bg-transparent transition checked:!bg-indigo-500 read-only:!bg-charcoal-700 group-hover:bg-hover group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none  focus-visible:ring-indigo-500 disabled:!bg-charcoal-700"
           )}
           id={id}
           ref={ref}
@@ -185,7 +185,7 @@ export const Checkbox = forwardRef<HTMLInputElement, SimpleCheckboxProps>(
         type="checkbox"
         className={cn(
           props.readOnly || props.disabled ? "cursor-default" : "cursor-pointer",
-          "read-only:border-charcoal-650 disabled:border-charcoal-650 rounded-sm border border-charcoal-600 bg-transparent transition checked:!bg-indigo-500 read-only:!bg-charcoal-700 group-hover:bg-charcoal-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none  focus-visible:ring-indigo-500 disabled:!bg-charcoal-700"
+          "read-only:border-charcoal-650 disabled:border-charcoal-650 rounded-sm border border-charcoal-600 bg-transparent transition checked:!bg-indigo-500 read-only:!bg-charcoal-700 group-hover:bg-hover group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none  focus-visible:ring-indigo-500 disabled:!bg-charcoal-700"
         )}
         {...props}
         ref={ref}

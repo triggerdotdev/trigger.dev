@@ -843,7 +843,7 @@ function TasksTreeView({
                       <div
                         className={cn(
                           "flex h-8 w-4 items-center",
-                          node.hasChildren && "hover:bg-charcoal-600"
+                          node.hasChildren && "hover:bg-secondary"
                         )}
                         onClick={(e) => {
                           e.stopPropagation();

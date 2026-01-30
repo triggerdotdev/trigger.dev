@@ -149,7 +149,7 @@ export function LogsTable({
                   key={log.id}
                   className={cn(
                     "cursor-pointer transition-colors",
-                    isSelected ? "bg-charcoal-750" : "hover:bg-charcoal-850"
+                    isSelected ? "bg-hover" : "hover:bg-hover"
                   )}
                   isSelected={isSelected}
                 >

@@ -9,7 +9,7 @@ import { cn } from "~/utils/cn";
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
 const navButtonClass =
-  "size-7 rounded-[3px] bg-secondary border border-charcoal-600 text-text-bright hover:bg-charcoal-600 hover:border-charcoal-550 transition inline-flex items-center justify-center";
+  "size-7 rounded-[3px] bg-secondary border border-charcoal-600 text-text-bright hover:bg-secondary hover:border-charcoal-550 transition inline-flex items-center justify-center";
 
 function CustomMonthCaption({ calendarMonth }: { calendarMonth: { date: Date } }) {
   const { goToMonth, nextMonth, previousMonth } = useDayPicker();
@@ -27,7 +27,7 @@ function CustomMonthCaption({ calendarMonth }: { calendarMonth: { date: Date } }
       </button>
       <div className="flex items-center gap-2">
         <select
-          className="rounded border border-charcoal-600 bg-charcoal-750 px-2 py-1 text-sm text-text-bright focus:border-charcoal-500 focus:outline-none"
+          className="rounded border border-charcoal-600 bg-tertiary px-2 py-1 text-sm text-text-bright focus:border-charcoal-500 focus:outline-none"
           value={calendarMonth.date.getMonth()}
           onChange={(e) => {
             const newDate = new Date(calendarMonth.date);
@@ -42,7 +42,7 @@ function CustomMonthCaption({ calendarMonth }: { calendarMonth: { date: Date } }
           ))}
         </select>
         <select
-          className="rounded border border-charcoal-600 bg-charcoal-750 px-2 py-1 text-sm text-text-bright focus:border-charcoal-500 focus:outline-none"
+          className="rounded border border-charcoal-600 bg-tertiary px-2 py-1 text-sm text-text-bright focus:border-charcoal-500 focus:outline-none"
           value={calendarMonth.date.getFullYear()}
           onChange={(e) => {
             const newDate = new Date(calendarMonth.date);
@@ -97,7 +97,7 @@ export function Calendar({
         day: "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-charcoal-700 [&:has([aria-selected].day-outside)]:bg-charcoal-700/50 [&:has([aria-selected].day-range-end)]:rounded-r-md first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md",
         day_button: cn(
           "size-8 p-0 font-normal text-text-bright rounded-md",
-          "hover:bg-charcoal-700 hover:text-text-bright",
+          "hover:bg-hover-bright hover:text-text-bright",
           "focus:bg-charcoal-700 focus:text-text-bright focus:outline-none",
           "aria-selected:opacity-100"
         ),
@@ -113,7 +113,7 @@ export function Calendar({
         hidden: "invisible",
         dropdowns: "flex gap-2 items-center justify-center",
         dropdown:
-          "bg-charcoal-750 border border-charcoal-600 rounded px-2 py-1 text-sm text-text-bright focus:outline-none focus:border-charcoal-500",
+          "bg-tertiary border border-charcoal-600 rounded px-2 py-1 text-sm text-text-bright focus:outline-none focus:border-charcoal-500",
         ...classNames,
       }}
       components={{

@@ -37,7 +37,7 @@ export function SideMenuSection({
       <div className="relative w-full">
         {/* Header - fades out when sidebar is collapsed */}
         <motion.div
-          className="flex cursor-pointer items-center gap-1 overflow-hidden rounded-sm py-1 pl-1.5 text-text-dimmed transition hover:bg-charcoal-750 hover:text-text-bright"
+          className="flex cursor-pointer items-center gap-1 overflow-hidden rounded-sm py-1 pl-1.5 text-text-dimmed transition hover:bg-hover hover:text-text-bright"
           onClick={isSideMenuCollapsed ? undefined : handleToggle}
           style={{ cursor: isSideMenuCollapsed ? "default" : "pointer" }}
           initial={false}

@@ -374,7 +374,7 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
                           const newColumns = config.yAxisColumns.filter((_, i) => i !== index);
                           updateConfig({ yAxisColumns: newColumns });
                         }}
-                        className="rounded p-1 text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+                        className="rounded p-1 text-text-dimmed hover:bg-hover-bright hover:text-text-bright"
                         title="Remove series"
                       >
                         <XIcon className="h-3.5 w-3.5" />
@@ -400,7 +400,7 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
                         });
                       }
                     }}
-                    className="flex items-center gap-1 self-start rounded px-1 py-0.5 text-xs text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+                    className="flex items-center gap-1 self-start rounded px-1 py-0.5 text-xs text-text-dimmed hover:bg-hover-bright hover:text-text-bright"
                   >
                     <Plus className="h-3 w-3" />
                     Add series
@@ -546,7 +546,7 @@ function SortDirectionToggle({
           "rounded px-2 py-1 text-xs transition-colors",
           direction === "asc"
             ? "bg-charcoal-700 text-text-bright"
-            : "text-text-dimmed hover:bg-charcoal-800 hover:text-text-bright"
+            : "text-text-dimmed hover:bg-hover hover:text-text-bright"
         )}
         title="Ascending"
       >
@@ -559,7 +559,7 @@ function SortDirectionToggle({
           "rounded px-2 py-1 text-xs transition-colors",
           direction === "desc"
             ? "bg-charcoal-700 text-text-bright"
-            : "text-text-dimmed hover:bg-charcoal-800 hover:text-text-bright"
+            : "text-text-dimmed hover:bg-hover hover:text-text-bright"
         )}
         title="Descending"
       >

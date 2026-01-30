@@ -498,8 +498,8 @@ function HexPopover({ avatar, hex }: { avatar: Avatar; hex: string }) {
               fullWidth
               textAlignLeft
               className={cn(
-                "group-hover:bg-charcoal-700",
-                hex === color.hex ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined
+                "group-hover:bg-hover-bright",
+                hex === color.hex ? "bg-hover group-hover:bg-secondary" : undefined
               )}
             >
               {color.name}

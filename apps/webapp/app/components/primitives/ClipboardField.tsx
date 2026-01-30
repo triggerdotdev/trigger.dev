@@ -5,7 +5,7 @@ import { CopyButton } from "./CopyButton";
 const variants = {
   "primary/small": {
     container:
-      "flex items-center text-text-dimmed font-mono rounded border bg-charcoal-750 text-xs transition hover:bg-charcoal-700 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
+      "flex items-center text-text-dimmed font-mono rounded border bg-tertiary text-xs transition hover:bg-hover-bright focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
       "bg-transparent border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
     buttonVariant: "primary" as const,
@@ -14,7 +14,7 @@ const variants = {
   },
   "secondary/small": {
     container:
-      "flex items-center text-text-dimmed font-mono rounded border bg-charcoal-750 text-xs transition hover:bg-charcoal-700 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
+      "flex items-center text-text-dimmed font-mono rounded border bg-tertiary text-xs transition hover:bg-hover-bright focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
       "bg-transparent border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
     buttonVariant: "tertiary" as const,
@@ -23,17 +23,17 @@ const variants = {
   },
   "tertiary/small": {
     container:
-      "group/clipboard flex items-center text-text-dimmed font-mono rounded bg-transparent border border-transparent text-xs transition duration-150 hover:border-charcoal-700 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
+      "group/clipboard flex items-center text-text-dimmed font-mono rounded bg-transparent border border-transparent text-xs transition duration-150 hover:border-grid-bright focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
       "bg-transparent border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
     buttonVariant: "minimal" as const,
     size: "small" as const,
     button:
-      "rounded-l-none border-l border-transparent transition group-hover/clipboard:border-charcoal-700",
+      "rounded-l-none border-l border-transparent transition group-hover/clipboard:border-grid-bright",
   },
   "primary/medium": {
     container:
-      "flex items-center text-text-dimmed font-mono rounded border bg-charcoal-750 text-sm transition hover:bg-charcoal-700 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
+      "flex items-center text-text-dimmed font-mono rounded border bg-tertiary text-sm transition hover:bg-hover-bright focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
       "bg-transparent border-0 text-sm px-3 w-auto rounded-l h-8 leading-6 focus:ring-transparent",
     buttonVariant: "primary" as const,
@@ -42,7 +42,7 @@ const variants = {
   },
   "secondary/medium": {
     container:
-      "flex items-center text-text-dimmed font-mono rounded bg-charcoal-750 text-sm transition hover:bg-charcoal-700 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
+      "flex items-center text-text-dimmed font-mono rounded bg-tertiary text-sm transition hover:bg-hover-bright focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
       "bg-transparent border-0 text-sm px-3 w-auto rounded-l h-8 leading-6 focus:ring-transparent",
     buttonVariant: "tertiary" as const,
@@ -51,12 +51,12 @@ const variants = {
   },
   "tertiary/medium": {
     container:
-      "group flex items-center text-text-dimmed font-mono rounded bg-transparent border border-transparent text-sm transition hover:border-charcoal-700 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
+      "group flex items-center text-text-dimmed font-mono rounded bg-transparent border border-transparent text-sm transition hover:border-grid-bright focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
       "bg-transparent border-0 text-sm px-3 w-auto rounded-l h-8 leading-6 focus:ring-transparent",
     buttonVariant: "minimal" as const,
     size: "medium" as const,
-    button: "rounded-l-none border-l border-transparent transition group-hover:border-charcoal-700",
+    button: "rounded-l-none border-l border-transparent transition group-hover:border-grid-bright",
   },
 };
 

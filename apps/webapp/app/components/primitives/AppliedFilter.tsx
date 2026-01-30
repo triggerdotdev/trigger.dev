@@ -4,11 +4,11 @@ import { cn } from "~/utils/cn";
 
 const variants = {
   "secondary/small": {
-    box: "h-6 bg-secondary rounded pl-1.5 gap-1.5 text-xs divide-x divide-black/15 group-hover:bg-charcoal-600 group-hover:border-charcoal-550 text-text-bright border border-charcoal-600",
+    box: "h-6 bg-secondary rounded pl-1.5 gap-1.5 text-xs divide-x divide-black/15 group-hover:bg-secondary group-hover:border-charcoal-550 text-text-bright border border-charcoal-600",
     clear: "size-6 text-text-bright hover:text-text-bright transition-colors",
   },
   "tertiary/small": {
-    box: "h-6 bg-tertiary rounded pl-1.5 gap-1.5 text-xs divide-x divide-black/15 group-hover:bg-charcoal-600",
+    box: "h-6 bg-tertiary rounded pl-1.5 gap-1.5 text-xs divide-x divide-black/15 group-hover:bg-secondary",
     clear: "size-6 text-text-dimmed hover:text-text-bright transition-colors",
   },
   "minimal/medium": {

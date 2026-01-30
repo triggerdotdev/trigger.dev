@@ -39,7 +39,7 @@ export function SideMenuItem({
           to={to}
           target={target}
           className={cn(
-            "flex h-8 w-full items-center gap-2 overflow-hidden rounded pr-2 pl-[0.4375rem] text-text-bright transition-colors hover:bg-charcoal-750",
+            "flex h-8 w-full items-center gap-2 overflow-hidden rounded pr-2 pl-[0.4375rem] text-text-bright transition-colors hover:bg-hover",
             isActive ? "bg-tertiary" : ""
           )}
         >

@@ -117,7 +117,7 @@ export function QueryHistoryPopover({
                     onQuerySelected(item);
                     setIsOpen(false);
                   }}
-                  className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900"
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-hover"
                 >
                   <div className="flex flex-1 flex-col items-start gap-0.5 overflow-hidden">
                     {item.title ? (

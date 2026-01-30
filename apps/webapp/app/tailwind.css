@@ -28,10 +28,12 @@
 
   /* Text selection styles */
   ::selection {
-    @apply bg-text-bright/30 text-text-bright;
+    background-color: color-mix(in srgb, var(--color-text-bright) 30%, transparent);
+    @apply text-text-bright;
   }
   ::-moz-selection {
-    @apply bg-text-bright/30 text-text-bright;
+    background-color: color-mix(in srgb, var(--color-text-bright) 30%, transparent);
+    @apply text-text-bright;
   }
 
   /* Theme color variables */
@@ -46,6 +48,8 @@
     --color-background-dimmed: #F5F5F7; /* lighter than charcoal[100] */
     --color-grid-bright: #B5B8C0; /* charcoal[300] */
     --color-grid-dimmed: #D7D9DD; /* charcoal[200] */
+    --color-hover: #D7D9DD; /* charcoal[200] - hover backgrounds */
+    --color-hover-bright: #E8E9EC; /* charcoal[100] - brighter hover */
 
     /* shadcn charts */
     --chart-1: 12 76% 61%;
@@ -66,6 +70,8 @@
     --color-background-dimmed: #15171A; /* charcoal[850] */
     --color-grid-bright: #272A2E; /* charcoal[700] */
     --color-grid-dimmed: #212327; /* charcoal[750] */
+    --color-hover: #212327; /* charcoal[750] - hover backgrounds */
+    --color-hover-bright: #272A2E; /* charcoal[700] - brighter hover */
 
     /* shadcn charts */
     --chart-1: 220 70% 50%;
@@ -180,7 +186,10 @@
     @apply border-l-2 border-grid-bright pl-3 my-2 italic;
   }
   & a {
-    @apply text-blue-500 dark:text-blue-400 hover:underline;
+    @apply text-blue-500 hover:underline;
+  }
+  .dark & a {
+    @apply text-blue-400;
   }
   & strong {
     @apply font-semibold text-text-bright;
@@ -218,7 +227,10 @@
   /* Override the bg-muted/40 class to let inline styles work */
   & [data-code-block] pre {
     background-color: inherit !important;
-    @apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-400 dark:scrollbar-thumb-charcoal-600;
+    @apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-400;
+  }
+  .dark & [data-code-block] pre {
+    @apply scrollbar-thumb-charcoal-600;
   }
   & [data-code-block] pre code {
     @apply bg-transparent;

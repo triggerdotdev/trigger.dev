@@ -11,14 +11,14 @@ const variants = {
   bright: {
     header: "bg-background-bright",
     headerCell: "px-3 py-2.5 pb-3 text-sm",
-    cell: "group-hover/table-row:bg-charcoal-750 group-has-[[tabindex='0']:focus]/table-row:bg-charcoal-750",
+    cell: "group-hover/table-row:bg-hover group-has-[[tabindex='0']:focus]/table-row:bg-hover",
     cellSize: "px-3 py-3",
     cellText: "text-xs group-hover/table-row:text-text-bright",
-    stickyCell: "bg-background-bright group-hover/table-row:bg-charcoal-750",
+    stickyCell: "bg-background-bright group-hover/table-row:bg-hover",
     menuButton:
-      "bg-background-bright group-hover/table-row:bg-charcoal-750 group-hover/table-row:ring-charcoal-600/70 group-has-[[tabindex='0']:focus]/table-row:bg-charcoal-750",
-    menuButtonDivider: "group-hover/table-row:border-charcoal-600/70",
-    rowSelected: "bg-charcoal-750 group-hover/table-row:bg-charcoal-750",
+      "bg-background-bright group-hover/table-row:bg-hover group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-hover",
+    menuButtonDivider: "group-hover/table-row:border-grid-bright",
+    rowSelected: "bg-hover group-hover/table-row:bg-hover",
   },
   "bright/no-hover": {
     header: "bg-transparent",
@@ -29,31 +29,31 @@ const variants = {
     stickyCell: "bg-background-bright",
     menuButton: "bg-background-bright",
     menuButtonDivider: "",
-    rowSelected: "bg-charcoal-750",
+    rowSelected: "bg-hover",
   },
   dimmed: {
     header: "bg-background-dimmed",
     headerCell: "px-3 py-2.5 pb-3 text-sm",
-    cell: "group-hover/table-row:bg-charcoal-800 group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+    cell: "group-hover/table-row:bg-hover group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
     cellSize: "px-3 py-3",
     cellText: "text-xs group-hover/table-row:text-text-bright",
-    stickyCell: "group-hover/table-row:bg-charcoal-800",
+    stickyCell: "group-hover/table-row:bg-hover",
     menuButton:
-      "bg-background-dimmed group-hover/table-row:bg-charcoal-800 group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+      "bg-background-dimmed group-hover/table-row:bg-hover group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
     menuButtonDivider: "group-hover/table-row:border-grid-bright",
-    rowSelected: "bg-charcoal-750 group-hover/table-row:bg-charcoal-750",
+    rowSelected: "bg-hover group-hover/table-row:bg-hover",
   },
   "compact/mono": {
     header: "bg-background-dimmed",
     headerCell: "px-2 py-1.5 text-sm",
-    cell: "group-hover/table-row:bg-charcoal-800 group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+    cell: "group-hover/table-row:bg-hover group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
     cellSize: "px-2 py-1.5",
     cellText: "text-xs font-mono group-hover/table-row:text-text-bright",
-    stickyCell: "group-hover/table-row:bg-charcoal-800",
+    stickyCell: "group-hover/table-row:bg-hover",
     menuButton:
-      "bg-background-dimmed group-hover/table-row:bg-charcoal-800 group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+      "bg-background-dimmed group-hover/table-row:bg-hover group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
     menuButtonDivider: "group-hover/table-row:border-grid-bright",
-    rowSelected: "bg-charcoal-750 group-hover/table-row:bg-charcoal-750",
+    rowSelected: "bg-hover group-hover/table-row:bg-hover",
   },
 } as const;
 
@@ -301,7 +301,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           isSticky && variants[variant].stickyCell,
           isSelected && variants[variant].rowSelected,
           !isSelected &&
-            "group-hover/table-row:before:absolute group-hover/table-row:before:left-0 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:before:bg-charcoal-750 group-hover/table-row:after:absolute group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3 group-hover/table-row:after:bg-charcoal-750 group-focus-visible/table-row:bg-background-bright",
+            "group-hover/table-row:before:absolute group-hover/table-row:before:left-0 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:before:bg-hover group-hover/table-row:after:absolute group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3 group-hover/table-row:after:bg-hover group-focus-visible/table-row:bg-background-bright",
           className
         )}
         colSpan={colSpan}
@@ -361,10 +361,10 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
                 button={
                   <span
                     className={cn(
-                      "flex size-6 items-center justify-center rounded border border-charcoal-650 bg-charcoal-750",
+                      "flex size-6 items-center justify-center rounded border border-grid-bright bg-hover",
                       copied
                         ? "text-green-500"
-                        : "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-text-bright"
+                        : "text-text-dimmed hover:border-grid-bright hover:bg-hover-bright hover:text-text-bright"
                     )}
                   >
                     {copied ? (

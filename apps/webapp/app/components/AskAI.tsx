@@ -538,7 +538,7 @@ function GradientSpinnerBackground({
     >
       <div
         className={`flex h-full w-full items-center justify-center rounded-full bg-charcoal-600 ${
-          hoverEffect ? "transition group-hover:bg-charcoal-550" : ""
+          hoverEffect ? "transition group-hover:bg-secondary" : ""
         }`}
       >
         {children}

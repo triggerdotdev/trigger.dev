@@ -49,7 +49,7 @@ function FunctionCategory({ title, functions }: { title: string; functions: Func
           <SimpleTooltip
             key={fn.name}
             button={
-              <code className="cursor-help rounded bg-charcoal-750 px-1.5 py-0.5 font-mono text-xxs text-indigo-400 transition-colors hover:bg-charcoal-700 hover:text-indigo-300">
+              <code className="cursor-help rounded bg-tertiary px-1.5 py-0.5 font-mono text-xxs text-indigo-400 transition-colors hover:bg-hover-bright hover:text-indigo-300">
                 {fn.name}
               </code>
             }

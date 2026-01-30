@@ -18,7 +18,7 @@ const sizes = {
 const theme = {
   primary: {
     base: "bg-charcoal-700",
-    active: "text-text-bright hover:bg-charcoal-750/50",
+    active: "text-text-bright hover:bg-hover/50",
     inactive: "text-text-dimmed transition hover:text-text-bright",
     selected: "absolute inset-0 rounded-[2px] outline outline-3 outline-primary",
   },

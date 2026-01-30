@@ -15,7 +15,7 @@ const variants = {
   large: {
     container: "flex items-center gap-3 has-disabled:opacity-50",
     group: "flex items-center gap-1",
-    slot: "data-[active=true]:border-ring data-[active=true]:ring-ring/50 data-[active=true]:aria-invalid:ring-destructive/20 dark:data-[active=true]:aria-invalid:ring-destructive/40 aria-invalid:border-destructive data-[active=true]:aria-invalid:border-destructive bg-charcoal-750 border-charcoal-700 hover:border-charcoal-600 hover:bg-charcoal-650 relative flex h-12 w-12 items-center justify-center border text-base outline-none transition-all rounded-md data-[active=true]:z-10 data-[active=true]:ring-[3px] data-[active=true]:border-indigo-500",
+    slot: "data-[active=true]:border-ring data-[active=true]:ring-ring/50 data-[active=true]:aria-invalid:ring-destructive/20 dark:data-[active=true]:aria-invalid:ring-destructive/40 aria-invalid:border-destructive data-[active=true]:aria-invalid:border-destructive bg-charcoal-750 border-charcoal-700 hover:border-charcoal-600 hover:bg-secondary relative flex h-12 w-12 items-center justify-center border text-base outline-none transition-all rounded-md data-[active=true]:z-10 data-[active=true]:ring-[3px] data-[active=true]:border-indigo-500",
   },
   minimal: {
     container: "flex items-center gap-2 has-disabled:opacity-50",

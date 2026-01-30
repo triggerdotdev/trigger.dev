@@ -1345,7 +1345,7 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
                   onRunSelected(run);
                   setIsRecentRunsPopoverOpen(false);
                 }}
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900	"
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-hover	"
               >
                 <div className="flex flex-col items-start">
                   <Paragraph variant="small/bright">
@@ -1421,7 +1421,7 @@ function RunTemplatesPopover({
               {templates.map((template) => (
                 <div
                   key={template.id}
-                  className="group flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors hover:bg-charcoal-900"
+                  className="group flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors hover:bg-hover"
                 >
                   <button
                     type="button"

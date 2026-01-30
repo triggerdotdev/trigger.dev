@@ -738,7 +738,7 @@ function CopyableCell({
                   "flex size-6 items-center justify-center rounded border border-charcoal-650 bg-charcoal-750",
                   copied
                     ? "text-green-500"
-                    : "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-text-bright"
+                    : "text-text-dimmed hover:border-charcoal-600 hover:bg-hover-bright hover:text-text-bright"
                 )}
               >
                 {copied ? (
@@ -831,7 +831,7 @@ function HeaderCellContent({
             e.stopPropagation();
             onFilterClick();
           }}
-          className="flex-shrink-0 rounded text-text-dimmed transition-colors hover:bg-charcoal-700 hover:text-text-bright"
+          className="flex-shrink-0 rounded text-text-dimmed transition-colors hover:bg-hover-bright hover:text-text-bright"
           title="Toggle column filters"
         >
           <FunnelIcon className="size-3" />
@@ -1147,7 +1147,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
               <tr
                 key={row.id}
                 data-index={virtualRow.index}
-                className="group/row hover:bg-charcoal-800"
+                className="group/row hover:bg-hover"
                 style={{
                   display: "flex",
                   position: "absolute",

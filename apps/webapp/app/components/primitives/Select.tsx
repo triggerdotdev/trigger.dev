@@ -30,7 +30,7 @@ const style = {
   },
   secondary: {
     button:
-      "bg-secondary focus-custom border border-charcoal-600 hover:text-text-bright hover:border-charcoal-550 text-text-bright hover:bg-charcoal-600",
+      "bg-secondary focus-custom border border-grid-bright hover:text-text-bright hover:border-grid-bright text-text-bright hover:bg-hover",
   },
 };
 
@@ -591,7 +591,7 @@ export function SelectGroupLabel(props: SelectGroupLabelProps) {
     <Ariakit.SelectGroupLabel
       {...props}
       className={cn(
-        "flex h-[1.375rem] items-center border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright",
+        "flex h-[1.375rem] items-center border-b border-grid-bright bg-hover px-2.5 text-xxs uppercase text-text-bright",
         props.className
       )}
     />
@@ -601,7 +601,7 @@ export function SelectGroupLabel(props: SelectGroupLabelProps) {
 export interface SelectHeadingProps extends Ariakit.SelectHeadingProps {}
 export function SelectHeading({ render, ...props }: SelectHeadingProps) {
   return (
-    <div className="flex h-[1.375rem] flex-none cursor-default items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright">
+    <div className="flex h-[1.375rem] flex-none cursor-default items-center gap-2 border-b border-grid-bright bg-hover px-2.5 text-xxs uppercase text-text-bright">
       <Ariakit.SelectHeading render={render} />
     </div>
   );

@@ -30,7 +30,7 @@ const variants = {
   },
   button: {
     button:
-      "w-fit py-2 pl-3 pr-4 rounded border border-charcoal-600 hover:bg-charcoal-850 hover:border-charcoal-500 transition data-[state=checked]:bg-charcoal-850 data-[disabled]:opacity-70",
+      "w-fit py-2 pl-3 pr-4 rounded border border-charcoal-600 hover:bg-hover hover:border-charcoal-500 transition data-[state=checked]:bg-hover data-[disabled]:opacity-70",
     label: "text-text-bright select-none",
     description: "text-text-dimmed",
     inputPosition: "mt-1",
@@ -46,7 +46,7 @@ const variants = {
   },
   icon: {
     button:
-      "w-full p-2.5 pb-4 hover:bg-charcoal-850 transition data-[disabled]:opacity-70 data-[state=checked]:bg-charcoal-850 border-charcoal-600 border rounded-sm",
+      "w-full p-2.5 pb-4 hover:bg-hover transition data-[disabled]:opacity-70 data-[state=checked]:bg-hover border-charcoal-600 border rounded-sm",
     label: "text-text-bright font-semibold -mt-1 text-left",
     description: "text-text-dimmed -mt-0 text-left",
     inputPosition: "mt-0",

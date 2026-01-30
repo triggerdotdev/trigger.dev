@@ -53,7 +53,7 @@ export function AITabContent({
                   key: (prev?.key ?? 0) + 1,
                 }));
               }}
-              className="block w-full rounded-md border border-grid-dimmed bg-charcoal-800 px-3 py-2 text-left text-sm text-text-dimmed transition-colors hover:border-grid-bright hover:bg-charcoal-750 hover:text-text-bright"
+              className="block w-full rounded-md border border-grid-dimmed bg-charcoal-800 px-3 py-2 text-left text-sm text-text-dimmed transition-colors hover:border-grid-bright hover:bg-hover hover:text-text-bright"
             >
               {example}
             </button>

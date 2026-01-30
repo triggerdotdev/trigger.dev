@@ -600,7 +600,7 @@ function LogsDisplay({
                     "flex w-full gap-x-2.5 border-l-2 px-2.5 py-1",
                     log.level === "error" && "border-error/60 bg-error/15 hover:bg-error/25",
                     log.level === "warn" && "border-warning/60 bg-warning/20 hover:bg-warning/30",
-                    log.level === "info" && "border-transparent hover:bg-charcoal-750"
+                    log.level === "info" && "border-transparent hover:bg-hover"
                   )}
                 >
                   <span

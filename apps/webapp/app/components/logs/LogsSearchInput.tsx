@@ -96,7 +96,7 @@ export function LogsSearchInput() {
         <button
           type="button"
           onClick={handleClear}
-          className="flex size-6 items-center justify-center rounded text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+          className="flex size-6 items-center justify-center rounded text-text-dimmed hover:bg-hover-bright hover:text-text-bright"
           title="Clear search"
         >
           <XMarkIcon className="size-4" />

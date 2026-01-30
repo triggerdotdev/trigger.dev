@@ -455,7 +455,7 @@ function StreamChunkLine({
 
   return (
     <div
-      className="group flex gap-3 py-1 hover:bg-charcoal-800"
+      className="group flex gap-3 py-1 hover:bg-hover"
       style={{
         position: "absolute",
         top: 0,

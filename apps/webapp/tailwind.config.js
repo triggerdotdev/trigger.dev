@@ -238,6 +238,8 @@ module.exports = {
         "background-dimmed": "var(--color-background-dimmed)",
         "grid-bright": "var(--color-grid-bright)",
         "grid-dimmed": "var(--color-grid-dimmed)",
+        hover: "var(--color-hover)",
+        "hover-bright": "var(--color-hover-bright)",
         success,
         pending,
         warning,

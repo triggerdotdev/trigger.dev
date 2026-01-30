@@ -25,7 +25,7 @@ const variations = {
     container: small.container,
     root: cn(
       small.root,
-      "group-data-[state=unchecked]:bg-charcoal-600 group-data-[state=unchecked]:group-hover:bg-charcoal-500/50"
+      "group-data-[state=unchecked]:bg-charcoal-600 group-data-[state=unchecked]:group-hover:bg-hover"
     ),
     thumb: small.thumb,
     text: cn(
@@ -36,11 +36,11 @@ const variations = {
   "secondary/small": {
     container: cn(
       small.container,
-      "border border-charcoal-600 hover:border-charcoal-550 bg-secondary hover:bg-charcoal-600"
+      "border border-charcoal-600 hover:border-charcoal-550 bg-secondary hover:bg-secondary"
     ),
     root: cn(
       small.root,
-      "group-data-[state=unchecked]:bg-charcoal-550 group-data-[state=unchecked]:group-hover:bg-charcoal-500"
+      "group-data-[state=unchecked]:bg-charcoal-550 group-data-[state=unchecked]:group-hover:bg-hover"
     ),
     thumb: small.thumb,
     text: cn(small.text, "transition text-text-bright group-disabled:group-hover:text-text-dimmed"),
@@ -91,7 +91,7 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
     const switchElement = (
       <div
         className={cn(
-          "inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-blue-500 group-data-[state=unchecked]:bg-charcoal-700 group-data-[state=unchecked]:group-hover:bg-charcoal-500/50",
+          "inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-blue-500 group-data-[state=unchecked]:bg-charcoal-700 group-data-[state=unchecked]:group-hover:bg-hover",
           root
         )}
       >

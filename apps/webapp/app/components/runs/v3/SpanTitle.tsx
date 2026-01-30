@@ -69,7 +69,7 @@ export function SpanCodePathAccessory({
   return (
     <code
       className={cn(
-        "inline-flex items-center gap-0.5 truncate rounded border border-charcoal-700 bg-charcoal-800 px-1.5 py-0.5 font-mono text-text-dimmed",
+        "inline-flex items-center gap-0.5 truncate rounded border border-grid-bright bg-tertiary px-1.5 py-0.5 font-mono text-text-dimmed",
         className
       )}
     >

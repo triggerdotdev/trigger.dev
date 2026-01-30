@@ -45,7 +45,7 @@ export function PageTitle({ title, backButton }: PageTitleProps) {
         <div className="group -ml-1.5 flex items-center gap-0">
           <Link
             to={backButton.to}
-            className="rounded px-1.5 py-1 text-xs text-text-dimmed transition focus-custom group-hover:bg-charcoal-700 group-hover:text-text-bright"
+            className="rounded px-1.5 py-1 text-xs text-text-dimmed transition focus-custom group-hover:bg-hover-bright group-hover:text-text-bright"
           >
             {backButton.text}
           </Link>

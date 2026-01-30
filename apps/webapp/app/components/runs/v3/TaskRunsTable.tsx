@@ -469,7 +469,7 @@ function RunActionsCell({ run, path }: { run: NextRunListItem; path: string }) {
             <Dialog>
               <DialogTrigger
                 asChild
-                className="size-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+                className="size-6 rounded-sm p-1 text-text-dimmed transition hover:bg-hover-bright hover:text-text-bright"
               >
                 <Button
                   variant="small-menu-item"
@@ -492,7 +492,7 @@ function RunActionsCell({ run, path }: { run: NextRunListItem; path: string }) {
             <Dialog>
               <DialogTrigger
                 asChild
-                className="h-6 w-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+                className="h-6 w-6 rounded-sm p-1 text-text-dimmed transition hover:bg-hover-bright hover:text-text-bright"
               >
                 <Button
                   variant="small-menu-item"
@@ -521,7 +521,7 @@ function RunActionsCell({ run, path }: { run: NextRunListItem; path: string }) {
                 <Dialog>
                   <DialogTrigger
                     asChild
-                    className="size-6 rounded-sm p-1 text-text-bright transition hover:bg-charcoal-700"
+                    className="size-6 rounded-sm p-1 text-text-bright transition hover:bg-hover-bright"
                   >
                     <NoSymbolIcon className="size-3" />
                   </DialogTrigger>
@@ -545,7 +545,7 @@ function RunActionsCell({ run, path }: { run: NextRunListItem; path: string }) {
                 <Dialog>
                   <DialogTrigger
                     asChild
-                    className="h-6 w-6 rounded-sm p-1 text-text-bright transition hover:bg-charcoal-700"
+                    className="h-6 w-6 rounded-sm p-1 text-text-bright transition hover:bg-hover-bright"
                   >
                     <ArrowPathIcon className="size-3" />
                   </DialogTrigger>

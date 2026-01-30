@@ -300,7 +300,7 @@ export default function Page() {
                         <TooltipTrigger>
                           <TextLink
                             to={v3BillingPath(organization)}
-                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-2.5 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
+                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-2.5 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-hover"
                           >
                             <LockClosedIcon className="size-4 text-charcoal-500" />
                             <EnvironmentLabel
@@ -320,7 +320,7 @@ export default function Page() {
                         <TooltipTrigger>
                           <TextLink
                             to={v3BillingPath(organization)}
-                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-2.5 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
+                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-2.5 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-hover"
                           >
                             <LockClosedIcon className="size-4 text-charcoal-500" />
                             <EnvironmentLabel
