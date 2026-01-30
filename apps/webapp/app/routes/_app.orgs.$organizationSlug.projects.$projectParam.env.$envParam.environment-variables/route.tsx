@@ -9,12 +9,15 @@ import {
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, Outlet, useActionData, useFetcher, useNavigation } from "@remix-run/react";
 import {
-  type ActionFunctionArgs,
-  type LoaderFunctionArgs,
-  json,
-} from "@remix-run/server-runtime";
+  Form,
+  type MetaFunction,
+  Outlet,
+  useActionData,
+  useFetcher,
+  useNavigation,
+} from "@remix-run/react";
+import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -416,6 +419,13 @@ function EditEnvironmentVariablePanel({
       setIsOpen(false);
     }
   }, [lastSubmission?.success, fetcher.state]);
+
+  // Reset secret state when dialog is opened
+  useEffect(() => {
+    if (isOpen) {
+      setIsSecret(variable.isSecret);
+    }
+  }, [isOpen, variable.isSecret]);
 
   const [form, { id, environmentId, value }] = useForm({
     id: `edit-environment-variable-${variable.id}-${variable.environment.id}`,
