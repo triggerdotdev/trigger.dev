@@ -25,8 +25,6 @@ import {
   insertTaskEventsV2,
   getLogsListQueryBuilderV2,
   getLogDetailQueryBuilderV2,
-  getLogsListQueryBuilderV1,
-  getLogDetailQueryBuilderV1,
 } from "./taskEvents.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
@@ -56,7 +54,7 @@ export {
   type TSQLQuerySuccess,
   type QueryStats,
   type FieldMappings,
-  type WhereClauseFallback,
+  type WhereClauseCondition,
 } from "./client/tsql.js";
 export type { OutputColumnMetadata } from "@internal/tsql";
 
@@ -213,8 +211,6 @@ export class ClickHouse {
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilder(this.reader),
       traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilder(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilder(this.reader),
-      logsListQueryBuilder: getLogsListQueryBuilderV1(this.reader, this.logsQuerySettings?.list),
-      logDetailQueryBuilder: getLogDetailQueryBuilderV1(this.reader, this.logsQuerySettings?.detail),
     };
   }
 

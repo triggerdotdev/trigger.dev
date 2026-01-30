@@ -1,21 +1,15 @@
 import { z } from "zod";
-import { type ClickHouse, type LogsListResult } from "@internal/clickhouse";
-import { MachinePresetName } from "@trigger.dev/core/v3";
+import { type ClickHouse } from "@internal/clickhouse";
 import {
   type PrismaClientOrTransaction,
-  type TaskRunStatus,
-  TaskRunStatus as TaskRunStatusEnum,
 } from "@trigger.dev/database";
-import { getConfiguredEventRepository } from "~/v3/eventRepository/index.server";
+import { EVENT_STORE_TYPES, getConfiguredEventRepository } from "~/v3/eventRepository/index.server";
 
-// Create a schema that validates TaskRunStatus enum values
-const TaskRunStatusSchema = z.array(z.nativeEnum(TaskRunStatusEnum));
 import parseDuration from "parse-duration";
 import { type Direction } from "~/components/ListPagination";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
-import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { kindToLevel, type LogLevel, LogLevelSchema } from "~/utils/logUtils";
 import { BasePresenter } from "~/presenters/v3/basePresenter.server";
@@ -33,27 +27,27 @@ type ErrorAttributes = {
   [key: string]: unknown;
 };
 
+function escapeClickHouseString(val: string): string {
+  return val
+    .replace(/\\/g, "\\\\")
+    .replace(/\//g, "\\/")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_");
+}
+
+
 export type LogsListOptions = {
   userId?: string;
   projectId: string;
   // filters
   tasks?: string[];
-  versions?: string[];
-  statuses?: TaskRunStatus[];
-  tags?: string[];
-  scheduleId?: string;
+  runId?: string;
   period?: string;
-  bulkId?: string;
   from?: number;
   to?: number;
-  isTest?: boolean;
-  rootOnly?: boolean;
-  batchId?: string;
-  runId?: string[];
-  queues?: string[];
-  machines?: MachinePresetName[];
   levels?: LogLevel[];
   defaultPeriod?: string;
+  retentionLimitDays?: number;
   // search
   search?: string;
   includeDebugLogs?: boolean;
@@ -67,22 +61,13 @@ export const LogsListOptionsSchema = z.object({
   userId: z.string().optional(),
   projectId: z.string(),
   tasks: z.array(z.string()).optional(),
-  versions: z.array(z.string()).optional(),
-  statuses: TaskRunStatusSchema.optional(),
-  tags: z.array(z.string()).optional(),
-  scheduleId: z.string().optional(),
+  runId: z.string().optional(),
   period: z.string().optional(),
-  bulkId: z.string().optional(),
   from: z.number().int().nonnegative().optional(),
   to: z.number().int().nonnegative().optional(),
-  isTest: z.boolean().optional(),
-  rootOnly: z.boolean().optional(),
-  batchId: z.string().optional(),
-  runId: z.array(z.string()).optional(),
-  queues: z.array(z.string()).optional(),
-  machines: z.array(MachinePresetName).optional(),
   levels: z.array(LogLevelSchema).optional(),
   defaultPeriod: z.string().optional(),
+  retentionLimitDays: z.number().int().positive().optional(),
   search: z.string().max(1000).optional(),
   includeDebugLogs: z.boolean().optional(),
   direction: z.enum(["forward", "backward"]).optional(),
@@ -91,7 +76,6 @@ export const LogsListOptionsSchema = z.object({
 });
 
 const DEFAULT_PAGE_SIZE = 50;
-const MAX_RUN_IDS = 5000;
 
 export type LogsList = Awaited<ReturnType<LogsListPresenter["call"]>>;
 export type LogEntry = LogsList["logs"][0];
@@ -99,17 +83,15 @@ export type LogsListAppliedFilters = LogsList["filters"];
 
 // Cursor is a base64 encoded JSON of the pagination keys
 type LogCursor = {
-  startTime: string;
+  environmentId: string;
+  unixTimestamp: number;
   traceId: string;
-  spanId: string;
-  runId: string;
 };
 
 const LogCursorSchema = z.object({
-  startTime: z.string(),
+  environmentId: z.string(),
+  unixTimestamp: z.number(),
   traceId: z.string(),
-  spanId: z.string(),
-  runId: z.string(),
 });
 
 function encodeCursor(cursor: LogCursor): string {
@@ -141,10 +123,6 @@ function levelToKindsAndStatuses(level: LogLevel): { kinds?: string[]; statuses?
       return { kinds: ["LOG_WARN"] };
     case "ERROR":
       return { kinds: ["LOG_ERROR"], statuses: ["ERROR"] };
-    case "CANCELLED":
-      return { statuses: ["CANCELLED"] };
-    case "TRACE":
-      return { kinds: ["SPAN", "ANCESTOR_OVERRIDE", "SPAN_EVENT"] };
   }
 }
 
@@ -180,18 +158,8 @@ export class LogsListPresenter extends BasePresenter {
       userId,
       projectId,
       tasks,
-      versions,
-      statuses,
-      tags,
-      scheduleId,
-      period,
-      bulkId,
-      isTest,
-      rootOnly,
-      batchId,
       runId,
-      queues,
-      machines,
+      period,
       levels,
       search,
       from,
@@ -200,6 +168,7 @@ export class LogsListPresenter extends BasePresenter {
       pageSize = DEFAULT_PAGE_SIZE,
       includeDebugLogs = true,
       defaultPeriod,
+      retentionLimitDays,
     }: LogsListOptions
   ) {
     const time = timeFilters({
@@ -220,23 +189,20 @@ export class LogsListPresenter extends BasePresenter {
       }
     }
 
-    const hasStatusFilters = statuses && statuses.length > 0;
-    const hasRunLevelFilters =
-      (versions !== undefined && versions.length > 0) ||
-      hasStatusFilters ||
-      (bulkId !== undefined && bulkId !== "") ||
-      (scheduleId !== undefined && scheduleId !== "") ||
-      (tags !== undefined && tags.length > 0) ||
-      batchId !== undefined ||
-      (runId !== undefined && runId.length > 0) ||
-      (queues !== undefined && queues.length > 0) ||
-      (machines !== undefined && machines.length > 0) ||
-      typeof isTest === "boolean" ||
-      rootOnly === true;
+    // Apply retention limit if provided
+    let wasClampedByRetention = false;
+    if (retentionLimitDays !== undefined && effectiveFrom) {
+      const retentionCutoffDate = new Date(Date.now() - retentionLimitDays * 24 * 60 * 60 * 1000);
+
+      if (effectiveFrom < retentionCutoffDate) {
+        effectiveFrom = retentionCutoffDate;
+        wasClampedByRetention = true;
+      }
+    }
 
     const hasFilters =
       (tasks !== undefined && tasks.length > 0) ||
-      hasRunLevelFilters ||
+      (runId !== undefined && runId !== "") ||
       (levels !== undefined && levels.length > 0) ||
       (search !== undefined && search !== "") ||
       !time.isDefault;
@@ -266,120 +232,29 @@ export class LogsListPresenter extends BasePresenter {
       findDisplayableEnvironment(environmentId, userId),
     ]);
 
-    if (bulkId && !bulkActions.some((bulkAction) => bulkAction.friendlyId === bulkId)) {
-      const selectedBulkAction = await this.replica.bulkActionGroup.findFirst({
-        select: {
-          friendlyId: true,
-          type: true,
-          createdAt: true,
-          name: true,
-        },
-        where: {
-          friendlyId: bulkId,
-          projectId,
-          environmentId,
-        },
-      });
-
-      if (selectedBulkAction) {
-        bulkActions.push(selectedBulkAction);
-      }
-    }
-
     if (!displayableEnvironment) {
       throw new ServiceValidationError("No environment found");
-    }
-
-    // If we have run-level filters, we need to first get matching run IDs from Postgres
-    let runIds: string[] | undefined;
-    if (hasRunLevelFilters) {
-      const runsRepository = new RunsRepository({
-        clickhouse: this.clickhouse,
-        prisma: this.replica,
-      });
-
-      function clampToNow(date: Date): Date {
-        const now = new Date();
-        return date > now ? now : date;
-      }
-
-      runIds = await runsRepository.listFriendlyRunIds({
-        organizationId,
-        environmentId,
-        projectId,
-        tasks,
-        versions,
-        statuses,
-        tags,
-        scheduleId,
-        period,
-        from: effectiveFrom ? effectiveFrom.getTime() : undefined,
-        to: effectiveTo ? clampToNow(effectiveTo).getTime() : undefined,
-        isTest,
-        rootOnly,
-        batchId,
-        runId,
-        bulkId,
-        queues,
-        machines,
-        page: {
-          size: MAX_RUN_IDS,
-          direction: "forward",
-        },
-      });
-
-      if (runIds.length === 0) {
-        return {
-          logs: [],
-          pagination: {
-            next: undefined,
-            previous: undefined,
-          },
-          possibleTasks: possibleTasks
-            .map((task) => ({
-              slug: task.slug,
-              triggerSource: task.triggerSource,
-            }))
-            .sort((a, b) => a.slug.localeCompare(b.slug)),
-          bulkActions: bulkActions.map((bulkAction) => ({
-            id: bulkAction.friendlyId,
-            type: bulkAction.type,
-            createdAt: bulkAction.createdAt,
-            name: bulkAction.name || bulkAction.friendlyId,
-          })),
-          filters: {
-            tasks: tasks || [],
-            versions: versions || [],
-            statuses: statuses || [],
-            levels: levels || [],
-            from: effectiveFrom,
-            to: effectiveTo,
-          },
-          hasFilters,
-          hasAnyLogs: false,
-          searchTerm: search,
-        };
-      }
     }
 
     // Determine which store to use based on organization configuration
     const { store } = await getConfiguredEventRepository(organizationId);
 
     // Throw error if postgres is detected
-    if (store === "postgres") {
+    if (store === EVENT_STORE_TYPES.POSTGRES) {
       throw new ServiceValidationError(
         "Logs are not available for PostgreSQL event store. Please contact support."
       );
     }
 
-    // Get the appropriate query builder based on store type
-    const isClickhouseV2 = store === "clickhouse_v2";
+    if (store === EVENT_STORE_TYPES.CLICKHOUSE) {
+      throw new ServiceValidationError(
+        "Logs are not available for ClickHouse event store. Please contact support."
+      );
+    }
 
-    const queryBuilder = isClickhouseV2
-      ? this.clickhouse.taskEventsV2.logsListQueryBuilder()
-      : this.clickhouse.taskEvents.logsListQueryBuilder();
+    const queryBuilder = this.clickhouse.taskEventsV2.logsListQueryBuilder();
 
-    queryBuilder.prewhere("environment_id = {environmentId: String}", {
+    queryBuilder.where("environment_id = {environmentId: String}", {
       environmentId,
     });
 
@@ -388,16 +263,13 @@ export class LogsListPresenter extends BasePresenter {
     });
     queryBuilder.where("project_id = {projectId: String}", { projectId });
 
-    // Time filters - inserted_at in PREWHERE only for v2, start_time in WHERE for both
+
     if (effectiveFrom) {
       const fromNs = convertDateToNanoseconds(effectiveFrom);
 
-      // Only use inserted_at for partition pruning if v2
-      if (isClickhouseV2) {
-        queryBuilder.prewhere("inserted_at >= {insertedAtStart: DateTime64(3)}", {
+        queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
           insertedAtStart: convertDateToClickhouseDateTime(effectiveFrom),
         });
-      }
 
       queryBuilder.where("start_time >= {fromTime: String}", {
         fromTime: formatNanosecondsForClickhouse(fromNs),
@@ -408,12 +280,9 @@ export class LogsListPresenter extends BasePresenter {
       const clampedTo = effectiveTo > new Date() ? new Date() : effectiveTo;
       const toNs = convertDateToNanoseconds(clampedTo);
 
-      // Only use inserted_at for partition pruning if v2
-      if (isClickhouseV2) {
-        queryBuilder.prewhere("inserted_at <= {insertedAtEnd: DateTime64(3)}", {
-          insertedAtEnd: convertDateToClickhouseDateTime(clampedTo),
-        });
-      }
+      queryBuilder.where("inserted_at <= {insertedAtEnd: DateTime64(3)}", {
+        insertedAtEnd: convertDateToClickhouseDateTime(clampedTo),
+      });
 
       queryBuilder.where("start_time <= {toTime: String}", {
         toTime: formatNanosecondsForClickhouse(toNs),
@@ -427,19 +296,18 @@ export class LogsListPresenter extends BasePresenter {
       });
     }
 
-    // Run IDs filter (from Postgres lookup)
-    if (runIds && runIds.length > 0) {
-      queryBuilder.where("run_id IN {runIds: Array(String)}", { runIds });
+    // Run ID filter
+    if (runId && runId !== "") {
+      queryBuilder.where("run_id = {runId: String}", { runId });
     }
 
     // Case-insensitive search in message, attributes, and status fields
     if (search && search.trim() !== "") {
-      const searchTerm = search.trim();
+      const searchTerm = escapeClickHouseString(search.trim()).toLowerCase();
       queryBuilder.where(
-        "(message ilike {searchPattern: String} OR attributes_text ilike {searchPattern: String} OR status = {statusTerm: String})",
+        "(lower(message) like {searchPattern: String} OR lower(attributes_text) like {searchPattern: String})",
         {
-          searchPattern: `%${searchTerm}%`,
-          statusTerm: searchTerm.toUpperCase(),
+          searchPattern: `%${searchTerm}%`
         }
       );
     }
@@ -447,7 +315,6 @@ export class LogsListPresenter extends BasePresenter {
     if (levels && levels.length > 0) {
       const conditions: string[] = [];
       const params: Record<string, string[]> = {};
-      const hasErrorOrCancelledLevel = levels.includes("ERROR") || levels.includes("CANCELLED");
 
       for (const level of levels) {
         const filter = levelToKindsAndStatuses(level);
@@ -457,11 +324,10 @@ export class LogsListPresenter extends BasePresenter {
           const kindsKey = `kinds_${level}`;
           let kindCondition = `kind IN {${kindsKey}: Array(String)}`;
 
-          // For TRACE: exclude error/cancelled traces if ERROR/CANCELLED not explicitly selected
-          if (level === "TRACE" && !hasErrorOrCancelledLevel) {
-            kindCondition += ` AND status NOT IN {excluded_statuses: Array(String)}`;
-            params["excluded_statuses"] = ["ERROR", "CANCELLED"];
-          }
+
+          kindCondition += ` AND status NOT IN {excluded_statuses: Array(String)}`;
+          params["excluded_statuses"] = ["ERROR", "CANCELLED"];
+
 
           levelConditions.push(kindCondition);
           params[kindsKey] = filter.kinds;
@@ -486,9 +352,17 @@ export class LogsListPresenter extends BasePresenter {
     // Debug logs are available only to admins
     if (includeDebugLogs === false) {
       queryBuilder.where("kind NOT IN {debugKinds: Array(String)}", {
-        debugKinds: ["DEBUG_EVENT", "LOG_DEBUG"],
+        debugKinds: ["DEBUG_EVENT"],
       });
     }
+
+    queryBuilder.where("kind NOT IN {debugSpans: Array(String)}", {
+      debugSpans: ["SPAN", "ANCESTOR_OVERRIDE", "SPAN_EVENT"],
+    });
+
+    // kindCondition += ` `;
+    // params["excluded_statuses"] = ["SPAN", "ANCESTOR_OVERRIDE", "SPAN_EVENT"];
+
 
     queryBuilder.where("NOT (kind = 'SPAN' AND status = 'PARTIAL')");
 
@@ -496,18 +370,16 @@ export class LogsListPresenter extends BasePresenter {
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
     if (decodedCursor) {
       queryBuilder.where(
-        "(start_time, trace_id, span_id, run_id) < ({cursorStartTime: String}, {cursorTraceId: String}, {cursorSpanId: String}, {cursorRunId: String})",
+        "(environment_id, toUnixTimestamp(start_time), trace_id) < ({cursorEnvId: String}, {cursorUnixTimestamp: Int64}, {cursorTraceId: String})",
         {
-          cursorStartTime: decodedCursor.startTime,
+          cursorEnvId: decodedCursor.environmentId,
+          cursorUnixTimestamp: decodedCursor.unixTimestamp,
           cursorTraceId: decodedCursor.traceId,
-          cursorSpanId: decodedCursor.spanId,
-          cursorRunId: decodedCursor.runId,
         }
       );
     }
 
-    queryBuilder.orderBy("start_time DESC, trace_id DESC, span_id DESC, run_id DESC");
-
+    queryBuilder.orderBy("environment_id DESC, toUnixTimestamp(start_time) DESC, trace_id DESC");
     // Limit + 1 to check if there are more results
     queryBuilder.limit(pageSize + 1);
 
@@ -525,11 +397,11 @@ export class LogsListPresenter extends BasePresenter {
     let nextCursor: string | undefined;
     if (hasMore && logs.length > 0) {
       const lastLog = logs[logs.length - 1];
+      const unixTimestamp = Math.floor(new Date(lastLog.start_time).getTime() / 1000);
       nextCursor = encodeCursor({
-        startTime: lastLog.start_time,
+        environmentId,
+        unixTimestamp,
         traceId: lastLog.trace_id,
-        spanId: lastLog.span_id,
-        runId: lastLog.run_id,
       });
     }
 
@@ -587,8 +459,6 @@ export class LogsListPresenter extends BasePresenter {
       })),
       filters: {
         tasks: tasks || [],
-        versions: versions || [],
-        statuses: statuses || [],
         levels: levels || [],
         from: effectiveFrom,
         to: effectiveTo,
@@ -596,6 +466,10 @@ export class LogsListPresenter extends BasePresenter {
       hasFilters,
       hasAnyLogs: transformedLogs.length > 0,
       searchTerm: search,
+      retention: retentionLimitDays !== undefined ? {
+        limitDays: retentionLimitDays,
+        wasClamped: wasClampedByRetention,
+      } : undefined,
     };
   }
 }

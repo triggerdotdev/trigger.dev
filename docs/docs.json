@@ -44,6 +44,17 @@
             ]
           },
           {
+            "group": "Building with AI",
+            "pages": [
+              "building-with-ai",
+              {
+                "group": "MCP Server",
+                "pages": ["mcp-introduction", "mcp-tools", "mcp-agent-rules"]
+              },
+              "skills"
+            ]
+          },
+          {
             "group": "Writing tasks",
             "pages": [
               "writing-tasks-introduction",
@@ -165,10 +176,6 @@
                 ]
               }
             ]
-          },
-          {
-            "group": "MCP Server",
-            "pages": ["mcp-introduction", "mcp-tools", "mcp-agent-rules"]
           },
           {
             "group": "Using the Dashboard",
@@ -437,6 +444,11 @@
     "openapi": ["openapi.yml", "v3-openapi.yaml"],
     "playground": {
       "display": "simple"
+    }
+  },
+  "styling": {
+    "codeblocks": {
+      "theme": "css-variables"
     }
   },
   "appearance": {

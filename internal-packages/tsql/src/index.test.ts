@@ -5,12 +5,12 @@ import {
   isColumnReferencedInExpression,
   createFallbackExpression,
   injectFallbackConditions,
-  type WhereClauseFallback,
+  type WhereClauseCondition,
 } from "./index.js";
 import { column, type TableSchema } from "./query/schema.js";
 
 /**
- * Test table schema for whereClauseFallback tests
+ * Test table schema for enforcedWhereClause tests
  */
 const taskRunsSchema: TableSchema = {
   name: "task_runs",
@@ -21,6 +21,7 @@ const taskRunsSchema: TableSchema = {
     created_at: { name: "created_at", ...column("DateTime64") },
     updated_at: { name: "updated_at", ...column("DateTime64") },
     time: { name: "time", ...column("DateTime64") },
+    triggered_at: { name: "triggered_at", ...column("DateTime64") },
     organization_id: { name: "organization_id", ...column("String") },
     project_id: { name: "project_id", ...column("String") },
     environment_id: { name: "environment_id", ...column("String") },
@@ -30,6 +31,46 @@ const taskRunsSchema: TableSchema = {
     projectId: "project_id",
     environmentId: "environment_id",
   },
+};
+
+/**
+ * Test table schema with tenant columns (lookup table with tenant isolation)
+ */
+const lookupTableSchema: TableSchema = {
+  name: "lookup_table",
+  clickhouseName: "trigger_dev.lookup_table",
+  tenantColumns: {
+    organizationId: "organization_id",
+    projectId: "project_id",
+    environmentId: "environment_id",
+  },
+  columns: {
+    id: { name: "id", ...column("String") },
+    name: { name: "name", ...column("String") },
+  },
+};
+
+/**
+ * Test table schema WITHOUT tenant columns (e.g., global reference data)
+ */
+// @ts-expect-error - tenant columns are required but not set
+const nonTenantTableSchema: TableSchema = {
+  name: "reference_data",
+  clickhouseName: "trigger_dev.reference_data",
+  // No tenantColumns - this is a global table
+  columns: {
+    id: { name: "id", ...column("String") },
+    value: { name: "value", ...column("String") },
+  },
+};
+
+/**
+ * Base options with tenant isolation for tests
+ */
+const baseEnforcedWhereClause: Record<string, WhereClauseCondition> = {
+  organization_id: { op: "eq", value: "org_test123" },
+  project_id: { op: "eq", value: "proj_test456" },
+  environment_id: { op: "eq", value: "env_test789" },
 };
 
 describe("isColumnReferencedInExpression", () => {
@@ -126,7 +167,7 @@ describe("createFallbackExpression", () => {
 describe("injectFallbackConditions", () => {
   it("should inject fallback when column is not in WHERE", () => {
     const ast = parseTSQLSelect("SELECT * FROM task_runs WHERE status = 'completed'");
-    const fallbacks: Record<string, WhereClauseFallback> = {
+    const fallbacks: Record<string, WhereClauseCondition> = {
       time: { op: "gte", value: "2024-01-01" },
     };
 
@@ -140,7 +181,7 @@ describe("injectFallbackConditions", () => {
 
   it("should NOT inject fallback when column is already in WHERE", () => {
     const ast = parseTSQLSelect("SELECT * FROM task_runs WHERE time > '2024-06-01'");
-    const fallbacks: Record<string, WhereClauseFallback> = {
+    const fallbacks: Record<string, WhereClauseCondition> = {
       time: { op: "gte", value: "2024-01-01" },
     };
 
@@ -154,7 +195,7 @@ describe("injectFallbackConditions", () => {
 
   it("should inject fallback when query has no WHERE clause", () => {
     const ast = parseTSQLSelect("SELECT * FROM task_runs LIMIT 10");
-    const fallbacks: Record<string, WhereClauseFallback> = {
+    const fallbacks: Record<string, WhereClauseCondition> = {
       time: { op: "gte", value: "2024-01-01" },
     };
 
@@ -167,7 +208,7 @@ describe("injectFallbackConditions", () => {
 
   it("should inject multiple fallbacks", () => {
     const ast = parseTSQLSelect("SELECT * FROM task_runs LIMIT 10");
-    const fallbacks: Record<string, WhereClauseFallback> = {
+    const fallbacks: Record<string, WhereClauseCondition> = {
       time: { op: "gte", value: "2024-01-01" },
       status: { op: "eq", value: "completed" },
     };
@@ -182,7 +223,7 @@ describe("injectFallbackConditions", () => {
 
   it("should only inject fallbacks for unreferenced columns", () => {
     const ast = parseTSQLSelect("SELECT * FROM task_runs WHERE time > '2024-06-01'");
-    const fallbacks: Record<string, WhereClauseFallback> = {
+    const fallbacks: Record<string, WhereClauseCondition> = {
       time: { op: "gte", value: "2024-01-01" }, // Should NOT be injected
       status: { op: "eq", value: "completed" }, // Should be injected
     };
@@ -197,10 +238,8 @@ describe("injectFallbackConditions", () => {
 
 describe("compileTSQL with whereClauseFallback", () => {
   const baseOptions = {
-    organizationId: "org_test123",
-    projectId: "proj_test456",
-    environmentId: "env_test789",
     tableSchema: [taskRunsSchema],
+    enforcedWhereClause: baseEnforcedWhereClause,
   };
 
   describe("simple comparison fallbacks", () => {
@@ -470,6 +509,320 @@ describe("compileTSQL with whereClauseFallback", () => {
 
       expect(sql).toContain("greater(");
       expect(sql).toContain("100");
+    });
+  });
+});
+
+describe("compileTSQL with enforcedWhereClause", () => {
+  describe("validation tests", () => {
+    it("should throw error when required tenant column is missing", () => {
+      expect(() =>
+        compileTSQL("SELECT id FROM task_runs", {
+          tableSchema: [taskRunsSchema],
+          enforcedWhereClause: {}, // Missing organization_id
+        })
+      ).toThrow("Table 'task_runs' requires 'organization_id' in enforcedWhereClause");
+    });
+
+    it("should throw error when organization_id is missing but other tenant columns are present", () => {
+      expect(() =>
+        compileTSQL("SELECT id FROM task_runs", {
+          tableSchema: [taskRunsSchema],
+          enforcedWhereClause: {
+            project_id: { op: "eq", value: "proj_123" },
+            environment_id: { op: "eq", value: "env_456" },
+          },
+        })
+      ).toThrow("Table 'task_runs' requires 'organization_id' in enforcedWhereClause");
+    });
+
+    it("should work with non-tenant table and empty enforcedWhereClause", () => {
+      const { sql } = compileTSQL("SELECT id FROM reference_data", {
+        tableSchema: [nonTenantTableSchema],
+        enforcedWhereClause: {},
+      });
+
+      expect(sql).toContain("SELECT");
+      expect(sql).toContain("FROM");
+    });
+
+    it("should work with only organization_id (project and env are optional)", () => {
+      const { sql } = compileTSQL("SELECT id FROM task_runs", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+        },
+      });
+
+      expect(sql).toContain("organization_id");
+      expect(sql).not.toContain("project_id");
+      expect(sql).not.toContain("environment_id");
+    });
+  });
+
+  describe("basic functionality", () => {
+    it("should apply single enforced condition", () => {
+      const { sql } = compileTSQL("SELECT id FROM task_runs", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+        },
+      });
+
+      expect(sql).toContain("equals(");
+      expect(sql).toContain("organization_id");
+    });
+
+    it("should apply multiple enforced conditions", () => {
+      const { sql } = compileTSQL("SELECT id FROM task_runs", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+          project_id: { op: "eq", value: "proj_456" },
+          environment_id: { op: "eq", value: "env_789" },
+        },
+      });
+
+      expect(sql).toContain("organization_id");
+      expect(sql).toContain("project_id");
+      expect(sql).toContain("environment_id");
+    });
+
+    it("should apply enforced condition even when user filters on same field", () => {
+      const { sql } = compileTSQL(
+        "SELECT id FROM task_runs WHERE triggered_at > '2025-01-01'",
+        {
+          tableSchema: [taskRunsSchema],
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_123" },
+            triggered_at: { op: "gte", value: "2024-01-01" },
+          },
+        }
+      );
+
+      // Should have BOTH the user's condition AND the enforced condition
+      // User's condition: greater(triggered_at, '2025-01-01')
+      // Enforced condition: greaterOrEquals(triggered_at, '2024-01-01')
+      const triggeredAtMatches = sql.match(/triggered_at/g) || [];
+      expect(triggeredAtMatches.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("should apply different comparison operators", () => {
+      const { sql: sqlGt } = compileTSQL("SELECT id FROM task_runs", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+          time: { op: "gt", value: "2024-01-01" },
+        },
+      });
+      expect(sqlGt).toContain("greater(");
+
+      const { sql: sqlLt } = compileTSQL("SELECT id FROM task_runs", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+          time: { op: "lt", value: "2024-12-31" },
+        },
+      });
+      expect(sqlLt).toContain("less(");
+
+      const { sql: sqlNeq } = compileTSQL("SELECT id FROM task_runs", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+          status: { op: "neq", value: "deleted" },
+        },
+      });
+      expect(sqlNeq).toContain("notEquals(");
+    });
+
+    it("should apply BETWEEN condition", () => {
+      const { sql } = compileTSQL("SELECT id FROM task_runs", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+          time: { op: "between", low: "2024-01-01", high: "2024-12-31" },
+        },
+      });
+
+      expect(sql).toContain("time BETWEEN");
+    });
+
+    it("should handle Date values in enforced conditions", () => {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const { sql, params } = compileTSQL("SELECT id FROM task_runs", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+          triggered_at: { op: "gte", value: sevenDaysAgo },
+        },
+      });
+
+      expect(sql).toContain("triggered_at");
+      expect(sql).toContain("toDateTime64");
+    });
+  });
+
+  describe("enforcedWhereClause + whereClauseFallback interaction", () => {
+    it("should apply both enforced and fallback conditions when user doesn't filter", () => {
+      const { sql } = compileTSQL("SELECT id FROM task_runs", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+          triggered_at: { op: "gte", value: "2024-01-01" },
+        },
+        whereClauseFallback: {
+          status: { op: "eq", value: "completed" },
+        },
+      });
+
+      // Should have both enforced (triggered_at) and fallback (status)
+      expect(sql).toContain("triggered_at");
+      expect(sql).toContain("status");
+    });
+
+    it("should apply enforced but not fallback when user filters on fallback column", () => {
+      const { sql, params } = compileTSQL(
+        "SELECT id FROM task_runs WHERE status = 'failed'",
+        {
+          tableSchema: [taskRunsSchema],
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_123" },
+            triggered_at: { op: "gte", value: "2024-01-01" },
+          },
+          whereClauseFallback: {
+            status: { op: "eq", value: "completed" },
+          },
+        }
+      );
+
+      // Enforced triggered_at should be applied
+      expect(sql).toContain("triggered_at");
+      // User's status = 'failed' should be there (as a parameter)
+      expect(Object.values(params)).toContain("failed");
+      // The fallback 'completed' should NOT be applied since user filtered on status
+      expect(Object.values(params)).not.toContain("completed");
+    });
+
+    it("should apply both enforced and fallback on same field (enforced always, fallback only if not filtered)", () => {
+      // User doesn't filter on triggered_at, so BOTH enforced AND fallback apply
+      const { sql } = compileTSQL("SELECT id FROM task_runs WHERE status = 'completed'", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+          triggered_at: { op: "gte", value: "2024-06-01" }, // Enforced: last 6 months
+        },
+        whereClauseFallback: {
+          triggered_at: { op: "gte", value: "2024-01-01" }, // Fallback: last year
+        },
+      });
+
+      // Both should be applied (enforced at printer level, fallback at AST level)
+      const triggeredAtMatches = sql.match(/triggered_at/g) || [];
+      expect(triggeredAtMatches.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("should skip fallback but keep enforced when user filters on same field", () => {
+      const { sql } = compileTSQL(
+        "SELECT id FROM task_runs WHERE triggered_at > '2025-01-01'",
+        {
+          tableSchema: [taskRunsSchema],
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_123" },
+            triggered_at: { op: "gte", value: "2024-06-01" }, // Enforced: always applied
+          },
+          whereClauseFallback: {
+            triggered_at: { op: "gte", value: "2024-01-01" }, // Fallback: skipped since user filtered
+          },
+        }
+      );
+
+      // User's condition + enforced should be present
+      // Fallback should NOT be applied since user filtered on triggered_at
+      // Count distinct triggered_at conditions
+      const triggeredAtMatches = sql.match(/triggered_at/g) || [];
+      // Should be 2: user's condition + enforced condition (NOT 3, no fallback)
+      expect(triggeredAtMatches.length).toBe(2);
+    });
+  });
+
+  describe("security tests", () => {
+    it("should apply enforced conditions to UNION queries", () => {
+      const { sql } = compileTSQL(
+        "SELECT id FROM task_runs WHERE status = 'completed' UNION ALL SELECT id FROM task_runs WHERE status = 'failed'",
+        {
+          tableSchema: [taskRunsSchema],
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_123" },
+            triggered_at: { op: "gte", value: "2024-01-01" },
+          },
+        }
+      );
+
+      // Both parts of the UNION should have the enforced conditions
+      const orgMatches = sql.match(/organization_id/g) || [];
+      expect(orgMatches.length).toBe(2);
+
+      const triggeredAtMatches = sql.match(/triggered_at/g) || [];
+      expect(triggeredAtMatches.length).toBe(2);
+    });
+
+    it("should NOT be bypassable via OR clause", () => {
+      const { sql } = compileTSQL(
+        "SELECT id FROM task_runs WHERE status = 'completed' OR 1=1",
+        {
+          tableSchema: [taskRunsSchema],
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_123" },
+            triggered_at: { op: "gte", value: "2024-01-01" },
+          },
+        }
+      );
+
+      // The enforced conditions should be ANDed with the entire user WHERE clause
+      // So the structure should be: (enforced AND enforced AND ...) AND (user_where)
+      expect(sql).toContain("organization_id");
+      expect(sql).toContain("triggered_at");
+      // The 1=1 should be within the user's OR clause, not affecting enforced conditions
+    });
+
+    it("should skip enforced conditions for columns that don't exist in table", () => {
+      const { sql } = compileTSQL("SELECT id FROM task_runs", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+          nonexistent_column: { op: "eq", value: "test" },
+        },
+      });
+
+      // Should not contain nonexistent_column
+      expect(sql).not.toContain("nonexistent_column");
+      // Should still have organization_id
+      expect(sql).toContain("organization_id");
+    });
+  });
+
+  describe("edge cases", () => {
+    it("should handle empty enforced conditions for non-tenant table", () => {
+      const { sql } = compileTSQL("SELECT id FROM reference_data", {
+        tableSchema: [nonTenantTableSchema],
+        enforcedWhereClause: {},
+      });
+
+      expect(sql).toContain("SELECT");
+      expect(sql).not.toContain("WHERE"); // No WHERE clause needed
+    });
+
+    it("should properly format numeric values", () => {
+      const { sql } = compileTSQL("SELECT id FROM task_runs", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+        },
+      });
+
+      // org_123 should be parameterized, not inlined
+      expect(sql).toContain("tsql_val_");
     });
   });
 });

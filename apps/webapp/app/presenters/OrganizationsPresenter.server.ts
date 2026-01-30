@@ -1,4 +1,4 @@
-import { RuntimeEnvironment, type PrismaClient } from "@trigger.dev/database";
+import type { RuntimeEnvironment, PrismaClient } from "@trigger.dev/database";
 import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
@@ -10,7 +10,7 @@ import {
 } from "./SelectBestEnvironmentPresenter.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { defaultAvatar, parseAvatar } from "~/components/primitives/Avatar";
-import { validatePartialFeatureFlags } from "~/v3/featureFlags.server";
+import { flags, validatePartialFeatureFlags } from "~/v3/featureFlags.server";
 
 export class OrganizationsPresenter {
   #prismaClient: PrismaClient;
@@ -153,18 +153,24 @@ export class OrganizationsPresenter {
       },
     });
 
+    // Get global feature flags (no overrides or defaults)
+    const globalFlags = await flags();
+
     return orgs.map((org) => {
-      const flagsResult = org.featureFlags
+      const orgFlagsResult = org.featureFlags
         ? validatePartialFeatureFlags(org.featureFlags as Record<string, unknown>)
         : ({ success: false } as const);
-      const flags = flagsResult.success ? flagsResult.data : {};
+      const orgFlags = orgFlagsResult.success ? orgFlagsResult.data : {};
+
+      // Combine global flags with org flags (org flags win)
+      const combinedFlags = { ...globalFlags, ...orgFlags };
 
       return {
         id: org.id,
         slug: org.slug,
         title: org.title,
         avatar: parseAvatar(org.avatar, defaultAvatar),
-        featureFlags: flags,
+        featureFlags: combinedFlags,
         projects: org.projects.map((project) => ({
           id: project.id,
           slug: project.slug,
