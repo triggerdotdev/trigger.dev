@@ -309,8 +309,8 @@ export class LimitsPresenter extends BasePresenter {
           isUpgradable: true,
         },
         queueSize: {
-          name: "Max queue size",
-          description: "Maximum pending runs in this environment",
+          name: "Max queued runs",
+          description: "Maximum pending runs across all queues in this environment",
           limit:
             runtimeEnv?.type === "DEVELOPMENT"
               ? (organization.maximumDevQueueSize ?? env.MAXIMUM_DEV_QUEUE_SIZE ?? null)

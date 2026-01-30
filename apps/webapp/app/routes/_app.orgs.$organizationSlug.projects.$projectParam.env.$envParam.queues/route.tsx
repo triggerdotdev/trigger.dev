@@ -359,7 +359,7 @@ export default function Page() {
                       {formatNumberCompact(environment.queueSizeLimit)}
                     </span>
                     <InfoIconTooltip
-                      content="Maximum pending runs in this environment"
+                      content="Maximum pending runs across all queues in this environment"
                       contentClassName="max-w-xs"
                     />
                   </span>
