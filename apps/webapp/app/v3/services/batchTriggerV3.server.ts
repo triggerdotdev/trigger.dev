@@ -891,12 +891,11 @@ export class BatchTriggerV3Service extends BaseService {
     }
 
     // FIX for Issue #2965: When a run is cached (duplicate idempotencyKey),
-    // we need to create a BatchTaskRunItem and immediately mark it as completed.
-    // This ensures the batch completion check (completedCount === expectedCount) works correctly.
+    // we need to handle it based on whether the cached run is already complete.
     const isAlreadyComplete = isFinalRunStatus(result.run.status);
 
     logger.debug(
-      "[BatchTriggerV2][processBatchTaskRunItem] Cached run detected, creating batch item",
+      "[BatchTriggerV2][processBatchTaskRunItem] Cached run detected",
       {
         batchId: batch.friendlyId,
         runId: task.runId,
@@ -907,31 +906,45 @@ export class BatchTriggerV3Service extends BaseService {
       }
     );
 
+    // If the cached run is NOT in a final status (still PENDING or EXECUTING),
+    // we should NOT create a BatchTaskRunItem because:
+    // 1. The original item will complete when the run finishes
+    // 2. Creating a duplicate item would cause the batch to hang forever
+    // (as noted in Devin AI review)
+    if (!isAlreadyComplete) {
+      logger.debug(
+        "[BatchTriggerV2][processBatchTaskRunItem] Cached run still in progress, skipping batch item creation",
+        {
+          batchId: batch.friendlyId,
+          cachedRunId: result.run.id,
+          cachedRunStatus: result.run.status,
+        }
+      );
+      // Return false to NOT increment expectedCount
+      return false;
+    }
+
+    // The cached run is already complete, create a BatchTaskRunItem and increment completedCount
     try {
-      // Create a BatchTaskRunItem for the cached run
       await this._prisma.batchTaskRunItem.create({
         data: {
           batchTaskRunId: batch.id,
           taskRunId: result.run.id,
-          // Mark as COMPLETED if the cached run is already finished
-          status: isAlreadyComplete ? "COMPLETED" : batchTaskRunItemStatusForRunStatus(result.run.status),
+          status: "COMPLETED",
         },
       });
 
-      // If the cached run is already complete, we need to increment completedCount
-      // since this item won't go through the normal completeBatchTaskRunItemV3 flow
-      if (isAlreadyComplete) {
-        await this._prisma.batchTaskRun.update({
-          where: { id: batch.id },
-          data: {
-            completedCount: {
-              increment: 1,
-            },
+      // Increment completedCount since the cached run is already finished
+      await this._prisma.batchTaskRun.update({
+        where: { id: batch.id },
+        data: {
+          completedCount: {
+            increment: 1,
           },
-        });
-      }
+        },
+      });
 
-      // Return true so expectedCount is incremented
+      // Return true so expectedCount is incremented (matches completedCount increment above)
       return true;
     } catch (error) {
       if (isUniqueConstraintError(error, ["batchTaskRunId", "taskRunId"])) {
