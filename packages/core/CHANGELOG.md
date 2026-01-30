@@ -1,5 +1,13 @@
 # internal-platform
 
+## 4.3.4
+
+### Patch Changes
+
+- fix: vendor superjson to fix ESM/CJS compatibility ([#2949](https://github.com/triggerdotdev/trigger.dev/pull/2949))
+
+  Bundle superjson during build to avoid `ERR_REQUIRE_ESM` errors on Node.js versions that don't support `require(ESM)` by default (< 22.12.0) and AWS Lambda which intentionally disables it.
+
 ## 4.3.3
 
 ### Patch Changes
