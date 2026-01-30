@@ -12,6 +12,7 @@ import { BasePresenter } from "./basePresenter.server";
 import { singleton } from "~/utils/singleton";
 import { logger } from "~/services/logger.server";
 import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
+import { engine } from "~/v3/runEngine.server";
 
 // Create a singleton Redis client for rate limit queries
 const rateLimitRedisClient = singleton("rateLimitQueryRedisClient", () =>
@@ -66,8 +67,7 @@ export type LimitsResult = {
     logRetentionDays: QuotaInfo | null;
     realtimeConnections: QuotaInfo | null;
     batchProcessingConcurrency: QuotaInfo;
-    devQueueSize: QuotaInfo;
-    deployedQueueSize: QuotaInfo;
+    queueSize: QuotaInfo;
   };
   features: {
     hasStagingEnvironment: FeatureInfo;
@@ -166,6 +166,32 @@ export class LimitsPresenter extends BasePresenter {
       environmentId,
       batchRateLimitConfig
     );
+
+    // Get current queue size for this environment
+    const runtimeEnv = await this._replica.runtimeEnvironment.findFirst({
+      where: { id: environmentId },
+      select: {
+        id: true,
+        type: true,
+        organizationId: true,
+        projectId: true,
+        maximumConcurrencyLimit: true,
+        concurrencyLimitBurstFactor: true,
+      },
+    });
+
+    let currentQueueSize = 0;
+    if (runtimeEnv) {
+      const engineEnv = {
+        id: runtimeEnv.id,
+        type: runtimeEnv.type,
+        maximumConcurrencyLimit: runtimeEnv.maximumConcurrencyLimit,
+        concurrencyLimitBurstFactor: runtimeEnv.concurrencyLimitBurstFactor,
+        organization: { id: runtimeEnv.organizationId },
+        project: { id: runtimeEnv.projectId },
+      };
+      currentQueueSize = (await engine.lengthOfEnvQueue(engineEnv)) ?? 0;
+    }
 
     // Get plan-level limits
     const schedulesLimit = limits?.schedules?.number ?? null;
@@ -282,19 +308,24 @@ export class LimitsPresenter extends BasePresenter {
           canExceed: true,
           isUpgradable: true,
         },
-        devQueueSize: {
-          name: "Dev queue size",
-          description: "Maximum pending runs in development environments",
-          limit: organization.maximumDevQueueSize ?? null,
-          currentUsage: 0, // Would need to query Redis for this
-          source: organization.maximumDevQueueSize ? "override" : "default",
-        },
-        deployedQueueSize: {
-          name: "Deployed queue size",
-          description: "Maximum pending runs in deployed environments",
-          limit: organization.maximumDeployedQueueSize ?? null,
-          currentUsage: 0, // Would need to query Redis for this
-          source: organization.maximumDeployedQueueSize ? "override" : "default",
+        queueSize: {
+          name: "Max queue size",
+          description: "Maximum pending runs in this environment",
+          limit:
+            runtimeEnv?.type === "DEVELOPMENT"
+              ? (organization.maximumDevQueueSize ?? env.MAXIMUM_DEV_QUEUE_SIZE ?? null)
+              : (organization.maximumDeployedQueueSize ?? env.MAXIMUM_DEPLOYED_QUEUE_SIZE ?? null),
+          currentUsage: currentQueueSize,
+          // "plan" = org has a value (typically set by billing sync)
+          // "default" = no org value, using env var fallback
+          source:
+            runtimeEnv?.type === "DEVELOPMENT"
+              ? organization.maximumDevQueueSize
+                ? "plan"
+                : "default"
+              : organization.maximumDeployedQueueSize
+                ? "plan"
+                : "default",
         },
       },
       features: {
