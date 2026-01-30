@@ -124,11 +124,11 @@ export class BatchTriggerV3Service extends BaseService {
 
           const existingBatch = options.idempotencyKey
             ? await this._prisma.batchTaskRun.findFirst({
-                where: {
-                  runtimeEnvironmentId: environment.id,
-                  idempotencyKey: options.idempotencyKey,
-                },
-              })
+              where: {
+                runtimeEnvironmentId: environment.id,
+                idempotencyKey: options.idempotencyKey,
+              },
+            })
             : undefined;
 
           if (existingBatch) {
@@ -167,16 +167,16 @@ export class BatchTriggerV3Service extends BaseService {
 
           const dependentAttempt = body?.dependentAttempt
             ? await this._prisma.taskRunAttempt.findFirst({
-                where: { friendlyId: body.dependentAttempt },
-                include: {
-                  taskRun: {
-                    select: {
-                      id: true,
-                      status: true,
-                    },
+              where: { friendlyId: body.dependentAttempt },
+              include: {
+                taskRun: {
+                  select: {
+                    id: true,
+                    status: true,
                   },
                 },
-              })
+              },
+            })
             : undefined;
 
           if (
@@ -890,7 +890,69 @@ export class BatchTriggerV3Service extends BaseService {
       }
     }
 
-    return false;
+    // FIX for Issue #2965: When a run is cached (duplicate idempotencyKey),
+    // we need to create a BatchTaskRunItem and immediately mark it as completed.
+    // This ensures the batch completion check (completedCount === expectedCount) works correctly.
+    const isAlreadyComplete = isFinalRunStatus(result.run.status);
+
+    logger.debug(
+      "[BatchTriggerV2][processBatchTaskRunItem] Cached run detected, creating batch item",
+      {
+        batchId: batch.friendlyId,
+        runId: task.runId,
+        cachedRunId: result.run.id,
+        cachedRunStatus: result.run.status,
+        isAlreadyComplete,
+        currentIndex,
+      }
+    );
+
+    try {
+      // Create a BatchTaskRunItem for the cached run
+      await this._prisma.batchTaskRunItem.create({
+        data: {
+          batchTaskRunId: batch.id,
+          taskRunId: result.run.id,
+          // Mark as COMPLETED if the cached run is already finished
+          status: isAlreadyComplete ? "COMPLETED" : batchTaskRunItemStatusForRunStatus(result.run.status),
+        },
+      });
+
+      // If the cached run is already complete, we need to increment completedCount
+      // since this item won't go through the normal completeBatchTaskRunItemV3 flow
+      if (isAlreadyComplete) {
+        await this._prisma.batchTaskRun.update({
+          where: { id: batch.id },
+          data: {
+            completedCount: {
+              increment: 1,
+            },
+          },
+        });
+      }
+
+      // Return true so expectedCount is incremented
+      return true;
+    } catch (error) {
+      if (isUniqueConstraintError(error, ["batchTaskRunId", "taskRunId"])) {
+        // BatchTaskRunItem already exists for this batch and cached run
+        // This can happen if the same idempotencyKey is used multiple times in the same batch
+        logger.debug(
+          "[BatchTriggerV2][processBatchTaskRunItem] BatchTaskRunItem already exists for cached run",
+          {
+            batchId: batch.friendlyId,
+            runId: task.runId,
+            cachedRunId: result.run.id,
+            currentIndex,
+          }
+        );
+
+        // Don't increment expectedCount since this item is already tracked
+        return false;
+      }
+
+      throw error;
+    }
   }
 
   async #enqueueBatchTaskRun(options: BatchProcessingOptions) {
