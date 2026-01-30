@@ -22,6 +22,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { ThemeToggleButtons } from "~/components/primitives/ThemeToggle";
 import { prisma } from "~/db.server";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -196,6 +197,14 @@ export default function Page() {
               />
             </Fieldset>
           </Form>
+          <div className="mt-6 w-full border-t border-grid-dimmed pt-6">
+            <Header2 className="mb-3">Appearance</Header2>
+            <InputGroup>
+              <Label>Theme</Label>
+              <ThemeToggleButtons />
+              <Hint>Choose your preferred color scheme</Hint>
+            </InputGroup>
+          </div>
         </MainHorizontallyCenteredContainer>
       </PageBody>
     </PageContainer>

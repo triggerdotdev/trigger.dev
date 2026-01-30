@@ -10,6 +10,9 @@ const SideMenuPreferences = z.object({
 
 export type SideMenuPreferences = z.infer<typeof SideMenuPreferences>;
 
+export const ThemePreference = z.enum(["light", "dark", "system"]).default("dark");
+export type ThemePreference = z.infer<typeof ThemePreference>;
+
 const DashboardPreferences = z.object({
   version: z.literal("1"),
   currentProjectId: z.string().optional(),
@@ -20,6 +23,7 @@ const DashboardPreferences = z.object({
     })
   ),
   sideMenu: SideMenuPreferences.optional(),
+  theme: ThemePreference.optional(),
 });
 
 export type DashboardPreferences = z.infer<typeof DashboardPreferences>;
@@ -140,6 +144,37 @@ export async function updateSideMenuPreferences({
   const updatedPreferences: DashboardPreferences = {
     ...user.dashboardPreferences,
     sideMenu: updatedSideMenu,
+  };
+
+  return prisma.user.update({
+    where: {
+      id: user.id,
+    },
+    data: {
+      dashboardPreferences: updatedPreferences,
+    },
+  });
+}
+
+export async function updateThemePreference({
+  user,
+  theme,
+}: {
+  user: UserFromSession;
+  theme: ThemePreference;
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  // Only update if something changed
+  if (user.dashboardPreferences.theme === theme) {
+    return;
+  }
+
+  const updatedPreferences: DashboardPreferences = {
+    ...user.dashboardPreferences,
+    theme,
   };
 
   return prisma.user.update({

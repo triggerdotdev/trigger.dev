@@ -133,7 +133,7 @@ const lavender = {
 
 /** Trigger.dev custom palette */
 
-/** Text colors */
+/** Text colors - Dark mode values (used as CSS variable fallbacks) */
 const primary = apple[500];
 const secondary = charcoal[650];
 const tertiary = charcoal[700];
@@ -152,6 +152,16 @@ const devEnv = colors.pink[500];
 const stagingEnv = colors.orange[400];
 const previewEnv = colors.yellow[400];
 const prodEnv = mint[500];
+
+/** Light mode color values */
+const lightTextDimmed = charcoal[500];
+const lightTextBright = charcoal[800];
+const lightBackgroundBright = charcoal[100];
+const lightBackgroundDimmed = charcoal[200];
+const lightGridBright = charcoal[300];
+const lightGridDimmed = charcoal[200];
+const lightSecondary = charcoal[200];
+const lightTertiary = charcoal[100];
 
 /** Icon colors */
 const tasks = colors.blue[500];
@@ -178,6 +188,7 @@ const radius = "0.5rem";
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: "class",
   content: ["./app/**/*.{ts,jsx,tsx}"],
   theme: {
     container: {
@@ -217,15 +228,16 @@ module.exports = {
         mint,
         sun,
         primary,
-        secondary,
-        tertiary,
+        // Theme-aware colors using CSS variables with fallbacks
+        secondary: "var(--color-secondary)",
+        tertiary: "var(--color-tertiary)",
         "text-link": textLink,
-        "text-dimmed": textDimmed,
-        "text-bright": textBright,
-        "background-bright": backgroundBright,
-        "background-dimmed": backgroundDimmed,
-        "grid-bright": gridBright,
-        "grid-dimmed": gridDimmed,
+        "text-dimmed": "var(--color-text-dimmed)",
+        "text-bright": "var(--color-text-bright)",
+        "background-bright": "var(--color-background-bright)",
+        "background-dimmed": "var(--color-background-dimmed)",
+        "grid-bright": "var(--color-grid-bright)",
+        "grid-dimmed": "var(--color-grid-dimmed)",
         success,
         pending,
         warning,

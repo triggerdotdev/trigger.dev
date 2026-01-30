@@ -33,17 +33,41 @@
   ::-moz-selection {
     @apply bg-text-bright/30 text-text-bright;
   }
-  
-  /* shadcn charts: https://ui.shadcn.com/docs/components/chart#add-a-grid */
+
+  /* Theme color variables */
+  /* Light mode (default) */
   :root {
+    /* Theme-aware semantic colors */
+    --color-secondary: #D7D9DD; /* charcoal[200] */
+    --color-tertiary: #E8E9EC; /* charcoal[100] */
+    --color-text-dimmed: #5F6570; /* charcoal[500] */
+    --color-text-bright: #272A2E; /* charcoal[700] */
+    --color-background-bright: #E8E9EC; /* charcoal[100] */
+    --color-background-dimmed: #F5F5F7; /* lighter than charcoal[100] */
+    --color-grid-bright: #B5B8C0; /* charcoal[300] */
+    --color-grid-dimmed: #D7D9DD; /* charcoal[200] */
+
+    /* shadcn charts */
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
   }
- 
+
+  /* Dark mode */
   .dark {
+    /* Theme-aware semantic colors */
+    --color-secondary: #2C3034; /* charcoal[650] */
+    --color-tertiary: #272A2E; /* charcoal[700] */
+    --color-text-dimmed: #878C99; /* charcoal[400] */
+    --color-text-bright: #D7D9DD; /* charcoal[200] */
+    --color-background-bright: #1A1B1F; /* charcoal[800] */
+    --color-background-dimmed: #15171A; /* charcoal[850] */
+    --color-grid-bright: #272A2E; /* charcoal[700] */
+    --color-grid-dimmed: #212327; /* charcoal[750] */
+
+    /* shadcn charts */
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -116,10 +140,10 @@
 /* Streamdown markdown styling */
 .streamdown-container {
   /* Streamdown uses shadcn/ui CSS variables - define them for our theme */
-  --muted: 220 13% 20%;
-  --muted-foreground: 215 14% 60%;
-  --foreground: 210 20% 90%;
-  --border: 217 19% 27%;
+  --muted: 220 13% 91%;
+  --muted-foreground: 215 14% 40%;
+  --foreground: 210 20% 15%;
+  --border: 217 19% 80%;
 
   & p {
     @apply my-1;
@@ -150,13 +174,13 @@
   }
   /* Inline code (not in pre blocks) */
   & code:not(pre code) {
-    @apply bg-charcoal-700 px-1 py-0.5 rounded text-text-bright font-mono;
+    @apply bg-secondary px-1 py-0.5 rounded text-text-bright font-mono;
   }
   & blockquote {
-    @apply border-l-2 border-charcoal-600 pl-3 my-2 italic;
+    @apply border-l-2 border-grid-bright pl-3 my-2 italic;
   }
   & a {
-    @apply text-blue-400 hover:underline;
+    @apply text-blue-500 dark:text-blue-400 hover:underline;
   }
   & strong {
     @apply font-semibold text-text-bright;
@@ -165,24 +189,24 @@
     @apply italic;
   }
   & hr {
-    @apply my-2 border-charcoal-600;
+    @apply my-2 border-grid-bright;
   }
   & table {
     @apply w-full my-2 border-collapse;
   }
   & th, & td {
-    @apply border border-charcoal-600 px-2 py-1 text-left;
+    @apply border border-grid-bright px-2 py-1 text-left;
   }
   & th {
-    @apply bg-charcoal-700 font-semibold;
+    @apply bg-secondary font-semibold;
   }
 
   /* Streamdown code block container */
   & [data-code-block-container] {
-    @apply my-2 border-charcoal-700;
+    @apply my-2 border-grid-bright;
   }
   & [data-code-block-header] {
-    @apply bg-charcoal-800 text-text-dimmed border-b border-charcoal-700;
+    @apply bg-background-bright text-text-dimmed border-b border-grid-bright;
   }
   /* Hide light mode code block, show dark mode */
   & [data-code-block].dark\:hidden {
@@ -194,7 +218,7 @@
   /* Override the bg-muted/40 class to let inline styles work */
   & [data-code-block] pre {
     background-color: inherit !important;
-    @apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600;
+    @apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-400 dark:scrollbar-thumb-charcoal-600;
   }
   & [data-code-block] pre code {
     @apply bg-transparent;
@@ -202,4 +226,12 @@
   & [data-code-block] .line {
     @apply leading-relaxed;
   }
+}
+
+/* Dark mode streamdown overrides */
+.dark .streamdown-container {
+  --muted: 220 13% 20%;
+  --muted-foreground: 215 14% 60%;
+  --foreground: 210 20% 90%;
+  --border: 217 19% 27%;
 }

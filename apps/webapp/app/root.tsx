@@ -9,12 +9,14 @@ import tailwindStylesheetUrl from "~/tailwind.css";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
 import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
 import { ShortcutsProvider } from "./components/primitives/ShortcutsProvider";
+import { ThemeProvider, ThemeScript } from "./components/primitives/ThemeProvider";
 import { Toast } from "./components/primitives/Toast";
 import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
 import { getUser } from "./services/session.server";
 import { appEnvTitleTag } from "./utils";
+import type { ThemePreference } from "./services/dashboardPreferences.server";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -55,9 +57,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     websiteId: env.KAPA_AI_WEBSITE_ID,
   };
 
+  const user = await getUser(request);
+  const themePreference: ThemePreference = user?.dashboardPreferences?.theme ?? "dark";
+
   return typedjson(
     {
-      user: await getUser(request),
+      user,
       toastMessage,
       posthogProjectKey,
       features,
@@ -65,6 +70,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       appOrigin: env.APP_ORIGIN,
       triggerCliTag: env.TRIGGER_CLI_TAG,
       kapa,
+      themePreference,
     },
     { headers: { "Set-Cookie": await commitSession(session) } }
   );
@@ -83,21 +89,23 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
 export function ErrorBoundary() {
   return (
     <>
-      <html lang="en" className="h-full">
+      <html lang="en" className="h-full dark">
         <head>
           <meta charSet="utf-8" />
-
+          <ThemeScript />
           <Meta />
           <Links />
         </head>
         <body className="h-full overflow-hidden bg-background-dimmed">
-          <ShortcutsProvider>
-            <AppContainer>
-              <MainCenteredContainer>
-                <RouteErrorDisplay />
-              </MainCenteredContainer>
-            </AppContainer>
-          </ShortcutsProvider>
+          <ThemeProvider initialPreference="dark" isLoggedIn={false}>
+            <ShortcutsProvider>
+              <AppContainer>
+                <MainCenteredContainer>
+                  <RouteErrorDisplay />
+                </MainCenteredContainer>
+              </AppContainer>
+            </ShortcutsProvider>
+          </ThemeProvider>
           <Scripts />
         </body>
       </html>
@@ -106,21 +114,24 @@ export function ErrorBoundary() {
 }
 
 export default function App() {
-  const { posthogProjectKey, kapa } = useTypedLoaderData<typeof loader>();
+  const { posthogProjectKey, kapa, themePreference, user } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey);
 
   return (
     <>
-      <html lang="en" className="h-full">
+      <html lang="en" className="h-full dark">
         <head>
+          <ThemeScript initialPreference={themePreference} />
           <Meta />
           <Links />
         </head>
         <body className="h-full overflow-hidden bg-background-dimmed">
-          <ShortcutsProvider>
-            <Outlet />
-            <Toast />
-          </ShortcutsProvider>
+          <ThemeProvider initialPreference={themePreference} isLoggedIn={!!user}>
+            <ShortcutsProvider>
+              <Outlet />
+              <Toast />
+            </ShortcutsProvider>
+          </ThemeProvider>
           <ScrollRestoration />
           <ExternalScripts />
           <Scripts />

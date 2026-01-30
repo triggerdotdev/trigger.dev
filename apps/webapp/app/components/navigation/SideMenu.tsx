@@ -98,6 +98,7 @@ import { TextLink } from "../primitives/TextLink";
 import { SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { ShortcutsAutoOpen } from "../Shortcuts";
 import { UserProfilePhoto } from "../UserProfilePhoto";
+import { ThemeToggle } from "../primitives/ThemeToggle";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
@@ -892,7 +893,10 @@ function HelpAndAI({ isCollapsed }: { isCollapsed: boolean }) {
     <LayoutGroup>
       <div className={cn("flex w-full", isCollapsed ? "flex-col-reverse gap-1" : "items-center justify-between")}>
         <ShortcutsAutoOpen />
-        <HelpAndFeedback isCollapsed={isCollapsed} />
+        <div className={cn("flex", isCollapsed ? "flex-col gap-1" : "items-center gap-0.5")}>
+          <ThemeToggle isCollapsed={isCollapsed} />
+          <HelpAndFeedback isCollapsed={isCollapsed} />
+        </div>
         <AskAI isCollapsed={isCollapsed} />
       </div>
     </LayoutGroup>
