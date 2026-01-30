@@ -31,7 +31,15 @@ export interface EnhancedExecutionSnapshot extends TaskRunExecutionSnapshot {
 type ExecutionSnapshotWithCheckAndWaitpoints = Prisma.TaskRunExecutionSnapshotGetPayload<{
   include: {
     checkpoint: true;
-    completedWaitpoints: true;
+    completedWaitpoints: {
+      include: {
+        completedByTaskRun: {
+          select: {
+            taskIdentifier: true;
+          };
+        };
+      };
+    };
   };
 }>;
 
@@ -57,7 +65,9 @@ function enhanceExecutionSnapshot(
  */
 function enhanceExecutionSnapshotWithWaitpoints(
   snapshot: ExecutionSnapshotWithCheckpoint,
-  waitpoints: Waitpoint[],
+  waitpoints: (Waitpoint & {
+    completedByTaskRun: { taskIdentifier: string | null } | null;
+  })[],
   completedWaitpointOrder: string[]
 ): EnhancedExecutionSnapshot {
   return {
@@ -89,22 +99,23 @@ function enhanceExecutionSnapshotWithWaitpoints(
             w.userProvidedIdempotencyKey && !w.inactiveIdempotencyKey ? w.idempotencyKey : undefined,
           completedByTaskRun: w.completedByTaskRunId
             ? {
-                id: w.completedByTaskRunId,
-                friendlyId: RunId.toFriendlyId(w.completedByTaskRunId),
-                batch: snapshot.batchId
-                  ? {
-                      id: snapshot.batchId,
-                      friendlyId: BatchId.toFriendlyId(snapshot.batchId),
-                    }
-                  : undefined,
-              }
+              id: w.completedByTaskRunId,
+              friendlyId: RunId.toFriendlyId(w.completedByTaskRunId),
+              batch: snapshot.batchId
+                ? {
+                  id: snapshot.batchId,
+                  friendlyId: BatchId.toFriendlyId(snapshot.batchId),
+                }
+                : undefined,
+              taskIdentifier: w.completedByTaskRun?.taskIdentifier ?? undefined,
+            }
             : undefined,
           completedAfter: w.completedAfter ?? undefined,
           completedByBatch: w.completedByBatchId
             ? {
-                id: w.completedByBatchId,
-                friendlyId: BatchId.toFriendlyId(w.completedByBatchId),
-              }
+              id: w.completedByBatchId,
+              friendlyId: BatchId.toFriendlyId(w.completedByBatchId),
+            }
             : undefined,
           output: w.output ?? undefined,
           outputType: w.outputType,
@@ -137,14 +148,23 @@ async function getSnapshotWaitpointIds(
 async function fetchWaitpointsInChunks(
   prisma: PrismaClientOrTransaction,
   waitpointIds: string[]
-): Promise<Waitpoint[]> {
+): Promise<(Waitpoint & { completedByTaskRun: { taskIdentifier: string | null } | null })[]> {
   if (waitpointIds.length === 0) return [];
 
-  const allWaitpoints: Waitpoint[] = [];
+  const allWaitpoints: (Waitpoint & {
+    completedByTaskRun: { taskIdentifier: string | null } | null;
+  })[] = [];
   for (let i = 0; i < waitpointIds.length; i += WAITPOINT_CHUNK_SIZE) {
     const chunk = waitpointIds.slice(i, i + WAITPOINT_CHUNK_SIZE);
     const waitpoints = await prisma.waitpoint.findMany({
       where: { id: { in: chunk } },
+      include: {
+        completedByTaskRun: {
+          select: {
+            taskIdentifier: true,
+          },
+        },
+      },
     });
     allWaitpoints.push(...waitpoints);
   }
@@ -159,7 +179,15 @@ export async function getLatestExecutionSnapshot(
   const snapshot = await prisma.taskRunExecutionSnapshot.findFirst({
     where: { runId, isValid: true },
     include: {
-      completedWaitpoints: true,
+      completedWaitpoints: {
+        include: {
+          completedByTaskRun: {
+            select: {
+              taskIdentifier: true,
+            },
+          },
+        },
+      },
       checkpoint: true,
     },
     orderBy: { createdAt: "desc" },
@@ -179,7 +207,15 @@ export async function getExecutionSnapshotCompletedWaitpoints(
   const waitpoints = await prisma.taskRunExecutionSnapshot.findFirst({
     where: { id: snapshotId },
     include: {
-      completedWaitpoints: true,
+      completedWaitpoints: {
+        include: {
+          completedByTaskRun: {
+            select: {
+              taskIdentifier: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -233,19 +269,19 @@ export function executionDataFromSnapshot(snapshot: EnhancedExecutionSnapshot): 
     },
     batch: snapshot.batchId
       ? {
-          id: snapshot.batchId,
-          friendlyId: BatchId.toFriendlyId(snapshot.batchId),
-        }
+        id: snapshot.batchId,
+        friendlyId: BatchId.toFriendlyId(snapshot.batchId),
+      }
       : undefined,
     checkpoint: snapshot.checkpoint
       ? {
-          id: snapshot.checkpoint.id,
-          friendlyId: snapshot.checkpoint.friendlyId,
-          type: snapshot.checkpoint.type,
-          location: snapshot.checkpoint.location,
-          imageRef: snapshot.checkpoint.imageRef,
-          reason: snapshot.checkpoint.reason ?? undefined,
-        }
+        id: snapshot.checkpoint.id,
+        friendlyId: snapshot.checkpoint.friendlyId,
+        type: snapshot.checkpoint.type,
+        location: snapshot.checkpoint.location,
+        imageRef: snapshot.checkpoint.imageRef,
+        reason: snapshot.checkpoint.reason ?? undefined,
+      }
       : undefined,
     completedWaitpoints: snapshot.completedWaitpoints,
   };

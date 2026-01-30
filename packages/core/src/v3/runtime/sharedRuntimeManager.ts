@@ -293,17 +293,19 @@ export class SharedRuntimeManager implements RuntimeManager {
       return {
         ok: false,
         id: waitpoint.completedByTaskRun.friendlyId,
+        taskIdentifier: waitpoint.completedByTaskRun.taskIdentifier ?? "unknown",
         error: waitpoint.output
           ? JSON.parse(waitpoint.output)
           : {
-              type: "STRING_ERROR",
-              message: "Missing error output",
-            },
+            type: "STRING_ERROR",
+            message: "Missing error output",
+          },
       } satisfies TaskRunFailedExecutionResult;
     } else {
       return {
         ok: true,
         id: waitpoint.completedByTaskRun.friendlyId,
+        taskIdentifier: waitpoint.completedByTaskRun.taskIdentifier ?? "unknown",
         output: waitpoint.output,
         outputType: waitpoint.outputType ?? "application/json",
       } satisfies TaskRunSuccessfulExecutionResult;
