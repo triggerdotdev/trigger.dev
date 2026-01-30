@@ -51,6 +51,7 @@ export const EditEnvironmentVariableValue = z.object({
   id: z.string(),
   environmentId: z.string(),
   value: z.string(),
+  isSecret: z.preprocess((val) => val === "true" || val === true, z.boolean()).optional(),
 });
 export type EditEnvironmentVariableValue = z.infer<typeof EditEnvironmentVariableValue>;
 
