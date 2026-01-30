@@ -915,8 +915,9 @@ export class BatchTriggerV3Service extends BaseService {
         data: {
           batchTaskRunId: batch.id,
           taskRunId: result.run.id,
-          // Use appropriate status based on the cached run's current status
-          status: isAlreadyComplete ? "COMPLETED" : batchTaskRunItemStatusForRunStatus(result.run.status),
+          // Use batchTaskRunItemStatusForRunStatus() for all cases
+          // This correctly maps both successful (COMPLETED) and failed (FAILED) statuses
+          status: batchTaskRunItemStatusForRunStatus(result.run.status),
         },
       });
 
