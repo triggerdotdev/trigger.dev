@@ -891,11 +891,13 @@ export class BatchTriggerV3Service extends BaseService {
     }
 
     // FIX for Issue #2965: When a run is cached (duplicate idempotencyKey),
-    // we need to handle it based on whether the cached run is already complete.
+    // we need to ALWAYS create a BatchTaskRunItem to properly track it.
+    // This handles cases where cached run may originate from another batch.
+    // Use unique constraint (batchTaskRunId, taskRunId) to prevent duplicates.
     const isAlreadyComplete = isFinalRunStatus(result.run.status);
 
     logger.debug(
-      "[BatchTriggerV2][processBatchTaskRunItem] Cached run detected",
+      "[BatchTriggerV2][processBatchTaskRunItem] Cached run detected, creating batch item",
       {
         batchId: batch.friendlyId,
         runId: task.runId,
@@ -906,45 +908,32 @@ export class BatchTriggerV3Service extends BaseService {
       }
     );
 
-    // If the cached run is NOT in a final status (still PENDING or EXECUTING),
-    // we should NOT create a BatchTaskRunItem because:
-    // 1. The original item will complete when the run finishes
-    // 2. Creating a duplicate item would cause the batch to hang forever
-    // (as noted in Devin AI review)
-    if (!isAlreadyComplete) {
-      logger.debug(
-        "[BatchTriggerV2][processBatchTaskRunItem] Cached run still in progress, skipping batch item creation",
-        {
-          batchId: batch.friendlyId,
-          cachedRunId: result.run.id,
-          cachedRunStatus: result.run.status,
-        }
-      );
-      // Return false to NOT increment expectedCount
-      return false;
-    }
-
-    // The cached run is already complete, create a BatchTaskRunItem and increment completedCount
+    // Always create BatchTaskRunItem for cached runs
+    // This ensures proper tracking even for cross-batch scenarios
     try {
       await this._prisma.batchTaskRunItem.create({
         data: {
           batchTaskRunId: batch.id,
           taskRunId: result.run.id,
-          status: "COMPLETED",
+          // Use appropriate status based on the cached run's current status
+          status: isAlreadyComplete ? "COMPLETED" : batchTaskRunItemStatusForRunStatus(result.run.status),
         },
       });
 
-      // Increment completedCount since the cached run is already finished
-      await this._prisma.batchTaskRun.update({
-        where: { id: batch.id },
-        data: {
-          completedCount: {
-            increment: 1,
+      // Only increment completedCount if the cached run is already finished
+      // For in-progress runs, completedCount will be incremented when the run completes
+      if (isAlreadyComplete) {
+        await this._prisma.batchTaskRun.update({
+          where: { id: batch.id },
+          data: {
+            completedCount: {
+              increment: 1,
+            },
           },
-        },
-      });
+        });
+      }
 
-      // Return true so expectedCount is incremented (matches completedCount increment above)
+      // Return true so expectedCount is incremented
       return true;
     } catch (error) {
       if (isUniqueConstraintError(error, ["batchTaskRunId", "taskRunId"])) {
