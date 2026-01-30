@@ -68,6 +68,7 @@ import { EnvironmentQueuePresenter } from "~/presenters/v3/EnvironmentQueuePrese
 import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
+import { formatNumberCompact } from "~/utils/numberFormatter";
 import {
   concurrencyPath,
   docsPath,
@@ -345,7 +346,27 @@ export default function Page() {
             <BigNumber
               title="Queued"
               value={environment.queued}
-              suffix={env.paused && environment.queued > 0 ? "paused" : undefined}
+              suffix={
+                environment.queueSizeLimit ? (
+                  <span className="flex items-center gap-1">
+                    <span className="text-text-dimmed">/</span>
+                    <span
+                      className={getQueueUsageColorClass(
+                        environment.queued,
+                        environment.queueSizeLimit
+                      )}
+                    >
+                      {formatNumberCompact(environment.queueSizeLimit)}
+                    </span>
+                    <InfoIconTooltip
+                      content="Maximum pending runs in this environment"
+                      contentClassName="max-w-xs"
+                    />
+                  </span>
+                ) : env.paused && environment.queued > 0 ? (
+                  "paused"
+                ) : undefined
+              }
               animate
               accessory={
                 <div className="flex items-start gap-1">
@@ -364,7 +385,10 @@ export default function Page() {
                   />
                 </div>
               }
-              valueClassName={cn(env.paused ? "text-warning" : undefined, "tabular-nums")}
+              valueClassName={
+                getQueueUsageColorClass(environment.queued, environment.queueSizeLimit) ??
+                (env.paused ? "text-warning tabular-nums" : "tabular-nums")
+              }
               compactThreshold={1000000}
             />
             <BigNumber
@@ -1117,4 +1141,12 @@ function BurstFactorTooltip({
       contentClassName="max-w-xs"
     />
   );
+}
+
+function getQueueUsageColorClass(current: number, limit: number | null): string | undefined {
+  if (!limit) return undefined;
+  const percentage = current / limit;
+  if (percentage >= 1) return "text-error";
+  if (percentage >= 0.9) return "text-warning";
+  return undefined;
 }
