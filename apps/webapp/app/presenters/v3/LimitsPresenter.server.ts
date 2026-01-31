@@ -1,4 +1,5 @@
 import { Ratelimit } from "@upstash/ratelimit";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { createHash } from "node:crypto";
 import { env } from "~/env.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
@@ -12,6 +13,8 @@ import { BasePresenter } from "./basePresenter.server";
 import { singleton } from "~/utils/singleton";
 import { logger } from "~/services/logger.server";
 import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
+import { engine } from "~/v3/runEngine.server";
+import { getQueueSizeLimit, getQueueSizeLimitSource } from "~/v3/utils/queueLimits.server";
 
 // Create a singleton Redis client for rate limit queries
 const rateLimitRedisClient = singleton("rateLimitQueryRedisClient", () =>
@@ -66,8 +69,7 @@ export type LimitsResult = {
     logRetentionDays: QuotaInfo | null;
     realtimeConnections: QuotaInfo | null;
     batchProcessingConcurrency: QuotaInfo;
-    devQueueSize: QuotaInfo;
-    deployedQueueSize: QuotaInfo;
+    queueSize: QuotaInfo;
   };
   features: {
     hasStagingEnvironment: FeatureInfo;
@@ -84,11 +86,13 @@ export class LimitsPresenter extends BasePresenter {
     organizationId,
     projectId,
     environmentId,
+    environmentType,
     environmentApiKey,
   }: {
     organizationId: string;
     projectId: string;
     environmentId: string;
+    environmentType: RuntimeEnvironmentType;
     environmentApiKey: string;
   }): Promise<LimitsResult> {
     // Get organization with all limit-related fields
@@ -166,6 +170,30 @@ export class LimitsPresenter extends BasePresenter {
       environmentId,
       batchRateLimitConfig
     );
+
+    // Get current queue size for this environment
+    // We need the runtime environment fields for the engine query
+    const runtimeEnv = await this._replica.runtimeEnvironment.findFirst({
+      where: { id: environmentId },
+      select: {
+        id: true,
+        maximumConcurrencyLimit: true,
+        concurrencyLimitBurstFactor: true,
+      },
+    });
+
+    let currentQueueSize = 0;
+    if (runtimeEnv) {
+      const engineEnv = {
+        id: runtimeEnv.id,
+        type: environmentType,
+        maximumConcurrencyLimit: runtimeEnv.maximumConcurrencyLimit,
+        concurrencyLimitBurstFactor: runtimeEnv.concurrencyLimitBurstFactor,
+        organization: { id: organizationId },
+        project: { id: projectId },
+      };
+      currentQueueSize = (await engine.lengthOfEnvQueue(engineEnv)) ?? 0;
+    }
 
     // Get plan-level limits
     const schedulesLimit = limits?.schedules?.number ?? null;
@@ -282,19 +310,12 @@ export class LimitsPresenter extends BasePresenter {
           canExceed: true,
           isUpgradable: true,
         },
-        devQueueSize: {
-          name: "Dev queue size",
-          description: "Maximum pending runs in development environments",
-          limit: organization.maximumDevQueueSize ?? null,
-          currentUsage: 0, // Would need to query Redis for this
-          source: organization.maximumDevQueueSize ? "override" : "default",
-        },
-        deployedQueueSize: {
-          name: "Deployed queue size",
-          description: "Maximum pending runs in deployed environments",
-          limit: organization.maximumDeployedQueueSize ?? null,
-          currentUsage: 0, // Would need to query Redis for this
-          source: organization.maximumDeployedQueueSize ? "override" : "default",
+        queueSize: {
+          name: "Max queued runs",
+          description: "Maximum pending runs across all queues in this environment",
+          limit: getQueueSizeLimit(environmentType, organization),
+          currentUsage: currentQueueSize,
+          source: getQueueSizeLimitSource(environmentType, organization),
         },
       },
       features: {

@@ -82,6 +82,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       organizationId: project.organizationId,
       projectId: project.id,
       environmentId: environment.id,
+      environmentType: environment.type,
       environmentApiKey: environment.apiKey,
     })
   );
@@ -507,9 +508,8 @@ function QuotasSection({
   // Include batch processing concurrency
   quotaRows.push(quotas.batchProcessingConcurrency);
 
-  // Add queue size quotas if set
-  if (quotas.devQueueSize.limit !== null) quotaRows.push(quotas.devQueueSize);
-  if (quotas.deployedQueueSize.limit !== null) quotaRows.push(quotas.deployedQueueSize);
+  // Add queue size quota if set
+  if (quotas.queueSize.limit !== null) quotaRows.push(quotas.queueSize);
 
   return (
     <div className="flex flex-col gap-3">
