@@ -1,4 +1,5 @@
 import { Ratelimit } from "@upstash/ratelimit";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { createHash } from "node:crypto";
 import { env } from "~/env.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
@@ -13,6 +14,7 @@ import { singleton } from "~/utils/singleton";
 import { logger } from "~/services/logger.server";
 import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
 import { engine } from "~/v3/runEngine.server";
+import { getQueueSizeLimit, getQueueSizeLimitSource } from "~/v3/utils/queueLimits.server";
 
 // Create a singleton Redis client for rate limit queries
 const rateLimitRedisClient = singleton("rateLimitQueryRedisClient", () =>
@@ -84,11 +86,13 @@ export class LimitsPresenter extends BasePresenter {
     organizationId,
     projectId,
     environmentId,
+    environmentType,
     environmentApiKey,
   }: {
     organizationId: string;
     projectId: string;
     environmentId: string;
+    environmentType: RuntimeEnvironmentType;
     environmentApiKey: string;
   }): Promise<LimitsResult> {
     // Get organization with all limit-related fields
@@ -168,13 +172,11 @@ export class LimitsPresenter extends BasePresenter {
     );
 
     // Get current queue size for this environment
+    // We need the runtime environment fields for the engine query
     const runtimeEnv = await this._replica.runtimeEnvironment.findFirst({
       where: { id: environmentId },
       select: {
         id: true,
-        type: true,
-        organizationId: true,
-        projectId: true,
         maximumConcurrencyLimit: true,
         concurrencyLimitBurstFactor: true,
       },
@@ -184,11 +186,11 @@ export class LimitsPresenter extends BasePresenter {
     if (runtimeEnv) {
       const engineEnv = {
         id: runtimeEnv.id,
-        type: runtimeEnv.type,
+        type: environmentType,
         maximumConcurrencyLimit: runtimeEnv.maximumConcurrencyLimit,
         concurrencyLimitBurstFactor: runtimeEnv.concurrencyLimitBurstFactor,
-        organization: { id: runtimeEnv.organizationId },
-        project: { id: runtimeEnv.projectId },
+        organization: { id: organizationId },
+        project: { id: projectId },
       };
       currentQueueSize = (await engine.lengthOfEnvQueue(engineEnv)) ?? 0;
     }
@@ -311,21 +313,9 @@ export class LimitsPresenter extends BasePresenter {
         queueSize: {
           name: "Max queued runs",
           description: "Maximum pending runs across all queues in this environment",
-          limit:
-            runtimeEnv?.type === "DEVELOPMENT"
-              ? (organization.maximumDevQueueSize ?? env.MAXIMUM_DEV_QUEUE_SIZE ?? null)
-              : (organization.maximumDeployedQueueSize ?? env.MAXIMUM_DEPLOYED_QUEUE_SIZE ?? null),
+          limit: getQueueSizeLimit(environmentType, organization),
           currentUsage: currentQueueSize,
-          // "plan" = org has a value (typically set by billing sync)
-          // "default" = no org value, using env var fallback
-          source:
-            runtimeEnv?.type === "DEVELOPMENT"
-              ? organization.maximumDevQueueSize
-                ? "plan"
-                : "default"
-              : organization.maximumDeployedQueueSize
-                ? "plan"
-                : "default",
+          source: getQueueSizeLimitSource(environmentType, organization),
         },
       },
       features: {

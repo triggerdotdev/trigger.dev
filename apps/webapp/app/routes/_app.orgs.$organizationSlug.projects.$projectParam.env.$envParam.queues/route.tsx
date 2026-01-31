@@ -347,25 +347,11 @@ export default function Page() {
               title="Queued"
               value={environment.queued}
               suffix={
-                environment.queueSizeLimit ? (
-                  <span className="flex items-center gap-1">
-                    <span className="text-text-dimmed">/</span>
-                    <span
-                      className={getQueueUsageColorClass(
-                        environment.queued,
-                        environment.queueSizeLimit
-                      )}
-                    >
-                      {formatNumberCompact(environment.queueSizeLimit)}
-                    </span>
-                    <InfoIconTooltip
-                      content="Maximum pending runs across all queues in this environment"
-                      contentClassName="max-w-xs"
-                    />
-                  </span>
-                ) : env.paused && environment.queued > 0 ? (
-                  "paused"
-                ) : undefined
+                <QueuedSuffix
+                  queued={environment.queued}
+                  queueSizeLimit={environment.queueSizeLimit}
+                  isPaused={env.paused}
+                />
               }
               animate
               accessory={
@@ -1149,4 +1135,46 @@ function getQueueUsageColorClass(current: number, limit: number | null): string 
   if (percentage >= 1) return "text-error";
   if (percentage >= 0.9) return "text-warning";
   return undefined;
+}
+
+/**
+ * Renders the suffix for the Queued BigNumber, showing:
+ * - The limit with usage color and tooltip (if queueSizeLimit is set)
+ * - "paused" text (if environment is paused)
+ * - Both indicators when applicable
+ */
+function QueuedSuffix({
+  queued,
+  queueSizeLimit,
+  isPaused,
+}: {
+  queued: number;
+  queueSizeLimit: number | null;
+  isPaused: boolean;
+}) {
+  const showLimit = queueSizeLimit !== null;
+
+  if (!showLimit && !isPaused) {
+    return null;
+  }
+
+  return (
+    <span className="flex items-center gap-1">
+      {showLimit && (
+        <>
+          <span className="text-text-dimmed">/</span>
+          <span className={getQueueUsageColorClass(queued, queueSizeLimit)}>
+            {formatNumberCompact(queueSizeLimit)}
+          </span>
+          <InfoIconTooltip
+            content="Maximum pending runs across all queues in this environment"
+            contentClassName="max-w-xs"
+          />
+        </>
+      )}
+      {isPaused && (
+        <span className="text-warning">{showLimit ? "(paused)" : "paused"}</span>
+      )}
+    </span>
+  );
 }

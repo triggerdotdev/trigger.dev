@@ -1,7 +1,7 @@
-import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { engine } from "~/v3/runEngine.server";
+import { getQueueSizeLimit } from "~/v3/utils/queueLimits.server";
 import { BasePresenter } from "./basePresenter.server";
 
 export type Environment = {
@@ -41,10 +41,7 @@ export class EnvironmentQueuePresenter extends BasePresenter {
       throw new Error("Organization not found");
     }
 
-    const queueSizeLimit =
-      environment.type === "DEVELOPMENT"
-        ? (organization.maximumDevQueueSize ?? env.MAXIMUM_DEV_QUEUE_SIZE ?? null)
-        : (organization.maximumDeployedQueueSize ?? env.MAXIMUM_DEPLOYED_QUEUE_SIZE ?? null);
+    const queueSizeLimit = getQueueSizeLimit(environment.type, organization);
 
     return {
       running,
