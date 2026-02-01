@@ -131,9 +131,15 @@ export function MetricWidget({ title, config, refreshIntervalMs, ...props }: Met
       action: `/resources/metric`,
       encType: "application/json",
     });
-  }, []);
+  }, [props]);
 
+  // Reload periodically and on focus
   useInterval({ interval: refreshIntervalMs, callback: submit });
+
+  // If the time period changes, reload
+  useEffect(() => {
+    submit();
+  }, [props.from, props.to, props.period]);
 
   const data = fetcher.data?.success
     ? { rows: fetcher.data.data.rows, columns: fetcher.data.data.columns }

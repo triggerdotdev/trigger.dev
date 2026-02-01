@@ -1,5 +1,5 @@
 import { BasePresenter } from "./basePresenter.server";
-import type { QueryScope } from "~/services/queryService.server";
+import { getDefaultPeriod, type QueryScope } from "~/services/queryService.server";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { builtInDashboard } from "./BuiltInDashboards.server";
@@ -48,12 +48,14 @@ export type CustomDashboard = {
   id: string;
   title: string;
   layout: DashboardLayout;
+  defaultPeriod: string;
 };
 
 export type BuiltInDashboard = {
   key: string;
   title: string;
   layout: DashboardLayout;
+  defaultPeriod: string;
 };
 
 /** Returns the dashboard layout */
@@ -74,14 +76,24 @@ export class MetricDashboardPresenter extends BasePresenter {
 
     const layout = this.#getLayout(dashboard.layout);
 
+    const defaultPeriod = await getDefaultPeriod(organizationId);
+
     return {
       id: dashboardId,
       title: dashboard.title,
       layout,
+      defaultPeriod,
     };
   }
 
-  public async builtInDashboard(key: string): Promise<BuiltInDashboard> {
+  public async builtInDashboard({
+    organizationId,
+    key,
+  }: {
+    organizationId: string;
+    key: string;
+  }): Promise<BuiltInDashboard> {
+    const defaultPeriod = await getDefaultPeriod(organizationId);
     return builtInDashboard(key);
   }
 
