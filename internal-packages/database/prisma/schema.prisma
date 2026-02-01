@@ -63,6 +63,7 @@ model User {
   impersonationsPerformed ImpersonationAuditLog[] @relation("ImpersonationAdmin")
   impersonationsReceived  ImpersonationAuditLog[] @relation("ImpersonationTarget")
   customerQueries         CustomerQuery[]
+  metricsDashboards       MetricsDashboard[]
 }
 
 model MfaBackupCode {
@@ -223,6 +224,7 @@ model Organization {
   workerInstances          WorkerInstance[]
   githubAppInstallations   GithubAppInstallation[]
   customerQueries          CustomerQuery[]
+  metricsDashboards        MetricsDashboard[]
 }
 
 model OrgMember {
@@ -409,6 +411,7 @@ model Project {
 
   buildSettings         Json?
   taskScheduleInstances TaskScheduleInstance[]
+  metricsDashboards     MetricsDashboard[]
 }
 
 enum ProjectVersion {
@@ -2485,4 +2488,32 @@ model CustomerQuery {
   @@index([organizationId, createdAt(sort: Desc)])
   /// For Stripe metering job - find unprocessed queries
   @@index([createdAt])
+}
+
+/// A user-defined metrics dashboard
+model MetricsDashboard {
+  id String @id @default(cuid())
+
+  title       String
+  description String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String?
+
+  /// Who created the dashboard
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  ownerId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// JSON that defines the config, queries, layout and config of all widgets. 
+  /// There will be a version field for the format.
+  layout String
+
+  /// Fast lookup for the list
+  @@index([projectId, createdAt(sort: Desc)])
 }
