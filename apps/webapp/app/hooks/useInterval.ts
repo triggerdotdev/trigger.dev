@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 
 type UseIntervalOptions = {
-  interval?: number; // in milliseconds
+  /** If passed, will refresh every interval MS */
+  interval?: number;
   onLoad?: boolean;
   onFocus?: boolean;
   disabled?: boolean;
@@ -9,7 +10,7 @@ type UseIntervalOptions = {
 };
 
 export function useInterval({
-  interval = 60_000,
+  interval,
   onLoad = true,
   onFocus = true,
   disabled = false,
