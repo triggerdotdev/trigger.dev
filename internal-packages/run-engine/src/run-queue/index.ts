@@ -39,6 +39,7 @@ import {
   InputPayload,
   OutputPayload,
   OutputPayloadV2,
+  RunDataProvider,
   RunQueueKeyProducer,
   RunQueueKeyProducerEnvironment,
   RunQueueSelectionStrategy,
@@ -110,6 +111,12 @@ export type RunQueueOptions = {
    * 3. Old messages drain naturally as they're processed
    */
   useOptimizedMessageFormat?: boolean;
+  /**
+   * Provider for fetching run data from PostgreSQL.
+   * Required when using V3 optimized format for ack/nack operations.
+   * Falls back to Redis message key if not provided (legacy behavior).
+   */
+  runDataProvider?: RunDataProvider;
 };
 
 export interface ConcurrencySweeperCallback {
@@ -194,9 +201,11 @@ export class RunQueue {
   private _meter: Meter;
   private _queueCooloffStates: Map<string, QueueCooloffState> = new Map();
   private _useOptimizedMessageFormat: boolean;
+  private _runDataProvider?: RunDataProvider;
 
   constructor(public readonly options: RunQueueOptions) {
     this._useOptimizedMessageFormat = options.useOptimizedMessageFormat ?? false;
+    this._runDataProvider = options.runDataProvider;
     this.shardCount = options.shardCount ?? 2;
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = createRedisClient(options.redis, {
@@ -575,8 +584,43 @@ export class RunQueue {
     return this.redis.exists(this.keys.messageKey(orgId, messageId));
   }
 
-  public async readMessage(orgId: string, messageId: string) {
-    return this.readMessageFromKey(this.keys.messageKey(orgId, messageId));
+  public async readMessage(orgId: string, messageId: string): Promise<OutputPayload | undefined> {
+    // First try to read from Redis (legacy V2 format)
+    const redisMessage = await this.readMessageFromKey(this.keys.messageKey(orgId, messageId));
+    if (redisMessage) {
+      return redisMessage;
+    }
+
+    // Fall back to runDataProvider (for V3 format where there's no message key)
+    if (this._runDataProvider) {
+      const runData = await this._runDataProvider.getRunData(messageId);
+      if (runData) {
+        // Convert RunData to OutputPayloadV2
+        const queueKey = this.keys.queueKey(
+          runData.orgId,
+          runData.projectId,
+          runData.environmentId,
+          runData.taskIdentifier,
+          runData.concurrencyKey
+        );
+        return {
+          version: "2" as const,
+          runId: messageId,
+          taskIdentifier: runData.taskIdentifier,
+          orgId: runData.orgId,
+          projectId: runData.projectId,
+          environmentId: runData.environmentId,
+          environmentType: runData.environmentType,
+          queue: queueKey,
+          concurrencyKey: runData.concurrencyKey,
+          timestamp: runData.timestamp,
+          attempt: runData.attempt,
+          workerQueue: runData.workerQueue,
+        };
+      }
+    }
+
+    return undefined;
   }
 
   public async readMessageFromKey(messageKey: string) {
@@ -2372,12 +2416,6 @@ export class RunQueue {
 
         const descriptor = this.keys.descriptorFromQueue(decoded.queueKey);
         const message = reconstructMessageFromWorkerEntry(decoded, descriptor);
-
-        // For V3 format: create the message key now that the run is executing.
-        // This allows ack/nack to work (they read from message key).
-        // Storage savings come from not having message keys for PENDING runs (the backlog).
-        const messageKey = this.keys.messageKey(descriptor.orgId, message.runId);
-        await this.redis.set(messageKey, JSON.stringify(message));
 
         // Update the currentDequeued sets (this is done in the Lua script for legacy)
         const queueCurrentDequeuedKey = this.keys.queueCurrentDequeuedKeyFromQueue(decoded.queueKey);

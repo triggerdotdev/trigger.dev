@@ -182,6 +182,43 @@ export class RunEngine {
       processWorkerQueueDebounceMs: options.queue?.processWorkerQueueDebounceMs,
       dequeueBlockingTimeoutSeconds: options.queue?.dequeueBlockingTimeoutSeconds,
       meter: options.meter,
+      // Run data provider for V3 optimized format - reads from PostgreSQL when no Redis message key exists
+      runDataProvider: {
+        getRunData: async (runId: string) => {
+          const run = await this.prisma.taskRun.findUnique({
+            where: { id: runId },
+            select: {
+              queue: true,
+              organizationId: true,
+              projectId: true,
+              runtimeEnvironmentId: true,
+              environmentType: true,
+              concurrencyKey: true,
+              attemptNumber: true,
+              queueTimestamp: true,
+              workerQueue: true,
+              taskIdentifier: true,
+            },
+          });
+
+          if (!run || !run.organizationId || !run.environmentType) {
+            return undefined;
+          }
+
+          return {
+            queue: run.queue,
+            orgId: run.organizationId,
+            projectId: run.projectId,
+            environmentId: run.runtimeEnvironmentId,
+            environmentType: run.environmentType,
+            concurrencyKey: run.concurrencyKey ?? undefined,
+            attempt: run.attemptNumber ?? 0,
+            timestamp: run.queueTimestamp?.getTime() ?? Date.now(),
+            workerQueue: run.workerQueue,
+            taskIdentifier: run.taskIdentifier,
+          };
+        },
+      },
     });
 
     this.worker = new Worker({
