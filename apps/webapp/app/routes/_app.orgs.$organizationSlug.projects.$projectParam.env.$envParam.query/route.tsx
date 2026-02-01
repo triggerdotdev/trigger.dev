@@ -21,11 +21,7 @@ import simplur from "simplur";
 import { z } from "zod";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { AlphaTitle } from "~/components/AlphaBadge";
-import {
-  ChartConfigPanel,
-  defaultChartConfig,
-  type ChartConfiguration,
-} from "~/components/code/ChartConfigPanel";
+import { ChartConfigPanel, defaultChartConfig } from "~/components/code/ChartConfigPanel";
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";
 import { autoFormatSQL, TSQLEditor } from "~/components/code/TSQLEditor";
 import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
@@ -82,6 +78,7 @@ import { QueryHelpSidebar } from "./QueryHelpSidebar";
 import { QueryHistoryPopover } from "./QueryHistoryPopover";
 import type { AITimeFilter } from "./types";
 import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
+import { ChartConfiguration, QueryWidget } from "~/components/metrics/QueryWidget";
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {
@@ -790,27 +787,20 @@ export default function Page() {
                           organizationSlug={organization.slug}
                         />
                         <div className="overflow-hidden p-2">
-                          <Card className="h-full overflow-hidden px-0 pb-0">
-                            <Card.Header>
-                              <div className="flex items-center gap-1.5">
-                                <TableCellsIcon className="size-5 text-indigo-500" />
-                                {isTitleLoading ? (
-                                  <span className="flex items-center gap-2 text-text-dimmed">
-                                    <Spinner className="size-3" /> Generating title...
-                                  </span>
-                                ) : (
-                                  queryTitle ?? "Results"
-                                )}
-                              </div>
-                            </Card.Header>
-                            <Card.Content className="min-h-0 flex-1 overflow-hidden p-0">
-                              <TSQLResultsTable
-                                rows={results.rows}
-                                columns={results.columns}
-                                prettyFormatting={prettyFormatting}
-                              />
-                            </Card.Content>
-                          </Card>
+                          <QueryWidget
+                            title={
+                              <QueryTitle isTitleLoading={isTitleLoading} title={queryTitle} />
+                            }
+                            data={{
+                              rows: results.rows,
+                              columns: results.columns,
+                            }}
+                            config={{
+                              type: "table",
+                              prettyFormatting,
+                              sorting: [],
+                            }}
+                          />
                         </div>
                       </div>
                     ) : (
@@ -885,6 +875,17 @@ export default function Page() {
       </PageBody>
     </PageContainer>
   );
+}
+
+function QueryTitle({ isTitleLoading, title }: { isTitleLoading: boolean; title: string | null }) {
+  if (isTitleLoading)
+    return (
+      <span className="flex items-center gap-2 text-text-dimmed">
+        <Spinner className="size-3" /> Generating title...
+      </span>
+    );
+
+  return title ?? "Results";
 }
 
 function ExportResultsButton({
@@ -1030,44 +1031,22 @@ function ResultsChart({
   queryTitle: string | null;
   isTitleLoading: boolean;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const titleContent = isTitleLoading ? (
-    <span className="flex items-center gap-2 text-text-dimmed">
-      <Spinner className="size-3" /> Generating title...
-    </span>
-  ) : (
-    queryTitle ?? "Chart"
-  );
-
   return (
     <>
       <ResizablePanelGroup className="overflow-hidden">
         <ResizablePanel id="chart-results">
           <div className="h-full overflow-hidden bg-charcoal-900 p-2">
-            <Card className="h-full">
-              <Card.Header>
-                <div className="flex items-center gap-1.5">
-                  <ArrowTrendingUpIcon className="size-5 text-indigo-500" />
-                  {titleContent}
-                </div>
-                <Card.Accessory>
-                  <Button
-                    variant="minimal/small"
-                    LeadingIcon={ArrowsPointingOutIcon}
-                    onClick={() => setIsOpen(true)}
-                  />
-                </Card.Accessory>
-              </Card.Header>
-              <Card.Content className="h-full min-h-0 flex-1">
-                <QueryResultsChart
-                  rows={rows}
-                  columns={columns}
-                  config={chartConfig}
-                  onViewAllLegendItems={() => setIsOpen(true)}
-                />
-              </Card.Content>
-            </Card>
+            <QueryWidget
+              title={<QueryTitle isTitleLoading={isTitleLoading} title={queryTitle} />}
+              data={{
+                rows,
+                columns,
+              }}
+              config={{
+                type: "chart",
+                ...chartConfig,
+              }}
+            />
           </div>
         </ResizablePanel>
         <ResizableHandle id="chart-split" />
@@ -1075,20 +1054,6 @@ function ResultsChart({
           <ChartConfigPanel columns={columns} config={chartConfig} onChange={onChartConfigChange} />
         </ResizablePanel>
       </ResizablePanelGroup>
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent fullscreen>
-          <DialogHeader>{queryTitle ?? "Chart"}</DialogHeader>
-          <div className="h-full min-h-0 w-full flex-1 overflow-hidden pt-4">
-            <QueryResultsChart
-              rows={rows}
-              columns={columns}
-              config={chartConfig}
-              fullLegend={true}
-              legendScrollable={true}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
