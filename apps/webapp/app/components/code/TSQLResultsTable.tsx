@@ -160,10 +160,10 @@ const fuzzyFilter: FilterFn<RowData> = (row, columnId, value, addMeta) => {
     cellValue === null
       ? "NULL"
       : cellValue === undefined
-        ? ""
-        : typeof cellValue === "object"
-          ? JSON.stringify(cellValue)
-          : String(cellValue);
+      ? ""
+      : typeof cellValue === "object"
+      ? JSON.stringify(cellValue)
+      : String(cellValue);
 
   // Build searchable strings - formatted value (if we have column metadata)
   const formattedValue = meta?.outputColumn
@@ -490,8 +490,8 @@ function CellValue({
         const status = isTaskRunStatus(value)
           ? value
           : isRunFriendlyStatus(value)
-            ? runStatusFromFriendlyTitle(value)
-            : undefined;
+          ? runStatusFromFriendlyTitle(value)
+          : undefined;
         if (status) {
           if (hovered) {
             return (
@@ -886,10 +886,12 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   rows,
   columns,
   prettyFormatting = true,
+  sorting: defaultSorting = [],
 }: {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
   prettyFormatting?: boolean;
+  sorting?: SortingState;
 }) {
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
@@ -899,7 +901,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   // Track which column's filter should be focused
   const [focusFilterColumn, setFocusFilterColumn] = useState<string | null>(null);
   // State for column sorting
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting] = useState<SortingState>(defaultSorting);
 
   // Create TanStack Table column definitions from OutputColumnMetadata
   // Calculate column widths based on content
@@ -1139,7 +1141,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
             height: `${rowVirtualizer.getTotalSize()}px`,
             position: "relative",
           }}
-          className="bg-background-dimmed divide-y divide-charcoal-700"
+          className="divide-y divide-charcoal-700 bg-background-dimmed"
         >
           {rowVirtualizer.getVirtualItems().map((virtualRow) => {
             const row = tableRows[virtualRow.index];

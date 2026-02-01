@@ -2,26 +2,15 @@ import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { BarChart, LineChart, Plus, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { cn } from "~/utils/cn";
-import { Header3 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
 import { Select, SelectItem } from "../primitives/Select";
 import { Switch } from "../primitives/Switch";
 import { Button } from "../primitives/Buttons";
-
-export type ChartType = "bar" | "line";
-export type SortDirection = "asc" | "desc";
-export type AggregationType = "sum" | "avg" | "count" | "min" | "max";
-
-export interface ChartConfiguration {
-  chartType: ChartType;
-  xAxisColumn: string | null;
-  yAxisColumns: string[];
-  groupByColumn: string | null;
-  stacked: boolean;
-  sortByColumn: string | null;
-  sortDirection: SortDirection;
-  aggregation: AggregationType;
-}
+import {
+  type AggregationType,
+  type ChartConfiguration,
+  type SortDirection,
+} from "../metrics/QueryWidget";
 
 export const defaultChartConfig: ChartConfiguration = {
   chartType: "bar",
@@ -329,60 +318,58 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
           ) : (
             <div className="flex flex-col gap-1.5">
               {/* Always show at least one dropdown, even if yAxisColumns is empty */}
-              {(config.yAxisColumns.length === 0 ? [""] : config.yAxisColumns).map(
-                (col, index) => (
-                  <div key={index} className="flex items-center gap-1">
-                    <Select
-                      value={col}
-                      setValue={(value) => {
-                        const newColumns = [...config.yAxisColumns];
-                        if (value) {
-                          // If this is a new slot (empty string), add it
-                          if (index >= config.yAxisColumns.length) {
-                            newColumns.push(value);
-                          } else {
-                            newColumns[index] = value;
-                          }
-                        } else if (index < config.yAxisColumns.length) {
-                          newColumns.splice(index, 1);
+              {(config.yAxisColumns.length === 0 ? [""] : config.yAxisColumns).map((col, index) => (
+                <div key={index} className="flex items-center gap-1">
+                  <Select
+                    value={col}
+                    setValue={(value) => {
+                      const newColumns = [...config.yAxisColumns];
+                      if (value) {
+                        // If this is a new slot (empty string), add it
+                        if (index >= config.yAxisColumns.length) {
+                          newColumns.push(value);
+                        } else {
+                          newColumns[index] = value;
                         }
+                      } else if (index < config.yAxisColumns.length) {
+                        newColumns.splice(index, 1);
+                      }
+                      updateConfig({ yAxisColumns: newColumns });
+                    }}
+                    variant="tertiary/small"
+                    placeholder="Select column"
+                    items={yAxisOptions.filter(
+                      (opt) => opt.value === col || !config.yAxisColumns.includes(opt.value)
+                    )}
+                    dropdownIcon
+                    className="min-w-[140px] flex-1"
+                  >
+                    {(items) =>
+                      items.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          <span className="flex items-center gap-2">
+                            <span>{item.label}</span>
+                            <TypeBadge type={item.type} />
+                          </span>
+                        </SelectItem>
+                      ))
+                    }
+                  </Select>
+                  {index > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newColumns = config.yAxisColumns.filter((_, i) => i !== index);
                         updateConfig({ yAxisColumns: newColumns });
                       }}
-                      variant="tertiary/small"
-                      placeholder="Select column"
-                      items={yAxisOptions.filter(
-                        (opt) => opt.value === col || !config.yAxisColumns.includes(opt.value)
-                      )}
-                      dropdownIcon
-                      className="min-w-[140px] flex-1"
+                      className="rounded p-1 text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+                      title="Remove series"
                     >
-                      {(items) =>
-                        items.map((item) => (
-                          <SelectItem key={item.value} value={item.value}>
-                            <span className="flex items-center gap-2">
-                              <span>{item.label}</span>
-                              <TypeBadge type={item.type} />
-                            </span>
-                          </SelectItem>
-                        ))
-                      }
-                    </Select>
-                    {index > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newColumns = config.yAxisColumns.filter((_, i) => i !== index);
-                          updateConfig({ yAxisColumns: newColumns });
-                        }}
-                        className="rounded p-1 text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
-                        title="Remove series"
-                      >
-                        <XIcon className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                )
-              )}
+                      <XIcon className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
 
               {/* Add another series button - only show when we have at least one series and not grouped */}
               {config.yAxisColumns.length > 0 &&
@@ -439,9 +426,7 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
         {/* Group By - disabled when multiple series are selected */}
         <ConfigField label="Group by">
           {config.yAxisColumns.length > 1 ? (
-            <span className="text-xs text-text-dimmed">
-              Not available with multiple series
-            </span>
+            <span className="text-xs text-text-dimmed">Not available with multiple series</span>
           ) : (
             <Select
               value={config.groupByColumn ?? "__none__"}

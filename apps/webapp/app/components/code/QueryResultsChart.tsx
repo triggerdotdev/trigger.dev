@@ -3,7 +3,7 @@ import { memo, useMemo } from "react";
 import type { ChartConfig } from "~/components/primitives/charts/Chart";
 import { Chart } from "~/components/primitives/charts/ChartCompound";
 import { Paragraph } from "../primitives/Paragraph";
-import type { AggregationType, ChartConfiguration } from "./ChartConfigPanel";
+import { AggregationType, ChartConfiguration } from "../metrics/QueryWidget";
 
 // Color palette for chart series - 30 distinct colors for large datasets
 const CHART_COLORS = [
@@ -864,13 +864,13 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   // This properly represents time gaps between data points
   const xAxisPropsForLine = isDateBased
     ? {
-      type: "number" as const,
-      domain: timeDomain ?? (["auto", "auto"] as [string, string]),
-      scale: "time" as const,
-      // Explicitly specify tick positions so labels appear across the entire range
-      ticks: timeTicks ?? undefined,
-      ...baseXAxisProps,
-    }
+        type: "number" as const,
+        domain: timeDomain ?? (["auto", "auto"] as [string, string]),
+        scale: "time" as const,
+        // Explicitly specify tick positions so labels appear across the entire range
+        ticks: timeTicks ?? undefined,
+        ...baseXAxisProps,
+      }
     : baseXAxisProps;
 
   // Bar charts always use categorical axis positioning
