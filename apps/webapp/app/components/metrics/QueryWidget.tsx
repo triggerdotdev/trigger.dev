@@ -8,6 +8,7 @@ import { QueryResultsChart } from "../code/QueryResultsChart";
 import { Dialog, DialogContent, DialogHeader } from "../primitives/Dialog";
 import { Button } from "../primitives/Buttons";
 import { ArrowsPointingOutIcon } from "@heroicons/react/20/solid";
+import { LoadingBarDivider } from "../primitives/LoadingBarDivider";
 
 const ChartType = z.union([z.literal("bar"), z.literal("line")]);
 export type ChartType = z.infer<typeof ChartType>;
@@ -66,11 +67,13 @@ type QueryWidgetData = {
 
 export type QueryWidgetProps = {
   title: ReactNode;
+  isLoading?: boolean;
   data: QueryWidgetData;
   config: QueryWidgetConfig;
+  accessory?: ReactNode;
 };
 
-export function QueryWidget({ title, ...props }: QueryWidgetProps) {
+export function QueryWidget({ title, accessory, isLoading, ...props }: QueryWidgetProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   return (
@@ -78,6 +81,7 @@ export function QueryWidget({ title, ...props }: QueryWidgetProps) {
       <Card.Header>
         <div className="flex items-center gap-1.5">{title}</div>
         <Card.Accessory>
+          {accessory}
           <Button
             variant="minimal/small"
             LeadingIcon={ArrowsPointingOutIcon}
@@ -85,12 +89,14 @@ export function QueryWidget({ title, ...props }: QueryWidgetProps) {
           />
         </Card.Accessory>
       </Card.Header>
+      <LoadingBarDivider isLoading={isLoading ?? false} className="bg-transparent" />
       <Card.Content className="min-h-0 flex-1 overflow-hidden p-0">
         <QueryWidgetBody
           {...props}
           title={title}
           isFullscreen={isFullscreen}
           setIsFullscreen={setIsFullscreen}
+          isLoading={isLoading ?? false}
         />
       </Card.Content>
     </Card>
@@ -103,6 +109,7 @@ type QueryWidgetBodyProps = {
   config: QueryWidgetConfig;
   isFullscreen: boolean;
   setIsFullscreen: (open: boolean) => void;
+  isLoading: boolean;
 };
 
 function QueryWidgetBody({
@@ -111,6 +118,7 @@ function QueryWidgetBody({
   config,
   isFullscreen,
   setIsFullscreen,
+  isLoading,
 }: QueryWidgetBodyProps) {
   const type = config.type;
 
@@ -158,6 +166,7 @@ function QueryWidgetBody({
                   columns={data.columns}
                   config={config}
                   onViewAllLegendItems={() => setIsFullscreen(true)}
+                  isLoading={isLoading}
                 />
               </div>
             </DialogContent>

@@ -55,6 +55,7 @@ interface QueryResultsChartProps {
   onViewAllLegendItems?: () => void;
   /** When true, constrains legend to max 50% height with scrolling */
   legendScrollable?: boolean;
+  isLoading?: boolean;
 }
 
 interface TransformedData {
@@ -727,6 +728,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   config,
   fullLegend = false,
   onViewAllLegendItems,
+  isLoading = false,
   legendScrollable = false,
 }: QueryResultsChartProps) {
   const {
@@ -899,6 +901,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         fillContainer
         onViewAllLegendItems={onViewAllLegendItems}
         legendScrollable={legendScrollable}
+        state={isLoading ? "loading" : "loaded"}
       >
         <Chart.Bar
           xAxisProps={xAxisPropsForBar}
@@ -924,6 +927,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
       fillContainer
       onViewAllLegendItems={onViewAllLegendItems}
       legendScrollable={legendScrollable}
+      state={isLoading ? "loading" : "loaded"}
     >
       <Chart.Line
         xAxisProps={xAxisPropsForLine}
