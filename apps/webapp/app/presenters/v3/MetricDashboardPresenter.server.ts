@@ -3,6 +3,7 @@ import type { QueryScope } from "~/services/queryService.server";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { builtInDashboard } from "./BuiltInDashboards.server";
+import { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 
 export type MetricFilters = {
   /** Org, project, environment */
@@ -28,16 +29,9 @@ const LayoutItem = z.object({
 });
 
 const Widget = z.object({
+  title: z.string(),
   query: z.string(),
-  display: z.discriminatedUnion("type", [
-    z.object({
-      type: z.literal("table"),
-    }),
-    z.object({
-      type: z.literal("chart"),
-      chartType: z.union([z.literal("line"), z.literal("bar")]),
-    }),
-  ]),
+  display: QueryWidgetConfig,
 });
 
 const DashboardLayout = z.discriminatedUnion("version", [
