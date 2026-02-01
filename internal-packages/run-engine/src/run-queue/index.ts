@@ -2373,6 +2373,12 @@ export class RunQueue {
         const descriptor = this.keys.descriptorFromQueue(decoded.queueKey);
         const message = reconstructMessageFromWorkerEntry(decoded, descriptor);
 
+        // For V3 format: create the message key now that the run is executing.
+        // This allows ack/nack to work (they read from message key).
+        // Storage savings come from not having message keys for PENDING runs (the backlog).
+        const messageKey = this.keys.messageKey(descriptor.orgId, message.runId);
+        await this.redis.set(messageKey, JSON.stringify(message));
+
         // Update the currentDequeued sets (this is done in the Lua script for legacy)
         const queueCurrentDequeuedKey = this.keys.queueCurrentDequeuedKeyFromQueue(decoded.queueKey);
         const envCurrentDequeuedKey = this.keys.envCurrentDequeuedKeyFromQueue(decoded.queueKey);
