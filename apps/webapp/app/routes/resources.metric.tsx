@@ -87,6 +87,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     period,
     from,
     to,
+    // Set higher concurrency if many widgets are on screen at once
+    customOrgConcurrencyLimit: 15,
   });
 
   if (!queryResult.success) {
@@ -137,5 +139,13 @@ export function MetricWidget({ title, config, refreshIntervalMs, ...props }: Met
     ? { rows: fetcher.data.data.rows, columns: fetcher.data.data.columns }
     : { rows: [], columns: [] };
 
-  return <QueryWidget title={title} config={config} isLoading={isLoading} data={data} />;
+  return (
+    <QueryWidget
+      title={title}
+      config={config}
+      isLoading={isLoading}
+      data={data}
+      error={fetcher.data?.success === false ? fetcher.data.error : undefined}
+    />
+  );
 }

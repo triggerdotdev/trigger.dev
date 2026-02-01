@@ -67,7 +67,7 @@ export default function Page() {
 }
 
 function MetricDashboard({ layout }: { layout: DashboardLayout }) {
-  const { width, containerRef, mounted } = useContainerWidth();
+  const { width, containerRef, mounted } = useContainerWidth({ measureBeforeMount: true });
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();

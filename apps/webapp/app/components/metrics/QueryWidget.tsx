@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader } from "../primitives/Dialog";
 import { Button } from "../primitives/Buttons";
 import { ArrowsPointingOutIcon } from "@heroicons/react/20/solid";
 import { LoadingBarDivider } from "../primitives/LoadingBarDivider";
+import { Callout } from "../primitives/Callout";
 
 const ChartType = z.union([z.literal("bar"), z.literal("line")]);
 export type ChartType = z.infer<typeof ChartType>;
@@ -68,12 +69,13 @@ type QueryWidgetData = {
 export type QueryWidgetProps = {
   title: ReactNode;
   isLoading?: boolean;
+  error?: string;
   data: QueryWidgetData;
   config: QueryWidgetConfig;
   accessory?: ReactNode;
 };
 
-export function QueryWidget({ title, accessory, isLoading, ...props }: QueryWidgetProps) {
+export function QueryWidget({ title, accessory, isLoading, error, ...props }: QueryWidgetProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   return (
@@ -91,13 +93,19 @@ export function QueryWidget({ title, accessory, isLoading, ...props }: QueryWidg
       </Card.Header>
       <LoadingBarDivider isLoading={isLoading ?? false} className="bg-transparent" />
       <Card.Content className="min-h-0 flex-1 overflow-hidden p-0">
-        <QueryWidgetBody
-          {...props}
-          title={title}
-          isFullscreen={isFullscreen}
-          setIsFullscreen={setIsFullscreen}
-          isLoading={isLoading ?? false}
-        />
+        {error ? (
+          <div className="p-3">
+            <Callout variant="error">{error}</Callout>
+          </div>
+        ) : (
+          <QueryWidgetBody
+            {...props}
+            title={title}
+            isFullscreen={isFullscreen}
+            setIsFullscreen={setIsFullscreen}
+            isLoading={isLoading ?? false}
+          />
+        )}
       </Card.Content>
     </Card>
   );
