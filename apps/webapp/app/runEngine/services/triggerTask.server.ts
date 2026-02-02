@@ -234,16 +234,6 @@ export class RunEngineTriggerTaskService {
         });
       }
 
-      if (!options.skipChecks) {
-        const queueSizeGuard = await this.queueConcern.validateQueueLimits(environment);
-
-        if (!queueSizeGuard.ok) {
-          throw new ServiceValidationError(
-            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
-          );
-        }
-      }
-
       const metadataPacket = body.options?.metadata
         ? handleMetadataPacket(
             body.options?.metadata,
@@ -272,6 +262,19 @@ export class RunEngineTriggerTaskService {
         triggerRequest,
         lockedToBackgroundWorker ?? undefined
       );
+
+      if (!options.skipChecks) {
+        const queueSizeGuard = await this.queueConcern.validateQueueLimits(
+          environment,
+          queueName
+        );
+
+        if (!queueSizeGuard.ok) {
+          throw new ServiceValidationError(
+            `Cannot trigger ${taskId} as the queue size limit for queue '${queueName}' has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+          );
+        }
+      }
 
       //upsert tags
       const tags = await createTags(

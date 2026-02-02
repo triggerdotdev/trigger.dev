@@ -550,20 +550,34 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
     // Only validate queue size if we have new runs to create, i.e. they're not all cached
     if (newRunCount > 0) {
-      const queueSizeGuard = await this.queueConcern.validateQueueLimits(environment, newRunCount);
+      // Get the queue name from the first item to check queue limits
+      const firstItem = itemsToProcess[0];
+      const queueName = await this.queueConcern.getQueueName({
+        taskId: firstItem.task,
+        friendlyId: batch.friendlyId,
+        environment,
+        body: firstItem,
+      });
+
+      const queueSizeGuard = await this.queueConcern.validateQueueLimits(
+        environment,
+        queueName,
+        newRunCount
+      );
 
       logger.debug("Queue size guard result for chunk", {
         batchId: batch.friendlyId,
         currentIndex,
         runCount: batch.runCount,
         newRunCount,
+        queueName,
         queueSizeGuard,
       });
 
       if (!queueSizeGuard.ok) {
         return {
           status: "ERROR",
-          error: `Cannot trigger ${newRunCount} new tasks as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
+          error: `Cannot trigger ${newRunCount} new tasks as the queue size limit for queue '${queueName}' has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
           workingIndex: currentIndex,
         };
       }

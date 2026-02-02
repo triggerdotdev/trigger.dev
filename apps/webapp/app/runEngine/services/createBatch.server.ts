@@ -8,7 +8,6 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { BatchRateLimitExceededError, getBatchLimits } from "../concerns/batchLimits.server";
-import { DefaultQueueManager } from "../concerns/queues.server";
 import { DefaultTriggerTaskValidator } from "../validators/triggerTaskValidator";
 
 export type CreateBatchServiceOptions = {
@@ -33,13 +32,11 @@ export type CreateBatchServiceOptions = {
  */
 export class CreateBatchService extends WithRunEngine {
   public onBatchTaskRunCreated: Evt<BatchTaskRun> = new Evt();
-  private readonly queueConcern: DefaultQueueManager;
   private readonly validator: DefaultTriggerTaskValidator;
 
   constructor(protected readonly _prisma: PrismaClientOrTransaction = prisma) {
     super({ prisma: _prisma });
 
-    this.queueConcern = new DefaultQueueManager(this._prisma, this._engine);
     this.validator = new DefaultTriggerTaskValidator();
   }
 
@@ -90,17 +87,9 @@ export class CreateBatchService extends WithRunEngine {
             );
           }
 
-          // Validate queue limits for the expected batch size
-          const queueSizeGuard = await this.queueConcern.validateQueueLimits(
-            environment,
-            body.runCount
-          );
-
-          if (!queueSizeGuard.ok) {
-            throw new ServiceValidationError(
-              `Cannot create batch with ${body.runCount} items as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
-            );
-          }
+          // Note: Queue limit validation is deferred to when items are streamed,
+          // since we don't know the target queue(s) at batch creation time.
+          // The validation happens per-queue when items are processed.
 
           // Create BatchTaskRun in Postgres with PENDING status
           // The batch will be sealed (status -> PROCESSING) when items are streamed

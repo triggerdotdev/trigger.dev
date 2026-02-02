@@ -223,12 +223,19 @@ export class DefaultQueueManager implements QueueManager {
 
   async validateQueueLimits(
     environment: AuthenticatedEnvironment,
+    queueName: string,
     itemsToAdd?: number
   ): Promise<QueueValidationResult> {
-    const queueSizeGuard = await guardQueueSizeLimitsForEnv(this.engine, environment, itemsToAdd);
+    const queueSizeGuard = await guardQueueSizeLimitsForQueue(
+      this.engine,
+      environment,
+      queueName,
+      itemsToAdd
+    );
 
     logger.debug("Queue size guard result", {
       queueSizeGuard,
+      queueName,
       environment: {
         id: environment.id,
         type: environment.type,
@@ -276,7 +283,7 @@ export class DefaultQueueManager implements QueueManager {
   }
 }
 
-function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): number | undefined {
+function getMaximumSizeForQueue(environment: AuthenticatedEnvironment): number | undefined {
   if (environment.type === "DEVELOPMENT") {
     return environment.organization.maximumDevQueueSize ?? env.MAXIMUM_DEV_QUEUE_SIZE;
   } else {
@@ -284,18 +291,19 @@ function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): nu
   }
 }
 
-async function guardQueueSizeLimitsForEnv(
+async function guardQueueSizeLimitsForQueue(
   engine: RunEngine,
   environment: AuthenticatedEnvironment,
+  queueName: string,
   itemsToAdd: number = 1
 ) {
-  const maximumSize = getMaximumSizeForEnvironment(environment);
+  const maximumSize = getMaximumSizeForQueue(environment);
 
   if (typeof maximumSize === "undefined") {
     return { isWithinLimits: true };
   }
 
-  const queueSize = await getCachedQueueSize(engine, environment);
+  const queueSize = await getCachedQueueSize(engine, environment, queueName);
   const projectedSize = queueSize + itemsToAdd;
 
   return {
@@ -307,10 +315,13 @@ async function guardQueueSizeLimitsForEnv(
 
 async function getCachedQueueSize(
   engine: RunEngine,
-  environment: AuthenticatedEnvironment
+  environment: AuthenticatedEnvironment,
+  queueName: string
 ): Promise<number> {
-  const result = await queueSizeCache.queueSize.swr(environment.id, async () => {
-    return engine.lengthOfEnvQueue(environment);
+  // Cache key includes both environment ID and queue name
+  const cacheKey = `${environment.id}:${queueName}`;
+  const result = await queueSizeCache.queueSize.swr(cacheKey, async () => {
+    return engine.runQueue.lengthOfQueue(environment, queueName);
   });
 
   return result.val ?? 0;
