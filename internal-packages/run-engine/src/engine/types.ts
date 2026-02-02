@@ -180,6 +180,7 @@ export type TriggerParams = {
     key: string;
     delay: string;
     mode?: "leading" | "trailing";
+    maxDelay?: string;
   };
   /**
    * Called when a run is debounced (existing delayed run found with triggerAndWait).
