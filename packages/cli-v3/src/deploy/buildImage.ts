@@ -1,4 +1,5 @@
 import { logger } from "../utilities/logger.js";
+import { PackageManager } from "nypm";
 import { depot } from "@depot/cli";
 import { x } from "tinyexec";
 import { BuildManifest, BuildRuntime } from "@trigger.dev/core/v3/schemas";
@@ -550,13 +551,12 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     options.noCache ? "--no-cache" : undefined,
     ...(useRegistryCache
       ? [
-          "--cache-to",
-          `type=registry,mode=max,image-manifest=true,oci-mediatypes=true,ref=${projectCacheRef}${
-            cacheCompression === "zstd" ? ",compression=zstd" : ""
-          }`,
-          "--cache-from",
-          `type=registry,ref=${projectCacheRef}`,
-        ]
+        "--cache-to",
+        `type=registry,mode=max,image-manifest=true,oci-mediatypes=true,ref=${projectCacheRef}${cacheCompression === "zstd" ? ",compression=zstd" : ""
+        }`,
+        "--cache-from",
+        `type=registry,ref=${projectCacheRef}`,
+      ]
       : []),
     "--output",
     outputOptions.join(","),
@@ -683,6 +683,8 @@ export type GenerateContainerfileOptions = {
   image: BuildManifest["image"];
   indexScript: string;
   entrypoint: string;
+  packageManager?: PackageManager | null;
+  lockfilePath?: string;
 };
 
 const BASE_IMAGE: Record<BuildRuntime, string> = {
@@ -869,7 +871,11 @@ ENV NODE_ENV=production
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
 COPY --chown=node:node package.json ./
-RUN npm i --no-audit --no-fund --no-save --no-package-lock
+${options.lockfilePath
+      ? `COPY --chown=node:node ${options.lockfilePath} ./`
+      : "# No lockfile path provided"
+    }
+${getInstallCommand(options.packageManager)}
 
 # Now copy all the files
 # IMPORTANT: Do this after running npm install because npm i will wipe out the node_modules directory
@@ -1160,4 +1166,22 @@ function getOutputOptions({
   }
 
   return outputOptions;
+}
+
+function getInstallCommand(packageManager?: PackageManager | null) {
+  switch (packageManager?.name) {
+    case "yarn": {
+      return "RUN yarn install";
+    }
+    case "pnpm": {
+      return `
+      RUN corepack enable
+      RUN pnpm install
+      `;
+    }
+    case "npm":
+    default: {
+      return "RUN npm i --no-audit --no-fund --no-save --no-package-lock";
+    }
+  }
 }

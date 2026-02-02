@@ -1,5 +1,6 @@
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3/schemas";
+import { detectPackageManager, PackageManager } from "nypm";
 import { BundleResult, bundleWorker, createBuildManifestFromBundle } from "./bundle.js";
 import {
   createBuildContext,
@@ -10,7 +11,7 @@ import {
 import { createExternalsBuildExtension } from "./externals.js";
 import { join, relative, sep } from "node:path";
 import { generateContainerfile } from "../deploy/buildImage.js";
-import { writeFile } from "node:fs/promises";
+import { writeFile, copyFile } from "node:fs/promises";
 import { buildManifestToJSON } from "../utilities/buildManifest.js";
 import { readPackageJSON } from "pkg-types";
 import { writeJSONFile } from "../utilities/fileSystem.js";
@@ -53,16 +54,16 @@ export async function buildWorker(options: BuildWorkerOptions) {
   const buildContext = createBuildContext(options.target, resolvedConfig, {
     logger: options.plain
       ? {
-          debug: (...args) => console.log(...args),
-          log: (...args) => console.log(...args),
-          warn: (...args) => console.log(...args),
-          progress: (message) => console.log(message),
-          spinner: (message) => {
-            const $spinner = spinner({ plain: true });
-            $spinner.start(message);
-            return $spinner;
-          },
-        }
+        debug: (...args) => console.log(...args),
+        log: (...args) => console.log(...args),
+        warn: (...args) => console.log(...args),
+        progress: (message) => console.log(message),
+        spinner: (message) => {
+          const $spinner = spinner({ plain: true });
+          $spinner.start(message);
+          return $spinner;
+        },
+      }
       : undefined,
   });
   buildContext.prependExtension(externalsExtension);
@@ -208,8 +209,31 @@ async function writeDeployFiles({
     true
   );
 
+
+
+  const packageManager = await detectPackageManager(resolvedConfig.workingDir);
+
+  // lockFile can be a string or an array of strings
+  const lockFile = Array.isArray(packageManager?.lockFile)
+    ? packageManager?.lockFile[0]
+    : packageManager?.lockFile;
+
+  if (lockFile) {
+    try {
+      await copyFile(
+        join(resolvedConfig.workingDir, lockFile),
+        join(outputPath, lockFile)
+      );
+    } catch (e) {
+      logger.debug("Failed to copy lockfile", {
+        lockFile,
+        error: e instanceof Error ? e.message : e,
+      });
+    }
+  }
+
   await writeJSONFile(join(outputPath, "build.json"), buildManifestToJSON(buildManifest));
-  await writeContainerfile(outputPath, buildManifest);
+  await writeContainerfile(outputPath, buildManifest, packageManager, lockFile);
 }
 
 async function readProjectPackageJson(packageJsonPath: string) {
@@ -218,7 +242,12 @@ async function readProjectPackageJson(packageJsonPath: string) {
   return packageJson;
 }
 
-async function writeContainerfile(outputPath: string, buildManifest: BuildManifest) {
+async function writeContainerfile(
+  outputPath: string,
+  buildManifest: BuildManifest,
+  packageManager?: PackageManager | null,
+  lockfilePath?: string
+) {
   if (!buildManifest.runControllerEntryPoint || !buildManifest.indexControllerEntryPoint) {
     throw new Error("Something went wrong with the build. Aborting deployment. [code 7789]");
   }
@@ -229,6 +258,8 @@ async function writeContainerfile(outputPath: string, buildManifest: BuildManife
     build: buildManifest.build,
     image: buildManifest.image,
     indexScript: buildManifest.indexControllerEntryPoint,
+    packageManager,
+    lockfilePath,
   });
 
   const containerfilePath = join(outputPath, "Containerfile");
