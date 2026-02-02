@@ -11,7 +11,8 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { z } from "zod";
-import ReactGridLayout, { useContainerWidth } from "react-grid-layout";
+import { useCallback, useEffect, useRef, useState } from "react";
+import ReactGridLayout from "react-grid-layout";
 import { MetricWidget } from "../resources.metric";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -63,34 +64,25 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className="h-full">
-          <MetricDashboard layout={layout} defaultPeriod={defaultPeriod} />
+          <MetricDashboard data={layout} defaultPeriod={defaultPeriod} editable={true} />
         </div>
       </PageBody>
     </PageContainer>
   );
 }
 
-function determineRefreshIntervalMs(props: {
-  period?: string;
-  from?: string;
-  to?: string;
-}): number {
-  const { from, to } = timeFilterFromTo({ ...props, defaultPeriod: "7d" });
-  const intervalMs = to.getTime() - from.getTime();
-
-  //Refresh 4 times in the period
-  return intervalMs / 4;
-}
-
 function MetricDashboard({
-  layout,
+  data,
   defaultPeriod,
+  editable,
 }: {
-  layout: DashboardLayout;
+  data: DashboardLayout;
   defaultPeriod: string;
+  editable: boolean;
 }) {
+  const [layout, setLayout] = useState(data.layout);
   const { value } = useSearchParams();
-  const { width, containerRef, mounted } = useContainerWidth({ measureBeforeMount: true });
+  const { width, containerRef, mounted } = useContainerWidth();
 
   const organization = useOrganization();
   const project = useProject();
@@ -103,8 +95,6 @@ function MetricDashboard({
   const from = value("from");
   const to = value("to");
 
-  const refreshIntervalMs = determineRefreshIntervalMs({ period, from, to });
-
   return (
     <div className="grid grid-rows-[auto_1fr]">
       <div className="flex items-center">
@@ -115,15 +105,21 @@ function MetricDashboard({
           maxPeriodDays={maxPeriodDays}
         />
       </div>
-      {/* @ts-expect-error TODO fix this legacy ref */}
+
       <div ref={containerRef}>
         {mounted && (
           <ReactGridLayout
-            layout={layout.layout}
+            layout={layout}
             width={width}
             gridConfig={{ cols: 12, rowHeight: 30 }}
+            resizeConfig={{
+              enabled: editable,
+              handles: ["e", "w", "s", "n", "ne", "nw", "se", "sw"],
+            }}
+            dragConfig={{ enabled: editable }}
+            onLayoutChange={(l) => setLayout([...l])}
           >
-            {Object.entries(layout.widgets).map(([key, widget]) => (
+            {Object.entries(data.widgets).map(([key, widget]) => (
               <div key={key}>
                 <MetricWidget
                   title={widget.title}
@@ -136,7 +132,7 @@ function MetricDashboard({
                   organizationId={organization.id}
                   projectId={project.id}
                   environmentId={environment.id}
-                  refreshIntervalMs={refreshIntervalMs}
+                  refreshIntervalMs={60_000}
                 />
               </div>
             ))}
@@ -145,4 +141,35 @@ function MetricDashboard({
       </div>
     </div>
   );
+}
+
+function useContainerWidth(initialWidth = 1280) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(initialWidth);
+  const [mounted, setMounted] = useState(false);
+
+  const measureWidth = useCallback(() => {
+    if (containerRef.current) {
+      setWidth(containerRef.current.offsetWidth);
+    }
+  }, []);
+
+  useEffect(() => {
+    measureWidth();
+    setMounted(true);
+
+    const element = containerRef.current;
+    if (!element) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setWidth(entry.contentRect.width);
+      }
+    });
+
+    resizeObserver.observe(element);
+    return () => resizeObserver.disconnect();
+  }, [measureWidth]);
+
+  return { width, containerRef, mounted };
 }
