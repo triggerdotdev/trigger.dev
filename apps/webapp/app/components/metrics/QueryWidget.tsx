@@ -11,6 +11,7 @@ import { ArrowsPointingOutIcon } from "@heroicons/react/20/solid";
 import { LoadingBarDivider } from "../primitives/LoadingBarDivider";
 import { Callout } from "../primitives/Callout";
 import { ChartBarIcon } from "@heroicons/react/24/solid";
+import { cn } from "~/utils/cn";
 
 const ChartType = z.union([z.literal("bar"), z.literal("line")]);
 export type ChartType = z.infer<typeof ChartType>;
@@ -88,7 +89,7 @@ export function QueryWidget({
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   return (
-    <Card className="h-full overflow-hidden px-0 pb-0">
+    <Card className={cn("h-full overflow-hidden px-0 pb-0", isResizing && "select-none")}>
       <Card.Header>
         <div className="flex items-center gap-1.5">{title}</div>
         <Card.Accessory>
