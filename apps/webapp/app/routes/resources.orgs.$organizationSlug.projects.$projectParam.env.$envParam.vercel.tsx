@@ -1295,6 +1295,7 @@ function VercelOnboardingModal({
   // Env var sync state (for env-var-sync step - one-time sync)
   const [syncEnvVarsMapping, setSyncEnvVarsMapping] = useState<SyncEnvVarsMapping>({});
   const [expandedEnvVars, setExpandedEnvVars] = useState(false);
+  const [expandedSecretEnvVars, setExpandedSecretEnvVars] = useState(false);
   const [projectSelectionError, setProjectSelectionError] = useState<string | null>(null);
 
   // GitHub connection state (for github-connection step)
@@ -1876,8 +1877,8 @@ function VercelOnboardingModal({
                 />
               </div>
 
-              {/* Expandable env var list */}
-              {envVars.length > 0 && (
+              {/* Expandable syncable env var list */}
+              {syncableEnvVars.length > 0 && (
                 <div className="rounded border">
                   <button
                     type="button"
@@ -1896,7 +1897,7 @@ function VercelOnboardingModal({
 
                   {expandedEnvVars && (
                     <div className="max-h-64 overflow-y-auto border-t">
-                      {envVars.map((envVar) => (
+                      {syncableEnvVars.map((envVar) => (
                         <div
                           key={envVar.id}
                           className="flex items-center justify-between gap-2 border-b px-3 py-2 last:border-b-0"
@@ -1927,17 +1928,55 @@ function VercelOnboardingModal({
                               </span>
                             )}
                           </div>
-                          {envVar.isSecret ? (
-                            <span className="shrink-0 text-xs text-amber-400">Secret</span>
-                          ) : (
-                            <Switch
-                              variant="small"
-                              checked={shouldSyncEnvVarForAnyEnvironment(syncEnvVarsMapping, envVar.key)}
-                              onCheckedChange={(checked) =>
-                                handleToggleEnvVar(envVar.key, checked)
-                              }
-                            />
-                          )}
+                          <Switch
+                            variant="small"
+                            checked={shouldSyncEnvVarForAnyEnvironment(syncEnvVarsMapping, envVar.key)}
+                            onCheckedChange={(checked) =>
+                              handleToggleEnvVar(envVar.key, checked)
+                            }
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Expandable secret env var list */}
+              {secretEnvVars.length > 0 && (
+                <div className="rounded border">
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between p-3 text-left"
+                    onClick={() => setExpandedSecretEnvVars(!expandedSecretEnvVars)}
+                  >
+                    <span className="text-sm text-text-dimmed">
+                      {secretEnvVars.length} secret {secretEnvVars.length === 1 ? "variable" : "variables"} (cannot be pulled)
+                    </span>
+                    {expandedSecretEnvVars ? (
+                      <ChevronUpIcon className="size-4" />
+                    ) : (
+                      <ChevronDownIcon className="size-4" />
+                    )}
+                  </button>
+
+                  {expandedSecretEnvVars && (
+                    <div className="max-h-64 overflow-y-auto border-t">
+                      {secretEnvVars.map((envVar) => (
+                        <div
+                          key={envVar.id}
+                          className="flex items-center justify-between gap-2 border-b px-3 py-2 last:border-b-0"
+                        >
+                          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                            <span className="truncate font-mono text-xs">{envVar.key}</span>
+                            {envVar.target && envVar.target.length > 0 && (
+                              <span className="text-xs text-text-dimmed">
+                                {formatVercelTargets(envVar.target)}
+                                {envVar.isShared && " · Shared"}
+                              </span>
+                            )}
+                          </div>
+                          <span className="shrink-0 text-xs text-amber-400">Secret</span>
                         </div>
                       ))}
                     </div>

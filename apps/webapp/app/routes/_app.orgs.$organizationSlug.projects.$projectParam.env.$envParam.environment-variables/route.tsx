@@ -316,13 +316,13 @@ export default function Page() {
           <Table containerClassName={cn(filteredItems.length === 0 && "border-t-0")}>
             <TableHeader>
               <TableRow>
-                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[21%]" : "w-[24%]"}>
+                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[22%]" : "w-[25%]"}>
                   Key
                 </TableHeaderCell>
-                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[30%]" : "w-[35%]"}>
+                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[32%]" : "w-[37%]"}>
                   Value
                 </TableHeaderCell>
-                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[12%]" : "w-[15%]"}>
+                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[13%]" : "w-[15%]"}>
                   Environment
                 </TableHeaderCell>
                 {vercelIntegration?.enabled && (
@@ -338,10 +338,10 @@ export default function Page() {
                     />
                   </TableHeaderCell>
                 )}
-                <TableHeaderCell className="w-[3%]">Ver</TableHeaderCell>
-                <TableHeaderCell className="w-[15%]">Updated by</TableHeaderCell>
-                <TableHeaderCell className="w-[14%]">Updated at</TableHeaderCell>
-                <TableHeaderCell hiddenLabel className="w-[1%] min-w-[3rem]">
+                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[24%]" : "w-[22%]"}>
+                  Updated
+                </TableHeaderCell>
+                <TableHeaderCell hiddenLabel className="w-0">
                   Actions
                 </TableHeaderCell>
               </TableRow>
@@ -420,35 +420,34 @@ export default function Page() {
                         </TableCell>
                       )}
                       <TableCell className={cn(cellClassName, borderedCellClassName)}>
-                        <span className="text-sm text-text-dimmed">{variable.version}</span>
-                      </TableCell>
-                      <TableCell className={cn(cellClassName, borderedCellClassName)}>
-                        {variable.updatedByUser ? (
-                          <div className="flex items-center gap-2">
-                            <UserAvatar
-                              avatarUrl={variable.updatedByUser.avatarUrl}
-                              name={variable.updatedByUser.name}
-                              className="size-5"
-                            />
-                            <span className="text-sm">{variable.updatedByUser.name}</span>
-                          </div>
-                        ) : variable.lastUpdatedBy?.type === "integration" ? (
-                          <div className="flex items-center gap-2">
-                            <VercelLogo className="size-4 text-text-dimmed group-hover/table-row:text-text-bright transition-colors" />
-                            <span className="text-sm text-text-dimmed group-hover/table-row:text-text-bright capitalize transition-colors">
-                              {variable.lastUpdatedBy.integration}
+                        <div className="flex items-center gap-3">
+                          {variable.updatedByUser ? (
+                            <div className="flex items-center gap-2">
+                              <UserAvatar
+                                avatarUrl={variable.updatedByUser.avatarUrl}
+                                name={variable.updatedByUser.name}
+                                className="size-5"
+                              />
+                              <span className="text-sm">{variable.updatedByUser.name}</span>
+                            </div>
+                          ) : (variable.lastUpdatedBy?.type === "integration" && variable.lastUpdatedBy?.integration === 'vercel' ) ? (
+                            <div className="flex items-center gap-2">
+                              <VercelLogo className="size-4 text-text-dimmed group-hover/table-row:text-text-bright transition-colors" />
+                              <span className="text-sm text-text-dimmed group-hover/table-row:text-text-bright capitalize transition-colors">
+                                {variable.lastUpdatedBy.integration}
+                              </span>
+                            </div>
+                          ) : null}
+                          {variable.updatedAt ? (
+                            <span className="text-sm text-text-dimmed">
+                              <DateTime date={variable.updatedAt} includeSeconds={false} />
                             </span>
-                          </div>
-                        ) : null}
-                      </TableCell>
-                      <TableCell className={cn(cellClassName, borderedCellClassName)}>
-                        {variable.updatedAt ? (
-                          <DateTime date={variable.updatedAt} includeSeconds={false} />
-                        ) : null}
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCellMenu
                         isSticky
-                        className="w-[1%] min-w-[3rem] [&:has(.group-hover/table-row:block)]:w-auto"
+                        className="w-0 [&:has(.group-hover/table-row:block)]:w-auto"
                         hiddenButtons={
                           <>
                             <EditEnvironmentVariablePanel
@@ -464,7 +463,7 @@ export default function Page() {
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={vercelIntegration?.enabled ? 8 : 7}>
+                  <TableCell colSpan={vercelIntegration?.enabled ? 6 : 5}>
                     {environmentVariables.length === 0 ? (
                       <div className="flex flex-col items-center justify-center gap-y-4 py-8">
                         <Header2>You haven't set any environment variables yet.</Header2>
@@ -535,7 +534,7 @@ function EditEnvironmentVariablePanel({
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button variant="small-menu-item" LeadingIcon={PencilSquareIcon} fullWidth textAlignLeft>
-          Edit
+          
         </Button>
       </DialogTrigger>
       <DialogContent>
@@ -631,7 +630,7 @@ function DeleteEnvironmentVariableButton({
         leadingIconClassName="text-rose-500 group-hover/button:text-text-bright transition-colors"
         className="ml-0.5 transition-colors group-hover/button:bg-error"
       >
-        {isLoading ? "Deleting" : "Delete"}
+        {isLoading ? "Deleting" : ""}
       </Button>
     </Form>
   );
