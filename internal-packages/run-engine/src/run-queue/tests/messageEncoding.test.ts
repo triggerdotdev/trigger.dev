@@ -8,6 +8,9 @@ import {
   isEncodedWorkerQueueEntry,
   getRunIdFromMember,
   reconstructMessageFromWorkerEntry,
+  encodeMessageKeyValue,
+  decodeMessageKeyValue,
+  isV3MessageKeyValue,
 } from "../messageEncoding.js";
 
 describe("messageEncoding", () => {
@@ -220,8 +223,79 @@ describe("messageEncoding", () => {
     });
   });
 
+  describe("encodeMessageKeyValue / decodeMessageKeyValue", () => {
+    test("roundtrips correctly for PRODUCTION", () => {
+      const original = {
+        queue: "{org:org123}:proj:proj456:env:env789:queue:my-task",
+        timestamp: 1706812800000,
+        attempt: 0,
+        environmentType: "PRODUCTION" as const,
+        workerQueue: "env_xyz",
+      };
+      const encoded = encodeMessageKeyValue(original);
+      const decoded = decodeMessageKeyValue(encoded);
+
+      expect(decoded).toEqual(original);
+    });
+
+    test("roundtrips correctly for DEVELOPMENT", () => {
+      const original = {
+        queue: "{org:o1}:proj:p1:env:e1:queue:task",
+        timestamp: 1706812800123,
+        attempt: 5,
+        environmentType: "DEVELOPMENT" as const,
+        workerQueue: "env_dev",
+      };
+      const encoded = encodeMessageKeyValue(original);
+      const decoded = decodeMessageKeyValue(encoded);
+
+      expect(decoded).toEqual(original);
+    });
+
+    test("encoded value starts with v3: prefix", () => {
+      const encoded = encodeMessageKeyValue({
+        queue: "{org:o1}:proj:p1:env:e1:queue:task",
+        timestamp: 1706812800000,
+        attempt: 0,
+        environmentType: "PRODUCTION",
+        workerQueue: "env_xyz",
+      });
+
+      expect(encoded.startsWith("v3:")).toBe(true);
+    });
+
+    test("decodeMessageKeyValue returns undefined for JSON", () => {
+      expect(decodeMessageKeyValue('{"version":"2","runId":"run_123"}')).toBeUndefined();
+    });
+
+    test("decodeMessageKeyValue returns undefined for malformed v3", () => {
+      expect(decodeMessageKeyValue("v3:only_two_parts")).toBeUndefined();
+    });
+  });
+
+  describe("isV3MessageKeyValue", () => {
+    test("returns true for v3 encoded message key value", () => {
+      const encoded = encodeMessageKeyValue({
+        queue: "{org:o1}:proj:p1:env:e1:queue:task",
+        timestamp: 1706812800000,
+        attempt: 0,
+        environmentType: "PRODUCTION",
+        workerQueue: "env_xyz",
+      });
+      expect(isV3MessageKeyValue(encoded)).toBe(true);
+    });
+
+    test("returns false for JSON format", () => {
+      expect(isV3MessageKeyValue('{"version":"2","runId":"run_123"}')).toBe(false);
+    });
+
+    test("returns false for legacy v2 format", () => {
+      expect(isV3MessageKeyValue('{"version":"2"}')).toBe(false);
+    });
+  });
+
   describe("encoded size comparison", () => {
-    test("v3 format is significantly smaller than full JSON", () => {
+    test("v3 message key format is significantly smaller than full JSON", () => {
       const fullPayload = JSON.stringify({
         version: "2",
         runId: "run_clxyz123abc456def789",
@@ -230,7 +304,45 @@ describe("messageEncoding", () => {
         projectId: "proj_clxyz123abc456def789",
         environmentId: "env_clxyz123abc456def789",
         environmentType: "PRODUCTION",
-        queue: "{org:org_clxyz123abc456def789}:proj:proj_clxyz123abc456def789:env:env_clxyz123abc456def789:queue:my-background-task",
+        queue:
+          "{org:org_clxyz123abc456def789}:proj:proj_clxyz123abc456def789:env:env_clxyz123abc456def789:queue:my-background-task",
+        concurrencyKey: undefined,
+        timestamp: 1706812800000,
+        attempt: 0,
+        workerQueue: "env_clxyz123abc456def789",
+      });
+
+      const v3MessageKey = encodeMessageKeyValue({
+        queue:
+          "{org:org_clxyz123abc456def789}:proj:proj_clxyz123abc456def789:env:env_clxyz123abc456def789:queue:my-background-task",
+        timestamp: 1706812800000,
+        attempt: 0,
+        environmentType: "PRODUCTION",
+        workerQueue: "env_clxyz123abc456def789",
+      });
+
+      // Full JSON is typically 400-600 bytes
+      // V3 message key should be ~200 bytes (includes the full queue key)
+      expect(v3MessageKey.length).toBeLessThan(fullPayload.length * 0.6);
+
+      console.log(`Full JSON size: ${fullPayload.length} bytes`);
+      console.log(`V3 message key size: ${v3MessageKey.length} bytes`);
+      console.log(
+        `Reduction: ${((1 - v3MessageKey.length / fullPayload.length) * 100).toFixed(1)}%`
+      );
+    });
+
+    test("v3 queue member format is significantly smaller than full JSON", () => {
+      const fullPayload = JSON.stringify({
+        version: "2",
+        runId: "run_clxyz123abc456def789",
+        taskIdentifier: "my-background-task",
+        orgId: "org_clxyz123abc456def789",
+        projectId: "proj_clxyz123abc456def789",
+        environmentId: "env_clxyz123abc456def789",
+        environmentType: "PRODUCTION",
+        queue:
+          "{org:org_clxyz123abc456def789}:proj:proj_clxyz123abc456def789:env:env_clxyz123abc456def789:queue:my-background-task",
         concurrencyKey: undefined,
         timestamp: 1706812800000,
         attempt: 0,

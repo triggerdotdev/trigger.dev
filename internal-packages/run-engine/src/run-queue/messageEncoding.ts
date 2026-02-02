@@ -40,8 +40,26 @@ const CHAR_TO_ENV_TYPE: Record<string, RuntimeEnvironmentType> = {
 };
 
 /**
- * Data encoded in sorted set member for v3 format.
- * Everything else is derived from the queue key.
+ * Data encoded in V3 message key value.
+ * Uses compact pipe-delimited format instead of JSON.
+ * Fields that can be derived from the queue key are excluded.
+ */
+export interface EncodedMessageKeyData {
+  /** Full queue key - needed for queue operations */
+  queue: string;
+  /** Unix timestamp for scoring */
+  timestamp: number;
+  /** Attempt number for retry logic */
+  attempt: number;
+  /** Environment type (single char encoded) */
+  environmentType: RuntimeEnvironmentType;
+  /** Worker queue name for routing */
+  workerQueue: string;
+}
+
+/**
+ * @deprecated V3 no longer encodes in sorted set member. Use runId directly.
+ * Kept for backwards compatibility during migration.
  */
 export interface EncodedQueueMember {
   runId: string;
@@ -59,8 +77,67 @@ export interface EncodedWorkerQueueEntry extends EncodedQueueMember {
   timestamp: number;
 }
 
+// V3 message key prefix to distinguish from legacy JSON
+const V3_MESSAGE_PREFIX = "v3:";
+
+/**
+ * Encode data for V3 message key value.
+ * Format: v3:queue␞timestamp␞attempt␞envTypeChar␞workerQueue
+ *
+ * This is ~60-100 bytes vs ~400-600+ bytes for JSON.
+ */
+export function encodeMessageKeyValue(data: EncodedMessageKeyData): string {
+  const envChar = ENV_TYPE_TO_CHAR[data.environmentType];
+  return (
+    V3_MESSAGE_PREFIX +
+    [data.queue, data.timestamp.toString(), data.attempt.toString(), envChar, data.workerQueue].join(
+      DELIMITER
+    )
+  );
+}
+
+/**
+ * Decode V3 message key value.
+ * Returns undefined if not in V3 format.
+ */
+export function decodeMessageKeyValue(value: string): EncodedMessageKeyData | undefined {
+  if (!value.startsWith(V3_MESSAGE_PREFIX)) {
+    return undefined;
+  }
+
+  const content = value.slice(V3_MESSAGE_PREFIX.length);
+  const parts = content.split(DELIMITER);
+
+  if (parts.length !== 5) {
+    return undefined;
+  }
+
+  const [queue, timestampStr, attemptStr, envChar, workerQueue] = parts;
+  const environmentType = CHAR_TO_ENV_TYPE[envChar];
+
+  if (!environmentType) {
+    return undefined;
+  }
+
+  return {
+    queue,
+    timestamp: parseInt(timestampStr, 10),
+    attempt: parseInt(attemptStr, 10),
+    environmentType,
+    workerQueue,
+  };
+}
+
+/**
+ * Check if a message key value is V3 format (starts with v3: prefix).
+ */
+export function isV3MessageKeyValue(value: string): boolean {
+  return value.startsWith(V3_MESSAGE_PREFIX);
+}
+
 /**
  * Check if a sorted set member is in v3 encoded format.
+ * @deprecated V3 no longer encodes in sorted set. Members are just runIds.
  */
 export function isEncodedQueueMember(member: string): boolean {
   return member.includes(DELIMITER);
