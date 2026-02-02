@@ -252,7 +252,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   if (!options.skipUpdateCheck) {
-    await updateTriggerPackages(dir, { ...options }, true, true);
+    await updateTriggerPackages(dir, { ...options, ignoreEngines: true }, true, true);
   }
 
   const cwd = process.cwd();
@@ -489,9 +489,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const version = deployment.version;
 
   const rawDeploymentLink = `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`;
-  const rawTestLink = `${authorization.dashboardUrl}/projects/v3/${
-    resolvedConfig.project
-  }/test?environment=${options.env === "prod" ? "prod" : "stg"}`;
+  const rawTestLink = `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project
+    }/test?environment=${options.env === "prod" ? "prod" : "stg"}`;
 
   const deploymentLink = cliLink("View deployment", rawDeploymentLink);
   const testLink = cliLink("Test tasks", rawTestLink);
@@ -708,8 +707,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
   } else {
     outro(
-      `Version ${version} deployed with ${taskCount} detected task${taskCount === 1 ? "" : "s"} ${
-        isLinksSupported ? `| ${deploymentLink} | ${testLink}` : ""
+      `Version ${version} deployed with ${taskCount} detected task${taskCount === 1 ? "" : "s"} ${isLinksSupported ? `| ${deploymentLink} | ${testLink}` : ""
       }`
     );
 
@@ -733,18 +731,16 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       TRIGGER_VERSION: version,
       TRIGGER_DEPLOYMENT_SHORT_CODE: deployment.shortCode,
       TRIGGER_DEPLOYMENT_URL: `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`,
-      TRIGGER_TEST_URL: `${authorization.dashboardUrl}/projects/v3/${
-        resolvedConfig.project
-      }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
+      TRIGGER_TEST_URL: `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project
+        }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
     },
     outputs: {
       deploymentVersion: version,
       workerVersion: version,
       deploymentShortCode: deployment.shortCode,
       deploymentUrl: `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`,
-      testUrl: `${authorization.dashboardUrl}/projects/v3/${
-        resolvedConfig.project
-      }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
+      testUrl: `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project
+        }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
       needsPromotion: options.skipPromotion ? "true" : "false",
     },
   });
@@ -787,8 +783,7 @@ async function failDeploy(
       checkLogsForErrors(logs);
 
       outro(
-        `${chalkError(`${prefix}:`)} ${
-          error.message
+        `${chalkError(`${prefix}:`)} ${error.message
         }. Full build logs have been saved to ${logPath}`
       );
 
@@ -1088,9 +1083,8 @@ async function handleNativeBuildServerDeploy({
   const deployment = initializeDeploymentResult.data;
 
   const rawDeploymentLink = `${dashboardUrl}/projects/v3/${config.project}/deployments/${deployment.shortCode}`;
-  const rawTestLink = `${dashboardUrl}/projects/v3/${config.project}/test?environment=${
-    options.env === "prod" ? "prod" : "stg"
-  }`;
+  const rawTestLink = `${dashboardUrl}/projects/v3/${config.project}/test?environment=${options.env === "prod" ? "prod" : "stg"
+    }`;
 
   const exposedDeploymentLink = isLinksSupported
     ? cliLink(chalk.bold(rawDeploymentLink), rawDeploymentLink)
@@ -1156,8 +1150,7 @@ async function handleNativeBuildServerDeploy({
     log.warn(`Failed streaming build logs, open the deployment in the dashboard to view the logs`);
 
     outro(
-      `Version ${deployment.version} is being deployed ${
-        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+      `Version ${deployment.version} is being deployed ${isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
       }`
     );
 
@@ -1204,10 +1197,10 @@ async function handleNativeBuildServerDeploy({
           level === "error"
             ? chalk.bold(chalkError(message))
             : level === "warn"
-            ? chalkWarning(message)
-            : level === "debug"
-            ? chalkGrey(message)
-            : message;
+              ? chalkWarning(message)
+              : level === "debug"
+                ? chalkGrey(message)
+                : message;
 
         // We use console.log here instead of clack's logger as the current version does not support changing the line spacing.
         // And the logs look verbose with the default spacing.
@@ -1240,8 +1233,7 @@ async function handleNativeBuildServerDeploy({
     log.error("Failed dequeueing build, please try again shortly");
 
     throw new OutroCommandError(
-      `Version ${deployment.version} ${
-        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+      `Version ${deployment.version} ${isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
       }`
     );
   }
@@ -1256,8 +1248,7 @@ async function handleNativeBuildServerDeploy({
     }
 
     throw new OutroCommandError(
-      `Version ${deployment.version} ${
-        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+      `Version ${deployment.version} ${isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
       }`
     );
   }
@@ -1283,13 +1274,12 @@ async function handleNativeBuildServerDeploy({
       }
 
       outro(
-        `Version ${deployment.version} was deployed ${
-          isLinksSupported
-            ? `| ${cliLink("Test tasks", rawTestLink)} | ${cliLink(
-                "View deployment",
-                rawDeploymentLink
-              )}`
-            : ""
+        `Version ${deployment.version} was deployed ${isLinksSupported
+          ? `| ${cliLink("Test tasks", rawTestLink)} | ${cliLink(
+            "View deployment",
+            rawDeploymentLink
+          )}`
+          : ""
         }`
       );
       return process.exit(0);
@@ -1303,14 +1293,13 @@ async function handleNativeBuildServerDeploy({
         chalk.bold(
           chalkError(
             "Deployment failed" +
-              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
+            (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
           )
         )
       );
 
       throw new OutroCommandError(
-        `Version ${deployment.version} deployment failed ${
-          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+        `Version ${deployment.version} deployment failed ${isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
         }`
       );
     }
@@ -1323,14 +1312,13 @@ async function handleNativeBuildServerDeploy({
         chalk.bold(
           chalkError(
             "Deployment timed out" +
-              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
+            (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
           )
         )
       );
 
       throw new OutroCommandError(
-        `Version ${deployment.version} deployment timed out ${
-          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+        `Version ${deployment.version} deployment timed out ${isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
         }`
       );
     }
@@ -1343,14 +1331,13 @@ async function handleNativeBuildServerDeploy({
         chalk.bold(
           chalkError(
             "Deployment was canceled" +
-              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
+            (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
           )
         )
       );
 
       throw new OutroCommandError(
-        `Version ${deployment.version} deployment canceled ${
-          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+        `Version ${deployment.version} deployment canceled ${isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
         }`
       );
     }
@@ -1369,13 +1356,12 @@ async function handleNativeBuildServerDeploy({
       }
 
       outro(
-        `Version ${deployment.version} ${
-          isLinksSupported
-            ? `| ${cliLink("Test tasks", rawTestLink)} | ${cliLink(
-                "View deployment",
-                rawDeploymentLink
-              )}`
-            : ""
+        `Version ${deployment.version} ${isLinksSupported
+          ? `| ${cliLink("Test tasks", rawTestLink)} | ${cliLink(
+            "View deployment",
+            rawDeploymentLink
+          )}`
+          : ""
         }`
       );
       return process.exit(0);
