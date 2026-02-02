@@ -119,6 +119,15 @@ type MarkedRun = {
   score: number;
 };
 
+/**
+ * Result of an enqueue operation.
+ * ok: true if the message was enqueued successfully.
+ * ok: false if the queue is full (when maxQueueLength is set).
+ */
+export type EnqueueResult =
+  | { ok: true }
+  | { ok: false; error: "QUEUE_FULL"; currentLength: number; maxLength: number };
+
 const defaultRetrySettings = {
   maxAttempts: 12,
   factor: 2,
@@ -334,6 +343,35 @@ export class RunQueue {
 
   public async getQueueConcurrencyLimit(env: MinimalAuthenticatedEnvironment, queue: string) {
     const result = await this.redis.get(this.keys.queueConcurrencyLimitKey(env, queue));
+
+    return result ? Number(result) : undefined;
+  }
+
+  /**
+   * Set the maximum queue length limit for a queue.
+   * When set, enqueue operations will fail with QUEUE_FULL if the queue is at or above this limit.
+   */
+  public async updateQueueLengthLimit(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string,
+    maxLength: number
+  ) {
+    return this.redis.set(this.keys.queueLengthLimitKey(env, queue), maxLength);
+  }
+
+  /**
+   * Remove the queue length limit for a queue (effectively making it unlimited).
+   */
+  public async removeQueueLengthLimit(env: MinimalAuthenticatedEnvironment, queue: string) {
+    return this.redis.del(this.keys.queueLengthLimitKey(env, queue));
+  }
+
+  /**
+   * Get the current queue length limit for a queue.
+   * Returns undefined if no limit is set.
+   */
+  public async getQueueLengthLimit(env: MinimalAuthenticatedEnvironment, queue: string) {
+    const result = await this.redis.get(this.keys.queueLengthLimitKey(env, queue));
 
     return result ? Number(result) : undefined;
   }
@@ -614,12 +652,15 @@ export class RunQueue {
     message,
     workerQueue,
     skipDequeueProcessing = false,
+    maxQueueLength,
   }: {
     env: MinimalAuthenticatedEnvironment;
     message: InputPayload;
     workerQueue: string;
     skipDequeueProcessing?: boolean;
-  }) {
+    /** Max queue length limit. If set, enqueue will fail with QUEUE_FULL if the queue is at or above this limit. */
+    maxQueueLength?: number;
+  }): Promise<EnqueueResult> {
     return await this.#trace(
       "enqueueMessage",
       async (span) => {
@@ -644,7 +685,10 @@ export class RunQueue {
           attempt: 0,
         };
 
-        if (!skipDequeueProcessing) {
+        const result = await this.#callEnqueueMessage(messagePayload, { maxQueueLength });
+
+        // Only schedule dequeue processing if enqueue was successful
+        if (result.ok && !skipDequeueProcessing) {
           // This will move the message to the worker queue so it can be dequeued
           await this.worker.enqueueOnce({
             id: queueKey, // dedupe by environment, queue, and concurrency key
@@ -659,7 +703,7 @@ export class RunQueue {
           });
         }
 
-        return await this.#callEnqueueMessage(messagePayload);
+        return result;
       },
       {
         kind: SpanKind.PRODUCER,
@@ -1605,7 +1649,10 @@ export class RunQueue {
     });
   }
 
-  async #callEnqueueMessage(message: OutputPayloadV2) {
+  async #callEnqueueMessage(
+    message: OutputPayloadV2,
+    options?: { maxQueueLength?: number }
+  ): Promise<EnqueueResult> {
     const queueKey = message.queue;
     const messageKey = this.keys.messageKey(message.orgId, message.runId);
     const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKeyFromQueue(message.queue);
@@ -1617,6 +1664,7 @@ export class RunQueue {
       message.environmentId,
       this.shardCount
     );
+    const queueLengthLimitKey = this.keys.queueLengthLimitKeyFromQueue(message.queue);
 
     const queueName = message.queue;
     const messageId = message.runId;
@@ -1633,6 +1681,9 @@ export class RunQueue {
       ? encodeTtlMember({ runId: message.runId, queueKey: message.queue, orgId: message.orgId })
       : "";
 
+    // Queue length limit (0 means no limit)
+    const maxQueueLength = options?.maxQueueLength ?? 0;
+
     this.logger.debug("Calling enqueueMessage", {
       queueKey,
       messageKey,
@@ -1641,6 +1692,7 @@ export class RunQueue {
       queueCurrentDequeuedKey,
       envCurrentDequeuedKey,
       envQueueKey,
+      queueLengthLimitKey,
       queueName,
       messageId,
       messageData,
@@ -1648,10 +1700,11 @@ export class RunQueue {
       masterQueueKey,
       ttlExpiresAt,
       ttlShardKey,
+      maxQueueLength,
       service: this.name,
     });
 
-    await this.redis.enqueueMessage(
+    const result = await this.redis.enqueueMessage(
       masterQueueKey,
       queueKey,
       messageKey,
@@ -1661,13 +1714,27 @@ export class RunQueue {
       envCurrentDequeuedKey,
       envQueueKey,
       ttlShardKey,
+      queueLengthLimitKey,
       queueName,
       messageId,
       messageData,
       messageScore,
       String(ttlExpiresAt),
-      ttlMember
+      ttlMember,
+      String(maxQueueLength)
     );
+
+    // Parse the result
+    if (result && result[0] === "QUEUE_FULL") {
+      return {
+        ok: false,
+        error: "QUEUE_FULL",
+        currentLength: Number(result[1]),
+        maxLength: Number(result[2]),
+      };
+    }
+
+    return { ok: true };
   }
 
   async #callDequeueMessagesFromQueue({
@@ -2506,7 +2573,7 @@ end
     const TTL_DELIMITER = "\\x1e";
 
     this.redis.defineCommand("enqueueMessage", {
-      numberOfKeys: 9, // Added ttlShardKey as optional 9th key
+      numberOfKeys: 10, // Added queueLengthLimitKey as 10th key
       lua: `
 local masterQueueKey = KEYS[1]
 local queueKey = KEYS[2]
@@ -2517,6 +2584,7 @@ local queueCurrentDequeuedKey = KEYS[6]
 local envCurrentDequeuedKey = KEYS[7]
 local envQueueKey = KEYS[8]
 local ttlShardKey = KEYS[9]  -- Optional: TTL sorted set shard key
+local queueLengthLimitKey = KEYS[10]  -- Queue length limit key
 
 local queueName = ARGV[1]
 local messageId = ARGV[2]
@@ -2524,6 +2592,21 @@ local messageData = ARGV[3]
 local messageScore = ARGV[4]
 local ttlExpiresAt = tonumber(ARGV[5] or '0')  -- Optional: TTL expiration timestamp
 local ttlMember = ARGV[6]  -- Optional: TTL member (runId|queueKey|orgId)
+local defaultMaxQueueLength = tonumber(ARGV[7] or '0')  -- 0 means no limit
+
+-- Check queue length limit before enqueuing
+local maxQueueLength = tonumber(redis.call('GET', queueLengthLimitKey) or '0')
+if maxQueueLength == 0 then
+  maxQueueLength = defaultMaxQueueLength
+end
+
+if maxQueueLength > 0 then
+  local currentQueueLength = tonumber(redis.call('ZCARD', queueKey) or '0')
+  if currentQueueLength >= maxQueueLength then
+    -- Queue is full, return error status
+    return { 'QUEUE_FULL', currentQueueLength, maxQueueLength }
+  end
+end
 
 -- Write the message to the message key
 redis.call('SET', messageKey, messageData)
@@ -2553,6 +2636,9 @@ redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
+
+-- Return success status
+return { 'OK' }
       `,
     });
 
@@ -3089,6 +3175,7 @@ declare module "@internal/redis" {
       envCurrentDequeuedKey: string,
       envQueueKey: string,
       ttlShardKey: string, // Optional: pass empty string if no TTL
+      queueLengthLimitKey: string, // Queue length limit key
       //args
       queueName: string,
       messageId: string,
@@ -3096,8 +3183,9 @@ declare module "@internal/redis" {
       messageScore: string,
       ttlExpiresAt: string, // Optional: pass '0' if no TTL
       ttlMember: string, // Optional: pass empty string if no TTL
-      callback?: Callback<void>
-    ): Result<void, Context>;
+      maxQueueLength: string, // Optional: pass '0' for no limit
+      callback?: Callback<string[] | null>
+    ): Result<string[] | null, Context>;
 
     dequeueMessagesFromQueue(
       //keys
