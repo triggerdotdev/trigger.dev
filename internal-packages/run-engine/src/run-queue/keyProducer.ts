@@ -7,7 +7,6 @@ const constants = {
   CURRENT_DEQUEUED_PART: "currentDequeued",
   CONCURRENCY_LIMIT_PART: "concurrency",
   CONCURRENCY_LIMIT_BURST_FACTOR_PART: "concurrencyBurstFactor",
-  QUEUE_LENGTH_LIMIT_PART: "maxLength",
   ENV_PART: "env",
   ORG_PART: "org",
   PROJECT_PART: "proj",
@@ -46,23 +45,6 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
 
   queueConcurrencyLimitKey(env: RunQueueKeyProducerEnvironment, queue: string) {
     return [this.queueKey(env, queue), constants.CONCURRENCY_LIMIT_PART].join(":");
-  }
-
-  /**
-   * Get the key for storing the max length limit for a queue.
-   * Queue length limits are per-queue (not per concurrency key).
-   */
-  queueLengthLimitKey(env: RunQueueKeyProducerEnvironment, queue: string) {
-    return [this.queueKey(env, queue), constants.QUEUE_LENGTH_LIMIT_PART].join(":");
-  }
-
-  /**
-   * Get the queue length limit key from a queue key string.
-   * Strips any concurrency key suffix since length limits are per-queue.
-   */
-  queueLengthLimitKeyFromQueue(queue: string) {
-    const baseQueueName = queue.replace(/:ck:.+$/, "");
-    return `${baseQueueName}:${constants.QUEUE_LENGTH_LIMIT_PART}`;
   }
 
   envConcurrencyLimitKey(env: EnvDescriptor): string;
