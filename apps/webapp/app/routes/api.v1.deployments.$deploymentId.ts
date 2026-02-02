@@ -39,6 +39,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           tasks: true,
         },
       },
+      integrationDeployments: true,
     },
   });
 
@@ -69,5 +70,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           })),
         }
       : undefined,
+    integrationDeployments:
+      deployment.integrationDeployments.length > 0
+        ? deployment.integrationDeployments.map((id) => ({
+            id: id.id,
+            integrationName: id.integrationName,
+            integrationDeploymentId: id.integrationDeploymentId,
+            commitSHA: id.commitSHA,
+            createdAt: id.createdAt,
+          }))
+        : undefined,
   } satisfies GetDeploymentResponseBody);
 }

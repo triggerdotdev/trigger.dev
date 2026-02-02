@@ -330,7 +330,7 @@ export default function Page() {
                     <SimpleTooltip
                       button={
                         <span className="flex items-center gap-1">
-                          Pull from Vercel
+                          Sync
                           <InformationCircleIcon className="size-4 text-text-dimmed" />
                         </span>
                       }

@@ -712,6 +712,17 @@ export const GetDeploymentResponseBody = z.object({
       ),
     })
     .optional(),
+  integrationDeployments: z
+    .array(
+      z.object({
+        id: z.string(),
+        integrationName: z.string(),
+        integrationDeploymentId: z.string(),
+        commitSHA: z.string(),
+        createdAt: z.coerce.date(),
+      })
+    )
+    .nullish(),
 });
 
 export type GetDeploymentResponseBody = z.infer<typeof GetDeploymentResponseBody>;

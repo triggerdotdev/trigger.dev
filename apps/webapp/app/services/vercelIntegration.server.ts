@@ -2,10 +2,12 @@ import type {
   PrismaClient,
   OrganizationProjectIntegration,
   OrganizationIntegration,
+  SecretReference,
 } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
+import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
 import {
   VercelProjectIntegrationDataSchema,
   VercelProjectIntegrationData,
@@ -210,6 +212,22 @@ export class VercelIntegrationService {
       orgIntegration,
     });
 
+    // Disable autoAssignCustomDomains on the Vercel project for atomic deployments
+    try {
+      const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
+      await VercelIntegrationRepository.disableAutoAssignCustomDomains(
+        client,
+        params.vercelProjectId,
+        teamId
+      );
+    } catch (error) {
+      logger.warn("Failed to disable autoAssignCustomDomains during project selection", {
+        projectId: params.projectId,
+        vercelProjectId: params.vercelProjectId,
+        error,
+      });
+    }
+
     logger.info("Vercel project selected and API keys synced", {
       projectId: params.projectId,
       vercelProjectId: params.vercelProjectId,
@@ -246,6 +264,21 @@ export class VercelIntegrationService {
         integrationData: updatedData,
       },
     });
+
+    // Sync TRIGGER_VERSION if atomic builds were just enabled for prod
+    if (updatedConfig.atomicBuilds?.includes("prod")) {
+      const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(
+        projectId
+      );
+
+      if (orgIntegration) {
+        await this.#syncTriggerVersionToVercelProduction(
+          projectId,
+          updatedConfig.atomicBuilds,
+          orgIntegration
+        );
+      }
+    }
 
     return {
       ...updated,
@@ -402,6 +435,13 @@ export class VercelIntegrationService {
             syncedCount: pullResult.syncedCount,
           });
         }
+
+        // Sync TRIGGER_VERSION if atomic builds are enabled and a deployed build exists
+        await this.#syncTriggerVersionToVercelProduction(
+          projectId,
+          updatedData.config.atomicBuilds,
+          orgIntegration
+        );
       } else {
         logger.warn("No org integration found when trying to pull env vars from Vercel", {
           projectId,
@@ -419,6 +459,116 @@ export class VercelIntegrationService {
       ...updated,
       parsedIntegrationData: updatedData,
     };
+  }
+
+  /**
+   * Syncs the current deployed version as TRIGGER_VERSION to Vercel production.
+   * Called during onboarding completion and when atomic builds are enabled via config update.
+   * Non-blocking — errors are logged but don't fail the parent operation.
+   */
+  async #syncTriggerVersionToVercelProduction(
+    projectId: string,
+    atomicBuilds: string[] | null | undefined,
+    orgIntegration: OrganizationIntegration & { tokenReference: SecretReference }
+  ): Promise<void> {
+    try {
+      if (!atomicBuilds?.includes("prod")) {
+        return;
+      }
+
+      // Find the PRODUCTION runtime environment for this project
+      const prodEnvironment = await this.#prismaClient.runtimeEnvironment.findFirst({
+        where: {
+          projectId,
+          type: "PRODUCTION",
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!prodEnvironment) {
+        return;
+      }
+
+      // Get the current promoted deployment version
+      const currentDeployment = await findCurrentWorkerDeployment({
+        environmentId: prodEnvironment.id,
+      });
+
+      if (!currentDeployment?.version) {
+        return;
+      }
+
+      const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
+      const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
+
+      // Get the Vercel project ID from the project integration
+      const projectIntegration = await this.#prismaClient.organizationProjectIntegration.findFirst({
+        where: {
+          projectId,
+          organizationIntegrationId: orgIntegration.id,
+          deletedAt: null,
+        },
+        select: {
+          externalEntityId: true,
+        },
+      });
+
+      if (!projectIntegration) {
+        return;
+      }
+
+      const vercelProjectId = projectIntegration.externalEntityId;
+
+      // Check if TRIGGER_VERSION already exists targeting production
+      const envVarsResult = await VercelIntegrationRepository.getVercelEnvironmentVariables(
+        client,
+        vercelProjectId,
+        teamId
+      );
+
+      if (!envVarsResult.success) {
+        logger.warn("Failed to fetch Vercel env vars for TRIGGER_VERSION sync", {
+          projectId,
+          vercelProjectId,
+          error: envVarsResult.error,
+        });
+        return;
+      }
+
+      const existingTriggerVersion = envVarsResult.data.find(
+        (env) => env.key === "TRIGGER_VERSION" && env.target.includes("production")
+      );
+
+      if (existingTriggerVersion) {
+        return;
+      }
+
+      // Push TRIGGER_VERSION to Vercel production
+      await client.projects.createProjectEnv({
+        idOrName: vercelProjectId,
+        ...(teamId && { teamId }),
+        upsert: "true",
+        requestBody: {
+          key: "TRIGGER_VERSION",
+          value: currentDeployment.version,
+          target: ["production"] as any,
+          type: "encrypted",
+        },
+      });
+
+      logger.info("Synced TRIGGER_VERSION to Vercel production", {
+        projectId,
+        vercelProjectId,
+        version: currentDeployment.version,
+      });
+    } catch (error) {
+      logger.error("Failed to sync TRIGGER_VERSION to Vercel production", {
+        projectId,
+        error,
+      });
+    }
   }
 
   async disconnectVercelProject(projectId: string): Promise<boolean> {

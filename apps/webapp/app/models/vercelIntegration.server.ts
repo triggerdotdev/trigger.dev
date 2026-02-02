@@ -1678,6 +1678,71 @@ export class VercelIntegrationRepository {
     }
   }
 
+  /**
+   * Get the autoAssignCustomDomains setting for a Vercel project.
+   * Returns true if auto-assign is enabled, false if disabled, null on error.
+   */
+  static async getAutoAssignCustomDomains(
+    client: Vercel,
+    vercelProjectId: string,
+    teamId?: string | null
+  ): Promise<boolean | null> {
+    try {
+      // The Vercel SDK doesn't have a getProject method, so we use updateProject
+      // with an empty requestBody to read the project data without changing anything.
+      const project = await client.projects.updateProject({
+        idOrName: vercelProjectId,
+        ...(teamId && { teamId }),
+        requestBody: {},
+      });
+
+      return project.autoAssignCustomDomains ?? null;
+    } catch (error) {
+      logger.error("Failed to get Vercel project autoAssignCustomDomains", {
+        vercelProjectId,
+        teamId,
+        error,
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Disable autoAssignCustomDomains on a Vercel project.
+   * This is required for atomic deployments — prevents Vercel from auto-promoting
+   * deployments before TRIGGER_VERSION is set.
+   */
+  static async disableAutoAssignCustomDomains(
+    client: Vercel,
+    vercelProjectId: string,
+    teamId?: string | null
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      await client.projects.updateProject({
+        idOrName: vercelProjectId,
+        ...(teamId && { teamId }),
+        requestBody: {
+          autoAssignCustomDomains: false,
+        },
+      });
+
+      logger.info("Disabled autoAssignCustomDomains on Vercel project", {
+        vercelProjectId,
+        teamId,
+      });
+
+      return { success: true };
+    } catch (error) {
+      const errorMessage = `Failed to disable autoAssignCustomDomains: ${error instanceof Error ? error.message : "Unknown error"}`;
+      logger.error(errorMessage, {
+        vercelProjectId,
+        teamId,
+        error,
+      });
+      return { success: false, error: errorMessage };
+    }
+  }
+
   static async uninstallVercelIntegration(
     integration: OrganizationIntegration & { tokenReference: SecretReference }
   ): Promise<{ authInvalid: boolean }> {

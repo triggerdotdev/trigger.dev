@@ -35,6 +35,8 @@ export type VercelSettingsResult = {
   hasStagingEnvironment: boolean;
   hasPreviewEnvironment: boolean;
   customEnvironments: VercelCustomEnvironment[];
+  /** Whether autoAssignCustomDomains is enabled on the Vercel project. null if unknown. */
+  autoAssignCustomDomains?: boolean | null;
 };
 
 export type VercelAvailableProject = {
@@ -234,26 +236,41 @@ export class VercelSettingsPresenter extends BasePresenter {
           checkPreviewEnvironment(),
           getVercelProjectIntegration(),
         ]).andThen(([hasOrgIntegration, isGitHubConnected, hasStagingEnvironment, hasPreviewEnvironment, connectedProject]) => {
-          const fetchCustomEnvs = async (): Promise<VercelCustomEnvironment[]> => {
-            if (!connectedProject || !orgIntegration) return [];
+          const fetchCustomEnvsAndProjectSettings = async (): Promise<{
+            customEnvironments: VercelCustomEnvironment[];
+            autoAssignCustomDomains: boolean | null;
+          }> => {
+            if (!connectedProject || !orgIntegration) {
+              return { customEnvironments: [], autoAssignCustomDomains: null };
+            }
             try {
               const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
               const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
-              const result = await VercelIntegrationRepository.getVercelCustomEnvironments(
-                client,
-                connectedProject.vercelProjectId,
-                teamId
-              );
-              return result.success ? result.data : [];
+              const [customEnvsResult, autoAssign] = await Promise.all([
+                VercelIntegrationRepository.getVercelCustomEnvironments(
+                  client,
+                  connectedProject.vercelProjectId,
+                  teamId
+                ),
+                VercelIntegrationRepository.getAutoAssignCustomDomains(
+                  client,
+                  connectedProject.vercelProjectId,
+                  teamId
+                ),
+              ]);
+              return {
+                customEnvironments: customEnvsResult.success ? customEnvsResult.data : [],
+                autoAssignCustomDomains: autoAssign,
+              };
             } catch {
-              return [];
+              return { customEnvironments: [], autoAssignCustomDomains: null };
             }
           };
 
           return fromPromise(
-            fetchCustomEnvs(),
+            fetchCustomEnvsAndProjectSettings(),
             (error) => ({ type: "other" as const, cause: error })
-          ).map((customEnvironments) => ({
+          ).map(({ customEnvironments, autoAssignCustomDomains }) => ({
             enabled: true,
             hasOrgIntegration,
             authInvalid: false,
@@ -262,6 +279,7 @@ export class VercelSettingsPresenter extends BasePresenter {
             hasStagingEnvironment,
             hasPreviewEnvironment,
             customEnvironments,
+            autoAssignCustomDomains,
           } as VercelSettingsResult));
         }).mapErr((error) => {
           // Log the error and return a safe fallback

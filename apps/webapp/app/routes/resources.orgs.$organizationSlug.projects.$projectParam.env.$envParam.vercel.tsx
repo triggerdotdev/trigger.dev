@@ -71,6 +71,7 @@ import {
 } from "~/presenters/v3/VercelSettingsPresenter.server";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import {
+  VercelIntegrationRepository,
   type VercelCustomEnvironment,
 } from "~/models/vercelIntegration.server";
 import {
@@ -198,6 +199,10 @@ const UpdateEnvMappingFormSchema = z.object({
   vercelStagingEnvironment: z.string().nullable().optional(),
 });
 
+const DisableAutoAssignFormSchema = z.object({
+  action: z.literal("disable-auto-assign"),
+});
+
 const VercelActionSchema = z.discriminatedUnion("action", [
   UpdateVercelConfigFormSchema,
   DisconnectVercelFormSchema,
@@ -205,6 +210,7 @@ const VercelActionSchema = z.discriminatedUnion("action", [
   SkipOnboardingFormSchema,
   SelectVercelProjectFormSchema,
   UpdateEnvMappingFormSchema,
+  DisableAutoAssignFormSchema,
 ]);
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
@@ -468,6 +474,42 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
   }
 
+  // Handle disable-auto-assign action
+  if (actionType === "disable-auto-assign") {
+    try {
+      const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(
+        project.id
+      );
+
+      if (!orgIntegration) {
+        return redirectWithErrorMessage(settingsPath, request, "No Vercel integration found");
+      }
+
+      const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
+      const projectIntegration = await vercelService.getVercelProjectIntegration(project.id);
+
+      if (!projectIntegration) {
+        return redirectWithErrorMessage(settingsPath, request, "No Vercel project connected");
+      }
+
+      const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
+      const result = await VercelIntegrationRepository.disableAutoAssignCustomDomains(
+        client,
+        projectIntegration.parsedIntegrationData.vercelProjectId,
+        teamId
+      );
+
+      if (result.success) {
+        return redirectWithSuccessMessage(settingsPath, request, "Auto-assign custom domains disabled");
+      }
+
+      return redirectWithErrorMessage(settingsPath, request, "Failed to disable auto-assign custom domains");
+    } catch (error) {
+      logger.error("Failed to disable auto-assign custom domains", { error });
+      return redirectWithErrorMessage(settingsPath, request, "Failed to disable auto-assign custom domains");
+    }
+  }
+
   submission.value satisfies never;
   return redirectBackWithErrorMessage(request, "Failed to process request");
 }
@@ -618,6 +660,7 @@ function ConnectedVercelProjectForm({
   hasStagingEnvironment,
   hasPreviewEnvironment,
   customEnvironments,
+  autoAssignCustomDomains,
   organizationSlug,
   projectSlug,
   environmentSlug,
@@ -626,6 +669,7 @@ function ConnectedVercelProjectForm({
   hasStagingEnvironment: boolean;
   hasPreviewEnvironment: boolean;
   customEnvironments: Array<{ id: string; slug: string }>;
+  autoAssignCustomDomains: boolean | null;
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
@@ -900,55 +944,59 @@ function ConnectedVercelProjectForm({
 
               {/* Atomic deployments */}
               <div>
-                <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center justify-between">
                   <div>
                     <Label>Atomic deployments</Label>
                     <Hint>
-                      Select which environments should wait for Vercel deployment to complete before
-                      promoting the Trigger.dev deployment.
+                      When enabled, production deployments wait for Vercel deployment to complete
+                      before promoting the Trigger.dev deployment.
                     </Hint>
                   </div>
-                  {availableEnvSlugsForBuildSettings.length > 1 && (
-                    <Switch
-                      variant="small"
-                      checked={availableEnvSlugsForBuildSettings.length > 0 && availableEnvSlugsForBuildSettings.every((s) => configValues.atomicBuilds.includes(s))}
-                      onCheckedChange={(checked) => {
-                        setConfigValues((prev) => ({
-                          ...prev,
-                          atomicBuilds: checked ? [...availableEnvSlugsForBuildSettings] : [],
-                        }));
-                      }}
-                    />
-                  )}
-                </div>
-                <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
-                  {availableEnvSlugsForBuildSettings.map((slug) => {
-                    const envType = slug === "prod" ? "PRODUCTION" : slug === "stg" ? "STAGING" : "PREVIEW";
-                    return (
-                      <div key={slug} className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <EnvironmentIcon environment={{ type: envType }} className="size-4" />
-                          <span className={`text-sm ${environmentTextClassName({ type: envType })}`}>
-                            {environmentFullTitle({ type: envType })}
-                          </span>
-                        </div>
-                        <Switch
-                          variant="small"
-                          checked={configValues.atomicBuilds.includes(slug)}
-                          onCheckedChange={(checked) => {
-                            setConfigValues((prev) => ({
-                              ...prev,
-                              atomicBuilds: checked
-                                ? [...prev.atomicBuilds, slug]
-                                : prev.atomicBuilds.filter((s) => s !== slug),
-                            }));
-                          }}
-                        />
-                      </div>
-                    );
-                  })}
+                  <Switch
+                    variant="small"
+                    checked={configValues.atomicBuilds.includes("prod")}
+                    onCheckedChange={(checked) => {
+                      setConfigValues((prev) => ({
+                        ...prev,
+                        atomicBuilds: checked ? ["prod"] : [],
+                      }));
+                    }}
+                  />
                 </div>
               </div>
+
+              {/* Warning: autoAssignCustomDomains must be disabled for atomic deployments */}
+              {autoAssignCustomDomains !== false &&
+                configValues.atomicBuilds.includes("prod") && (
+                  <Callout variant="warning">
+                    <div className="flex flex-col gap-2">
+                      <p className="font-sans text-xs font-normal text-text-dimmed">
+                        Atomic deployments require the "Auto-assign Custom Domains" setting to be
+                        disabled on your Vercel project. Without this, Vercel will promote
+                        deployments before Trigger.dev is ready.
+                      </p>
+                      <Form method="post" action={actionUrl}>
+                        <input type="hidden" name="action" value="disable-auto-assign" />
+                        <Button
+                          type="submit"
+                          variant="tertiary/small"
+                          disabled={
+                            navigation.formData?.get("action") === "disable-auto-assign" &&
+                            (navigation.state === "submitting" || navigation.state === "loading")
+                          }
+                          LeadingIcon={
+                            navigation.formData?.get("action") === "disable-auto-assign" &&
+                            (navigation.state === "submitting" || navigation.state === "loading")
+                              ? SpinnerWhite
+                              : undefined
+                          }
+                        >
+                          Disable auto-assign custom domains
+                        </Button>
+                      </Form>
+                    </div>
+                  </Callout>
+                )}
             </div>
 
             <FormError>{configForm.error}</FormError>
@@ -1048,6 +1096,7 @@ function VercelSettingsPanel({
           hasStagingEnvironment={data.hasStagingEnvironment}
           hasPreviewEnvironment={data.hasPreviewEnvironment}
           customEnvironments={data.customEnvironments}
+          autoAssignCustomDomains={data.autoAssignCustomDomains ?? null}
           organizationSlug={organizationSlug}
           projectSlug={projectSlug}
           environmentSlug={environmentSlug}
@@ -1212,11 +1261,11 @@ function VercelOnboardingModal({
     () => availableEnvSlugsForOnboardingBuildSettings
   );
   const [atomicBuilds, setAtomicBuilds] = useState<EnvSlug[]>(
-    () => availableEnvSlugsForOnboardingBuildSettings
+    () => ["prod"]
   );
   const [pullNewEnvVars, setPullNewEnvVars] = useState<boolean>(true);
 
-  // Sync pullEnvVarsBeforeBuild and atomicBuilds when hasStagingEnvironment becomes true (once)
+  // Sync pullEnvVarsBeforeBuild when hasStagingEnvironment becomes true (once)
   // This ensures staging is included when it becomes available, but respects user changes after
   useEffect(() => {
     if (hasStagingEnvironment && !hasSyncedStagingRef.current) {
@@ -1227,27 +1276,15 @@ function VercelOnboardingModal({
         }
         return prev;
       });
-      setAtomicBuilds((prev) => {
-        if (!prev.includes("stg")) {
-          return [...prev, "stg"];
-        }
-        return prev;
-      });
     }
   }, [hasStagingEnvironment]);
 
-  // Sync pullEnvVarsBeforeBuild and atomicBuilds when hasPreviewEnvironment becomes true (once)
+  // Sync pullEnvVarsBeforeBuild when hasPreviewEnvironment becomes true (once)
   // This ensures preview is included when it becomes available, but respects user changes after
   useEffect(() => {
     if (hasPreviewEnvironment && !hasSyncedPreviewRef.current) {
       hasSyncedPreviewRef.current = true;
       setPullEnvVarsBeforeBuild((prev) => {
-        if (!prev.includes("preview")) {
-          return [...prev, "preview"];
-        }
-        return prev;
-      });
-      setAtomicBuilds((prev) => {
         if (!prev.includes("preview")) {
           return [...prev, "preview"];
         }
@@ -2040,47 +2077,21 @@ function VercelOnboardingModal({
 
               {/* Atomic deployments */}
               <div>
-                <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center justify-between">
                   <div>
                     <Label>Atomic deployments</Label>
                     <Hint>
-                      Select which environments should wait for Vercel deployment to complete before
-                      promoting the Trigger.dev deployment.
+                      When enabled, production deployments wait for Vercel deployment to complete
+                      before promoting the Trigger.dev deployment.
                     </Hint>
                   </div>
-                  {availableEnvSlugsForOnboardingBuildSettings.length > 1 && (
-                    <Switch
-                      variant="small"
-                      checked={availableEnvSlugsForOnboardingBuildSettings.length > 0 && availableEnvSlugsForOnboardingBuildSettings.every((s) => atomicBuilds.includes(s))}
-                      onCheckedChange={(checked) => {
-                        setAtomicBuilds(checked ? [...availableEnvSlugsForOnboardingBuildSettings] : []);
-                      }}
-                    />
-                  )}
-                </div>
-                <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
-                  {availableEnvSlugsForOnboardingBuildSettings.map((slug) => {
-                    const envType = slug === "prod" ? "PRODUCTION" : slug === "stg" ? "STAGING" : "PREVIEW";
-                    return (
-                      <div key={slug} className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <EnvironmentIcon environment={{ type: envType }} className="size-4" />
-                          <span className={`text-sm ${environmentTextClassName({ type: envType })}`}>
-                            {environmentFullTitle({ type: envType })}
-                          </span>
-                        </div>
-                        <Switch
-                          variant="small"
-                          checked={atomicBuilds.includes(slug)}
-                          onCheckedChange={(checked) => {
-                            setAtomicBuilds((prev) =>
-                              checked ? [...prev, slug] : prev.filter((s) => s !== slug)
-                            );
-                          }}
-                        />
-                      </div>
-                    );
-                  })}
+                  <Switch
+                    variant="small"
+                    checked={atomicBuilds.includes("prod")}
+                    onCheckedChange={(checked) => {
+                      setAtomicBuilds(checked ? ["prod"] : []);
+                    }}
+                  />
                 </div>
               </div>
 

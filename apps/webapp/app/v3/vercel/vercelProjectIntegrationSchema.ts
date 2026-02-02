@@ -141,7 +141,7 @@ export type VercelProjectIntegrationData = z.infer<typeof VercelProjectIntegrati
 
 /**
  * Helper function to create default integration data for a new Vercel project connection.
- * Defaults to having atomic builds and pull env vars enabled for all non-dev environments.
+ * Defaults to having atomic builds enabled for production and pull env vars enabled for all non-dev environments.
  */
 export function createDefaultVercelIntegrationData(
   vercelProjectId: string,
@@ -150,7 +150,7 @@ export function createDefaultVercelIntegrationData(
 ): VercelProjectIntegrationData {
   return {
     config: {
-      atomicBuilds: ["prod", "stg", "preview"],
+      atomicBuilds: ["prod"],
       pullEnvVarsBeforeBuild: ["prod", "stg", "preview"],
       pullNewEnvVars: true,
       vercelStagingEnvironment: null,
