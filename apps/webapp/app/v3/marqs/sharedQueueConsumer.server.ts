@@ -262,7 +262,7 @@ export class SharedQueueConsumer {
 
     console.log("✅ Started the SharedQueueConsumer");
 
-    this.#doWork().finally(() => {});
+    this.#doWork().finally(() => { });
   }
 
   #endCurrentSpan() {
@@ -417,7 +417,7 @@ export class SharedQueueConsumer {
           span.end();
 
           setTimeout(() => {
-            this.#doWork().finally(() => {});
+            this.#doWork().finally(() => { });
           }, nextInterval);
         }
       });
@@ -620,8 +620,8 @@ export class SharedQueueConsumer {
       return existingTaskRun.lockedById
         ? await getWorkerDeploymentFromWorkerTask(existingTaskRun.lockedById)
         : existingTaskRun.lockedToVersionId
-        ? await getWorkerDeploymentFromWorker(existingTaskRun.lockedToVersionId)
-        : await findCurrentWorkerDeployment({
+          ? await getWorkerDeploymentFromWorker(existingTaskRun.lockedToVersionId)
+          : await findCurrentWorkerDeployment({
             environmentId: existingTaskRun.runtimeEnvironmentId,
             type: "V1",
           });
@@ -718,9 +718,9 @@ export class SharedQueueConsumer {
     }
 
     const lockedAt = new Date();
-    const machinePreset =
-      existingTaskRun.machinePreset ??
-      machinePresetFromConfig(backgroundTask.machineConfig ?? {}).name;
+    // Always use current deployment's machine config to ensure preset resets correctly
+    // when machine config is removed from task (fixes #2796)
+    const machinePreset = machinePresetFromConfig(backgroundTask.machineConfig ?? {}).name;
     const maxDurationInSeconds = getMaxDuration(
       existingTaskRun.maxDurationInSeconds,
       backgroundTask.maxDurationInSeconds
@@ -1900,9 +1900,9 @@ class SharedQueueTasks {
 
   async getResumePayload(attemptId: string): Promise<
     | {
-        execution: V3ProdTaskRunExecution;
-        completion: TaskRunExecutionResult;
-      }
+      execution: V3ProdTaskRunExecution;
+      completion: TaskRunExecutionResult;
+    }
     | undefined
   > {
     const attempt = await prisma.taskRunAttempt.findFirst({
