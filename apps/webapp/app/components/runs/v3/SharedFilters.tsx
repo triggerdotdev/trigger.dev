@@ -246,7 +246,6 @@ export function timeFilterFromTo(props: {
   }
 
   const defaultPeriodMs = parse(props.defaultPeriod) ?? 24 * 60 * 60 * 1_000;
-
   return {
     from: new Date(Date.now() - defaultPeriodMs),
     to: time.to ?? new Date(),

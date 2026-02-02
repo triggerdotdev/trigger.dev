@@ -12,16 +12,13 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { z } from "zod";
 import ReactGridLayout, { useContainerWidth } from "react-grid-layout";
-import "react-grid-layout/css/styles.css";
-import "react-resizable/css/styles.css";
 import { MetricWidget } from "../resources.metric";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { TimeFilter, timeFilterFromTo, timeFilters } from "~/components/runs/v3/SharedFilters";
+import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import parse from "parse-duration";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardKey: z.string(),
