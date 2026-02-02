@@ -130,6 +130,7 @@ export default function Page() {
 
   const [isEditing, setIsEditing] = useState(false);
   const [pendingLayout, setPendingLayout] = useState<LayoutItem[] | null>(null);
+  const [resetKey, setResetKey] = useState(0);
 
   const isSaving = fetcher.state === "submitting";
 
@@ -145,6 +146,8 @@ export default function Page() {
   const handleCancel = () => {
     setIsEditing(false);
     setPendingLayout(null);
+    // Increment key to force remount and reset layout to original
+    setResetKey((k) => k + 1);
   };
 
   const handleSave = () => {
@@ -184,6 +187,7 @@ export default function Page() {
       <PageBody scrollable={false}>
         <div className="h-full">
           <MetricDashboard
+            key={resetKey}
             data={layout}
             defaultPeriod={defaultPeriod}
             editable={isEditing}
