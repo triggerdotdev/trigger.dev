@@ -10,6 +10,7 @@ import { Button } from "../primitives/Buttons";
 import { ArrowsPointingOutIcon } from "@heroicons/react/20/solid";
 import { LoadingBarDivider } from "../primitives/LoadingBarDivider";
 import { Callout } from "../primitives/Callout";
+import { ChartBarIcon } from "@heroicons/react/24/solid";
 
 const ChartType = z.union([z.literal("bar"), z.literal("line")]);
 export type ChartType = z.infer<typeof ChartType>;
@@ -73,9 +74,17 @@ export type QueryWidgetProps = {
   data: QueryWidgetData;
   config: QueryWidgetConfig;
   accessory?: ReactNode;
+  isResizing?: boolean;
 };
 
-export function QueryWidget({ title, accessory, isLoading, error, ...props }: QueryWidgetProps) {
+export function QueryWidget({
+  title,
+  accessory,
+  isLoading,
+  error,
+  isResizing,
+  ...props
+}: QueryWidgetProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   return (
@@ -93,7 +102,14 @@ export function QueryWidget({ title, accessory, isLoading, error, ...props }: Qu
       </Card.Header>
       <LoadingBarDivider isLoading={isLoading ?? false} className="bg-transparent" />
       <Card.Content className="min-h-0 flex-1 overflow-hidden p-0">
-        {error ? (
+        {isResizing ? (
+          <div className="flex h-full flex-1 items-center justify-center p-3">
+            <div className="flex flex-col items-center gap-1 text-text-dimmed">
+              <ChartBarIcon className="size-10 text-text-dimmed" />{" "}
+              <span className="text-base font-medium">Resizing...</span>
+            </div>
+          </div>
+        ) : error ? (
           <div className="p-3">
             <Callout variant="error">{error}</Callout>
           </div>

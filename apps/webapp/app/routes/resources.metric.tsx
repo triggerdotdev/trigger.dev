@@ -119,9 +119,16 @@ type MetricWidgetProps = {
   title: string;
   config: QueryWidgetConfig;
   refreshIntervalMs?: number;
+  isResizing?: boolean;
 } & z.infer<typeof MetricWidgetQuery>;
 
-export function MetricWidget({ title, config, refreshIntervalMs, ...props }: MetricWidgetProps) {
+export function MetricWidget({
+  title,
+  config,
+  refreshIntervalMs,
+  isResizing,
+  ...props
+}: MetricWidgetProps) {
   const fetcher = useFetcher<typeof action>();
   const isLoading = fetcher.state !== "idle";
 
@@ -152,6 +159,7 @@ export function MetricWidget({ title, config, refreshIntervalMs, ...props }: Met
       isLoading={isLoading}
       data={data}
       error={fetcher.data?.success === false ? fetcher.data.error : undefined}
+      isResizing={isResizing}
     />
   );
 }

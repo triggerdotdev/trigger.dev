@@ -83,6 +83,7 @@ function MetricDashboard({
   const [layout, setLayout] = useState(data.layout);
   const { value } = useSearchParams();
   const { width, containerRef, mounted } = useContainerWidth();
+  const [resizingItemId, setResizingItemId] = useState<string | null>(null);
 
   const organization = useOrganization();
   const project = useProject();
@@ -118,6 +119,8 @@ function MetricDashboard({
             }}
             dragConfig={{ enabled: editable }}
             onLayoutChange={(l) => setLayout([...l])}
+            onResizeStart={(_layout, oldItem) => setResizingItemId(oldItem?.i ?? null)}
+            onResizeStop={() => setResizingItemId(null)}
           >
             {Object.entries(data.widgets).map(([key, widget]) => (
               <div key={key}>
@@ -133,6 +136,7 @@ function MetricDashboard({
                   projectId={project.id}
                   environmentId={environment.id}
                   refreshIntervalMs={60_000}
+                  isResizing={resizingItemId === key}
                 />
               </div>
             ))}
