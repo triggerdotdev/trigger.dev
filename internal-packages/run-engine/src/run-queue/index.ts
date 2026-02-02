@@ -44,7 +44,7 @@ import {
   RunQueueSelectionStrategy,
   TtlSystemOptions,
 } from "./types.js";
-import { encodeTtlMember } from "./ttlEncoding.js";
+import { encodeTtlMember, TtlMember } from "./ttlEncoding.js";
 import { WorkerQueueResolver } from "./workerQueueResolver.js";
 
 const SemanticAttributes = {
@@ -279,6 +279,7 @@ export class RunQueue {
     this.#setupSubscriber();
     this.#setupLuaLogSubscriber();
     this.#startMasterQueueConsumers();
+    this.#startTtlConsumers();
     this.#registerCommands();
   }
 
@@ -1217,6 +1218,147 @@ export class RunQueue {
     }
   }
 
+  /**
+   * Start TTL consumer loops for all shards.
+   * These consumers poll TTL sorted sets for expired runs and process them in batches.
+   */
+  #startTtlConsumers() {
+    const ttlSystem = this.options.ttlSystem;
+    if (!ttlSystem) {
+      this.logger.debug("TTL system disabled (no callback provided)");
+      return;
+    }
+
+    const shardCount = ttlSystem.shardCount ?? this.shardCount;
+
+    for (let i = 0; i < shardCount; i++) {
+      this.logger.debug(`Starting TTL consumer ${i}`);
+      this.#startTtlConsumer(i, ttlSystem).catch((err) => {
+        this.logger.error(`Failed to start TTL consumer ${i}`, { error: err });
+      });
+    }
+
+    this.logger.debug(`Started ${shardCount} TTL consumers`);
+  }
+
+  /**
+   * Start a single TTL consumer for a specific shard.
+   * Polls the TTL sorted set and processes expired runs in batches.
+   */
+  async #startTtlConsumer(shard: number, ttlSystem: TtlSystemOptions) {
+    let lastProcessedAt = Date.now();
+    let processedCount = 0;
+
+    const pollIntervalMs = ttlSystem.pollIntervalMs ?? 1000;
+    const batchSize = ttlSystem.batchSize ?? 100;
+    const shardCount = ttlSystem.shardCount ?? this.shardCount;
+    const consumerId = nanoid();
+
+    const ttlShardKey = this.keys.ttlShardKey(shard);
+    const keyPrefix = this.options.redis.keyPrefix ?? "";
+
+    try {
+      for await (const _ of setInterval(pollIntervalMs, null, {
+        signal: this.abortController.signal,
+      })) {
+        this.logger.verbose(`Processing TTL shard ${shard}`, {
+          processedCount,
+          lastProcessedAt,
+          service: this.name,
+          shard,
+          consumerId,
+        });
+
+        const now = performance.now();
+
+        const [error, expiredRuns] = await tryCatch(
+          this.#processTtlShard(ttlShardKey, batchSize, keyPrefix, ttlSystem.callback)
+        );
+
+        if (error) {
+          this.logger.error(`Failed to process TTL shard ${shard}`, {
+            error,
+            service: this.name,
+            shard,
+            consumerId,
+          });
+          continue;
+        }
+
+        const duration = performance.now() - now;
+
+        if (expiredRuns && expiredRuns.length > 0) {
+          this.logger.debug(`Expired ${expiredRuns.length} runs from TTL shard ${shard}`, {
+            processedCount,
+            lastProcessedAt,
+            service: this.name,
+            shard,
+            duration,
+            expiredCount: expiredRuns.length,
+            consumerId,
+          });
+        }
+
+        processedCount++;
+        lastProcessedAt = Date.now();
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== "AbortError") {
+        throw error;
+      }
+
+      this.logger.debug(`TTL consumer ${shard} stopped`, {
+        service: this.name,
+        shard,
+        processedCount,
+        lastProcessedAt,
+      });
+    }
+  }
+
+  /**
+   * Process a single TTL shard - dequeue expired runs and call the callback.
+   * Returns the list of expired runs that were processed.
+   */
+  async #processTtlShard(
+    ttlShardKey: string,
+    batchSize: number,
+    keyPrefix: string,
+    callback: TtlSystemOptions["callback"]
+  ): Promise<TtlMember[]> {
+    const currentTime = Date.now();
+
+    // Call the Lua script to dequeue expired runs
+    const result = await this.redis.dequeueTtlExpiredRuns(
+      ttlShardKey,
+      String(currentTime),
+      String(batchSize),
+      keyPrefix
+    );
+
+    if (!result || result.length === 0) {
+      return [];
+    }
+
+    // Parse the flat array result into TtlMember objects
+    // Result format: [runId, queueKey, orgId, runId, queueKey, orgId, ...]
+    const expiredRuns: TtlMember[] = [];
+    for (let i = 0; i + 2 < result.length; i += 3) {
+      expiredRuns.push({
+        runId: result[i],
+        queueKey: result[i + 1],
+        orgId: result[i + 2],
+      });
+    }
+
+    if (expiredRuns.length > 0) {
+      // Call the callback to handle expired runs (update DB, emit events)
+      await callback(expiredRuns);
+    }
+
+    return expiredRuns;
+  }
+
   async migrateLegacyMasterQueue(legacyMasterQueue: string) {
     const legacyMasterQueueKey = this.keys.legacyMasterQueueKey(legacyMasterQueue);
 
@@ -1601,7 +1743,20 @@ export class RunQueue {
       });
 
       const messages = [];
-      for (let i = 0; i < result.length; i += 3) {
+      let expiredIndex = -1;
+
+      // First, find if there's an __EXPIRED__ marker in the result
+      for (let i = 0; i < result.length; i++) {
+        if (result[i] === "__EXPIRED__") {
+          expiredIndex = i;
+          break;
+        }
+      }
+
+      // Parse messages up to the __EXPIRED__ marker (or entire array if no marker)
+      const messagesEndIndex = expiredIndex > -1 ? expiredIndex : result.length;
+
+      for (let i = 0; i < messagesEndIndex; i += 3) {
         const messageId = result[i];
         const messageScore = result[i + 1];
         const rawMessage = result[i + 2];
@@ -1625,6 +1780,39 @@ export class RunQueue {
           messageScore,
           message,
         });
+      }
+
+      // Process expired runs if the __EXPIRED__ marker was found
+      if (expiredIndex > -1 && this.options.ttlSystem?.callback) {
+        const expiredCount = parseInt(result[expiredIndex + 1], 10);
+        const expiredRuns: TtlMember[] = [];
+
+        // Parse expired runs: triplets of (runId, queueKey, orgId) starting after the count
+        for (let i = expiredIndex + 2; i + 2 < result.length; i += 3) {
+          expiredRuns.push({
+            runId: result[i],
+            queueKey: result[i + 1],
+            orgId: result[i + 2],
+          });
+        }
+
+        if (expiredRuns.length > 0) {
+          this.logger.debug("dequeueMessagesFromQueue found expired runs", {
+            expiredCount,
+            expiredRuns: expiredRuns.map((r) => r.runId),
+            service: this.name,
+          });
+
+          // Fire-and-forget callback for expired runs
+          // Don't await to avoid blocking the dequeue path
+          this.options.ttlSystem.callback(expiredRuns).catch((err) => {
+            this.logger.error("Failed to process expired runs from dequeue", {
+              error: err,
+              expiredRuns: expiredRuns.map((r) => r.runId),
+              service: this.name,
+            });
+          });
+        }
       }
 
       this.logger.debug("dequeueMessagesFromQueue parsed result", {
@@ -1806,6 +1994,18 @@ export class RunQueue {
     const workerQueueKey = this.keys.workerQueueKey(workerQueue);
     const messageKeyValue = this.keys.messageKey(message.orgId, messageId);
 
+    // TTL handling - compute shard key and member if message had TTL
+    const ttlExpiresAt = message.ttlExpiresAt ?? 0;
+    const ttlShardCount = this.options.ttlSystem?.shardCount ?? this.shardCount;
+    const ttlShardKey =
+      ttlExpiresAt > 0
+        ? this.keys.ttlShardKey(this.keys.ttlShardForRun(message.runId, ttlShardCount))
+        : "";
+    const ttlMember =
+      ttlExpiresAt > 0
+        ? encodeTtlMember({ runId: message.runId, queueKey: message.queue, orgId: message.orgId })
+        : "";
+
     this.logger.debug("Calling acknowledgeMessage", {
       messageKey,
       messageQueue,
@@ -1820,6 +2020,8 @@ export class RunQueue {
       workerQueueKey,
       removeFromWorkerQueue,
       messageKeyValue,
+      ttlShardKey,
+      ttlMember: ttlMember ? "[encoded]" : "",
       service: this.name,
     });
 
@@ -1833,10 +2035,12 @@ export class RunQueue {
       envCurrentDequeuedKey,
       envQueueKey,
       workerQueueKey,
+      ttlShardKey,
       messageId,
       messageQueue,
       messageKeyValue,
-      removeFromWorkerQueue ? "1" : "0"
+      removeFromWorkerQueue ? "1" : "0",
+      ttlMember
     );
   }
 
@@ -2606,7 +2810,7 @@ return message
     });
 
     this.redis.defineCommand("acknowledgeMessage", {
-      numberOfKeys: 9,
+      numberOfKeys: 10,
       lua: `
 -- Keys:
 local masterQueueKey = KEYS[1]
@@ -2618,12 +2822,14 @@ local queueCurrentDequeuedKey = KEYS[6]
 local envCurrentDequeuedKey = KEYS[7]
 local envQueueKey = KEYS[8]
 local workerQueueKey = KEYS[9]
+local ttlShardKey = KEYS[10]  -- Optional: TTL sorted set shard key (pass empty string if not using TTL)
 
 -- Args:
 local messageId = ARGV[1]
 local messageQueueName = ARGV[2]
 local messageKeyValue = ARGV[3]
 local removeFromWorkerQueue = ARGV[4]
+local ttlMember = ARGV[5]  -- Optional: TTL member to remove (pass empty string if not using TTL)
 
 -- Remove the message from the message key
 redis.call('DEL', messageKey)
@@ -2649,6 +2855,11 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
 -- Remove the message from the worker queue
 if removeFromWorkerQueue == '1' then
   redis.call('LREM', workerQueueKey, 0, messageKeyValue)
+end
+
+-- Remove from TTL sorted set if using TTL
+if ttlShardKey ~= '' and ttlMember ~= '' then
+  redis.call('ZREM', ttlShardKey, ttlMember)
 end
 `,
     });
@@ -2933,11 +3144,13 @@ declare module "@internal/redis" {
       envCurrentDequeuedKey: string,
       envQueueKey: string,
       workerQueueKey: string,
+      ttlShardKey: string, // Optional: pass empty string if not using TTL
       // args
       messageId: string,
       messageQueueName: string,
       messageKeyValue: string,
       removeFromWorkerQueue: string,
+      ttlMember: string, // Optional: pass empty string if not using TTL
       callback?: Callback<void>
     ): Result<void, Context>;
 
