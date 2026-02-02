@@ -52,7 +52,7 @@ export function SideMenuSection({
             onClick={isSideMenuCollapsed ? undefined : handleToggle}
             style={{ cursor: isSideMenuCollapsed ? "default" : "pointer" }}
           >
-            <h2 className="text-xs whitespace-nowrap">{title}</h2>
+            <h2 className="whitespace-nowrap text-xs">{title}</h2>
             <motion.div
               initial={isCollapsed}
               animate={{ rotate: isCollapsed ? -90 : 0 }}
@@ -61,9 +61,7 @@ export function SideMenuSection({
               <ToggleArrowIcon className="size-2" />
             </motion.div>
           </div>
-          {headerAction && (
-            <div className="flex items-center">{headerAction}</div>
-          )}
+          {headerAction && <div className="flex items-center">{headerAction}</div>}
         </motion.div>
         {/* Divider - absolutely positioned, visible when sidebar is collapsed but section is expanded */}
         <motion.div
