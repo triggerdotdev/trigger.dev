@@ -42,7 +42,9 @@ import {
   RunQueueKeyProducer,
   RunQueueKeyProducerEnvironment,
   RunQueueSelectionStrategy,
+  TtlSystemOptions,
 } from "./types.js";
+import { encodeTtlMember } from "./ttlEncoding.js";
 import { WorkerQueueResolver } from "./workerQueueResolver.js";
 
 const SemanticAttributes = {
@@ -92,6 +94,12 @@ export type RunQueueOptions = {
     processMarkedJitterInMs?: number;
     callback: ConcurrencySweeperCallback;
   };
+  /**
+   * TTL system options for automatic run expiration.
+   * When enabled, runs with a ttlExpiresAt will be automatically expired
+   * if not dequeued before that time.
+   */
+  ttlSystem?: TtlSystemOptions;
 };
 
 export interface ConcurrencySweeperCallback {
@@ -1473,6 +1481,16 @@ export class RunQueue {
     const messageData = JSON.stringify(message);
     const messageScore = String(message.timestamp);
 
+    // TTL handling
+    const ttlExpiresAt = message.ttlExpiresAt ?? 0;
+    const ttlShardCount = this.options.ttlSystem?.shardCount ?? this.shardCount;
+    const ttlShardKey = ttlExpiresAt > 0
+      ? this.keys.ttlShardKey(this.keys.ttlShardForRun(message.runId, ttlShardCount))
+      : "";
+    const ttlMember = ttlExpiresAt > 0
+      ? encodeTtlMember({ runId: message.runId, queueKey: message.queue, orgId: message.orgId })
+      : "";
+
     this.logger.debug("Calling enqueueMessage", {
       queueKey,
       messageKey,
@@ -1486,6 +1504,8 @@ export class RunQueue {
       messageData,
       messageScore,
       masterQueueKey,
+      ttlExpiresAt,
+      ttlShardKey,
       service: this.name,
     });
 
@@ -1498,10 +1518,13 @@ export class RunQueue {
       queueCurrentDequeuedKey,
       envCurrentDequeuedKey,
       envQueueKey,
+      ttlShardKey,
       queueName,
       messageId,
       messageData,
-      messageScore
+      messageScore,
+      String(ttlExpiresAt),
+      ttlMember
     );
   }
 
@@ -2275,8 +2298,11 @@ end
       `,
     });
 
+    // TTL member encoding: runId|queueKey|orgId
+    const TTL_DELIMITER = "\\x1e";
+
     this.redis.defineCommand("enqueueMessage", {
-      numberOfKeys: 8,
+      numberOfKeys: 9, // Added ttlShardKey as optional 9th key
       lua: `
 local masterQueueKey = KEYS[1]
 local queueKey = KEYS[2]
@@ -2286,11 +2312,14 @@ local envCurrentConcurrencyKey = KEYS[5]
 local queueCurrentDequeuedKey = KEYS[6]
 local envCurrentDequeuedKey = KEYS[7]
 local envQueueKey = KEYS[8]
+local ttlShardKey = KEYS[9]  -- Optional: TTL sorted set shard key
 
 local queueName = ARGV[1]
 local messageId = ARGV[2]
 local messageData = ARGV[3]
 local messageScore = ARGV[4]
+local ttlExpiresAt = tonumber(ARGV[5] or '0')  -- Optional: TTL expiration timestamp
+local ttlMember = ARGV[6]  -- Optional: TTL member (runId|queueKey|orgId)
 
 -- Write the message to the message key
 redis.call('SET', messageKey, messageData)
@@ -2300,6 +2329,11 @@ redis.call('ZADD', queueKey, messageScore, messageId)
 
 -- Add the message to the env queue
 redis.call('ZADD', envQueueKey, messageScore, messageId)
+
+-- Add to TTL sorted set if TTL is set
+if ttlExpiresAt > 0 and ttlShardKey ~= '' and ttlMember ~= '' then
+  redis.call('ZADD', ttlShardKey, ttlExpiresAt, ttlMember)
+end
 
 -- Rebalance the parent queues
 local earliestMessage = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
@@ -2375,30 +2409,58 @@ if #messages == 0 then
 end
 
 local results = {}
+local expiredRuns = {}  -- Track expired runs for TTL cleanup
 local dequeuedCount = 0
 
 -- Process messages in pairs (messageId, score)
 for i = 1, #messages, 2 do
     local messageId = messages[i]
     local messageScore = tonumber(messages[i + 1])
-    
+
     -- Get the message payload
     local messageKey = messageKeyPrefix .. messageId
     local messagePayload = redis.call('GET', messageKey)
-    
+
     if messagePayload then
-        -- Update concurrency
-        redis.call('ZREM', queueKey, messageId)
-        redis.call('ZREM', envQueueKey, messageId)
-        redis.call('SADD', queueCurrentConcurrencyKey, messageId)
-        redis.call('SADD', envCurrentConcurrencyKey, messageId)
-        
-        -- Add to results
-        table.insert(results, messageId)
-        table.insert(results, messageScore)
-        table.insert(results, messagePayload)
-        
-        dequeuedCount = dequeuedCount + 1
+        -- Parse payload to check TTL
+        local ok, messageData = pcall(cjson.decode, messagePayload)
+        local isExpired = false
+
+        if ok and messageData and messageData.ttlExpiresAt then
+            local ttlExpiresAt = tonumber(messageData.ttlExpiresAt)
+            if ttlExpiresAt and ttlExpiresAt > 0 and currentTime >= ttlExpiresAt then
+                isExpired = true
+            end
+        end
+
+        if isExpired then
+            -- Run is expired - remove from queues but don't add to results
+            redis.call('ZREM', queueKey, messageId)
+            redis.call('ZREM', envQueueKey, messageId)
+            redis.call('DEL', messageKey)
+            -- Track for TTL cleanup callback (messageId:queueKey:orgId)
+            table.insert(expiredRuns, messageId)
+            if ok and messageData then
+                table.insert(expiredRuns, messageData.queue or '')
+                table.insert(expiredRuns, messageData.orgId or '')
+            else
+                table.insert(expiredRuns, '')
+                table.insert(expiredRuns, '')
+            end
+        else
+            -- Update concurrency
+            redis.call('ZREM', queueKey, messageId)
+            redis.call('ZREM', envQueueKey, messageId)
+            redis.call('SADD', queueCurrentConcurrencyKey, messageId)
+            redis.call('SADD', envCurrentConcurrencyKey, messageId)
+
+            -- Add to results
+            table.insert(results, messageId)
+            table.insert(results, messageScore)
+            table.insert(results, messagePayload)
+
+            dequeuedCount = dequeuedCount + 1
+        end
     end
 end
 
@@ -2411,7 +2473,17 @@ else
   redis.call('ZADD', masterQueueKey, earliestMessage[2], queueName)
 end
 
--- Return results as a flat array: [messageId1, messageScore1, messagePayload1, messageId2, messageScore2, messagePayload2, ...]
+-- Return results as a flat array: [messageId1, messageScore1, messagePayload1, ...]
+-- Followed by expired runs count and expired run data: [expiredCount, expiredRunId1, queueKey1, orgId1, ...]
+-- The caller can use expiredCount to parse the expired runs
+if #expiredRuns > 0 then
+    table.insert(results, '__EXPIRED__')
+    table.insert(results, #expiredRuns / 3)  -- Count of expired runs
+    for _, v in ipairs(expiredRuns) do
+        table.insert(results, v)
+    end
+end
+
 return results
       `,
     });
@@ -2433,6 +2505,71 @@ end
 local queueLength = tonumber(redis.call('LLEN', workerQueueKey) or '0')
 
 return {messageId, queueLength} -- Return message details
+      `,
+    });
+
+    // TTL consumer: batch dequeue expired runs from a TTL shard
+    this.redis.defineCommand("dequeueTtlExpiredRuns", {
+      numberOfKeys: 1, // Just the TTL shard key
+      lua: `
+local ttlShardKey = KEYS[1]
+local currentTime = tonumber(ARGV[1])
+local maxCount = tonumber(ARGV[2] or '100')
+local keyPrefix = ARGV[3] or ''
+
+-- TTL member delimiter
+local DELIMITER = "${TTL_DELIMITER}"
+
+-- Get expired runs (score <= currentTime)
+local expiredMembers = redis.call('ZRANGEBYSCORE', ttlShardKey, '-inf', currentTime, 'WITHSCORES', 'LIMIT', 0, maxCount)
+
+if #expiredMembers == 0 then
+    return nil
+end
+
+local results = {}
+
+-- Process members in pairs (member, score)
+for i = 1, #expiredMembers, 2 do
+    local member = expiredMembers[i]
+    local score = expiredMembers[i + 1]
+
+    -- Decode TTL member: runId|queueKey|orgId
+    local parts = {}
+    for part in string.gmatch(member, "([^" .. DELIMITER .. "]+)") do
+        table.insert(parts, part)
+    end
+
+    if #parts >= 3 then
+        local runId = parts[1]
+        local queueKey = parts[2]
+        local orgId = parts[3]
+
+        -- Remove from queue sorted set
+        redis.call('ZREM', queueKey, runId)
+
+        -- Remove from env sorted set (derive from queueKey)
+        -- queueKey format: {org:xxx}:proj:xxx:env:xxx:queue:xxx[:ck:xxx]
+        local envQueueKey = string.match(queueKey, "({org:[^}]+}):.-:(env:[^:]+)")
+        if envQueueKey then
+            redis.call('ZREM', envQueueKey, runId)
+        end
+
+        -- Delete message key
+        local messageKey = keyPrefix .. "{org:" .. orgId .. "}:message:" .. runId
+        redis.call('DEL', messageKey)
+
+        -- Remove from TTL sorted set
+        redis.call('ZREM', ttlShardKey, member)
+
+        -- Add to results: [runId, queueKey, orgId, ...]
+        table.insert(results, runId)
+        table.insert(results, queueKey)
+        table.insert(results, orgId)
+    end
+end
+
+return results
       `,
     });
 
@@ -2740,11 +2877,14 @@ declare module "@internal/redis" {
       queueCurrentDequeuedKey: string,
       envCurrentDequeuedKey: string,
       envQueueKey: string,
+      ttlShardKey: string, // Optional: pass empty string if no TTL
       //args
       queueName: string,
       messageId: string,
       messageData: string,
       messageScore: string,
+      ttlExpiresAt: string, // Optional: pass '0' if no TTL
+      ttlMember: string, // Optional: pass empty string if no TTL
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -2878,6 +3018,16 @@ declare module "@internal/redis" {
       maxCount: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
+
+    dequeueTtlExpiredRuns(
+      // keys
+      ttlShardKey: string,
+      // args
+      currentTime: string,
+      maxCount: string,
+      keyPrefix: string,
+      callback?: Callback<string[] | null>
+    ): Result<string[] | null, Context>;
   }
 }
 

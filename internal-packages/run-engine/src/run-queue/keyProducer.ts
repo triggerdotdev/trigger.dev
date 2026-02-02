@@ -17,6 +17,7 @@ const constants = {
   DEAD_LETTER_QUEUE_PART: "deadLetter",
   MASTER_QUEUE_PART: "masterQueue",
   WORKER_QUEUE_PART: "workerQueue",
+  TTL_PART: "ttl",
 } as const;
 
 export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
@@ -299,6 +300,22 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
 
   currentConcurrencySetKeyScanPattern(): string {
     return `*:${constants.ENV_PART}:*:queue:*:${constants.CURRENT_CONCURRENCY_PART}`;
+  }
+
+  /**
+   * Get the TTL sorted set key for a specific shard.
+   * TTL sorted sets are sharded to distribute load.
+   */
+  ttlShardKey(shard: number): string {
+    return [constants.TTL_PART, "shard", shard.toString()].join(":");
+  }
+
+  /**
+   * Determine which TTL shard a run belongs to based on its runId.
+   * Uses jump consistent hash for even distribution.
+   */
+  ttlShardForRun(runId: string, shardCount: number): number {
+    return jumpHash(runId, shardCount);
   }
 
   descriptorFromQueue(queue: string): QueueDescriptor {

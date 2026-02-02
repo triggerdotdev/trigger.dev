@@ -13,6 +13,11 @@ export const InputPayload = z.object({
   concurrencyKey: z.string().optional(),
   timestamp: z.number(),
   attempt: z.number(),
+  /**
+   * TTL expiration timestamp in milliseconds (absolute time when run expires).
+   * If set, the run will be automatically expired if not dequeued before this time.
+   */
+  ttlExpiresAt: z.number().optional(),
 });
 export type InputPayload = z.infer<typeof InputPayload>;
 
@@ -120,6 +125,10 @@ export interface RunQueueKeyProducer {
   // Concurrency sweeper methods
   markedForAckKey(): string;
   currentConcurrencySetKeyScanPattern(): string;
+
+  // TTL sorted set methods
+  ttlShardKey(shard: number): string;
+  ttlShardForRun(runId: string, shardCount: number): number;
 }
 
 export type EnvQueues = {
@@ -133,3 +142,26 @@ export interface RunQueueSelectionStrategy {
     consumerId: string
   ): Promise<Array<EnvQueues>>;
 }
+
+/**
+ * Callback invoked when runs are expired by the TTL system.
+ * Receives the queue key and run IDs that were expired.
+ * Should update the database and emit events as needed.
+ */
+export interface TtlExpiredCallback {
+  (runs: Array<{ queueKey: string; runId: string; orgId: string }>): Promise<void>;
+}
+
+/**
+ * TTL system options for the run queue.
+ */
+export type TtlSystemOptions = {
+  /** Number of shards for TTL sorted sets (default: same as queue shards) */
+  shardCount?: number;
+  /** How often to poll each shard for expired runs (ms) */
+  pollIntervalMs?: number;
+  /** Max number of runs to dequeue per poll per shard */
+  batchSize?: number;
+  /** Callback when runs are expired */
+  callback: TtlExpiredCallback;
+};
