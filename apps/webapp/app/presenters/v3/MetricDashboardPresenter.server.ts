@@ -55,7 +55,6 @@ export type BuiltInDashboard = {
   key: string;
   title: string;
   layout: DashboardLayout;
-  defaultPeriod: string;
 };
 
 /** Returns the dashboard layout */
@@ -86,13 +85,7 @@ export class MetricDashboardPresenter extends BasePresenter {
     };
   }
 
-  public async builtInDashboard({
-    organizationId,
-    key,
-  }: {
-    organizationId: string;
-    key: string;
-  }): Promise<BuiltInDashboard> {
+  public async builtInDashboard({ organizationId, key }: { organizationId: string; key: string }) {
     const defaultPeriod = await getDefaultPeriod(organizationId);
     const dashboard = builtInDashboard(key);
     return {
