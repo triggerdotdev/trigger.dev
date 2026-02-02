@@ -20,13 +20,15 @@ export type MetricFilters = {
   tags?: string[];
 };
 
-const LayoutItem = z.object({
+export const LayoutItem = z.object({
   i: z.string(),
   x: z.number(),
   y: z.number(),
   w: z.number(),
   h: z.number(),
 });
+
+export type LayoutItem = z.infer<typeof LayoutItem>;
 
 const Widget = z.object({
   title: z.string(),
