@@ -64,14 +64,14 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className="h-full">
-          <MetricDashboard data={layout} defaultPeriod={defaultPeriod} editable={true} />
+          <MetricDashboard data={layout} defaultPeriod={defaultPeriod} editable={false} />
         </div>
       </PageBody>
     </PageContainer>
   );
 }
 
-function MetricDashboard({
+export function MetricDashboard({
   data,
   defaultPeriod,
   editable,

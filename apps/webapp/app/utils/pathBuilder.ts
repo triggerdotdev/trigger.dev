@@ -274,6 +274,15 @@ export function queryPath(
   return `${v3EnvironmentPath(organization, project, environment)}/query`;
 }
 
+export function v3CustomDashboardPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  dashboard: { friendlyId: string }
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/metrics/custom/${dashboard.friendlyId}`;
+}
+
 export function v3TestTaskPath(
   organization: OrgForPath,
   project: ProjectForPath,

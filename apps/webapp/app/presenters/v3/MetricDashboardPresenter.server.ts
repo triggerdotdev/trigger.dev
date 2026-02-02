@@ -45,7 +45,7 @@ const DashboardLayout = z.discriminatedUnion("version", [
 export type DashboardLayout = z.infer<typeof DashboardLayout>;
 
 export type CustomDashboard = {
-  id: string;
+  friendlyId: string;
   title: string;
   layout: DashboardLayout;
   defaultPeriod: string;
@@ -61,14 +61,14 @@ export type BuiltInDashboard = {
 /** Returns the dashboard layout */
 export class MetricDashboardPresenter extends BasePresenter {
   public async customDashboard({
-    dashboardId,
+    friendlyId,
     organizationId,
   }: {
-    dashboardId: string;
+    friendlyId: string;
     organizationId: string;
   }): Promise<CustomDashboard> {
     const dashboard = await this._replica.metricsDashboard.findFirst({
-      where: { id: dashboardId, organizationId },
+      where: { friendlyId, organizationId },
     });
     if (!dashboard) {
       throw new Error("No dashboard found");
@@ -79,7 +79,7 @@ export class MetricDashboardPresenter extends BasePresenter {
     const defaultPeriod = await getDefaultPeriod(organizationId);
 
     return {
-      id: dashboardId,
+      friendlyId: dashboard.friendlyId,
       title: dashboard.title,
       layout,
       defaultPeriod,
