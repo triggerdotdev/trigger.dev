@@ -5,6 +5,36 @@ export const CIRCULAR_REFERENCE_SENTINEL = "$@circular((";
 
 const DEFAULT_MAX_DEPTH = 128;
 
+function escapeKey(key: string) {
+  return key.replace(/\\/g, "\\\\").replace(/\./g, "\\.");
+}
+
+function splitPath(path: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let isEscaped = false;
+
+  for (let i = 0; i < path.length; i++) {
+    const char = path[i];
+
+    if (isEscaped) {
+      current += char;
+      isEscaped = false;
+    } else if (char === "\\") {
+      isEscaped = true;
+    } else if (char === ".") {
+      parts.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  parts.push(current);
+
+  return parts;
+}
+
 export function flattenAttributes(
   obj: unknown,
   prefix?: string,
@@ -24,7 +54,7 @@ class AttributeFlattener {
   constructor(
     private maxAttributeCount?: number,
     private maxDepth: number = DEFAULT_MAX_DEPTH
-  ) {}
+  ) { }
 
   get attributes(): Attributes {
     return this.result;
@@ -200,7 +230,8 @@ class AttributeFlattener {
         break;
       }
 
-      const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
+      const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : escapeKey(key)
+        }`;
 
       if (Array.isArray(value)) {
         for (let i = 0; i < value.length; i++) {
@@ -278,7 +309,7 @@ export function unflattenAttributes(
       continue;
     }
 
-    const parts = key.split(".").reduce(
+    const parts = splitPath(key).reduce(
       (acc, part) => {
         if (part.startsWith("[") && part.endsWith("]")) {
           // Handle array indices more precisely
