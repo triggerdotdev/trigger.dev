@@ -40,7 +40,7 @@ export function SideMenuSection({
       <div className="relative w-full">
         {/* Header - fades out when sidebar is collapsed */}
         <motion.div
-          className="flex items-center justify-between overflow-hidden pr-1"
+          className="flex items-center justify-between overflow-hidden rounded-sm py-1 pl-1.5 pr-1 transition hover:bg-charcoal-750"
           initial={false}
           animate={{
             opacity: isSideMenuCollapsed ? 0 : 1,
@@ -48,7 +48,7 @@ export function SideMenuSection({
           transition={{ duration: 0.15, ease: "easeOut" }}
         >
           <div
-            className="flex cursor-pointer items-center gap-1 rounded-sm py-1 pl-1.5 text-text-dimmed transition hover:bg-charcoal-750 hover:text-text-bright"
+            className="flex cursor-pointer items-center gap-1 text-text-dimmed transition hover:text-text-bright"
             onClick={isSideMenuCollapsed ? undefined : handleToggle}
             style={{ cursor: isSideMenuCollapsed ? "default" : "pointer" }}
           >
