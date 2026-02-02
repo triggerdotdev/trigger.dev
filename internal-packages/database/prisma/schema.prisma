@@ -2494,6 +2494,8 @@ model CustomerQuery {
 model MetricsDashboard {
   id String @id @default(cuid())
 
+  friendlyId String @unique
+
   title       String
   description String
 
