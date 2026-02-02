@@ -2550,7 +2550,7 @@ model MetricsDashboard {
   friendlyId String @unique
 
   title       String
-  description String
+  description String @default("")
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String

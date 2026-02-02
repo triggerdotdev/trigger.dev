@@ -94,11 +94,16 @@ export class MetricDashboardPresenter extends BasePresenter {
     key: string;
   }): Promise<BuiltInDashboard> {
     const defaultPeriod = await getDefaultPeriod(organizationId);
-    return builtInDashboard(key);
+    const dashboard = builtInDashboard(key);
+    return {
+      ...dashboard,
+      defaultPeriod,
+    };
   }
 
   #getLayout(layoutData: string): DashboardLayout {
-    const parsedLayout = DashboardLayout.safeParse(layoutData);
+    const json = JSON.parse(layoutData);
+    const parsedLayout = DashboardLayout.safeParse(json);
     if (!parsedLayout.success) {
       throw fromZodError(parsedLayout.error);
     }
