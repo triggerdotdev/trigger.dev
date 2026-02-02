@@ -13,7 +13,17 @@ export class ConsoleInterceptor {
     private readonly sendToStdIO: boolean,
     private readonly interceptingDisabled: boolean,
     private readonly maxAttributeCount?: number
-  ) {}
+  ) { }
+
+  private originalConsole:
+    | {
+      log: Console["log"];
+      info: Console["info"];
+      warn: Console["warn"];
+      error: Console["error"];
+      debug: Console["debug"];
+    }
+    | undefined;
 
   // Intercept the console and send logs to the OpenTelemetry logger
   // during the execution of the callback
@@ -23,7 +33,7 @@ export class ConsoleInterceptor {
     }
 
     // Save the original console methods
-    const originalConsole = {
+    this.originalConsole = {
       log: console.log,
       info: console.info,
       warn: console.warn,
@@ -42,11 +52,15 @@ export class ConsoleInterceptor {
       return await callback();
     } finally {
       // Restore the original console methods
-      console.log = originalConsole.log;
-      console.info = originalConsole.info;
-      console.warn = originalConsole.warn;
-      console.error = originalConsole.error;
-      console.debug = originalConsole.debug;
+      if (this.originalConsole) {
+        console.log = this.originalConsole.log;
+        console.info = this.originalConsole.info;
+        console.warn = this.originalConsole.warn;
+        console.error = this.originalConsole.error;
+        console.debug = this.originalConsole.debug;
+
+        this.originalConsole = undefined;
+      }
     }
   }
 
@@ -79,10 +93,30 @@ export class ConsoleInterceptor {
     const body = util.format(...args);
 
     if (this.sendToStdIO) {
-      if (severityNumber === SeverityNumber.ERROR) {
-        process.stderr.write(body);
+      if (this.originalConsole) {
+        switch (severityNumber) {
+          case SeverityNumber.INFO:
+            this.originalConsole.log(...args);
+            break;
+          case SeverityNumber.WARN:
+            this.originalConsole.warn(...args);
+            break;
+          case SeverityNumber.ERROR:
+            this.originalConsole.error(...args);
+            break;
+          case SeverityNumber.DEBUG:
+            this.originalConsole.debug(...args);
+            break;
+          default:
+            this.originalConsole.log(...args);
+            break;
+        }
       } else {
-        process.stdout.write(body);
+        if (severityNumber === SeverityNumber.ERROR) {
+          process.stderr.write(body + "\n");
+        } else {
+          process.stdout.write(body + "\n");
+        }
       }
     }
 
