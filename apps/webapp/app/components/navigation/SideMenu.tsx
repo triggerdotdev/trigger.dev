@@ -464,7 +464,6 @@ export function SideMenu({
                   inactiveIconColor="text-purple-500"
                   to={queryPath(organization, project, environment)}
                   data-action="query"
-                  badge={<BetaBadge />}
                   isCollapsed={isCollapsed}
                 />
                 <SideMenuItem
