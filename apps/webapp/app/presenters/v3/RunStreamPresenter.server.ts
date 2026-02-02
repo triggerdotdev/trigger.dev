@@ -1,12 +1,12 @@
-import { PrismaClient, prisma } from "~/db.server";
+import { type PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { createSSELoader } from "~/utils/sse";
+import { createSSELoader, SendFunction } from "~/utils/sse";
 import { throttle } from "~/utils/throttle";
 import { tracePubSub } from "~/v3/services/tracePubSub.server";
 
-const PING_INTERVAL = 1000;
-const STREAM_TIMEOUT = 30 * 1000; // 30 seconds
+const PING_INTERVAL = 5_000;
+const STREAM_TIMEOUT = 30_000;
 
 export class RunStreamPresenter {
   #prismaClient: PrismaClient;
@@ -49,36 +49,40 @@ export class RunStreamPresenter {
         // Subscribe to trace updates
         const { unsubscribe, eventEmitter } = await tracePubSub.subscribeToTrace(run.traceId);
 
-        // Store throttled send function and message listener for cleanup
-        let throttledSend: ReturnType<typeof throttle> | undefined;
+        // Only send max every 1 second
+        const throttledSend = throttle(
+          (args: { send: SendFunction; event?: string; data: string }) => {
+            try {
+              args.send({ event: args.event, data: args.data });
+            } catch (error) {
+              if (error instanceof Error) {
+                if (error.name !== "TypeError") {
+                  logger.debug("Error sending SSE in RunStreamPresenter", {
+                    error: {
+                      name: error.name,
+                      message: error.message,
+                      stack: error.stack,
+                    },
+                  });
+                }
+              }
+              // Abort the stream on send error
+              context.controller.abort("Send error");
+            }
+          },
+          1000
+        );
+
         let messageListener: ((event: string) => void) | undefined;
 
         return {
           initStream: ({ send }) => {
             // Create throttled send function
-            throttledSend = throttle((args: { event?: string; data: string }) => {
-              try {
-                send(args);
-              } catch (error) {
-                if (error instanceof Error) {
-                  if (error.name !== "TypeError") {
-                    logger.debug("Error sending SSE in RunStreamPresenter", {
-                      error: {
-                        name: error.name,
-                        message: error.message,
-                        stack: error.stack,
-                      },
-                    });
-                  }
-                }
-                // Abort the stream on send error
-                context.controller.abort("Send error");
-              }
-            }, 1000);
+            throttledSend({ send, event: "message", data: new Date().toISOString() });
 
             // Set up message listener for pub/sub events
             messageListener = (event: string) => {
-              throttledSend?.({ data: event });
+              throttledSend({ send, event: "message", data: event });
             };
             eventEmitter.addListener("message", messageListener);
 
@@ -88,7 +92,8 @@ export class RunStreamPresenter {
           iterator: ({ send }) => {
             // Send ping to keep connection alive
             try {
-              send({ event: "ping", data: new Date().toISOString() });
+              // Send an actual message so the client refreshes
+              throttledSend({ send, event: "message", data: new Date().toISOString() });
             } catch (error) {
               // If we can't send a ping, the connection is likely dead
               return false;

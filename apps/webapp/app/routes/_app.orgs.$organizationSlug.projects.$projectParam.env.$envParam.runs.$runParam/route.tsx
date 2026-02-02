@@ -436,6 +436,24 @@ export default function Page() {
   );
 }
 
+function shouldLiveReload({
+  events,
+  maximumLiveReloadingSetting,
+  run,
+}: {
+  events: TraceEvent[];
+  maximumLiveReloadingSetting: number;
+  run: { completedAt: string | null };
+}): boolean {
+  // We don't live reload if there are a ton of spans/logs
+  if (events.length > maximumLiveReloadingSetting) return false;
+
+  // If the run was completed a while ago, we don't need to live reload anymore
+  if (run.completedAt && new Date(run.completedAt).getTime() < Date.now() - 30_000) return false;
+
+  return true;
+}
+
 function TraceView({
   run,
   trace,
@@ -453,18 +471,19 @@ function TraceView({
 
   const { events, duration, rootSpanStatus, rootStartedAt, queuedDuration, overridesBySpanId } =
     trace;
-  const shouldLiveReload = events.length <= maximumLiveReloadingSetting;
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
     replaceSearchParam("span", selectedSpan, { replace: true });
   }, 250);
+
+  const isLiveReloading = shouldLiveReload({ events, maximumLiveReloadingSetting, run });
 
   const revalidator = useRevalidator();
   const streamedEvents = useEventSource(
     v3RunStreamingPath(organization, project, environment, run),
     {
       event: "message",
-      disabled: !shouldLiveReload,
+      disabled: !isLiveReloading,
     }
   );
   useEffect(() => {
@@ -511,7 +530,7 @@ function TraceView({
             rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
             queuedDuration={queuedDuration}
             environmentType={run.environment.type}
-            shouldLiveReload={shouldLiveReload}
+            shouldLiveReload={isLiveReloading}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
             rootRun={run.rootTaskRun}
             parentRun={run.parentTaskRun}
