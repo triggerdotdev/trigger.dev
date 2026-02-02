@@ -94,13 +94,16 @@ export class TriggerTracer {
       },
       parentContext,
       async (span) => {
-        signal?.addEventListener("abort", () => {
+        // Use a named function to minimize closure scope and add { once: true }
+        // to prevent memory leaks from long-lived signals.
+        const onAbort = () => {
           if (!spanEnded) {
             spanEnded = true;
             recordSpanException(span, signal.reason);
             span.end();
           }
-        });
+        };
+        signal?.addEventListener("abort", onAbort, { once: true });
 
         if (taskContext.ctx && createPartialSpanWithEvents) {
           const partialSpan = this.tracer.startSpan(

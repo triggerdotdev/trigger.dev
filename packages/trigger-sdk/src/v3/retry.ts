@@ -172,9 +172,11 @@ async function retryFetch(
               )
             : undefined;
 
-          init?.signal?.addEventListener("abort", () => {
-            abortController.abort();
-          });
+          // Use .bind() to avoid closing over `init` which contains the request body.
+          // Arrow functions capture the surrounding scope, preventing large objects
+          // from being GC'd for the lifetime of the signal.
+          const abort = abortController.abort.bind(abortController);
+          init?.signal?.addEventListener("abort", abort, { once: true });
 
           const [response, span] = await doFetchRequest(
             input,

@@ -1645,7 +1645,7 @@ export class RunQueue {
         await blockingClient.quit();
       }
 
-      this.abortController.signal.addEventListener("abort", cleanup);
+      this.abortController.signal.addEventListener("abort", cleanup, { once: true });
 
       const result = await this.#trace("popMessageFromWorkerQueue", async (span) => {
         span.setAttributes({

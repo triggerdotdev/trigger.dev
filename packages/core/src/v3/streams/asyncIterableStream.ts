@@ -29,12 +29,15 @@ export function createAsyncIterableReadable<S, T>(
       const transformedStream = source.pipeThrough(new TransformStream(transformer));
       const reader = transformedStream.getReader();
 
-      signal.addEventListener("abort", () => {
+      // Use a named function to minimize closure scope and add { once: true }
+      // to prevent memory leaks from long-lived signals.
+      const onAbort = () => {
         queueMicrotask(() => {
           reader.cancel();
           controller.close();
         });
-      });
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
 
       while (true) {
         const { done, value } = await reader.read();
@@ -57,10 +60,11 @@ export function createAsyncIterableStreamFromAsyncIterable<T>(
   const stream = new ReadableStream<T>({
     async start(controller) {
       try {
+        // Use a named function to minimize closure scope and add { once: true }
+        // to prevent memory leaks from long-lived signals.
         if (signal) {
-          signal.addEventListener("abort", () => {
-            controller.close();
-          });
+          const onAbort = () => controller.close();
+          signal.addEventListener("abort", onAbort, { once: true });
         }
 
         const iterator = asyncIterable[Symbol.asyncIterator]();

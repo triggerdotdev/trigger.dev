@@ -211,10 +211,12 @@ export class StreamsWriterV1<T> implements StreamsWriter {
         res.resume();
       });
 
+      // Use a bound function to avoid closing over `this` and `req`.
+      // Arrow functions capture the surrounding scope, preventing large objects
+      // from being GC'd for the lifetime of the signal.
       if (this.options.signal) {
-        this.options.signal.addEventListener("abort", () => {
-          req.destroy(new Error("Request aborted"));
-        });
+        const onAbort = () => req.destroy(new Error("Request aborted"));
+        this.options.signal.addEventListener("abort", onAbort, { once: true });
       }
 
       const processStream = async () => {

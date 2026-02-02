@@ -634,8 +634,9 @@ export class RunExecution {
       }
     };
 
-    // Set up an abort handler that will cleanup the task run process
-    this.executionAbortController.signal.addEventListener("abort", abortHandler);
+    // Set up an abort handler that will cleanup the task run process.
+    // Use { once: true } to ensure the listener is automatically removed after firing.
+    this.executionAbortController.signal.addEventListener("abort", abortHandler, { once: true });
 
     const completion = await this.taskRunProcess.execute(
       {

@@ -74,12 +74,12 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
       return;
     }
 
-    // Set up abort signal handler
+    // Set up abort signal handler.
+    // Use .bind() to avoid closing over `this` and `options` which contain the source stream.
+    // Arrow functions capture the surrounding scope, preventing large objects
+    // from being GC'd for the lifetime of the signal.
     if (options.signal) {
-      options.signal.addEventListener("abort", () => {
-        this.log("[S2MetadataStream] Abort signal received");
-        this.handleAbort();
-      });
+      options.signal.addEventListener("abort", this.handleAbort.bind(this), { once: true });
     }
 
     const [serverStream, consumerStream] = this.options.source.tee();
