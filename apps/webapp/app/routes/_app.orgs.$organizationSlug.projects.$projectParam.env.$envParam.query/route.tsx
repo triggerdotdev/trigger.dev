@@ -2,6 +2,7 @@ import {
   ArrowDownTrayIcon,
   ArrowsPointingOutIcon,
   ArrowTrendingUpIcon,
+  BookmarkIcon,
   ClipboardIcon,
   TableCellsIcon,
 } from "@heroicons/react/20/solid";
@@ -79,6 +80,7 @@ import { QueryHistoryPopover } from "./QueryHistoryPopover";
 import type { AITimeFilter } from "./types";
 import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
 import { ChartConfiguration, QueryWidget } from "~/components/metrics/QueryWidget";
+import { SaveToDashboardDialog } from "~/components/metrics/SaveToDashboardDialog";
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {
@@ -537,6 +539,9 @@ export default function Page() {
   const [sidebarTab, setSidebarTab] = useState<string>("ai");
   const [aiFixRequest, setAiFixRequest] = useState<{ prompt: string; key: number } | null>(null);
 
+  // Save to dashboard dialog state
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+
   // Title generation state
   const titleFetcher = useFetcher<typeof titleAction>();
   const isTitleLoading = titleFetcher.state !== "idle";
@@ -800,6 +805,18 @@ export default function Page() {
                               prettyFormatting,
                               sorting: [],
                             }}
+                            accessory={
+                              <SimpleTooltip
+                                button={
+                                  <Button
+                                    variant="minimal/small"
+                                    LeadingIcon={BookmarkIcon}
+                                    onClick={() => setIsSaveDialogOpen(true)}
+                                  />
+                                }
+                                content="Save to dashboard"
+                              />
+                            }
                           />
                         </div>
                       </div>
@@ -833,6 +850,7 @@ export default function Page() {
                           onChartConfigChange={handleChartConfigChange}
                           queryTitle={queryTitle}
                           isTitleLoading={isTitleLoading}
+                          onSaveClick={() => setIsSaveDialogOpen(true)}
                         />
                       </>
                     ) : (
@@ -873,6 +891,17 @@ export default function Page() {
           </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
+      <SaveToDashboardDialog
+        title={queryTitle ?? "Untitled Query"}
+        query={editorRef.current?.getQuery() ?? ""}
+        config={
+          resultsView === "table"
+            ? { type: "table", prettyFormatting, sorting: [] }
+            : { type: "chart", ...chartConfig }
+        }
+        isOpen={isSaveDialogOpen}
+        onOpenChange={setIsSaveDialogOpen}
+      />
     </PageContainer>
   );
 }
@@ -1023,6 +1052,7 @@ function ResultsChart({
   onChartConfigChange,
   queryTitle,
   isTitleLoading,
+  onSaveClick,
 }: {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
@@ -1030,6 +1060,7 @@ function ResultsChart({
   onChartConfigChange: (config: ChartConfiguration) => void;
   queryTitle: string | null;
   isTitleLoading: boolean;
+  onSaveClick: () => void;
 }) {
   return (
     <>
@@ -1046,6 +1077,18 @@ function ResultsChart({
                 type: "chart",
                 ...chartConfig,
               }}
+              accessory={
+                <SimpleTooltip
+                  button={
+                    <Button
+                      variant="minimal/small"
+                      LeadingIcon={BookmarkIcon}
+                      onClick={onSaveClick}
+                    />
+                  }
+                  content="Save to dashboard"
+                />
+              }
             />
           </div>
         </ResizablePanel>
