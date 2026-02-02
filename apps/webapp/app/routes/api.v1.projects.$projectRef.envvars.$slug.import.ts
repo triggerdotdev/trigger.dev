@@ -47,6 +47,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
       key,
       value,
     })),
+    lastUpdatedBy: body.source,
   });
 
   // Only sync parent variables if this is a branch environment
@@ -58,6 +59,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
         key,
         value,
       })),
+      lastUpdatedBy: body.source,
     });
 
     let childFailure = !result.success ? result : undefined;

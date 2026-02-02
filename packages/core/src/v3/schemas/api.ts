@@ -1152,6 +1152,12 @@ export const ImportEnvironmentVariablesRequestBody = z.object({
   variables: z.record(z.string()),
   parentVariables: z.record(z.string()).optional(),
   override: z.boolean().optional(),
+  source: z
+    .discriminatedUnion("type", [
+      z.object({ type: z.literal("user"), userId: z.string() }),
+      z.object({ type: z.literal("integration"), integration: z.string() }),
+    ])
+    .optional(),
 });
 
 export type ImportEnvironmentVariablesRequestBody = z.infer<
