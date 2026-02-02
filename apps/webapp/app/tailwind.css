@@ -4,6 +4,22 @@
 @import "react-grid-layout/css/styles.css";
 @import "react-resizable/css/styles.css";
 
+/* Override react-grid-layout placeholder color (default is red) */
+.react-grid-item.react-grid-placeholder {
+  background: rgb(99 102 241) !important; /* indigo-500 */
+}
+
+/* Override resize handle icon to white */
+.react-resizable-handle {
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSA2IDYgTCAwIDYgTCAwIDQuMiBMIDQgNC4yIEwgNC4yIDQuMiBMIDQuMiAwIEwgNiAwIEwgNiA2IEwgNiA2IFoiIGZpbGw9IiNmZmZmZmYiLz48L2c+PC9zdmc+') !important;
+}
+.react-resizable-handle::after {
+  border-bottom-color: rgba(255, 255, 255, 0.4) !important;
+  border-right-color: rgba(255, 255, 255, 0.4) !important;
+  border-top-color: rgba(255, 255, 255, 0.4) !important;
+  border-left-color: rgba(255, 255, 255, 0.4) !important;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
