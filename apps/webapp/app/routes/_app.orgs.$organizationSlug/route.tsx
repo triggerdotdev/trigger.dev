@@ -3,6 +3,7 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
+import { prisma } from "~/db.server";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
@@ -87,9 +88,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   firstDayOfNextMonth.setUTCDate(1);
   firstDayOfNextMonth.setUTCHours(0, 0, 0, 0);
 
-  const [plan, usage] = await Promise.all([
+  const [plan, usage, customDashboards] = await Promise.all([
     getCurrentPlan(organization.id),
     getCachedUsage(organization.id, { from: firstDayOfMonth, to: firstDayOfNextMonth }),
+    prisma.metricsDashboard.findMany({
+      where: { organizationId: organization.id },
+      select: {
+        friendlyId: true,
+        title: true,
+      },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
   let hasExceededFreeTier = false;
@@ -106,6 +115,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     environment,
     isImpersonating: !!impersonationId,
     currentPlan: { ...plan, v3Usage: { ...usage, hasExceededFreeTier, usagePercentage } },
+    customDashboards,
   });
 };
 

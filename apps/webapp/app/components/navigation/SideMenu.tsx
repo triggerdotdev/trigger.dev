@@ -5,6 +5,7 @@ import {
   BeakerIcon,
   BellAlertIcon,
   ChartBarIcon,
+  ChartBarSquareIcon,
   ChevronRightIcon,
   ClockIcon,
   Cog8ToothIcon,
@@ -22,7 +23,8 @@ import {
   TableCellsIcon,
   UsersIcon
 } from "@heroicons/react/20/solid";
-import { Link, useFetcher, useNavigation } from "@remix-run/react";
+import { DialogClose } from "@radix-ui/react-dialog";
+import { Form, Link, useFetcher, useNavigation } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
@@ -35,11 +37,11 @@ import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
-import { type MatchedEnvironment } from "~/hooks/useEnvironment";
+import { type MatchedEnvironment, useEnvironment } from "~/hooks/useEnvironment";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
-import { type MatchedOrganization } from "~/hooks/useOrganizations";
-import { type MatchedProject } from "~/hooks/useProject";
+import { type MatchedOrganization, useCustomDashboards } from "~/hooks/useOrganizations";
+import { type MatchedProject, useProject } from "~/hooks/useProject";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { ShortcutKey } from "../primitives/ShortcutKey";
@@ -65,7 +67,9 @@ import {
   v3ApiKeysPath,
   v3BatchesPath,
   v3BillingPath,
+  v3BuiltInDashboardPath,
   v3BulkActionsPath,
+  v3CustomDashboardPath,
   v3DeploymentsPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
@@ -86,7 +90,11 @@ import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
-import { Dialog, DialogTrigger } from "../primitives/Dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
+import { FormButtons } from "../primitives/FormButtons";
+import { Input } from "../primitives/Input";
+import { InputGroup } from "../primitives/InputGroup";
+import { Label } from "../primitives/Label";
 import { Paragraph } from "../primitives/Paragraph";
 import {
   Popover,
@@ -147,6 +155,7 @@ export function SideMenu({
   const isAdmin = useHasAdminAccess();
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
+  const customDashboards = useCustomDashboards();
 
   const persistSideMenuPreferences = useCallback(
     (data: { isCollapsed?: boolean; manageSectionCollapsed?: boolean }) => {
@@ -431,6 +440,44 @@ export function SideMenu({
               />
             )}
           </div>
+
+          {(user.admin || user.isImpersonating || featureFlags.hasQueryAccess) && (
+            <SideMenuSection
+              title="Metrics"
+              isSideMenuCollapsed={isCollapsed}
+              itemSpacingClassName="space-y-0"
+              initialCollapsed={false}
+              headerAction={
+                <CreateDashboardButton
+                  organization={organization}
+                  project={project}
+                  environment={environment}
+                  isCollapsed={isCollapsed}
+                />
+              }
+            >
+              <SideMenuItem
+                name="Overview"
+                icon={ChartBarSquareIcon}
+                activeIconColor="text-purple-500"
+                inactiveIconColor="text-purple-500"
+                to={v3BuiltInDashboardPath(organization, project, environment, "overview")}
+                data-action="metrics-overview"
+                isCollapsed={isCollapsed}
+              />
+              {customDashboards.map((dashboard) => (
+                <SideMenuItem
+                  key={dashboard.friendlyId}
+                  name={dashboard.title}
+                  icon={ChartBarSquareIcon}
+                  activeIconColor="text-purple-500"
+                  inactiveIconColor="text-purple-500"
+                  to={v3CustomDashboardPath(organization, project, environment, dashboard)}
+                  isCollapsed={isCollapsed}
+                />
+              ))}
+            </SideMenuSection>
+          )}
 
           <SideMenuSection
             title="Manage"
@@ -896,6 +943,102 @@ function HelpAndAI({ isCollapsed }: { isCollapsed: boolean }) {
         <AskAI isCollapsed={isCollapsed} />
       </div>
     </LayoutGroup>
+  );
+}
+
+function CreateDashboardButton({
+  organization,
+  project,
+  environment,
+  isCollapsed,
+}: {
+  organization: MatchedOrganization;
+  project: SideMenuProject;
+  environment: SideMenuEnvironment;
+  isCollapsed: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const navigation = useNavigation();
+
+  const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/create`;
+
+  // Close dialog when form submission starts (redirect is happening)
+  useEffect(() => {
+    if (navigation.formAction === formAction && navigation.state === "loading") {
+      setIsOpen(false);
+    }
+  }, [navigation.formAction, navigation.state, formAction]);
+
+  if (isCollapsed) return null;
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <TooltipProvider disableHoverableContent>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DialogTrigger asChild>
+              <button
+                type="button"
+                className="rounded p-0.5 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+              >
+                <PlusIcon className="size-3.5" />
+              </button>
+            </DialogTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="text-xs">
+            Create dashboard
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <CreateDashboardDialog formAction={formAction} />
+    </Dialog>
+  );
+}
+
+function CreateDashboardDialog({ formAction }: { formAction: string }) {
+  const navigation = useNavigation();
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+
+  const isLoading = navigation.formAction === formAction;
+
+  return (
+    <DialogContent>
+      <DialogHeader>Create Dashboard</DialogHeader>
+      <Form method="post" action={formAction} className="space-y-4 pt-3">
+        <InputGroup>
+          <Label>Title</Label>
+          <Input
+            name="title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="My Dashboard"
+            required
+          />
+        </InputGroup>
+        <InputGroup>
+          <Label>Description (optional)</Label>
+          <Input
+            name="description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Dashboard description"
+          />
+        </InputGroup>
+        <FormButtons
+          confirmButton={
+            <Button type="submit" variant="primary/medium" disabled={isLoading || !title.trim()}>
+              {isLoading ? "Creating..." : "Create"}
+            </Button>
+          }
+          cancelButton={
+            <DialogClose asChild>
+              <Button variant="tertiary/medium">Cancel</Button>
+            </DialogClose>
+          }
+        />
+      </Form>
+    </DialogContent>
   );
 }
 

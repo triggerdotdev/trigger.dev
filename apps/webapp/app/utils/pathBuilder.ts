@@ -283,6 +283,15 @@ export function v3CustomDashboardPath(
   return `${v3EnvironmentPath(organization, project, environment)}/metrics/custom/${dashboard.friendlyId}`;
 }
 
+export function v3BuiltInDashboardPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  key: string
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/metrics/${key}`;
+}
+
 export function v3TestTaskPath(
   organization: OrgForPath,
   project: ProjectForPath,
