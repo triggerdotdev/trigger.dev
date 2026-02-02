@@ -280,7 +280,9 @@ export function v3CustomDashboardPath(
   environment: EnvironmentForPath,
   dashboard: { friendlyId: string }
 ) {
-  return `${v3EnvironmentPath(organization, project, environment)}/metrics/custom/${dashboard.friendlyId}`;
+  return `${v3EnvironmentPath(organization, project, environment)}/metrics/custom/${
+    dashboard.friendlyId
+  }`;
 }
 
 export function v3BuiltInDashboardPath(
@@ -500,7 +502,7 @@ export function v3ProjectSettingsPath(
 export function v3LogsPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  environment: EnvironmentForPath,
+  environment: EnvironmentForPath
 ) {
   return `${v3EnvironmentPath(organization, project, environment)}/logs`;
 }

@@ -21,11 +21,9 @@ import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson"
 import simplur from "simplur";
 import { z } from "zod";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
-import { AlphaTitle } from "~/components/AlphaBadge";
+import { BetaTitle } from "~/components/AlphaBadge";
 import { ChartConfigPanel, defaultChartConfig } from "~/components/code/ChartConfigPanel";
-import { QueryResultsChart } from "~/components/code/QueryResultsChart";
 import { autoFormatSQL, TSQLEditor } from "~/components/code/TSQLEditor";
-import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -646,7 +644,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={<AlphaTitle>Query</AlphaTitle>} />
+        <PageTitle title={<BetaTitle>Query</BetaTitle>} />
       </NavBar>
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full bg-charcoal-800">
