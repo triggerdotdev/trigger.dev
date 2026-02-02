@@ -3,6 +3,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import {
+  LayoutItem,
   type DashboardLayout,
   MetricDashboardPresenter,
 } from "~/presenters/v3/MetricDashboardPresenter.server";
@@ -75,10 +76,12 @@ export function MetricDashboard({
   data,
   defaultPeriod,
   editable,
+  onLayoutChange,
 }: {
   data: DashboardLayout;
   defaultPeriod: string;
   editable: boolean;
+  onLayoutChange?: (layout: LayoutItem[]) => void;
 }) {
   const [layout, setLayout] = useState(data.layout);
   const { value } = useSearchParams();
@@ -95,6 +98,15 @@ export function MetricDashboard({
   const period = value("period");
   const from = value("from");
   const to = value("to");
+
+  const handleLayoutChange = useCallback(
+    (newLayout: readonly LayoutItem[]) => {
+      const mutableLayout = [...newLayout];
+      setLayout(mutableLayout);
+      onLayoutChange?.(mutableLayout);
+    },
+    [onLayoutChange]
+  );
 
   return (
     <div className="grid grid-rows-[auto_1fr]">
@@ -118,7 +130,7 @@ export function MetricDashboard({
               handles: ["e", "w", "s", "n", "ne", "nw", "se", "sw"],
             }}
             dragConfig={{ enabled: editable }}
-            onLayoutChange={(l) => setLayout([...l])}
+            onLayoutChange={handleLayoutChange}
             onResizeStart={(_layout, oldItem) => setResizingItemId(oldItem?.i ?? null)}
             onResizeStop={() => setResizingItemId(null)}
           >
