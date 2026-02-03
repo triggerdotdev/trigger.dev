@@ -187,6 +187,23 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         return json(submission);
       }
 
+      // Clean up syncEnvVarsMapping if Vercel integration exists
+      const vercelService = new VercelIntegrationService();
+      const integration = await vercelService.getVercelProjectIntegration(project.id);
+      if (integration) {
+        const runtimeEnv = await prisma.runtimeEnvironment.findUnique({
+          where: { id: submission.value.environmentId },
+          select: { type: true },
+        });
+        if (runtimeEnv) {
+          await vercelService.removeSyncEnvVarForEnvironment(
+            project.id,
+            submission.value.key,
+            runtimeEnv.type as TriggerEnvironmentType
+          );
+        }
+      }
+
       return redirectWithSuccessMessage(
         v3EnvironmentVariablesPath(
           { slug: organizationSlug },

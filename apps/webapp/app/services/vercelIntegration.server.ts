@@ -355,13 +355,40 @@ export class VercelIntegrationService {
     };
   }
 
+  async removeSyncEnvVarForEnvironment(
+    projectId: string,
+    envVarKey: string,
+    environmentType: TriggerEnvironmentType
+  ): Promise<void> {
+    const existing = await this.getVercelProjectIntegration(projectId);
+    if (!existing) return;
+
+    const currentMapping = existing.parsedIntegrationData.syncEnvVarsMapping || {};
+    const envSlug = envTypeToSlug(environmentType);
+    const currentEnvSettings = currentMapping[envSlug];
+    if (!currentEnvSettings || !(envVarKey in currentEnvSettings)) return;
+
+    const { [envVarKey]: _, ...rest } = currentEnvSettings;
+    const updatedMapping = { ...currentMapping, [envSlug]: rest };
+
+    await this.#prismaClient.organizationProjectIntegration.update({
+      where: { id: existing.id },
+      data: {
+        integrationData: {
+          ...existing.parsedIntegrationData,
+          syncEnvVarsMapping: updatedMapping,
+        },
+      },
+    });
+  }
+
   async completeOnboarding(
     projectId: string,
     params: {
       vercelStagingEnvironment?: { environmentId: string; displayName: string } | null;
       pullEnvVarsBeforeBuild?: EnvSlug[] | null;
       atomicBuilds?: EnvSlug[] | null;
-      pullNewEnvVars?: boolean | null;
+      discoverEnvVars?: EnvSlug[] | null;
       syncEnvVarsMapping: SyncEnvVarsMapping;
     }
   ): Promise<VercelProjectIntegrationWithParsedData | null> {
@@ -376,7 +403,7 @@ export class VercelIntegrationService {
         ...existing.parsedIntegrationData.config,
         pullEnvVarsBeforeBuild: params.pullEnvVarsBeforeBuild ?? null,
         atomicBuilds: params.atomicBuilds ?? null,
-        pullNewEnvVars: params.pullNewEnvVars ?? null,
+        discoverEnvVars: params.discoverEnvVars ?? null,
         vercelStagingEnvironment: params.vercelStagingEnvironment ?? null,
       },
       // Don't save syncEnvVarsMapping - it's only used for the one-time pull during onboarding

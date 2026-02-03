@@ -45,6 +45,7 @@ import {
   TooltipProvider
 } from "~/components/primitives/Tooltip";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
+import { BuildSettingsFields } from "~/components/integrations/VercelBuildSettings";
 import {
   EnvironmentIcon,
   environmentFullTitle,
@@ -142,9 +143,14 @@ const UpdateVercelConfigFormSchema = z.object({
       return null;
     }
   }),
-  pullNewEnvVars: z.string().optional().transform((val) => {
-    if (val === undefined || val === "") return null;
-    return val === "true";
+  discoverEnvVars: z.string().optional().transform((val) => {
+    if (!val) return null;
+    try {
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
   }),
   vercelStagingEnvironment: z.string().nullable().optional(),
 });
@@ -174,9 +180,14 @@ const CompleteOnboardingFormSchema = z.object({
       return null;
     }
   }),
-  pullNewEnvVars: z.string().optional().transform((val) => {
-    if (val === undefined || val === "") return null;
-    return val === "true";
+  discoverEnvVars: z.string().optional().transform((val) => {
+    if (!val) return null;
+    try {
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
   }),
   syncEnvVarsMapping: z.string().optional(), // JSON-encoded mapping
   next: z.string().optional(),
@@ -314,7 +325,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const {
       atomicBuilds,
       pullEnvVarsBeforeBuild,
-      pullNewEnvVars,
+      discoverEnvVars,
       vercelStagingEnvironment,
     } = submission.value;
 
@@ -323,7 +334,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const result = await vercelService.updateVercelIntegrationConfig(project.id, {
       atomicBuilds: atomicBuilds as EnvSlug[] | null,
       pullEnvVarsBeforeBuild: pullEnvVarsBeforeBuild as EnvSlug[] | null,
-      pullNewEnvVars: pullNewEnvVars,
+      discoverEnvVars: discoverEnvVars as EnvSlug[] | null,
       vercelStagingEnvironment: parsedStagingEnv,
     });
 
@@ -351,7 +362,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       vercelStagingEnvironment,
       pullEnvVarsBeforeBuild,
       atomicBuilds,
-      pullNewEnvVars,
+      discoverEnvVars,
       syncEnvVarsMapping,
       next,
       skipRedirect,
@@ -371,7 +382,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       vercelStagingEnvironment,
       pullEnvVarsBeforeBuild,
       atomicBuilds,
-      pullNewEnvVars,
+      discoverEnvVars,
       syncEnvVarsMappingRaw: syncEnvVarsMapping,
       parsedMappingKeys: Object.keys(parsedMapping),
     });
@@ -382,7 +393,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       vercelStagingEnvironment: parsedStagingEnv,
       pullEnvVarsBeforeBuild: pullEnvVarsBeforeBuild as EnvSlug[] | null,
       atomicBuilds: atomicBuilds as EnvSlug[] | null,
-      pullNewEnvVars: pullNewEnvVars,
+      discoverEnvVars: discoverEnvVars as EnvSlug[] | null,
       syncEnvVarsMapping: parsedMapping,
     });
 
@@ -681,7 +692,7 @@ function ConnectedVercelProjectForm({
   const [configValues, setConfigValues] = useState({
     atomicBuilds: connectedProject.integrationData.config.atomicBuilds ?? [],
     pullEnvVarsBeforeBuild: connectedProject.integrationData.config.pullEnvVarsBeforeBuild ?? [],
-    pullNewEnvVars: connectedProject.integrationData.config.pullNewEnvVars !== false,
+    discoverEnvVars: connectedProject.integrationData.config.discoverEnvVars ?? [],
     vercelStagingEnvironment:
       connectedProject.integrationData.config.vercelStagingEnvironment ?? null,
   });
@@ -689,7 +700,7 @@ function ConnectedVercelProjectForm({
   // Track original values for comparison
   const originalAtomicBuilds = connectedProject.integrationData.config.atomicBuilds ?? [];
   const originalPullEnvVars = connectedProject.integrationData.config.pullEnvVarsBeforeBuild ?? [];
-  const originalPullNewEnvVars = connectedProject.integrationData.config.pullNewEnvVars !== false;
+  const originalDiscoverEnvVars = connectedProject.integrationData.config.discoverEnvVars ?? [];
   const originalStagingEnv = connectedProject.integrationData.config.vercelStagingEnvironment ?? null;
 
   useEffect(() => {
@@ -699,11 +710,13 @@ function ConnectedVercelProjectForm({
     const pullEnvVarsChanged =
       JSON.stringify([...configValues.pullEnvVarsBeforeBuild].sort()) !==
       JSON.stringify([...originalPullEnvVars].sort());
-    const pullNewEnvVarsChanged = configValues.pullNewEnvVars !== originalPullNewEnvVars;
+    const discoverEnvVarsChanged =
+      JSON.stringify([...configValues.discoverEnvVars].sort()) !==
+      JSON.stringify([...originalDiscoverEnvVars].sort());
     const stagingEnvChanged = configValues.vercelStagingEnvironment?.environmentId !== originalStagingEnv?.environmentId;
 
-    setHasConfigChanges(atomicBuildsChanged || pullEnvVarsChanged || pullNewEnvVarsChanged || stagingEnvChanged);
-  }, [configValues, originalAtomicBuilds, originalPullEnvVars, originalPullNewEnvVars, originalStagingEnv]);
+    setHasConfigChanges(atomicBuildsChanged || pullEnvVarsChanged || discoverEnvVarsChanged || stagingEnvChanged);
+  }, [configValues, originalAtomicBuilds, originalPullEnvVars, originalDiscoverEnvVars, originalStagingEnv]);
 
   const [configForm, fields] = useForm({
     id: "update-vercel-config",
@@ -804,8 +817,8 @@ function ConnectedVercelProjectForm({
         />
         <input
           type="hidden"
-          name="pullNewEnvVars"
-          value={String(configValues.pullNewEnvVars)}
+          name="discoverEnvVars"
+          value={JSON.stringify(configValues.discoverEnvVars)}
         />
         <input
           type="hidden"
@@ -857,113 +870,22 @@ function ConnectedVercelProjectForm({
                 </div>
               )}
 
-              {/* Pull env vars before build */}
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <div>
-                    <Label>Pull env vars before build</Label>
-                    <Hint>
-                      Select which environments should pull environment variables from Vercel before
-                      each build.{" "}
-                      <TextLink
-                        to={`/orgs/${organizationSlug}/projects/${projectSlug}/environment-variables`}
-                      >
-                        Configure which variables to pull
-                      </TextLink>
-                      .
-                    </Hint>
-                  </div>
-                  {availableEnvSlugsForBuildSettings.length > 1 && (
-                    <Switch
-                      variant="small"
-                      checked={availableEnvSlugsForBuildSettings.length > 0 && availableEnvSlugsForBuildSettings.every((s) => configValues.pullEnvVarsBeforeBuild.includes(s))}
-                      onCheckedChange={(checked) => {
-                        setConfigValues((prev) => ({
-                          ...prev,
-                          pullEnvVarsBeforeBuild: checked ? [...availableEnvSlugsForBuildSettings] : [],
-                        }));
-                      }}
-                    />
-                  )}
-                </div>
-                <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
-                  {availableEnvSlugsForBuildSettings.map((slug) => {
-                    const envType = slug === "prod" ? "PRODUCTION" : slug === "stg" ? "STAGING" : "PREVIEW";
-                    return (
-                      <div key={slug} className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <EnvironmentIcon environment={{ type: envType }} className="size-4" />
-                          <span className={`text-sm ${environmentTextClassName({ type: envType })}`}>
-                            {environmentFullTitle({ type: envType })}
-                          </span>
-                        </div>
-                        <Switch
-                          variant="small"
-                          checked={configValues.pullEnvVarsBeforeBuild.includes(slug)}
-                          onCheckedChange={(checked) => {
-                            setConfigValues((prev) => ({
-                              ...prev,
-                              pullEnvVarsBeforeBuild: checked
-                                ? [...prev.pullEnvVarsBeforeBuild, slug]
-                                : prev.pullEnvVarsBeforeBuild.filter((s) => s !== slug),
-                            }));
-                          }}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-
-              </div>
-
-              {/* Discover new env vars */}
-              {(() => {
-                const isPullEnvVarsDisabled = !availableEnvSlugsForBuildSettings.some((s) => configValues.pullEnvVarsBeforeBuild.includes(s));
-                return (
-                  <div className={isPullEnvVarsDisabled ? "opacity-50" : ""}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Label>Discover new env vars</Label>
-                        <Hint>
-                          When enabled, automatically discovers and creates new environment variables
-                          from Vercel that don't exist in Trigger.dev yet during builds.
-                        </Hint>
-                      </div>
-                      <Switch
-                        variant="small"
-                        checked={configValues.pullNewEnvVars}
-                        disabled={isPullEnvVarsDisabled}
-                        onCheckedChange={(checked) =>
-                          setConfigValues((prev) => ({ ...prev, pullNewEnvVars: checked }))
-                        }
-                      />
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Atomic deployments */}
-              <div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Atomic deployments</Label>
-                    <Hint>
-                      When enabled, production deployments wait for Vercel deployment to complete
-                      before promoting the Trigger.dev deployment.
-                    </Hint>
-                  </div>
-                  <Switch
-                    variant="small"
-                    checked={configValues.atomicBuilds.includes("prod")}
-                    onCheckedChange={(checked) => {
-                      setConfigValues((prev) => ({
-                        ...prev,
-                        atomicBuilds: checked ? ["prod"] : [],
-                      }));
-                    }}
-                  />
-                </div>
-              </div>
+              <BuildSettingsFields
+                availableEnvSlugs={availableEnvSlugsForBuildSettings}
+                pullEnvVarsBeforeBuild={configValues.pullEnvVarsBeforeBuild}
+                onPullEnvVarsChange={(slugs) =>
+                  setConfigValues((prev) => ({ ...prev, pullEnvVarsBeforeBuild: slugs }))
+                }
+                discoverEnvVars={configValues.discoverEnvVars}
+                onDiscoverEnvVarsChange={(slugs) =>
+                  setConfigValues((prev) => ({ ...prev, discoverEnvVars: slugs }))
+                }
+                atomicBuilds={configValues.atomicBuilds}
+                onAtomicBuildsChange={(slugs) =>
+                  setConfigValues((prev) => ({ ...prev, atomicBuilds: slugs }))
+                }
+                envVarsConfigLink={`/orgs/${organizationSlug}/projects/${projectSlug}/environment-variables`}
+              />
 
               {/* Warning: autoAssignCustomDomains must be disabled for atomic deployments */}
               {autoAssignCustomDomains !== false &&
@@ -1263,9 +1185,11 @@ function VercelOnboardingModal({
   const [atomicBuilds, setAtomicBuilds] = useState<EnvSlug[]>(
     () => ["prod"]
   );
-  const [pullNewEnvVars, setPullNewEnvVars] = useState<boolean>(true);
+  const [discoverEnvVars, setDiscoverEnvVars] = useState<EnvSlug[]>(
+    () => availableEnvSlugsForOnboardingBuildSettings
+  );
 
-  // Sync pullEnvVarsBeforeBuild when hasStagingEnvironment becomes true (once)
+  // Sync pullEnvVarsBeforeBuild and discoverEnvVars when hasStagingEnvironment becomes true (once)
   // This ensures staging is included when it becomes available, but respects user changes after
   useEffect(() => {
     if (hasStagingEnvironment && !hasSyncedStagingRef.current) {
@@ -1276,15 +1200,27 @@ function VercelOnboardingModal({
         }
         return prev;
       });
+      setDiscoverEnvVars((prev) => {
+        if (!prev.includes("stg")) {
+          return [...prev, "stg"];
+        }
+        return prev;
+      });
     }
   }, [hasStagingEnvironment]);
 
-  // Sync pullEnvVarsBeforeBuild when hasPreviewEnvironment becomes true (once)
+  // Sync pullEnvVarsBeforeBuild and discoverEnvVars when hasPreviewEnvironment becomes true (once)
   // This ensures preview is included when it becomes available, but respects user changes after
   useEffect(() => {
     if (hasPreviewEnvironment && !hasSyncedPreviewRef.current) {
       hasSyncedPreviewRef.current = true;
       setPullEnvVarsBeforeBuild((prev) => {
+        if (!prev.includes("preview")) {
+          return [...prev, "preview"];
+        }
+        return prev;
+      });
+      setDiscoverEnvVars((prev) => {
         if (!prev.includes("preview")) {
           return [...prev, "preview"];
         }
@@ -1576,7 +1512,7 @@ function VercelOnboardingModal({
     formData.append("vercelStagingEnvironment", vercelStagingEnvironment ? JSON.stringify(vercelStagingEnvironment) : "");
     formData.append("pullEnvVarsBeforeBuild", JSON.stringify(pullEnvVarsBeforeBuild));
     formData.append("atomicBuilds", JSON.stringify(atomicBuilds));
-    formData.append("pullNewEnvVars", String(pullNewEnvVars));
+    formData.append("discoverEnvVars", JSON.stringify(discoverEnvVars));
     formData.append("syncEnvVarsMapping", JSON.stringify(syncEnvVarsMapping));
     if (nextUrl && fromMarketplaceContext && isGitHubConnectedForOnboarding) {
       formData.append("next", nextUrl);
@@ -1596,7 +1532,7 @@ function VercelOnboardingModal({
     if (!isGitHubConnectedForOnboarding) {
       setState("github-connection");
     }
-  }, [vercelStagingEnvironment, pullEnvVarsBeforeBuild, atomicBuilds, pullNewEnvVars, syncEnvVarsMapping, nextUrl, fromMarketplaceContext, isGitHubConnectedForOnboarding, completeOnboardingFetcher, actionUrl]);
+  }, [vercelStagingEnvironment, pullEnvVarsBeforeBuild, atomicBuilds, discoverEnvVars, syncEnvVarsMapping, nextUrl, fromMarketplaceContext, isGitHubConnectedForOnboarding, completeOnboardingFetcher, actionUrl]);
 
   const handleFinishOnboarding = useCallback((e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -2044,95 +1980,15 @@ function VercelOnboardingModal({
                 Configure how environment variables are pulled during builds and atomic deployments.
               </Paragraph>
 
-              {/* Pull env vars before build */}
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <div>
-                    <Label>Pull env vars before build</Label>
-                    <Hint>
-                      Select which environments should automatically pull environment variables from
-                      Vercel before each build.
-                    </Hint>
-                  </div>
-                  {availableEnvSlugsForOnboardingBuildSettings.length > 1 && (
-                    <Switch
-                      variant="small"
-                      checked={availableEnvSlugsForOnboardingBuildSettings.length > 0 && availableEnvSlugsForOnboardingBuildSettings.every((s) => pullEnvVarsBeforeBuild.includes(s))}
-                      onCheckedChange={(checked) => {
-                        setPullEnvVarsBeforeBuild(checked ? [...availableEnvSlugsForOnboardingBuildSettings] : []);
-                      }}
-                    />
-                  )}
-                </div>
-                <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
-                  {availableEnvSlugsForOnboardingBuildSettings.map((slug) => {
-                    const envType = slug === "prod" ? "PRODUCTION" : slug === "stg" ? "STAGING" : "PREVIEW";
-                    return (
-                      <div key={slug} className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <EnvironmentIcon environment={{ type: envType }} className="size-4" />
-                          <span className={`text-sm ${environmentTextClassName({ type: envType })}`}>
-                            {environmentFullTitle({ type: envType })}
-                          </span>
-                        </div>
-                        <Switch
-                          variant="small"
-                          checked={pullEnvVarsBeforeBuild.includes(slug)}
-                          onCheckedChange={(checked) => {
-                            setPullEnvVarsBeforeBuild((prev) =>
-                              checked ? [...prev, slug] : prev.filter((s) => s !== slug)
-                            );
-                          }}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Discover new env vars */}
-              {(() => {
-                const isPullEnvVarsDisabled = !availableEnvSlugsForOnboardingBuildSettings.some((s) => pullEnvVarsBeforeBuild.includes(s));
-                return (
-                  <div className={isPullEnvVarsDisabled ? "opacity-50" : ""}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Label>Discover new env vars</Label>
-                        <Hint>
-                          When enabled, automatically discovers and creates new environment variables
-                          from Vercel that don't exist in Trigger.dev yet during builds.
-                        </Hint>
-                      </div>
-                      <Switch
-                        variant="small"
-                        checked={pullNewEnvVars}
-                        disabled={isPullEnvVarsDisabled}
-                        onCheckedChange={setPullNewEnvVars}
-                      />
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Atomic deployments */}
-              <div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Atomic deployments</Label>
-                    <Hint>
-                      When enabled, production deployments wait for Vercel deployment to complete
-                      before promoting the Trigger.dev deployment.
-                    </Hint>
-                  </div>
-                  <Switch
-                    variant="small"
-                    checked={atomicBuilds.includes("prod")}
-                    onCheckedChange={(checked) => {
-                      setAtomicBuilds(checked ? ["prod"] : []);
-                    }}
-                  />
-                </div>
-              </div>
+              <BuildSettingsFields
+                availableEnvSlugs={availableEnvSlugsForOnboardingBuildSettings}
+                pullEnvVarsBeforeBuild={pullEnvVarsBeforeBuild}
+                onPullEnvVarsChange={setPullEnvVarsBeforeBuild}
+                discoverEnvVars={discoverEnvVars}
+                onDiscoverEnvVarsChange={setDiscoverEnvVars}
+                atomicBuilds={atomicBuilds}
+                onAtomicBuildsChange={setAtomicBuilds}
+              />
 
               <FormButtons
                 confirmButton={

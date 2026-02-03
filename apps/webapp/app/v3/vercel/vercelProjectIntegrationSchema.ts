@@ -55,15 +55,14 @@ export const VercelIntegrationConfigSchema = z.object({
   }).nullable().optional(),
 
   /**
-   * When enabled, discovers and creates new env vars from Vercel during builds.
-   * This allows new environment variables added in Vercel to be automatically
-   * pulled into Trigger.dev.
+   * Array of environment slugs for which new env vars should be discovered from Vercel during builds.
+   * When an environment slug is in this array, new environment variables added in Vercel
+   * will be automatically pulled into Trigger.dev for that environment.
    *
-   * Default: true (enabled)
-   * null/undefined = defaults to enabled
-   * false = only sync existing variables, don't discover new ones
+   * Example: ["prod", "stg"] will discover new env vars for production and staging builds
+   * null/undefined = discovery disabled for all environments
    */
-  pullNewEnvVars: z.boolean().nullable().optional(),
+  discoverEnvVars: z.array(EnvSlugSchema).nullable().optional(),
 });
 
 export type VercelIntegrationConfig = z.infer<typeof VercelIntegrationConfigSchema>;
@@ -152,7 +151,7 @@ export function createDefaultVercelIntegrationData(
     config: {
       atomicBuilds: ["prod"],
       pullEnvVarsBeforeBuild: ["prod", "stg", "preview"],
-      pullNewEnvVars: true,
+      discoverEnvVars: ["prod", "stg", "preview"],
       vercelStagingEnvironment: null,
     },
     syncEnvVarsMapping: {},
@@ -163,13 +162,17 @@ export function createDefaultVercelIntegrationData(
 }
 
 /**
- * Check if pull new env vars is enabled.
- * Defaults to true if not explicitly set to false.
+ * Check if discover env vars is enabled for a specific environment.
  */
-export function isPullNewEnvVarsEnabled(
-  pullNewEnvVars: boolean | null | undefined
+export function isDiscoverEnvVarsEnabledForEnvironment(
+  discoverEnvVars: EnvSlug[] | null | undefined,
+  environmentType: TriggerEnvironmentType
 ): boolean {
-  return pullNewEnvVars !== false;
+  if (!discoverEnvVars || discoverEnvVars.length === 0) {
+    return false;
+  }
+  const envSlug = envTypeToSlug(environmentType);
+  return discoverEnvVars.includes(envSlug);
 }
 
 /**
