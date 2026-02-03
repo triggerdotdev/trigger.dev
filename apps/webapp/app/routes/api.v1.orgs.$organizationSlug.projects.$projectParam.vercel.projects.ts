@@ -4,10 +4,8 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { apiCors } from "~/utils/apiCors";
 import { logger } from "~/services/logger.server";
+import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
-import {
-  VercelProjectIntegrationDataSchema,
-} from "~/v3/vercel/vercelProjectIntegrationSchema";
 
 const ParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -30,6 +28,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return apiCors(request, json({}));
   }
 
+  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
+
+  if (!authenticationResult) {
+    return apiCors(
+      request,
+      json({ error: "Invalid or Missing Access Token" }, { status: 401 })
+    );
+  }
+
   const parsedParams = ParamsSchema.safeParse(params);
   if (!parsedParams.success) {
     return apiCors(
@@ -41,12 +48,17 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const { organizationSlug, projectParam } = parsedParams.data;
 
   try {
-    // Find the project
+    // Find the project, verifying org membership
     const project = await prisma.project.findFirst({
       where: {
         slug: projectParam,
         organization: {
           slug: organizationSlug,
+          members: {
+            some: {
+              userId: authenticationResult.userId,
+            },
+          },
         },
         deletedAt: null,
       },

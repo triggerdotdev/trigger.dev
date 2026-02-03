@@ -180,10 +180,22 @@ export class EnvironmentVariablesRepository implements Repository {
           for (const environmentId of options.environmentIds) {
             const key = secretKey(projectId, environmentId, variable.key);
 
-            // Check if value already exists and is the same - skip update if unchanged
+            const existingValueRecord = await tx.environmentVariableValue.findFirst({
+              where: {
+                variableId: environmentVariable.id,
+                environmentId,
+              },
+            });
+
+            // Check if value already exists and is the same, and no metadata change (e.g. isSecret toggle)
             const existingSecret = await secretStore.getSecret(SecretValue, key);
-            if (existingSecret && existingSecret.secret === variable.value) {
-              // Value is unchanged, skip this variable for this environment
+            const canSkip =
+              existingSecret &&
+              existingSecret.secret === variable.value &&
+              existingValueRecord &&
+              (options.isSecret === undefined ||
+                existingValueRecord.isSecret === options.isSecret);
+            if (canSkip) {
               continue;
             }
 
@@ -197,13 +209,6 @@ export class EnvironmentVariablesRepository implements Repository {
                 provider: "DATABASE",
               },
               update: {},
-            });
-
-            const existingValueRecord = await tx.environmentVariableValue.findFirst({
-              where: {
-                variableId: environmentVariable.id,
-                environmentId,
-              },
             });
 
             if (existingValueRecord) {

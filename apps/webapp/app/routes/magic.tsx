@@ -6,8 +6,7 @@ import { authenticator } from "~/services/auth.server";
 import { setLastAuthMethodHeader } from "~/services/lastAuthMethod.server";
 import { getRedirectTo } from "~/services/redirectTo.server";
 import { commitSession, getSession } from "~/services/sessionStorage.server";
-import { getReferralSource, clearReferralSourceCookie } from "~/services/referralSource.server";
-import { telemetry } from "~/services/telemetry.server";
+import { trackAndClearReferralSource } from "~/services/referralSource.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const redirectTo = await getRedirectTo(request);
@@ -55,28 +54,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   headers.append("Set-Cookie", await commitSession(session));
   headers.append("Set-Cookie", await setLastAuthMethodHeader("email"));
 
-  // Read referral source cookie and set in PostHog if present (only for new users), then clear it
-  const referralSource = await getReferralSource(request);
-  if (referralSource) {
-    const user = await prisma.user.findUnique({
-      where: { id: auth.userId },
-    });
-    if (user) {
-      // Only set referralSource for new users (created within the last 30 seconds)
-      const userAge = Date.now() - user.createdAt.getTime();
-      const isNewUser = userAge < 30 * 1000; // 30 seconds
-      
-      if (isNewUser) {
-        telemetry.user.identify({
-          user,
-          isNewUser: true,
-          referralSource,
-        });
-      }
-    }
-    // Clear the cookie after using it (regardless of whether we set it)
-    headers.append("Set-Cookie", await clearReferralSourceCookie());
-  }
+  await trackAndClearReferralSource(request, auth.userId, headers);
 
   return redirect(redirectTo ?? "/", { headers });
 }

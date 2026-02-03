@@ -2,7 +2,7 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { logger } from "~/services/logger.server";
-import { getUserId, requireUserId } from "~/services/session.server";
+import { getUserId } from "~/services/session.server";
 import { setReferralSourceCookie } from "~/services/referralSource.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 
@@ -12,7 +12,7 @@ const VercelCallbackSchema = z
     state: z.string().optional(),
     error: z.string().optional(),
     error_description: z.string().optional(),
-    configurationId: z.string(),
+    configurationId: z.string().optional(),
     next: z.string().optional()
   })
   .passthrough();
@@ -56,7 +56,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   // Route with state: dashboard-invoked flow
   if (state) {
-    const params = new URLSearchParams({ state, configurationId, code, origin: "dashboard" });
+    const params = new URLSearchParams({ state, code, origin: "dashboard" });
+    if (configurationId) params.set("configurationId", configurationId);
     if (nextUrl) params.set("next", nextUrl);
     return redirect(`/vercel/connect?${params.toString()}`);
   }

@@ -3,7 +3,7 @@ import type {
   LoaderFunctionArgs,
 } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
-import { Form, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { DialogClose } from "@radix-ui/react-dialog";
@@ -20,7 +20,7 @@ import { FormButtons } from "~/components/primitives/FormButtons";
 import { Header1 } from "~/components/primitives/Headers";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Table, TableBlankRow, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from "~/components/primitives/Table";
+import { Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from "~/components/primitives/Table";
 import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
 import { $transaction, prisma } from "~/db.server";
 import { requireOrganization } from "~/services/org.server";
@@ -123,6 +123,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
   const { organization, userId } = await requireOrganization(request, organizationSlug);
 
+  const formData = await request.formData();
+  const result = ActionSchema.safeParse({ intent: formData.get("intent") });
+  if (!result.success) {
+    return json({ error: "Invalid action" }, { status: 400 });
+  }
 
   // Find Vercel integration
   const vercelIntegration = await prisma.organizationIntegration.findFirst({
@@ -347,11 +352,6 @@ export default function VercelIntegrationPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {connectedProjects.length === 0 && (
-                  <TableBlankRow colSpan={4}>
-                    <Paragraph>No connected projects found.</Paragraph>
-                  </TableBlankRow>
-                )}
               </TableBody>
             </Table>
           )}

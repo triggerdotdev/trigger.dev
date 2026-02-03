@@ -1,5 +1,7 @@
 import { createCookie } from "@remix-run/node";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { telemetry } from "~/services/telemetry.server";
 
 export type ReferralSource = "vercel";
 
@@ -28,4 +30,23 @@ export async function clearReferralSourceCookie(): Promise<string> {
   return referralSourceCookie.serialize("", {
     maxAge: 0,
   });
+}
+
+export async function trackAndClearReferralSource(
+  request: Request,
+  userId: string,
+  headers: Headers
+): Promise<void> {
+  const referralSource = await getReferralSource(request);
+  if (!referralSource) return;
+
+  headers.append("Set-Cookie", await clearReferralSourceCookie());
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return;
+
+  const userAge = Date.now() - user.createdAt.getTime();
+  if (userAge >= 30 * 1000) return;
+
+  telemetry.user.identify({ user, isNewUser: true, referralSource });
 }

@@ -50,6 +50,7 @@ import {
   VercelOnboardingModal,
   vercelResourcePath,
 } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
+import type { loader as vercelLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import { useTypedFetcher } from "remix-typedjson";
 
@@ -312,7 +313,7 @@ export default function Page() {
   const hasQueryParam = searchParams.get("vercelOnboarding") === "true";
   const nextUrl = searchParams.get("next");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const vercelFetcher = useTypedFetcher<any>();
+  const vercelFetcher = useTypedFetcher<typeof vercelLoader>();
 
   // Helper to open modal and ensure query param is present
   const openVercelOnboarding = useCallback(() => {

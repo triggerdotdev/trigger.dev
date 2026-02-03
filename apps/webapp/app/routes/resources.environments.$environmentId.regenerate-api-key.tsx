@@ -25,8 +25,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const updatedEnvironment = await regenerateApiKey({ userId, environmentId });
 
     // Sync the regenerated API key to Vercel if integration exists
-    // This is done asynchronously and won't block the response
-    syncApiKeyToVercelInBackground(
+    await syncApiKeyToVercelInBackground(
       updatedEnvironment.projectId,
       updatedEnvironment.type as "PRODUCTION" | "STAGING" | "PREVIEW" | "DEVELOPMENT",
       updatedEnvironment.apiKey
@@ -49,8 +48,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 }
 
 /**
- * Sync the API key to Vercel in the background.
- * This runs asynchronously and doesn't block the main response.
+ * Sync the API key to Vercel.
  * Errors are logged but won't fail the API key regeneration.
  */
 async function syncApiKeyToVercelInBackground(
@@ -64,17 +62,9 @@ async function syncApiKeyToVercelInBackground(
       environmentType,
       apiKey,
     });
-
-    if (!result.success) {
-      logger.warn("Failed to sync regenerated API key to Vercel", {
-        projectId,
-        environmentType,
-        error: result.error,
-      });
-    }
   } catch (error) {
     // Log but don't throw - we don't want to fail the main operation
-    logger.error("Error syncing regenerated API key to Vercel", {
+    logger.warn("Error syncing regenerated API key to Vercel", {
       projectId,
       environmentType,
       error,

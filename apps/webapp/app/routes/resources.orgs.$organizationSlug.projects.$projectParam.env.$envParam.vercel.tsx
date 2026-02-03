@@ -769,7 +769,7 @@ function ConnectedVercelProjectForm({
                 onAtomicBuildsChange={(slugs) =>
                   setConfigValues((prev) => ({ ...prev, atomicBuilds: slugs }))
                 }
-                envVarsConfigLink={`/orgs/${organizationSlug}/projects/${projectSlug}/environment-variables`}
+                envVarsConfigLink={`/orgs/${organizationSlug}/projects/${projectSlug}/env/${environmentSlug}/environment-variables`}
               />
 
               {/* Warning: autoAssignCustomDomains must be disabled for atomic deployments */}

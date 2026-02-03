@@ -320,7 +320,6 @@ export function VercelOnboardingModal({
     if (state === "project-selection" && fetcher.data && "success" in fetcher.data && fetcher.data.success && fetcher.state === "idle") {
       setState("loading-env-mapping");
       if (onDataReload) {
-        console.log("Vercel onboarding: Reloading data after successful project selection to get updated project info and env vars");
         onDataReload();
       }
     } else if (fetcher.data && "error" in fetcher.data && typeof fetcher.data.error === "string") {

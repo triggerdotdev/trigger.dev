@@ -1,6 +1,5 @@
 import { Vercel } from "@vercel/sdk";
 import {
-  IntegrationService,
   Organization,
   OrganizationIntegration,
   SecretReference,
@@ -34,7 +33,7 @@ function extractEnvs(response: unknown): unknown[] {
 }
 
 function isVercelSecretType(type: string): boolean {
-  return type === "secret" || type === "sensitive";
+  return type === "secret" || type === "sensitive" || type === "encrypted";
 }
 
 function vercelApiError(message: string, context: Record<string, unknown>, error: unknown): VercelAPIResult<never> {

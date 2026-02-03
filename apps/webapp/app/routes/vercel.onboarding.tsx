@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json, redirect } from "@remix-run/server-runtime";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Form, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -266,6 +266,13 @@ export default function VercelOnboardingPage() {
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
   const [isInstalling, setIsInstalling] = useState(false);
+
+  // Reset isInstalling when navigation returns to idle (e.g. on error)
+  useEffect(() => {
+    if (navigation.state === "idle" && isInstalling) {
+      setIsInstalling(false);
+    }
+  }, [navigation.state, isInstalling]);
 
   if (data.step === "error") {
     return (

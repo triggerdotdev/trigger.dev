@@ -5,8 +5,7 @@ import { getSession, redirectWithErrorMessage } from "~/models/message.server";
 import { authenticator } from "~/services/auth.server";
 import { setLastAuthMethodHeader } from "~/services/lastAuthMethod.server";
 import { commitSession } from "~/services/sessionStorage.server";
-import { getReferralSource, clearReferralSourceCookie } from "~/services/referralSource.server";
-import { telemetry } from "~/services/telemetry.server";
+import { trackAndClearReferralSource } from "~/services/referralSource.server";
 import { redirectCookie } from "./auth.github";
 import { sanitizeRedirectPath } from "~/utils";
 
@@ -56,25 +55,7 @@ export let loader: LoaderFunction = async ({ request }) => {
   headers.append("Set-Cookie", await commitSession(session));
   headers.append("Set-Cookie", await setLastAuthMethodHeader("github"));
 
-  const referralSource = await getReferralSource(request);
-  if (referralSource) {
-    const user = await prisma.user.findUnique({
-      where: { id: auth.userId },
-    });
-    if (user) {
-      const userAge = Date.now() - user.createdAt.getTime();
-      const isNewUser = userAge < 30 * 1000;
-      
-      if (isNewUser) {
-        telemetry.user.identify({
-          user,
-          isNewUser: true,
-          referralSource,
-        });
-      }
-    }
-    headers.append("Set-Cookie", await clearReferralSourceCookie());
-  }
+  await trackAndClearReferralSource(request, auth.userId, headers);
 
   return redirect(redirectTo, { headers });
 };
