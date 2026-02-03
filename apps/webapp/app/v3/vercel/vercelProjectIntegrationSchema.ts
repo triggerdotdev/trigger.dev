@@ -1,147 +1,59 @@
 import { z } from "zod";
 
-/**
- * Environment slugs used in API keys and configuration.
- * These map to RuntimeEnvironmentType as follows:
- * - "dev" → DEVELOPMENT
- * - "stg" → STAGING
- * - "prod" → PRODUCTION
- * - "preview" → PREVIEW
- */
 export const EnvSlugSchema = z.enum(["dev", "stg", "prod", "preview"]);
 export type EnvSlug = z.infer<typeof EnvSlugSchema>;
 
+export const ALL_ENV_SLUGS: EnvSlug[] = ["dev", "stg", "prod", "preview"];
+
 /**
- * Configuration for the Vercel integration.
- *
- * These settings control how the integration behaves when syncing environment variables
- * and responding to Vercel deployment/build events.
+ * Zod transform for form fields that submit JSON-encoded arrays.
+ * Parses the string as JSON and returns the array, or null if invalid.
  */
+export const jsonArrayField = z.string().optional().transform((val) => {
+  if (!val) return null;
+  try {
+    const parsed = JSON.parse(val);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+});
+
 export const VercelIntegrationConfigSchema = z.object({
-  /**
-   * Array of environment slugs to enable atomic deployments for.
-   * When an environment slug is in this array, Trigger.dev deployment waits for
-   * Vercel deployment to complete before promoting.
-   *
-   * Example: ["prod"] enables atomic builds for production only
-   * null/undefined = atomic builds disabled for all environments
-   */
   atomicBuilds: z.array(EnvSlugSchema).nullable().optional(),
-
-  /**
-   * Array of environment slugs to pull env vars for before build.
-   * When an environment slug is in this array, env vars are pulled from Vercel
-   * before each Trigger.dev build starts for that environment.
-   *
-   * Example: ["prod", "stg"] will pull Vercel env vars for production and staging builds
-   * null/undefined = env var pulling disabled for all environments
-   */
   pullEnvVarsBeforeBuild: z.array(EnvSlugSchema).nullable().optional(),
-
-  /**
-   * Maps a custom Vercel environment to Trigger.dev's staging environment.
-   * Vercel environments:
-   * - production → Trigger.dev production (automatic)
-   * - preview → Trigger.dev preview (automatic)
-   * - development → Trigger.dev development (automatic)
-   * - custom environments → user can select one to map to Trigger.dev staging
-   *
-   * This field stores the custom Vercel environment ID that maps to staging.
-   * When null, no custom environment is mapped to staging.
-   */
+  /** Maps a custom Vercel environment to Trigger.dev's staging environment. */
   vercelStagingEnvironment: z.object({
     environmentId: z.string(),
     displayName: z.string(),
   }).nullable().optional(),
-
-  /**
-   * Array of environment slugs for which new env vars should be discovered from Vercel during builds.
-   * When an environment slug is in this array, new environment variables added in Vercel
-   * will be automatically pulled into Trigger.dev for that environment.
-   *
-   * Example: ["prod", "stg"] will discover new env vars for production and staging builds
-   * null/undefined = discovery disabled for all environments
-   */
   discoverEnvVars: z.array(EnvSlugSchema).nullable().optional(),
 });
 
 export type VercelIntegrationConfig = z.infer<typeof VercelIntegrationConfigSchema>;
 
-/**
- * Environment types for sync mapping (RuntimeEnvironmentType from database)
- */
 export const TriggerEnvironmentType = z.enum(["PRODUCTION", "STAGING", "PREVIEW", "DEVELOPMENT"]);
 export type TriggerEnvironmentType = z.infer<typeof TriggerEnvironmentType>;
 
 /**
- * Mapping of environment slugs to per-variable sync settings.
- *
- * Structure: { [envSlug]: { [varName]: boolean } }
- *
- * - If an env slug is missing from this map, all variables are synced by default for that environment.
- * - For each environment, you can enable/disable syncing per variable.
- * - If a variable is missing from an environment's settings, it defaults to sync (true).
- * - Secret environment variables from Vercel cannot be synced due to API limitations.
- *
- * @example
- * {
- *   "prod": {
- *     "DATABASE_URL": true,    // sync for production
- *     "DEBUG_MODE": false      // don't sync for production
- *   },
- *   "stg": {
- *     "DATABASE_URL": true,
- *     "DEBUG_MODE": true
- *   }
- *   // "dev" is not in the map - all variables will be synced for dev by default
- * }
+ * Per-environment, per-variable sync settings.
+ * Missing env slug = sync all vars. Missing var in env = sync by default.
+ * Only explicitly `false` entries disable sync.
  */
 export const SyncEnvVarsMappingSchema = z.record(EnvSlugSchema, z.record(z.string(), z.boolean())).default({});
 
 export type SyncEnvVarsMapping = z.infer<typeof SyncEnvVarsMappingSchema>;
 
-/**
- * The complete integrationData schema for OrganizationProjectIntegration
- * when the integration service is VERCEL.
- *
- * This is stored in the `integrationData` JSON field of OrganizationProjectIntegration.
- */
 export const VercelProjectIntegrationDataSchema = z.object({
-  /**
-   * Configuration settings for the Vercel integration
-   */
   config: VercelIntegrationConfigSchema,
-
-  /**
-   * Mapping of environment slugs to per-variable sync settings.
-   * See SyncEnvVarsMappingSchema for detailed documentation.
-   */
   syncEnvVarsMapping: SyncEnvVarsMappingSchema,
-
-  /**
-   * The name of the Vercel project (for display purposes)
-   */
   vercelProjectName: z.string(),
-
-  /**
-   * The Vercel team/organization ID (null for personal accounts)
-   */
   vercelTeamId: z.string().nullable(),
-
-  /**
-   * The Vercel project ID.
-   * Note: This is also stored in OrganizationProjectIntegration.externalEntityId
-   * but duplicated here for convenience.
-   */
   vercelProjectId: z.string(),
 });
 
 export type VercelProjectIntegrationData = z.infer<typeof VercelProjectIntegrationDataSchema>;
 
-/**
- * Helper function to create default integration data for a new Vercel project connection.
- * Defaults to having atomic builds enabled for production and pull env vars enabled for all non-dev environments.
- */
 export function createDefaultVercelIntegrationData(
   vercelProjectId: string,
   vercelProjectName: string,
@@ -162,8 +74,43 @@ export function createDefaultVercelIntegrationData(
 }
 
 /**
- * Check if discover env vars is enabled for a specific environment.
+ * Maps a Trigger.dev environment type to its Vercel target identifier(s).
+ * Returns null for STAGING when no custom environment is configured.
  */
+export function envTypeToVercelTarget(
+  envType: TriggerEnvironmentType,
+  stagingEnvironmentId?: string | null
+): string[] | null {
+  switch (envType) {
+    case "PRODUCTION":
+      return ["production"];
+    case "STAGING":
+      return stagingEnvironmentId ? [stagingEnvironmentId] : null;
+    case "PREVIEW":
+      return ["preview"];
+    case "DEVELOPMENT":
+      return ["development"];
+  }
+}
+
+export function getAvailableEnvSlugs(
+  hasStagingEnvironment: boolean,
+  hasPreviewEnvironment: boolean
+): EnvSlug[] {
+  return ALL_ENV_SLUGS.filter((s) => {
+    if (s === "stg" && !hasStagingEnvironment) return false;
+    if (s === "preview" && !hasPreviewEnvironment) return false;
+    return true;
+  });
+}
+
+export function getAvailableEnvSlugsForBuildSettings(
+  hasStagingEnvironment: boolean,
+  hasPreviewEnvironment: boolean
+): EnvSlug[] {
+  return getAvailableEnvSlugs(hasStagingEnvironment, hasPreviewEnvironment).filter((s) => s !== "dev");
+}
+
 export function isDiscoverEnvVarsEnabledForEnvironment(
   discoverEnvVars: EnvSlug[] | null | undefined,
   environmentType: TriggerEnvironmentType
@@ -175,9 +122,6 @@ export function isDiscoverEnvVarsEnabledForEnvironment(
   return discoverEnvVars.includes(envSlug);
 }
 
-/**
- * Convert RuntimeEnvironmentType to EnvSlug
- */
 export function envTypeToSlug(environmentType: TriggerEnvironmentType): EnvSlug {
   switch (environmentType) {
     case "DEVELOPMENT":
@@ -191,9 +135,6 @@ export function envTypeToSlug(environmentType: TriggerEnvironmentType): EnvSlug 
   }
 }
 
-/**
- * Convert EnvSlug to RuntimeEnvironmentType
- */
 export function envSlugToType(slug: EnvSlug): TriggerEnvironmentType {
   switch (slug) {
     case "dev":
@@ -207,14 +148,6 @@ export function envSlugToType(slug: EnvSlug): TriggerEnvironmentType {
   }
 }
 
-/**
- * Type guard to check if env var should be synced for a specific environment.
- * Returns true if:
- *   - The environment slug is not in the mapping (sync all vars by default)
- *   - The env var is not in the environment's settings (sync by default)
- *   - The value is explicitly true
- * Returns false only when explicitly set to false for the environment.
- */
 export function shouldSyncEnvVar(
   mapping: SyncEnvVarsMapping,
   envVarName: string,
@@ -222,34 +155,21 @@ export function shouldSyncEnvVar(
 ): boolean {
   const envSlug = envTypeToSlug(environmentType);
   const envSettings = mapping[envSlug];
-  // If environment not in mapping, sync all vars by default
   if (!envSettings) {
     return true;
   }
-  const value = envSettings[envVarName];
-  // If env var not specified for this environment, default to true (sync by default)
-  // Only skip if explicitly set to false
-  return value !== false;
+  return envSettings[envVarName] !== false;
 }
 
-/**
- * Check if env var should be synced for any environment.
- * Used for display purposes to determine if an env var is partially or fully enabled.
- */
 export function shouldSyncEnvVarForAnyEnvironment(
   mapping: SyncEnvVarsMapping,
   envVarName: string
 ): boolean {
-  const envSlugs: EnvSlug[] = ["dev", "stg", "prod", "preview"];
-
-  // Check each environment
-  for (const slug of envSlugs) {
+  for (const slug of ALL_ENV_SLUGS) {
     const envSettings = mapping[slug];
-    // If environment not in mapping, all vars are synced by default
     if (!envSettings) {
       return true;
     }
-    // If var is explicitly true or not specified for this environment, it's enabled
     if (envSettings[envVarName] !== false) {
       return true;
     }
@@ -258,9 +178,6 @@ export function shouldSyncEnvVarForAnyEnvironment(
   return false;
 }
 
-/**
- * Check if pull env vars is enabled for a specific environment.
- */
 export function isPullEnvVarsEnabledForEnvironment(
   pullEnvVarsBeforeBuild: EnvSlug[] | null | undefined,
   environmentType: TriggerEnvironmentType
@@ -272,9 +189,6 @@ export function isPullEnvVarsEnabledForEnvironment(
   return pullEnvVarsBeforeBuild.includes(envSlug);
 }
 
-/**
- * Check if atomic builds is enabled for a specific environment.
- */
 export function isAtomicBuildsEnabledForEnvironment(
   atomicBuilds: EnvSlug[] | null | undefined,
   environmentType: TriggerEnvironmentType

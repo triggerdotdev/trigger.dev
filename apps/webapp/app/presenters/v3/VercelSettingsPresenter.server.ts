@@ -149,7 +149,6 @@ export class VercelSettingsPresenter extends BasePresenter {
           })
         ).map((repo) => repo !== null);
 
-      // Check if staging environment exists
       const checkStagingEnvironment = () =>
         fromPromise(
           (this._replica as PrismaClient).runtimeEnvironment.findFirst({
@@ -167,7 +166,6 @@ export class VercelSettingsPresenter extends BasePresenter {
           })
         ).map((env) => env !== null);
 
-      // Check if preview environment exists
       const checkPreviewEnvironment = () =>
         fromPromise(
           (this._replica as PrismaClient).runtimeEnvironment.findFirst({
@@ -185,7 +183,6 @@ export class VercelSettingsPresenter extends BasePresenter {
           })
         ).map((env) => env !== null);
 
-      // Get Vercel project integration
       const getVercelProjectIntegration = () =>
         fromPromise(
           (this._replica as PrismaClient).organizationProjectIntegration.findFirst({
@@ -325,7 +322,6 @@ export class VercelSettingsPresenter extends BasePresenter {
     vercelEnvironmentId?: string
   ): Promise<VercelOnboardingData | null> {
     try {
-      // Fetch GitHub app installations and connected repo in parallel with Vercel data
       const [gitHubInstallations, connectedGitHubRepo] = await Promise.all([
         (this._replica as PrismaClient).githubAppInstallation.findMany({
           where: {
@@ -417,7 +413,6 @@ export class VercelSettingsPresenter extends BasePresenter {
       const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
       const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
 
-    // Get the project integration to find the Vercel project ID (if selected)
       const projectIntegration = await (this._replica as PrismaClient).organizationProjectIntegration.findFirst({
         where: {
           projectId,
@@ -429,7 +424,6 @@ export class VercelSettingsPresenter extends BasePresenter {
         },
       });
 
-    // Always fetch available projects for selection
       const availableProjectsResult = await VercelIntegrationRepository.getVercelProjects(client, teamId);
       
       if (!availableProjectsResult.success) {
@@ -445,7 +439,6 @@ export class VercelSettingsPresenter extends BasePresenter {
         };
       }
 
-    // If no project integration exists, return early with just available projects
       if (!projectIntegration) {
         return {
           customEnvironments: [],
@@ -458,7 +451,6 @@ export class VercelSettingsPresenter extends BasePresenter {
         };
       }
 
-    // Fetch custom environments, project env vars, and shared env vars in parallel
       const [customEnvironmentsResult, projectEnvVarsResult, sharedEnvVarsResult] = await Promise.all([
         VercelIntegrationRepository.getVercelCustomEnvironments(
           client,
@@ -479,8 +471,7 @@ export class VercelSettingsPresenter extends BasePresenter {
             )
           : Promise.resolve({ success: true as const, data: [] }),
       ]);
-      // Check if any of the API calls failed due to auth issues
-      const authInvalid = 
+      const authInvalid =
         (!customEnvironmentsResult.success && customEnvironmentsResult.authInvalid) ||
         (!projectEnvVarsResult.success && projectEnvVarsResult.authInvalid) ||
         (!sharedEnvVarsResult.success && sharedEnvVarsResult.authInvalid);
@@ -498,20 +489,17 @@ export class VercelSettingsPresenter extends BasePresenter {
         };
       }
 
-    // Extract data from successful results
       const customEnvironments = customEnvironmentsResult.success ? customEnvironmentsResult.data : [];
       const projectEnvVars = projectEnvVarsResult.success ? projectEnvVarsResult.data : [];
       const sharedEnvVars = sharedEnvVarsResult.success ? sharedEnvVarsResult.data : [];
 
-    // Merge project and shared env vars (project vars take precedence)
-    // Also filter out TRIGGER_SECRET_KEY as it's managed by Trigger.dev
+      // Filter out TRIGGER_SECRET_KEY (managed by Trigger.dev) and merge project + shared env vars
       const projectEnvVarKeys = new Set(projectEnvVars.map((v) => v.key));
       const mergedEnvVars: VercelEnvironmentVariable[] = [
         ...projectEnvVars
           .filter((v) => v.key !== "TRIGGER_SECRET_KEY")
           .map((v) => {
             const envVar = { ...v };
-            // Check if this env var is used in the selected custom environment
             if (vercelEnvironmentId && (v as any).customEnvironmentIds?.includes(vercelEnvironmentId)) {
               envVar.target = [...v.target, 'staging'];
             }
@@ -528,7 +516,6 @@ export class VercelSettingsPresenter extends BasePresenter {
               target: v.target,
               isShared: true,
             };
-            // Check if this shared env var is used in the selected custom environment
             if (vercelEnvironmentId && (v as any).customEnvironmentIds?.includes(vercelEnvironmentId)) {
               envVar.target = [...v.target, 'staging'];
             }
@@ -536,13 +523,10 @@ export class VercelSettingsPresenter extends BasePresenter {
           }),
       ];
 
-    // Sort environment variables alphabetically
       const sortedEnvVars = [...mergedEnvVars].sort((a, b) =>
         a.key.localeCompare(b.key)
       );
 
-    // Get existing environment variables in Trigger.dev
-      // Fetch environments with their slugs and archived status to filter properly
       const projectEnvs = await (this._replica as PrismaClient).runtimeEnvironment.findMany({
         where: {
           projectId,

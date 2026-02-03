@@ -212,7 +212,6 @@ export class VercelIntegrationService {
       orgIntegration,
     });
 
-    // Disable autoAssignCustomDomains on the Vercel project for atomic deployments
     try {
       const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
       await VercelIntegrationRepository.disableAutoAssignCustomDomains(
@@ -265,7 +264,6 @@ export class VercelIntegrationService {
       },
     });
 
-    // Sync TRIGGER_VERSION if atomic builds were just enabled for prod
     if (updatedConfig.atomicBuilds?.includes("prod")) {
       const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(
         projectId
@@ -406,8 +404,6 @@ export class VercelIntegrationService {
         discoverEnvVars: params.discoverEnvVars ?? null,
         vercelStagingEnvironment: params.vercelStagingEnvironment ?? null,
       },
-      // Don't save syncEnvVarsMapping - it's only used for the one-time pull during onboarding
-      // Keep the existing mapping (or empty default)
       syncEnvVarsMapping: existing.parsedIntegrationData.syncEnvVarsMapping,
     };
 
@@ -418,12 +414,7 @@ export class VercelIntegrationService {
       },
     });
 
-    // Pull env vars now (one-time sync during onboarding)
-    // Always attempt to pull - the pullEnvVarsFromVercel function will filter based on the mapping.
-    // We can't easily check hasEnabledVars because vars NOT in the mapping are enabled by default,
-    // so a mapping like { "dev": { "VAR1": false } } still means VAR2, VAR3, etc. should be synced.
     try {
-      // Get the org integration with token reference
       const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(
         projectId
       );
@@ -463,7 +454,6 @@ export class VercelIntegrationService {
           });
         }
 
-        // Sync TRIGGER_VERSION if atomic builds are enabled and a deployed build exists
         await this.#syncTriggerVersionToVercelProduction(
           projectId,
           updatedData.config.atomicBuilds,
@@ -488,11 +478,6 @@ export class VercelIntegrationService {
     };
   }
 
-  /**
-   * Syncs the current deployed version as TRIGGER_VERSION to Vercel production.
-   * Called during onboarding completion and when atomic builds are enabled via config update.
-   * Non-blocking — errors are logged but don't fail the parent operation.
-   */
   async #syncTriggerVersionToVercelProduction(
     projectId: string,
     atomicBuilds: string[] | null | undefined,
@@ -503,7 +488,6 @@ export class VercelIntegrationService {
         return;
       }
 
-      // Find the PRODUCTION runtime environment for this project
       const prodEnvironment = await this.#prismaClient.runtimeEnvironment.findFirst({
         where: {
           projectId,
@@ -518,7 +502,6 @@ export class VercelIntegrationService {
         return;
       }
 
-      // Get the current promoted deployment version
       const currentDeployment = await findCurrentWorkerDeployment({
         environmentId: prodEnvironment.id,
       });
