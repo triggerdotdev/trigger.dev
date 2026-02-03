@@ -47,6 +47,13 @@ export type AuthenticatableIntegration = OrganizationIntegration & {
   tokenReference: SecretReference;
 };
 
+export function isIntegrationForService<TService extends IntegrationService>(
+  integration: AuthenticatableIntegration,
+  service: TService
+): integration is OrganizationIntegrationForService<TService> {
+  return (integration.service satisfies IntegrationService) === service;
+}
+
 export class OrgIntegrationRepository {
   static async getAuthenticatedClientForIntegration<TService extends IntegrationService>(
     integration: OrganizationIntegrationForService<TService>,

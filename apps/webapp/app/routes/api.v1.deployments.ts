@@ -48,7 +48,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
         deployment.externalBuildData as InitializeDeploymentResponseBody["externalBuildData"],
       imageTag: imageRef,
       imagePlatform: deployment.imagePlatform,
-      environmentSlug: authenticatedEnv.slug,
       eventStream,
     };
 
