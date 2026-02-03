@@ -511,14 +511,6 @@ export class VercelIntegrationRepository {
           }
 
           try {
-            logger.debug("Fetching decrypted value for shared env var", {
-              teamId,
-              envId: env.id,
-              envKey: env.key,
-              envType: env.type,
-              envTarget: env.target,
-            });
-
             // Get the decrypted value for this shared env var
             const getResponse = await client.environment.getSharedEnvVar({
               id: env.id as string,
@@ -655,12 +647,6 @@ export class VercelIntegrationRepository {
         raw: params.raw,
       };
 
-      logger.debug("Updating Vercel secret", {
-        integrationId: params.integrationId,
-        teamId: params.teamId,
-        installationId: params.installationId,
-      });
-
       await secretStore.setSecret(integration.tokenReference.key, secretValue);
 
       await tx.organizationIntegration.update({
@@ -701,11 +687,6 @@ export class VercelIntegrationRepository {
         installationId: params.installationId,
         raw: params.raw,
       };
-
-      logger.debug("Storing Vercel secret", {
-        teamId: params.teamId,
-        installationId: params.installationId,
-      });
 
       await secretStore.setSecret(integrationFriendlyId, secretValue);
 
@@ -852,10 +833,6 @@ export class VercelIntegrationRepository {
       }
 
       if (envVarsToSync.length === 0) {
-        logger.debug("No API keys to sync to Vercel", {
-          projectId: params.projectId,
-          vercelProjectId: params.vercelProjectId,
-        });
         return { success: true, errors: [] };
       }
 
@@ -1022,15 +999,6 @@ export class VercelIntegrationRepository {
         });
       }
 
-      logger.info("Vercel pullEnvVarsFromVercel: environment mapping", {
-        projectId: params.projectId,
-        vercelProjectId: params.vercelProjectId,
-        envMappingCount: envMapping.length,
-        envMapping: envMapping.map(m => ({ type: m.triggerEnvType, target: m.vercelTarget })),
-        runtimeEnvironmentsCount: runtimeEnvironments.length,
-        runtimeEnvironments: runtimeEnvironments.map(e => e.type),
-      });
-
       if (envMapping.length === 0) {
         logger.warn("No environments to sync for Vercel integration", {
           projectId: params.projectId,
@@ -1089,16 +1057,6 @@ export class VercelIntegrationRepository {
             continue;
           }
 
-          logger.info("Vercel pullEnvVarsFromVercel: fetched env vars for target", {
-            projectId: params.projectId,
-            vercelTarget: mapping.vercelTarget,
-            triggerEnvType: mapping.triggerEnvType,
-            projectEnvVarsCount: projectEnvVars.length,
-            sharedEnvVarsCount: filteredSharedEnvVars.length,
-            mergedEnvVarsCount: mergedEnvVars.length,
-            mergedEnvVarKeys: mergedEnvVars.map(v => v.key),
-          });
-
           const varsToSync = mergedEnvVars.filter((envVar) => {
             if (envVar.isSecret) {
               return false;
@@ -1111,14 +1069,6 @@ export class VercelIntegrationRepository {
               envVar.key,
               mapping.triggerEnvType as TriggerEnvironmentType
             );
-          });
-
-          logger.info("Vercel pullEnvVarsFromVercel: filtered vars to sync", {
-            projectId: params.projectId,
-            vercelTarget: mapping.vercelTarget,
-            triggerEnvType: mapping.triggerEnvType,
-            varsToSyncCount: varsToSync.length,
-            varsToSyncKeys: varsToSync.map(v => v.key),
           });
 
           if (varsToSync.length === 0) {
@@ -1181,23 +1131,8 @@ export class VercelIntegrationRepository {
           });
 
           if (changedVars.length === 0) {
-            logger.info("Vercel pullEnvVarsFromVercel: no changes detected, skipping", {
-              projectId: params.projectId,
-              vercelTarget: mapping.vercelTarget,
-              triggerEnvType: mapping.triggerEnvType,
-              skippedCount: varsToSync.length,
-            });
             continue;
           }
-
-          logger.info("Vercel pullEnvVarsFromVercel: updating changed vars", {
-            projectId: params.projectId,
-            vercelTarget: mapping.vercelTarget,
-            triggerEnvType: mapping.triggerEnvType,
-            changedCount: changedVars.length,
-            unchangedCount: varsToSync.length - changedVars.length,
-            changedKeys: changedVars.map((v) => v.key),
-          });
 
           const secretVars = changedVars.filter((v) => existingSecretKeys.has(v.key));
           const nonSecretVars = changedVars.filter((v) => !existingSecretKeys.has(v.key));
@@ -1518,11 +1453,6 @@ export class VercelIntegrationRepository {
         requestBody: {
           autoAssignCustomDomains: false,
         },
-      });
-
-      logger.info("Disabled autoAssignCustomDomains on Vercel project", {
-        vercelProjectId,
-        teamId,
       });
 
       return { success: true };

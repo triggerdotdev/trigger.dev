@@ -1,6 +1,7 @@
 import { type PrismaClient } from "@trigger.dev/database";
 import { fromPromise, ok, ResultAsync } from "neverthrow";
 import { env } from "~/env.server";
+import { logger } from "~/services/logger.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import {
   VercelIntegrationRepository,
@@ -280,12 +281,12 @@ export class VercelSettingsPresenter extends BasePresenter {
           } as VercelSettingsResult));
         }).mapErr((error) => {
           // Log the error and return a safe fallback
-          console.error("Error in VercelSettingsPresenter.call:", error);
+          logger.error("Error in VercelSettingsPresenter.call", { error });
           return error;
         });
       } catch (syncError) {
         // Handle any synchronous errors that might occur
-        console.error("Synchronous error in VercelSettingsPresenter.call:", syncError);
+        logger.error("Synchronous error in VercelSettingsPresenter.call", { error: syncError });
         return ok({
           enabled: true,
           hasOrgIntegration: false,
@@ -299,7 +300,7 @@ export class VercelSettingsPresenter extends BasePresenter {
       }
     } catch (error) {
       // If there's an unexpected error, log it and return a safe error result
-      console.error("Unexpected error in VercelSettingsPresenter.call:", error);
+      logger.error("Unexpected error in VercelSettingsPresenter.call", { error });
       return ok({
         enabled: true,
         hasOrgIntegration: false,
@@ -566,7 +567,7 @@ export class VercelSettingsPresenter extends BasePresenter {
         isGitHubConnected,
       };
     } catch (error) {
-      console.error("Error in getOnboardingData:", error);
+      logger.error("Error in getOnboardingData", { error });
       return null;
     }
   }

@@ -287,16 +287,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
       }
     }
 
-    logger.info("Vercel complete-onboarding action: received params", {
-      projectId: project.id,
-      vercelStagingEnvironment,
-      pullEnvVarsBeforeBuild,
-      atomicBuilds,
-      discoverEnvVars,
-      syncEnvVarsMappingRaw: syncEnvVarsMapping,
-      parsedMappingKeys: Object.keys(parsedMapping),
-    });
-
     const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
 
     const result = await vercelService.completeOnboarding(project.id, {
