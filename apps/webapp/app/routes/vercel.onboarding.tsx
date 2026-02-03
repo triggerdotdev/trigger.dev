@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json, redirect } from "@remix-run/server-runtime";
+import { fromPromise } from "neverthrow";
 import { useEffect, useState } from "react";
 import { Form, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -234,31 +235,34 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Environment not found" }, { status: 404 });
   }
 
-  try {
-    const state = await generateVercelOAuthState({
+  const stateResult = await fromPromise(
+    generateVercelOAuthState({
       organizationId: project.organizationId,
       projectId: project.id,
       environmentSlug: environment.slug,
       organizationSlug: project.organization.slug,
       projectSlug: project.slug,
-    });
+    }),
+    (error) => error
+  );
 
-    const params = new URLSearchParams();
-    params.set("state", state);
-    params.set("code", code);
-    if (configurationId) {
-      params.set("configurationId", configurationId);
-    }
-    params.set("origin", "marketplace");
-    if (next) {
-      params.set("next", next);
-    }
-
-    return redirect(`/vercel/connect?${params.toString()}`, 303);
-  } catch (error) {
-    logger.error("Failed to generate Vercel OAuth state", { error });
+  if (stateResult.isErr()) {
+    logger.error("Failed to generate Vercel OAuth state", { error: stateResult.error });
     return json({ error: "Failed to generate installation state" }, { status: 500 });
   }
+
+  const params = new URLSearchParams();
+  params.set("state", stateResult.value);
+  params.set("code", code);
+  if (configurationId) {
+    params.set("configurationId", configurationId);
+  }
+  params.set("origin", "marketplace");
+  if (next) {
+    params.set("next", next);
+  }
+
+  return redirect(`/vercel/connect?${params.toString()}`, 303);
 }
 
 export default function VercelOnboardingPage() {

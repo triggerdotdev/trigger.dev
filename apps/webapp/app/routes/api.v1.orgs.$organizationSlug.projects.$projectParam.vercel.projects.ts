@@ -1,5 +1,6 @@
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
+import { fromPromise } from "neverthrow";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { apiCors } from "~/utils/apiCors";
@@ -47,79 +48,46 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const { organizationSlug, projectParam } = parsedParams.data;
 
-  try {
-    // Find the project, verifying org membership
-    const project = await prisma.project.findFirst({
-      where: {
-        slug: projectParam,
-        organization: {
-          slug: organizationSlug,
-          members: {
-            some: {
-              userId: authenticationResult.userId,
+  const result = await fromPromise(
+    (async () => {
+      // Find the project, verifying org membership
+      const project = await prisma.project.findFirst({
+        where: {
+          slug: projectParam,
+          organization: {
+            slug: organizationSlug,
+            members: {
+              some: {
+                userId: authenticationResult.userId,
+              },
             },
           },
+          deletedAt: null,
         },
-        deletedAt: null,
-      },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        organizationId: true,
-      },
-    });
-
-    if (!project) {
-      return apiCors(
-        request,
-        json({ error: "Project not found" }, { status: 404 })
-      );
-    }
-
-    // Get Vercel integration for the project
-    const vercelService = new VercelIntegrationService();
-    const integration = await vercelService.getVercelProjectIntegration(project.id);
-
-    if (!integration) {
-      return apiCors(
-        request,
-        json({
-          connected: false,
-          vercelProject: null,
-          config: null,
-          syncEnvVarsMapping: null,
-        })
-      );
-    }
-
-    const { parsedIntegrationData } = integration;
-
-    return apiCors(
-      request,
-      json({
-        connected: true,
-        vercelProject: {
-          id: parsedIntegrationData.vercelProjectId,
-          name: parsedIntegrationData.vercelProjectName,
-          teamId: parsedIntegrationData.vercelTeamId,
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          organizationId: true,
         },
-        config: {
-          atomicBuilds: parsedIntegrationData.config.atomicBuilds,
-          pullEnvVarsBeforeBuild: parsedIntegrationData.config.pullEnvVarsBeforeBuild,
-          vercelStagingEnvironment: parsedIntegrationData.config.vercelStagingEnvironment,
-        },
-        syncEnvVarsMapping: parsedIntegrationData.syncEnvVarsMapping,
-        triggerProject: {
-          id: project.id,
-          name: project.name,
-          slug: project.slug,
-        },
-      })
-    );
-  } catch (error) {
+      });
+
+      if (!project) {
+        return { type: "not_found" as const };
+      }
+
+      // Get Vercel integration for the project
+      const vercelService = new VercelIntegrationService();
+      const integration = await vercelService.getVercelProjectIntegration(project.id);
+
+      return { type: "success" as const, project, integration };
+    })(),
+    (error) => error
+  );
+
+  if (result.isErr()) {
     logger.error("Failed to fetch Vercel projects", {
-      error,
+      error: result.error,
       organizationSlug,
       projectParam,
     });
@@ -129,5 +97,51 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       json({ error: "Internal server error" }, { status: 500 })
     );
   }
+
+  if (result.value.type === "not_found") {
+    return apiCors(
+      request,
+      json({ error: "Project not found" }, { status: 404 })
+    );
+  }
+
+  const { project, integration } = result.value;
+
+  if (!integration) {
+    return apiCors(
+      request,
+      json({
+        connected: false,
+        vercelProject: null,
+        config: null,
+        syncEnvVarsMapping: null,
+      })
+    );
+  }
+
+  const { parsedIntegrationData } = integration;
+
+  return apiCors(
+    request,
+    json({
+      connected: true,
+      vercelProject: {
+        id: parsedIntegrationData.vercelProjectId,
+        name: parsedIntegrationData.vercelProjectName,
+        teamId: parsedIntegrationData.vercelTeamId,
+      },
+      config: {
+        atomicBuilds: parsedIntegrationData.config.atomicBuilds,
+        pullEnvVarsBeforeBuild: parsedIntegrationData.config.pullEnvVarsBeforeBuild,
+        vercelStagingEnvironment: parsedIntegrationData.config.vercelStagingEnvironment,
+      },
+      syncEnvVarsMapping: parsedIntegrationData.syncEnvVarsMapping,
+      triggerProject: {
+        id: project.id,
+        name: project.name,
+        slug: project.slug,
+      },
+    })
+  );
 }
 

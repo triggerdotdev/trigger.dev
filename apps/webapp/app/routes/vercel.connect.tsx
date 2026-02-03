@@ -1,5 +1,6 @@
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
+import { fromPromise } from "neverthrow";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { VercelIntegrationRepository, type TokenResponse } from "~/models/vercelIntegration.server";
@@ -143,23 +144,26 @@ export async function loader({ request }: LoaderFunctionArgs) {
     { slug: environment.slug }
   );
 
-  try {
-    await createOrFindVercelIntegration(stateData.organizationId, stateData.projectId, tokenResponse, configurationId, origin);
+  const result = await fromPromise(
+    createOrFindVercelIntegration(stateData.organizationId, stateData.projectId, tokenResponse, configurationId, origin),
+    (error) => error
+  );
 
-    logger.info("Vercel organization integration created successfully", {
-      organizationId: stateData.organizationId,
-      projectId: stateData.projectId,
-      teamId: tokenResponse.teamId,
-    });
-
-    const params = new URLSearchParams({ vercelOnboarding: "true", origin });
-    if (next) {
-      params.set("next", next);
-    }
-
-    return redirect(`${settingsPath}?${params.toString()}`);
-  } catch (error) {
-    logger.error("Failed to complete Vercel integration", { error });
+  if (result.isErr()) {
+    logger.error("Failed to complete Vercel integration", { error: result.error });
     throw redirect(settingsPath);
   }
+
+  logger.info("Vercel organization integration created successfully", {
+    organizationId: stateData.organizationId,
+    projectId: stateData.projectId,
+    teamId: tokenResponse.teamId,
+  });
+
+  const params = new URLSearchParams({ vercelOnboarding: "true", origin });
+  if (next) {
+    params.set("next", next);
+  }
+
+  return redirect(`${settingsPath}?${params.toString()}`);
 }

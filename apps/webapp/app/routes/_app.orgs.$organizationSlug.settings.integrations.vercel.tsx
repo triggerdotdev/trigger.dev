@@ -3,6 +3,7 @@ import type {
   LoaderFunctionArgs,
 } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
+import { fromPromise } from "neverthrow";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -145,53 +146,41 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return json({ error: "Vercel integration not found" }, { status: 404 });
   }
 
-  try {
-    // First, attempt to uninstall the integration from Vercel side
-    const uninstallResult = await VercelIntegrationRepository.uninstallVercelIntegration(vercelIntegration);
+  const uninstallActionResult = await fromPromise(
+    (async () => {
+      // First, attempt to uninstall the integration from Vercel side
+      const uninstallResult = await VercelIntegrationRepository.uninstallVercelIntegration(vercelIntegration);
 
-    // Then soft-delete the integration and all connected projects in a transaction
-    await $transaction(prisma, async (tx) => {
-      // Soft-delete all connected projects
-      await tx.organizationProjectIntegration.updateMany({
-        where: {
-          organizationIntegrationId: vercelIntegration.id,
-          deletedAt: null,
-        },
-        data: { deletedAt: new Date() },
+      // Then soft-delete the integration and all connected projects in a transaction
+      await $transaction(prisma, async (tx) => {
+        // Soft-delete all connected projects
+        await tx.organizationProjectIntegration.updateMany({
+          where: {
+            organizationIntegrationId: vercelIntegration.id,
+            deletedAt: null,
+          },
+          data: { deletedAt: new Date() },
+        });
+
+        // Soft-delete the integration record
+        await tx.organizationIntegration.update({
+          where: { id: vercelIntegration.id },
+          data: { deletedAt: new Date() },
+        });
       });
 
-      // Soft-delete the integration record
-      await tx.organizationIntegration.update({
-        where: { id: vercelIntegration.id },
-        data: { deletedAt: new Date() },
-      });
-    });
+      return uninstallResult;
+    })(),
+    (error) => error
+  );
 
-    if (uninstallResult.authInvalid) {
-      logger.warn("Vercel integration uninstalled with auth error - token invalid", {
-        organizationId: organization.id,
-        organizationSlug,
-        userId,
-        integrationId: vercelIntegration.id,
-      });
-    } else {
-      logger.info("Vercel integration uninstalled successfully", {
-        organizationId: organization.id,
-        organizationSlug,
-        userId,
-        integrationId: vercelIntegration.id,
-      });
-    }
-
-    // Redirect back to organization settings
-    return redirect(`/orgs/${organizationSlug}/settings`);
-  } catch (error) {
+  if (uninstallActionResult.isErr()) {
     logger.error("Failed to uninstall Vercel integration", {
       organizationId: organization.id,
       organizationSlug,
       userId,
       integrationId: vercelIntegration.id,
-      error: error instanceof Error ? error.message : String(error),
+      error: uninstallActionResult.error instanceof Error ? uninstallActionResult.error.message : String(uninstallActionResult.error),
     });
 
     return json(
@@ -199,6 +188,25 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       { status: 500 }
     );
   }
+
+  if (uninstallActionResult.value.authInvalid) {
+    logger.warn("Vercel integration uninstalled with auth error - token invalid", {
+      organizationId: organization.id,
+      organizationSlug,
+      userId,
+      integrationId: vercelIntegration.id,
+    });
+  } else {
+    logger.info("Vercel integration uninstalled successfully", {
+      organizationId: organization.id,
+      organizationSlug,
+      userId,
+      integrationId: vercelIntegration.id,
+    });
+  }
+
+  // Redirect back to organization settings
+  return redirect(`/orgs/${organizationSlug}/settings`);
 };
 
 export default function VercelIntegrationPage() {

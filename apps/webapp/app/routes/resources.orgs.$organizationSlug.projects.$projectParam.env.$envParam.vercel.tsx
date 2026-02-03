@@ -59,6 +59,7 @@ import {
   getAvailableEnvSlugs,
   getAvailableEnvSlugsForBuildSettings,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
+import { fromPromise } from "neverthrow";
 import { useEffect, useState } from "react";
 
 export type ConnectedVercelProject = {
@@ -233,124 +234,136 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const vercelService = new VercelIntegrationService();
   const { action: actionType } = submission.value;
 
-  if (actionType === "update-config") {
-    const {
-      atomicBuilds,
-      pullEnvVarsBeforeBuild,
-      discoverEnvVars,
-      vercelStagingEnvironment,
-    } = submission.value;
+  switch (actionType) {
+    case "update-config": {
+      const {
+        atomicBuilds,
+        pullEnvVarsBeforeBuild,
+        discoverEnvVars,
+        vercelStagingEnvironment,
+      } = submission.value;
 
-    const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
+      const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
 
-    const result = await vercelService.updateVercelIntegrationConfig(project.id, {
-      atomicBuilds: atomicBuilds as EnvSlug[] | null,
-      pullEnvVarsBeforeBuild: pullEnvVarsBeforeBuild as EnvSlug[] | null,
-      discoverEnvVars: discoverEnvVars as EnvSlug[] | null,
-      vercelStagingEnvironment: parsedStagingEnv,
-    });
+      const result = await vercelService.updateVercelIntegrationConfig(project.id, {
+        atomicBuilds: atomicBuilds as EnvSlug[] | null,
+        pullEnvVarsBeforeBuild: pullEnvVarsBeforeBuild as EnvSlug[] | null,
+        discoverEnvVars: discoverEnvVars as EnvSlug[] | null,
+        vercelStagingEnvironment: parsedStagingEnv,
+      });
 
-    if (result) {
-      return redirectWithSuccessMessage(settingsPath, request, "Vercel settings updated successfully");
-    }
-
-    return redirectWithErrorMessage(settingsPath, request, "Failed to update Vercel settings");
-  }
-
-  if (actionType === "disconnect") {
-    const success = await vercelService.disconnectVercelProject(project.id);
-
-    if (success) {
-      return redirectWithSuccessMessage(settingsPath, request, "Vercel project disconnected");
-    }
-
-    return redirectWithErrorMessage(settingsPath, request, "Failed to disconnect Vercel project");
-  }
-
-  if (actionType === "complete-onboarding") {
-    const {
-      vercelStagingEnvironment,
-      pullEnvVarsBeforeBuild,
-      atomicBuilds,
-      discoverEnvVars,
-      syncEnvVarsMapping,
-      next,
-      skipRedirect,
-    } = submission.value;
-
-    let parsedMapping: SyncEnvVarsMapping = {};
-    if (syncEnvVarsMapping) {
-      try {
-        parsedMapping = JSON.parse(syncEnvVarsMapping) as SyncEnvVarsMapping;
-      } catch (e) {
-        logger.error("Failed to parse syncEnvVarsMapping", { error: e });
-      }
-    }
-
-    const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
-
-    const result = await vercelService.completeOnboarding(project.id, {
-      vercelStagingEnvironment: parsedStagingEnv,
-      pullEnvVarsBeforeBuild: pullEnvVarsBeforeBuild as EnvSlug[] | null,
-      atomicBuilds: atomicBuilds as EnvSlug[] | null,
-      discoverEnvVars: discoverEnvVars as EnvSlug[] | null,
-      syncEnvVarsMapping: parsedMapping,
-    });
-
-    if (result) {
-      if (skipRedirect) {
-        return json({ success: true });
+      if (result) {
+        return redirectWithSuccessMessage(settingsPath, request, "Vercel settings updated successfully");
       }
 
-      if (next) {
+      return redirectWithErrorMessage(settingsPath, request, "Failed to update Vercel settings");
+    }
+
+    case "disconnect": {
+      const success = await vercelService.disconnectVercelProject(project.id);
+
+      if (success) {
+        return redirectWithSuccessMessage(settingsPath, request, "Vercel project disconnected");
+      }
+
+      return redirectWithErrorMessage(settingsPath, request, "Failed to disconnect Vercel project");
+    }
+
+    case "complete-onboarding": {
+      const {
+        vercelStagingEnvironment,
+        pullEnvVarsBeforeBuild,
+        atomicBuilds,
+        discoverEnvVars,
+        syncEnvVarsMapping,
+        next,
+        skipRedirect,
+      } = submission.value;
+
+      let parsedMapping: SyncEnvVarsMapping = {};
+      if (syncEnvVarsMapping) {
         try {
-          const nextUrl = new URL(next);
-          // Only allow https URLs for security
-          if (nextUrl.protocol === "https:") {
-            return json({ success: true, redirectTo: next });
-          }
+          parsedMapping = JSON.parse(syncEnvVarsMapping) as SyncEnvVarsMapping;
         } catch (e) {
-          logger.warn("Invalid next URL provided", { next, error: e });
+          logger.error("Failed to parse syncEnvVarsMapping", { error: e });
         }
       }
 
-      return json({ success: true, redirectTo: settingsPath });
-    }
+      const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
 
-    return redirectWithErrorMessage(settingsPath, request, "Failed to complete Vercel setup");
-  }
-
-  if (actionType === "update-env-mapping") {
-    const { vercelStagingEnvironment } = submission.value;
-
-    const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
-
-    const result = await vercelService.updateVercelIntegrationConfig(project.id, {
-      vercelStagingEnvironment: parsedStagingEnv,
-    });
-
-    if (result) {
-      return json({ success: true });
-    }
-
-    return json({ success: false, error: "Failed to update environment mapping" }, { status: 400 });
-  }
-
-  if (actionType === "skip-onboarding") {
-    return redirectWithSuccessMessage(settingsPath, request, "Vercel integration setup skipped");
-  }
-
-  if (actionType === "select-vercel-project") {
-    const { vercelProjectId, vercelProjectName } = submission.value;
-
-    try {
-      const { integration, syncResult } = await vercelService.selectVercelProject({
-        organizationId: project.organizationId,
-        projectId: project.id,
-        vercelProjectId,
-        vercelProjectName,
-        userId,
+      const result = await vercelService.completeOnboarding(project.id, {
+        vercelStagingEnvironment: parsedStagingEnv,
+        pullEnvVarsBeforeBuild: pullEnvVarsBeforeBuild as EnvSlug[] | null,
+        atomicBuilds: atomicBuilds as EnvSlug[] | null,
+        discoverEnvVars: discoverEnvVars as EnvSlug[] | null,
+        syncEnvVarsMapping: parsedMapping,
       });
+
+      if (result) {
+        if (skipRedirect) {
+          return json({ success: true });
+        }
+
+        if (next) {
+          try {
+            const nextUrl = new URL(next);
+            // Only allow https URLs for security
+            if (nextUrl.protocol === "https:") {
+              return json({ success: true, redirectTo: next });
+            }
+          } catch (e) {
+            logger.warn("Invalid next URL provided", { next, error: e });
+          }
+        }
+
+        return json({ success: true, redirectTo: settingsPath });
+      }
+
+      return redirectWithErrorMessage(settingsPath, request, "Failed to complete Vercel setup");
+    }
+
+    case "update-env-mapping": {
+      const { vercelStagingEnvironment } = submission.value;
+
+      const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
+
+      const result = await vercelService.updateVercelIntegrationConfig(project.id, {
+        vercelStagingEnvironment: parsedStagingEnv,
+      });
+
+      if (result) {
+        return json({ success: true });
+      }
+
+      return json({ success: false, error: "Failed to update environment mapping" }, { status: 400 });
+    }
+
+    case "skip-onboarding": {
+      return redirectWithSuccessMessage(settingsPath, request, "Vercel integration setup skipped");
+    }
+
+    case "select-vercel-project": {
+      const { vercelProjectId, vercelProjectName } = submission.value;
+
+      const selectResult = await fromPromise(
+        vercelService.selectVercelProject({
+          organizationId: project.organizationId,
+          projectId: project.id,
+          vercelProjectId,
+          vercelProjectName,
+          userId,
+        }),
+        (error) => error
+      );
+
+      if (selectResult.isErr()) {
+        logger.error("Failed to select Vercel project", { error: selectResult.error });
+        return json({
+          error: "Failed to connect Vercel project. Please try again.",
+        });
+      }
+
+      const { integration, syncResult } = selectResult.value;
 
       if (!syncResult.success && syncResult.errors.length > 0) {
         logger.warn("Failed to send trigger secrets to Vercel", {
@@ -365,51 +378,61 @@ export async function action({ request, params }: ActionFunctionArgs) {
         integrationId: integration.id,
         syncErrors: syncResult.errors,
       });
-    } catch (error) {
-      logger.error("Failed to select Vercel project", { error });
-      return json({
-        error: "Failed to connect Vercel project. Please try again.",
-      });
     }
-  }
 
-  if (actionType === "disable-auto-assign") {
-    try {
-      const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(
-        project.id
+    case "disable-auto-assign": {
+      const disableResult = await fromPromise(
+        (async () => {
+          const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(
+            project.id
+          );
+
+          if (!orgIntegration) {
+            return { success: false as const, errorMessage: "No Vercel integration found" };
+          }
+
+          const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
+          const projectIntegration = await vercelService.getVercelProjectIntegration(project.id);
+
+          if (!projectIntegration) {
+            return { success: false as const, errorMessage: "No Vercel project connected" };
+          }
+
+          const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
+          const result = await VercelIntegrationRepository.disableAutoAssignCustomDomains(
+            client,
+            projectIntegration.parsedIntegrationData.vercelProjectId,
+            teamId
+          );
+
+          return { success: result.success, errorMessage: null };
+        })(),
+        (error) => error
       );
 
-      if (!orgIntegration) {
-        return redirectWithErrorMessage(settingsPath, request, "No Vercel integration found");
+      if (disableResult.isErr()) {
+        logger.error("Failed to disable auto-assign custom domains", { error: disableResult.error });
+        return redirectWithErrorMessage(settingsPath, request, "Failed to disable auto-assign custom domains");
       }
 
-      const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
-      const projectIntegration = await vercelService.getVercelProjectIntegration(project.id);
+      const { success: disableSuccess, errorMessage } = disableResult.value;
 
-      if (!projectIntegration) {
-        return redirectWithErrorMessage(settingsPath, request, "No Vercel project connected");
-      }
-
-      const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
-      const result = await VercelIntegrationRepository.disableAutoAssignCustomDomains(
-        client,
-        projectIntegration.parsedIntegrationData.vercelProjectId,
-        teamId
-      );
-
-      if (result.success) {
+      if (disableSuccess) {
         return redirectWithSuccessMessage(settingsPath, request, "Auto-assign custom domains disabled");
       }
 
-      return redirectWithErrorMessage(settingsPath, request, "Failed to disable auto-assign custom domains");
-    } catch (error) {
-      logger.error("Failed to disable auto-assign custom domains", { error });
-      return redirectWithErrorMessage(settingsPath, request, "Failed to disable auto-assign custom domains");
+      return redirectWithErrorMessage(
+        settingsPath,
+        request,
+        errorMessage ?? "Failed to disable auto-assign custom domains"
+      );
+    }
+
+    default: {
+      submission.value satisfies never;
+      return redirectBackWithErrorMessage(request, "Failed to process request");
     }
   }
-
-  submission.value satisfies never;
-  return redirectBackWithErrorMessage(request, "Failed to process request");
 }
 
 export function vercelResourcePath(
