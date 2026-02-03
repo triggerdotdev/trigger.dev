@@ -1,0 +1,15 @@
+## Summary
+Fixes #2900
+
+## Problem
+When using Sentry (or other libraries that patch `console` methods) in `dev` mode, logs can be swallowed. This happens because `ConsoleInterceptor` overrides `console` methods with its own implementation that writes directly to `process.stdout`/`stderr`, bypassing any previous patches (like Sentry's breadcrumb capture or upstream transport). Additionally, if Sentry patches `console` *after* `ConsoleInterceptor` starts interception, the restoration logic in `ConsoleInterceptor` might conflict or break compatibility.
+
+## Fix
+- Modified `ConsoleInterceptor.ts` to store the original console methods (those present *before* interception starts) in the class instance.
+- Updated `#handleLog` to delegate to these `originalConsole` methods (e.g. `this.originalConsole.log(...)`) instead of writing directly to `process.stdout`.
+- This ensures that if Sentry (or another tool) is in the chain, it receives the log call, preserving breadcrumbs and upstream handling while still allowing OTEL capture.
+- Fallback to `process.std[out|err]` is retained if `originalConsole` is somehow missing (though unlikely during interception).
+
+## Verification
+- Verified using a reproduction script where Sentry is initialized and console is intercepted.
+- Confirmed that logs flow through Sentry (simulated) and are captured by OTEL.
