@@ -115,7 +115,7 @@ const Env = z.object({
   // Project affinity settings - pods from the same project prefer the same node
   KUBERNETES_PROJECT_AFFINITY_ENABLED: BoolEnv.default(false),
   KUBERNETES_PROJECT_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(50),
-  KUBERNETES_PROJECT_AFFINITY_TOPOLOGY_KEY: z.string().default("kubernetes.io/hostname"),
+  KUBERNETES_PROJECT_AFFINITY_TOPOLOGY_KEY: z.string().trim().min(1).default("kubernetes.io/hostname"),
 
   // Placement tags settings
   PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),
