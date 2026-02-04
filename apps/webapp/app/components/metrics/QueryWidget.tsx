@@ -121,6 +121,7 @@ export function QueryWidget({
                 asChild
                 button={
                   <Button
+                    className="py-1"
                     variant="minimal/small"
                     LeadingIcon={PencilSquareIcon}
                     onClick={() => onEdit(props.data)}

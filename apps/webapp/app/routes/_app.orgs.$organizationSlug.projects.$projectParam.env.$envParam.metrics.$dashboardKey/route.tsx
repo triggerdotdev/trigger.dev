@@ -120,8 +120,8 @@ export function MetricDashboard({
   );
 
   return (
-    <div className="grid grid-rows-[auto_1fr]">
-      <div className="flex items-center">
+    <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
+      <div className="flex items-center border-b border-b-grid-bright px-3 py-2">
         <TimeFilter
           defaultPeriod={defaultPeriod}
           labelName="Period"
@@ -129,8 +129,10 @@ export function MetricDashboard({
           maxPeriodDays={maxPeriodDays}
         />
       </div>
-
-      <div ref={containerRef}>
+      <div
+        ref={containerRef}
+        className="overflow-y-auto scrollbar-thin scrollbar-track-charcoal-800 scrollbar-thumb-charcoal-700"
+      >
         {mounted && (
           <ReactGridLayout
             layout={layout}
