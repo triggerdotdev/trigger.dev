@@ -11,9 +11,9 @@ description: "Learn about how to use the tools available in the Trigger.dev MCP 
 Search the Trigger.dev documentation for guides, examples, and API references.
 
 **Example usage:**
-- _"How do I create a scheduled task?"_
-- _"Show me webhook examples"_
-- _"What are the deployment options?"_
+- `"How do I create a scheduled task?"`
+- `"Show me webhook examples"`
+- `"What are the deployment options?"`
 
 ## Project Management Tools
 
@@ -22,32 +22,32 @@ Search the Trigger.dev documentation for guides, examples, and API references.
 List all organizations you have access to.
 
 **Example usage:**
-- _"What organizations do I have?"_
-- _"Show me my orgs"_
+- `"What organizations do I have?"`
+- `"Show me my orgs"`
 
 ### list_projects
 
 List all projects in your Trigger.dev account.
 
 **Example usage:**
-- _"What projects do I have?"_
-- _"List my Trigger.dev projects"_
+- `"What projects do I have?"`
+- `"List my Trigger.dev projects"`
 
 ### create_project_in_org
 
 Create a new project in an organization.
 
 **Example usage:**
-- _"Create a new project called 'my-app'"_
-- _"Set up a new Trigger.dev project"_
+- `"Create a new project called 'my-app'"`
+- `"Set up a new Trigger.dev project"`
 
 ### initialize_project
 
 Initialize Trigger.dev in your project with automatic setup and configuration.
 
 **Example usage:**
-- _"Set up Trigger.dev in this project"_
-- _"Add Trigger.dev to my app"_
+- `"Set up Trigger.dev in this project"`
+- `"Add Trigger.dev to my app"`
 
 ## Task Management Tools
 
@@ -56,17 +56,17 @@ Initialize Trigger.dev in your project with automatic setup and configuration.
 Get the current worker for a project, including the worker version, SDK version, and registered tasks with their payload schemas.
 
 **Example usage:**
-- _"What tasks are available?"_
-- _"Show me the tasks in dev"_
+- `"What tasks are available?"`
+- `"Show me the tasks in dev"`
 
 ### trigger_task
 
 Trigger a task to run with a specific payload. You can add a delay, set tags, configure retries, choose a machine size, set a TTL, or use an idempotency key.
 
 **Example usage:**
-- _"Run the email-notification task"_
-- _"Trigger my-task with userId 123"_
-- _"Execute the sync task in production"_
+- `"Run the email-notification task"`
+- `"Trigger my-task with userId 123"`
+- `"Execute the sync task in production"`
 
 ## Run Monitoring Tools
 
@@ -75,32 +75,32 @@ Trigger a task to run with a specific payload. You can add a delay, set tags, co
 Get detailed information about a specific task run, including logs and status. Enable debug mode to get the full trace with all logs and spans.
 
 **Example usage:**
-- _"Show me details for run run_abc123"_
-- _"Why did this run fail?"_
+- `"Show me details for run run_abc123"`
+- `"Why did this run fail?"`
 
 ### list_runs
 
 List runs for a project. Filter by status, task, tags, version, machine size, or time period.
 
 **Example usage:**
-- _"Show me recent runs"_
-- _"List failed runs from the last 7 days"_
-- _"What runs are currently executing?"_
+- `"Show me recent runs"`
+- `"List failed runs from the last 7 days"`
+- `"What runs are currently executing?"`
 
 ### wait_for_run_to_complete
 
 Wait for a specific run to finish and return the result.
 
 **Example usage:**
-- _"Wait for run run_abc123 to complete"_
+- `"Wait for run run_abc123 to complete"`
 
 ### cancel_run
 
 Cancel a running or queued run.
 
 **Example usage:**
-- _"Cancel run run_abc123"_
-- _"Stop that task"_
+- `"Cancel run run_abc123"`
+- `"Stop that task"`
 
 ## Deployment Tools
 
@@ -109,24 +109,24 @@ Cancel a running or queued run.
 Deploy your project to staging or production.
 
 **Example usage:**
-- _"Deploy to production"_
-- _"Deploy to staging"_
+- `"Deploy to production"`
+- `"Deploy to staging"`
 
 ### list_deploys
 
 List deployments for a project. Filter by status or time period.
 
 **Example usage:**
-- _"Show me recent deployments"_
-- _"What's deployed to production?"_
+- `"Show me recent deployments"`
+- `"What's deployed to production?"`
 
 ### list_preview_branches
 
 List all preview branches in the project.
 
 **Example usage:**
-- _"What preview branches exist?"_
-- _"Show me preview deployments"_
+- `"What preview branches exist?"`
+- `"Show me preview deployments"`
 
 <Callout type="warning">
   The deploy and list_preview_branches tools are not available when the MCP server is running with the `--dev-only` flag.
