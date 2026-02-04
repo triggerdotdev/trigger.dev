@@ -66,6 +66,18 @@ You can edit an environment variable's values. You cannot edit the key name, you
 
 </Steps>
 
+## Local development
+
+When running `npx trigger.dev dev`, the CLI automatically loads environment variables from these files in order (later files override any duplicate keys from earlier ones):
+
+- `.env`
+- `.env.development`
+- `.env.local`
+- `.env.development.local`
+- `dev.vars`
+
+These variables are available to your tasks via `process.env`. You don't need to use the `--env-file` flag for this automatic loading.
+
 ## In your code
 
 You can use our SDK to get and manipulate environment variables. You can also easily sync environment variables from another service into Trigger.dev.
