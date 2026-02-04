@@ -354,21 +354,25 @@ export function QueryEditor({
   onClose,
 }: QueryEditorProps) {
   const fetcher = useTypedFetcher<QueryActionResponse>();
-  
+
   // Use defaultData as initial results, then switch to fetcher data once a query is run
   const fetcherResults = fetcher.data;
-  const results = fetcherResults ?? (defaultData ? {
-    error: null,
-    rows: defaultData.rows,
-    columns: defaultData.columns,
-    stats: null,
-    hiddenColumns: null,
-    reachedMaxRows: false,
-    explainOutput: null,
-    generatedSql: null,
-    queryId: null,
-    periodClipped: null,
-  } : null);
+  const results =
+    fetcherResults ??
+    (defaultData
+      ? {
+          error: null,
+          rows: defaultData.rows,
+          columns: defaultData.columns,
+          stats: null,
+          hiddenColumns: null,
+          reachedMaxRows: false,
+          explainOutput: null,
+          generatedSql: null,
+          queryId: null,
+          periodClipped: null,
+        }
+      : null);
 
   const organization = useOrganization();
   const project = useProject();
@@ -524,11 +528,8 @@ export function QueryEditor({
           <NavBar>
             <PageTitle title={`Add chart to ${mode.dashboardName}`} />
             <PageAccessories>
-              <Button variant="tertiary/small" onClick={onClose} LeadingIcon={XMarkIcon}>
+              <Button variant="tertiary/small" onClick={onClose}>
                 Cancel
-              </Button>
-              <Button variant="primary/small" onClick={handleSave} disabled={!canSave}>
-                Add to dashboard
               </Button>
             </PageAccessories>
           </NavBar>
@@ -538,11 +539,8 @@ export function QueryEditor({
           <NavBar>
             <PageTitle title={`Editing "${mode.widgetName}"`} />
             <PageAccessories>
-              <Button variant="tertiary/small" onClick={onClose} LeadingIcon={XMarkIcon}>
+              <Button variant="tertiary/small" onClick={onClose}>
                 Cancel
-              </Button>
-              <Button variant="primary/small" onClick={handleSave} disabled={!canSave}>
-                Save changes
               </Button>
             </PageAccessories>
           </NavBar>
@@ -591,7 +589,10 @@ export function QueryEditor({
                   onValueChange={(v) => setResultsView(v as "table" | "graph")}
                   className="grid h-full max-h-full min-h-0 grid-rows-[auto_1fr] overflow-hidden"
                 >
-                  <ClientTabsList variant="underline" className="shrink-0 overflow-hidden pl-3 pr-1">
+                  <ClientTabsList
+                    variant="underline"
+                    className="shrink-0 overflow-hidden pl-3 pr-1"
+                  >
                     <ClientTabsTrigger value="table" variant="underline" layoutId="results-tabs">
                       Table
                     </ClientTabsTrigger>
@@ -711,16 +712,29 @@ export function QueryEditor({
                             }}
                             accessory={
                               mode.type === "standalone" ? (
-                                <SimpleTooltip
-                                  button={
-                                    <Button
-                                      variant="minimal/small"
-                                      LeadingIcon={BookmarkIcon}
-                                      onClick={() => setIsSaveDialogOpen(true)}
-                                    />
-                                  }
-                                  content="Save to dashboard"
-                                />
+                                <Button
+                                  variant="minimal/small"
+                                  LeadingIcon={BookmarkIcon}
+                                  onClick={() => setIsSaveDialogOpen(true)}
+                                >
+                                  Save to dashboard
+                                </Button>
+                              ) : mode.type === "dashboard-add" ? (
+                                <Button
+                                  variant="primary/small"
+                                  onClick={handleSave}
+                                  disabled={!canSave}
+                                >
+                                  Add to dashboard
+                                </Button>
+                              ) : mode.type === "dashboard-edit" ? (
+                                <Button
+                                  variant="primary/small"
+                                  onClick={handleSave}
+                                  disabled={!canSave}
+                                >
+                                  Save changes
+                                </Button>
                               ) : undefined
                             }
                           />
@@ -756,8 +770,35 @@ export function QueryEditor({
                           onChartConfigChange={handleChartConfigChange}
                           queryTitle={queryTitle}
                           isTitleLoading={isTitleLoading}
-                          onSaveClick={
-                            mode.type === "standalone" ? () => setIsSaveDialogOpen(true) : undefined
+                          accessory={
+                            mode.type === "standalone" ? (
+                              <SimpleTooltip
+                                button={
+                                  <Button
+                                    variant="minimal/small"
+                                    LeadingIcon={BookmarkIcon}
+                                    onClick={() => setIsSaveDialogOpen(true)}
+                                  />
+                                }
+                                content="Save to dashboard"
+                              />
+                            ) : mode.type === "dashboard-add" ? (
+                              <Button
+                                variant="primary/small"
+                                onClick={handleSave}
+                                disabled={!canSave}
+                              >
+                                Add to dashboard
+                              </Button>
+                            ) : mode.type === "dashboard-edit" ? (
+                              <Button
+                                variant="primary/small"
+                                onClick={handleSave}
+                                disabled={!canSave}
+                              >
+                                Save changes
+                              </Button>
+                            ) : undefined
                           }
                         />
                       </>
@@ -962,7 +1003,7 @@ function ResultsChart({
   onChartConfigChange,
   queryTitle,
   isTitleLoading,
-  onSaveClick,
+  accessory,
 }: {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
@@ -970,7 +1011,7 @@ function ResultsChart({
   onChartConfigChange: (config: ChartConfiguration) => void;
   queryTitle: string | null;
   isTitleLoading: boolean;
-  onSaveClick?: () => void;
+  accessory?: ReactNode;
 }) {
   return (
     <>
@@ -987,20 +1028,7 @@ function ResultsChart({
                 type: "chart",
                 ...chartConfig,
               }}
-              accessory={
-                onSaveClick ? (
-                  <SimpleTooltip
-                    button={
-                      <Button
-                        variant="minimal/small"
-                        LeadingIcon={BookmarkIcon}
-                        onClick={onSaveClick}
-                      />
-                    }
-                    content="Save to dashboard"
-                  />
-                ) : undefined
-              }
+              accessory={accessory}
             />
           </div>
         </ResizablePanel>
