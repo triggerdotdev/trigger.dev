@@ -1016,7 +1016,6 @@ function CreateDashboardButton({
 function CreateDashboardDialog({ formAction }: { formAction: string }) {
   const navigation = useNavigation();
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
 
   const isLoading = navigation.formAction === formAction;
 
@@ -1032,15 +1031,6 @@ function CreateDashboardDialog({ formAction }: { formAction: string }) {
             onChange={(e) => setTitle(e.target.value)}
             placeholder="My Dashboard"
             required
-          />
-        </InputGroup>
-        <InputGroup>
-          <Label>Description (optional)</Label>
-          <Input
-            name="description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Dashboard description"
           />
         </InputGroup>
         <FormButtons

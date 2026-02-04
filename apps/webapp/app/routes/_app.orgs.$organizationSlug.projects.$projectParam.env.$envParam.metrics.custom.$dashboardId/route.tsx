@@ -1,4 +1,4 @@
-import { TrashIcon } from "@heroicons/react/20/solid";
+import { PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useFetcher, useNavigation } from "@remix-run/react";
@@ -14,6 +14,10 @@ import {
   DialogHeader,
   DialogTrigger,
 } from "~/components/primitives/Dialog";
+import { FormButtons } from "~/components/primitives/FormButtons";
+import { Input } from "~/components/primitives/Input";
+import { InputGroup } from "~/components/primitives/InputGroup";
+import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -130,6 +134,19 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         `Deleted "${dashboard.title}" dashboard`
       );
     }
+    case "rename": {
+      const newTitle = formData.get("title");
+      if (typeof newTitle !== "string" || newTitle.trim().length === 0) {
+        throw new Response("Title is required", { status: 400 });
+      }
+
+      await prisma.metricsDashboard.update({
+        where: { id: dashboard.id },
+        data: { title: newTitle.trim() },
+      });
+
+      return typedjson({ success: true });
+    }
     case "layout": {
       const result = SaveLayoutSchema.safeParse({
         layout: formData.get("layout"),
@@ -169,6 +186,8 @@ export default function Page() {
   const fetcher = useFetcher<typeof action>();
   const navigation = useNavigation();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState(title);
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitializedRef = useRef(false);
   const currentLayoutJsonRef = useRef<string>(JSON.stringify(layout.layout));
@@ -178,12 +197,23 @@ export default function Page() {
     navigation.formMethod === "post" &&
     navigation.formData?.get("action") === "delete";
 
-  // Close dialog when navigation completes (after successful delete)
+  const isRenaming =
+    navigation.state !== "idle" &&
+    navigation.formMethod === "post" &&
+    navigation.formData?.get("action") === "rename";
+
+  // Close dialogs when navigation completes and sync title state
   useEffect(() => {
     if (navigation.state === "idle") {
       setIsDeleteDialogOpen(false);
+      setIsRenameDialogOpen(false);
     }
   }, [navigation.state]);
+
+  // Sync newTitle state when title changes (after successful rename)
+  useEffect(() => {
+    setNewTitle(title);
+  }, [title]);
 
   // Track when the dashboard data changes (e.g., switching dashboards)
   const layoutJson = JSON.stringify(layout.layout);
@@ -242,7 +272,56 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={title} />
+        <PageTitle
+          title={
+            <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
+              <span className="flex items-center gap-1">
+                {title}
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    className="rounded p-0.5 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright focus-custom"
+                  >
+                    <PencilSquareIcon className="size-4" />
+                  </button>
+                </DialogTrigger>
+              </span>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>Rename dashboard</DialogHeader>
+                <Form method="post" className="space-y-4 pt-3">
+                  <input type="hidden" name="action" value="rename" />
+                  <InputGroup>
+                    <Label>Title</Label>
+                    <Input
+                      name="title"
+                      value={newTitle}
+                      onChange={(e) => setNewTitle(e.target.value)}
+                      placeholder="Dashboard title"
+                      required
+                      autoFocus
+                    />
+                  </InputGroup>
+                  <FormButtons
+                    confirmButton={
+                      <Button
+                        type="submit"
+                        variant="primary/medium"
+                        disabled={isRenaming || !newTitle.trim()}
+                      >
+                        {isRenaming ? "Saving…" : "Save"}
+                      </Button>
+                    }
+                    cancelButton={
+                      <DialogClose asChild>
+                        <Button variant="tertiary/medium">Cancel</Button>
+                      </DialogClose>
+                    }
+                  />
+                </Form>
+              </DialogContent>
+            </Dialog>
+          }
+        />
         <PageAccessories>
           <Popover>
             <PopoverVerticalEllipseTrigger />
