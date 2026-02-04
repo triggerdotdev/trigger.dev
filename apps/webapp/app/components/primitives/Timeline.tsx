@@ -1,4 +1,5 @@
 import {
+  Component,
   ComponentPropsWithoutRef,
   Fragment,
   ReactNode,
@@ -16,91 +17,66 @@ interface MousePosition {
   y: number;
 }
 const MousePositionContext = createContext<MousePosition | undefined>(undefined);
-export function MousePositionProvider({ children }: { children: ReactNode }) {
+export function MousePositionProvider({
+  children,
+  recalculateTrigger,
+}: {
+  children: ReactNode;
+  recalculateTrigger?: unknown;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<MousePosition | undefined>(undefined);
-  const lastClient = useRef<{ clientX: number; clientY: number } | null>(null);
-  const rafId = useRef<number | null>(null);
-
-  const computeFromClient = useCallback((clientX: number, clientY: number) => {
-    if (!ref.current) {
-      setPosition(undefined);
-      return;
-    }
-
-    const { top, left, width, height } = ref.current.getBoundingClientRect();
-    const x = (clientX - left) / width;
-    const y = (clientY - top) / height;
-
-    if (x < 0 || x > 1 || y < 0 || y > 1) {
-      setPosition(undefined);
-      return;
-    }
-
-    setPosition({ x, y });
-  }, []);
+  const lastMouseCoordsRef = useRef<{ clientX: number; clientY: number } | null>(null);
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      lastClient.current = { clientX: e.clientX, clientY: e.clientY };
-      computeFromClient(e.clientX, e.clientY);
+      lastMouseCoordsRef.current = { clientX: e.clientX, clientY: e.clientY };
+
+      if (!ref.current) {
+        setPosition(undefined);
+        return;
+      }
+
+      const { top, left, width, height } = ref.current.getBoundingClientRect();
+      const x = (e.clientX - left) / width;
+      const y = (e.clientY - top) / height;
+
+      if (x < 0 || x > 1 || y < 0 || y > 1) {
+        setPosition(undefined);
+        return;
+      }
+
+      setPosition({ x, y });
     },
-    [computeFromClient]
+    [ref.current]
   );
 
-  // Recalculate the relative position when the container resizes or the window/ancestors scroll.
+  // Recalculate position when trigger changes (e.g., panel opens/closes)
+  // Use requestAnimationFrame to wait for the DOM layout to complete
   useEffect(() => {
-    if (!ref.current) return;
+    if (!lastMouseCoordsRef.current) {
+      return;
+    }
 
-    const ro = new ResizeObserver(() => {
-      const lc = lastClient.current;
-      if (lc) computeFromClient(lc.clientX, lc.clientY);
-    });
-    ro.observe(ref.current);
-
-    const onRecalc = () => {
-      const lc = lastClient.current;
-      if (lc) computeFromClient(lc.clientX, lc.clientY);
-    };
-
-    window.addEventListener("resize", onRecalc);
-    // Use capture to catch scroll on any ancestor that impacts bounding rect
-    window.addEventListener("scroll", onRecalc, true);
-
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", onRecalc);
-      window.removeEventListener("scroll", onRecalc, true);
-    };
-  }, [computeFromClient]);
-
-  useEffect(() => {
-    if (position === undefined || !lastClient.current || !ref.current) return;
-
-    const isAnimating = () => {
-      if (!ref.current) return false;
-      const styles = window.getComputedStyle(ref.current);
-      return styles.transition !== "none" || styles.animation !== "none";
-    };
-
-    const tick = () => {
-      const lc = lastClient.current;
-      if (lc) {
-        computeFromClient(lc.clientX, lc.clientY);
-        if (isAnimating()) {
-          rafId.current = requestAnimationFrame(tick);
-        } else {
-          rafId.current = null;
-        }
+    const rafId = requestAnimationFrame(() => {
+      if (!ref.current || !lastMouseCoordsRef.current) {
+        return;
       }
-    };
 
-    rafId.current = requestAnimationFrame(tick);
-    return () => {
-      if (rafId.current !== null) cancelAnimationFrame(rafId.current);
-      rafId.current = null;
-    };
-  }, [position, computeFromClient]);
+      const { top, left, width, height } = ref.current.getBoundingClientRect();
+      const x = (lastMouseCoordsRef.current.clientX - left) / width;
+      const y = (lastMouseCoordsRef.current.clientY - top) / height;
+
+      if (x < 0 || x > 1 || y < 0 || y > 1) {
+        setPosition(undefined);
+        return;
+      }
+
+      setPosition({ x, y });
+    });
+
+    return () => cancelAnimationFrame(rafId);
+  }, [recalculateTrigger]);
 
   return (
     <div
@@ -144,6 +120,8 @@ export type RootProps = {
   maxWidth: number;
   children?: ReactNode;
   className?: string;
+  /** When this value changes, recalculate the mouse position (useful when panels resize) */
+  recalculateTrigger?: unknown;
 };
 
 /** The main element that determines the dimensions for all sub-elements */
@@ -155,6 +133,7 @@ export function Root({
   maxWidth,
   children,
   className,
+  recalculateTrigger,
 }: RootProps) {
   const pixelWidth = calculatePixelWidth(minWidth, maxWidth, scale);
 
@@ -167,7 +146,9 @@ export function Root({
           width: `${pixelWidth}px`,
         }}
       >
-        <MousePositionProvider>{children}</MousePositionProvider>
+        <MousePositionProvider recalculateTrigger={recalculateTrigger}>
+          {children}
+        </MousePositionProvider>
       </div>
     </TimelineContext.Provider>
   );
