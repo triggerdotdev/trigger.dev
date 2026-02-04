@@ -103,26 +103,21 @@ export function QueryWidget({
   ...props
 }: QueryWidgetProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
 
   return (
-    <div
-      className="h-full"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <div className="h-full">
       <Card className={cn("h-full overflow-hidden px-0 pb-0", isResizing && "select-none")}>
         <Card.Header draggable={isDraggable}>
           <div className="flex items-center gap-1.5">{title}</div>
           <Card.Accessory>
             {accessory}
-            {onEdit && isHovered && (
+            {onEdit && (
               <SimpleTooltip
                 asChild
                 button={
                   <Button
                     className="py-1"
-                    variant="minimal/small"
+                    variant="tertiary/small"
                     LeadingIcon={PencilSquareIcon}
                     onClick={() => onEdit(props.data)}
                   />
@@ -131,7 +126,7 @@ export function QueryWidget({
               />
             )}
             <Button
-              variant="minimal/small"
+              variant="tertiary/small"
               LeadingIcon={ArrowsPointingOutIcon}
               onClick={() => setIsFullscreen(true)}
             />

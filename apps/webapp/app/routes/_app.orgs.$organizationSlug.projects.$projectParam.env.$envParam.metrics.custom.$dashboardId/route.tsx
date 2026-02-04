@@ -272,21 +272,6 @@ export default function Page() {
     };
   }, [layoutJson]);
 
-  // Close editor when add/update operation completes
-  useEffect(() => {
-    if (
-      (addWidgetFetcher.state === "idle" && addWidgetFetcher.data) ||
-      (updateWidgetFetcher.state === "idle" && updateWidgetFetcher.data)
-    ) {
-      setEditorMode(null);
-    }
-  }, [
-    addWidgetFetcher.state,
-    addWidgetFetcher.data,
-    updateWidgetFetcher.state,
-    updateWidgetFetcher.data,
-  ]);
-
   const handleLayoutChange = useCallback(
     (newLayout: LayoutItem[]) => {
       // Skip if not yet initialized (prevents saving during mount/navigation)
@@ -334,6 +319,8 @@ export default function Page() {
             action: `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/add-widget`,
           }
         );
+        // Close editor immediately (optimistic)
+        setEditorMode(null);
       } else if (editorMode?.type === "edit") {
         // Submit to update-widget action
         updateWidgetFetcher.submit(
@@ -348,6 +335,8 @@ export default function Page() {
             action: `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/update-widget`,
           }
         );
+        // Close editor immediately (optimistic)
+        setEditorMode(null);
       }
     },
     [
