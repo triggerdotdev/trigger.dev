@@ -21,6 +21,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { type WidgetData } from "~/components/metrics/QueryWidget";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardKey: z.string(),
@@ -71,13 +72,6 @@ export default function Page() {
     </PageContainer>
   );
 }
-
-// Widget data type for edit callbacks
-type WidgetData = {
-  title: string;
-  query: string;
-  display: import("~/components/metrics/QueryWidget").QueryWidgetConfig;
-};
 
 export function MetricDashboard({
   data,
@@ -168,7 +162,11 @@ export function MetricDashboard({
                   refreshIntervalMs={60_000}
                   isResizing={resizingItemId === key}
                   isDraggable={editable}
-                  onEdit={onEditWidget ? () => onEditWidget(key, widget) : undefined}
+                  onEdit={
+                    onEditWidget
+                      ? (resultData) => onEditWidget(key, { ...widget, resultData })
+                      : undefined
+                  }
                 />
               </div>
             ))}

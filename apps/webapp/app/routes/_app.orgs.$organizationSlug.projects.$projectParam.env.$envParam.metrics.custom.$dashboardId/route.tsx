@@ -40,7 +40,7 @@ import { EnvironmentParamSchema, queryPath, v3BuiltInDashboardPath } from "~/uti
 import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.metrics.$dashboardKey/route";
 import { IconEdit } from "@tabler/icons-react";
 import { QueryEditor } from "~/components/query/QueryEditor";
-import type { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
+import type { QueryWidgetConfig, WidgetData } from "~/components/metrics/QueryWidget";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -205,13 +205,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       throw new Response("Invalid action", { status: 400 });
     }
   }
-};
-
-// Widget data type for edit mode
-type WidgetData = {
-  title: string;
-  query: string;
-  display: QueryWidgetConfig;
 };
 
 // Editor mode state type
@@ -392,6 +385,9 @@ export default function Page() {
         : defaultChartConfig;
     const editorDefaultResultsView =
       editorMode.type === "edit" ? editorMode.widget.display.type : "table";
+    // Pass the existing result data when editing
+    const editorDefaultData =
+      editorMode.type === "edit" ? editorMode.widget.resultData : undefined;
 
     return (
       <QueryEditor
@@ -400,6 +396,7 @@ export default function Page() {
         defaultPeriod={defaultPeriod}
         defaultResultsView={editorDefaultResultsView === "chart" ? "graph" : "table"}
         defaultChartConfig={editorDefaultChartConfig}
+        defaultData={editorDefaultData}
         history={queryHistory}
         isAdmin={isAdmin}
         maxRows={maxRows}

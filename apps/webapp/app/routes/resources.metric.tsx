@@ -6,7 +6,11 @@ import { z } from "zod";
 import { requireUserId } from "~/services/session.server";
 import { hasAccessToEnvironment } from "~/models/runtimeEnvironment.server";
 import { executeQuery } from "~/services/queryService.server";
-import { QueryWidget, type QueryWidgetConfig } from "~/components/metrics/QueryWidget";
+import {
+  QueryWidget,
+  type QueryWidgetConfig,
+  type QueryWidgetData,
+} from "~/components/metrics/QueryWidget";
 import { useInterval } from "~/hooks/useInterval";
 
 const Scope = z.union([z.literal("environment"), z.literal("organization"), z.literal("project")]);
@@ -135,8 +139,8 @@ type MetricWidgetProps = {
   refreshIntervalMs?: number;
   isResizing?: boolean;
   isDraggable?: boolean;
-  /** Callback when edit button is clicked */
-  onEdit?: () => void;
+  /** Callback when edit button is clicked - receives current data */
+  onEdit?: (data: QueryWidgetData) => void;
 } & z.infer<typeof MetricWidgetQuery>;
 
 export function MetricWidget({
