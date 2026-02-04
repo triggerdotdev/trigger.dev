@@ -1,19 +1,31 @@
+import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { useFetcher } from "@remix-run/react";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { z } from "zod";
-import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
-import { Button } from "~/components/primitives/Buttons";
-import { FormError } from "~/components/primitives/FormError";
-import { Label } from "~/components/primitives/Label";
-import { Spinner } from "~/components/primitives/Spinner";
 import { requireUserId } from "~/services/session.server";
 import { hasAccessToEnvironment } from "~/models/runtimeEnvironment.server";
 import { executeQuery } from "~/services/queryService.server";
-import { QueryWidget, QueryWidgetConfig } from "~/components/metrics/QueryWidget";
+import { QueryWidget, type QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 import { useInterval } from "~/hooks/useInterval";
 
 const Scope = z.union([z.literal("environment"), z.literal("organization"), z.literal("project")]);
+
+// Response type for the action
+type MetricWidgetActionResponse =
+  | { success: false; error: string }
+  | {
+      success: true;
+      data: {
+        rows: Record<string, unknown>[];
+        columns: OutputColumnMetadata[];
+        stats: { elapsed_ns: string } | null;
+        hiddenColumns: string[] | null;
+        reachedMaxRows: boolean;
+        periodClipped: number | null;
+        maxQueryPeriod: number | undefined;
+      };
+    };
 
 const MetricWidgetQuery = z.object({
   query: z.string(),
@@ -123,6 +135,8 @@ type MetricWidgetProps = {
   refreshIntervalMs?: number;
   isResizing?: boolean;
   isDraggable?: boolean;
+  /** Callback when edit button is clicked */
+  onEdit?: () => void;
 } & z.infer<typeof MetricWidgetQuery>;
 
 export function MetricWidget({
@@ -132,12 +146,10 @@ export function MetricWidget({
   refreshIntervalMs,
   isResizing,
   isDraggable,
+  onEdit,
   ...props
 }: MetricWidgetProps) {
-  // Use a unique key for each widget's fetcher to prevent "Expected fetch controller" errors
-  // when navigating between dashboards. Without a key, Remix can't properly track and clean up
-  // fetchers when components unmount during navigation.
-  const fetcher = useFetcher<typeof action>({ key: `metric-widget-${widgetKey}` });
+  const fetcher = useFetcher<MetricWidgetActionResponse>();
   const isLoading = fetcher.state !== "idle";
 
   const submit = useCallback(async () => {
@@ -169,6 +181,7 @@ export function MetricWidget({
       error={fetcher.data?.success === false ? fetcher.data.error : undefined}
       isResizing={isResizing}
       isDraggable={isDraggable}
+      onEdit={onEdit}
     />
   );
 }

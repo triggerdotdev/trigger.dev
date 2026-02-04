@@ -7,11 +7,12 @@ import { TSQLResultsTable } from "../code/TSQLResultsTable";
 import { QueryResultsChart } from "../code/QueryResultsChart";
 import { Dialog, DialogContent, DialogHeader } from "../primitives/Dialog";
 import { Button } from "../primitives/Buttons";
-import { ArrowsPointingOutIcon } from "@heroicons/react/20/solid";
+import { ArrowsPointingOutIcon, PencilSquareIcon } from "@heroicons/react/20/solid";
 import { LoadingBarDivider } from "../primitives/LoadingBarDivider";
 import { Callout } from "../primitives/Callout";
 import { ChartBarIcon } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
+import { SimpleTooltip } from "../primitives/Tooltip";
 
 const ChartType = z.union([z.literal("bar"), z.literal("line")]);
 export type ChartType = z.infer<typeof ChartType>;
@@ -77,6 +78,8 @@ export type QueryWidgetProps = {
   accessory?: ReactNode;
   isResizing?: boolean;
   isDraggable?: boolean;
+  /** Callback when edit button is clicked. When provided, shows edit button on hover. */
+  onEdit?: () => void;
 };
 
 export function QueryWidget({
@@ -86,47 +89,64 @@ export function QueryWidget({
   error,
   isResizing,
   isDraggable,
+  onEdit,
   ...props
 }: QueryWidgetProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   return (
-    <Card className={cn("h-full overflow-hidden px-0 pb-0", isResizing && "select-none")}>
-      <Card.Header draggable={isDraggable}>
-        <div className="flex items-center gap-1.5">{title}</div>
-        <Card.Accessory>
-          {accessory}
-          <Button
-            variant="minimal/small"
-            LeadingIcon={ArrowsPointingOutIcon}
-            onClick={() => setIsFullscreen(true)}
-          />
-        </Card.Accessory>
-      </Card.Header>
-      <LoadingBarDivider isLoading={isLoading ?? false} className="bg-transparent" />
-      <Card.Content className="min-h-0 flex-1 overflow-hidden p-0">
-        {isResizing ? (
-          <div className="flex h-full flex-1 items-center justify-center p-3">
-            <div className="flex flex-col items-center gap-1 text-text-dimmed">
-              <ChartBarIcon className="size-10 text-text-dimmed" />{" "}
-              <span className="text-base font-medium">Resizing...</span>
+    <div
+      className="h-full"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <Card className={cn("h-full overflow-hidden px-0 pb-0", isResizing && "select-none")}>
+        <Card.Header draggable={isDraggable}>
+          <div className="flex items-center gap-1.5">{title}</div>
+          <Card.Accessory>
+            {accessory}
+            {onEdit && isHovered && (
+              <SimpleTooltip
+                asChild
+                button={
+                  <Button variant="minimal/small" LeadingIcon={PencilSquareIcon} onClick={onEdit} />
+                }
+                content="Edit"
+              />
+            )}
+            <Button
+              variant="minimal/small"
+              LeadingIcon={ArrowsPointingOutIcon}
+              onClick={() => setIsFullscreen(true)}
+            />
+          </Card.Accessory>
+        </Card.Header>
+        <LoadingBarDivider isLoading={isLoading ?? false} className="bg-transparent" />
+        <Card.Content className="min-h-0 flex-1 overflow-hidden p-0">
+          {isResizing ? (
+            <div className="flex h-full flex-1 items-center justify-center p-3">
+              <div className="flex flex-col items-center gap-1 text-text-dimmed">
+                <ChartBarIcon className="size-10 text-text-dimmed" />{" "}
+                <span className="text-base font-medium">Resizing...</span>
+              </div>
             </div>
-          </div>
-        ) : error ? (
-          <div className="p-3">
-            <Callout variant="error">{error}</Callout>
-          </div>
-        ) : (
-          <QueryWidgetBody
-            {...props}
-            title={title}
-            isFullscreen={isFullscreen}
-            setIsFullscreen={setIsFullscreen}
-            isLoading={isLoading ?? false}
-          />
-        )}
-      </Card.Content>
-    </Card>
+          ) : error ? (
+            <div className="p-3">
+              <Callout variant="error">{error}</Callout>
+            </div>
+          ) : (
+            <QueryWidgetBody
+              {...props}
+              title={title}
+              isFullscreen={isFullscreen}
+              setIsFullscreen={setIsFullscreen}
+              isLoading={isLoading ?? false}
+            />
+          )}
+        </Card.Content>
+      </Card>
+    </div>
   );
 }
 

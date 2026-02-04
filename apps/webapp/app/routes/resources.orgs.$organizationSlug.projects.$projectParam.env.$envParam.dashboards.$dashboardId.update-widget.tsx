@@ -1,14 +1,14 @@
-import { redirect, type ActionFunctionArgs } from "@remix-run/node";
-import { nanoid } from "nanoid";
+import { type ActionFunctionArgs, json } from "@remix-run/node";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 import { findProjectBySlug } from "~/models/project.server";
 import { DashboardLayout } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema, v3CustomDashboardPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 
-const AddWidgetSchema = z.object({
+const UpdateWidgetSchema = z.object({
+  widgetId: z.string().min(1, "Widget ID is required"),
   title: z.string().min(1, "Title is required"),
   query: z.string().min(1, "Query is required"),
   config: z.string().transform((str, ctx) => {
@@ -39,7 +39,7 @@ const ParamsSchema = EnvironmentParamSchema.extend({
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam, dashboardId } = ParamsSchema.parse(params);
+  const { organizationSlug, projectParam, dashboardId } = ParamsSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
@@ -60,17 +60,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   const formData = await request.formData();
   const rawData = {
+    widgetId: formData.get("widgetId"),
     title: formData.get("title"),
     query: formData.get("query"),
     config: formData.get("config"),
   };
 
-  const result = AddWidgetSchema.safeParse(rawData);
+  const result = UpdateWidgetSchema.safeParse(rawData);
   if (!result.success) {
     throw new Response("Invalid form data: " + result.error.message, { status: 400 });
   }
 
-  const { title, query, config } = result.data;
+  const { widgetId, title, query, config } = result.data;
 
   // Parse existing layout
   let existingLayout: z.infer<typeof DashboardLayout>;
@@ -78,47 +79,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const parsed = JSON.parse(dashboard.layout);
     const layoutResult = DashboardLayout.safeParse(parsed);
     if (!layoutResult.success) {
-      // If parsing fails, start with empty layout
-      existingLayout = {
-        version: "1",
-        layout: [],
-        widgets: {},
-      };
-    } else {
-      existingLayout = layoutResult.data;
+      throw new Response("Dashboard layout is corrupt", { status: 500 });
     }
-  } catch {
-    existingLayout = {
-      version: "1",
-      layout: [],
-      widgets: {},
-    };
+    existingLayout = layoutResult.data;
+  } catch (e) {
+    if (e instanceof Response) throw e;
+    throw new Response("Failed to parse dashboard layout", { status: 500 });
   }
 
-  // Generate new widget ID
-  const widgetId = nanoid(8);
-
-  // Calculate position at the bottom
-  // Find the maximum y + h from existing layout items
-  let maxBottom = 0;
-  for (const item of existingLayout.layout) {
-    const itemBottom = item.y + item.h;
-    if (itemBottom > maxBottom) {
-      maxBottom = itemBottom;
-    }
+  // Check if widget exists
+  if (!existingLayout.widgets[widgetId]) {
+    throw new Response("Widget not found", { status: 404 });
   }
 
-  // Add new layout item (full width, reasonable height)
-  const newLayoutItem = {
-    i: widgetId,
-    x: 0,
-    y: maxBottom,
-    w: 12,
-    h: 15,
-  };
-
-  // Add new widget
-  const newWidget = {
+  // Update the widget
+  const updatedWidget = {
     title,
     query,
     display: config,
@@ -127,10 +102,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   // Update the layout
   const updatedLayout = {
     ...existingLayout,
-    layout: [...existingLayout.layout, newLayoutItem],
     widgets: {
       ...existingLayout.widgets,
-      [widgetId]: newWidget,
+      [widgetId]: updatedWidget,
     },
   };
 
@@ -142,13 +116,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     },
   });
 
-  // Redirect to the dashboard
-  return redirect(
-    v3CustomDashboardPath(
-      { slug: organizationSlug },
-      { slug: projectParam },
-      { slug: envParam },
-      { friendlyId: dashboardId }
-    )
-  );
+  // Return success (the client will handle closing the editor)
+  return json({ success: true });
 };
