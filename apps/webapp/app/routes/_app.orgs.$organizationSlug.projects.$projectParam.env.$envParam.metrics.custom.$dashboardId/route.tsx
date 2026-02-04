@@ -25,6 +25,7 @@ import {
   PopoverContent,
   PopoverVerticalEllipseTrigger,
 } from "~/components/primitives/Popover";
+import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -208,10 +209,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 // Editor mode state type
-type EditorMode =
-  | null
-  | { type: "add" }
-  | { type: "edit"; widgetId: string; widget: WidgetData };
+type EditorMode = null | { type: "add" } | { type: "edit"; widgetId: string; widget: WidgetData };
 
 export default function Page() {
   const {
@@ -282,7 +280,12 @@ export default function Page() {
     ) {
       setEditorMode(null);
     }
-  }, [addWidgetFetcher.state, addWidgetFetcher.data, updateWidgetFetcher.state, updateWidgetFetcher.data]);
+  }, [
+    addWidgetFetcher.state,
+    addWidgetFetcher.data,
+    updateWidgetFetcher.state,
+    updateWidgetFetcher.data,
+  ]);
 
   const handleLayoutChange = useCallback(
     (newLayout: LayoutItem[]) => {
@@ -347,67 +350,66 @@ export default function Page() {
         );
       }
     },
-    [editorMode, addWidgetFetcher, updateWidgetFetcher, organization.slug, project.slug, environment.slug, friendlyId]
+    [
+      editorMode,
+      addWidgetFetcher,
+      updateWidgetFetcher,
+      organization.slug,
+      project.slug,
+      environment.slug,
+      friendlyId,
+    ]
   );
 
   const handleCloseEditor = useCallback(() => {
     setEditorMode(null);
   }, []);
 
-  // When in editor mode, render the QueryEditor
-  if (editorMode) {
-    const mode =
-      editorMode.type === "add"
-        ? { type: "dashboard-add" as const, dashboardId: friendlyId, dashboardName: title }
-        : {
-            type: "dashboard-edit" as const,
-            dashboardId: friendlyId,
-            dashboardName: title,
-            widgetId: editorMode.widgetId,
-            widgetName: editorMode.widget.title,
-          };
+  // Prepare editor props when in editor mode
+  const editorProps = editorMode
+    ? (() => {
+        const mode =
+          editorMode.type === "add"
+            ? { type: "dashboard-add" as const, dashboardId: friendlyId, dashboardName: title }
+            : {
+                type: "dashboard-edit" as const,
+                dashboardId: friendlyId,
+                dashboardName: title,
+                widgetId: editorMode.widgetId,
+                widgetName: editorMode.widget.title,
+              };
 
-    // For edit mode, use the widget's existing values as defaults
-    const editorDefaultQuery =
-      editorMode.type === "edit" ? editorMode.widget.query : queryDefaultQuery;
-    const editorDefaultChartConfig =
-      editorMode.type === "edit" && editorMode.widget.display.type === "chart"
-        ? {
-            chartType: editorMode.widget.display.chartType,
-            xAxisColumn: editorMode.widget.display.xAxisColumn,
-            yAxisColumns: editorMode.widget.display.yAxisColumns,
-            groupByColumn: editorMode.widget.display.groupByColumn,
-            stacked: editorMode.widget.display.stacked,
-            sortByColumn: editorMode.widget.display.sortByColumn,
-            sortDirection: editorMode.widget.display.sortDirection,
-            aggregation: editorMode.widget.display.aggregation,
-          }
-        : defaultChartConfig;
-    const editorDefaultResultsView =
-      editorMode.type === "edit" ? editorMode.widget.display.type : "table";
-    // Pass the existing result data when editing
-    const editorDefaultData =
-      editorMode.type === "edit" ? editorMode.widget.resultData : undefined;
+        // For edit mode, use the widget's existing values as defaults
+        const editorDefaultQuery =
+          editorMode.type === "edit" ? editorMode.widget.query : queryDefaultQuery;
+        const editorDefaultChartConfig =
+          editorMode.type === "edit" && editorMode.widget.display.type === "chart"
+            ? {
+                chartType: editorMode.widget.display.chartType,
+                xAxisColumn: editorMode.widget.display.xAxisColumn,
+                yAxisColumns: editorMode.widget.display.yAxisColumns,
+                groupByColumn: editorMode.widget.display.groupByColumn,
+                stacked: editorMode.widget.display.stacked,
+                sortByColumn: editorMode.widget.display.sortByColumn,
+                sortDirection: editorMode.widget.display.sortDirection,
+                aggregation: editorMode.widget.display.aggregation,
+              }
+            : defaultChartConfig;
+        const editorDefaultResultsView =
+          editorMode.type === "edit" ? editorMode.widget.display.type : "table";
+        // Pass the existing result data when editing
+        const editorDefaultData =
+          editorMode.type === "edit" ? editorMode.widget.resultData : undefined;
 
-    return (
-      <QueryEditor
-        defaultQuery={editorDefaultQuery}
-        defaultScope="environment"
-        defaultPeriod={defaultPeriod}
-        defaultResultsView={editorDefaultResultsView === "chart" ? "graph" : "table"}
-        defaultChartConfig={editorDefaultChartConfig}
-        defaultData={editorDefaultData}
-        history={queryHistory}
-        isAdmin={isAdmin}
-        maxRows={maxRows}
-        queryActionUrl={queryActionUrl}
-        mode={mode}
-        maxPeriodDays={maxPeriodDays}
-        onSave={handleSave}
-        onClose={handleCloseEditor}
-      />
-    );
-  }
+        return {
+          mode,
+          editorDefaultQuery,
+          editorDefaultChartConfig,
+          editorDefaultResultsView,
+          editorDefaultData,
+        };
+      })()
+    : null;
 
   return (
     <PageContainer>
@@ -441,6 +443,35 @@ export default function Page() {
           />
         </div>
       </PageBody>
+
+      {/* Query Editor Sheet - opens on top of the dashboard */}
+      <Sheet open={!!editorMode} onOpenChange={(open) => !open && setEditorMode(null)}>
+        <SheetContent
+          side="right"
+          className="w-[90vw] max-w-none border-l border-grid-dimmed p-0 sm:max-w-none"
+        >
+          {editorProps && (
+            <QueryEditor
+              defaultQuery={editorProps.editorDefaultQuery}
+              defaultScope="environment"
+              defaultPeriod={defaultPeriod}
+              defaultResultsView={
+                editorProps.editorDefaultResultsView === "chart" ? "graph" : "table"
+              }
+              defaultChartConfig={editorProps.editorDefaultChartConfig}
+              defaultData={editorProps.editorDefaultData}
+              history={queryHistory}
+              isAdmin={isAdmin}
+              maxRows={maxRows}
+              queryActionUrl={queryActionUrl}
+              mode={editorProps.mode}
+              maxPeriodDays={maxPeriodDays}
+              onSave={handleSave}
+              onClose={handleCloseEditor}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
     </PageContainer>
   );
 }
