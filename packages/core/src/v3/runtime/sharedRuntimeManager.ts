@@ -113,7 +113,7 @@ export class SharedRuntimeManager implements RuntimeManager {
 
       return {
         id: params.id,
-        items: waitpoints.map(this.waitpointToTaskRunExecutionResult),
+        items: waitpoints.map((wp) => this.waitpointToTaskRunExecutionResult(wp)),
       };
     });
   }
