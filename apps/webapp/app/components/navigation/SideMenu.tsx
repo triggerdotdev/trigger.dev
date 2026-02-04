@@ -46,6 +46,15 @@ import { useHasAdminAccess } from "~/hooks/useUser";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { ShortcutKey } from "../primitives/ShortcutKey";
 import { type UserWithDashboardPreferences } from "~/models/user.server";
+import { type SideMenuSectionId } from "./sideMenuTypes";
+
+/** Get the collapsed state for a specific side menu section from user preferences */
+function getSectionCollapsed(
+  sideMenu: { collapsedSections?: Record<string, boolean> } | undefined,
+  sectionId: SideMenuSectionId
+): boolean {
+  return sideMenu?.collapsedSections?.[sectionId] ?? false;
+}
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
 import { IncidentStatusPanel } from "~/routes/resources.incidents";
@@ -151,7 +160,8 @@ export function SideMenu({
   const preferencesFetcher = useFetcher();
   const pendingPreferencesRef = useRef<{
     isCollapsed?: boolean;
-    manageSectionCollapsed?: boolean;
+    sectionId?: SideMenuSectionId;
+    sectionCollapsed?: boolean;
   }>({});
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentPlan = useCurrentPlan();
@@ -163,7 +173,11 @@ export function SideMenu({
   const customDashboards = useCustomDashboards();
 
   const persistSideMenuPreferences = useCallback(
-    (data: { isCollapsed?: boolean; manageSectionCollapsed?: boolean }) => {
+    (data: {
+      isCollapsed?: boolean;
+      sectionId?: SideMenuSectionId;
+      sectionCollapsed?: boolean;
+    }) => {
       if (user.isImpersonating) return;
 
       // Merge with any pending changes
@@ -184,8 +198,9 @@ export function SideMenu({
         if (pending.isCollapsed !== undefined) {
           formData.append("isCollapsed", String(pending.isCollapsed));
         }
-        if (pending.manageSectionCollapsed !== undefined) {
-          formData.append("manageSectionCollapsed", String(pending.manageSectionCollapsed));
+        if (pending.sectionId !== undefined && pending.sectionCollapsed !== undefined) {
+          formData.append("sectionId", pending.sectionId);
+          formData.append("sectionCollapsed", String(pending.sectionCollapsed));
         }
         preferencesFetcher.submit(formData, {
           method: "POST",
@@ -205,13 +220,18 @@ export function SideMenu({
       }
       if (user.isImpersonating) return;
       const pending = pendingPreferencesRef.current;
-      if (pending.isCollapsed !== undefined || pending.manageSectionCollapsed !== undefined) {
+      const hasPendingChanges =
+        pending.isCollapsed !== undefined ||
+        (pending.sectionId !== undefined && pending.sectionCollapsed !== undefined);
+
+      if (hasPendingChanges) {
         const formData = new FormData();
         if (pending.isCollapsed !== undefined) {
           formData.append("isCollapsed", String(pending.isCollapsed));
         }
-        if (pending.manageSectionCollapsed !== undefined) {
-          formData.append("manageSectionCollapsed", String(pending.manageSectionCollapsed));
+        if (pending.sectionId !== undefined && pending.sectionCollapsed !== undefined) {
+          formData.append("sectionId", pending.sectionId);
+          formData.append("sectionCollapsed", String(pending.sectionCollapsed));
         }
         preferencesFetcher.submit(formData, {
           method: "POST",
@@ -228,9 +248,10 @@ export function SideMenu({
     persistSideMenuPreferences({ isCollapsed: newIsCollapsed });
   };
 
-  const handleManageSectionToggle = useCallback(
-    (collapsed: boolean) => {
-      persistSideMenuPreferences({ manageSectionCollapsed: collapsed });
+  /** Generic handler for any collapsible section - just pass the section ID */
+  const handleSectionToggle = useCallback(
+    (sectionId: SideMenuSectionId) => (collapsed: boolean) => {
+      persistSideMenuPreferences({ sectionId, sectionCollapsed: collapsed });
     },
     [persistSideMenuPreferences]
   );
@@ -447,7 +468,11 @@ export function SideMenu({
                 title="Metrics"
                 isSideMenuCollapsed={isCollapsed}
                 itemSpacingClassName="space-y-0"
-                initialCollapsed={false}
+                initialCollapsed={getSectionCollapsed(
+                  user.dashboardPreferences.sideMenu,
+                  "metrics"
+                )}
+                onCollapseToggle={handleSectionToggle("metrics")}
                 headerAction={
                   <CreateDashboardButton
                     organization={organization}
@@ -493,8 +518,8 @@ export function SideMenu({
               title="Manage"
               isSideMenuCollapsed={isCollapsed}
               itemSpacingClassName="space-y-0"
-              initialCollapsed={user.dashboardPreferences.sideMenu?.manageSectionCollapsed ?? false}
-              onCollapseToggle={handleManageSectionToggle}
+              initialCollapsed={getSectionCollapsed(user.dashboardPreferences.sideMenu, "manage")}
+              onCollapseToggle={handleSectionToggle("manage")}
             >
               <SideMenuItem
                 name="Bulk actions"
