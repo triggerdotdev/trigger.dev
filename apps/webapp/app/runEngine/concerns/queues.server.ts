@@ -16,6 +16,35 @@ import { env } from "~/env.server";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { ServiceValidationError } from "~/v3/services/common.server";
 
+/**
+ * Extract the queue name from a queue option that may be:
+ * - An object with a string `name` property: { name: "queue-name" }
+ * - A double-wrapped object (bug case): { name: { name: "queue-name", ... } }
+ *
+ * This handles the case where the SDK accidentally double-wraps the queue
+ * option when it's already an object with a name property.
+ */
+function extractQueueName(queue: { name?: unknown } | undefined): string | undefined {
+  if (!queue?.name) {
+    return undefined;
+  }
+
+  // Normal case: queue.name is a string
+  if (typeof queue.name === "string") {
+    return queue.name;
+  }
+
+  // Double-wrapped case: queue.name is an object with its own name property
+  if (typeof queue.name === "object" && queue.name !== null && "name" in queue.name) {
+    const innerName = (queue.name as { name: unknown }).name;
+    if (typeof innerName === "string") {
+      return innerName;
+    }
+  }
+
+  return undefined;
+}
+
 export class DefaultQueueManager implements QueueManager {
   constructor(
     private readonly prisma: PrismaClientOrTransaction,
@@ -32,8 +61,8 @@ export class DefaultQueueManager implements QueueManager {
     // Determine queue name based on lockToVersion and provided options
     if (lockedBackgroundWorker) {
       // Task is locked to a specific worker version
-      if (request.body.options?.queue?.name) {
-        const specifiedQueueName = request.body.options.queue.name;
+      const specifiedQueueName = extractQueueName(request.body.options?.queue);
+      if (specifiedQueueName) {
         // A specific queue name is provided
         const specifiedQueue = await this.prisma.taskQueue.findFirst({
           // Validate it exists for the locked worker
@@ -126,8 +155,10 @@ export class DefaultQueueManager implements QueueManager {
     const { taskId, environment, body } = request;
     const { queue } = body.options ?? {};
 
-    if (queue?.name) {
-      return queue.name;
+    // Use extractQueueName to handle double-wrapped queue objects
+    const queueName = extractQueueName(queue);
+    if (queueName) {
+      return queueName;
     }
 
     const defaultQueueName = `task/${taskId}`;

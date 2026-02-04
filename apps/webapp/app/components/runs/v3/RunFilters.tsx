@@ -31,6 +31,7 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { FormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
+import { MiddleTruncate } from "~/components/primitives/MiddleTruncate";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ComboBox,
@@ -324,6 +325,10 @@ type RunFiltersProps = {
   }[];
   rootOnlyDefault: boolean;
   hasFilters: boolean;
+  /** Hide the AI search input (useful when replacing with a custom search component) */
+  hideSearch?: boolean;
+  /** Custom default period for the time filter (e.g., "1h", "7d") */
+  defaultPeriod?: string;
 };
 
 export function RunsFilters(props: RunFiltersProps) {
@@ -344,9 +349,9 @@ export function RunsFilters(props: RunFiltersProps) {
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
       <FilterMenu {...props} />
-      <AIFilterInput />
+      {!props.hideSearch && <AIFilterInput />}
       <RootOnlyToggle defaultValue={props.rootOnlyDefault} />
-      <TimeFilter />
+      <TimeFilter defaultPeriod={props.defaultPeriod} />
       <AppliedFilters {...props} />
       {hasFilters && (
         <Form className="h-6">
@@ -630,7 +635,7 @@ function TasksDropdown({
     <SelectProvider value={values("tasks")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
-        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        className="min-w-0 max-w-[min(360px,var(--popover-available-width))]"
         hideOnEscape={() => {
           if (onClose) {
             onClose();
@@ -650,7 +655,7 @@ function TasksDropdown({
                 <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
               }
             >
-              {item.slug}
+              <MiddleTruncate text={item.slug}/>
             </SelectItem>
           ))}
         </SelectList>

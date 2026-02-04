@@ -73,10 +73,10 @@ describe("RunEngine delays", () => {
         prisma
       );
 
-      //should be created but not queued yet
+      //should be delayed but not queued yet
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData);
-      expect(executionData.snapshot.executionStatus).toBe("RUN_CREATED");
+      expect(executionData.snapshot.executionStatus).toBe("DELAYED");
 
       //wait for 1 seconds
       await setTimeout(1_000);
@@ -155,10 +155,10 @@ describe("RunEngine delays", () => {
         prisma
       );
 
-      //should be created but not queued yet
+      //should be delayed but not queued yet
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData);
-      expect(executionData.snapshot.executionStatus).toBe("RUN_CREATED");
+      expect(executionData.snapshot.executionStatus).toBe("DELAYED");
 
       const rescheduleTo = new Date(Date.now() + 1_500);
       const updatedRun = await engine.rescheduleDelayedRun({
@@ -170,10 +170,10 @@ describe("RunEngine delays", () => {
       //wait so the initial delay passes
       await setTimeout(1_000);
 
-      //should still be created
+      //should still be delayed (rescheduled)
       const executionData2 = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData2);
-      expect(executionData2.snapshot.executionStatus).toBe("RUN_CREATED");
+      expect(executionData2.snapshot.executionStatus).toBe("DELAYED");
 
       //wait so the updated delay passes
       await setTimeout(1_750);
@@ -253,10 +253,10 @@ describe("RunEngine delays", () => {
         prisma
       );
 
-      //should be created but not queued yet
+      //should be delayed but not queued yet
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData);
-      expect(executionData.snapshot.executionStatus).toBe("RUN_CREATED");
+      expect(executionData.snapshot.executionStatus).toBe("DELAYED");
       expect(run.status).toBe("DELAYED");
 
       //wait for 1 seconds
@@ -356,10 +356,10 @@ describe("RunEngine delays", () => {
         prisma
       );
 
-      //verify it's created but not queued
+      //verify it's delayed but not queued
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData);
-      expect(executionData.snapshot.executionStatus).toBe("RUN_CREATED");
+      expect(executionData.snapshot.executionStatus).toBe("DELAYED");
       expect(run.status).toBe("DELAYED");
 
       //cancel the run
@@ -401,4 +401,110 @@ describe("RunEngine delays", () => {
       await engine.quit();
     }
   });
+
+  containerTest(
+    "enqueueDelayedRun respects rescheduled delayUntil",
+    async ({ prisma, redisOptions }) => {
+      // This test verifies the race condition fix where if delayUntil is updated
+      // (e.g., by debounce reschedule) while the worker job is executing,
+      // the run should NOT be enqueued at the original time.
+      //
+      // The race condition occurs when:
+      // 1. Worker job is scheduled for T1
+      // 2. rescheduleDelayedRun updates delayUntil to T2 in DB
+      // 3. worker.reschedule() tries to update the job, but it's already dequeued
+      // 4. Original worker job fires and calls enqueueDelayedRun
+      //
+      // Without the fix: Run would be enqueued at T1 (wrong!)
+      // With the fix: enqueueDelayedRun checks delayUntil > now and skips
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        // Create a delayed run with a short delay (300ms)
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_1235",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 300),
+          },
+          prisma
+        );
+
+        // Verify it's delayed
+        const executionData = await engine.getRunExecutionData({ runId: run.id });
+        assertNonNullable(executionData);
+        expect(executionData.snapshot.executionStatus).toBe("DELAYED");
+
+        // Simulate race condition: directly update delayUntil in the database to a future time
+        // This simulates what happens when rescheduleDelayedRun updates the DB but the
+        // worker.reschedule() call doesn't affect the already-dequeued job
+        const newDelayUntil = new Date(Date.now() + 10_000); // 10 seconds in the future
+        await prisma.taskRun.update({
+          where: { id: run.id },
+          data: { delayUntil: newDelayUntil },
+        });
+
+        // Wait past the original delay (500ms) so the worker job fires
+        await setTimeout(500);
+
+        // KEY ASSERTION: The run should still be DELAYED because the fix checks delayUntil > now
+        // Without the fix, the run would be QUEUED here (wrong!)
+        const executionData2 = await engine.getRunExecutionData({ runId: run.id });
+        assertNonNullable(executionData2);
+        expect(executionData2.snapshot.executionStatus).toBe("DELAYED");
+
+        // Note: We don't test the run eventually becoming QUEUED here because we only
+        // updated the DB (simulating the race). In the real scenario, rescheduleDelayedRun
+        // would also reschedule the worker job to fire at the new delayUntil time.
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 });

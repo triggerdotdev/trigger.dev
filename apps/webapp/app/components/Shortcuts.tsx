@@ -1,18 +1,17 @@
 import { Keyboard } from "lucide-react";
+import { useState } from "react";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { Button } from "./primitives/Buttons";
 import { Header3 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
+  SheetTrigger
 } from "./primitives/SheetV3";
 import { ShortcutKey } from "./primitives/ShortcutKey";
-import { Button } from "./primitives/Buttons";
-import { useState } from "react";
-import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 
 export function Shortcuts() {
   return (
@@ -26,8 +25,8 @@ export function Shortcuts() {
           fullWidth
           textAlignLeft
           shortcut={{ modifiers: ["shift"], key: "?", enabled: false }}
-          className="gap-x-0 pl-0.5"
-          iconSpacing="gap-x-0.5"
+          className="gap-x-0 pl-1.5"
+          iconSpacing="gap-x-1.5"
         >
           Shortcuts
         </Button>
@@ -82,6 +81,10 @@ function ShortcutContent() {
             <Shortcut name="Filter">
               <ShortcutKey shortcut={{ key: "f" }} variant="medium/bright" />
             </Shortcut>
+            <Shortcut name="Toggle side menu">
+              <ShortcutKey shortcut={{ modifiers: ["mod"]}} variant="medium/bright" />
+              <ShortcutKey shortcut={{ key: "b" }} variant="medium/bright" />
+            </Shortcut>
             <Shortcut name="Select filter">
               <ShortcutKey shortcut={{ key: "1" }} variant="medium/bright" />
               <Paragraph variant="small" className="ml-1.5">
@@ -134,7 +137,7 @@ function ShortcutContent() {
               <ShortcutKey shortcut={{ key: "arrowleft" }} variant="medium/bright" />
               <ShortcutKey shortcut={{ key: "arrowright" }} variant="medium/bright" />
             </Shortcut>
-            <Shortcut name="Jump to adjacent">
+            <Shortcut name="Jump to next/previous run">
               <ShortcutKey shortcut={{ key: "[" }} variant="medium/bright" />
               <ShortcutKey shortcut={{ key: "]" }} variant="medium/bright" />
             </Shortcut>
@@ -156,6 +159,37 @@ function ShortcutContent() {
             </Shortcut>
             <Shortcut name="Jump to parent run">
               <ShortcutKey shortcut={{ key: "p" }} variant="medium/bright" />
+            </Shortcut>
+          </div>
+          <div className="space-y-3">
+            <Header3>Logs page</Header3>
+            <Shortcut name="Filter by task">
+              <ShortcutKey shortcut={{ key: "t" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="Filter by run ID">
+              <ShortcutKey shortcut={{ key: "i" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="Filter by level">
+              <ShortcutKey shortcut={{ key: "l" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="Select log level">
+              <ShortcutKey shortcut={{ key: "1" }} variant="medium/bright" />
+              <Paragraph variant="small" className="ml-1.5">
+                to
+              </Paragraph>
+              <ShortcutKey shortcut={{ key: "4" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="Close detail panel">
+              <ShortcutKey shortcut={{ key: "esc" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="Details tab">
+              <ShortcutKey shortcut={{ key: "d" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="Run tab">
+              <ShortcutKey shortcut={{ key: "r" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="View full run">
+              <ShortcutKey shortcut={{ key: "v" }} variant="medium/bright" />
             </Shortcut>
           </div>
           <div className="space-y-3">

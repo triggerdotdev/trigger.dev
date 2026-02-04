@@ -1,0 +1,178 @@
+name: "🔌 SDK Compatibility Tests"
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+
+jobs:
+  node-compat:
+    name: "Node.js ${{ matrix.node }} (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        node: ["20.20", "22.12"]
+
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: ⎔ Setup node
+        uses: buildjet/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: "pnpm"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: 📀 Generate Prisma Client
+        run: pnpm run generate
+
+      - name: 🔨 Build SDK dependencies
+        shell: bash
+        run: pnpm run build --filter '@trigger.dev/sdk^...'
+
+      - name: 🔨 Build SDK
+        shell: bash
+        run: pnpm run build --filter '@trigger.dev/sdk'
+
+      - name: 🧪 Run SDK Compatibility Tests
+        shell: bash
+        run: pnpm --filter @internal/sdk-compat-tests test
+
+  bun-compat:
+    name: "Bun Runtime"
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: ⎔ Setup node
+        uses: buildjet/setup-node@v4
+        with:
+          node-version: 20.20.0
+          cache: "pnpm"
+
+      - name: 🥟 Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: 📀 Generate Prisma Client
+        run: pnpm run generate
+
+      - name: 🔨 Build SDK dependencies
+        run: pnpm run build --filter @trigger.dev/sdk^...
+
+      - name: 🔨 Build SDK
+        run: pnpm run build --filter @trigger.dev/sdk
+
+      - name: 🧪 Run Bun Compatibility Test
+        working-directory: internal-packages/sdk-compat-tests/src/fixtures/bun
+        run: bun run test.ts
+
+  deno-compat:
+    name: "Deno Runtime"
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: ⎔ Setup node
+        uses: buildjet/setup-node@v4
+        with:
+          node-version: 20.20.0
+          cache: "pnpm"
+
+      - name: 🦕 Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: 📀 Generate Prisma Client
+        run: pnpm run generate
+
+      - name: 🔨 Build SDK dependencies
+        run: pnpm run build --filter @trigger.dev/sdk^...
+
+      - name: 🔨 Build SDK
+        run: pnpm run build --filter @trigger.dev/sdk
+
+      - name: 🔗 Link node_modules for Deno fixture
+        working-directory: internal-packages/sdk-compat-tests/src/fixtures/deno
+        run: ln -s ../../../../../node_modules node_modules
+
+      - name: 🧪 Run Deno Compatibility Test
+        working-directory: internal-packages/sdk-compat-tests/src/fixtures/deno
+        run: deno run --allow-read --allow-env --allow-sys test.ts
+
+  cloudflare-compat:
+    name: "Cloudflare Workers"
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: ⎔ Setup node
+        uses: buildjet/setup-node@v4
+        with:
+          node-version: 20.20.0
+          cache: "pnpm"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: 📀 Generate Prisma Client
+        run: pnpm run generate
+
+      - name: 🔨 Build SDK dependencies
+        run: pnpm run build --filter @trigger.dev/sdk^...
+
+      - name: 🔨 Build SDK
+        run: pnpm run build --filter @trigger.dev/sdk
+
+      - name: 📥 Install Cloudflare fixture deps
+        working-directory: internal-packages/sdk-compat-tests/src/fixtures/cloudflare-worker
+        run: pnpm install
+
+      - name: 🧪 Run Cloudflare Workers Compatibility Test (dry-run)
+        working-directory: internal-packages/sdk-compat-tests/src/fixtures/cloudflare-worker
+        run: npx wrangler deploy --dry-run --outdir dist

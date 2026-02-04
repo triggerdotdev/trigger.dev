@@ -1,6 +1,6 @@
 import {
   createCache,
-  createMemoryStore,
+  createLRUMemoryStore,
   DefaultStatefulContext,
   Namespace,
   RedisCacheStore,
@@ -97,7 +97,7 @@ function initializeS2RealtimeStreamsCache() {
     useModernCacheKeyBuilder: true,
   });
 
-  const memoryStore = createMemoryStore(5000, 0.001);
+  const memoryStore = createLRUMemoryStore(5000);
 
   return createCache({
     accessToken: new Namespace<string>(ctx, {

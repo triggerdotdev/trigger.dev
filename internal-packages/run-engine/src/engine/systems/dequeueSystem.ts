@@ -1,6 +1,6 @@
 import type { BillingCache } from "../billingCache.js";
 import { startSpan } from "@internal/tracing";
-import { assertExhaustive } from "@trigger.dev/core";
+import { assertExhaustive, tryCatch } from "@trigger.dev/core";
 import { DequeuedMessage, RetryOptions } from "@trigger.dev/core/v3";
 import { placementTag } from "@trigger.dev/core/v3/serverOnly";
 import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
@@ -559,6 +559,8 @@ export class DequeueSystem {
                   friendlyId: result.worker.friendlyId,
                   version: result.worker.version,
                 },
+                // TODO: use a discriminated union schema to differentiate between dequeued runs in dev and in deployed environments.
+                // Would help make the typechecking stricter
                 deployment: {
                   id: result.deployment?.id,
                   friendlyId: result.deployment?.friendlyId,
@@ -609,20 +611,24 @@ export class DequeueSystem {
             }
           );
 
-          const run = await prisma.taskRun.findFirst({
-            where: { id: runId },
-            include: {
-              runtimeEnvironment: true,
-            },
-          });
+          // Wrap the Prisma call with tryCatch - if DB is unavailable, we still want to nack via Redis
+          const [findError, run] = await tryCatch(
+            prisma.taskRun.findFirst({
+              where: { id: runId },
+              include: {
+                runtimeEnvironment: true,
+              },
+            })
+          );
 
-          if (!run) {
-            //this isn't ideal because we're not creating a snapshot… but we can't do much else
+          // If DB is unavailable or run not found, just nack directly via Redis
+          if (findError || !run) {
             this.$.logger.error(
-              "RunEngine.dequeueFromWorkerQueue(): Thrown error, then run not found. Nacking.",
+              "RunEngine.dequeueFromWorkerQueue(): Failed to find run, nacking directly via Redis",
               {
                 runId,
                 orgId,
+                findError,
               }
             );
             await this.$.runQueue.nackMessage({ orgId, messageId: runId });

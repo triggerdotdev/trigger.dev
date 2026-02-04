@@ -5,9 +5,9 @@ import {
   clickhouseEventRepositoryV2,
 } from "./clickhouseEventRepositoryInstance.server";
 import { IEventRepository, TraceEventOptions } from "./eventRepository.types";
-import { $replica, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { FEATURE_FLAG, flags } from "../featureFlags.server";
+import { FEATURE_FLAG, flag } from "../featureFlags.server";
 import { getTaskEventStore } from "../taskEventStore.server";
 
 export function resolveEventRepositoryForStore(store: string | undefined): IEventRepository {
@@ -22,6 +22,50 @@ export function resolveEventRepositoryForStore(store: string | undefined): IEven
   }
 
   return eventRepository;
+}
+
+export const EVENT_STORE_TYPES = {
+  POSTGRES: "postgres",
+  CLICKHOUSE: "clickhouse",
+  CLICKHOUSE_V2: "clickhouse_v2",
+} as const;
+
+export type EventStoreType = (typeof EVENT_STORE_TYPES)[keyof typeof EVENT_STORE_TYPES];
+
+export async function getConfiguredEventRepository(
+  organizationId: string
+): Promise<{ repository: IEventRepository; store: EventStoreType }> {
+  const organization = await prisma.organization.findFirst({
+    select: {
+      id: true,
+      featureFlags: true,
+    },
+    where: {
+      id: organizationId,
+    },
+  });
+
+  if (!organization) {
+    throw new Error("Organization not found when configuring event repository");
+  }
+
+  // resolveTaskEventRepositoryFlag checks:
+  // 1. organization.featureFlags (highest priority)
+  // 2. global feature flags (via flags() function)
+  // 3. env.EVENT_REPOSITORY_DEFAULT_STORE (fallback)
+  const taskEventStore = await resolveTaskEventRepositoryFlag(
+    (organization.featureFlags as Record<string, unknown> | null) ?? undefined
+  );
+
+  if (taskEventStore === EVENT_STORE_TYPES.CLICKHOUSE_V2) {
+    return { repository: clickhouseEventRepositoryV2, store: EVENT_STORE_TYPES.CLICKHOUSE_V2 };
+  }
+
+  if (taskEventStore === EVENT_STORE_TYPES.CLICKHOUSE) {
+    return { repository: clickhouseEventRepository, store: EVENT_STORE_TYPES.CLICKHOUSE };
+  }
+
+  return { repository: eventRepository, store: EVENT_STORE_TYPES.POSTGRES };
 }
 
 export async function getEventRepository(
@@ -78,35 +122,21 @@ export async function getV3EventRepository(
 async function resolveTaskEventRepositoryFlag(
   featureFlags: Record<string, unknown> | undefined
 ): Promise<"clickhouse" | "clickhouse_v2" | "postgres"> {
-  const flag = await flags({
+  const flagResult = await flag({
     key: FEATURE_FLAG.taskEventRepository,
     defaultValue: env.EVENT_REPOSITORY_DEFAULT_STORE,
     overrides: featureFlags,
   });
 
-  if (flag === "clickhouse_v2") {
+  if (flagResult === "clickhouse_v2") {
     return "clickhouse_v2";
   }
 
-  if (flag === "clickhouse") {
+  if (flagResult === "clickhouse") {
     return "clickhouse";
   }
 
-  if (env.EVENT_REPOSITORY_CLICKHOUSE_ROLLOUT_PERCENT) {
-    const rolloutPercent = env.EVENT_REPOSITORY_CLICKHOUSE_ROLLOUT_PERCENT;
-
-    const randomNumber = Math.random();
-
-    if (randomNumber < rolloutPercent) {
-      // Use the default store when rolling out (could be clickhouse or clickhouse_v2)
-      if (env.EVENT_REPOSITORY_DEFAULT_STORE === "clickhouse_v2") {
-        return "clickhouse_v2";
-      }
-      return "clickhouse";
-    }
-  }
-
-  return flag;
+  return flagResult;
 }
 
 export async function recordRunDebugLog(

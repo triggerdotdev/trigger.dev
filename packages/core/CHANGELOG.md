@@ -1,5 +1,36 @@
 # internal-platform
 
+## 4.3.3
+
+### Patch Changes
+
+- Add support for AI SDK v6 (Vercel AI SDK) ([#2919](https://github.com/triggerdotdev/trigger.dev/pull/2919))
+
+  - Updated peer dependency to allow `ai@^6.0.0` alongside v4 and v5
+  - Updated internal code to handle async validation from AI SDK v6's Schema type
+
+- Expose user-provided idempotency key and scope in task context. `ctx.run.idempotencyKey` now returns the original key passed to `idempotencyKeys.create()` instead of the hash, and `ctx.run.idempotencyKeyScope` shows the scope ("run", "attempt", or "global"). ([#2903](https://github.com/triggerdotdev/trigger.dev/pull/2903))
+- Fix batch trigger failing with "ReadableStream is locked" error when network failures occur mid-stream. Added safe stream cancellation that gracefully handles locked streams during retry attempts. ([#2917](https://github.com/triggerdotdev/trigger.dev/pull/2917))
+- Add a maxDepth to flatten/unflattenAttributes to prevent possible issues ([#2890](https://github.com/triggerdotdev/trigger.dev/pull/2890))
+
+## 4.3.2
+
+## 4.3.1
+
+### Patch Changes
+
+- Added support for idempotency reset ([#2777](https://github.com/triggerdotdev/trigger.dev/pull/2777))
+
+## 4.3.0
+
+### Minor Changes
+
+- feat(cli): deterministic image builds for deployments ([#2778](https://github.com/triggerdotdev/trigger.dev/pull/2778))
+
+### Patch Changes
+
+- The new `triggeredVia` field is now populated in deployments via the CLI. ([#2767](https://github.com/triggerdotdev/trigger.dev/pull/2767))
+
 ## 4.2.0
 
 ### Patch Changes

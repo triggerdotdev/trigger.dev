@@ -13,9 +13,12 @@ Automatically send errors and source maps to your Sentry project from your Trigg
 - A [Sentry](https://sentry.io) account and project
 - A [Trigger.dev](https://trigger.dev) account and project
 
-## Build configuration
+## Setup
 
-To send errors to Sentry when there are errors in your tasks, you'll need to add this build configuration to your `trigger.config.ts` file. This will then run every time you deploy your project.
+This setup involves two files:
+
+1. **`trigger.config.ts`** - Configures the build to upload source maps to Sentry during deployment
+2. **`trigger/init.ts`** - Initializes Sentry and registers the error tracking hook at runtime
 
 <Note>
   You will need to set the `SENTRY_AUTH_TOKEN` and `SENTRY_DSN` environment variables. You can find
@@ -25,11 +28,14 @@ To send errors to Sentry when there are errors in your tasks, you'll need to add
   dashboard](https://cloud.trigger.dev), under environment variables in your project's sidebar.
 </Note>
 
+### Build configuration
+
+Add this build configuration to your `trigger.config.ts` file. This uses the Sentry esbuild plugin to upload source maps every time you deploy your project.
+
 ```ts trigger.config.ts
 import { defineConfig } from "@trigger.dev/sdk";
 import { esbuildPlugin } from "@trigger.dev/build/extensions";
 import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
-import * as Sentry from "@sentry/node";
 
 export default defineConfig({
   project: "<project ref>",
@@ -47,23 +53,6 @@ export default defineConfig({
       ),
     ],
   },
-  init: async () => {
-    Sentry.init({
-      defaultIntegrations: false,
-      // The Data Source Name (DSN) is a unique identifier for your Sentry project.
-      dsn: process.env.SENTRY_DSN,
-      // Update this to match the environment you want to track errors for
-      environment: process.env.NODE_ENV === "production" ? "production" : "development",
-    });
-  },
-  onFailure: async ({ payload, error, ctx }) => {
-    Sentry.captureException(error, {
-      extra: {
-        payload,
-        ctx,
-      },
-    });
-  },
 });
 ```
 
@@ -71,6 +60,39 @@ export default defineConfig({
   [Build extensions](/config/extensions/overview) allow you to hook into the build system and
   customize the build process or the resulting bundle and container image (in the case of
   deploying). You can use pre-built extensions or create your own.
+</Note>
+
+### Runtime initialization
+
+Create a `trigger/init.ts` file to initialize Sentry and register the global `onFailure` hook. This file is automatically loaded when your tasks execute.
+
+```ts trigger/init.ts
+import { tasks } from "@trigger.dev/sdk";
+import * as Sentry from "@sentry/node";
+
+// Initialize Sentry
+Sentry.init({
+  defaultIntegrations: false,
+  // The Data Source Name (DSN) is a unique identifier for your Sentry project.
+  dsn: process.env.SENTRY_DSN,
+  // Update this to match the environment you want to track errors for
+  environment: process.env.NODE_ENV === "production" ? "production" : "development",
+});
+
+// Register a global onFailure hook to capture errors
+tasks.onFailure(({ payload, error, ctx }) => {
+  Sentry.captureException(error, {
+    extra: {
+      payload,
+      ctx,
+    },
+  });
+});
+```
+
+<Note>
+  Learn more about [global lifecycle hooks](/tasks/overview#global-lifecycle-hooks) and the
+  [`init.ts` file](/tasks/overview#init-ts).
 </Note>
 
 ## Testing that errors are being sent to Sentry

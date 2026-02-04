@@ -1,23 +1,54 @@
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
-import React, { type ReactNode, forwardRef, useState, useContext, createContext } from "react";
+import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
+import React, { type ReactNode, createContext, forwardRef, useContext, useState } from "react";
+import { useCopy } from "~/hooks/useCopy";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
-import { InfoIconTooltip } from "./Tooltip";
+import { InfoIconTooltip, SimpleTooltip } from "./Tooltip";
 
 const variants = {
   bright: {
     header: "bg-background-bright",
+    headerCell: "px-3 py-2.5 pb-3 text-sm",
     cell: "group-hover/table-row:bg-charcoal-750 group-has-[[tabindex='0']:focus]/table-row:bg-charcoal-750",
+    cellSize: "px-3 py-3",
+    cellText: "text-xs group-hover/table-row:text-text-bright",
     stickyCell: "bg-background-bright group-hover/table-row:bg-charcoal-750",
     menuButton:
       "bg-background-bright group-hover/table-row:bg-charcoal-750 group-hover/table-row:ring-charcoal-600/70 group-has-[[tabindex='0']:focus]/table-row:bg-charcoal-750",
     menuButtonDivider: "group-hover/table-row:border-charcoal-600/70",
     rowSelected: "bg-charcoal-750 group-hover/table-row:bg-charcoal-750",
   },
+  "bright/no-hover": {
+    header: "bg-transparent",
+    headerCell: "px-3 py-2.5 pb-3 text-sm",
+    cell: "group-hover/table-row:bg-transparent",
+    cellSize: "px-3 py-3",
+    cellText: "text-xs",
+    stickyCell: "bg-background-bright",
+    menuButton: "bg-background-bright",
+    menuButtonDivider: "",
+    rowSelected: "bg-charcoal-750",
+  },
   dimmed: {
     header: "bg-background-dimmed",
+    headerCell: "px-3 py-2.5 pb-3 text-sm",
     cell: "group-hover/table-row:bg-charcoal-800 group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+    cellSize: "px-3 py-3",
+    cellText: "text-xs group-hover/table-row:text-text-bright",
+    stickyCell: "group-hover/table-row:bg-charcoal-800",
+    menuButton:
+      "bg-background-dimmed group-hover/table-row:bg-charcoal-800 group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+    menuButtonDivider: "group-hover/table-row:border-grid-bright",
+    rowSelected: "bg-charcoal-750 group-hover/table-row:bg-charcoal-750",
+  },
+  "compact/mono": {
+    header: "bg-background-dimmed",
+    headerCell: "px-2 py-1.5 text-sm",
+    cell: "group-hover/table-row:bg-charcoal-800 group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+    cellSize: "px-2 py-1.5",
+    cellText: "text-xs font-mono group-hover/table-row:text-text-bright",
     stickyCell: "group-hover/table-row:bg-charcoal-800",
     menuButton:
       "bg-background-dimmed group-hover/table-row:bg-charcoal-800 group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
@@ -33,18 +64,30 @@ type TableProps = {
   className?: string;
   children: ReactNode;
   fullWidth?: boolean;
+  showTopBorder?: boolean;
 };
 
 // Add TableContext
 const TableContext = createContext<{ variant: TableVariant }>({ variant: "dimmed" });
 
 export const Table = forwardRef<HTMLTableElement, TableProps & { variant?: TableVariant }>(
-  ({ className, containerClassName, children, fullWidth, variant = "dimmed" }, ref) => {
+  (
+    {
+      className,
+      containerClassName,
+      children,
+      fullWidth,
+      variant = "dimmed",
+      showTopBorder = true,
+    },
+    ref
+  ) => {
     return (
       <TableContext.Provider value={{ variant }}>
         <div
           className={cn(
-            "overflow-x-auto whitespace-nowrap border-t scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+            "overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+            showTopBorder && "border-t",
             containerClassName,
             fullWidth && "w-full"
           )}
@@ -70,7 +113,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
       <thead
         ref={ref}
         className={cn(
-          "sticky top-0 z-10 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright",
+          "safari-only sticky top-0 z-10 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright supports-[(-webkit-hyphens:none)]:after:content-none",
           variants[variant].header,
           className
         )}
@@ -96,7 +139,7 @@ export const TableBody = forwardRef<HTMLTableSectionElement, TableBodyProps>(
   }
 );
 
-type TableRowProps = {
+type TableRowProps = JSX.IntrinsicElements["tr"] & {
   className?: string;
   children: ReactNode;
   disabled?: boolean;
@@ -104,11 +147,12 @@ type TableRowProps = {
 };
 
 export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
-  ({ className, disabled, isSelected, children }, ref) => {
+  ({ className, disabled, isSelected, children, ...props }, ref) => {
     const { variant } = useContext(TableContext);
     return (
       <tr
         ref={ref}
+        {...props}
         className={cn(
           "group/table-row relative w-full outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
           isSelected && variants[variant].rowSelected,
@@ -136,6 +180,7 @@ type TableHeaderCellProps = TableCellBasicProps & {
 
 export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellProps>(
   ({ className, alignment = "left", children, colSpan, hiddenLabel = false, tooltip }, ref) => {
+    const { variant } = useContext(TableContext);
     let alignmentClassName = "text-left";
     switch (alignment) {
       case "center":
@@ -146,17 +191,22 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         break;
     }
 
+    const [isHovered, setIsHovered] = useState(false);
+
     return (
       <th
         ref={ref}
         scope="col"
         className={cn(
-          "px-3 py-2.5 pb-3 align-middle text-sm font-medium text-text-bright",
+          "align-middle font-medium text-text-bright",
+          variants[variant].headerCell,
           alignmentClassName,
           className
         )}
         colSpan={colSpan}
         tabIndex={-1}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
         {hiddenLabel ? (
           <span className="sr-only">{children}</span>
@@ -168,7 +218,11 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
             })}
           >
             {children}
-            <InfoIconTooltip content={tooltip} contentClassName="normal-case tracking-normal" />
+            <InfoIconTooltip
+              content={tooltip}
+              contentClassName="normal-case tracking-normal"
+              enabled={isHovered}
+            />
           </div>
         ) : (
           children
@@ -188,6 +242,7 @@ type TableCellProps = TableCellBasicProps & {
   isSelected?: boolean;
   isTabbableCell?: boolean;
   children?: ReactNode;
+  style?: React.CSSProperties;
 };
 
 export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
@@ -204,6 +259,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       isSticky = false,
       isSelected,
       isTabbableCell = false,
+      style,
     },
     ref
   ) => {
@@ -217,23 +273,28 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         break;
     }
 
+    const { variant } = useContext(TableContext);
     const flexClasses = cn(
-      "flex w-full whitespace-nowrap px-3 py-3 items-center text-xs text-text-dimmed",
+      "flex w-full whitespace-nowrap items-center text-text-dimmed",
+      variants[variant].cellSize,
+      variants[variant].cellText,
       alignment === "left"
         ? "justify-start text-left"
         : alignment === "center"
         ? "justify-center text-center"
         : "justify-end text-right"
     );
-    const { variant } = useContext(TableContext);
 
     return (
       <td
         ref={ref}
         className={cn(
-          "text-xs text-charcoal-400 has-[[tabindex='0']:focus]:before:absolute has-[[tabindex='0']:focus]:before:-top-px has-[[tabindex='0']:focus]:before:left-0 has-[[tabindex='0']:focus]:before:h-px has-[[tabindex='0']:focus]:before:w-3 has-[[tabindex='0']:focus]:before:bg-grid-dimmed has-[[tabindex='0']:focus]:after:absolute has-[[tabindex='0']:focus]:after:bottom-0 has-[[tabindex='0']:focus]:after:left-0 has-[[tabindex='0']:focus]:after:right-0 has-[[tabindex='0']:focus]:after:h-px has-[[tabindex='0']:focus]:after:bg-grid-dimmed",
+          "safari-only text-xs text-charcoal-400 has-[[tabindex='0']:focus]:before:absolute has-[[tabindex='0']:focus]:before:-top-px has-[[tabindex='0']:focus]:before:left-0 has-[[tabindex='0']:focus]:before:h-px has-[[tabindex='0']:focus]:before:w-3 has-[[tabindex='0']:focus]:before:bg-grid-dimmed has-[[tabindex='0']:focus]:after:absolute has-[[tabindex='0']:focus]:after:bottom-0 has-[[tabindex='0']:focus]:after:left-0 has-[[tabindex='0']:focus]:after:right-0 has-[[tabindex='0']:focus]:after:h-px has-[[tabindex='0']:focus]:after:bg-grid-dimmed",
+          variants[variant].cellText,
           variants[variant].cell,
-          to || onClick || hasAction ? "cursor-pointer" : "cursor-default px-3 py-3 align-middle",
+          to || onClick || hasAction
+            ? "cursor-pointer"
+            : cn("cursor-default align-middle", variants[variant].cellSize),
           !to && !onClick && alignmentClassName,
           isSticky &&
             "[&:has(.group-hover/table-row:block)]:w-auto sticky right-0 bg-background-dimmed",
@@ -244,6 +305,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           className
         )}
         colSpan={colSpan}
+        style={style}
       >
         {to ? (
           <Link
@@ -265,6 +327,60 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           <>{children}</>
         )}
       </td>
+    );
+  }
+);
+
+type CopyableTableCellProps = TableCellProps & {
+  value: string;
+};
+
+export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableCellProps>(
+  ({ value, children, className, ...props }, ref) => {
+    const [isHovered, setIsHovered] = useState(false);
+    const { copy, copied } = useCopy(value);
+
+    return (
+      <TableCell ref={ref} className={className} {...props}>
+        <div
+          className="relative flex items-center"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
+          {children}
+          {isHovered && (
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                copy();
+              }}
+              className="absolute -right-2 top-1/2 z-10 flex -translate-y-1/2 cursor-pointer"
+            >
+              <SimpleTooltip
+                button={
+                  <span
+                    className={cn(
+                      "flex size-6 items-center justify-center rounded border border-charcoal-650 bg-charcoal-750",
+                      copied
+                        ? "text-green-500"
+                        : "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-text-bright"
+                    )}
+                  >
+                    {copied ? (
+                      <ClipboardCheckIcon className="size-3.5" />
+                    ) : (
+                      <ClipboardIcon className="size-3.5" />
+                    )}
+                  </span>
+                }
+                content={copied ? "Copied!" : "Copy"}
+                disableHoverableContent
+              />
+            </span>
+          )}
+        </div>
+      </TableCell>
     );
   }
 );

@@ -298,6 +298,7 @@ function RunsList({
                   runs={list.runs}
                   isLoading={isLoading}
                   allowSelection
+                  rootOnlyDefault={rootOnlyDefault}
                 />
               </div>
             )}

@@ -7,13 +7,18 @@ import {
   RetryOptions,
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
-import { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
-import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
+import { PrismaClient, PrismaReplicaClient, TaskRun, Waitpoint } from "@trigger.dev/database";
+import {
+  Worker,
+  type WorkerConcurrencyOptions,
+  type GlobalRateLimiter,
+} from "@trigger.dev/redis-worker";
 import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { LockRetryConfig } from "./locking.js";
 import { workerCatalog } from "./workerCatalog.js";
 import { type BillingPlan } from "./billingCache.js";
+import type { DRRConfig } from "../batch-queue/types.js";
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
@@ -68,6 +73,26 @@ export type RunEngineOptions = {
   cache?: {
     redis: RedisOptions;
   };
+  batchQueue?: {
+    redis: RedisOptions;
+    drr?: Partial<DRRConfig>;
+    /** Number of master queue shards (default: 1) */
+    shardCount?: number;
+    /** Worker queue blocking timeout in seconds (enables two-stage processing) */
+    workerQueueBlockingTimeoutSeconds?: number;
+    consumerEnabled?: boolean;
+    consumerCount?: number;
+    consumerIntervalMs?: number;
+    /** Default processing concurrency per environment when no specific limit is set */
+    defaultConcurrency?: number;
+    /** Optional global rate limiter to limit processing across all consumers */
+    globalRateLimiter?: GlobalRateLimiter;
+  };
+  debounce?: {
+    redis?: RedisOptions;
+    /** Maximum duration in milliseconds that a run can be debounced. Default: 1 hour */
+    maxDebounceDurationMs?: number;
+  };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
@@ -95,11 +120,13 @@ export type HeartbeatTimeouts = {
 };
 
 export type TriggerParams = {
+  number?: number;
   friendlyId: string;
-  number: number;
   environment: MinimalAuthenticatedEnvironment;
   idempotencyKey?: string;
   idempotencyKeyExpiresAt?: Date;
+  /** The original user-provided idempotency key and scope */
+  idempotencyKeyOptions?: { key: string; scope: "run" | "attempt" | "global" };
   taskIdentifier: string;
   payload: string;
   payloadType: string;
@@ -149,6 +176,22 @@ export type TriggerParams = {
   bulkActionId?: string;
   planType?: string;
   realtimeStreamsVersion?: string;
+  debounce?: {
+    key: string;
+    delay: string;
+    mode?: "leading" | "trailing";
+    maxDelay?: string;
+  };
+  /**
+   * Called when a run is debounced (existing delayed run found with triggerAndWait).
+   * Return spanIdToComplete to enable span closing when the run completes.
+   * This allows the webapp to create a trace span for the debounced trigger.
+   */
+  onDebounced?: (params: {
+    existingRun: TaskRun;
+    waitpoint: Waitpoint;
+    debounceKey: string;
+  }) => Promise<string | undefined>;
 };
 
 export type EngineWorker = Worker<typeof workerCatalog>;

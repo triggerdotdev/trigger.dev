@@ -5,6 +5,8 @@ description: "There are some hard and soft limits that you might hit."
 
 import RateLimitHitUseBatchTrigger from "/snippets/rate-limit-hit-use-batchtrigger.mdx";
 
+You can view your current limits, quotas, and rate limit usage in real-time by visiting the **Limits** page in the dashboard (accessible from the left sidebar). This page shows current rate limit token availability, quota usage, and plan features for your organization.
+
 ## Concurrency limits
 
 | Pricing tier | Limit                |
@@ -13,7 +15,7 @@ import RateLimitHitUseBatchTrigger from "/snippets/rate-limit-hit-use-batchtrigg
 | Hobby        | 25 concurrent runs   |
 | Pro          | 100+ concurrent runs |
 
-Additional bundles above the Pro tier are available for $50/month per 50 concurrent runs. Contact us via [email](https://trigger.dev/contact) or [Discord](https://trigger.dev/discord) to request more.
+Extra concurrency above the Pro tier limit is available via the dashboard. Click the "Concurrency" page from the left sidebar when on the Pro plan to purchase more.
 
 ## Rate limits
 
@@ -53,6 +55,14 @@ If you add them [dynamically using code](/management/schedules/create) make sure
 
 If you're creating schedules for your user you will definitely need to request more schedules from us.
 
+## Projects
+
+| Pricing tier | Limit              |
+| :----------- | :----------------- |
+| All tiers    | 10 per organization |
+
+Each project receives its own concurrency allocation. If you need to support multiple tenants with the same codebase but different environment variables, see the [Multi-tenant applications](/deploy-environment-variables#multi-tenant-applications) section for a recommended workaround.
+
 ## Preview branches
 
 | Pricing tier | Limit                |
@@ -75,19 +85,47 @@ Additional bundles are available for $10/month per 100 concurrent connections. C
 
 ## Task payloads and outputs
 
-| Limit                  | Details                                       |
-| :--------------------- | :-------------------------------------------- |
-| Single trigger payload | Must not exceed 3MB                           |
-| Batch trigger payload  | The total of all payloads must not exceed 5MB |
-| Task outputs           | Must not exceed 10MB                          |
+| Limit                  | Details                                                            |
+| :--------------------- | :----------------------------------------------------------------- |
+| Single trigger payload | Must not exceed 3MB                                                |
+| Batch trigger payload  | Each item can be up to 3MB (SDK 4.3.1+). Prior: 1MB total combined |
+| Task outputs           | Must not exceed 10MB                                               |
 
 Payloads and outputs that exceed 512KB will be offloaded to object storage and a presigned URL will be provided to download the data when calling `runs.retrieve`. You don't need to do anything to handle this in your tasks however, as we will transparently upload/download these during operation.
 
 ## Batch size
 
-A single batch can have a maximum of 500 items.
+A single batch can have a maximum of 1,000 items with SDK 4.3.1+. Prior versions are limited to 500 items.
 
 <SoftLimit />
+
+## Batch trigger rate limits
+
+Batch triggering uses a token bucket algorithm to rate limit the number of runs you can trigger per environment. Each run in a batch consumes one token.
+
+| Pricing tier | Bucket size | Refill rate           |
+| :----------- | :---------- | :-------------------- |
+| Free         | 1,200 runs  | 100 runs every 10 sec |
+| Hobby        | 5,000 runs  | 500 runs every 5 sec  |
+| Pro          | 5,000 runs  | 500 runs every 5 sec  |
+
+**How it works**: You can burst up to your bucket size, then tokens refill at the specified rate. For example, a Free user can trigger 1,200 runs immediately, then must wait for tokens to refill (100 runs become available every 10 seconds).
+
+<Note>
+  When you hit batch rate limits, the SDK throws a `BatchTriggerError` with `isRateLimited: true`. See [Handling batch trigger errors](/triggering#handling-batch-trigger-errors) for how to detect and react to rate limits in your code.
+</Note>
+
+## Batch processing concurrency
+
+The number of batches that can be processed concurrently per environment.
+
+| Pricing tier | Limit                 |
+| :----------- | :-------------------- |
+| Free         | 1 concurrent batch    |
+| Hobby        | 10 concurrent batches |
+| Pro          | 10 concurrent batches |
+
+This limits how many batches can have their items actively being processed into runs at the same time.
 
 ## Log retention
 

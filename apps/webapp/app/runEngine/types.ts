@@ -76,13 +76,6 @@ export interface PayloadProcessor {
   process(request: TriggerTaskRequest): Promise<IOPacket>;
 }
 
-export interface RunNumberIncrementer {
-  incrementRunNumber<T>(
-    request: TriggerTaskRequest,
-    callback: (num: number) => Promise<T>
-  ): Promise<T | undefined>;
-}
-
 export interface TagValidationParams {
   tags?: string[] | string;
 }
@@ -138,6 +131,12 @@ export type TracedEventSpan = {
   };
   setAttribute: (key: string, value: string) => void;
   failWithError: (error: TaskRunError) => void;
+  /**
+   * Stop the span without writing any event.
+   * Used when a debounced run is returned - the span for the debounced
+   * trigger is created separately via traceDebouncedRun.
+   */
+  stop: () => void;
 };
 
 export interface TraceEventConcern {
@@ -152,6 +151,17 @@ export interface TraceEventConcern {
     options: {
       existingRun: TaskRun;
       idempotencyKey: string;
+      incomplete: boolean;
+      isError: boolean;
+    },
+    callback: (span: TracedEventSpan, store: string) => Promise<T>
+  ): Promise<T>;
+  traceDebouncedRun<T>(
+    request: TriggerTaskRequest,
+    parentStore: string | undefined,
+    options: {
+      existingRun: TaskRun;
+      debounceKey: string;
       incomplete: boolean;
       isError: boolean;
     },

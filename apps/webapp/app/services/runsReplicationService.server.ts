@@ -1,4 +1,5 @@
-import type { ClickHouse, RawTaskRunPayloadV1, TaskRunV2 } from "@internal/clickhouse";
+import type { ClickHouse, TaskRunInsertArray, PayloadInsertArray } from "@internal/clickhouse";
+import { getTaskRunField, getPayloadField } from "@internal/clickhouse";
 import { type RedisOptions } from "@internal/redis";
 import {
   LogicalReplicationClient,
@@ -7,10 +8,20 @@ import {
   type MessageUpdate,
   type PgoutputMessage,
 } from "@internal/replication";
-import { recordSpanError, startSpan, trace, type Tracer } from "@internal/tracing";
+import {
+  getMeter,
+  recordSpanError,
+  startSpan,
+  trace,
+  type Counter,
+  type Histogram,
+  type Meter,
+  type Tracer,
+} from "@internal/tracing";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
+import { unsafeExtractIdempotencyKeyScope, unsafeExtractIdempotencyKeyUser } from "@trigger.dev/core/v3/serverOnly";
 import { type TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import EventEmitter from "node:events";
@@ -51,6 +62,7 @@ export type RunsReplicationServiceOptions = {
   logger?: Logger;
   logLevel?: LogLevel;
   tracer?: Tracer;
+  meter?: Meter;
   waitForAsyncInsert?: boolean;
   insertStrategy?: "insert" | "insert_async";
   // Retry configuration for insert operations
@@ -71,7 +83,7 @@ type TaskRunInsert = {
 export type RunsReplicationServiceEvents = {
   message: [{ lsn: string; message: PgoutputMessage; service: RunsReplicationService }];
   batchFlushed: [
-    { flushId: string; taskRunInserts: TaskRunV2[]; payloadInserts: RawTaskRunPayloadV1[] }
+    { flushId: string; taskRunInserts: TaskRunInsertArray[]; payloadInserts: PayloadInsertArray[] }
   ];
 };
 
@@ -90,6 +102,7 @@ export class RunsReplicationService {
   private _isShuttingDown = false;
   private _isShutDownComplete = false;
   private _tracer: Tracer;
+  private _meter: Meter;
   private _currentParseDurationMs: number | null = null;
   private _lastAcknowledgedAt: number | null = null;
   private _acknowledgeTimeoutMs: number;
@@ -103,6 +116,16 @@ export class RunsReplicationService {
   private _insertStrategy: "insert" | "insert_async";
   private _disablePayloadInsert: boolean;
 
+  // Metrics
+  private _replicationLagHistogram: Histogram;
+  private _batchesFlushedCounter: Counter;
+  private _batchSizeHistogram: Histogram;
+  private _taskRunsInsertedCounter: Counter;
+  private _payloadsInsertedCounter: Counter;
+  private _insertRetriesCounter: Counter;
+  private _eventsProcessedCounter: Counter;
+  private _flushDurationHistogram: Histogram;
+
   public readonly events: EventEmitter<RunsReplicationServiceEvents>;
 
   constructor(private readonly options: RunsReplicationServiceOptions) {
@@ -110,6 +133,57 @@ export class RunsReplicationService {
       options.logger ?? new Logger("RunsReplicationService", options.logLevel ?? "info");
     this.events = new EventEmitter();
     this._tracer = options.tracer ?? trace.getTracer("runs-replication-service");
+    this._meter = options.meter ?? getMeter("runs-replication");
+
+    // Initialize metrics
+    this._replicationLagHistogram = this._meter.createHistogram(
+      "runs_replication.replication_lag_ms",
+      {
+        description: "Replication lag from Postgres commit to processing",
+        unit: "ms",
+      }
+    );
+
+    this._batchesFlushedCounter = this._meter.createCounter("runs_replication.batches_flushed", {
+      description: "Total batches flushed to ClickHouse",
+    });
+
+    this._batchSizeHistogram = this._meter.createHistogram("runs_replication.batch_size", {
+      description: "Number of items per batch flush",
+      unit: "items",
+    });
+
+    this._taskRunsInsertedCounter = this._meter.createCounter(
+      "runs_replication.task_runs_inserted",
+      {
+        description: "Task run inserts to ClickHouse",
+        unit: "inserts",
+      }
+    );
+
+    this._payloadsInsertedCounter = this._meter.createCounter(
+      "runs_replication.payloads_inserted",
+      {
+        description: "Payload inserts to ClickHouse",
+        unit: "inserts",
+      }
+    );
+
+    this._insertRetriesCounter = this._meter.createCounter("runs_replication.insert_retries", {
+      description: "Insert retry attempts",
+    });
+
+    this._eventsProcessedCounter = this._meter.createCounter("runs_replication.events_processed", {
+      description: "Replication events processed (inserts, updates, deletes)",
+    });
+
+    this._flushDurationHistogram = this._meter.createHistogram(
+      "runs_replication.flush_duration_ms",
+      {
+        description: "Duration of batch flush operations",
+        unit: "ms",
+      }
+    );
 
     this._acknowledgeTimeoutMs = options.acknowledgeTimeoutMs ?? 1_000;
 
@@ -141,34 +215,18 @@ export class RunsReplicationService {
       flushInterval: options.flushIntervalMs ?? 100,
       maxConcurrency: options.maxFlushConcurrency ?? 100,
       callback: this.#flushBatch.bind(this),
-      // we can do some pre-merging to reduce the amount of data we need to send to clickhouse
-      mergeBatch: (existingBatch: TaskRunInsert[], newBatch: TaskRunInsert[]) => {
-        const merged = new Map<string, TaskRunInsert>();
-
-        for (const item of existingBatch) {
-          const key = `${item.event}_${item.run.id}`;
-          merged.set(key, item);
+      // Key-based deduplication to reduce duplicates sent to ClickHouse
+      getKey: (item) => {
+        if (!item?.run?.id) {
+          this.logger.warn("Skipping replication event with null run", { event: item });
+          return null;
         }
-
-        for (const item of newBatch) {
-          if (!item?.run?.id) {
-            this.logger.warn("Skipping replication event with null run", { event: item });
-            continue;
-          }
-
-          const key = `${item.event}_${item.run.id}`;
-          const existingItem = merged.get(key);
-
-          // Keep the run with the higher version (latest)
-          // and take the last occurrence for that version.
-          // Items originating from the same DB transaction have the same version.
-          if (!existingItem || item._version >= existingItem._version) {
-            merged.set(key, item);
-          }
-        }
-
-        return Array.from(merged.values());
+        return `${item.event}_${item.run.id}`;
       },
+      // Keep the run with the higher version (latest)
+      // and take the last occurrence for that version.
+      // Items originating from the same DB transaction have the same version.
+      shouldReplace: (existing, incoming) => incoming._version >= existing._version,
       logger: new Logger("ConcurrentFlushScheduler", options.logLevel ?? "info"),
       tracer: options.tracer,
     });
@@ -423,22 +481,15 @@ export class RunsReplicationService {
       }))
     );
 
-    this._tracer
-      .startSpan("handle_transaction", {
-        attributes: {
-          "transaction.xid": transaction.xid,
-          "transaction.replication_lag_ms": transaction.replicationLagMs,
-          "transaction.events": transaction.events.length,
-          "transaction.commit_end_lsn": transaction.commitEndLsn,
-          "transaction.parse_duration_ms": this._currentParseDurationMs ?? undefined,
-          "transaction.lsn_to_uint64_ms": lsnToUInt64DurationMs,
-          "transaction.version": _version.toString(),
-        },
-        startTime: transaction.beginStartTimestamp,
-      })
-      .end();
+    // Record metrics
+    this._replicationLagHistogram.record(transaction.replicationLagMs);
 
-    this.logger.info("handle_transaction", {
+    // Count events by type
+    for (const event of transaction.events) {
+      this._eventsProcessedCounter.add(1, { event_type: event.tag });
+    }
+
+    this.logger.debug("handle_transaction", {
       transaction: {
         xid: transaction.xid,
         commitLsn: transaction.commitLsn,
@@ -501,6 +552,8 @@ export class RunsReplicationService {
       batchSize: batch.length,
     });
 
+    const flushStartTime = performance.now();
+
     await startSpan(this._tracer, "flushBatch", async (span) => {
       const preparedInserts = await startSpan(this._tracer, "prepare_inserts", async (span) => {
         return await Promise.all(batch.map(this.#prepareRunInserts.bind(this)));
@@ -508,32 +561,46 @@ export class RunsReplicationService {
 
       const taskRunInserts = preparedInserts
         .map(({ taskRunInsert }) => taskRunInsert)
-        .filter(Boolean)
+        .filter((x): x is TaskRunInsertArray => Boolean(x))
         // batch inserts in clickhouse are more performant if the items
         // are pre-sorted by the primary key
         .sort((a, b) => {
-          if (a.organization_id !== b.organization_id) {
-            return a.organization_id < b.organization_id ? -1 : 1;
+          const aOrgId = getTaskRunField(a, "organization_id");
+          const bOrgId = getTaskRunField(b, "organization_id");
+          if (aOrgId !== bOrgId) {
+            return aOrgId < bOrgId ? -1 : 1;
           }
-          if (a.project_id !== b.project_id) {
-            return a.project_id < b.project_id ? -1 : 1;
+          const aProjId = getTaskRunField(a, "project_id");
+          const bProjId = getTaskRunField(b, "project_id");
+          if (aProjId !== bProjId) {
+            return aProjId < bProjId ? -1 : 1;
           }
-          if (a.environment_id !== b.environment_id) {
-            return a.environment_id < b.environment_id ? -1 : 1;
+          const aEnvId = getTaskRunField(a, "environment_id");
+          const bEnvId = getTaskRunField(b, "environment_id");
+          if (aEnvId !== bEnvId) {
+            return aEnvId < bEnvId ? -1 : 1;
           }
-          if (a.created_at !== b.created_at) {
-            return a.created_at - b.created_at;
+          const aCreatedAt = getTaskRunField(a, "created_at");
+          const bCreatedAt = getTaskRunField(b, "created_at");
+          if (aCreatedAt !== bCreatedAt) {
+            return aCreatedAt - bCreatedAt;
           }
-          return a.run_id < b.run_id ? -1 : 1;
+          const aRunId = getTaskRunField(a, "run_id");
+          const bRunId = getTaskRunField(b, "run_id");
+          if (aRunId === bRunId) return 0;
+          return aRunId < bRunId ? -1 : 1;
         });
 
       const payloadInserts = preparedInserts
         .map(({ payloadInsert }) => payloadInsert)
-        .filter(Boolean)
+        .filter((x): x is PayloadInsertArray => Boolean(x))
         // batch inserts in clickhouse are more performant if the items
         // are pre-sorted by the primary key
         .sort((a, b) => {
-          return a.run_id < b.run_id ? -1 : 1;
+          const aRunId = getPayloadField(a, "run_id");
+          const bRunId = getPayloadField(b, "run_id");
+          if (aRunId === bRunId) return 0;
+          return aRunId < bRunId ? -1 : 1;
         });
 
       span.setAttribute("task_run_inserts", taskRunInserts.length);
@@ -563,7 +630,6 @@ export class RunsReplicationService {
         this.logger.error("Error inserting task run inserts", {
           error: taskRunError,
           flushId,
-          runIds: taskRunInserts.map((r) => r.run_id),
         });
         recordSpanError(span, taskRunError);
       }
@@ -572,7 +638,6 @@ export class RunsReplicationService {
         this.logger.error("Error inserting payload inserts", {
           error: payloadError,
           flushId,
-          runIds: payloadInserts.map((r) => r.run_id),
         });
         recordSpanError(span, payloadError);
       }
@@ -584,6 +649,22 @@ export class RunsReplicationService {
       });
 
       this.events.emit("batchFlushed", { flushId, taskRunInserts, payloadInserts });
+
+      // Record metrics
+      const flushDurationMs = performance.now() - flushStartTime;
+      const hasErrors = taskRunError !== null || payloadError !== null;
+
+      this._batchSizeHistogram.record(batch.length);
+      this._flushDurationHistogram.record(flushDurationMs);
+      this._batchesFlushedCounter.add(1, { success: !hasErrors });
+
+      if (!taskRunError) {
+        this._taskRunsInsertedCounter.add(taskRunInserts.length);
+      }
+
+      if (!payloadError) {
+        this._payloadsInsertedCounter.add(payloadInserts.length);
+      }
     });
   }
 
@@ -614,6 +695,10 @@ export class RunsReplicationService {
             error: lastError.message,
             delay,
           });
+
+          // Record retry metric
+          const operation = operationName.includes("task run") ? "task_runs" : "payloads";
+          this._insertRetriesCounter.add(1, { operation });
 
           await new Promise((resolve) => setTimeout(resolve, delay));
           continue;
@@ -670,26 +755,24 @@ export class RunsReplicationService {
   #getClickhouseInsertSettings() {
     if (this._insertStrategy === "insert") {
       return {};
-    } else if (this._insertStrategy === "insert_async") {
-      return {
-        async_insert: 1 as const,
-        async_insert_max_data_size: "1000000",
-        async_insert_busy_timeout_ms: 1000,
-        wait_for_async_insert: this.options.waitForAsyncInsert ? (1 as const) : (0 as const),
-      };
     }
+
+    return {
+      async_insert: 1 as const,
+      async_insert_max_data_size: "1000000",
+      async_insert_busy_timeout_ms: 1000,
+      wait_for_async_insert: this.options.waitForAsyncInsert ? (1 as const) : (0 as const),
+    };
   }
 
-  async #insertTaskRunInserts(taskRunInserts: TaskRunV2[], attempt: number) {
+  async #insertTaskRunInserts(taskRunInserts: TaskRunInsertArray[], attempt: number) {
     return await startSpan(this._tracer, "insertTaskRunsInserts", async (span) => {
-      const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insert(
-        taskRunInserts,
-        {
+      const [insertError, insertResult] =
+        await this.options.clickhouse.taskRuns.insertCompactArrays(taskRunInserts, {
           params: {
             clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
-        }
-      );
+        });
 
       if (insertError) {
         this.logger.error("Error inserting task run inserts attempt", {
@@ -705,16 +788,14 @@ export class RunsReplicationService {
     });
   }
 
-  async #insertPayloadInserts(payloadInserts: RawTaskRunPayloadV1[], attempt: number) {
+  async #insertPayloadInserts(payloadInserts: PayloadInsertArray[], attempt: number) {
     return await startSpan(this._tracer, "insertPayloadInserts", async (span) => {
-      const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insertPayloads(
-        payloadInserts,
-        {
+      const [insertError, insertResult] =
+        await this.options.clickhouse.taskRuns.insertPayloadsCompactArrays(payloadInserts, {
           params: {
             clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
-        }
-      );
+        });
 
       if (insertError) {
         this.logger.error("Error inserting payload inserts attempt", {
@@ -732,25 +813,15 @@ export class RunsReplicationService {
 
   async #prepareRunInserts(
     batchedRun: TaskRunInsert
-  ): Promise<{ taskRunInsert?: TaskRunV2; payloadInsert?: RawTaskRunPayloadV1 }> {
+  ): Promise<{ taskRunInsert?: TaskRunInsertArray; payloadInsert?: PayloadInsertArray }> {
     this.logger.debug("Preparing run", {
       batchedRun,
     });
 
     const { run, _version, event } = batchedRun;
 
-    if (!run.environmentType) {
-      return {
-        taskRunInsert: undefined,
-        payloadInsert: undefined,
-      };
-    }
-
-    if (!run.organizationId) {
-      return {
-        taskRunInsert: undefined,
-        payloadInsert: undefined,
-      };
+    if (!run.environmentType || !run.organizationId) {
+      return {};
     }
 
     if (event === "update" || event === "delete" || this._disablePayloadInsert) {
@@ -762,10 +833,7 @@ export class RunsReplicationService {
         _version
       );
 
-      return {
-        taskRunInsert,
-        payloadInsert: undefined,
-      };
+      return { taskRunInsert };
     }
 
     const [taskRunInsert, payloadInsert] = await Promise.all([
@@ -773,10 +841,7 @@ export class RunsReplicationService {
       this.#preparePayloadInsert(run, _version),
     ]);
 
-    return {
-      taskRunInsert,
-      payloadInsert,
-    };
+    return { taskRunInsert, payloadInsert };
   }
 
   async #prepareTaskRunInsert(
@@ -785,65 +850,70 @@ export class RunsReplicationService {
     environmentType: string,
     event: "insert" | "update" | "delete",
     _version: bigint
-  ): Promise<TaskRunV2> {
+  ): Promise<TaskRunInsertArray> {
     const output = await this.#prepareJson(run.output, run.outputType);
 
-    return {
-      environment_id: run.runtimeEnvironmentId,
-      organization_id: organizationId,
-      project_id: run.projectId,
-      run_id: run.id,
-      updated_at: run.updatedAt.getTime(),
-      created_at: run.createdAt.getTime(),
-      status: run.status,
-      environment_type: environmentType,
-      friendly_id: run.friendlyId,
-      engine: run.engine,
-      task_identifier: run.taskIdentifier,
-      queue: run.queue,
-      span_id: run.spanId,
-      trace_id: run.traceId,
-      error: { data: run.error },
-      attempt: run.attemptNumber ?? 1,
-      schedule_id: run.scheduleId ?? "",
-      batch_id: run.batchId ?? "",
-      completed_at: run.completedAt?.getTime(),
-      started_at: run.startedAt?.getTime(),
-      executed_at: run.executedAt?.getTime(),
-      delay_until: run.delayUntil?.getTime(),
-      queued_at: run.queuedAt?.getTime(),
-      expired_at: run.expiredAt?.getTime(),
-      usage_duration_ms: run.usageDurationMs,
-      cost_in_cents: run.costInCents,
-      base_cost_in_cents: run.baseCostInCents,
-      tags: run.runTags ?? [],
-      task_version: run.taskVersion ?? "",
-      sdk_version: run.sdkVersion ?? "",
-      cli_version: run.cliVersion ?? "",
-      machine_preset: run.machinePreset ?? "",
-      root_run_id: run.rootTaskRunId ?? "",
-      parent_run_id: run.parentTaskRunId ?? "",
-      depth: run.depth,
-      is_test: run.isTest,
-      idempotency_key: run.idempotencyKey ?? "",
-      expiration_ttl: run.ttl ?? "",
-      output,
-      concurrency_key: run.concurrencyKey ?? "",
-      bulk_action_group_ids: run.bulkActionGroupIds ?? [],
-      worker_queue: run.masterQueue,
-      _version: _version.toString(),
-      _is_deleted: event === "delete" ? 1 : 0,
-    };
+    // Return array matching TASK_RUN_COLUMNS order
+    return [
+      run.runtimeEnvironmentId, // environment_id
+      organizationId, // organization_id
+      run.projectId, // project_id
+      run.id, // run_id
+      run.updatedAt.getTime(), // updated_at
+      run.createdAt.getTime(), // created_at
+      run.status, // status
+      environmentType, // environment_type
+      run.friendlyId, // friendly_id
+      run.attemptNumber ?? 1, // attempt
+      run.engine, // engine
+      run.taskIdentifier, // task_identifier
+      run.queue, // queue
+      run.scheduleId ?? "", // schedule_id
+      run.batchId ?? "", // batch_id
+      run.completedAt?.getTime() ?? null, // completed_at
+      run.startedAt?.getTime() ?? null, // started_at
+      run.executedAt?.getTime() ?? null, // executed_at
+      run.delayUntil?.getTime() ?? null, // delay_until
+      run.queuedAt?.getTime() ?? null, // queued_at
+      run.expiredAt?.getTime() ?? null, // expired_at
+      run.usageDurationMs ?? 0, // usage_duration_ms
+      run.costInCents ?? 0, // cost_in_cents
+      run.baseCostInCents ?? 0, // base_cost_in_cents
+      output, // output
+      { data: run.error }, // error
+      run.runTags ?? [], // tags
+      run.taskVersion ?? "", // task_version
+      run.sdkVersion ?? "", // sdk_version
+      run.cliVersion ?? "", // cli_version
+      run.machinePreset ?? "", // machine_preset
+      run.rootTaskRunId ?? "", // root_run_id
+      run.parentTaskRunId ?? "", // parent_run_id
+      run.depth ?? 0, // depth
+      run.spanId, // span_id
+      run.traceId, // trace_id
+      run.idempotencyKey ?? "", // idempotency_key
+      unsafeExtractIdempotencyKeyUser(run) ?? "", // idempotency_key_user
+      unsafeExtractIdempotencyKeyScope(run) ?? "", // idempotency_key_scope
+      run.ttl ?? "", // expiration_ttl
+      run.isTest ?? false, // is_test
+      _version.toString(), // _version
+      event === "delete" ? 1 : 0, // _is_deleted
+      run.concurrencyKey ?? "", // concurrency_key
+      run.bulkActionGroupIds ?? [], // bulk_action_group_ids
+      run.masterQueue ?? "", // worker_queue
+      run.maxDurationInSeconds ?? null, // max_duration_in_seconds
+    ];
   }
 
-  async #preparePayloadInsert(run: TaskRun, _version: bigint): Promise<RawTaskRunPayloadV1> {
+  async #preparePayloadInsert(run: TaskRun, _version: bigint): Promise<PayloadInsertArray> {
     const payload = await this.#prepareJson(run.payload, run.payloadType);
 
-    return {
-      run_id: run.id,
-      created_at: run.createdAt.getTime(),
-      payload,
-    };
+    // Return array matching PAYLOAD_COLUMNS order
+    return [
+      run.id, // run_id
+      run.createdAt.getTime(), // created_at
+      payload, // payload
+    ];
   }
 
   async #prepareJson(
@@ -884,6 +954,7 @@ export class RunsReplicationService {
 
     return { data: parsedData };
   }
+
 }
 
 export type ConcurrentFlushSchedulerConfig<T> = {
@@ -891,13 +962,16 @@ export type ConcurrentFlushSchedulerConfig<T> = {
   flushInterval: number;
   maxConcurrency?: number;
   callback: (flushId: string, batch: T[]) => Promise<void>;
-  mergeBatch?: (existingBatch: T[], newBatch: T[]) => T[];
+  /** Key-based deduplication. Return null to skip the item. */
+  getKey: (item: T) => string | null;
+  /** Determine if incoming item should replace existing. */
+  shouldReplace: (existing: T, incoming: T) => boolean;
   tracer?: Tracer;
   logger?: Logger;
 };
 
 export class ConcurrentFlushScheduler<T> {
-  private currentBatch: T[];
+  private batch = new Map<string, T>();
   private readonly BATCH_SIZE: number;
   private readonly flushInterval: number;
   private readonly MAX_CONCURRENCY: number;
@@ -912,7 +986,6 @@ export class ConcurrentFlushScheduler<T> {
     this.logger = config.logger ?? new Logger("ConcurrentFlushScheduler", "info");
     this._tracer = config.tracer ?? trace.getTracer("concurrent-flush-scheduler");
 
-    this.currentBatch = [];
     this.BATCH_SIZE = config.batchSize;
     this.flushInterval = config.flushInterval;
     this.MAX_CONCURRENCY = config.maxConcurrency || 1;
@@ -922,9 +995,17 @@ export class ConcurrentFlushScheduler<T> {
   }
 
   addToBatch(items: T[]): void {
-    this.currentBatch = this.config.mergeBatch
-      ? this.config.mergeBatch(this.currentBatch, items)
-      : this.currentBatch.concat(items);
+    for (const item of items) {
+      const key = this.config.getKey(item);
+      if (key === null) {
+        continue;
+      }
+
+      const existing = this.batch.get(key);
+      if (!existing || this.config.shouldReplace(existing, item)) {
+        this.batch.set(key, item);
+      }
+    }
 
     this.#flushNextBatchIfNeeded();
   }
@@ -948,11 +1029,16 @@ export class ConcurrentFlushScheduler<T> {
     this.#flushNextBatchIfNeeded();
   }
 
+  #getBatchSize(): number {
+    return this.batch.size;
+  }
+
   #flushNextBatchIfNeeded(): void {
-    if (this.currentBatch.length >= this.BATCH_SIZE || this._isShutDown) {
+    const currentSize = this.#getBatchSize();
+    if (currentSize >= this.BATCH_SIZE || this._isShutDown) {
       this.logger.debug("Batch size threshold reached, initiating flush", {
         batchSize: this.BATCH_SIZE,
-        currentSize: this.currentBatch.length,
+        currentSize,
         isShutDown: this._isShutDown,
       });
 
@@ -977,19 +1063,20 @@ export class ConcurrentFlushScheduler<T> {
   }
 
   async #checkAndFlush(): Promise<void> {
-    if (this.currentBatch.length > 0) {
+    const currentSize = this.#getBatchSize();
+    if (currentSize > 0) {
       this.logger.debug("Periodic flush check triggered", {
-        currentBatchSize: this.currentBatch.length,
+        currentBatchSize: currentSize,
       });
       await this.#flushNextBatch();
     }
   }
 
   async #flushNextBatch(): Promise<void> {
-    if (this.currentBatch.length === 0) return;
+    if (this.batch.size === 0) return;
 
-    const batch = this.currentBatch;
-    this.currentBatch = [];
+    const batch = Array.from(this.batch.values());
+    this.batch.clear();
 
     const callback = this.config.callback;
 

@@ -1,5 +1,43 @@
 # @trigger.dev/sdk
 
+## 4.3.3
+
+### Patch Changes
+
+- Add support for AI SDK v6 (Vercel AI SDK) ([#2919](https://github.com/triggerdotdev/trigger.dev/pull/2919))
+
+  - Updated peer dependency to allow `ai@^6.0.0` alongside v4 and v5
+  - Updated internal code to handle async validation from AI SDK v6's Schema type
+
+- Expose user-provided idempotency key and scope in task context. `ctx.run.idempotencyKey` now returns the original key passed to `idempotencyKeys.create()` instead of the hash, and `ctx.run.idempotencyKeyScope` shows the scope ("run", "attempt", or "global"). ([#2903](https://github.com/triggerdotdev/trigger.dev/pull/2903))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.3`
+
+## 4.3.2
+
+### Patch Changes
+
+- Improve batch trigger error messages, especially when rate limited ([#2837](https://github.com/triggerdotdev/trigger.dev/pull/2837))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.2`
+
+## 4.3.1
+
+### Patch Changes
+
+- feat: Support for new batch trigger system ([#2779](https://github.com/triggerdotdev/trigger.dev/pull/2779))
+- feat(sdk): Support debouncing runs when triggering with new debounce options ([#2794](https://github.com/triggerdotdev/trigger.dev/pull/2794))
+- Added support for idempotency reset ([#2777](https://github.com/triggerdotdev/trigger.dev/pull/2777))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.1`
+
+## 4.3.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.0`
+
 ## 4.2.0
 
 ### Patch Changes

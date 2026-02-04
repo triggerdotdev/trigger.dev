@@ -1,11 +1,12 @@
 import { RunEngine } from "@internal/run-engine";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { createBatchGlobalRateLimiter } from "~/runEngine/concerns/batchGlobalRateLimiter.server";
+import { logger } from "~/services/logger.server";
 import { defaultMachine, getCurrentPlan } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { allMachines } from "./machinePresets.server";
 import { meter, tracer } from "./tracer.server";
-import { logger } from "~/services/logger.server";
 
 export const engine = singleton("RunEngine", createRunEngine);
 
@@ -154,6 +155,42 @@ function createRunEngine() {
           type: plan.v3Subscription.plan.type,
         };
       },
+    },
+    // BatchQueue with DRR scheduling for fair batch processing
+    // Consumers are controlled by options.worker.disabled (same as main worker)
+    batchQueue: {
+      redis: {
+        keyPrefix: "engine:",
+        port: env.BATCH_TRIGGER_WORKER_REDIS_PORT ?? undefined,
+        host: env.BATCH_TRIGGER_WORKER_REDIS_HOST ?? undefined,
+        username: env.BATCH_TRIGGER_WORKER_REDIS_USERNAME ?? undefined,
+        password: env.BATCH_TRIGGER_WORKER_REDIS_PASSWORD ?? undefined,
+        enableAutoPipelining: true,
+        ...(env.BATCH_TRIGGER_WORKER_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      },
+      drr: {
+        quantum: env.BATCH_QUEUE_DRR_QUANTUM,
+        maxDeficit: env.BATCH_QUEUE_MAX_DEFICIT,
+        masterQueueLimit: env.BATCH_QUEUE_MASTER_QUEUE_LIMIT,
+      },
+      shardCount: env.BATCH_QUEUE_SHARD_COUNT,
+      workerQueueBlockingTimeoutSeconds: env.BATCH_QUEUE_WORKER_QUEUE_ENABLED
+        ? env.BATCH_QUEUE_WORKER_QUEUE_TIMEOUT_SECONDS
+        : undefined,
+      consumerCount: env.BATCH_QUEUE_CONSUMER_COUNT,
+      consumerIntervalMs: env.BATCH_QUEUE_CONSUMER_INTERVAL_MS,
+      consumerEnabled: env.BATCH_QUEUE_WORKER_ENABLED,
+      // Default processing concurrency when no specific limit is set
+      // This is overridden per-batch based on the plan type at batch creation
+      defaultConcurrency: env.BATCH_CONCURRENCY_LIMIT_DEFAULT,
+      // Optional global rate limiter - limits max items/sec processed across all consumers
+      globalRateLimiter: env.BATCH_QUEUE_GLOBAL_RATE_LIMIT
+        ? createBatchGlobalRateLimiter(env.BATCH_QUEUE_GLOBAL_RATE_LIMIT)
+        : undefined,
+    },
+    // Debounce configuration
+    debounce: {
+      maxDebounceDurationMs: env.RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS,
     },
   });
 

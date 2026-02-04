@@ -79,9 +79,13 @@
       "graphile-worker@0.16.6": "patches/graphile-worker@0.16.6.patch",
       "redlock@5.0.0-beta.2": "patches/redlock@5.0.0-beta.2.patch",
       "@kubernetes/client-node@1.0.0": "patches/@kubernetes__client-node@1.0.0.patch",
-      "@sentry/remix@9.46.0": "patches/@sentry__remix@9.46.0.patch"
+      "@sentry/remix@9.46.0": "patches/@sentry__remix@9.46.0.patch",
+      "@upstash/ratelimit@1.1.3": "patches/@upstash__ratelimit.patch",
+      "antlr4ts@0.5.0-alpha.4": "patches/antlr4ts@0.5.0-alpha.4.patch"
     },
     "overrides": {
+      "typescript": "5.5.4",
+      "@types/node": "20.14.14",
       "express@^4>body-parser": "1.20.3",
       "@remix-run/dev@2.1.0>tar-fs": "2.1.3",
       "testcontainers@10.28.0>tar-fs": "3.0.9",
@@ -91,7 +95,10 @@
       "axios@1.9.0": ">=1.12.0",
       "js-yaml@>=3.0.0 <3.14.2": "3.14.2",
       "js-yaml@>=4.0.0 <4.1.1": "4.1.1",
-      "jws@<3.2.3": "3.2.3"
+      "jws@<3.2.3": "3.2.3",
+      "qs@>=6.0.0 <6.14.1": "6.14.1",
+      "systeminformation@>=5.0.0 <5.27.14": "5.27.14",
+      "lodash@>=4.0.0 <4.17.23": "4.17.23"
     },
     "onlyBuiltDependencies": [
       "@depot/cli",

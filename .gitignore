@@ -15,6 +15,9 @@ out/
 dist
 packages/**/dist
 
+# vendored bundles (generated during build)
+packages/**/src/**/vendor
+
 # Tailwind
 apps/**/styles/tailwind.css
 packages/**/styles/tailwind.css
@@ -61,5 +64,7 @@ apps/**/public/build
 /packages/core/src/package.json
 /packages/trigger-sdk/src/package.json
 /packages/python/src/package.json
-.claude
+**/.claude/settings.local.json
 .mcp.log
+.mcp.json
+.cursor/debug.log

@@ -184,6 +184,30 @@ docker compose down
 docker compose up -d
 ```
 
+### Creating additional worker groups
+
+To create additional worker groups beyond the bootstrap group, use the admin API endpoint. This requires admin privileges.
+
+**Making a user admin:**
+- **New users**: Set `ADMIN_EMAILS` environment variable (regex pattern) before user creation.
+- **Existing users**: Set `admin = true` in the `user` table in your database.
+
+**Creating a worker group:**
+
+```bash
+api_url=http://localhost:8030
+wg_name=my-worker
+admin_pat=tr_pat_...
+
+curl -X POST \
+  "$api_url/admin/api/v1/workers" \
+  -H "Authorization: Bearer $admin_pat" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\": \"$wg_name\"}"
+```
+
+The response includes a `token` field if the worker group is newly created.
+
 ## Registry setup
 
 The registry is used to store and pull deployment images. When testing the stack locally, the defaults should work out of the box.
@@ -329,6 +353,8 @@ TRIGGER_IMAGE_TAG=v4.0.0
   # Run this from the /hosting/docker/webapp directory
   docker compose logs -f webapp
   ```
+
+- **Deploy fails with `ERROR: schema "graphile_worker" does not exist`.** This error occurs when Graphile Worker migrations fail to run during webapp startup. Check the webapp logs for certificate-related errors like `self-signed certificate in certificate chain`. This is often caused by PostgreSQL SSL certificate issues when using an external PostgreSQL instance with SSL enabled. Ensure that both the webapp and supervisor containers have access to the same CA certificate used by your PostgreSQL instance. You can configure this by mounting the certificate file and setting the `NODE_EXTRA_CA_CERTS` environment variable to point to the certificate path. Once the certificate issue is resolved, the migrations will complete and create the required `graphile_worker` schema.
 
 ## CLI usage
 

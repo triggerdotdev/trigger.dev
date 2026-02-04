@@ -414,7 +414,9 @@ export async function createBuildManifestFromBundle({
     otelImportHook: {
       include: resolvedConfig.instrumentedPackageNames ?? [],
     },
-    outputHashes: bundle.outputHashes,
+    // `outputHashes` is only needed for dev builds for the deduplication mechanism during rebuilds.
+    // For deploys builds, we omit it to ensure deterministic builds
+    outputHashes: target === "dev" ? bundle.outputHashes : {},
   };
 
   if (!workerDir) {

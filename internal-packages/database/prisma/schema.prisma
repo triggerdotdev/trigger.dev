@@ -59,6 +59,10 @@ model User {
   deployments          WorkerDeployment[]
   backupCodes          MfaBackupCode[]
   bulkActions          BulkActionGroup[]
+
+  impersonationsPerformed ImpersonationAuditLog[] @relation("ImpersonationAdmin")
+  impersonationsReceived  ImpersonationAuditLog[] @relation("ImpersonationTarget")
+  customerQueries         CustomerQuery[]
 }
 
 model MfaBackupCode {
@@ -203,6 +207,9 @@ model Organization {
   apiRateLimiterConfig      Json?
   realtimeRateLimiterConfig Json?
 
+  batchRateLimitConfig        Json?
+  batchQueueConcurrencyConfig Json?
+
   featureFlags Json?
 
   maximumProjectCount Int @default(10)
@@ -215,6 +222,7 @@ model Organization {
   workerGroups             WorkerInstanceGroup[]
   workerInstances          WorkerInstance[]
   githubAppInstallations   GithubAppInstallation[]
+  customerQueries          CustomerQuery[]
 }
 
 model OrgMember {
@@ -332,6 +340,7 @@ model RuntimeEnvironment {
   workerInstances      WorkerInstance[]
   waitpointTags        WaitpointTag[]
   BulkActionGroup      BulkActionGroup[]
+  customerQueries      CustomerQuery[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -396,8 +405,10 @@ model Project {
   taskRunCheckpoints        TaskRunCheckpoint[]
   waitpointTags             WaitpointTag[]
   connectedGithubRepository ConnectedGithubRepository?
+  customerQueries           CustomerQuery[]
 
-  buildSettings Json?
+  buildSettings         Json?
+  taskScheduleInstances TaskScheduleInstance[]
 }
 
 enum ProjectVersion {
@@ -578,7 +589,13 @@ model TaskRun {
 
   idempotencyKey          String?
   idempotencyKeyExpiresAt DateTime?
-  taskIdentifier          String
+  /// Stores the user-provided key and scope: { key: string, scope: "run" | "attempt" | "global" }
+  idempotencyKeyOptions   Json?
+
+  /// Debounce options: { key: string, delay: string, createdAt: Date }
+  debounce Json?
+
+  taskIdentifier String
 
   isTest Boolean @default(false)
 
@@ -944,6 +961,8 @@ model TaskRunExecutionSnapshot {
 enum TaskRunExecutionStatus {
   /// Run has been created
   RUN_CREATED
+  /// Run is delayed, waiting to be enqueued
+  DELAYED
   /// Run is in the RunQueue
   QUEUED
   /// Run is in the RunQueue, and is also executing. This happens when a run is continued cannot reacquire concurrency
@@ -1131,6 +1150,9 @@ model FeatureFlag {
 
   key   String @unique
   value Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model WorkerInstance {
@@ -1569,6 +1591,18 @@ model BatchTaskRun {
   /// optional token that can be used to authenticate the task run
   oneTimeUseToken String?
 
+  // Run Engine v2 batch queue fields
+  /// When processing started (status changed to PROCESSING)
+  processingStartedAt   DateTime?
+  /// When processing completed (all items processed)
+  processingCompletedAt DateTime?
+  /// Count of successfully created runs
+  successfulRunCount    Int?
+  /// Count of failed run creations
+  failedRunCount        Int?
+  /// Detailed failure records
+  errors                BatchTaskRunError[]
+
   ///all the below properties are engine v1 only
   items                  BatchTaskRunItem[]
   taskIdentifier         String?
@@ -1588,7 +1622,9 @@ model BatchTaskRun {
 
 enum BatchTaskRunStatus {
   PENDING
+  PROCESSING
   COMPLETED
+  PARTIAL_FAILED
   ABORTED
 }
 
@@ -1621,6 +1657,31 @@ enum BatchTaskRunItemStatus {
   FAILED
   CANCELED
   COMPLETED
+}
+
+/// Track individual run creation failures in batch processing (Run Engine v2)
+model BatchTaskRunError {
+  id             String       @id @default(cuid())
+  batchTaskRun   BatchTaskRun @relation(fields: [batchTaskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  batchTaskRunId String
+
+  /// Which item in the batch (0-based index)
+  index          Int
+  /// The task identifier that was being triggered
+  taskIdentifier String
+  /// The payload that failed (JSON, may be truncated)
+  payload        String?
+  /// The options that were used
+  options        Json?
+  /// Error message
+  error          String
+  /// Error code if available
+  errorCode      String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([batchTaskRunId, index])
+  @@index([batchTaskRunId])
 }
 
 model EnvironmentVariable {
@@ -1890,6 +1951,9 @@ model TaskScheduleInstance {
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
 
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1900,6 +1964,8 @@ model TaskScheduleInstance {
 
   //you can only have a schedule attached to each environment once
   @@unique([taskScheduleId, environmentId])
+  @@index([environmentId])
+  @@index([projectId, active])
 }
 
 model RuntimeEnvironmentSession {
@@ -2334,4 +2400,89 @@ model ConnectedGithubRepository {
   // A project can only be connected to one repository
   @@unique([projectId])
   @@index([repositoryId])
+}
+
+enum ImpersonationAuditLogAction {
+  START
+  STOP
+}
+
+model ImpersonationAuditLog {
+  id String @id @default(cuid())
+
+  action ImpersonationAuditLogAction
+
+  /// The admin user who initiated/ended the impersonation
+  admin   User   @relation("ImpersonationAdmin", fields: [adminId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  adminId String
+
+  /// The user being impersonated
+  target   User   @relation("ImpersonationTarget", fields: [targetId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  targetId String
+
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([targetId])
+  @@index([createdAt])
+}
+
+enum CustomerQuerySource {
+  DASHBOARD
+  API
+}
+
+enum CustomerQueryScope {
+  ORGANIZATION
+  PROJECT
+  ENVIRONMENT
+}
+
+model CustomerQuery {
+  id String @id @default(cuid())
+
+  /// The TSQL query text that was executed
+  query String
+
+  /// The scope of the query (determines which tenant IDs were used)
+  scope CustomerQueryScope
+
+  /// Query execution statistics from ClickHouse
+  stats Json
+
+  /// AI-generated title summarizing the query
+  title String?
+
+  /// Where the query originated from
+  source CustomerQuerySource @default(DASHBOARD)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String?
+
+  environment   RuntimeEnvironment? @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String?
+
+  /// Optional user who executed the query (null for API calls)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  userId String?
+
+  /// Time filter settings used when the query was executed
+  /// Period like "7d", "24h", etc.
+  filterPeriod String?
+  /// Custom start date (ISO 8601)
+  filterFrom   DateTime?
+  /// Custom end date (ISO 8601)
+  filterTo     DateTime?
+
+  createdAt DateTime @default(now())
+
+  /// Fast lookup for history menu (most recent 20 per org)
+  @@index([organizationId, createdAt(sort: Desc)])
+  /// For Stripe metering job - find unprocessed queries
+  @@index([createdAt])
 }

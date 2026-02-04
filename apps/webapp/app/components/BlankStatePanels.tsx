@@ -599,9 +599,9 @@ function DeploymentOnboardingSteps() {
   return (
     <PackageManagerProvider>
       <div className="mb-2 flex items-center justify-between border-b">
-        <div className="mb-2 flex items-center gap-2">
-          <EnvironmentIcon environment={environment} className="-ml-1 size-8" />
-          <Header1>Deploy your tasks to {environmentFullTitle(environment)}</Header1>
+        <div className="mb-2 flex min-w-0 items-center gap-2">
+          <EnvironmentIcon environment={environment} className="-ml-1 size-8 shrink-0" />
+          <Header1 className="truncate">Deploy your tasks to {environmentFullTitle(environment)}</Header1>
         </div>
         <div className="flex items-center">
           <SimpleTooltip

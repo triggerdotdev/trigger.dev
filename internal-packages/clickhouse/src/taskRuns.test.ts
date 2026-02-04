@@ -1,7 +1,13 @@
 import { clickhouseTest } from "@internal/testcontainers";
 import { z } from "zod";
 import { ClickhouseClient } from "./client/client.js";
-import { getTaskRunsQueryBuilder, insertRawTaskRunPayloads, insertTaskRuns } from "./taskRuns.js";
+import {
+  getTaskRunsQueryBuilder,
+  insertRawTaskRunPayloadsCompactArrays,
+  insertTaskRunsCompactArrays,
+  type TaskRunInsertArray,
+  type PayloadInsertArray,
+} from "./taskRuns.js";
 
 describe("Task Runs V2", () => {
   clickhouseTest("should be able to insert task runs", async ({ clickhouseContainer }) => {
@@ -11,61 +17,66 @@ describe("Task Runs V2", () => {
       logLevel: "debug",
     });
 
-    const insert = insertTaskRuns(client, {
+    const insert = insertTaskRunsCompactArrays(client, {
       async_insert: 0, // turn off async insert for this test
     });
 
-    const insertPayloads = insertRawTaskRunPayloads(client, {
+    const insertPayloads = insertRawTaskRunPayloadsCompactArrays(client, {
       async_insert: 0, // turn off async insert for this test
     });
 
-    const [insertError, insertResult] = await insert([
-      {
-        environment_id: "env_1234",
-        environment_type: "DEVELOPMENT",
-        organization_id: "org_1234",
-        project_id: "project_1234",
-        run_id: "run_1234",
-        friendly_id: "friendly_1234",
-        attempt: 1,
-        engine: "V2",
-        status: "PENDING",
-        task_identifier: "my-task",
-        queue: "my-queue",
-        schedule_id: "schedule_1234",
-        batch_id: "batch_1234",
-        created_at: Date.now(),
-        updated_at: Date.now(),
-        completed_at: undefined,
-        tags: ["tag1", "tag2"],
-        output: {
-          key: "value",
-        },
-        error: {
-          type: "BUILT_IN_ERROR",
-          name: "Error",
-          message: "error",
-          stackTrace: "stack trace",
-        },
-        usage_duration_ms: 1000,
-        cost_in_cents: 100,
-        task_version: "1.0.0",
-        sdk_version: "1.0.0",
-        cli_version: "1.0.0",
-        machine_preset: "small-1x",
-        is_test: true,
-        span_id: "span_1234",
-        trace_id: "trace_1234",
-        idempotency_key: "idempotency_key_1234",
-        expiration_ttl: "1h",
-        root_run_id: "root_run_1234",
-        parent_run_id: "parent_run_1234",
-        depth: 1,
-        concurrency_key: "concurrency_key_1234",
-        bulk_action_group_ids: ["bulk_action_group_id_1234", "bulk_action_group_id_1235"],
-        _version: "1",
-      },
-    ]);
+    const now = Date.now();
+    const taskRunData: TaskRunInsertArray = [
+      "env_1234", // environment_id
+      "org_1234", // organization_id
+      "project_1234", // project_id
+      "run_1234", // run_id
+      now, // updated_at
+      now, // created_at
+      "PENDING", // status
+      "DEVELOPMENT", // environment_type
+      "friendly_1234", // friendly_id
+      1, // attempt
+      "V2", // engine
+      "my-task", // task_identifier
+      "my-queue", // queue
+      "schedule_1234", // schedule_id
+      "batch_1234", // batch_id
+      null, // completed_at
+      null, // started_at
+      null, // executed_at
+      null, // delay_until
+      null, // queued_at
+      null, // expired_at
+      1000, // usage_duration_ms
+      100, // cost_in_cents
+      0, // base_cost_in_cents
+      { data: { key: "value" } }, // output
+      { data: { type: "BUILT_IN_ERROR", name: "Error", message: "error", stackTrace: "stack trace" } }, // error
+      ["tag1", "tag2"], // tags
+      "1.0.0", // task_version
+      "1.0.0", // sdk_version
+      "1.0.0", // cli_version
+      "small-1x", // machine_preset
+      "root_run_1234", // root_run_id
+      "parent_run_1234", // parent_run_id
+      1, // depth
+      "span_1234", // span_id
+      "trace_1234", // trace_id
+      "idempotency_key_1234", // idempotency_key
+      "my-user-key", // idempotency_key_user
+      "run", // idempotency_key_scope
+      "1h", // expiration_ttl
+      true, // is_test
+      "1", // _version
+      0, // _is_deleted
+      "concurrency_key_1234", // concurrency_key
+      ["bulk_action_group_id_1234", "bulk_action_group_id_1235"], // bulk_action_group_ids
+      "", // worker_queue
+      null, // max_duration_in_seconds
+    ];
+
+    const [insertError, insertResult] = await insert([taskRunData]);
 
     expect(insertError).toBeNull();
     expect(insertResult).toEqual(expect.objectContaining({ executed: true }));
@@ -99,15 +110,13 @@ describe("Task Runs V2", () => {
       ])
     );
 
-    const [insertPayloadsError, insertPayloadsResult] = await insertPayloads([
-      {
-        run_id: "run_1234",
-        created_at: Date.now(),
-        payload: {
-          key: "value",
-        },
-      },
-    ]);
+    const payloadData: PayloadInsertArray = [
+      "run_1234", // run_id
+      Date.now(), // created_at
+      { data: { key: "value" } }, // payload
+    ];
+
+    const [insertPayloadsError, insertPayloadsResult] = await insertPayloads([payloadData]);
 
     expect(insertPayloadsError).toBeNull();
     expect(insertPayloadsResult).toEqual(expect.objectContaining({ executed: true }));
@@ -137,96 +146,114 @@ describe("Task Runs V2", () => {
       url: clickhouseContainer.getConnectionUrl(),
     });
 
-    const insert = insertTaskRuns(client, {
+    const insert = insertTaskRunsCompactArrays(client, {
       async_insert: 0, // turn off async insert for this test
     });
 
-    const [insertError, insertResult] = await insert([
-      {
-        environment_id: "cm9kddfcs01zqdy88ld9mmrli",
-        organization_id: "cm8zs78wb0002dy616dg75tv3",
-        project_id: "cm9kddfbz01zpdy88t9dstecu",
-        run_id: "cma45oli70002qrdy47w0j4n7",
-        environment_type: "PRODUCTION",
-        friendly_id: "run_cma45oli70002qrdy47w0j4n7",
-        attempt: 1,
-        engine: "V2",
-        status: "PENDING",
-        task_identifier: "retry-task",
-        queue: "task/retry-task",
-        schedule_id: "",
-        batch_id: "",
-        root_run_id: "",
-        parent_run_id: "",
-        depth: 0,
-        span_id: "538677637f937f54",
-        trace_id: "20a28486b0b9f50c647b35e8863e36a5",
-        idempotency_key: "",
-        created_at: new Date("2025-04-30 16:34:04.312").getTime(),
-        updated_at: new Date("2025-04-30 16:34:04.312").getTime(),
-        started_at: null,
-        executed_at: null,
-        completed_at: null,
-        delay_until: null,
-        queued_at: new Date("2025-04-30 16:34:04.311").getTime(),
-        expired_at: null,
-        expiration_ttl: "",
-        usage_duration_ms: 0,
-        cost_in_cents: 0,
-        base_cost_in_cents: 0,
-        output: null,
-        error: null,
-        tags: [],
-        task_version: "",
-        sdk_version: "",
-        cli_version: "",
-        machine_preset: "",
-        is_test: true,
-        _version: "1",
-      },
-      {
-        environment_id: "cm9kddfcs01zqdy88ld9mmrli",
-        organization_id: "cm8zs78wb0002dy616dg75tv3",
-        project_id: "cm9kddfbz01zpdy88t9dstecu",
-        run_id: "cma45oli70002qrdy47w0j4n7",
-        environment_type: "PRODUCTION",
-        friendly_id: "run_cma45oli70002qrdy47w0j4n7",
-        attempt: 1,
-        engine: "V2",
-        status: "COMPLETED_SUCCESSFULLY",
-        task_identifier: "retry-task",
-        queue: "task/retry-task",
-        schedule_id: "",
-        batch_id: "",
-        root_run_id: "",
-        parent_run_id: "",
-        depth: 0,
-        span_id: "538677637f937f54",
-        trace_id: "20a28486b0b9f50c647b35e8863e36a5",
-        idempotency_key: "",
-        created_at: new Date("2025-04-30 16:34:04.312").getTime(),
-        updated_at: new Date("2025-04-30 16:34:04.312").getTime(),
-        started_at: null,
-        executed_at: null,
-        completed_at: null,
-        delay_until: null,
-        queued_at: new Date("2025-04-30 16:34:04.311").getTime(),
-        expired_at: null,
-        expiration_ttl: "",
-        usage_duration_ms: 0,
-        cost_in_cents: 0,
-        base_cost_in_cents: 0,
-        output: null,
-        error: null,
-        tags: [],
-        task_version: "",
-        sdk_version: "",
-        cli_version: "",
-        machine_preset: "",
-        is_test: true,
-        _version: "2",
-      },
-    ]);
+    const createdAt = new Date("2025-04-30 16:34:04.312").getTime();
+    const queuedAt = new Date("2025-04-30 16:34:04.311").getTime();
+
+    const run1: TaskRunInsertArray = [
+      "cm9kddfcs01zqdy88ld9mmrli", // environment_id
+      "cm8zs78wb0002dy616dg75tv3", // organization_id
+      "cm9kddfbz01zpdy88t9dstecu", // project_id
+      "cma45oli70002qrdy47w0j4n7", // run_id
+      createdAt, // updated_at
+      createdAt, // created_at
+      "PENDING", // status
+      "PRODUCTION", // environment_type
+      "run_cma45oli70002qrdy47w0j4n7", // friendly_id
+      1, // attempt
+      "V2", // engine
+      "retry-task", // task_identifier
+      "task/retry-task", // queue
+      "", // schedule_id
+      "", // batch_id
+      null, // completed_at
+      null, // started_at
+      null, // executed_at
+      null, // delay_until
+      queuedAt, // queued_at
+      null, // expired_at
+      0, // usage_duration_ms
+      0, // cost_in_cents
+      0, // base_cost_in_cents
+      { data: null }, // output
+      { data: null }, // error
+      [], // tags
+      "", // task_version
+      "", // sdk_version
+      "", // cli_version
+      "", // machine_preset
+      "", // root_run_id
+      "", // parent_run_id
+      0, // depth
+      "538677637f937f54", // span_id
+      "20a28486b0b9f50c647b35e8863e36a5", // trace_id
+      "", // idempotency_key
+      "", // idempotency_key_user
+      "", // idempotency_key_scope
+      "", // expiration_ttl
+      true, // is_test
+      "1", // _version
+      0, // _is_deleted
+      "", // concurrency_key
+      [], // bulk_action_group_ids
+      "", // worker_queue
+      null, // max_duration_in_seconds
+    ];
+
+    const run2: TaskRunInsertArray = [
+      "cm9kddfcs01zqdy88ld9mmrli", // environment_id
+      "cm8zs78wb0002dy616dg75tv3", // organization_id
+      "cm9kddfbz01zpdy88t9dstecu", // project_id
+      "cma45oli70002qrdy47w0j4n7", // run_id
+      createdAt, // updated_at
+      createdAt, // created_at
+      "COMPLETED_SUCCESSFULLY", // status
+      "PRODUCTION", // environment_type
+      "run_cma45oli70002qrdy47w0j4n7", // friendly_id
+      1, // attempt
+      "V2", // engine
+      "retry-task", // task_identifier
+      "task/retry-task", // queue
+      "", // schedule_id
+      "", // batch_id
+      null, // completed_at
+      null, // started_at
+      null, // executed_at
+      null, // delay_until
+      queuedAt, // queued_at
+      null, // expired_at
+      0, // usage_duration_ms
+      0, // cost_in_cents
+      0, // base_cost_in_cents
+      { data: null }, // output
+      { data: null }, // error
+      [], // tags
+      "", // task_version
+      "", // sdk_version
+      "", // cli_version
+      "", // machine_preset
+      "", // root_run_id
+      "", // parent_run_id
+      0, // depth
+      "538677637f937f54", // span_id
+      "20a28486b0b9f50c647b35e8863e36a5", // trace_id
+      "", // idempotency_key
+      "", // idempotency_key_user
+      "", // idempotency_key_scope
+      "", // expiration_ttl
+      true, // is_test
+      "2", // _version
+      0, // _is_deleted
+      "", // concurrency_key
+      [], // bulk_action_group_ids
+      "", // worker_queue
+      null, // max_duration_in_seconds
+    ];
+
+    const [insertError, insertResult] = await insert([run1, run2]);
 
     expect(insertError).toBeNull();
     expect(insertResult).toEqual(expect.objectContaining({ executed: true }));
@@ -266,54 +293,64 @@ describe("Task Runs V2", () => {
         url: clickhouseContainer.getConnectionUrl(),
       });
 
-      const insert = insertTaskRuns(client, {
+      const insert = insertTaskRunsCompactArrays(client, {
         async_insert: 0, // turn off async insert for this test
       });
 
-      const [insertError, insertResult] = await insert([
-        {
-          environment_id: "cm9kddfcs01zqdy88ld9mmrli",
-          organization_id: "cm8zs78wb0002dy616dg75tv3",
-          project_id: "cm9kddfbz01zpdy88t9dstecu",
-          run_id: "cma45oli70002qrdy47w0j4n7",
-          environment_type: "PRODUCTION",
-          friendly_id: "run_cma45oli70002qrdy47w0j4n7",
-          attempt: 1,
-          engine: "V2",
-          status: "PENDING",
-          task_identifier: "retry-task",
-          queue: "task/retry-task",
-          schedule_id: "",
-          batch_id: "",
-          root_run_id: "",
-          parent_run_id: "",
-          depth: 0,
-          span_id: "538677637f937f54",
-          trace_id: "20a28486b0b9f50c647b35e8863e36a5",
-          idempotency_key: "",
-          created_at: new Date("2025-04-30 16:34:04.312").getTime(),
-          updated_at: new Date("2025-04-30 16:34:04.312").getTime(),
-          started_at: null,
-          executed_at: null,
-          completed_at: null,
-          delay_until: null,
-          queued_at: new Date("2025-04-30 16:34:04.311").getTime(),
-          expired_at: null,
-          expiration_ttl: "",
-          usage_duration_ms: 0,
-          cost_in_cents: 0,
-          base_cost_in_cents: 0,
-          output: null,
-          error: null,
-          tags: [],
-          task_version: "",
-          sdk_version: "",
-          cli_version: "",
-          machine_preset: "",
-          is_test: true,
-          _version: "1",
-        },
-      ]);
+      const createdAt = new Date("2025-04-30 16:34:04.312").getTime();
+      const queuedAt = new Date("2025-04-30 16:34:04.311").getTime();
+
+      const taskRun: TaskRunInsertArray = [
+        "cm9kddfcs01zqdy88ld9mmrli", // environment_id
+        "cm8zs78wb0002dy616dg75tv3", // organization_id
+        "cm9kddfbz01zpdy88t9dstecu", // project_id
+        "cma45oli70002qrdy47w0j4n7", // run_id
+        createdAt, // updated_at
+        createdAt, // created_at
+        "PENDING", // status
+        "PRODUCTION", // environment_type
+        "run_cma45oli70002qrdy47w0j4n7", // friendly_id
+        1, // attempt
+        "V2", // engine
+        "retry-task", // task_identifier
+        "task/retry-task", // queue
+        "", // schedule_id
+        "", // batch_id
+        null, // completed_at
+        null, // started_at
+        null, // executed_at
+        null, // delay_until
+        queuedAt, // queued_at
+        null, // expired_at
+        0, // usage_duration_ms
+        0, // cost_in_cents
+        0, // base_cost_in_cents
+        { data: null }, // output
+        { data: null }, // error
+        [], // tags
+        "", // task_version
+        "", // sdk_version
+        "", // cli_version
+        "", // machine_preset
+        "", // root_run_id
+        "", // parent_run_id
+        0, // depth
+        "538677637f937f54", // span_id
+        "20a28486b0b9f50c647b35e8863e36a5", // trace_id
+        "", // idempotency_key
+        "", // idempotency_key_user
+        "", // idempotency_key_scope
+        "", // expiration_ttl
+        true, // is_test
+        "1", // _version
+        0, // _is_deleted
+        "", // concurrency_key
+        [], // bulk_action_group_ids
+        "", // worker_queue
+        null, // max_duration_in_seconds
+      ];
+
+      const [insertError, insertResult] = await insert([taskRun]);
 
       const queryBuilder = getTaskRunsQueryBuilder(client)();
       queryBuilder.where("environment_id = {environmentId: String}", {
@@ -360,15 +397,15 @@ describe("Task Runs V2", () => {
         url: clickhouseContainer.getConnectionUrl(),
       });
 
-      const insertPayloads = insertRawTaskRunPayloads(client, {
+      const insertPayloads = insertRawTaskRunPayloadsCompactArrays(client, {
         async_insert: 0, // turn off async insert for this test
       });
 
-      const [insertPayloadsError, insertPayloadsResult] = await insertPayloads([
+      const payloadData: PayloadInsertArray = [
+        "run_1234", // run_id
+        Date.now(), // created_at
         {
-          run_id: "run_1234",
-          created_at: Date.now(),
-          payload: {
+          data: {
             data: {
               title: {
                 id: "123",
@@ -376,8 +413,10 @@ describe("Task Runs V2", () => {
               "title.id": 123,
             },
           },
-        },
-      ]);
+        }, // payload
+      ];
+
+      const [insertPayloadsError, insertPayloadsResult] = await insertPayloads([payloadData]);
 
       expect(insertPayloadsError).toBeNull();
       expect(insertPayloadsResult).toEqual(expect.objectContaining({ executed: true }));
