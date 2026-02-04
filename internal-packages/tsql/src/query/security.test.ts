@@ -53,10 +53,12 @@ const taskEventsSchema: TableSchema = {
 };
 
 const defaultOptions: CompileTSQLOptions = {
-  organizationId: "org_tenant1",
-  projectId: "proj_tenant1",
-  environmentId: "env_tenant1",
   tableSchema: [taskRunsSchema, taskEventsSchema],
+  enforcedWhereClause: {
+    organization_id: { op: "eq", value: "org_tenant1" },
+    project_id: { op: "eq", value: "proj_tenant1" },
+    environment_id: { op: "eq", value: "env_tenant1" },
+  },
 };
 
 function compile(query: string, options: Partial<CompileTSQLOptions> = {}) {
@@ -412,8 +414,10 @@ describe("Optional Tenant Filters", () => {
   describe("Organization ID is always required", () => {
     it("should always inject organization guard even with optional project/env", () => {
       const { sql, params } = compile("SELECT * FROM task_runs", {
-        projectId: undefined,
-        environmentId: undefined,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          // project_id and environment_id omitted
+        },
       });
 
       const whereClause = getWhereClause(sql);
@@ -431,8 +435,11 @@ describe("Optional Tenant Filters", () => {
   describe("Project ID is optional", () => {
     it("should inject org and project guards when project is provided", () => {
       const { sql, params } = compile("SELECT * FROM task_runs", {
-        projectId: "proj_tenant1",
-        environmentId: undefined,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          // environment_id omitted
+        },
       });
 
       const whereClause = getWhereClause(sql);
@@ -449,8 +456,10 @@ describe("Optional Tenant Filters", () => {
 
     it("should allow querying across all projects when projectId is omitted", () => {
       const { sql, params } = compile("SELECT * FROM task_runs", {
-        projectId: undefined,
-        environmentId: undefined,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          // project_id and environment_id omitted
+        },
       });
 
       const whereClause = getWhereClause(sql);
@@ -479,8 +488,11 @@ describe("Optional Tenant Filters", () => {
 
     it("should allow querying across all environments when environmentId is omitted", () => {
       const { sql, params } = compile("SELECT * FROM task_runs", {
-        projectId: "proj_tenant1",
-        environmentId: undefined,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+          project_id: { op: "eq", value: "proj_tenant1" },
+          // environment_id omitted
+        },
       });
 
       const whereClause = getWhereClause(sql);
@@ -501,8 +513,10 @@ describe("Optional Tenant Filters", () => {
       const { sql, params } = compile(
         "SELECT * FROM task_runs WHERE organization_id = 'org_other'",
         {
-          projectId: undefined,
-          environmentId: undefined,
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_tenant1" },
+            // project_id and environment_id omitted
+          },
         }
       );
 
@@ -518,8 +532,10 @@ describe("Optional Tenant Filters", () => {
         JOIN task_events e ON r.id = e.run_id
       `,
         {
-          projectId: undefined,
-          environmentId: undefined,
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_tenant1" },
+            // project_id and environment_id omitted
+          },
         }
       );
 
@@ -540,8 +556,10 @@ describe("Optional Tenant Filters", () => {
         SELECT id, status FROM task_runs WHERE status = 'failed'
       `,
         {
-          projectId: undefined,
-          environmentId: undefined,
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_tenant1" },
+            // project_id and environment_id omitted
+          },
         }
       );
 
@@ -557,8 +575,10 @@ describe("Optional Tenant Filters", () => {
         WHERE id IN (SELECT run_id FROM task_events)
       `,
         {
-          projectId: undefined,
-          environmentId: undefined,
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_tenant1" },
+            // project_id and environment_id omitted
+          },
         }
       );
 
@@ -567,6 +587,95 @@ describe("Optional Tenant Filters", () => {
       const orgIdMatches = sql.match(/organization_id/g) || [];
       expect(orgIdMatches.length).toBeGreaterThanOrEqual(2);
     });
+  });
+});
+
+describe("Multi-join Tenant Guard Qualification", () => {
+  /**
+   * Security Test: Verifies that tenant guards are properly table-qualified in multi-join queries.
+   *
+   * The bug: createEnforcedGuard was building unqualified guard expressions like:
+   *   organization_id = 'org_tenant1'
+   *
+   * In a multi-table join where both tables have the same column (organization_id),
+   * an unqualified reference could potentially bind to the wrong table during resolution,
+   * or be ambiguous. The guards should be qualified like:
+   *   r.organization_id = 'org_tenant1' AND e.organization_id = 'org_tenant1'
+   *
+   * This ensures each table's guard binds to the correct table, not just any matching column.
+   */
+  it("should qualify tenant guards with table alias in JOIN queries", () => {
+    const { sql } = compile(`
+      SELECT r.id, e.event_type 
+      FROM task_runs r 
+      JOIN task_events e ON r.id = e.run_id
+    `);
+
+    // The guards should be table-qualified to prevent binding to the wrong table
+    // Look for pattern like: r.organization_id and e.organization_id (with table alias prefix)
+    // The exact format in ClickHouse SQL is just "alias.column" after resolution
+    
+    // Count qualified organization_id references (should have table prefixes)
+    // In the WHERE clause, we should see both r.organization_id and e.organization_id
+    const whereClause = sql.substring(sql.indexOf("WHERE"));
+    
+    // Both tables should have their own qualified tenant guards
+    // The pattern should be: table_alias.organization_id for each table
+    expect(whereClause).toMatch(/\br\b[^,]*organization_id/);
+    expect(whereClause).toMatch(/\be\b[^,]*organization_id/);
+  });
+
+  it("should qualify tenant guards with table alias in LEFT JOIN queries", () => {
+    const { sql } = compile(`
+      SELECT r.id, e.event_type 
+      FROM task_runs r 
+      LEFT JOIN task_events e ON r.id = e.run_id
+    `);
+
+    const whereClause = sql.substring(sql.indexOf("WHERE"));
+    
+    // Both tables should have qualified guards
+    expect(whereClause).toMatch(/\br\b[^,]*organization_id/);
+    expect(whereClause).toMatch(/\be\b[^,]*organization_id/);
+  });
+
+  it("should qualify tenant guards in multi-way JOIN queries", () => {
+    const { sql } = compile(`
+      SELECT r.id, e1.event_type, e2.event_type
+      FROM task_runs r 
+      JOIN task_events e1 ON r.id = e1.run_id
+      JOIN task_events e2 ON r.id = e2.run_id
+    `);
+
+    const whereClause = sql.substring(sql.indexOf("WHERE"));
+    
+    // All three table aliases should have qualified guards
+    expect(whereClause).toMatch(/\br\b[^,]*organization_id/);
+    expect(whereClause).toMatch(/\be1\b[^,]*organization_id/);
+    expect(whereClause).toMatch(/\be2\b[^,]*organization_id/);
+  });
+
+  it("should ensure guards cannot bind to wrong table by verifying separate qualifications", () => {
+    const { sql, params } = compile(`
+      SELECT r.id, e.event_type 
+      FROM task_runs r 
+      JOIN task_events e ON r.id = e.run_id
+      WHERE r.status = 'completed'
+    `);
+
+    // Count organization_id occurrences with different table prefixes
+    // This ensures each table gets its own guard, not shared/ambiguous references
+    const orgIdPattern = /(\w+)\.organization_id/g;
+    const matches = [...sql.matchAll(orgIdPattern)];
+    const tableAliases = matches.map(m => m[1]);
+    
+    // Should have at least 2 different table aliases for organization_id
+    // (one for task_runs alias 'r' and one for task_events alias 'e')
+    expect(tableAliases).toContain("r");
+    expect(tableAliases).toContain("e");
+    
+    // Both should use the same tenant value (parameterized)
+    expect(Object.values(params)).toContain("org_tenant1");
   });
 });
 

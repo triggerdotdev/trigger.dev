@@ -14,7 +14,7 @@ import {
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { FilterMenuProvider } from "~/components/runs/v3/SharedFilters";
 
-const shortcut = { key: "r" };
+const shortcut = { key: "i" };
 
 export function LogsRunIdFilter() {
   const { value } = useSearchParams();

@@ -5,9 +5,9 @@ import {
   clickhouseEventRepositoryV2,
 } from "./clickhouseEventRepositoryInstance.server";
 import { IEventRepository, TraceEventOptions } from "./eventRepository.types";
-import {  prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { FEATURE_FLAG, flags } from "../featureFlags.server";
+import { FEATURE_FLAG, flag } from "../featureFlags.server";
 import { getTaskEventStore } from "../taskEventStore.server";
 
 export function resolveEventRepositoryForStore(store: string | undefined): IEventRepository {
@@ -24,13 +24,13 @@ export function resolveEventRepositoryForStore(store: string | undefined): IEven
   return eventRepository;
 }
 
- export const EVENT_STORE_TYPES = {
-        POSTGRES: "postgres",
-        CLICKHOUSE: "clickhouse",
-        CLICKHOUSE_V2: "clickhouse_v2",
-      } as const;
+export const EVENT_STORE_TYPES = {
+  POSTGRES: "postgres",
+  CLICKHOUSE: "clickhouse",
+  CLICKHOUSE_V2: "clickhouse_v2",
+} as const;
 
-export type EventStoreType = typeof EVENT_STORE_TYPES[keyof typeof EVENT_STORE_TYPES];
+export type EventStoreType = (typeof EVENT_STORE_TYPES)[keyof typeof EVENT_STORE_TYPES];
 
 export async function getConfiguredEventRepository(
   organizationId: string
@@ -122,21 +122,21 @@ export async function getV3EventRepository(
 async function resolveTaskEventRepositoryFlag(
   featureFlags: Record<string, unknown> | undefined
 ): Promise<"clickhouse" | "clickhouse_v2" | "postgres"> {
-  const flag = await flags({
+  const flagResult = await flag({
     key: FEATURE_FLAG.taskEventRepository,
     defaultValue: env.EVENT_REPOSITORY_DEFAULT_STORE,
     overrides: featureFlags,
   });
 
-  if (flag === "clickhouse_v2") {
+  if (flagResult === "clickhouse_v2") {
     return "clickhouse_v2";
   }
 
-  if (flag === "clickhouse") {
+  if (flagResult === "clickhouse") {
     return "clickhouse";
   }
 
-  return flag;
+  return flagResult;
 }
 
 export async function recordRunDebugLog(

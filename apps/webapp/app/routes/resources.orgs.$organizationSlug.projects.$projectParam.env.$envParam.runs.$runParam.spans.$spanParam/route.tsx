@@ -73,6 +73,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useHasAdminAccess } from "~/hooks/useUser";
+import { useCanViewLogsPage } from "~/hooks/useCanViewLogsPage";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { logger } from "~/services/logger.server";
@@ -319,6 +320,7 @@ function RunBody({
   const { value, replace } = useSearchParams();
   const tab = value("tab");
   const resetFetcher = useTypedFetcher<typeof resetIdempotencyKeyAction>();
+  const canViewLogsPage = useCanViewLogsPage();
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_minmax(3.25rem,auto)] overflow-hidden bg-background-bright">
@@ -1012,44 +1014,55 @@ function RunBody({
         </div>
         <div className="flex items-center">
           {run.logsDeletedAt === null ? (
-            <div className="flex">
+            canViewLogsPage ? (
+              <div className="flex">
+                <LinkButton
+                  to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${
+                    new Date(run.createdAt).getTime() - 60000
+                  }`}
+                  variant="secondary/medium"
+                  className="rounded-r-none border-r-0"
+                >
+                  View logs
+                </LinkButton>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="secondary/medium"
+                      className="rounded-l-none border-l-charcoal-700 px-1.5"
+                    >
+                      <ChevronUpIcon className="size-4 transition group-hover/button:text-text-bright" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="min-w-[140px] p-1" align="end">
+                    <PopoverMenuItem
+                      to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${
+                        new Date(run.createdAt).getTime() - 60000
+                      }`}
+                      title="View logs"
+                      icon={ArrowRightIcon}
+                      leadingIconClassName="text-blue-500"
+                    />
+                    <PopoverMenuItem
+                      to={v3RunDownloadLogsPath({ friendlyId: runParam })}
+                      title="Download logs"
+                      icon={CloudArrowDownIcon}
+                      leadingIconClassName="text-indigo-500"
+                      openInNewTab
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            ) : (
               <LinkButton
-                to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${
-                  new Date(run.createdAt).getTime() - 60000
-                }`}
+                to={v3RunDownloadLogsPath({ friendlyId: runParam })}
+                LeadingIcon={CloudArrowDownIcon}
+                leadingIconClassName="text-indigo-400"
                 variant="secondary/medium"
-                className="rounded-r-none border-r-0"
               >
-                View logs
+                Download logs
               </LinkButton>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="secondary/medium"
-                    className="rounded-l-none border-l-charcoal-700 px-1.5"
-                  >
-                    <ChevronUpIcon className="size-4 transition group-hover/button:text-text-bright" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="min-w-[140px] p-1" align="end">
-                  <PopoverMenuItem
-                    to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${
-                      new Date(run.createdAt).getTime() - 60000
-                    }`}
-                    title="View logs"
-                    icon={ArrowRightIcon}
-                    leadingIconClassName="text-blue-500"
-                  />
-                  <PopoverMenuItem
-                    to={v3RunDownloadLogsPath({ friendlyId: runParam })}
-                    title="Download logs"
-                    icon={CloudArrowDownIcon}
-                    leadingIconClassName="text-indigo-500"
-                    openInNewTab
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
+            )
           ) : null}
         </div>
       </div>

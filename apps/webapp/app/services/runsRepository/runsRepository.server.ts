@@ -8,7 +8,7 @@ import parseDuration from "parse-duration";
 import { z } from "zod";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { type PrismaClient, type PrismaClientOrTransaction } from "~/db.server";
-import { FEATURE_FLAG, makeFlags } from "~/v3/featureFlags.server";
+import { FEATURE_FLAG, makeFlag } from "~/v3/featureFlags.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 import { logger } from "../logger.server";
 import { ClickHouseRunsRepository } from "./clickhouseRunsRepository.server";
@@ -163,7 +163,7 @@ export class RunsRepository implements IRunsRepository {
 
   async #getRepository(): Promise<IRunsRepository> {
     return startActiveSpan("runsRepository.getRepository", async (span) => {
-      const getFlag = makeFlags(this.options.prisma);
+      const getFlag = makeFlag(this.options.prisma);
       const runsListRepository = await getFlag({
         key: FEATURE_FLAG.runsListRepository,
         defaultValue: this.defaultRepository,
