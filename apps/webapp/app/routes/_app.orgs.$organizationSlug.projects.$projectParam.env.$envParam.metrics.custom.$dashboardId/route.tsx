@@ -1,11 +1,28 @@
-import { type ActionFunctionArgs, type LoaderFunctionArgs, redirect } from "@remix-run/node";
-import { useFetcher } from "@remix-run/react";
-import { useCallback, useEffect, useRef } from "react";
+import { TrashIcon } from "@heroicons/react/20/solid";
+import { DialogClose } from "@radix-ui/react-dialog";
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
+import { Form, useFetcher, useNavigation } from "@remix-run/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { Button } from "~/components/primitives/Buttons";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  Popover,
+  PopoverContent,
+  PopoverVerticalEllipseTrigger,
+} from "~/components/primitives/Popover";
 import { prisma } from "~/db.server";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -13,7 +30,7 @@ import {
   MetricDashboardPresenter,
 } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3BuiltInDashboardPath } from "~/utils/pathBuilder";
 import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.metrics.$dashboardKey/route";
 
 const ParamSchema = EnvironmentParamSchema.extend({
@@ -74,7 +91,7 @@ const SaveLayoutSchema = z.object({
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam, organizationSlug, dashboardId } = ParamSchema.parse(params);
+  const { projectParam, organizationSlug, envParam, dashboardId } = ParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
@@ -94,40 +111,79 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const formData = await request.formData();
-  const result = SaveLayoutSchema.safeParse({
-    layout: formData.get("layout"),
-  });
+  const action = formData.get("action");
 
-  if (!result.success) {
-    throw new Response("Invalid form data: " + result.error.message, { status: 400 });
+  switch (action) {
+    case "delete": {
+      await prisma.metricsDashboard.delete({
+        where: { id: dashboard.id },
+      });
+
+      return redirectWithSuccessMessage(
+        v3BuiltInDashboardPath(
+          { slug: organizationSlug },
+          { slug: projectParam },
+          { slug: envParam },
+          "overview"
+        ),
+        request,
+        `Deleted "${dashboard.title}" dashboard`
+      );
+    }
+    case "layout": {
+      const result = SaveLayoutSchema.safeParse({
+        layout: formData.get("layout"),
+      });
+
+      if (!result.success) {
+        throw new Response("Invalid form data: " + result.error.message, { status: 400 });
+      }
+
+      // Parse existing layout to preserve widgets
+      const existingLayout = JSON.parse(dashboard.layout) as Record<string, unknown>;
+
+      // Update layout positions while preserving widgets
+      const updatedLayout = {
+        ...existingLayout,
+        layout: result.data.layout,
+      };
+
+      // Save to database
+      await prisma.metricsDashboard.update({
+        where: { id: dashboard.id },
+        data: {
+          layout: JSON.stringify(updatedLayout),
+        },
+      });
+
+      return typedjson({ success: true });
+    }
+    default: {
+      throw new Response("Invalid action", { status: 400 });
+    }
   }
-
-  // Parse existing layout to preserve widgets
-  const existingLayout = JSON.parse(dashboard.layout) as Record<string, unknown>;
-
-  // Update layout positions while preserving widgets
-  const updatedLayout = {
-    ...existingLayout,
-    layout: result.data.layout,
-  };
-
-  // Save to database
-  await prisma.metricsDashboard.update({
-    where: { id: dashboard.id },
-    data: {
-      layout: JSON.stringify(updatedLayout),
-    },
-  });
-
-  return typedjson({ success: true });
 };
 
 export default function Page() {
   const { friendlyId, title, layout, defaultPeriod } = useTypedLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
+  const navigation = useNavigation();
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitializedRef = useRef(false);
   const currentLayoutJsonRef = useRef<string>(JSON.stringify(layout.layout));
+
+  const isDeleting =
+    navigation.state !== "idle" &&
+    navigation.formMethod === "post" &&
+    navigation.formData?.get("action") === "delete";
+
+  // Close dialog when navigation completes (after successful delete)
+  useEffect(() => {
+    if (navigation.state === "idle") {
+      setIsDeleteDialogOpen(false);
+    }
+  }, [navigation.state]);
 
   // Track when the dashboard data changes (e.g., switching dashboards)
   const layoutJson = JSON.stringify(layout.layout);
@@ -177,7 +233,7 @@ export default function Page() {
       // Debounce auto-save by 500ms
       debounceTimeoutRef.current = setTimeout(() => {
         currentLayoutJsonRef.current = newLayoutJson;
-        fetcher.submit({ layout: newLayoutJson }, { method: "POST" });
+        fetcher.submit({ action: "layout", layout: newLayoutJson }, { method: "POST" });
       }, 500);
     },
     [fetcher]
@@ -187,6 +243,52 @@ export default function Page() {
     <PageContainer>
       <NavBar>
         <PageTitle title={title} />
+        <PageAccessories>
+          <Popover>
+            <PopoverVerticalEllipseTrigger />
+            <PopoverContent className="w-fit min-w-[10rem] p-1" align="end">
+              <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="small-menu-item"
+                    LeadingIcon={TrashIcon}
+                    leadingIconClassName="text-rose-500"
+                    fullWidth
+                    textAlignLeft
+                  >
+                    Delete dashboard
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>Delete dashboard</DialogHeader>
+                  <div className="mb-2 mt-4 flex flex-col gap-2">
+                    <Paragraph variant="small">
+                      Are you sure you want to delete <strong>"{title}"</strong>? This action cannot
+                      be undone and all widgets on this dashboard will be permanently removed.
+                    </Paragraph>
+                  </div>
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button variant="tertiary/medium">Cancel</Button>
+                    </DialogClose>
+                    <Form method="post">
+                      <Button
+                        type="submit"
+                        name="action"
+                        value="delete"
+                        variant="danger/medium"
+                        LeadingIcon={TrashIcon}
+                        disabled={isDeleting}
+                      >
+                        {isDeleting ? "Deleting…" : "Delete"}
+                      </Button>
+                    </Form>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </PopoverContent>
+          </Popover>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <div className="h-full">
