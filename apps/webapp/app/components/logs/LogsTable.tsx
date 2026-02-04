@@ -204,12 +204,7 @@ export function LogsTable({
       {/* Infinite scroll trigger */}
       {hasMore && logs.length > 0 && (
         <div ref={loadMoreRef} className="flex items-center justify-center py-12">
-          <div
-            className={cn(
-              "flex items-center gap-2",
-              !showLoadMoreSpinner && "invisible"
-            )}
-          >
+          <div className={cn("flex items-center gap-2", !showLoadMoreSpinner && "invisible")}>
             <Spinner /> <span className="text-text-dimmed">Loading more…</span>
           </div>
         </div>
@@ -224,8 +219,9 @@ export function LogsTable({
                 LeadingIcon={ArrowPathIcon}
                 variant="tertiary/small"
                 onClick={onCheckForMore}
+                disabled={isLoadingMore}
               >
-                Check for new logs
+                {isLoadingMore ? "Checking…" : "Check for new logs"}
               </Button>
             )}
           </div>
