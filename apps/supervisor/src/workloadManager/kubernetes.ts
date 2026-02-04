@@ -120,7 +120,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
           },
           spec: {
             ...this.addPlacementTags(this.#defaultPodSpec, opts.placementTags),
-            affinity: this.#getNodeAffinity(opts.machine),
+            affinity: this.#getAffinity(opts.machine, opts.projectId),
             terminationGracePeriodSeconds: 60 * 60,
             containers: [
               {
@@ -390,7 +390,21 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     return preset.name.startsWith("large-");
   }
 
-  #getNodeAffinity(preset: MachinePreset): k8s.V1Affinity | undefined {
+  #getAffinity(preset: MachinePreset, projectId: string): k8s.V1Affinity | undefined {
+    const nodeAffinity = this.#getNodeAffinityRules(preset);
+    const podAffinity = this.#getProjectPodAffinity(projectId);
+
+    if (!nodeAffinity && !podAffinity) {
+      return undefined;
+    }
+
+    return {
+      ...(nodeAffinity && { nodeAffinity }),
+      ...(podAffinity && { podAffinity }),
+    };
+  }
+
+  #getNodeAffinityRules(preset: MachinePreset): k8s.V1NodeAffinity | undefined {
     if (!env.KUBERNETES_LARGE_MACHINE_POOL_LABEL) {
       return undefined;
     }
@@ -398,42 +412,64 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     if (this.#isLargeMachine(preset)) {
       // soft preference for the large-machine pool, falls back to standard if unavailable
       return {
-        nodeAffinity: {
-          preferredDuringSchedulingIgnoredDuringExecution: [
-            {
-              weight: 100,
-              preference: {
-                matchExpressions: [
-                  {
-                    key: "node.cluster.x-k8s.io/machinepool",
-                    operator: "In",
-                    values: [env.KUBERNETES_LARGE_MACHINE_POOL_LABEL],
-                  },
-                ],
-              },
+        preferredDuringSchedulingIgnoredDuringExecution: [
+          {
+            weight: 100,
+            preference: {
+              matchExpressions: [
+                {
+                  key: "node.cluster.x-k8s.io/machinepool",
+                  operator: "In",
+                  values: [env.KUBERNETES_LARGE_MACHINE_POOL_LABEL],
+                },
+              ],
             },
-          ],
-        },
+          },
+        ],
       };
     }
 
     // not schedulable in the large-machine pool
     return {
-      nodeAffinity: {
-        requiredDuringSchedulingIgnoredDuringExecution: {
-          nodeSelectorTerms: [
-            {
+      requiredDuringSchedulingIgnoredDuringExecution: {
+        nodeSelectorTerms: [
+          {
+            matchExpressions: [
+              {
+                key: "node.cluster.x-k8s.io/machinepool",
+                operator: "NotIn",
+                values: [env.KUBERNETES_LARGE_MACHINE_POOL_LABEL],
+              },
+            ],
+          },
+        ],
+      },
+    };
+  }
+
+  #getProjectPodAffinity(projectId: string): k8s.V1PodAffinity | undefined {
+    if (!env.KUBERNETES_PROJECT_AFFINITY_ENABLED) {
+      return undefined;
+    }
+
+    return {
+      preferredDuringSchedulingIgnoredDuringExecution: [
+        {
+          weight: env.KUBERNETES_PROJECT_AFFINITY_WEIGHT,
+          podAffinityTerm: {
+            labelSelector: {
               matchExpressions: [
                 {
-                  key: "node.cluster.x-k8s.io/machinepool",
-                  operator: "NotIn",
-                  values: [env.KUBERNETES_LARGE_MACHINE_POOL_LABEL],
+                  key: "project",
+                  operator: "In",
+                  values: [projectId],
                 },
               ],
             },
-          ],
+            topologyKey: env.KUBERNETES_PROJECT_AFFINITY_TOPOLOGY_KEY,
+          },
         },
-      },
+      ],
     };
   }
 }
