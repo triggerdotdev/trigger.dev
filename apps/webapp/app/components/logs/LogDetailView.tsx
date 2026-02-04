@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { cn } from "~/utils/cn";
 import { Button } from "~/components/primitives/Buttons";
-import { DateTime } from "~/components/primitives/DateTime";
+import { DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -234,7 +234,7 @@ function DetailsTab({ log, runPath, searchTerm }: { log: LogEntry; runPath: stri
       <div className="mb-6">
         <Header3 className="mb-2">Timestamp</Header3>
         <div className="text-sm text-text-dimmed">
-          <DateTime date={log.startTime} />
+          <DateTimeAccurate date={log.startTime} />
         </div>
       </div>
 

@@ -458,6 +458,7 @@ type HighlightCodeProps = {
   preClassName?: string;
   isWrapped: boolean;
   searchTerm?: string;
+  containerRef?: React.RefObject<HTMLDivElement>;
 };
 
 function HighlightCode({
@@ -471,6 +472,7 @@ function HighlightCode({
   preClassName,
   isWrapped,
   searchTerm,
+  containerRef,
 }: HighlightCodeProps) {
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -500,7 +502,7 @@ function HighlightCode({
 
   if (!isLoaded) {
     return (
-      <div dir="ltr" className={containerClasses}>
+      <div dir="ltr" className={containerClasses} ref={containerRef}>
         <pre className={preClasses}>{code}</pre>
       </div>
     );
@@ -515,7 +517,7 @@ function HighlightCode({
         getLineProps,
         getTokenProps,
       }) => (
-        <div dir="ltr" className={containerClasses}>
+        <div dir="ltr" className={containerClasses} ref={containerRef}>
           <pre className={cn(preClasses, inheritedClassName)} style={inheritedStyle} dir="ltr">
             {tokens
               .map((line, index) => {

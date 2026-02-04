@@ -1,7 +1,7 @@
 import { sql, StandardSQL } from "@codemirror/lang-sql";
 import { autocompletion, startCompletion } from "@codemirror/autocomplete";
 import { linter, lintGutter } from "@codemirror/lint";
-import { EditorView } from "@codemirror/view";
+import { EditorView, keymap } from "@codemirror/view";
 import type { ViewUpdate } from "@codemirror/view";
 import { CheckIcon, ClipboardIcon, SparklesIcon, TrashIcon } from "@heroicons/react/20/solid";
 import {
@@ -58,6 +58,32 @@ const defaultProps: TSQLEditorDefaultProps = {
   showClearButton: false,
   showFormatButton: true,
   schema: [],
+};
+
+// Toggle comment on current line with -- comment symbol
+const toggleLineComment = (view: EditorView): boolean => {
+  const { from } = view.state.selection.main;
+  const line = view.state.doc.lineAt(from);
+  const lineText = line.text;
+  const trimmed = lineText.trimStart();
+  const indent = lineText.length - trimmed.length;
+
+  if (trimmed.startsWith("--")) {
+    // Remove comment: strip "-- " or just "--"
+    const afterComment = trimmed.slice(2);
+    const newText = lineText.slice(0, indent) + afterComment.replace(/^\s/, "");
+    view.dispatch({
+      changes: { from: line.from, to: line.to, insert: newText },
+    });
+  } else {
+    // Add comment: prepend "-- " to the line content
+    const newText = lineText.slice(0, indent) + "-- " + trimmed;
+    view.dispatch({
+      changes: { from: line.from, to: line.to, insert: newText },
+    });
+  }
+
+  return true;
 };
 
 export function TSQLEditor(opts: TSQLEditorProps) {
@@ -132,6 +158,14 @@ export function TSQLEditor(opts: TSQLEditorProps) {
         })
       );
     }
+
+    // Add keyboard shortcut for toggling comments
+    exts.push(
+      keymap.of([
+        { key: "Cmd-/", run: toggleLineComment },
+        { key: "Ctrl-/", run: toggleLineComment },
+      ])
+    );
 
     return exts;
   }, [schema, linterEnabled]);
@@ -218,6 +252,9 @@ export function TSQLEditor(opts: TSQLEditorProps) {
           "min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         )}
         ref={editor}
+        onClick={() => {
+          view?.focus();
+        }}
         onBlur={() => {
           if (!onBlur) return;
           if (!view) return;

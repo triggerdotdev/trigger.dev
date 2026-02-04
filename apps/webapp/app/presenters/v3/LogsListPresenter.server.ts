@@ -354,6 +354,8 @@ export class LogsListPresenter extends BasePresenter {
       queryBuilder.where("kind NOT IN {debugKinds: Array(String)}", {
         debugKinds: ["DEBUG_EVENT"],
       });
+
+      queryBuilder.where("NOT ((kind = 'LOG_INFO') AND (attributes_text = '{}'))");
     }
 
     queryBuilder.where("kind NOT IN {debugSpans: Array(String)}", {
