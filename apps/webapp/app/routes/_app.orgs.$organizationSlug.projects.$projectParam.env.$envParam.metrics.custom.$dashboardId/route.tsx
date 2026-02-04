@@ -1,12 +1,10 @@
-import { PencilSquareIcon } from "@heroicons/react/20/solid";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, redirect } from "@remix-run/node";
 import { useFetcher } from "@remix-run/react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button } from "~/components/primitives/Buttons";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
@@ -125,72 +123,78 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { title, layout, defaultPeriod } = useTypedLoaderData<typeof loader>();
+  const { friendlyId, title, layout, defaultPeriod } = useTypedLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
+  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInitializedRef = useRef(false);
+  const currentLayoutJsonRef = useRef<string>(JSON.stringify(layout.layout));
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [pendingLayout, setPendingLayout] = useState<LayoutItem[] | null>(null);
-  const [resetKey, setResetKey] = useState(0);
-
-  const isSaving = fetcher.state === "submitting";
-
-  const handleLayoutChange = useCallback((newLayout: LayoutItem[]) => {
-    setPendingLayout(newLayout);
-  }, []);
-
-  const handleEdit = () => {
-    setIsEditing(true);
-    setPendingLayout(null);
-  };
-
-  const handleCancel = () => {
-    setIsEditing(false);
-    setPendingLayout(null);
-    // Increment key to force remount and reset layout to original
-    setResetKey((k) => k + 1);
-  };
-
-  const handleSave = () => {
-    if (!pendingLayout) {
-      // No changes made, just exit edit mode
-      setIsEditing(false);
-      return;
+  // Track when the dashboard data changes (e.g., switching dashboards)
+  const layoutJson = JSON.stringify(layout.layout);
+  useEffect(() => {
+    // Cancel any pending save when switching dashboards
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
     }
 
-    fetcher.submit({ layout: JSON.stringify(pendingLayout) }, { method: "POST" });
+    // Update the current layout reference and mark as not yet user-modified
+    currentLayoutJsonRef.current = layoutJson;
+    isInitializedRef.current = false;
 
-    setIsEditing(false);
-    setPendingLayout(null);
-  };
+    // Allow saves after a short delay to skip initial mount callbacks
+    const initTimeout = setTimeout(() => {
+      isInitializedRef.current = true;
+    }, 100);
+
+    return () => {
+      clearTimeout(initTimeout);
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, [layoutJson]);
+
+  const handleLayoutChange = useCallback(
+    (newLayout: LayoutItem[]) => {
+      // Skip if not yet initialized (prevents saving during mount/navigation)
+      if (!isInitializedRef.current) {
+        return;
+      }
+
+      const newLayoutJson = JSON.stringify(newLayout);
+
+      // Skip if layout hasn't actually changed
+      if (newLayoutJson === currentLayoutJsonRef.current) {
+        return;
+      }
+
+      // Clear existing timeout
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+
+      // Debounce auto-save by 500ms
+      debounceTimeoutRef.current = setTimeout(() => {
+        currentLayoutJsonRef.current = newLayoutJson;
+        fetcher.submit({ layout: newLayoutJson }, { method: "POST" });
+      }, 500);
+    },
+    [fetcher]
+  );
 
   return (
     <PageContainer>
       <NavBar>
         <PageTitle title={title} />
-        <PageAccessories>
-          {isEditing ? (
-            <div className="flex items-center gap-2">
-              <Button variant="tertiary/small" onClick={handleCancel} disabled={isSaving}>
-                Cancel
-              </Button>
-              <Button variant="primary/small" onClick={handleSave} disabled={isSaving}>
-                {isSaving ? "Saving..." : "Save"}
-              </Button>
-            </div>
-          ) : (
-            <Button variant="tertiary/small" LeadingIcon={PencilSquareIcon} onClick={handleEdit}>
-              Edit
-            </Button>
-          )}
-        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <div className="h-full">
           <MetricDashboard
-            key={resetKey}
+            key={friendlyId}
             data={layout}
             defaultPeriod={defaultPeriod}
-            editable={isEditing}
+            editable={true}
             onLayoutChange={handleLayoutChange}
           />
         </div>
