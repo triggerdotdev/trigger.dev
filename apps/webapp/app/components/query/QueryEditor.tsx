@@ -67,6 +67,7 @@ import {
   ChartConfiguration,
   QueryWidget,
   type QueryWidgetConfig,
+  type QueryWidgetData,
 } from "~/components/metrics/QueryWidget";
 import { SaveToDashboardDialog } from "~/components/metrics/SaveToDashboardDialog";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -119,6 +120,8 @@ export type QueryEditorProps = {
   defaultTimeFilter?: { period?: string; from?: string; to?: string };
   defaultResultsView?: "table" | "graph";
   defaultChartConfig?: ChartConfiguration;
+  /** Initial result data to display (e.g., when editing an existing widget) */
+  defaultData?: QueryWidgetData;
 
   // Other required data
   history: QueryHistoryItem[];
@@ -340,6 +343,7 @@ export function QueryEditor({
   defaultTimeFilter,
   defaultResultsView = "table",
   defaultChartConfig: initialChartConfig,
+  defaultData,
   history,
   isAdmin,
   maxRows,
@@ -350,7 +354,21 @@ export function QueryEditor({
   onClose,
 }: QueryEditorProps) {
   const fetcher = useTypedFetcher<QueryActionResponse>();
-  const results = fetcher.data;
+  
+  // Use defaultData as initial results, then switch to fetcher data once a query is run
+  const fetcherResults = fetcher.data;
+  const results = fetcherResults ?? (defaultData ? {
+    error: null,
+    rows: defaultData.rows,
+    columns: defaultData.columns,
+    stats: null,
+    hiddenColumns: null,
+    reachedMaxRows: false,
+    explainOutput: null,
+    generatedSql: null,
+    queryId: null,
+    periodClipped: null,
+  } : null);
 
   const organization = useOrganization();
   const project = useProject();

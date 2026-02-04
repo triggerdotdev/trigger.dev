@@ -64,9 +64,19 @@ export const QueryWidgetConfig = z.discriminatedUnion("type", [
 
 export type QueryWidgetConfig = z.infer<typeof QueryWidgetConfig>;
 
-type QueryWidgetData = {
+/** Result data containing rows and column metadata */
+export type QueryWidgetData = {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
+};
+
+/** Widget configuration with optional result data (used for edit callbacks) */
+export type WidgetData = {
+  title: string;
+  query: string;
+  display: QueryWidgetConfig;
+  /** The current result data from the widget */
+  resultData?: QueryWidgetData;
 };
 
 export type QueryWidgetProps = {
@@ -78,8 +88,8 @@ export type QueryWidgetProps = {
   accessory?: ReactNode;
   isResizing?: boolean;
   isDraggable?: boolean;
-  /** Callback when edit button is clicked. When provided, shows edit button on hover. */
-  onEdit?: () => void;
+  /** Callback when edit button is clicked. Receives the current data. When provided, shows edit button on hover. */
+  onEdit?: (data: QueryWidgetData) => void;
 };
 
 export function QueryWidget({
@@ -110,7 +120,11 @@ export function QueryWidget({
               <SimpleTooltip
                 asChild
                 button={
-                  <Button variant="minimal/small" LeadingIcon={PencilSquareIcon} onClick={onEdit} />
+                  <Button
+                    variant="minimal/small"
+                    LeadingIcon={PencilSquareIcon}
+                    onClick={() => onEdit(props.data)}
+                  />
                 }
                 content="Edit"
               />
