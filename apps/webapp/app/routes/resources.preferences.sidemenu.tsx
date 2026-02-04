@@ -1,5 +1,9 @@
 import { json, type ActionFunctionArgs } from "@remix-run/node";
 import { z } from "zod";
+import {
+  SideMenuSectionIdSchema,
+  type SideMenuSectionId,
+} from "~/components/navigation/sideMenuTypes";
 import { updateSideMenuPreferences } from "~/services/dashboardPreferences.server";
 import { requireUser } from "~/services/session.server";
 
@@ -11,7 +15,8 @@ const booleanFromFormData = z
 
 const RequestSchema = z.object({
   isCollapsed: booleanFromFormData,
-  manageSectionCollapsed: booleanFromFormData,
+  sectionId: SideMenuSectionIdSchema.optional(),
+  sectionCollapsed: booleanFromFormData,
 });
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -25,10 +30,16 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ success: false, error: "Invalid request data" }, { status: 400 });
   }
 
+  // Build sectionCollapsed parameter if both sectionId and sectionCollapsed are provided
+  const sectionCollapsed =
+    result.data.sectionId !== undefined && result.data.sectionCollapsed !== undefined
+      ? { sectionId: result.data.sectionId as SideMenuSectionId, collapsed: result.data.sectionCollapsed }
+      : undefined;
+
   await updateSideMenuPreferences({
     user,
     isCollapsed: result.data.isCollapsed,
-    manageSectionCollapsed: result.data.manageSectionCollapsed,
+    sectionCollapsed,
   });
 
   return json({ success: true });
