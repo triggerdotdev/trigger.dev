@@ -76,6 +76,7 @@ export type QueryWidgetProps = {
   config: QueryWidgetConfig;
   accessory?: ReactNode;
   isResizing?: boolean;
+  isDraggable?: boolean;
 };
 
 export function QueryWidget({
@@ -84,13 +85,14 @@ export function QueryWidget({
   isLoading,
   error,
   isResizing,
+  isDraggable,
   ...props
 }: QueryWidgetProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   return (
     <Card className={cn("h-full overflow-hidden px-0 pb-0", isResizing && "select-none")}>
-      <Card.Header>
+      <Card.Header draggable={isDraggable}>
         <div className="flex items-center gap-1.5">{title}</div>
         <Card.Accessory>
           {accessory}

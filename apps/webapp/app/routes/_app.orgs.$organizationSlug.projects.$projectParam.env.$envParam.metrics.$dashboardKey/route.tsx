@@ -56,7 +56,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { title, layout, defaultPeriod } = useTypedLoaderData<typeof loader>();
+  const { key, title, layout, defaultPeriod } = useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
@@ -65,7 +65,7 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className="h-full">
-          <MetricDashboard data={layout} defaultPeriod={defaultPeriod} editable={false} />
+          <MetricDashboard key={key} data={layout} defaultPeriod={defaultPeriod} editable={false} />
         </div>
       </PageBody>
     </PageContainer>
@@ -87,6 +87,14 @@ export function MetricDashboard({
   const { value } = useSearchParams();
   const { width, containerRef, mounted } = useContainerWidth();
   const [resizingItemId, setResizingItemId] = useState<string | null>(null);
+
+  // Sync layout state when navigating to a different dashboard.
+  // useState only initializes once, so we need this effect to update
+  // the layout when the data prop changes (e.g., switching dashboards).
+  const dataLayoutJson = JSON.stringify(data.layout);
+  useEffect(() => {
+    setLayout(data.layout);
+  }, [dataLayoutJson]);
 
   const organization = useOrganization();
   const project = useProject();
@@ -127,9 +135,9 @@ export function MetricDashboard({
             gridConfig={{ cols: 12, rowHeight: 30 }}
             resizeConfig={{
               enabled: editable,
-              handles: ["e", "w", "s", "n", "ne", "nw", "se", "sw"],
+              handles: ["se"],
             }}
-            dragConfig={{ enabled: editable }}
+            dragConfig={{ enabled: editable, handle: ".drag-handle" }}
             onLayoutChange={handleLayoutChange}
             onResizeStart={(_layout, oldItem) => setResizingItemId(oldItem?.i ?? null)}
             onResizeStop={() => setResizingItemId(null)}
@@ -137,6 +145,7 @@ export function MetricDashboard({
             {Object.entries(data.widgets).map(([key, widget]) => (
               <div key={key}>
                 <MetricWidget
+                  widgetKey={key}
                   title={widget.title}
                   query={widget.query}
                   scope="environment"
@@ -149,6 +158,7 @@ export function MetricDashboard({
                   environmentId={environment.id}
                   refreshIntervalMs={60_000}
                   isResizing={resizingItemId === key}
+                  isDraggable={editable}
                 />
               </div>
             ))}

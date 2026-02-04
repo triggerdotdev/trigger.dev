@@ -116,20 +116,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 type MetricWidgetProps = {
+  /** Unique key for this widget - used to identify the fetcher */
+  widgetKey: string;
   title: string;
   config: QueryWidgetConfig;
   refreshIntervalMs?: number;
   isResizing?: boolean;
+  isDraggable?: boolean;
 } & z.infer<typeof MetricWidgetQuery>;
 
 export function MetricWidget({
+  widgetKey,
   title,
   config,
   refreshIntervalMs,
   isResizing,
+  isDraggable,
   ...props
 }: MetricWidgetProps) {
-  const fetcher = useFetcher<typeof action>();
+  // Use a unique key for each widget's fetcher to prevent "Expected fetch controller" errors
+  // when navigating between dashboards. Without a key, Remix can't properly track and clean up
+  // fetchers when components unmount during navigation.
+  const fetcher = useFetcher<typeof action>({ key: `metric-widget-${widgetKey}` });
   const isLoading = fetcher.state !== "idle";
 
   const submit = useCallback(async () => {
@@ -160,6 +168,7 @@ export function MetricWidget({
       data={data}
       error={fetcher.data?.success === false ? fetcher.data.error : undefined}
       isResizing={isResizing}
+      isDraggable={isDraggable}
     />
   );
 }
