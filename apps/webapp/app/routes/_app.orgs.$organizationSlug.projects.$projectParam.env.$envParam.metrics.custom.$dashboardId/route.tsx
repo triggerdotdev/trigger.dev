@@ -1,4 +1,4 @@
-import { PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { PencilIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useFetcher, useNavigation } from "@remix-run/react";
@@ -36,6 +36,7 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema, v3BuiltInDashboardPath } from "~/utils/pathBuilder";
 import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.metrics.$dashboardKey/route";
+import { IconEdit } from "@tabler/icons-react";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardId: z.string(),
@@ -184,36 +185,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 export default function Page() {
   const { friendlyId, title, layout, defaultPeriod } = useTypedLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
-  const navigation = useNavigation();
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
-  const [newTitle, setNewTitle] = useState(title);
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitializedRef = useRef(false);
   const currentLayoutJsonRef = useRef<string>(JSON.stringify(layout.layout));
-
-  const isDeleting =
-    navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
-    navigation.formData?.get("action") === "delete";
-
-  const isRenaming =
-    navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
-    navigation.formData?.get("action") === "rename";
-
-  // Close dialogs when navigation completes and sync title state
-  useEffect(() => {
-    if (navigation.state === "idle") {
-      setIsDeleteDialogOpen(false);
-      setIsRenameDialogOpen(false);
-    }
-  }, [navigation.state]);
-
-  // Sync newTitle state when title changes (after successful rename)
-  useEffect(() => {
-    setNewTitle(title);
-  }, [title]);
 
   // Track when the dashboard data changes (e.g., switching dashboards)
   const layoutJson = JSON.stringify(layout.layout);
@@ -272,99 +246,12 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle
-          title={
-            <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
-              <span className="flex items-center gap-1">
-                {title}
-                <DialogTrigger asChild>
-                  <button
-                    type="button"
-                    className="rounded p-0.5 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright focus-custom"
-                  >
-                    <PencilSquareIcon className="size-4" />
-                  </button>
-                </DialogTrigger>
-              </span>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>Rename dashboard</DialogHeader>
-                <Form method="post" className="space-y-4 pt-3">
-                  <input type="hidden" name="action" value="rename" />
-                  <InputGroup>
-                    <Label>Title</Label>
-                    <Input
-                      name="title"
-                      value={newTitle}
-                      onChange={(e) => setNewTitle(e.target.value)}
-                      placeholder="Dashboard title"
-                      required
-                      autoFocus
-                    />
-                  </InputGroup>
-                  <FormButtons
-                    confirmButton={
-                      <Button
-                        type="submit"
-                        variant="primary/medium"
-                        disabled={isRenaming || !newTitle.trim()}
-                      >
-                        {isRenaming ? "Saving…" : "Save"}
-                      </Button>
-                    }
-                    cancelButton={
-                      <DialogClose asChild>
-                        <Button variant="tertiary/medium">Cancel</Button>
-                      </DialogClose>
-                    }
-                  />
-                </Form>
-              </DialogContent>
-            </Dialog>
-          }
-        />
+        <PageTitle title={<RenameDashboardDialog title={title} />} />
         <PageAccessories>
           <Popover>
             <PopoverVerticalEllipseTrigger />
             <PopoverContent className="w-fit min-w-[10rem] p-1" align="end">
-              <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="small-menu-item"
-                    LeadingIcon={TrashIcon}
-                    leadingIconClassName="text-rose-500"
-                    fullWidth
-                    textAlignLeft
-                  >
-                    Delete dashboard
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>Delete dashboard</DialogHeader>
-                  <div className="mb-2 mt-4 flex flex-col gap-2">
-                    <Paragraph variant="small">
-                      Are you sure you want to delete <strong>"{title}"</strong>? This action cannot
-                      be undone and all widgets on this dashboard will be permanently removed.
-                    </Paragraph>
-                  </div>
-                  <DialogFooter>
-                    <DialogClose asChild>
-                      <Button variant="tertiary/medium">Cancel</Button>
-                    </DialogClose>
-                    <Form method="post">
-                      <Button
-                        type="submit"
-                        name="action"
-                        value="delete"
-                        variant="danger/medium"
-                        LeadingIcon={TrashIcon}
-                        disabled={isDeleting}
-                      >
-                        {isDeleting ? "Deleting…" : "Delete"}
-                      </Button>
-                    </Form>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+              <DeleteDashboardDialog title={title} />
             </PopoverContent>
           </Popover>
         </PageAccessories>
@@ -381,5 +268,136 @@ export default function Page() {
         </div>
       </PageBody>
     </PageContainer>
+  );
+}
+
+function RenameDashboardDialog({ title }: { title: string }) {
+  const navigation = useNavigation();
+  const [isOpen, setIsOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState(title);
+
+  const isRenaming =
+    navigation.state !== "idle" &&
+    navigation.formMethod === "post" &&
+    navigation.formData?.get("action") === "rename";
+
+  // Close dialog when navigation completes
+  useEffect(() => {
+    if (navigation.state === "idle") {
+      setIsOpen(false);
+    }
+  }, [navigation.state]);
+
+  // Sync newTitle state when title changes (after successful rename)
+  useEffect(() => {
+    setNewTitle(title);
+  }, [title]);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <span className="flex items-center gap-1">
+        {title}
+        <DialogTrigger asChild>
+          <button
+            type="button"
+            className="rounded p-0.5 text-text-dimmed transition focus-custom hover:bg-charcoal-700 hover:text-text-bright"
+          >
+            <IconEdit className="size-4" />
+          </button>
+        </DialogTrigger>
+      </span>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>Rename dashboard</DialogHeader>
+        <Form method="post" className="space-y-4 pt-3">
+          <input type="hidden" name="action" value="rename" />
+          <InputGroup>
+            <Label>Title</Label>
+            <Input
+              name="title"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="Dashboard title"
+              required
+              autoFocus
+            />
+          </InputGroup>
+          <FormButtons
+            confirmButton={
+              <Button
+                type="submit"
+                variant="primary/medium"
+                disabled={isRenaming || !newTitle.trim()}
+              >
+                {isRenaming ? "Saving…" : "Save"}
+              </Button>
+            }
+            cancelButton={
+              <DialogClose asChild>
+                <Button variant="tertiary/medium">Cancel</Button>
+              </DialogClose>
+            }
+          />
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeleteDashboardDialog({ title }: { title: string }) {
+  const navigation = useNavigation();
+  const [isOpen, setIsOpen] = useState(false);
+
+  const isDeleting =
+    navigation.state !== "idle" &&
+    navigation.formMethod === "post" &&
+    navigation.formData?.get("action") === "delete";
+
+  // Close dialog when navigation completes
+  useEffect(() => {
+    if (navigation.state === "idle") {
+      setIsOpen(false);
+    }
+  }, [navigation.state]);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button
+          variant="small-menu-item"
+          LeadingIcon={TrashIcon}
+          leadingIconClassName="text-rose-500"
+          fullWidth
+          textAlignLeft
+        >
+          Delete dashboard
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>Delete dashboard</DialogHeader>
+        <div className="mb-2 mt-4 flex flex-col gap-2">
+          <Paragraph variant="small">
+            Are you sure you want to delete <strong>"{title}"</strong>? This action cannot be undone
+            and all widgets on this dashboard will be permanently removed.
+          </Paragraph>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="tertiary/medium">Cancel</Button>
+          </DialogClose>
+          <Form method="post">
+            <Button
+              type="submit"
+              name="action"
+              value="delete"
+              variant="danger/medium"
+              LeadingIcon={TrashIcon}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting…" : "Delete"}
+            </Button>
+          </Form>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
