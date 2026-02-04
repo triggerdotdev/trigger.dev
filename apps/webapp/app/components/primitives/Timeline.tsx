@@ -82,7 +82,10 @@ export function MousePositionProvider({
     <div
       ref={ref}
       onMouseEnter={handleMouseMove}
-      onMouseLeave={() => setPosition(undefined)}
+      onMouseLeave={() => {
+        lastMouseCoordsRef.current = null;
+        setPosition(undefined);
+      }}
       onMouseMove={handleMouseMove}
       style={{ width: "100%", height: "100%" }}
     >
