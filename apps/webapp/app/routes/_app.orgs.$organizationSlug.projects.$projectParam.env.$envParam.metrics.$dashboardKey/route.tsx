@@ -72,16 +72,25 @@ export default function Page() {
   );
 }
 
+// Widget data type for edit callbacks
+type WidgetData = {
+  title: string;
+  query: string;
+  display: import("~/components/metrics/QueryWidget").QueryWidgetConfig;
+};
+
 export function MetricDashboard({
   data,
   defaultPeriod,
   editable,
   onLayoutChange,
+  onEditWidget,
 }: {
   data: DashboardLayout;
   defaultPeriod: string;
   editable: boolean;
   onLayoutChange?: (layout: LayoutItem[]) => void;
+  onEditWidget?: (widgetId: string, widget: WidgetData) => void;
 }) {
   const [layout, setLayout] = useState(data.layout);
   const { value } = useSearchParams();
@@ -159,6 +168,7 @@ export function MetricDashboard({
                   refreshIntervalMs={60_000}
                   isResizing={resizingItemId === key}
                   isDraggable={editable}
+                  onEdit={onEditWidget ? () => onEditWidget(key, widget) : undefined}
                 />
               </div>
             ))}

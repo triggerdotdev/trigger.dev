@@ -1,4 +1,4 @@
-import { PencilIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { PlusIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useFetcher, useNavigation } from "@remix-run/react";
@@ -26,6 +26,7 @@ import {
   PopoverVerticalEllipseTrigger,
 } from "~/components/primitives/Popover";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
@@ -33,20 +34,28 @@ import {
   LayoutItem,
   MetricDashboardPresenter,
 } from "~/presenters/v3/MetricDashboardPresenter.server";
-import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema, v3BuiltInDashboardPath } from "~/utils/pathBuilder";
+import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
+import { requireUser, requireUserId } from "~/services/session.server";
+import { EnvironmentParamSchema, queryPath, v3BuiltInDashboardPath } from "~/utils/pathBuilder";
 import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.metrics.$dashboardKey/route";
 import { IconEdit } from "@tabler/icons-react";
+import { QueryEditor } from "~/components/query/QueryEditor";
+import type { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { defaultChartConfig } from "~/components/code/ChartConfigPanel";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardId: z.string(),
 });
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
   const { projectParam, organizationSlug, envParam, dashboardId } = ParamSchema.parse(params);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) {
     throw new Response(undefined, {
       status: 404,
@@ -54,7 +63,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
   if (!environment) {
     throw new Response(undefined, {
       status: 404,
@@ -62,13 +71,29 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
-  const presenter = new MetricDashboardPresenter();
-  const dashboard = await presenter.customDashboard({
+  const dashboardPresenter = new MetricDashboardPresenter();
+  const dashboard = await dashboardPresenter.customDashboard({
     friendlyId: dashboardId,
     organizationId: project.organizationId,
   });
 
-  return typedjson(dashboard);
+  // Load query-related data for the editor
+  const queryPresenter = new QueryPresenter();
+  const { defaultQuery, history } = await queryPresenter.call({
+    organizationId: project.organizationId,
+  });
+
+  // Admins and impersonating users can use EXPLAIN
+  const isAdmin = user.admin || user.isImpersonating;
+
+  return typedjson({
+    ...dashboard,
+    // Query editor data
+    queryDefaultQuery: defaultQuery,
+    queryHistory: history,
+    isAdmin,
+    maxRows: env.QUERY_CLICKHOUSE_MAX_RETURNED_ROWS,
+  });
 };
 
 const SaveLayoutSchema = z.object({
@@ -182,12 +207,53 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
+// Widget data type for edit mode
+type WidgetData = {
+  title: string;
+  query: string;
+  display: QueryWidgetConfig;
+};
+
+// Editor mode state type
+type EditorMode =
+  | null
+  | { type: "add" }
+  | { type: "edit"; widgetId: string; widget: WidgetData };
+
 export default function Page() {
-  const { friendlyId, title, layout, defaultPeriod } = useTypedLoaderData<typeof loader>();
+  const {
+    friendlyId,
+    title,
+    layout,
+    defaultPeriod,
+    queryDefaultQuery,
+    queryHistory,
+    isAdmin,
+    maxRows,
+  } = useTypedLoaderData<typeof loader>();
+
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const plan = useCurrentPlan();
+  const maxPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
+
   const fetcher = useFetcher<typeof action>();
+  const addWidgetFetcher = useFetcher();
+  const updateWidgetFetcher = useFetcher();
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitializedRef = useRef(false);
   const currentLayoutJsonRef = useRef<string>(JSON.stringify(layout.layout));
+
+  // Editor mode state
+  const [editorMode, setEditorMode] = useState<EditorMode>(null);
+
+  // Build the query action URL
+  const queryActionUrl = queryPath(
+    { slug: organization.slug },
+    { slug: project.slug },
+    { slug: environment.slug }
+  );
 
   // Track when the dashboard data changes (e.g., switching dashboards)
   const layoutJson = JSON.stringify(layout.layout);
@@ -214,6 +280,16 @@ export default function Page() {
       }
     };
   }, [layoutJson]);
+
+  // Close editor when add/update operation completes
+  useEffect(() => {
+    if (
+      (addWidgetFetcher.state === "idle" && addWidgetFetcher.data) ||
+      (updateWidgetFetcher.state === "idle" && updateWidgetFetcher.data)
+    ) {
+      setEditorMode(null);
+    }
+  }, [addWidgetFetcher.state, addWidgetFetcher.data, updateWidgetFetcher.state, updateWidgetFetcher.data]);
 
   const handleLayoutChange = useCallback(
     (newLayout: LayoutItem[]) => {
@@ -243,11 +319,111 @@ export default function Page() {
     [fetcher]
   );
 
+  const handleEditWidget = useCallback((widgetId: string, widget: WidgetData) => {
+    setEditorMode({ type: "edit", widgetId, widget });
+  }, []);
+
+  const handleSave = useCallback(
+    (data: { title: string; query: string; config: QueryWidgetConfig }) => {
+      if (editorMode?.type === "add") {
+        // Submit to add-widget action
+        addWidgetFetcher.submit(
+          {
+            title: data.title,
+            query: data.query,
+            config: JSON.stringify(data.config),
+          },
+          {
+            method: "POST",
+            action: `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/add-widget`,
+          }
+        );
+      } else if (editorMode?.type === "edit") {
+        // Submit to update-widget action
+        updateWidgetFetcher.submit(
+          {
+            widgetId: editorMode.widgetId,
+            title: data.title,
+            query: data.query,
+            config: JSON.stringify(data.config),
+          },
+          {
+            method: "POST",
+            action: `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/update-widget`,
+          }
+        );
+      }
+    },
+    [editorMode, addWidgetFetcher, updateWidgetFetcher, organization.slug, project.slug, environment.slug, friendlyId]
+  );
+
+  const handleCloseEditor = useCallback(() => {
+    setEditorMode(null);
+  }, []);
+
+  // When in editor mode, render the QueryEditor
+  if (editorMode) {
+    const mode =
+      editorMode.type === "add"
+        ? { type: "dashboard-add" as const, dashboardId: friendlyId, dashboardName: title }
+        : {
+            type: "dashboard-edit" as const,
+            dashboardId: friendlyId,
+            dashboardName: title,
+            widgetId: editorMode.widgetId,
+            widgetName: editorMode.widget.title,
+          };
+
+    // For edit mode, use the widget's existing values as defaults
+    const editorDefaultQuery =
+      editorMode.type === "edit" ? editorMode.widget.query : queryDefaultQuery;
+    const editorDefaultChartConfig =
+      editorMode.type === "edit" && editorMode.widget.display.type === "chart"
+        ? {
+            chartType: editorMode.widget.display.chartType,
+            xAxisColumn: editorMode.widget.display.xAxisColumn,
+            yAxisColumns: editorMode.widget.display.yAxisColumns,
+            groupByColumn: editorMode.widget.display.groupByColumn,
+            stacked: editorMode.widget.display.stacked,
+            sortByColumn: editorMode.widget.display.sortByColumn,
+            sortDirection: editorMode.widget.display.sortDirection,
+            aggregation: editorMode.widget.display.aggregation,
+          }
+        : defaultChartConfig;
+    const editorDefaultResultsView =
+      editorMode.type === "edit" ? editorMode.widget.display.type : "table";
+
+    return (
+      <QueryEditor
+        defaultQuery={editorDefaultQuery}
+        defaultScope="environment"
+        defaultPeriod={defaultPeriod}
+        defaultResultsView={editorDefaultResultsView === "chart" ? "graph" : "table"}
+        defaultChartConfig={editorDefaultChartConfig}
+        history={queryHistory}
+        isAdmin={isAdmin}
+        maxRows={maxRows}
+        queryActionUrl={queryActionUrl}
+        mode={mode}
+        maxPeriodDays={maxPeriodDays}
+        onSave={handleSave}
+        onClose={handleCloseEditor}
+      />
+    );
+  }
+
   return (
     <PageContainer>
       <NavBar>
         <PageTitle title={<RenameDashboardDialog title={title} />} />
         <PageAccessories>
+          <Button
+            variant="tertiary/small"
+            LeadingIcon={PlusIcon}
+            onClick={() => setEditorMode({ type: "add" })}
+          >
+            Add chart
+          </Button>
           <Popover>
             <PopoverVerticalEllipseTrigger />
             <PopoverContent className="w-fit min-w-[10rem] p-1" align="end">
@@ -264,6 +440,7 @@ export default function Page() {
             defaultPeriod={defaultPeriod}
             editable={true}
             onLayoutChange={handleLayoutChange}
+            onEditWidget={handleEditWidget}
           />
         </div>
       </PageBody>

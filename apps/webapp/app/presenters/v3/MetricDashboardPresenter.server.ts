@@ -30,13 +30,15 @@ export const LayoutItem = z.object({
 
 export type LayoutItem = z.infer<typeof LayoutItem>;
 
-const Widget = z.object({
+export const Widget = z.object({
   title: z.string(),
   query: z.string(),
   display: QueryWidgetConfig,
 });
 
-const DashboardLayout = z.discriminatedUnion("version", [
+export type Widget = z.infer<typeof Widget>;
+
+export const DashboardLayout = z.discriminatedUnion("version", [
   z.object({
     version: z.literal("1"),
     layout: z.array(LayoutItem),
