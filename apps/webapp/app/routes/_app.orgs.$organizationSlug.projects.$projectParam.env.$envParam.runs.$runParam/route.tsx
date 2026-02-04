@@ -698,6 +698,16 @@ function TasksTreeView({
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pendingHoverIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+        scrollTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const parentRef = useRef<HTMLDivElement>(null);
   const treeScrollRef = useRef<HTMLDivElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
@@ -723,10 +733,7 @@ function TasksTreeView({
     }
     scrollTimeoutRef.current = setTimeout(() => {
       setIsScrolling(false);
-      // Apply the pending hover ID when scrolling stops
-      if (pendingHoverIdRef.current !== null) {
         setHoveredNodeId(pendingHoverIdRef.current);
-      }
     }, 150);
   }, []);
 
