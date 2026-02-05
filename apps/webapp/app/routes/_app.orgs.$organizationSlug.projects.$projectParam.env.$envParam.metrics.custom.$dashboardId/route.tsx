@@ -356,14 +356,15 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={<RenameDashboardDialog title={title} />} />
+        <PageTitle title={title} />
         <PageAccessories>
-          <Button variant="tertiary/small" LeadingIcon={PlusIcon} onClick={actions.openAddEditor}>
+          <Button variant="secondary/small" LeadingIcon={PlusIcon} onClick={actions.openAddEditor}>
             Add chart
           </Button>
           <Popover>
             <PopoverVerticalEllipseTrigger />
             <PopoverContent className="w-fit min-w-[10rem] p-1" align="end">
+              <RenameDashboardDialog title={title} />
               <DeleteDashboardDialog title={title} />
             </PopoverContent>
           </Popover>
