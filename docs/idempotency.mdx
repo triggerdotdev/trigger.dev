@@ -428,17 +428,21 @@ export const parentTask = task({
 });
 ```
 
-When resetting from outside a task (e.g., from your backend code), you must provide the `parentRunId`:
+When resetting from outside a task, you must provide the `parentRunId` if the key was created within a task context:
 
 ```ts
 import { idempotencyKeys } from "@trigger.dev/sdk";
 
-// From your backend code - you need to know the parent run ID
+// If the key was created within a task, you need the parent run ID
 await idempotencyKeys.reset("my-task", "my-key", {
   scope: "run",
   parentRunId: "run_abc123"
 });
 ```
+
+<Note>
+If you triggered the task from backend code, all scopes behave as global (see [Triggering from backend code](#triggering-from-backend-code)). Use `scope: "global"` when resetting.
+</Note>
 
 ### Resetting attempt-scoped keys
 
