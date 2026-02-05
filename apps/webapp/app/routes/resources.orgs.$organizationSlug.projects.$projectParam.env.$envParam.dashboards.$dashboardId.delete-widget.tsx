@@ -2,36 +2,13 @@ import { type ActionFunctionArgs } from "@remix-run/node";
 import { z } from "zod";
 import { typedjson } from "remix-typedjson";
 import { prisma } from "~/db.server";
-import { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 import { findProjectBySlug } from "~/models/project.server";
 import { DashboardLayout } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 
-const UpdateWidgetSchema = z.object({
+const DeleteWidgetSchema = z.object({
   widgetId: z.string().min(1, "Widget ID is required"),
-  title: z.string().min(1, "Title is required"),
-  query: z.string().min(1, "Query is required"),
-  config: z.string().transform((str, ctx) => {
-    try {
-      const parsed = JSON.parse(str);
-      const result = QueryWidgetConfig.safeParse(parsed);
-      if (!result.success) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Invalid widget config",
-        });
-        return z.NEVER;
-      }
-      return result.data;
-    } catch {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Invalid JSON",
-      });
-      return z.NEVER;
-    }
-  }),
 });
 
 const ParamsSchema = EnvironmentParamSchema.extend({
@@ -62,17 +39,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const rawData = {
     widgetId: formData.get("widgetId"),
-    title: formData.get("title"),
-    query: formData.get("query"),
-    config: formData.get("config"),
   };
 
-  const result = UpdateWidgetSchema.safeParse(rawData);
+  const result = DeleteWidgetSchema.safeParse(rawData);
   if (!result.success) {
     throw new Response("Invalid form data: " + result.error.message, { status: 400 });
   }
 
-  const { widgetId, title, query, config } = result.data;
+  const { widgetId } = result.data;
 
   // Parse existing layout
   let existingLayout: z.infer<typeof DashboardLayout>;
@@ -80,33 +54,24 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const parsed = JSON.parse(dashboard.layout);
     const layoutResult = DashboardLayout.safeParse(parsed);
     if (!layoutResult.success) {
-      throw new Response("Dashboard layout is corrupt", { status: 500 });
+      throw new Response("Invalid dashboard layout", { status: 500 });
     }
     existingLayout = layoutResult.data;
-  } catch (e) {
-    if (e instanceof Response) throw e;
+  } catch {
     throw new Response("Failed to parse dashboard layout", { status: 500 });
   }
 
-  // Check if widget exists
-  if (!existingLayout.widgets[widgetId]) {
-    throw new Response("Widget not found", { status: 404 });
-  }
+  // Get widget title before deleting (for the success message)
+  const widget = existingLayout.widgets[widgetId];
+  const widgetTitle = widget?.title ?? "Widget";
 
-  // Update the widget
-  const updatedWidget = {
-    title,
-    query,
-    display: config,
-  };
-
-  // Update the layout
+  // Remove widget from layout and widgets
   const updatedLayout = {
     ...existingLayout,
-    widgets: {
-      ...existingLayout.widgets,
-      [widgetId]: updatedWidget,
-    },
+    layout: existingLayout.layout.filter((item) => item.i !== widgetId),
+    widgets: Object.fromEntries(
+      Object.entries(existingLayout.widgets).filter(([key]) => key !== widgetId)
+    ),
   };
 
   // Save to database
@@ -117,5 +82,5 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     },
   });
 
-  return typedjson({ success: true, updatedTitle: title });
+  return typedjson({ success: true, deletedTitle: widgetTitle });
 };

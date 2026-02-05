@@ -7,12 +7,22 @@ import { TSQLResultsTable } from "../code/TSQLResultsTable";
 import { QueryResultsChart } from "../code/QueryResultsChart";
 import { Dialog, DialogContent, DialogHeader } from "../primitives/Dialog";
 import { Button } from "../primitives/Buttons";
-import { ArrowsPointingOutIcon, PencilSquareIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowsPointingOutIcon,
+  DocumentDuplicateIcon,
+  PencilSquareIcon,
+  TrashIcon,
+} from "@heroicons/react/20/solid";
 import { LoadingBarDivider } from "../primitives/LoadingBarDivider";
 import { Callout } from "../primitives/Callout";
 import { ChartBarIcon } from "@heroicons/react/24/solid";
 import { cn } from "~/utils/cn";
-import { SimpleTooltip } from "../primitives/Tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverVerticalEllipseTrigger,
+} from "../primitives/Popover";
 
 const ChartType = z.union([z.literal("bar"), z.literal("line")]);
 export type ChartType = z.infer<typeof ChartType>;
@@ -88,8 +98,12 @@ export type QueryWidgetProps = {
   accessory?: ReactNode;
   isResizing?: boolean;
   isDraggable?: boolean;
-  /** Callback when edit button is clicked. Receives the current data. When provided, shows edit button on hover. */
+  /** Callback when edit is clicked. Receives the current data. */
   onEdit?: (data: QueryWidgetData) => void;
+  /** Callback when delete is clicked. */
+  onDelete?: () => void;
+  /** Callback when duplicate is clicked. Receives the current data. */
+  onDuplicate?: (data: QueryWidgetData) => void;
 };
 
 export function QueryWidget({
@@ -100,9 +114,14 @@ export function QueryWidget({
   isResizing,
   isDraggable,
   onEdit,
+  onDelete,
+  onDuplicate,
   ...props
 }: QueryWidgetProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const hasMenu = onEdit || onDelete || onDuplicate;
 
   return (
     <div className="h-full">
@@ -111,25 +130,50 @@ export function QueryWidget({
           <div className="flex items-center gap-1.5">{title}</div>
           <Card.Accessory>
             {accessory}
-            {onEdit && (
-              <SimpleTooltip
-                asChild
-                button={
-                  <Button
-                    className="py-1"
-                    variant="tertiary/small"
-                    LeadingIcon={PencilSquareIcon}
-                    onClick={() => onEdit(props.data)}
-                  />
-                }
-                content="Edit"
-              />
-            )}
             <Button
               variant="tertiary/small"
               LeadingIcon={ArrowsPointingOutIcon}
               onClick={() => setIsFullscreen(true)}
             />
+            {hasMenu && (
+              <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+                <PopoverVerticalEllipseTrigger isOpen={isMenuOpen} />
+                <PopoverContent className="min-w-[10rem] p-1" align="end">
+                  {onEdit && (
+                    <PopoverMenuItem
+                      icon={PencilSquareIcon}
+                      title="Edit chart"
+                      onClick={() => {
+                        onEdit(props.data);
+                        setIsMenuOpen(false);
+                      }}
+                    />
+                  )}
+                  {onDuplicate && (
+                    <PopoverMenuItem
+                      icon={DocumentDuplicateIcon}
+                      title="Duplicate chart"
+                      onClick={() => {
+                        onDuplicate(props.data);
+                        setIsMenuOpen(false);
+                      }}
+                    />
+                  )}
+                  {onDelete && (
+                    <PopoverMenuItem
+                      icon={TrashIcon}
+                      title="Delete chart"
+                      leadingIconClassName="text-error"
+                      className="text-error hover:!bg-error/10"
+                      onClick={() => {
+                        onDelete();
+                        setIsMenuOpen(false);
+                      }}
+                    />
+                  )}
+                </PopoverContent>
+              </Popover>
+            )}
           </Card.Accessory>
         </Card.Header>
         <LoadingBarDivider isLoading={isLoading ?? false} className="bg-transparent" />

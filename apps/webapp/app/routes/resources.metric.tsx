@@ -141,6 +141,10 @@ type MetricWidgetProps = {
   isDraggable?: boolean;
   /** Callback when edit button is clicked - receives current data */
   onEdit?: (data: QueryWidgetData) => void;
+  /** Callback when delete is clicked */
+  onDelete?: () => void;
+  /** Callback when duplicate is clicked - receives current data */
+  onDuplicate?: (data: QueryWidgetData) => void;
 } & z.infer<typeof MetricWidgetQuery>;
 
 export function MetricWidget({
@@ -151,6 +155,8 @@ export function MetricWidget({
   isResizing,
   isDraggable,
   onEdit,
+  onDelete,
+  onDuplicate,
   ...props
 }: MetricWidgetProps) {
   const fetcher = useFetcher<MetricWidgetActionResponse>();
@@ -186,6 +192,8 @@ export function MetricWidget({
       isResizing={isResizing}
       isDraggable={isDraggable}
       onEdit={onEdit}
+      onDelete={onDelete}
+      onDuplicate={onDuplicate}
     />
   );
 }
