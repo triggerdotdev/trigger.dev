@@ -21,15 +21,20 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const { environmentId } = ParamsSchema.parse(params);
 
+  const formData = await request.formData();
+  const syncToVercel = formData.get("syncToVercel") === "on";
+
   try {
     const updatedEnvironment = await regenerateApiKey({ userId, environmentId });
 
-    // Sync the regenerated API key to Vercel if integration exists
-    await syncApiKeyToVercel(
-      updatedEnvironment.projectId,
-      updatedEnvironment.type as "PRODUCTION" | "STAGING" | "PREVIEW" | "DEVELOPMENT",
-      updatedEnvironment.apiKey
-    );
+    // Sync the regenerated API key to Vercel only when requested and not for DEVELOPMENT
+    if (syncToVercel && updatedEnvironment.type !== "DEVELOPMENT") {
+      await syncApiKeyToVercel(
+        updatedEnvironment.projectId,
+        updatedEnvironment.type as "PRODUCTION" | "STAGING" | "PREVIEW",
+        updatedEnvironment.apiKey
+      );
+    }
 
     return jsonWithSuccessMessage(
       { ok: true },

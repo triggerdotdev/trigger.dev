@@ -47,7 +47,7 @@ function extractVercelEnvs(
 }
 
 function isVercelSecretType(type: string): boolean {
-  return type === "secret" || type === "sensitive" || type === "encrypted";
+  return type === "secret" || type === "sensitive";
 }
 
 // ---------------------------------------------------------------------------
@@ -809,12 +809,12 @@ export class VercelIntegrationRepository {
     return this.getVercelClient(params.orgIntegration).andThen((client) =>
       ResultAsync.fromPromise(
         (async () => {
-          // Get all environments for the project
+          // Get all environments for the project (exclude DEVELOPMENT — we don't push keys to Vercel's development target)
           const environments = await prisma.runtimeEnvironment.findMany({
             where: {
               projectId: params.projectId,
               type: {
-                in: ["PRODUCTION", "STAGING", "PREVIEW", "DEVELOPMENT"],
+                in: ["PRODUCTION", "STAGING", "PREVIEW"],
               },
             },
             select: {
