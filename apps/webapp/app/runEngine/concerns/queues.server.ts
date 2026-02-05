@@ -221,14 +221,126 @@ export class DefaultQueueManager implements QueueManager {
     return task.queue.name ?? defaultQueueName;
   }
 
+  /**
+   * Resolves queue names for batch items and groups them by queue.
+   * Returns a map of queue name -> count of items going to that queue.
+   */
+  async resolveQueueNamesForBatchItems(
+    environment: AuthenticatedEnvironment,
+    items: Array<{ task: string; options?: { queue?: { name?: string } } }>
+  ): Promise<Map<string, number>> {
+    const queueCounts = new Map<string, number>();
+
+    // Separate items with explicit queues from those needing lookup
+    const itemsNeedingLookup: Array<{ task: string; count: number }> = [];
+    const taskCounts = new Map<string, number>();
+
+    for (const item of items) {
+      const explicitQueueName = extractQueueName(item.options?.queue);
+
+      if (explicitQueueName) {
+        // Item has explicit queue - count it directly
+        const sanitized = sanitizeQueueName(explicitQueueName) || `task/${item.task}`;
+        queueCounts.set(sanitized, (queueCounts.get(sanitized) ?? 0) + 1);
+      } else {
+        // Need to look up default queue for this task - group by task
+        taskCounts.set(item.task, (taskCounts.get(item.task) ?? 0) + 1);
+      }
+    }
+
+    // Batch lookup default queues for all unique tasks
+    if (taskCounts.size > 0) {
+      const worker = await findCurrentWorkerFromEnvironment(environment, this.prisma);
+      const taskSlugs = Array.from(taskCounts.keys());
+
+      // Map task slug -> queue name
+      const taskQueueMap = new Map<string, string>();
+
+      if (worker) {
+        // Single query to get all tasks with their queues
+        const tasks = await this.prisma.backgroundWorkerTask.findMany({
+          where: {
+            workerId: worker.id,
+            runtimeEnvironmentId: environment.id,
+            slug: { in: taskSlugs },
+          },
+          include: {
+            queue: true,
+          },
+        });
+
+        for (const task of tasks) {
+          const queueName = task.queue?.name ?? `task/${task.slug}`;
+          taskQueueMap.set(task.slug, sanitizeQueueName(queueName) || `task/${task.slug}`);
+        }
+      }
+
+      // Count items per queue
+      for (const [taskSlug, count] of taskCounts) {
+        const queueName = taskQueueMap.get(taskSlug) ?? `task/${taskSlug}`;
+        queueCounts.set(queueName, (queueCounts.get(queueName) ?? 0) + count);
+      }
+    }
+
+    return queueCounts;
+  }
+
+  /**
+   * Validates queue limits for multiple queues at once.
+   * Returns the first queue that exceeds limits, or null if all are within limits.
+   */
+  async validateMultipleQueueLimits(
+    environment: AuthenticatedEnvironment,
+    queueCounts: Map<string, number>
+  ): Promise<{ ok: true } | { ok: false; queueName: string; maximumSize: number; queueSize: number }> {
+    const maximumSize = getMaximumSizeForEnvironment(environment);
+
+    logger.debug("validateMultipleQueueLimits", {
+      environmentId: environment.id,
+      environmentType: environment.type,
+      organizationId: environment.organization.id,
+      maximumDevQueueSize: environment.organization.maximumDevQueueSize,
+      maximumDeployedQueueSize: environment.organization.maximumDeployedQueueSize,
+      resolvedMaximumSize: maximumSize,
+      queueCounts: Object.fromEntries(queueCounts),
+    });
+
+    if (typeof maximumSize === "undefined") {
+      return { ok: true };
+    }
+
+    for (const [queueName, itemCount] of queueCounts) {
+      const queueSize = await getCachedQueueSize(this.engine, environment, queueName);
+      const projectedSize = queueSize + itemCount;
+
+      if (projectedSize > maximumSize) {
+        return {
+          ok: false,
+          queueName,
+          maximumSize,
+          queueSize,
+        };
+      }
+    }
+
+    return { ok: true };
+  }
+
   async validateQueueLimits(
     environment: AuthenticatedEnvironment,
+    queueName: string,
     itemsToAdd?: number
   ): Promise<QueueValidationResult> {
-    const queueSizeGuard = await guardQueueSizeLimitsForEnv(this.engine, environment, itemsToAdd);
+    const queueSizeGuard = await guardQueueSizeLimitsForQueue(
+      this.engine,
+      environment,
+      queueName,
+      itemsToAdd
+    );
 
     logger.debug("Queue size guard result", {
       queueSizeGuard,
+      queueName,
       environment: {
         id: environment.id,
         type: environment.type,
@@ -276,7 +388,7 @@ export class DefaultQueueManager implements QueueManager {
   }
 }
 
-function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): number | undefined {
+export function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): number | undefined {
   if (environment.type === "DEVELOPMENT") {
     return environment.organization.maximumDevQueueSize ?? env.MAXIMUM_DEV_QUEUE_SIZE;
   } else {
@@ -284,9 +396,10 @@ function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): nu
   }
 }
 
-async function guardQueueSizeLimitsForEnv(
+async function guardQueueSizeLimitsForQueue(
   engine: RunEngine,
   environment: AuthenticatedEnvironment,
+  queueName: string,
   itemsToAdd: number = 1
 ) {
   const maximumSize = getMaximumSizeForEnvironment(environment);
@@ -295,7 +408,7 @@ async function guardQueueSizeLimitsForEnv(
     return { isWithinLimits: true };
   }
 
-  const queueSize = await getCachedQueueSize(engine, environment);
+  const queueSize = await getCachedQueueSize(engine, environment, queueName);
   const projectedSize = queueSize + itemsToAdd;
 
   return {
@@ -307,10 +420,12 @@ async function guardQueueSizeLimitsForEnv(
 
 async function getCachedQueueSize(
   engine: RunEngine,
-  environment: AuthenticatedEnvironment
+  environment: AuthenticatedEnvironment,
+  queueName: string
 ): Promise<number> {
-  const result = await queueSizeCache.queueSize.swr(environment.id, async () => {
-    return engine.lengthOfEnvQueue(environment);
+  const cacheKey = `${environment.id}:${queueName}`;
+  const result = await queueSizeCache.queueSize.swr(cacheKey, async () => {
+    return engine.lengthOfQueue(environment, queueName);
   });
 
   return result.val ?? 0;

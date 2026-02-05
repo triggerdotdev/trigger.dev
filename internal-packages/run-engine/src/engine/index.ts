@@ -182,6 +182,14 @@ export class RunEngine {
       processWorkerQueueDebounceMs: options.queue?.processWorkerQueueDebounceMs,
       dequeueBlockingTimeoutSeconds: options.queue?.dequeueBlockingTimeoutSeconds,
       meter: options.meter,
+      ttlSystem: options.queue?.ttlSystem?.disabled
+        ? undefined
+        : {
+            shardCount: options.queue?.ttlSystem?.shardCount,
+            pollIntervalMs: options.queue?.ttlSystem?.pollIntervalMs,
+            batchSize: options.queue?.ttlSystem?.batchSize,
+            callback: this.#ttlExpiredCallback.bind(this),
+          },
     });
 
     this.worker = new Worker({
@@ -486,20 +494,35 @@ export class RunEngine {
             span.setAttribute("existingRunId", debounceResult.run.id);
 
             // For triggerAndWait, block the parent run with the existing run's waitpoint
-            if (resumeParentOnCompletion && parentTaskRunId && debounceResult.waitpoint) {
+            if (resumeParentOnCompletion && parentTaskRunId) {
+              // Get or create waitpoint lazily (existing run may not have one if it was standalone)
+              let waitpoint = debounceResult.waitpoint;
+              if (!waitpoint) {
+                waitpoint = await this.waitpointSystem.getOrCreateRunWaitpoint({
+                  runId: debounceResult.run.id,
+                  projectId: environment.project.id,
+                  environmentId: environment.id,
+                });
+              }
+
+              // If run already completed, return without blocking
+              if (!waitpoint) {
+                return debounceResult.run;
+              }
+
               // Call the onDebounced callback to create a span and get spanIdToComplete
               let spanIdToComplete: string | undefined;
               if (onDebounced) {
                 spanIdToComplete = await onDebounced({
                   existingRun: debounceResult.run,
-                  waitpoint: debounceResult.waitpoint,
+                  waitpoint,
                   debounceKey: debounce.key,
                 });
               }
 
               await this.waitpointSystem.blockRunWithWaitpoint({
                 runId: parentTaskRunId,
-                waitpoints: debounceResult.waitpoint.id,
+                waitpoints: waitpoint.id,
                 spanIdToComplete,
                 projectId: environment.project.id,
                 organizationId: environment.organization.id,
@@ -618,12 +641,17 @@ export class RunEngine {
                   runnerId,
                 },
               },
-              associatedWaitpoint: {
-                create: this.waitpointSystem.buildRunAssociatedWaitpoint({
-                  projectId: environment.project.id,
-                  environmentId: environment.id,
-                }),
-              },
+              // Only create waitpoint if parent is waiting for this run to complete
+              // For standalone triggers (no waiting parent), waitpoint is created lazily if needed later
+              associatedWaitpoint:
+                resumeParentOnCompletion && parentTaskRunId
+                  ? {
+                      create: this.waitpointSystem.buildRunAssociatedWaitpoint({
+                        projectId: environment.project.id,
+                        environmentId: environment.id,
+                      }),
+                    }
+                  : undefined,
             },
           });
         } catch (error) {
@@ -922,6 +950,10 @@ export class RunEngine {
     return this.runQueue.lengthOfEnvQueue(environment);
   }
 
+  async lengthOfQueue(environment: MinimalAuthenticatedEnvironment, queue: string): Promise<number> {
+    return this.runQueue.lengthOfQueue(environment, queue);
+  }
+
   async concurrencyOfEnvQueue(environment: MinimalAuthenticatedEnvironment): Promise<number> {
     return this.runQueue.currentConcurrencyOfEnvironment(environment);
   }
@@ -1159,6 +1191,14 @@ export class RunEngine {
     return this.batchQueue.getEnqueuedCount(batchId);
   }
 
+  /**
+   * Update the runCount for a batch.
+   * Used when items are skipped due to queue limits.
+   */
+  async updateBatchRunCount(batchId: string, newRunCount: number): Promise<void> {
+    return this.batchQueue.updateRunCount(batchId, newRunCount);
+  }
+
   async getWaitpoint({
     waitpointId,
     environmentId,
@@ -1243,6 +1283,29 @@ export class RunEngine {
     };
   }): Promise<Waitpoint> {
     return this.waitpointSystem.completeWaitpoint({ id, output });
+  }
+
+  /**
+   * Gets an existing run waitpoint or creates one lazily.
+   * Used for debounce/idempotency when a late-arriving triggerAndWait caller
+   * needs to block on an existing run that was created without a waitpoint.
+   *
+   * Returns null if the run has already completed (caller should return result directly).
+   */
+  async getOrCreateRunWaitpoint({
+    runId,
+    projectId,
+    environmentId,
+  }: {
+    runId: string;
+    projectId: string;
+    environmentId: string;
+  }): Promise<Waitpoint | null> {
+    return this.waitpointSystem.getOrCreateRunWaitpoint({
+      runId,
+      projectId,
+      environmentId,
+    });
   }
 
   /**
@@ -2023,6 +2086,41 @@ export class RunEngine {
         }
       }
     });
+  }
+
+  /**
+   * Callback for the TTL system when runs expire.
+   * Uses the optimized batch method that doesn't require run locks
+   * since the Lua script already atomically claimed these runs.
+   */
+  async #ttlExpiredCallback(
+    runs: Array<{ queueKey: string; runId: string; orgId: string }>
+  ): Promise<void> {
+    if (runs.length === 0) return;
+
+    try {
+      const runIds = runs.map((r) => r.runId);
+      const result = await this.ttlSystem.expireRunsBatch(runIds);
+
+      if (result.expired.length > 0) {
+        this.logger.debug("TTL system expired runs", {
+          expiredCount: result.expired.length,
+          expiredRunIds: result.expired,
+        });
+      }
+
+      if (result.skipped.length > 0) {
+        this.logger.debug("TTL system skipped runs", {
+          skippedCount: result.skipped.length,
+          skipped: result.skipped,
+        });
+      }
+    } catch (error) {
+      this.logger.error("Failed to expire runs via TTL system", {
+        runIds: runs.map((r) => r.runId),
+        error,
+      });
+    }
   }
 
   async #concurrencySweeperCallback(
