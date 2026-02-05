@@ -18,6 +18,7 @@ import type {
   Or,
   SelectQuery,
   SelectSetQuery,
+  Tuple,
 } from "./query/ast.js";
 import { CompareOperationOp } from "./query/ast.js";
 import { SyntaxError as TSQLSyntaxError } from "./query/errors.js";
@@ -355,6 +356,21 @@ export function createFallbackExpression(
       high: createValueExpression(fallback.high),
     };
     return betweenExpr;
+  }
+
+  if (fallback.op === "in") {
+    // Create a tuple of values for the IN clause
+    const tupleExpr: Tuple = {
+      expression_type: "tuple",
+      exprs: fallback.values.map((value) => createValueExpression(value)),
+    };
+    const inExpr: CompareOperation = {
+      expression_type: "compare_operation",
+      left: fieldExpr,
+      right: tupleExpr,
+      op: CompareOperationOp.In,
+    };
+    return inExpr;
   }
 
   // Simple comparison
