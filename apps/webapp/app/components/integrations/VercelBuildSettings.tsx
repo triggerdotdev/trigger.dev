@@ -7,7 +7,7 @@ import {
   environmentFullTitle,
   environmentTextClassName,
 } from "~/components/environments/EnvironmentLabel";
-import type { EnvSlug } from "~/v3/vercel/vercelProjectIntegrationSchema";
+import { envSlugToType, type EnvSlug } from "~/v3/vercel/vercelProjectIntegrationSchema";
 
 type BuildSettingsFieldsProps = {
   availableEnvSlugs: EnvSlug[];
@@ -19,10 +19,6 @@ type BuildSettingsFieldsProps = {
   onAtomicBuildsChange: (slugs: EnvSlug[]) => void;
   envVarsConfigLink?: string;
 };
-
-function slugToEnvType(slug: EnvSlug) {
-  return slug === "prod" ? "PRODUCTION" : slug === "stg" ? "STAGING" : "PREVIEW";
-}
 
 export function BuildSettingsFields({
   availableEnvSlugs,
@@ -66,7 +62,7 @@ export function BuildSettingsFields({
         </div>
         <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
           {availableEnvSlugs.map((slug) => {
-            const envType = slugToEnvType(slug);
+            const envType = envSlugToType(slug);
             return (
               <div key={slug} className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
@@ -125,7 +121,7 @@ export function BuildSettingsFields({
         </div>
         <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
           {availableEnvSlugs.map((slug) => {
-            const envType = slugToEnvType(slug);
+            const envType = envSlugToType(slug);
             const isPullDisabled = !pullEnvVarsBeforeBuild.includes(slug);
             return (
               <div

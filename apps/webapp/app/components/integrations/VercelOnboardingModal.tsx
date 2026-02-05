@@ -49,6 +49,18 @@ import { vercelResourcePath } from "~/routes/resources.orgs.$organizationSlug.pr
 import type { loader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import { useEffect, useState, useCallback, useRef } from "react";
 
+function safeRedirectUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    if (parsed.protocol === "https:" || parsed.origin === window.location.origin) {
+      return parsed.toString();
+    }
+  } catch {
+    // Invalid URL
+  }
+  return null;
+}
+
 function formatVercelTargets(targets: string[]): string {
   const targetLabels: Record<string, string> = {
     production: "Production",
@@ -241,9 +253,12 @@ export function VercelOnboardingModal({
       isGitHubConnectedForOnboarding
     ) {
       hasTriggeredMarketplaceRedirectRef.current = true;
-      setTimeout(() => {
-        window.location.href = nextUrl;
-      }, 100);
+      const validUrl = safeRedirectUrl(nextUrl);
+      if (validUrl) {
+        setTimeout(() => {
+          window.location.href = validUrl;
+        }, 100);
+      }
     }
   }, [isOpen, fromMarketplaceContext, nextUrl, isOnboardingComplete, isGitHubConnectedForOnboarding]);
 

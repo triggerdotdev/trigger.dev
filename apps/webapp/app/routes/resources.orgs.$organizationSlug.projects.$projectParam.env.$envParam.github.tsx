@@ -538,9 +538,11 @@ export function ConnectGitHubRepoModal({
                   </Button>
                 }
                 cancelButton={
-                  <DialogClose asChild>
-                    <Button variant="tertiary/medium">Cancel</Button>
-                  </DialogClose>
+                  preventDismiss ? undefined : (
+                    <DialogClose asChild>
+                      <Button variant="tertiary/medium">Cancel</Button>
+                    </DialogClose>
+                  )
                 }
               />
             </Fieldset>

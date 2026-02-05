@@ -349,7 +349,7 @@ export default function Page() {
         if (!isModalOpen) {
           openVercelOnboarding();
         }
-      } else if (vercelFetcher.state === "idle" && !vercelFetcher.data?.onboardingData) {
+      } else if (vercelFetcher.state === "idle" && vercelFetcher.data === undefined) {
         // Load onboarding data
         vercelFetcher.load(
           `${vercelResourcePath(organization.slug, project.slug, environment.slug)}?vercelOnboarding=true`

@@ -74,6 +74,8 @@ import {
 } from "~/v3/environmentVariables/repository";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
+import { fromPromise } from "neverthrow";
+import { logger } from "~/services/logger.server";
 import { shouldSyncEnvVar, isPullEnvVarsEnabledForEnvironment, type TriggerEnvironmentType } from "~/v3/vercel/vercelProjectIntegrationSchema";
 
 export const meta: MetaFunction = () => {
@@ -121,7 +123,7 @@ const schema = z.discriminatedUnion("action", [
     action: z.literal("update-vercel-sync"),
     key: z.string(),
     environmentType: z.enum(["PRODUCTION", "STAGING", "PREVIEW", "DEVELOPMENT"]),
-    syncEnabled: z.string().transform((val) => val === "true"),
+    syncEnabled: z.union([z.literal("true"), z.literal("false")]).transform((val) => val === "true"),
   }),
 ]);
 
@@ -187,22 +189,31 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         return json(submission);
       }
 
-      // Clean up syncEnvVarsMapping if Vercel integration exists
+      // Clean up syncEnvVarsMapping if Vercel integration exists (best-effort)
+      const { environmentId, key } = submission.value;
       const vercelService = new VercelIntegrationService();
-      const integration = await vercelService.getVercelProjectIntegration(project.id);
-      if (integration) {
-        const runtimeEnv = await prisma.runtimeEnvironment.findUnique({
-          where: { id: submission.value.environmentId },
-          select: { type: true },
-        });
-        if (runtimeEnv) {
-          await vercelService.removeSyncEnvVarForEnvironment(
-            project.id,
-            submission.value.key,
-            runtimeEnv.type as TriggerEnvironmentType
-          );
-        }
-      }
+      await fromPromise(
+        (async () => {
+          const integration = await vercelService.getVercelProjectIntegration(project.id);
+          if (integration) {
+            const runtimeEnv = await prisma.runtimeEnvironment.findUnique({
+              where: { id: environmentId },
+              select: { type: true },
+            });
+            if (runtimeEnv) {
+              await vercelService.removeSyncEnvVarForEnvironment(
+                project.id,
+                key,
+                runtimeEnv.type as TriggerEnvironmentType
+              );
+            }
+          }
+        })(),
+        (error) => error
+      ).mapErr((error) => {
+        logger.error("Failed to remove Vercel sync mapping", { error });
+        return error;
+      });
 
       return redirectWithSuccessMessage(
         v3EnvironmentVariablesPath(

@@ -1,5 +1,5 @@
 import { type PrismaClient } from "@trigger.dev/database";
-import { fromPromise, ok, okAsync, ResultAsync } from "neverthrow";
+import { type Result, fromPromise, ok, okAsync, ResultAsync } from "neverthrow";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
@@ -62,7 +62,7 @@ export class VercelSettingsPresenter extends BasePresenter {
   /**
    * Get Vercel integration settings for the settings page
    */
-  public async call({ projectId, organizationId }: VercelSettingsOptions) {
+  public async call({ projectId, organizationId }: VercelSettingsOptions): Promise<Result<VercelSettingsResult, unknown>> {
     const vercelIntegrationEnabled = OrgIntegrationRepository.isVercelSupported;
 
     if (!vercelIntegrationEnabled) {

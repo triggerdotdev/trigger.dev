@@ -158,24 +158,21 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }
 
   const presenter = new VercelSettingsPresenter();
-  const resultOrFail = await fromPromise(
-    presenter.call({
-      projectId: project.id,
-      organizationId: project.organizationId,
-    }),
-    (error) => error
-  );
+  const resultOrFail = await presenter.call({
+    projectId: project.id,
+    organizationId: project.organizationId,
+  });
 
-  if (resultOrFail.isErr() || !resultOrFail.value?.isOk()) {
+  if (resultOrFail.isErr()) {
     logger.error("Failed to load Vercel settings", {
       url: request.url,
       params,
-      error: resultOrFail.isErr() ? resultOrFail.error : undefined,
+      error: resultOrFail.error,
     });
     throw new Response("Failed to load Vercel settings", { status: 500 });
   }
 
-  const result = resultOrFail.value.value;
+  const result = resultOrFail.value;
   const url = new URL(request.url);
   const needsOnboarding = url.searchParams.get("vercelOnboarding") === "true";
   const vercelEnvironmentId = url.searchParams.get("vercelEnvironmentId") || undefined;
