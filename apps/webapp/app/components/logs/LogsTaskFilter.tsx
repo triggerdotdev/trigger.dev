@@ -43,7 +43,7 @@ export function LogsTaskFilter({ possibleTasks }: LogsTaskFilterProps) {
                 shortcut={shortcut}
                 tooltipTitle="Filter by task"
               >
-                Tasks
+                <span className="ml-0.5">Tasks</span>
               </SelectTrigger>
             }
             searchValue={search}
@@ -114,7 +114,7 @@ function TasksDropdown({
     <SelectProvider value={values("tasks")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
-        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        className="min-w-0 max-w-[min(360px,var(--popover-available-width))]"
         hideOnEscape={() => {
           if (onClose) {
             onClose();

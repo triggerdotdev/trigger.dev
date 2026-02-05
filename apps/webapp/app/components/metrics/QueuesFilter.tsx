@@ -40,7 +40,7 @@ export function QueuesFilter() {
                 shortcut={shortcut}
                 tooltipTitle="Filter by queue"
               >
-                Queues
+                <span className="ml-1">Queues</span>
               </SelectTrigger>
             }
             searchValue={search}
@@ -165,7 +165,7 @@ function QueuesDropdown({
     <SelectProvider value={selected ?? []} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
-        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        className="min-w-0 max-w-[min(360px,var(--popover-available-width))]"
         hideOnEscape={() => {
           if (onClose) {
             onClose();
