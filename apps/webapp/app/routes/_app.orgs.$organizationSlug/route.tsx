@@ -110,20 +110,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   // Derive metric dashboard limit from plan, fallback to 3
-  const metricDashboardsLimitValue = (plan?.v3Subscription?.plan?.limits as any)
-    ?.metricDashboards;
+  const metricDashboardsLimitValue = plan?.v3Subscription?.plan?.limits?.metricDashboards;
   const dashboardLimit =
     typeof metricDashboardsLimitValue === "number"
       ? metricDashboardsLimitValue
-      : (metricDashboardsLimitValue?.number ?? 3);
+      : metricDashboardsLimitValue?.number ?? 3;
 
   // Derive widget-per-dashboard limit from plan, fallback to 16
-  const metricWidgetsLimitValue = (plan?.v3Subscription?.plan?.limits as any)
-    ?.metricWidgetsPerDashboard;
+  const metricWidgetsLimitValue = plan?.v3Subscription?.plan?.limits?.metricWidgetsPerDashboard;
   const widgetLimitPerDashboard =
     typeof metricWidgetsLimitValue === "number"
       ? metricWidgetsLimitValue
-      : (metricWidgetsLimitValue?.number ?? 16);
+      : metricWidgetsLimitValue?.number ?? 16;
 
   // Compute widget counts per dashboard from layout JSON
   const customDashboardsWithWidgetCount = customDashboards.map((d) => {
