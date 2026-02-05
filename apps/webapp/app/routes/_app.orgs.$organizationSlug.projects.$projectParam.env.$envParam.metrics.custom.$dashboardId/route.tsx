@@ -281,72 +281,70 @@ export default function Page() {
     };
   }, [layoutJson]);
 
-  const handleLayoutChange = useCallback(
-    (newLayout: LayoutItem[]) => {
-      // Skip if not yet initialized (prevents saving during mount/navigation)
-      if (!isInitializedRef.current) {
-        return;
-      }
+  const handleLayoutChange = useCallback((newLayout: LayoutItem[]) => {
+    // Skip if not yet initialized (prevents saving during mount/navigation)
+    if (!isInitializedRef.current) {
+      return;
+    }
 
-      const newLayoutJson = JSON.stringify(newLayout);
+    const newLayoutJson = JSON.stringify(newLayout);
 
-      // Skip if layout hasn't actually changed
-      if (newLayoutJson === currentLayoutJsonRef.current) {
-        return;
-      }
+    // Skip if layout hasn't actually changed
+    if (newLayoutJson === currentLayoutJsonRef.current) {
+      return;
+    }
 
-      // Clear existing timeout
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
+    // Clear existing timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
 
-      // Debounce auto-save by 500ms
-      debounceTimeoutRef.current = setTimeout(() => {
-        currentLayoutJsonRef.current = newLayoutJson;
-        fetcher.submit({ action: "layout", layout: newLayoutJson }, { method: "POST" });
-      }, 500);
-    },
-    [fetcher]
-  );
+    // Debounce auto-save by 500ms
+    debounceTimeoutRef.current = setTimeout(() => {
+      currentLayoutJsonRef.current = newLayoutJson;
+      fetcher.submit({ action: "layout", layout: newLayoutJson }, { method: "POST" });
+    }, 500);
+  }, []);
 
   const handleEditWidget = useCallback((widgetId: string, widget: WidgetData) => {
     setEditorMode({ type: "edit", widgetId, widget });
   }, []);
 
-  // Build the action URLs for delete/duplicate widget
-  const deleteWidgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/delete-widget`;
-  const duplicateWidgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/duplicate-widget`;
+  // Build the action URL for all widget operations
+  const widgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/widgets`;
 
   const handleDeleteWidget = useCallback(
     (widgetId: string) => {
-      widgetActionFetcher.submit({ widgetId }, { method: "POST", action: deleteWidgetActionUrl });
+      widgetActionFetcher.submit(
+        { action: "delete", widgetId },
+        { method: "POST", action: widgetActionUrl }
+      );
     },
-    [widgetActionFetcher, deleteWidgetActionUrl]
+    [widgetActionUrl]
   );
 
   const handleDuplicateWidget = useCallback(
     (widgetId: string) => {
-      widgetActionFetcher.submit({ widgetId }, { method: "POST", action: duplicateWidgetActionUrl });
+      widgetActionFetcher.submit(
+        { action: "duplicate", widgetId },
+        { method: "POST", action: widgetActionUrl }
+      );
     },
-    [widgetActionFetcher, duplicateWidgetActionUrl]
+    [widgetActionUrl]
   );
 
   const handleCloseEditor = useCallback(() => {
     setEditorMode(null);
   }, []);
 
-  // Build the action URLs for add/update widget
-  const addWidgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/add-widget`;
-  const updateWidgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/update-widget`;
-
   // Render save form for the QueryEditor
   const renderSaveForm = useCallback(
     (data: QueryEditorSaveData) => {
       const isAdd = editorMode?.type === "add";
-      const actionUrl = isAdd ? addWidgetActionUrl : updateWidgetActionUrl;
 
       return (
-        <widgetActionFetcher.Form method="post" action={actionUrl}>
+        <widgetActionFetcher.Form method="post" action={widgetActionUrl}>
+          <input type="hidden" name="action" value={isAdd ? "add" : "update"} />
           {editorMode?.type === "edit" && (
             <input type="hidden" name="widgetId" value={editorMode.widgetId} />
           )}
@@ -359,7 +357,7 @@ export default function Page() {
         </widgetActionFetcher.Form>
       );
     },
-    [editorMode, addWidgetActionUrl, updateWidgetActionUrl, widgetActionFetcher]
+    [editorMode, widgetActionUrl]
   );
 
   // Prepare editor props when in editor mode
