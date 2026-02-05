@@ -443,20 +443,14 @@ function RenameDashboardDialog({ title }: { title: string }) {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <span className="flex items-center gap-1">
-        {title}
-        <DialogTrigger asChild>
-          <button
-            type="button"
-            className="rounded p-0.5 text-text-dimmed transition focus-custom hover:bg-charcoal-700 hover:text-text-bright"
-          >
-            <IconEdit className="size-4" />
-          </button>
-        </DialogTrigger>
-      </span>
-      <DialogContent className="sm:max-w-md">
+      <DialogTrigger asChild>
+        <Button variant="small-menu-item" LeadingIcon={IconEdit} fullWidth textAlignLeft>
+          Rename dashboard
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-sm">
         <DialogHeader>Rename dashboard</DialogHeader>
-        <Form method="post" className="space-y-4 pt-3">
+        <Form method="post" className="space-y-4">
           <input type="hidden" name="action" value="rename" />
           <InputGroup>
             <Label>Title</Label>
