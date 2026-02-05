@@ -485,14 +485,6 @@ export function SideMenu({
                   "metrics"
                 )}
                 onCollapseToggle={handleSectionToggle("metrics")}
-                headerAction={
-                  <CreateDashboardButton
-                    organization={organization}
-                    project={project}
-                    environment={environment}
-                    isCollapsed={isCollapsed}
-                  />
-                }
               >
                 <SideMenuItem
                   name="Query"
@@ -511,6 +503,14 @@ export function SideMenu({
                   to={v3BuiltInDashboardPath(organization, project, environment, "overview")}
                   data-action="metrics-overview"
                   isCollapsed={isCollapsed}
+                  action={
+                    <CreateDashboardButton
+                      organization={organization}
+                      project={project}
+                      environment={environment}
+                      isCollapsed={isCollapsed}
+                    />
+                  }
                 />
                 {customDashboards.map((dashboard) => (
                   <SideMenuItem
@@ -1042,9 +1042,9 @@ function CreateDashboardButton({
             <DialogTrigger asChild>
               <button
                 type="button"
-                className="rounded p-0.5 text-text-dimmed transition hover:bg-charcoal-600 hover:text-text-bright"
+                className="flex h-full w-full items-center justify-center rounded text-text-dimmed transition hover:bg-charcoal-600 hover:text-text-bright"
               >
-                <PlusIcon className="size-3.5" />
+                <PlusIcon className="size-4" />
               </button>
             </DialogTrigger>
           </TooltipTrigger>
