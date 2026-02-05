@@ -1,5 +1,8 @@
+import type { TaskTriggerSource } from "@trigger.dev/database";
+import { $replica } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { getAllTaskIdentifiers } from "~/models/task.server";
 import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import {
@@ -19,9 +22,13 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
+import { LogsTaskFilter } from "~/components/logs/LogsTaskFilter";
+import { ScopeFilter } from "~/components/metrics/ScopeFilter";
+import { QueuesFilter } from "~/components/metrics/QueuesFilter";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type WidgetData } from "~/components/metrics/QueryWidget";
+import type { QueryScope } from "~/services/queryService.server";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardKey: z.string(),
@@ -48,16 +55,30 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   const presenter = new MetricDashboardPresenter();
-  const dashboard = await presenter.builtInDashboard({
-    organizationId: project.organizationId,
-    key: dashboardKey,
-  });
+  const [dashboard, possibleTasks] = await Promise.all([
+    presenter.builtInDashboard({
+      organizationId: project.organizationId,
+      key: dashboardKey,
+    }),
+    getAllTaskIdentifiers($replica, environment.id),
+  ]);
 
-  return typedjson(dashboard);
+  return typedjson({
+    ...dashboard,
+    possibleTasks: possibleTasks
+      .map((task) => ({ slug: task.slug, triggerSource: task.triggerSource }))
+      .sort((a, b) => a.slug.localeCompare(b.slug)),
+  });
 };
 
 export default function Page() {
-  const { key, title, layout: dashboardLayout, defaultPeriod } = useTypedLoaderData<typeof loader>();
+  const {
+    key,
+    title,
+    layout: dashboardLayout,
+    defaultPeriod,
+    possibleTasks,
+  } = useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
@@ -72,6 +93,7 @@ export default function Page() {
             widgets={dashboardLayout.widgets}
             defaultPeriod={defaultPeriod}
             editable={false}
+            possibleTasks={possibleTasks}
           />
         </div>
       </PageBody>
@@ -84,6 +106,7 @@ export function MetricDashboard({
   widgets,
   defaultPeriod,
   editable,
+  possibleTasks,
   onLayoutChange,
   onEditWidget,
   onRenameWidget,
@@ -96,13 +119,15 @@ export function MetricDashboard({
   widgets: Record<string, Widget>;
   defaultPeriod: string;
   editable: boolean;
+  /** Possible tasks for filtering */
+  possibleTasks?: { slug: string; triggerSource: TaskTriggerSource }[];
   onLayoutChange?: (layout: LayoutItem[]) => void;
   onEditWidget?: (widgetId: string, widget: WidgetData) => void;
   onRenameWidget?: (widgetId: string, newTitle: string) => void;
   onDeleteWidget?: (widgetId: string) => void;
   onDuplicateWidget?: (widgetId: string, widget: WidgetData) => void;
 }) {
-  const { value } = useSearchParams();
+  const { value, values } = useSearchParams();
   const { width, containerRef, mounted } = useContainerWidth();
   const [resizingItemId, setResizingItemId] = useState<string | null>(null);
 
@@ -116,6 +141,9 @@ export function MetricDashboard({
   const period = value("period");
   const from = value("from");
   const to = value("to");
+  const scope = (value("scope") as QueryScope) ?? "environment";
+  const tasks = values("tasks").filter((v) => v !== "");
+  const queues = values("queues").filter((v) => v !== "");
 
   const handleLayoutChange = useCallback(
     (newLayout: readonly LayoutItem[]) => {
@@ -127,7 +155,10 @@ export function MetricDashboard({
 
   return (
     <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
-      <div className="flex items-center border-b border-b-grid-bright px-3 py-2">
+      <div className="flex items-center gap-2 border-b border-b-grid-bright px-3 py-2">
+        <ScopeFilter />
+        <LogsTaskFilter possibleTasks={possibleTasks ?? []} />
+        <QueuesFilter />
         <TimeFilter
           defaultPeriod={defaultPeriod}
           labelName="Period"
@@ -159,10 +190,12 @@ export function MetricDashboard({
                   widgetKey={key}
                   title={widget.title}
                   query={widget.query}
-                  scope="environment"
+                  scope={scope}
                   period={period ?? null}
                   from={from ?? null}
                   to={to ?? null}
+                  taskIdentifiers={tasks.length > 0 ? tasks : undefined}
+                  queues={queues.length > 0 ? queues : undefined}
                   config={widget.display}
                   organizationId={organization.id}
                   projectId={project.id}

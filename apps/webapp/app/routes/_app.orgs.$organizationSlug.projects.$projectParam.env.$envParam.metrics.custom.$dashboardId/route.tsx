@@ -30,7 +30,7 @@ import {
 import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
 import { ToastUI } from "~/components/primitives/Toast";
 import { QueryEditor, type QueryEditorSaveData } from "~/components/query/QueryEditor";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { useDashboardEditor } from "~/hooks/useDashboardEditor";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -39,7 +39,11 @@ import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { LayoutItem, MetricDashboardPresenter } from "~/presenters/v3/MetricDashboardPresenter.server";
+import { getAllTaskIdentifiers } from "~/models/task.server";
+import {
+  LayoutItem,
+  MetricDashboardPresenter,
+} from "~/presenters/v3/MetricDashboardPresenter.server";
 import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema, queryPath, v3BuiltInDashboardPath } from "~/utils/pathBuilder";
@@ -72,16 +76,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   const dashboardPresenter = new MetricDashboardPresenter();
-  const dashboard = await dashboardPresenter.customDashboard({
-    friendlyId: dashboardId,
-    organizationId: project.organizationId,
-  });
-
-  // Load query-related data for the editor
   const queryPresenter = new QueryPresenter();
-  const { defaultQuery, history } = await queryPresenter.call({
-    organizationId: project.organizationId,
-  });
+
+  const [dashboard, { defaultQuery, history }, possibleTasks] = await Promise.all([
+    dashboardPresenter.customDashboard({
+      friendlyId: dashboardId,
+      organizationId: project.organizationId,
+    }),
+    queryPresenter.call({
+      organizationId: project.organizationId,
+    }),
+    getAllTaskIdentifiers($replica, environment.id),
+  ]);
 
   // Admins and impersonating users can use EXPLAIN
   const isAdmin = user.admin || user.isImpersonating;
@@ -93,6 +99,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     queryHistory: history,
     isAdmin,
     maxRows: env.QUERY_CLICKHOUSE_MAX_RETURNED_ROWS,
+    possibleTasks: possibleTasks
+      .map((task) => ({ slug: task.slug, triggerSource: task.triggerSource }))
+      .sort((a, b) => a.slug.localeCompare(b.slug)),
   });
 };
 
@@ -217,6 +226,7 @@ export default function Page() {
     queryHistory,
     isAdmin,
     maxRows,
+    possibleTasks,
   } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
@@ -348,11 +358,7 @@ export default function Page() {
       <NavBar>
         <PageTitle title={<RenameDashboardDialog title={title} />} />
         <PageAccessories>
-          <Button
-            variant="tertiary/small"
-            LeadingIcon={PlusIcon}
-            onClick={actions.openAddEditor}
-          >
+          <Button variant="tertiary/small" LeadingIcon={PlusIcon} onClick={actions.openAddEditor}>
             Add chart
           </Button>
           <Popover>
@@ -371,6 +377,7 @@ export default function Page() {
             widgets={state.widgets}
             defaultPeriod={defaultPeriod}
             editable={true}
+            possibleTasks={possibleTasks}
             onLayoutChange={actions.updateLayout}
             onEditWidget={actions.openEditEditor}
             onRenameWidget={actions.renameWidget}

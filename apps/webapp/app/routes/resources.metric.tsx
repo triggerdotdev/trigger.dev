@@ -103,6 +103,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     period,
     from,
     to,
+    taskIdentifiers,
+    queues,
     // Set higher concurrency if many widgets are on screen at once
     customOrgConcurrencyLimit: 15,
   });
@@ -176,10 +178,18 @@ export function MetricWidget({
   // Reload periodically and on focus
   useInterval({ interval: refreshIntervalMs, callback: submit });
 
-  // Reload when query or time period changes
+  // Reload when query, time period, or filters change
   useEffect(() => {
     submit();
-  }, [props.query, props.from, props.to, props.period]);
+  }, [
+    props.query,
+    props.from,
+    props.to,
+    props.period,
+    props.scope,
+    JSON.stringify(props.taskIdentifiers),
+    JSON.stringify(props.queues),
+  ]);
 
   const data = fetcher.data?.success
     ? { rows: fetcher.data.data.rows, columns: fetcher.data.data.columns }

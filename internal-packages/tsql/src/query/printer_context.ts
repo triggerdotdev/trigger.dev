@@ -41,10 +41,20 @@ export interface BetweenCondition {
 }
 
 /**
- * A WHERE clause condition that can be either a simple comparison or a BETWEEN.
+ * An IN condition (e.g., column IN ('a', 'b', 'c'))
+ */
+export interface InCondition {
+  /** The in operator */
+  op: "in";
+  /** The values to check against */
+  values: (string | number)[];
+}
+
+/**
+ * A WHERE clause condition that can be either a simple comparison, a BETWEEN, or an IN.
  * Used for both enforcedWhereClause (always applied) and whereClauseFallback (default when user doesn't filter).
  */
-export type WhereClauseCondition = SimpleComparisonCondition | BetweenCondition;
+export type WhereClauseCondition = SimpleComparisonCondition | BetweenCondition | InCondition;
 
 /**
  * Default query settings
@@ -254,4 +264,3 @@ export function createPrinterContext(options: PrinterContextOptions): PrinterCon
     options.enforcedWhereClause
   );
 }
-

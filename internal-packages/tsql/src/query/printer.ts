@@ -1691,6 +1691,21 @@ export class ClickHousePrinter {
       return betweenExpr;
     }
 
+    if (condition.op === "in") {
+      // Create a tuple of values for the IN clause
+      const tupleExpr: Tuple = {
+        expression_type: "tuple",
+        exprs: condition.values.map((value) => this.createValueExpression(value)),
+      };
+      const inExpr: CompareOperation = {
+        expression_type: "compare_operation",
+        left: fieldExpr,
+        right: tupleExpr,
+        op: CompareOperationOp.In,
+      };
+      return inExpr;
+    }
+
     // Simple comparison
     const compareExpr: CompareOperation = {
       expression_type: "compare_operation",
