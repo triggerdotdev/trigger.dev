@@ -168,7 +168,7 @@ export function MetricWidget({
       action: `/resources/metric`,
       encType: "application/json",
     });
-  }, [props]);
+  }, [JSON.stringify(props)]);
 
   // Reload periodically and on focus
   useInterval({ interval: refreshIntervalMs, callback: submit });
