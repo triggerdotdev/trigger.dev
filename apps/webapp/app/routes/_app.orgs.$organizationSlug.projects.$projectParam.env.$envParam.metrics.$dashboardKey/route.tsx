@@ -79,12 +79,16 @@ export function MetricDashboard({
   editable,
   onLayoutChange,
   onEditWidget,
+  onDeleteWidget,
+  onDuplicateWidget,
 }: {
   data: DashboardLayout;
   defaultPeriod: string;
   editable: boolean;
   onLayoutChange?: (layout: LayoutItem[]) => void;
   onEditWidget?: (widgetId: string, widget: WidgetData) => void;
+  onDeleteWidget?: (widgetId: string) => void;
+  onDuplicateWidget?: (widgetId: string, widget: WidgetData) => void;
 }) {
   const [layout, setLayout] = useState(data.layout);
   const { value } = useSearchParams();
@@ -167,6 +171,12 @@ export function MetricDashboard({
                   onEdit={
                     onEditWidget
                       ? (resultData) => onEditWidget(key, { ...widget, resultData })
+                      : undefined
+                  }
+                  onDelete={onDeleteWidget ? () => onDeleteWidget(key) : undefined}
+                  onDuplicate={
+                    onDuplicateWidget
+                      ? (resultData) => onDuplicateWidget(key, { ...widget, resultData })
                       : undefined
                   }
                 />

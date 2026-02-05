@@ -1,7 +1,7 @@
 import { PlusIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { Form, useFetcher, useNavigation } from "@remix-run/react";
+import { Form, useFetcher, useNavigation, useRevalidator } from "@remix-run/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -45,7 +45,6 @@ import type { WidgetData } from "~/components/metrics/QueryWidget";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { useRevalidateOnParam } from "~/hooks/useRevalidateOnParam";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { defaultChartConfig } from "~/components/code/ChartConfigPanel";
 
@@ -231,6 +230,8 @@ export default function Page() {
   const maxPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
 
   const fetcher = useFetcher<typeof action>();
+  const widgetActionFetcher = useFetcher();
+  const { revalidate } = useRevalidator();
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitializedRef = useRef(false);
   const currentLayoutJsonRef = useRef<string>(JSON.stringify(layout.layout));
@@ -238,11 +239,14 @@ export default function Page() {
   // Editor mode state
   const [editorMode, setEditorMode] = useState<EditorMode>(null);
 
-  // Revalidate when redirected back with _revalidate param, and close the editor
-  useRevalidateOnParam({
-    param: "_revalidate",
-    onRevalidate: () => setEditorMode(null),
-  });
+  // Revalidate when widget action (delete/duplicate/add/update) completes
+  useEffect(() => {
+    if (widgetActionFetcher.state === "idle" && widgetActionFetcher.data) {
+      revalidate();
+      // Close the editor if it was open (for add/update operations)
+      setEditorMode(null);
+    }
+  }, [widgetActionFetcher.state, widgetActionFetcher.data]);
 
   // Build the query action URL
   const queryActionUrl = queryPath(
@@ -309,6 +313,24 @@ export default function Page() {
     setEditorMode({ type: "edit", widgetId, widget });
   }, []);
 
+  // Build the action URLs for delete/duplicate widget
+  const deleteWidgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/delete-widget`;
+  const duplicateWidgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/duplicate-widget`;
+
+  const handleDeleteWidget = useCallback(
+    (widgetId: string) => {
+      widgetActionFetcher.submit({ widgetId }, { method: "POST", action: deleteWidgetActionUrl });
+    },
+    [widgetActionFetcher, deleteWidgetActionUrl]
+  );
+
+  const handleDuplicateWidget = useCallback(
+    (widgetId: string) => {
+      widgetActionFetcher.submit({ widgetId }, { method: "POST", action: duplicateWidgetActionUrl });
+    },
+    [widgetActionFetcher, duplicateWidgetActionUrl]
+  );
+
   const handleCloseEditor = useCallback(() => {
     setEditorMode(null);
   }, []);
@@ -324,7 +346,7 @@ export default function Page() {
       const actionUrl = isAdd ? addWidgetActionUrl : updateWidgetActionUrl;
 
       return (
-        <Form method="post" action={actionUrl}>
+        <widgetActionFetcher.Form method="post" action={actionUrl}>
           {editorMode?.type === "edit" && (
             <input type="hidden" name="widgetId" value={editorMode.widgetId} />
           )}
@@ -334,10 +356,10 @@ export default function Page() {
           <Button type="submit" variant="primary/small" disabled={!data.query}>
             {isAdd ? "Add to dashboard" : "Save changes"}
           </Button>
-        </Form>
+        </widgetActionFetcher.Form>
       );
     },
-    [editorMode, addWidgetActionUrl, updateWidgetActionUrl]
+    [editorMode, addWidgetActionUrl, updateWidgetActionUrl, widgetActionFetcher]
   );
 
   // Prepare editor props when in editor mode
@@ -415,6 +437,8 @@ export default function Page() {
             editable={true}
             onLayoutChange={handleLayoutChange}
             onEditWidget={handleEditWidget}
+            onDeleteWidget={handleDeleteWidget}
+            onDuplicateWidget={handleDuplicateWidget}
           />
         </div>
       </PageBody>
