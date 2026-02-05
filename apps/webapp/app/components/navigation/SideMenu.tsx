@@ -40,7 +40,11 @@ import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment, useEnvironment } from "~/hooks/useEnvironment";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
-import { type MatchedOrganization, useCustomDashboards } from "~/hooks/useOrganizations";
+import {
+  type MatchedOrganization,
+  useCustomDashboards,
+  useDashboardLimits,
+} from "~/hooks/useOrganizations";
 import { type MatchedProject, useProject } from "~/hooks/useProject";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
@@ -55,6 +59,7 @@ function getSectionCollapsed(
 ): boolean {
   return sideMenu?.collapsedSections?.[sectionId] ?? false;
 }
+import { Feedback } from "~/components/Feedback";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
 import { IncidentStatusPanel } from "~/routes/resources.incidents";
@@ -99,7 +104,14 @@ import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
-import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from "../primitives/Dialog";
 import { FormButtons } from "../primitives/FormButtons";
 import { Input } from "../primitives/Input";
 import { InputGroup } from "../primitives/InputGroup";
@@ -1002,6 +1014,14 @@ function CreateDashboardButton({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const navigation = useNavigation();
+  const limits = useDashboardLimits();
+  const plan = useCurrentPlan();
+
+  const isAtLimit = limits.used >= limits.limit;
+  const planLimits = (plan?.v3Subscription?.plan?.limits as any)?.metricDashboards;
+  const canExceed =
+    typeof planLimits === "object" && planLimits.canExceed === true;
+  const canUpgrade = plan?.v3Subscription?.plan && !canExceed;
 
   const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/create`;
 
@@ -1033,12 +1053,57 @@ function CreateDashboardButton({
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <CreateDashboardDialog formAction={formAction} />
+      {isAtLimit ? (
+        <CreateDashboardUpgradeDialog
+          limits={limits}
+          canUpgrade={!!canUpgrade}
+          organization={organization}
+        />
+      ) : (
+        <CreateDashboardDialog formAction={formAction} limits={limits} />
+      )}
     </Dialog>
   );
 }
 
-function CreateDashboardDialog({ formAction }: { formAction: string }) {
+function CreateDashboardUpgradeDialog({
+  limits,
+  canUpgrade,
+  organization,
+}: {
+  limits: { used: number; limit: number };
+  canUpgrade: boolean;
+  organization: MatchedOrganization;
+}) {
+  return (
+    <DialogContent>
+      <DialogHeader>You've exceeded your limit</DialogHeader>
+      <DialogDescription>
+        You've used {limits.used}/{limits.limit} of your custom dashboards.
+      </DialogDescription>
+      <DialogFooter>
+        {canUpgrade ? (
+          <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+            Upgrade
+          </LinkButton>
+        ) : (
+          <Feedback
+            button={<Button variant="primary/small">Request more</Button>}
+            defaultValue="help"
+          />
+        )}
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+function CreateDashboardDialog({
+  formAction,
+  limits,
+}: {
+  formAction: string;
+  limits: { used: number; limit: number };
+}) {
   const navigation = useNavigation();
   const [title, setTitle] = useState("");
 
@@ -1058,6 +1123,9 @@ function CreateDashboardDialog({ formAction }: { formAction: string }) {
             required
           />
         </InputGroup>
+        <Paragraph variant="extra-small" className="text-text-dimmed">
+          {limits.used}/{limits.limit} dashboards used
+        </Paragraph>
         <FormButtons
           confirmButton={
             <Button type="submit" variant="primary/medium" disabled={isLoading || !title.trim()}>

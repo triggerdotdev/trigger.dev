@@ -1,4 +1,4 @@
-import { PlusIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { ArrowUpCircleIcon, PlusIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
@@ -7,15 +7,18 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { toast } from "sonner";
 import { z } from "zod";
 import { defaultChartConfig } from "~/components/code/ChartConfigPanel";
+import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTrigger,
 } from "~/components/primitives/Dialog";
+import { Header3 } from "~/components/primitives/Headers";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -34,7 +37,7 @@ import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { useDashboardEditor } from "~/hooks/useDashboardEditor";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { useOrganization } from "~/hooks/useOrganizations";
+import { useOrganization, useWidgetLimitPerDashboard } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
@@ -46,7 +49,13 @@ import {
 } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
 import { requireUser, requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema, queryPath, v3BuiltInDashboardPath } from "~/utils/pathBuilder";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import {
+  EnvironmentParamSchema,
+  queryPath,
+  v3BillingPath,
+  v3BuiltInDashboardPath,
+} from "~/utils/pathBuilder";
 import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.metrics.$dashboardKey/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { IconEdit } from "@tabler/icons-react";
@@ -92,6 +101,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Admins and impersonating users can use EXPLAIN
   const isAdmin = user.admin || user.isImpersonating;
 
+  // Compute widget count from dashboard layout
+  const widgetCount = Object.keys(dashboard.layout.widgets).length;
+
   return typedjson({
     ...dashboard,
     // Query editor data
@@ -102,6 +114,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     possibleTasks: possibleTasks
       .map((task) => ({ slug: task.slug, triggerSource: task.triggerSource }))
       .sort((a, b) => a.slug.localeCompare(b.slug)),
+    widgetCount,
   });
 };
 
@@ -227,6 +240,7 @@ export default function Page() {
     isAdmin,
     maxRows,
     possibleTasks,
+    widgetCount: initialWidgetCount,
   } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
@@ -234,6 +248,12 @@ export default function Page() {
   const environment = useEnvironment();
   const plan = useCurrentPlan();
   const maxPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
+
+  // Widget limits
+  const widgetLimitPerDashboard = useWidgetLimitPerDashboard();
+  const planLimits = (plan?.v3Subscription?.plan?.limits as any)?.metricWidgetsPerDashboard;
+  const canExceedWidgets =
+    typeof planLimits === "object" && planLimits.canExceed === true;
 
   // Build the action URLs
   const widgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/widgets`;
@@ -261,13 +281,28 @@ export default function Page() {
     ));
   }, []);
 
+  // Widget limit dialog state (triggered when hook blocks add/duplicate)
+  const [showWidgetLimitDialog, setShowWidgetLimitDialog] = useState(false);
+
+  const handleWidgetLimitReached = useCallback(() => {
+    setShowWidgetLimitDialog(true);
+  }, []);
+
   // Use the dashboard editor hook for all state management
   const { state, actions } = useDashboardEditor({
     initialData: dashboardLayout,
     widgetActionUrl,
     layoutActionUrl,
+    widgetLimit: canExceedWidgets ? undefined : widgetLimitPerDashboard,
     onSyncError: handleSyncError,
+    onWidgetLimitReached: handleWidgetLimitReached,
   });
+
+  // Reactive widget count from editor state
+  const currentWidgetCount = Object.keys(state.widgets).length;
+  const widgetLimits = { used: currentWidgetCount, limit: widgetLimitPerDashboard };
+  const widgetIsAtLimit = currentWidgetCount >= widgetLimitPerDashboard;
+  const widgetCanUpgrade = plan?.v3Subscription?.plan && !canExceedWidgets;
 
   // Build the query action URL for the editor
   const queryActionUrl = queryPath(
@@ -358,9 +393,51 @@ export default function Page() {
       <NavBar>
         <PageTitle title={title} />
         <PageAccessories>
+<<<<<<< ours
+          {widgetIsAtLimit ? (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="tertiary/small" LeadingIcon={PlusIcon}>
+                  Add chart
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>You've exceeded your widget limit</DialogHeader>
+                <DialogDescription>
+                  You've used {widgetLimits.used}/{widgetLimits.limit} widgets on this dashboard.
+                </DialogDescription>
+                <DialogFooter>
+                  {widgetCanUpgrade ? (
+                    <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+                      Upgrade
+                    </LinkButton>
+                  ) : (
+                    <Feedback
+                      button={<Button variant="primary/small">Request more</Button>}
+                      defaultValue="help"
+                    />
+                  )}
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          ) : (
+            <Button
+              variant="tertiary/small"
+              LeadingIcon={PlusIcon}
+              onClick={actions.openAddEditor}
+            >
+              Add chart
+            </Button>
+          )}
+||||||| ancestor
+          <Button variant="tertiary/small" LeadingIcon={PlusIcon} onClick={actions.openAddEditor}>
+            Add chart
+          </Button>
+=======
           <Button variant="secondary/small" LeadingIcon={PlusIcon} onClick={actions.openAddEditor}>
             Add chart
           </Button>
+>>>>>>> theirs
           <Popover>
             <PopoverVerticalEllipseTrigger variant="secondary" />
             <PopoverContent className="w-fit min-w-[10rem] p-1" align="end">
@@ -373,20 +450,81 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="h-full">
-          <MetricDashboard
-            key={friendlyId}
-            layout={state.layout}
-            widgets={state.widgets}
-            defaultPeriod={defaultPeriod}
-            editable={true}
-            possibleTasks={possibleTasks}
-            onLayoutChange={actions.updateLayout}
-            onEditWidget={actions.openEditEditor}
-            onRenameWidget={actions.renameWidget}
-            onDeleteWidget={actions.deleteWidget}
-            onDuplicateWidget={actions.duplicateWidget}
-          />
+        <div className="flex h-full flex-col">
+          <div className="min-h-0 flex-1">
+            <MetricDashboard
+              key={friendlyId}
+              layout={state.layout}
+              widgets={state.widgets}
+              defaultPeriod={defaultPeriod}
+              editable={true}
+              possibleTasks={possibleTasks}
+              onLayoutChange={actions.updateLayout}
+              onEditWidget={actions.openEditEditor}
+              onRenameWidget={actions.renameWidget}
+              onDeleteWidget={actions.deleteWidget}
+              onDuplicateWidget={actions.duplicateWidget}
+            />
+          </div>
+          <div className="flex w-full items-start justify-between">
+            <div className="flex h-fit w-full items-center gap-4 border-t border-grid-bright bg-background-bright p-[0.86rem] pl-4">
+              <SimpleTooltip
+                button={
+                  <div className="size-6">
+                    <svg className="h-full w-full -rotate-90 overflow-visible">
+                      <circle
+                        className="fill-none stroke-grid-bright"
+                        strokeWidth="4"
+                        r="10"
+                        cx="12"
+                        cy="12"
+                      />
+                      <circle
+                        className={`fill-none ${
+                          widgetIsAtLimit ? "stroke-error" : "stroke-success"
+                        }`}
+                        strokeWidth="4"
+                        r="10"
+                        cx="12"
+                        cy="12"
+                        strokeDasharray={`${(widgetLimits.used / widgetLimits.limit) * 62.8} 62.8`}
+                        strokeDashoffset="0"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </div>
+                }
+                content={`${Math.round((widgetLimits.used / widgetLimits.limit) * 100)}%`}
+              />
+              <div className="flex w-full items-center justify-between gap-6">
+                {widgetIsAtLimit ? (
+                  <Header3 className="text-error">
+                    You've used all {widgetLimits.limit} of your available widgets. Upgrade your plan
+                    to enable more.
+                  </Header3>
+                ) : (
+                  <Header3>
+                    You've used {widgetLimits.used}/{widgetLimits.limit} of your widgets
+                  </Header3>
+                )}
+                {widgetCanUpgrade ? (
+                  <LinkButton
+                    to={v3BillingPath(organization)}
+                    variant="secondary/small"
+                    LeadingIcon={ArrowUpCircleIcon}
+                    leadingIconClassName="text-indigo-500"
+                  >
+                    Upgrade
+                  </LinkButton>
+                ) : (
+                  <Feedback
+                    button={<Button variant="secondary/small">Request more</Button>}
+                    defaultValue="help"
+                  />
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </PageBody>
 
@@ -418,6 +556,28 @@ export default function Page() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Widget limit dialog - triggered by hook when add/duplicate is blocked */}
+      <Dialog open={showWidgetLimitDialog} onOpenChange={setShowWidgetLimitDialog}>
+        <DialogContent>
+          <DialogHeader>You've exceeded your widget limit</DialogHeader>
+          <DialogDescription>
+            You've used {widgetLimits.used}/{widgetLimits.limit} widgets on this dashboard.
+          </DialogDescription>
+          <DialogFooter>
+            {widgetCanUpgrade ? (
+              <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+                Upgrade
+              </LinkButton>
+            ) : (
+              <Feedback
+                button={<Button variant="primary/small">Request more</Button>}
+                defaultValue="help"
+              />
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageContainer>
   );
 }
