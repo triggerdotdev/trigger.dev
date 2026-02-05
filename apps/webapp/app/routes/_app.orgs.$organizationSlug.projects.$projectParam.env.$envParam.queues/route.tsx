@@ -68,7 +68,6 @@ import { EnvironmentQueuePresenter } from "~/presenters/v3/EnvironmentQueuePrese
 import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { formatNumberCompact } from "~/utils/numberFormatter";
 import {
   concurrencyPath,
   docsPath,
@@ -346,13 +345,7 @@ export default function Page() {
             <BigNumber
               title="Queued"
               value={environment.queued}
-              suffix={
-                <QueuedSuffix
-                  queued={environment.queued}
-                  queueSizeLimit={environment.queueSizeLimit}
-                  isPaused={env.paused}
-                />
-              }
+              suffix={env.paused ? <span className="text-warning">paused</span> : undefined}
               animate
               accessory={
                 <div className="flex items-start gap-1">
@@ -371,10 +364,7 @@ export default function Page() {
                   />
                 </div>
               }
-              valueClassName={
-                getQueueUsageColorClass(environment.queued, environment.queueSizeLimit) ??
-                (env.paused ? "text-warning" : undefined)
-              }
+              valueClassName={env.paused ? "text-warning" : undefined}
               compactThreshold={1000000}
             />
             <BigNumber
@@ -519,7 +509,10 @@ export default function Page() {
                   {queues.length > 0 ? (
                     queues.map((queue) => {
                       const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
-                      const isAtLimit = queue.running >= limit;
+                      const isAtConcurrencyLimit = queue.running >= limit;
+                      const isAtQueueLimit =
+                        environment.queueSizeLimit !== null &&
+                        queue.queued >= environment.queueSizeLimit;
                       const queueFilterableName = `${queue.type === "task" ? "task/" : ""}${
                         queue.name
                       }`;
@@ -545,7 +538,12 @@ export default function Page() {
                                   Paused
                                 </Badge>
                               ) : null}
-                              {isAtLimit ? (
+                              {isAtQueueLimit ? (
+                                <Badge variant="extra-small" className="text-error">
+                                  At queue limit
+                                </Badge>
+                              ) : null}
+                              {isAtConcurrencyLimit ? (
                                 <Badge variant="extra-small" className="text-warning">
                                   At concurrency limit
                                 </Badge>
@@ -556,7 +554,8 @@ export default function Page() {
                             alignment="right"
                             className={cn(
                               "w-[1%] pl-16 tabular-nums",
-                              queue.paused ? "opacity-50" : undefined
+                              queue.paused ? "opacity-50" : undefined,
+                              isAtQueueLimit && "text-error"
                             )}
                           >
                             {queue.queued}
@@ -567,7 +566,7 @@ export default function Page() {
                               "w-[1%] pl-16 tabular-nums",
                               queue.paused ? "opacity-50" : undefined,
                               queue.running > 0 && "text-text-bright",
-                              isAtLimit && "text-warning"
+                              isAtConcurrencyLimit && "text-warning"
                             )}
                           >
                             {queue.running}
@@ -587,7 +586,7 @@ export default function Page() {
                             className={cn(
                               "w-[1%] pl-16",
                               queue.paused ? "opacity-50" : undefined,
-                              isAtLimit && "text-warning",
+                              isAtConcurrencyLimit && "text-warning",
                               queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                             )}
                           >
@@ -1129,52 +1128,3 @@ function BurstFactorTooltip({
   );
 }
 
-function getQueueUsageColorClass(current: number, limit: number | null): string | undefined {
-  if (!limit) return undefined;
-  const percentage = current / limit;
-  if (percentage >= 1) return "text-error";
-  if (percentage >= 0.9) return "text-warning";
-  return undefined;
-}
-
-/**
- * Renders the suffix for the Queued BigNumber, showing:
- * - The limit with usage color and tooltip (if queueSizeLimit is set)
- * - "paused" text (if environment is paused)
- * - Both indicators when applicable
- */
-function QueuedSuffix({
-  queued,
-  queueSizeLimit,
-  isPaused,
-}: {
-  queued: number;
-  queueSizeLimit: number | null;
-  isPaused: boolean;
-}) {
-  const showLimit = queueSizeLimit !== null;
-
-  if (!showLimit && !isPaused) {
-    return null;
-  }
-
-  return (
-    <span className="flex items-center gap-1">
-      {showLimit && (
-        <>
-          <span className="text-text-dimmed">/</span>
-          <span className={getQueueUsageColorClass(queued, queueSizeLimit)}>
-            {formatNumberCompact(queueSizeLimit)}
-          </span>
-          <InfoIconTooltip
-            content="Maximum pending runs across all queues in this environment"
-            contentClassName="max-w-xs"
-          />
-        </>
-      )}
-      {isPaused && (
-        <span className="text-warning">{showLimit ? "(paused)" : "paused"}</span>
-      )}
-    </span>
-  );
-}

@@ -1571,10 +1571,15 @@ async function executeBatchTwoPhase(
   }
 
   // If the batch was cached (idempotent replay), skip streaming items
+  let actualRunCount = batch.runCount;
   if (!batch.isCached) {
     try {
       // Phase 2: Stream items
-      await apiClient.streamBatchItems(batch.id, items, requestOptions);
+      const streamResult = await apiClient.streamBatchItems(batch.id, items, requestOptions);
+      // Use the runCount from Phase 2 if provided (may differ if items were skipped)
+      if (streamResult.runCount !== undefined) {
+        actualRunCount = streamResult.runCount;
+      }
     } catch (error) {
       // Wrap with context about which phase failed and include batch ID
       throw new BatchTriggerError(
@@ -1586,7 +1591,7 @@ async function executeBatchTwoPhase(
 
   return {
     id: batch.id,
-    runCount: batch.runCount,
+    runCount: actualRunCount,
     publicAccessToken: batch.publicAccessToken,
   };
 }

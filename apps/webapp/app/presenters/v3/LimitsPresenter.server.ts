@@ -312,7 +312,7 @@ export class LimitsPresenter extends BasePresenter {
         },
         queueSize: {
           name: "Max queued runs",
-          description: "Maximum pending runs across all queues in this environment",
+          description: "Maximum pending runs per individual queue in this environment",
           limit: getQueueSizeLimit(environmentType, organization),
           currentUsage: currentQueueSize,
           source: getQueueSizeLimitSource(environmentType, organization),
