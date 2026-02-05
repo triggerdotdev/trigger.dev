@@ -1,8 +1,9 @@
-import { redirect, type ActionFunctionArgs } from "@remix-run/node";
+import { type ActionFunctionArgs } from "@remix-run/node";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { DashboardLayout } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -142,13 +143,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     },
   });
 
-  // Redirect to the dashboard
-  return redirect(
-    v3CustomDashboardPath(
-      { slug: organizationSlug },
-      { slug: projectParam },
-      { slug: envParam },
-      { friendlyId: dashboardId }
-    )
+  // Redirect with _revalidate param to trigger revalidation on the dashboard page
+  const dashboardPath = v3CustomDashboardPath(
+    { slug: organizationSlug },
+    { slug: projectParam },
+    { slug: envParam },
+    { friendlyId: dashboardId }
+  );
+
+  return redirectWithSuccessMessage(
+    `${dashboardPath}?_revalidate=${Date.now()}`,
+    request,
+    `Added "${title}" to dashboard`
   );
 };

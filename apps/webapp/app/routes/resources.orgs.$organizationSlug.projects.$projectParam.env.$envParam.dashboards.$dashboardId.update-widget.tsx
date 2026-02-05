@@ -1,11 +1,12 @@
-import { type ActionFunctionArgs, json } from "@remix-run/node";
+import { type ActionFunctionArgs } from "@remix-run/node";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { DashboardLayout } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3CustomDashboardPath } from "~/utils/pathBuilder";
 
 const UpdateWidgetSchema = z.object({
   widgetId: z.string().min(1, "Widget ID is required"),
@@ -39,7 +40,7 @@ const ParamsSchema = EnvironmentParamSchema.extend({
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, dashboardId } = ParamsSchema.parse(params);
+  const { organizationSlug, projectParam, envParam, dashboardId } = ParamsSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
@@ -116,6 +117,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     },
   });
 
-  // Return success (the client will handle closing the editor)
-  return json({ success: true });
+  // Redirect with _revalidate param to trigger revalidation on the dashboard page
+  const dashboardPath = v3CustomDashboardPath(
+    { slug: organizationSlug },
+    { slug: projectParam },
+    { slug: envParam },
+    { friendlyId: dashboardId }
+  );
+
+  return redirectWithSuccessMessage(
+    `${dashboardPath}?_revalidate=${Date.now()}`,
+    request,
+    `Updated "${title}"`
+  );
 };

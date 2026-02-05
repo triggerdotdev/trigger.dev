@@ -40,11 +40,12 @@ import { requireUser, requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema, queryPath, v3BuiltInDashboardPath } from "~/utils/pathBuilder";
 import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.metrics.$dashboardKey/route";
 import { IconEdit } from "@tabler/icons-react";
-import { QueryEditor } from "~/components/query/QueryEditor";
-import type { QueryWidgetConfig, WidgetData } from "~/components/metrics/QueryWidget";
+import { QueryEditor, type QueryEditorSaveData } from "~/components/query/QueryEditor";
+import type { WidgetData } from "~/components/metrics/QueryWidget";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useRevalidateOnParam } from "~/hooks/useRevalidateOnParam";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { defaultChartConfig } from "~/components/code/ChartConfigPanel";
 
@@ -230,14 +231,18 @@ export default function Page() {
   const maxPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
 
   const fetcher = useFetcher<typeof action>();
-  const addWidgetFetcher = useFetcher();
-  const updateWidgetFetcher = useFetcher();
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitializedRef = useRef(false);
   const currentLayoutJsonRef = useRef<string>(JSON.stringify(layout.layout));
 
   // Editor mode state
   const [editorMode, setEditorMode] = useState<EditorMode>(null);
+
+  // Revalidate when redirected back with _revalidate param, and close the editor
+  useRevalidateOnParam({
+    param: "_revalidate",
+    onRevalidate: () => setEditorMode(null),
+  });
 
   // Build the query action URL
   const queryActionUrl = queryPath(
@@ -304,55 +309,36 @@ export default function Page() {
     setEditorMode({ type: "edit", widgetId, widget });
   }, []);
 
-  const handleSave = useCallback(
-    (data: { title: string; query: string; config: QueryWidgetConfig }) => {
-      if (editorMode?.type === "add") {
-        // Submit to add-widget action
-        addWidgetFetcher.submit(
-          {
-            title: data.title,
-            query: data.query,
-            config: JSON.stringify(data.config),
-          },
-          {
-            method: "POST",
-            action: `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/add-widget`,
-          }
-        );
-        // Close editor immediately (optimistic)
-        setEditorMode(null);
-      } else if (editorMode?.type === "edit") {
-        // Submit to update-widget action
-        updateWidgetFetcher.submit(
-          {
-            widgetId: editorMode.widgetId,
-            title: data.title,
-            query: data.query,
-            config: JSON.stringify(data.config),
-          },
-          {
-            method: "POST",
-            action: `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/update-widget`,
-          }
-        );
-        // Close editor immediately (optimistic)
-        setEditorMode(null);
-      }
-    },
-    [
-      editorMode,
-      addWidgetFetcher,
-      updateWidgetFetcher,
-      organization.slug,
-      project.slug,
-      environment.slug,
-      friendlyId,
-    ]
-  );
-
   const handleCloseEditor = useCallback(() => {
     setEditorMode(null);
   }, []);
+
+  // Build the action URLs for add/update widget
+  const addWidgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/add-widget`;
+  const updateWidgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/update-widget`;
+
+  // Render save form for the QueryEditor
+  const renderSaveForm = useCallback(
+    (data: QueryEditorSaveData) => {
+      const isAdd = editorMode?.type === "add";
+      const actionUrl = isAdd ? addWidgetActionUrl : updateWidgetActionUrl;
+
+      return (
+        <Form method="post" action={actionUrl}>
+          {editorMode?.type === "edit" && (
+            <input type="hidden" name="widgetId" value={editorMode.widgetId} />
+          )}
+          <input type="hidden" name="title" value={data.title} />
+          <input type="hidden" name="query" value={data.query} />
+          <input type="hidden" name="config" value={JSON.stringify(data.config)} />
+          <Button type="submit" variant="primary/small" disabled={!data.query}>
+            {isAdd ? "Add to dashboard" : "Save changes"}
+          </Button>
+        </Form>
+      );
+    },
+    [editorMode, addWidgetActionUrl, updateWidgetActionUrl]
+  );
 
   // Prepare editor props when in editor mode
   const editorProps = editorMode
@@ -455,7 +441,7 @@ export default function Page() {
               queryActionUrl={queryActionUrl}
               mode={editorProps.mode}
               maxPeriodDays={maxPeriodDays}
-              onSave={handleSave}
+              save={renderSaveForm}
               onClose={handleCloseEditor}
             />
           )}
