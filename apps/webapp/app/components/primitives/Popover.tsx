@@ -243,20 +243,41 @@ function PopoverArrowTrigger({
   );
 }
 
+const popoverVerticalEllipseVariants = {
+  minimal: {
+    trigger:
+      "size-6 rounded-[3px] text-text-dimmed hover:bg-tertiary hover:text-text-bright",
+    icon: "size-5",
+  },
+  secondary: {
+    trigger:
+      "size-6 rounded border border-charcoal-600 bg-secondary text-text-bright hover:bg-charcoal-600 hover:border-charcoal-550",
+    icon: "size-4",
+  },
+} as const;
+
+type PopoverVerticalEllipseVariant = keyof typeof popoverVerticalEllipseVariants;
+
 function PopoverVerticalEllipseTrigger({
   isOpen,
+  variant = "minimal",
   className,
   ...props
-}: { isOpen?: boolean } & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
+}: {
+  isOpen?: boolean;
+  variant?: PopoverVerticalEllipseVariant;
+} & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
+  const styles = popoverVerticalEllipseVariants[variant];
   return (
     <PopoverTrigger
       {...props}
       className={cn(
-        "group flex items-center justify-end gap-1 rounded-[3px] p-0.5 text-text-dimmed transition focus-custom hover:bg-tertiary hover:text-text-bright",
+        "group flex items-center justify-center transition focus-custom",
+        styles.trigger,
         className
       )}
     >
-      <EllipsisVerticalIcon className={cn("size-5 transition group-hover:text-text-bright")} />
+      <EllipsisVerticalIcon className={cn(styles.icon, "transition group-hover:text-text-bright")} />
     </PopoverTrigger>
   );
 }
