@@ -70,6 +70,10 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   period?: string | null;
   from?: string | null;
   to?: string | null;
+  /** Filter to specific task identifiers */
+  taskIdentifiers?: string[];
+  /** Filter to specific queues */
+  queues?: string[];
   /** History options for saving query to billing/audit */
   history?: {
     /** Where the query originated from */
@@ -121,6 +125,8 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     organizationId,
     projectId,
     environmentId,
+    taskIdentifiers,
+    queues,
     history,
     customOrgConcurrencyLimit,
     ...baseOptions
@@ -191,6 +197,12 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       scope === "project" || scope === "environment" ? { op: "eq", value: projectId } : undefined,
     environment_id: scope === "environment" ? { op: "eq", value: environmentId } : undefined,
     triggered_at: { op: "gte", value: maxQueryPeriodDate },
+    // Optional filters for tasks and queues
+    task_identifier:
+      taskIdentifiers && taskIdentifiers.length > 0
+        ? { op: "in", values: taskIdentifiers }
+        : undefined,
+    queue: queues && queues.length > 0 ? { op: "in", values: queues } : undefined,
   } satisfies Record<string, WhereClauseCondition | undefined>;
 
   try {

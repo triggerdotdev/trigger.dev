@@ -120,6 +120,7 @@ export {
   DEFAULT_QUERY_SETTINGS,
   PrinterContext,
   type BetweenCondition,
+  type InCondition,
   type PrinterContextOptions,
   type QueryNotice,
   type QuerySettings,
@@ -443,7 +444,6 @@ export function injectFallbackConditions(
   };
 }
 
-
 /**
  * Options for compiling a TSQL query to ClickHouse SQL
  */
@@ -546,7 +546,6 @@ export function compileTSQL(query: string, options: CompileTSQLOptions): PrintRe
 
   // 3. Create schema registry from table schemas
   const schemaRegistry = createSchemaRegistry(options.tableSchema);
-
 
   // 4. Strip undefined values from enforcedWhereClause
   const enforcedWhereClause = Object.fromEntries(
