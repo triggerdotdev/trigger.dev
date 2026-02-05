@@ -82,6 +82,15 @@ function dashboardReducer(state: DashboardState, action: DashboardAction): Dashb
       if (!original || !originalLayout) return state;
 
       const maxBottom = Math.max(0, ...state.layout.map((l) => l.y + l.h));
+
+      // Deep copy the widget to ensure no shared references
+      // This prevents edits to one widget from affecting the duplicate
+      const duplicatedWidget: Widget = {
+        title: `${original.title} (Copy)`,
+        query: original.query,
+        display: JSON.parse(JSON.stringify(original.display)) as QueryWidgetConfig,
+      };
+
       return {
         ...state,
         layout: [
@@ -90,10 +99,7 @@ function dashboardReducer(state: DashboardState, action: DashboardAction): Dashb
         ],
         widgets: {
           ...state.widgets,
-          [action.payload.newId]: {
-            ...original,
-            title: `${original.title} (Copy)`,
-          },
+          [action.payload.newId]: duplicatedWidget,
         },
       };
     }
