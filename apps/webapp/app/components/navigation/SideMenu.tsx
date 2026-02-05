@@ -485,8 +485,8 @@ export function SideMenu({
                 <SideMenuItem
                   name="Query"
                   icon={TableCellsIcon}
-                  activeIconColor="text-purple-500"
-                  inactiveIconColor="text-purple-500"
+                  activeIconColor="text-query"
+                  inactiveIconColor="text-query"
                   to={queryPath(organization, project, environment)}
                   data-action="query"
                   isCollapsed={isCollapsed}
@@ -1045,8 +1045,8 @@ function CreateDashboardDialog({ formAction }: { formAction: string }) {
   const isLoading = navigation.formAction === formAction;
 
   return (
-    <DialogContent>
-      <DialogHeader>Create Dashboard</DialogHeader>
+    <DialogContent className="sm:max-w-sm">
+      <DialogHeader>Create dashboard</DialogHeader>
       <Form method="post" action={formAction} className="space-y-4 pt-3">
         <InputGroup>
           <Label>Title</Label>
@@ -1066,7 +1066,7 @@ function CreateDashboardDialog({ formAction }: { formAction: string }) {
           }
           cancelButton={
             <DialogClose asChild>
-              <Button variant="tertiary/medium">Cancel</Button>
+              <Button variant="secondary/medium">Cancel</Button>
             </DialogClose>
           }
         />
