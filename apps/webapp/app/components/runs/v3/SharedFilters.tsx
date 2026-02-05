@@ -348,6 +348,8 @@ export interface TimeFilterProps {
   onValueChange?: (values: TimeFilterApplyValues) => void;
   /** When set an upgrade message will be shown if you select a period further back than this number of days */
   maxPeriodDays?: number;
+  /** Optional className override for the value text in the filter pill */
+  valueClassName?: string;
 }
 
 export function TimeFilter({
@@ -360,6 +362,7 @@ export function TimeFilter({
   applyShortcut,
   onValueChange,
   maxPeriodDays,
+  valueClassName,
 }: TimeFilterProps = {}) {
   const { value } = useSearchParams();
   const periodValue = period ?? value("period");
@@ -386,6 +389,7 @@ export function TimeFilter({
                 value={constrained.valueLabel}
                 removable={false}
                 variant="secondary/small"
+                valueClassName={valueClassName}
               />
             </Ariakit.Select>
           }

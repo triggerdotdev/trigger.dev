@@ -164,6 +164,7 @@ export function MetricDashboard({
           labelName="Period"
           hideLabel
           maxPeriodDays={maxPeriodDays}
+          valueClassName="text-text-bright"
         />
       </div>
       <div
