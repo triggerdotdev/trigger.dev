@@ -219,9 +219,11 @@ export function VercelOnboardingModal({
   const [expandedEnvVars, setExpandedEnvVars] = useState(false);
   const [expandedSecretEnvVars, setExpandedSecretEnvVars] = useState(false);
   const [projectSelectionError, setProjectSelectionError] = useState<string | null>(null);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   const gitHubAppInstallations = onboardingData?.gitHubAppInstallations ?? [];
   const isGitHubConnectedForOnboarding = onboardingData?.isGitHubConnected ?? false;
+  const isOnboardingComplete = onboardingData?.isOnboardingComplete ?? false;
 
   const hasTriggeredMarketplaceRedirectRef = useRef(false);
 
@@ -235,7 +237,7 @@ export function VercelOnboardingModal({
       isOpen &&
       fromMarketplaceContext &&
       nextUrl &&
-      hasProjectSelected &&
+      isOnboardingComplete &&
       isGitHubConnectedForOnboarding
     ) {
       hasTriggeredMarketplaceRedirectRef.current = true;
@@ -243,11 +245,12 @@ export function VercelOnboardingModal({
         window.location.href = nextUrl;
       }, 100);
     }
-  }, [isOpen, fromMarketplaceContext, nextUrl, hasProjectSelected, isGitHubConnectedForOnboarding]);
+  }, [isOpen, fromMarketplaceContext, nextUrl, isOnboardingComplete, isGitHubConnectedForOnboarding]);
 
   useEffect(() => {
     if (!isOpen) {
       hasTriggeredMarketplaceRedirectRef.current = false;
+      setIsRedirecting(false);
     }
   }, [isOpen]);
 
@@ -454,6 +457,10 @@ export function VercelOnboardingModal({
   }, [vercelStagingEnvironment, envMappingFetcher, actionUrl]);
 
   const handleBuildSettingsNext = useCallback(() => {
+    if (nextUrl && fromMarketplaceContext && isGitHubConnectedForOnboarding) {
+      setIsRedirecting(true);
+    }
+
     const formData = new FormData();
     formData.append("action", "complete-onboarding");
     formData.append("vercelStagingEnvironment", vercelStagingEnvironment ? JSON.stringify(vercelStagingEnvironment) : "");
@@ -873,8 +880,8 @@ export function VercelOnboardingModal({
                         setState("build-settings");
                       }
                     }}
-                    disabled={fromMarketplaceContext && completeOnboardingFetcher.state !== "idle"}
-                    LeadingIcon={fromMarketplaceContext && completeOnboardingFetcher.state !== "idle" ? SpinnerWhite : undefined}
+                    disabled={fromMarketplaceContext && (completeOnboardingFetcher.state !== "idle" || isRedirecting)}
+                    LeadingIcon={fromMarketplaceContext && (completeOnboardingFetcher.state !== "idle" || isRedirecting) ? SpinnerWhite : undefined}
                   >
                     {fromMarketplaceContext ? (isGitHubConnectedForOnboarding ? "Finish" : "Next") : "Next"}
                   </Button>
@@ -923,8 +930,8 @@ export function VercelOnboardingModal({
                   <Button
                     variant="primary/medium"
                     onClick={handleBuildSettingsNext}
-                    disabled={completeOnboardingFetcher.state !== "idle"}
-                    LeadingIcon={completeOnboardingFetcher.state !== "idle" ? SpinnerWhite : undefined}
+                    disabled={completeOnboardingFetcher.state !== "idle" || isRedirecting}
+                    LeadingIcon={completeOnboardingFetcher.state !== "idle" || isRedirecting ? SpinnerWhite : undefined}
                   >
                     {isGitHubConnectedForOnboarding ? "Finish" : "Next"}
                   </Button>

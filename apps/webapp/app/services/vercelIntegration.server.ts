@@ -416,6 +416,7 @@ export class VercelIntegrationService {
         vercelStagingEnvironment: params.vercelStagingEnvironment ?? null,
       },
       syncEnvVarsMapping: params.syncEnvVarsMapping ?? existing.parsedIntegrationData.syncEnvVarsMapping,
+      onboardingCompleted: true,
     };
 
     const updated = await this.#prismaClient.organizationProjectIntegration.update({

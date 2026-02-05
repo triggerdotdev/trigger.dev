@@ -55,6 +55,7 @@ export type VercelOnboardingData = {
   existingVariables: Record<string, { environments: string[] }>; // Environment slugs (non-archived only)
   gitHubAppInstallations: GitHubAppInstallation[];
   isGitHubConnected: boolean;
+  isOnboardingComplete: boolean;
 };
 
 export class VercelSettingsPresenter extends BasePresenter {
@@ -384,6 +385,7 @@ export class VercelSettingsPresenter extends BasePresenter {
             existingVariables: {},
             gitHubAppInstallations,
             isGitHubConnected,
+            isOnboardingComplete: false,
           };
         }
 
@@ -398,6 +400,7 @@ export class VercelSettingsPresenter extends BasePresenter {
             existingVariables: {},
             gitHubAppInstallations,
             isGitHubConnected,
+            isOnboardingComplete: false,
           };
         }
         const client = clientResult.value;
@@ -426,6 +429,7 @@ export class VercelSettingsPresenter extends BasePresenter {
             existingVariables: {},
             gitHubAppInstallations,
             isGitHubConnected,
+            isOnboardingComplete: false,
           };
         }
 
@@ -438,6 +442,7 @@ export class VercelSettingsPresenter extends BasePresenter {
             existingVariables: {},
             gitHubAppInstallations,
             isGitHubConnected,
+            isOnboardingComplete: false,
           };
         }
 
@@ -476,6 +481,7 @@ export class VercelSettingsPresenter extends BasePresenter {
             existingVariables: {},
             gitHubAppInstallations,
             isGitHubConnected,
+            isOnboardingComplete: false,
           };
         }
 
@@ -547,6 +553,10 @@ export class VercelSettingsPresenter extends BasePresenter {
           }
         }
 
+        const parsedIntegrationData = VercelProjectIntegrationDataSchema.safeParse(
+          projectIntegration.integrationData
+        );
+
         return {
           customEnvironments,
           environmentVariables: sortedEnvVars,
@@ -555,6 +565,9 @@ export class VercelSettingsPresenter extends BasePresenter {
           existingVariables: existingVariablesRecord,
           gitHubAppInstallations,
           isGitHubConnected,
+          isOnboardingComplete: parsedIntegrationData.success
+            ? (parsedIntegrationData.data.onboardingCompleted ?? false)
+            : false,
         };
       })(),
       (error) => error

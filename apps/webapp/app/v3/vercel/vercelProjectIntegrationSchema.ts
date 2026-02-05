@@ -54,6 +54,7 @@ export const VercelProjectIntegrationDataSchema = z.object({
   vercelProjectName: z.string(),
   vercelTeamId: z.string().nullable(),
   vercelProjectId: z.string(),
+  onboardingCompleted: z.boolean().optional(),
 });
 
 export type VercelProjectIntegrationData = z.infer<typeof VercelProjectIntegrationDataSchema>;
