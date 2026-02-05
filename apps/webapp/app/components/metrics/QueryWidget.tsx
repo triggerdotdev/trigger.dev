@@ -151,50 +151,55 @@ export function QueryWidget({
             {hasMenu && (
               <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
                 <PopoverVerticalEllipseTrigger isOpen={isMenuOpen} />
-                <PopoverContent className="min-w-[10rem] p-1" align="end">
-                  {onEdit && (
-                    <PopoverMenuItem
-                      icon={PencilSquareIcon}
-                      title="Edit chart"
-                      onClick={() => {
-                        onEdit(props.data);
-                        setIsMenuOpen(false);
-                      }}
-                    />
-                  )}
-                  {onRename && (
-                    <PopoverMenuItem
-                      icon={PencilIcon}
-                      title="Rename"
-                      onClick={() => {
-                        setRenameValue(titleString ?? "");
-                        setIsRenameDialogOpen(true);
-                        setIsMenuOpen(false);
-                      }}
-                    />
-                  )}
-                  {onDuplicate && (
-                    <PopoverMenuItem
-                      icon={DocumentDuplicateIcon}
-                      title="Duplicate chart"
-                      onClick={() => {
-                        onDuplicate(props.data);
-                        setIsMenuOpen(false);
-                      }}
-                    />
-                  )}
-                  {onDelete && (
-                    <PopoverMenuItem
-                      icon={TrashIcon}
-                      title="Delete chart"
-                      leadingIconClassName="text-error"
-                      className="text-error hover:!bg-error/10"
-                      onClick={() => {
-                        onDelete();
-                        setIsMenuOpen(false);
-                      }}
-                    />
-                  )}
+                <PopoverContent align="end" className="p-0">
+                  <div className="flex flex-col gap-1 p-1">
+                    {onEdit && (
+                      <PopoverMenuItem
+                        icon={PencilSquareIcon}
+                        title="Edit chart"
+                        onClick={() => {
+                          onEdit(props.data);
+                          setIsMenuOpen(false);
+                        }}
+                        className="w-fit"
+                      />
+                    )}
+                    {onRename && (
+                      <PopoverMenuItem
+                        icon={PencilIcon}
+                        title="Rename"
+                        onClick={() => {
+                          setRenameValue(titleString ?? "");
+                          setIsRenameDialogOpen(true);
+                          setIsMenuOpen(false);
+                        }}
+                        className="w-fit"
+                      />
+                    )}
+                    {onDuplicate && (
+                      <PopoverMenuItem
+                        icon={DocumentDuplicateIcon}
+                        title="Duplicate chart"
+                        onClick={() => {
+                          onDuplicate(props.data);
+                          setIsMenuOpen(false);
+                        }}
+                        className="w-fit"
+                      />
+                    )}
+                    {onDelete && (
+                      <PopoverMenuItem
+                        icon={TrashIcon}
+                        title="Delete chart"
+                        leadingIconClassName="text-error"
+                        className="w-fit text-error hover:!bg-error/10"
+                        onClick={() => {
+                          onDelete();
+                          setIsMenuOpen(false);
+                        }}
+                      />
+                    )}
+                  </div>
                 </PopoverContent>
               </Popover>
             )}
