@@ -1,10 +1,12 @@
 import { PlusIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { Form, useFetcher, useNavigation, useRevalidator } from "@remix-run/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Form, useNavigation } from "@remix-run/react";
+import { useCallback, useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { toast } from "sonner";
 import { z } from "zod";
+import { defaultChartConfig } from "~/components/code/ChartConfigPanel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import {
@@ -26,27 +28,24 @@ import {
   PopoverVerticalEllipseTrigger,
 } from "~/components/primitives/Popover";
 import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
+import { ToastUI } from "~/components/primitives/Toast";
+import { QueryEditor, type QueryEditorSaveData } from "~/components/query/QueryEditor";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { useDashboardEditor } from "~/hooks/useDashboardEditor";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import {
-  LayoutItem,
-  MetricDashboardPresenter,
-} from "~/presenters/v3/MetricDashboardPresenter.server";
+import { LayoutItem, MetricDashboardPresenter } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema, queryPath, v3BuiltInDashboardPath } from "~/utils/pathBuilder";
 import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.metrics.$dashboardKey/route";
-import { IconEdit } from "@tabler/icons-react";
-import { QueryEditor, type QueryEditorSaveData } from "~/components/query/QueryEditor";
-import type { WidgetData } from "~/components/metrics/QueryWidget";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import { useEnvironment } from "~/hooks/useEnvironment";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { defaultChartConfig } from "~/components/code/ChartConfigPanel";
+import { IconEdit } from "@tabler/icons-react";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardId: z.string(),
@@ -208,14 +207,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
-// Editor mode state type
-type EditorMode = null | { type: "add" } | { type: "edit"; widgetId: string; widget: WidgetData };
-
 export default function Page() {
   const {
     friendlyId,
     title,
-    layout,
+    layout: dashboardLayout,
     defaultPeriod,
     queryDefaultQuery,
     queryHistory,
@@ -229,172 +225,113 @@ export default function Page() {
   const plan = useCurrentPlan();
   const maxPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
 
-  const fetcher = useFetcher<typeof action>();
-  const widgetActionFetcher = useFetcher();
-  const { revalidate } = useRevalidator();
-  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isInitializedRef = useRef(false);
-  const currentLayoutJsonRef = useRef<string>(JSON.stringify(layout.layout));
+  // Build the action URLs
+  const widgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/widgets`;
+  const layoutActionUrl = ""; // Uses form action on current route
 
-  // Editor mode state
-  const [editorMode, setEditorMode] = useState<EditorMode>(null);
+  // Handle sync errors by showing a toast
+  const handleSyncError = useCallback((error: Error, action: string) => {
+    const actionMessages: Record<string, string> = {
+      add: "Failed to add widget",
+      update: "Failed to update widget",
+      delete: "Failed to delete widget",
+      duplicate: "Failed to duplicate widget",
+      layout: "Failed to save layout",
+    };
 
-  // Revalidate when widget action (delete/duplicate/add/update) completes
-  useEffect(() => {
-    if (widgetActionFetcher.state === "idle" && widgetActionFetcher.data) {
-      revalidate();
-      // Close the editor if it was open (for add/update operations)
-      setEditorMode(null);
-    }
-  }, [widgetActionFetcher.state, widgetActionFetcher.data]);
+    const message = actionMessages[action] || "Failed to save changes";
 
-  // Build the query action URL
+    toast.custom((t) => (
+      <ToastUI
+        variant="error"
+        message={`${message}. Your changes may not be saved.`}
+        t={t as string}
+        title="Sync Error"
+      />
+    ));
+  }, []);
+
+  // Use the dashboard editor hook for all state management
+  const { state, actions } = useDashboardEditor({
+    initialData: dashboardLayout,
+    widgetActionUrl,
+    layoutActionUrl,
+    onSyncError: handleSyncError,
+  });
+
+  // Build the query action URL for the editor
   const queryActionUrl = queryPath(
     { slug: organization.slug },
     { slug: project.slug },
     { slug: environment.slug }
   );
 
-  // Track when the dashboard data changes (e.g., switching dashboards)
-  const layoutJson = JSON.stringify(layout.layout);
-  useEffect(() => {
-    // Cancel any pending save when switching dashboards
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-      debounceTimeoutRef.current = null;
-    }
-
-    // Update the current layout reference and mark as not yet user-modified
-    currentLayoutJsonRef.current = layoutJson;
-    isInitializedRef.current = false;
-
-    // Allow saves after a short delay to skip initial mount callbacks
-    const initTimeout = setTimeout(() => {
-      isInitializedRef.current = true;
-    }, 100);
-
-    return () => {
-      clearTimeout(initTimeout);
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
+  // Handle save from the QueryEditor
+  const handleSave = useCallback(
+    (data: QueryEditorSaveData) => {
+      if (state.editorMode?.type === "add") {
+        actions.addWidget(data.title, data.query, data.config);
+      } else if (state.editorMode?.type === "edit") {
+        actions.updateWidget(state.editorMode.widgetId, data.title, data.query, data.config);
       }
-    };
-  }, [layoutJson]);
-
-  const handleLayoutChange = useCallback((newLayout: LayoutItem[]) => {
-    // Skip if not yet initialized (prevents saving during mount/navigation)
-    if (!isInitializedRef.current) {
-      return;
-    }
-
-    const newLayoutJson = JSON.stringify(newLayout);
-
-    // Skip if layout hasn't actually changed
-    if (newLayoutJson === currentLayoutJsonRef.current) {
-      return;
-    }
-
-    // Clear existing timeout
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-    }
-
-    // Debounce auto-save by 500ms
-    debounceTimeoutRef.current = setTimeout(() => {
-      currentLayoutJsonRef.current = newLayoutJson;
-      fetcher.submit({ action: "layout", layout: newLayoutJson }, { method: "POST" });
-    }, 500);
-  }, []);
-
-  const handleEditWidget = useCallback((widgetId: string, widget: WidgetData) => {
-    setEditorMode({ type: "edit", widgetId, widget });
-  }, []);
-
-  // Build the action URL for all widget operations
-  const widgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/widgets`;
-
-  const handleDeleteWidget = useCallback(
-    (widgetId: string) => {
-      widgetActionFetcher.submit(
-        { action: "delete", widgetId },
-        { method: "POST", action: widgetActionUrl }
-      );
     },
-    [widgetActionUrl]
+    [state.editorMode, actions]
   );
 
-  const handleDuplicateWidget = useCallback(
-    (widgetId: string) => {
-      widgetActionFetcher.submit(
-        { action: "duplicate", widgetId },
-        { method: "POST", action: widgetActionUrl }
-      );
-    },
-    [widgetActionUrl]
-  );
-
-  const handleCloseEditor = useCallback(() => {
-    setEditorMode(null);
-  }, []);
-
-  // Render save form for the QueryEditor
+  // Render save button for the QueryEditor
   const renderSaveForm = useCallback(
     (data: QueryEditorSaveData) => {
-      const isAdd = editorMode?.type === "add";
+      const isAdd = state.editorMode?.type === "add";
 
       return (
-        <widgetActionFetcher.Form method="post" action={widgetActionUrl}>
-          <input type="hidden" name="action" value={isAdd ? "add" : "update"} />
-          {editorMode?.type === "edit" && (
-            <input type="hidden" name="widgetId" value={editorMode.widgetId} />
-          )}
-          <input type="hidden" name="title" value={data.title} />
-          <input type="hidden" name="query" value={data.query} />
-          <input type="hidden" name="config" value={JSON.stringify(data.config)} />
-          <Button type="submit" variant="primary/small" disabled={!data.query}>
-            {isAdd ? "Add to dashboard" : "Save changes"}
-          </Button>
-        </widgetActionFetcher.Form>
+        <Button
+          type="button"
+          variant="primary/small"
+          disabled={!data.query}
+          onClick={() => handleSave(data)}
+        >
+          {isAdd ? "Add to dashboard" : "Save changes"}
+        </Button>
       );
     },
-    [editorMode, widgetActionUrl]
+    [state.editorMode, handleSave]
   );
 
   // Prepare editor props when in editor mode
-  const editorProps = editorMode
+  const editorProps = state.editorMode
     ? (() => {
         const mode =
-          editorMode.type === "add"
+          state.editorMode.type === "add"
             ? { type: "dashboard-add" as const, dashboardId: friendlyId, dashboardName: title }
             : {
                 type: "dashboard-edit" as const,
                 dashboardId: friendlyId,
                 dashboardName: title,
-                widgetId: editorMode.widgetId,
-                widgetName: editorMode.widget.title,
+                widgetId: state.editorMode.widgetId,
+                widgetName: state.editorMode.widget.title,
               };
 
         // For edit mode, use the widget's existing values as defaults
         const editorDefaultQuery =
-          editorMode.type === "edit" ? editorMode.widget.query : queryDefaultQuery;
+          state.editorMode.type === "edit" ? state.editorMode.widget.query : queryDefaultQuery;
         const editorDefaultChartConfig =
-          editorMode.type === "edit" && editorMode.widget.display.type === "chart"
+          state.editorMode.type === "edit" && state.editorMode.widget.display.type === "chart"
             ? {
-                chartType: editorMode.widget.display.chartType,
-                xAxisColumn: editorMode.widget.display.xAxisColumn,
-                yAxisColumns: editorMode.widget.display.yAxisColumns,
-                groupByColumn: editorMode.widget.display.groupByColumn,
-                stacked: editorMode.widget.display.stacked,
-                sortByColumn: editorMode.widget.display.sortByColumn,
-                sortDirection: editorMode.widget.display.sortDirection,
-                aggregation: editorMode.widget.display.aggregation,
+                chartType: state.editorMode.widget.display.chartType,
+                xAxisColumn: state.editorMode.widget.display.xAxisColumn,
+                yAxisColumns: state.editorMode.widget.display.yAxisColumns,
+                groupByColumn: state.editorMode.widget.display.groupByColumn,
+                stacked: state.editorMode.widget.display.stacked,
+                sortByColumn: state.editorMode.widget.display.sortByColumn,
+                sortDirection: state.editorMode.widget.display.sortDirection,
+                aggregation: state.editorMode.widget.display.aggregation,
               }
             : defaultChartConfig;
         const editorDefaultResultsView =
-          editorMode.type === "edit" ? editorMode.widget.display.type : "table";
+          state.editorMode.type === "edit" ? state.editorMode.widget.display.type : "table";
         // Pass the existing result data when editing
         const editorDefaultData =
-          editorMode.type === "edit" ? editorMode.widget.resultData : undefined;
+          state.editorMode.type === "edit" ? state.editorMode.widget.resultData : undefined;
 
         return {
           mode,
@@ -414,7 +351,7 @@ export default function Page() {
           <Button
             variant="tertiary/small"
             LeadingIcon={PlusIcon}
-            onClick={() => setEditorMode({ type: "add" })}
+            onClick={actions.openAddEditor}
           >
             Add chart
           </Button>
@@ -430,19 +367,20 @@ export default function Page() {
         <div className="h-full">
           <MetricDashboard
             key={friendlyId}
-            data={layout}
+            layout={state.layout}
+            widgets={state.widgets}
             defaultPeriod={defaultPeriod}
             editable={true}
-            onLayoutChange={handleLayoutChange}
-            onEditWidget={handleEditWidget}
-            onDeleteWidget={handleDeleteWidget}
-            onDuplicateWidget={handleDuplicateWidget}
+            onLayoutChange={actions.updateLayout}
+            onEditWidget={actions.openEditEditor}
+            onDeleteWidget={actions.deleteWidget}
+            onDuplicateWidget={actions.duplicateWidget}
           />
         </div>
       </PageBody>
 
       {/* Query Editor Sheet - opens on top of the dashboard */}
-      <Sheet open={!!editorMode} onOpenChange={(open) => !open && setEditorMode(null)}>
+      <Sheet open={!!state.editorMode} onOpenChange={(open) => !open && actions.closeEditor()}>
         <SheetContent
           side="right"
           className="w-[90vw] max-w-none border-l border-grid-dimmed p-0 sm:max-w-none"
@@ -464,7 +402,7 @@ export default function Page() {
               mode={editorProps.mode}
               maxPeriodDays={maxPeriodDays}
               save={renderSaveForm}
-              onClose={handleCloseEditor}
+              onClose={actions.closeEditor}
             />
           )}
         </SheetContent>

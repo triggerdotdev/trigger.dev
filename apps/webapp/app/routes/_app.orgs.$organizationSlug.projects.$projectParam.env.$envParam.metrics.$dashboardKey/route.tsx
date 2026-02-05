@@ -3,8 +3,8 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import {
-  LayoutItem,
-  type DashboardLayout,
+  type LayoutItem,
+  type Widget,
   MetricDashboardPresenter,
 } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { type LoaderFunctionArgs } from "@remix-run/node";
@@ -18,7 +18,7 @@ import { MetricWidget } from "../resources.metric";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
+import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type WidgetData } from "~/components/metrics/QueryWidget";
@@ -57,7 +57,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { key, title, layout, defaultPeriod } = useTypedLoaderData<typeof loader>();
+  const { key, title, layout: dashboardLayout, defaultPeriod } = useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
@@ -66,7 +66,13 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className="h-full">
-          <MetricDashboard key={key} data={layout} defaultPeriod={defaultPeriod} editable={false} />
+          <MetricDashboard
+            key={key}
+            layout={dashboardLayout.layout}
+            widgets={dashboardLayout.widgets}
+            defaultPeriod={defaultPeriod}
+            editable={false}
+          />
         </div>
       </PageBody>
     </PageContainer>
@@ -74,7 +80,8 @@ export default function Page() {
 }
 
 export function MetricDashboard({
-  data,
+  layout,
+  widgets,
   defaultPeriod,
   editable,
   onLayoutChange,
@@ -82,7 +89,10 @@ export function MetricDashboard({
   onDeleteWidget,
   onDuplicateWidget,
 }: {
-  data: DashboardLayout;
+  /** The layout items (positions/sizes) - fully controlled from parent */
+  layout: LayoutItem[];
+  /** The widget configurations keyed by widget ID - fully controlled from parent */
+  widgets: Record<string, Widget>;
   defaultPeriod: string;
   editable: boolean;
   onLayoutChange?: (layout: LayoutItem[]) => void;
@@ -90,18 +100,9 @@ export function MetricDashboard({
   onDeleteWidget?: (widgetId: string) => void;
   onDuplicateWidget?: (widgetId: string, widget: WidgetData) => void;
 }) {
-  const [layout, setLayout] = useState(data.layout);
   const { value } = useSearchParams();
   const { width, containerRef, mounted } = useContainerWidth();
   const [resizingItemId, setResizingItemId] = useState<string | null>(null);
-
-  // Sync layout state when navigating to a different dashboard.
-  // useState only initializes once, so we need this effect to update
-  // the layout when the data prop changes (e.g., switching dashboards).
-  const dataLayoutJson = JSON.stringify(data.layout);
-  useEffect(() => {
-    setLayout(data.layout);
-  }, [dataLayoutJson]);
 
   const organization = useOrganization();
   const project = useProject();
@@ -117,7 +118,6 @@ export function MetricDashboard({
   const handleLayoutChange = useCallback(
     (newLayout: readonly LayoutItem[]) => {
       const mutableLayout = [...newLayout];
-      setLayout(mutableLayout);
       onLayoutChange?.(mutableLayout);
     },
     [onLayoutChange]
@@ -151,7 +151,7 @@ export function MetricDashboard({
             onResizeStart={(_layout, oldItem) => setResizingItemId(oldItem?.i ?? null)}
             onResizeStop={() => setResizingItemId(null)}
           >
-            {Object.entries(data.widgets).map(([key, widget]) => (
+            {Object.entries(widgets).map(([key, widget]) => (
               <div key={key}>
                 <MetricWidget
                   widgetKey={key}
