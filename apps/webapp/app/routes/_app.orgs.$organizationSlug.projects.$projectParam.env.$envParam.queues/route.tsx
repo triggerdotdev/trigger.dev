@@ -364,14 +364,14 @@ export default function Page() {
                   />
                 </div>
               }
-              valueClassName={env.paused ? "text-warning" : undefined}
+              valueClassName={cn(env.paused ? "text-warning" : undefined, "tabular-nums")}
               compactThreshold={1000000}
             />
             <BigNumber
               title="Running"
               value={environment.running}
               animate
-              valueClassName={limitClassName}
+              valueClassName={cn(limitClassName, "tabular-nums")}
               suffix={
                 limitStatus === "burst" ? (
                   <span className={cn(limitClassName, "flex items-center gap-1")}>
