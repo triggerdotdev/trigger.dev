@@ -44,6 +44,17 @@
             ]
           },
           {
+            "group": "Building with AI",
+            "pages": [
+              "building-with-ai",
+              {
+                "group": "MCP Server",
+                "pages": ["mcp-introduction", "mcp-tools", "mcp-agent-rules"]
+              },
+              "skills"
+            ]
+          },
+          {
             "group": "Writing tasks",
             "pages": [
               "writing-tasks-introduction",
@@ -167,10 +178,6 @@
             ]
           },
           {
-            "group": "MCP Server",
-            "pages": ["mcp-introduction", "mcp-tools", "mcp-agent-rules"]
-          },
-          {
             "group": "Using the Dashboard",
             "pages": ["run-tests", "troubleshooting-alerts", "replaying", "bulk-actions"]
           },
@@ -269,6 +276,14 @@
               "management/envvars/update",
               "management/envvars/delete"
             ]
+          },
+          {
+            "group": "Deployments API",
+            "pages": [
+              "management/deployments/retrieve",
+              "management/deployments/get-latest",
+              "management/deployments/promote"
+            ]
           }
         ]
       },
@@ -337,7 +352,8 @@
                   "guides/frameworks/webhooks-guides-overview",
                   "guides/frameworks/nextjs-webhooks",
                   "guides/frameworks/remix-webhooks",
-                  "guides/examples/stripe-webhook"
+                  "guides/examples/stripe-webhook",
+                  "guides/examples/hookdeck-webhook"
                 ]
               }
             ]
@@ -437,6 +453,11 @@
     "openapi": ["openapi.yml", "v3-openapi.yaml"],
     "playground": {
       "display": "simple"
+    }
+  },
+  "styling": {
+    "codeblocks": {
+      "theme": "css-variables"
     }
   },
   "appearance": {

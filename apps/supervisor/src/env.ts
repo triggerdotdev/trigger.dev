@@ -112,6 +112,11 @@ const Env = z.object({
   KUBERNETES_SCHEDULER_NAME: z.string().optional(), // Custom scheduler name for pods
   KUBERNETES_LARGE_MACHINE_POOL_LABEL: z.string().optional(), // if set, large-* presets affinity for machinepool=<value>
 
+  // Project affinity settings - pods from the same project prefer the same node
+  KUBERNETES_PROJECT_AFFINITY_ENABLED: BoolEnv.default(false),
+  KUBERNETES_PROJECT_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(50),
+  KUBERNETES_PROJECT_AFFINITY_TOPOLOGY_KEY: z.string().trim().min(1).default("kubernetes.io/hostname"),
+
   // Placement tags settings
   PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),
   PLACEMENT_TAGS_PREFIX: z.string().default("node.cluster.x-k8s.io"),

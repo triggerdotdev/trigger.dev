@@ -6,7 +6,10 @@ import {
   type Result,
 } from "@internal/redis";
 import { startSpan } from "@internal/tracing";
-import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
+import {
+  parseNaturalLanguageDuration,
+  parseNaturalLanguageDurationInMs,
+} from "@trigger.dev/core/v3/isomorphic";
 import { PrismaClientOrTransaction, TaskRun, Waitpoint } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { SystemResources } from "./systems.js";
@@ -17,6 +20,12 @@ export type DebounceOptions = {
   key: string;
   delay: string;
   mode?: "leading" | "trailing";
+  /**
+   * Maximum total delay before the run must execute, regardless of subsequent triggers.
+   * This prevents indefinite delays when continuous triggers keep pushing the execution time.
+   * If not specified, falls back to the server's maxDebounceDurationMs config.
+   */
+  maxDelay?: string;
   /** When mode: "trailing", these fields will be used to update the existing run */
   updateData?: {
     payload: string;
@@ -521,8 +530,22 @@ return 0
       }
 
       // Check if max debounce duration would be exceeded
+      // Use per-trigger maxDelay if provided, otherwise use global config
+      let maxDurationMs = this.maxDebounceDurationMs;
+      if (debounce.maxDelay) {
+        const parsedMaxDelay = parseNaturalLanguageDurationInMs(debounce.maxDelay);
+        if (parsedMaxDelay !== undefined) {
+          maxDurationMs = parsedMaxDelay;
+        } else {
+          this.$.logger.warn("handleExistingRun: invalid maxDelay duration, using global config", {
+            maxDelay: debounce.maxDelay,
+            fallbackMs: this.maxDebounceDurationMs,
+          });
+        }
+      }
+
       const runCreatedAt = existingRun.createdAt;
-      const maxDelayUntil = new Date(runCreatedAt.getTime() + this.maxDebounceDurationMs);
+      const maxDelayUntil = new Date(runCreatedAt.getTime() + maxDurationMs);
 
       if (newDelayUntil > maxDelayUntil) {
         this.$.logger.debug("handleExistingRun: max debounce duration would be exceeded", {
@@ -531,7 +554,8 @@ return 0
           runCreatedAt,
           newDelayUntil,
           maxDelayUntil,
-          maxDebounceDurationMs: this.maxDebounceDurationMs,
+          maxDurationMs,
+          maxDelayProvided: debounce.maxDelay,
         });
         // Clean up Redis key since this debounce window is closed
         await this.redis.del(redisKey);

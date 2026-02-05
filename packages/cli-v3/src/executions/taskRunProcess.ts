@@ -297,6 +297,19 @@ export class TaskRunProcess {
         env: params.env,
         isWarmStart: isWarmStart ?? this.options.isWarmStart,
       });
+    } else {
+      // Child process is dead or disconnected — the IPC send was skipped so the attempt
+      // promise would hang forever. Reject it immediately to let the caller handle it.
+      this._attemptStatuses.set(key, "REJECTED");
+
+      // @ts-expect-error - rejecter is assigned in the promise constructor above
+      rejecter(
+        new UnexpectedExitError(
+          -1,
+          null,
+          "Child process is not connected, cannot execute task run"
+        )
+      );
     }
 
     const result = await promise;
