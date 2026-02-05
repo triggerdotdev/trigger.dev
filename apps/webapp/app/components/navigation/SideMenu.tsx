@@ -1022,7 +1022,7 @@ function CreateDashboardButton({
             <DialogTrigger asChild>
               <button
                 type="button"
-                className="rounded p-0.5 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+                className="rounded p-0.5 text-text-dimmed transition hover:bg-charcoal-600 hover:text-text-bright"
               >
                 <PlusIcon className="size-3.5" />
               </button>
@@ -1163,10 +1163,12 @@ function CollapseToggle({ isCollapsed, onToggle }: { isCollapsed: boolean; onTog
   return (
     <div className="absolute -right-3 top-1/2 z-10 -translate-y-1/2">
       {/* Vertical line to mask the side menu border */}
-      <div className={cn(
-        "pointer-events-none absolute left-1/2 top-1/2 h-10 w-px -translate-y-1/2 transition-colors duration-200",
-        isHovering ? "bg-charcoal-750" : "bg-background-bright"
-      )} />
+      <div
+        className={cn(
+          "pointer-events-none absolute left-1/2 top-1/2 h-10 w-px -translate-y-1/2 transition-colors duration-200",
+          isHovering ? "bg-charcoal-750" : "bg-background-bright"
+        )}
+      />
       <TooltipProvider disableHoverableContent>
         <Tooltip>
           <TooltipTrigger asChild>
