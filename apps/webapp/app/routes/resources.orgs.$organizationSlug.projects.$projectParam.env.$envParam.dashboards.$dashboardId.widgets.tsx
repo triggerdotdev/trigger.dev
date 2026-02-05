@@ -6,7 +6,10 @@ import { prisma } from "~/db.server";
 import { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { DashboardLayout } from "~/presenters/v3/MetricDashboardPresenter.server";
+import {
+  DashboardLayout,
+  LayoutItem,
+} from "~/presenters/v3/MetricDashboardPresenter.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema, v3CustomDashboardPath } from "~/utils/pathBuilder";
@@ -74,6 +77,29 @@ const DeleteWidgetSchema = z.object({
 
 const DuplicateWidgetSchema = z.object({
   widgetId: z.string().min(1, "Widget ID is required"),
+});
+
+const SaveLayoutSchema = z.object({
+  layout: z.string().transform((str, ctx) => {
+    try {
+      const parsed = JSON.parse(str);
+      const result = z.array(LayoutItem).safeParse(parsed);
+      if (!result.success) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Invalid layout format",
+        });
+        return z.NEVER;
+      }
+      return result.data;
+    } catch {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Invalid JSON",
+      });
+      return z.NEVER;
+    }
+  }),
 });
 
 const ParamsSchema = EnvironmentParamSchema.extend({
@@ -426,6 +452,32 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       });
 
       return typedjson({ success: true, duplicatedTitle: originalWidget.title });
+    }
+
+    case "layout": {
+      const result = SaveLayoutSchema.safeParse({
+        layout: formData.get("layout"),
+      });
+
+      if (!result.success) {
+        throw new Response("Invalid form data: " + result.error.message, { status: 400 });
+      }
+
+      // Update layout positions while preserving widgets
+      const updatedLayout = {
+        ...existingLayout,
+        layout: result.data.layout,
+      };
+
+      // Save to database
+      await prisma.metricsDashboard.update({
+        where: { id: dashboard.id },
+        data: {
+          layout: JSON.stringify(updatedLayout),
+        },
+      });
+
+      return typedjson({ success: true });
     }
 
     default: {
