@@ -362,10 +362,12 @@ export default function Page() {
             Add chart
           </Button>
           <Popover>
-            <PopoverVerticalEllipseTrigger />
+            <PopoverVerticalEllipseTrigger variant="secondary" />
             <PopoverContent className="w-fit min-w-[10rem] p-1" align="end">
-              <RenameDashboardDialog title={title} />
-              <DeleteDashboardDialog title={title} />
+              <div className="flex flex-col gap-1">
+                <RenameDashboardDialog title={title} />
+                <DeleteDashboardDialog title={title} />
+              </div>
             </PopoverContent>
           </Popover>
         </PageAccessories>
@@ -445,7 +447,14 @@ function RenameDashboardDialog({ title }: { title: string }) {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="small-menu-item" LeadingIcon={IconEdit} fullWidth textAlignLeft>
+        <Button
+          variant="small-menu-item"
+          LeadingIcon={IconEdit}
+          fullWidth
+          textAlignLeft
+          className="pl-0.5 pr-3"
+          leadingIconClassName="gap-x-0"
+        >
           Rename dashboard
         </Button>
       </DialogTrigger>
