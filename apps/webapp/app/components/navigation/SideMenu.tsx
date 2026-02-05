@@ -498,8 +498,8 @@ export function SideMenu({
                 <SideMenuItem
                   name="Metrics"
                   icon={BarChart2Icon}
-                  activeIconColor="text-purple-500"
-                  inactiveIconColor="text-purple-500"
+                  activeIconColor="text-metrics"
+                  inactiveIconColor="text-metrics"
                   to={v3BuiltInDashboardPath(organization, project, environment, "overview")}
                   data-action="metrics-overview"
                   isCollapsed={isCollapsed}
@@ -517,8 +517,8 @@ export function SideMenu({
                     key={dashboard.friendlyId}
                     name={dashboard.title}
                     icon={LineChartIcon}
-                    activeIconColor="text-purple-500"
-                    inactiveIconColor="text-purple-500"
+                    activeIconColor="text-customDashboards"
+                    inactiveIconColor="text-customDashboards"
                     to={v3CustomDashboardPath(organization, project, environment, dashboard)}
                     isCollapsed={isCollapsed}
                   />
@@ -1019,8 +1019,7 @@ function CreateDashboardButton({
 
   const isAtLimit = limits.used >= limits.limit;
   const planLimits = (plan?.v3Subscription?.plan?.limits as any)?.metricDashboards;
-  const canExceed =
-    typeof planLimits === "object" && planLimits.canExceed === true;
+  const canExceed = typeof planLimits === "object" && planLimits.canExceed === true;
   const canUpgrade = plan?.v3Subscription?.plan && !canExceed;
 
   const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/create`;
