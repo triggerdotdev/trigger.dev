@@ -7,6 +7,7 @@ import { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { DashboardLayout } from "~/presenters/v3/MetricDashboardPresenter.server";
+import { getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema, v3CustomDashboardPath } from "~/utils/pathBuilder";
 
@@ -140,8 +141,26 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
   }
 
+  // Check widget limit for add/duplicate actions
+  async function checkWidgetLimit() {
+    const currentWidgetCount = Object.keys(existingLayout.widgets).length;
+    const plan = await getCurrentPlan(project.organizationId);
+    const metricWidgetsLimitValue = (plan?.v3Subscription?.plan?.limits as any)
+      ?.metricWidgetsPerDashboard;
+    const widgetLimit =
+      typeof metricWidgetsLimitValue === "number"
+        ? metricWidgetsLimitValue
+        : (metricWidgetsLimitValue?.number ?? 16);
+
+    if (currentWidgetCount >= widgetLimit) {
+      throw new Response("Widget limit reached", { status: 403 });
+    }
+  }
+
   switch (action) {
     case "add": {
+      await checkWidgetLimit();
+
       const rawData = {
         title: formData.get("title"),
         query: formData.get("query"),
@@ -336,6 +355,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
 
     case "duplicate": {
+      await checkWidgetLimit();
+
       const rawData = {
         widgetId: formData.get("widgetId"),
       };

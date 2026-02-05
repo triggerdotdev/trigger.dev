@@ -2,6 +2,7 @@ import { redirect, type ActionFunctionArgs } from "@remix-run/node";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
+import { getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema, v3CustomDashboardPath } from "~/utils/pathBuilder";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
@@ -18,6 +19,25 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
     throw new Response("Project not found", { status: 404 });
+  }
+
+  // Check dashboard limit
+  const [plan, existingCount] = await Promise.all([
+    getCurrentPlan(project.organizationId),
+    prisma.metricsDashboard.count({
+      where: { organizationId: project.organizationId },
+    }),
+  ]);
+
+  const metricDashboardsLimitValue = (plan?.v3Subscription?.plan?.limits as any)
+    ?.metricDashboards;
+  const dashboardLimit =
+    typeof metricDashboardsLimitValue === "number"
+      ? metricDashboardsLimitValue
+      : (metricDashboardsLimitValue?.number ?? 3);
+
+  if (existingCount >= dashboardLimit) {
+    throw new Response("Dashboard limit reached", { status: 403 });
   }
 
   const formData = await request.formData();

@@ -96,6 +96,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       select: {
         friendlyId: true,
         title: true,
+        layout: true,
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -108,6 +109,41 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     usagePercentage = usage.cents / plan.v3Subscription.plan.limits.includedUsage;
   }
 
+  // Derive metric dashboard limit from plan, fallback to 3
+  const metricDashboardsLimitValue = (plan?.v3Subscription?.plan?.limits as any)
+    ?.metricDashboards;
+  const dashboardLimit =
+    typeof metricDashboardsLimitValue === "number"
+      ? metricDashboardsLimitValue
+      : (metricDashboardsLimitValue?.number ?? 3);
+
+  // Derive widget-per-dashboard limit from plan, fallback to 16
+  const metricWidgetsLimitValue = (plan?.v3Subscription?.plan?.limits as any)
+    ?.metricWidgetsPerDashboard;
+  const widgetLimitPerDashboard =
+    typeof metricWidgetsLimitValue === "number"
+      ? metricWidgetsLimitValue
+      : (metricWidgetsLimitValue?.number ?? 16);
+
+  // Compute widget counts per dashboard from layout JSON
+  const customDashboardsWithWidgetCount = customDashboards.map((d) => {
+    let widgetCount = 0;
+    try {
+      const layout = JSON.parse(String(d.layout)) as Record<string, unknown>;
+      const widgets = layout.widgets;
+      if (widgets && typeof widgets === "object") {
+        widgetCount = Object.keys(widgets as Record<string, unknown>).length;
+      }
+    } catch {
+      // ignore parse errors
+    }
+    return {
+      friendlyId: d.friendlyId,
+      title: d.title,
+      widgetCount,
+    };
+  });
+
   return typedjson({
     organizations,
     organization,
@@ -115,7 +151,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     environment,
     isImpersonating: !!impersonationId,
     currentPlan: { ...plan, v3Usage: { ...usage, hasExceededFreeTier, usagePercentage } },
-    customDashboards,
+    customDashboards: customDashboardsWithWidgetCount,
+    dashboardLimits: {
+      used: customDashboards.length,
+      limit: dashboardLimit,
+    },
+    widgetLimitPerDashboard,
   });
 };
 

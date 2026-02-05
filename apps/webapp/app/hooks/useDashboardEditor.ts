@@ -158,8 +158,12 @@ export type UseDashboardEditorOptions = {
   widgetActionUrl: string;
   /** URL for layout updates. If empty or not provided, uses current page URL. */
   layoutActionUrl?: string;
+  /** Maximum number of widgets allowed per dashboard. If not provided, no limit is enforced. */
+  widgetLimit?: number;
   /** Callback when a sync error occurs */
   onSyncError?: (error: Error, action: string) => void;
+  /** Callback when a widget action is blocked by the limit */
+  onWidgetLimitReached?: () => void;
 };
 
 // ============================================================================
@@ -187,7 +191,9 @@ export function useDashboardEditor({
   initialData,
   widgetActionUrl,
   layoutActionUrl,
+  widgetLimit,
   onSyncError,
+  onWidgetLimitReached,
 }: UseDashboardEditorOptions) {
   const [state, dispatch] = useReducer(dashboardReducer, {
     layout: initialData.layout,
@@ -325,6 +331,12 @@ export function useDashboardEditor({
 
   const addWidget = useCallback(
     (title: string, query: string, config: QueryWidgetConfig) => {
+      // Guard: check widget limit
+      if (widgetLimit !== undefined && Object.keys(state.widgets).length >= widgetLimit) {
+        onWidgetLimitReached?.();
+        return;
+      }
+
       const id = nanoid(8);
       const maxBottom = Math.max(0, ...state.layout.map((l) => l.y + l.h));
       const layoutItem: LayoutItem = { i: id, x: 0, y: maxBottom, w: 12, h: 15 };
@@ -340,7 +352,7 @@ export function useDashboardEditor({
         config: JSON.stringify(config),
       });
     },
-    [state.layout, queueWidgetSync]
+    [state.layout, state.widgets, widgetLimit, onWidgetLimitReached, queueWidgetSync]
   );
 
   const updateWidget = useCallback(
@@ -374,6 +386,12 @@ export function useDashboardEditor({
 
   const duplicateWidget = useCallback(
     (widgetId: string) => {
+      // Guard: check widget limit
+      if (widgetLimit !== undefined && Object.keys(state.widgets).length >= widgetLimit) {
+        onWidgetLimitReached?.();
+        return;
+      }
+
       const newId = nanoid(8);
 
       // Update local state immediately
@@ -384,7 +402,7 @@ export function useDashboardEditor({
       // This is fine since we're optimistic - the server state will be consistent
       queueWidgetSync("duplicate", { widgetId });
     },
-    [queueWidgetSync]
+    [state.widgets, widgetLimit, onWidgetLimitReached, queueWidgetSync]
   );
 
   const renameWidget = useCallback(

@@ -3,7 +3,10 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { useCustomDashboards } from "~/hooks/useOrganizations";
+import {
+  useCustomDashboards,
+  useWidgetLimitPerDashboard,
+} from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { Button } from "../primitives/Buttons";
@@ -32,10 +35,14 @@ export function SaveToDashboardDialog({
   const project = useProject();
   const environment = useEnvironment();
   const customDashboards = useCustomDashboards();
+  const widgetLimit = useWidgetLimitPerDashboard();
   const navigation = useNavigation();
 
+  // Find the first dashboard that isn't at the widget limit
+  const firstAvailableDashboard = customDashboards.find((d) => d.widgetCount < widgetLimit);
+
   const [selectedDashboardId, setSelectedDashboardId] = useState<string | null>(
-    customDashboards.length > 0 ? customDashboards[0].friendlyId : null
+    firstAvailableDashboard?.friendlyId ?? (customDashboards[0]?.friendlyId ?? null)
   );
 
   // Build the form action URL
@@ -44,6 +51,10 @@ export function SaveToDashboardDialog({
     : "";
 
   const isLoading = navigation.formAction === formAction && navigation.state === "submitting";
+
+  // Check if selected dashboard is at widget limit
+  const selectedDashboard = customDashboards.find((d) => d.friendlyId === selectedDashboardId);
+  const isSelectedAtLimit = selectedDashboard ? selectedDashboard.widgetCount >= widgetLimit : false;
 
   // Close dialog when navigation completes (redirect is happening)
   useEffect(() => {
@@ -55,9 +66,10 @@ export function SaveToDashboardDialog({
   // Update selection if dashboards change
   useEffect(() => {
     if (customDashboards.length > 0 && !selectedDashboardId) {
-      setSelectedDashboardId(customDashboards[0].friendlyId);
+      const available = customDashboards.find((d) => d.widgetCount < widgetLimit);
+      setSelectedDashboardId(available?.friendlyId ?? customDashboards[0].friendlyId);
     }
-  }, [customDashboards, selectedDashboardId]);
+  }, [customDashboards, selectedDashboardId, widgetLimit]);
 
   if (customDashboards.length === 0) {
     return (
@@ -96,22 +108,36 @@ export function SaveToDashboardDialog({
               Select a dashboard to add this widget to:
             </Paragraph>
             <div className="max-h-64 space-y-1 overflow-y-auto">
-              {customDashboards.map((dashboard) => (
-                <button
-                  key={dashboard.friendlyId}
-                  type="button"
-                  onClick={() => setSelectedDashboardId(dashboard.friendlyId)}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition",
-                    selectedDashboardId === dashboard.friendlyId
-                      ? "bg-charcoal-700 text-text-bright"
-                      : "text-text-dimmed hover:bg-charcoal-750 hover:text-text-bright"
-                  )}
-                >
-                  <ChartBarSquareIcon className="size-4 shrink-0 text-purple-500" />
-                  <span className="truncate">{dashboard.title}</span>
-                </button>
-              ))}
+              {customDashboards.map((dashboard) => {
+                const isAtLimit = dashboard.widgetCount >= widgetLimit;
+                return (
+                  <button
+                    key={dashboard.friendlyId}
+                    type="button"
+                    onClick={() => !isAtLimit && setSelectedDashboardId(dashboard.friendlyId)}
+                    disabled={isAtLimit}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition",
+                      isAtLimit
+                        ? "cursor-not-allowed opacity-50"
+                        : selectedDashboardId === dashboard.friendlyId
+                          ? "bg-charcoal-700 text-text-bright"
+                          : "text-text-dimmed hover:bg-charcoal-750 hover:text-text-bright"
+                    )}
+                  >
+                    <ChartBarSquareIcon className="size-4 shrink-0 text-purple-500" />
+                    <span className="flex-1 truncate">{dashboard.title}</span>
+                    <span
+                      className={cn(
+                        "shrink-0 text-xs",
+                        isAtLimit ? "text-error" : "text-text-dimmed"
+                      )}
+                    >
+                      {dashboard.widgetCount}/{widgetLimit}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -120,7 +146,7 @@ export function SaveToDashboardDialog({
               <Button
                 type="submit"
                 variant="primary/medium"
-                disabled={isLoading || !selectedDashboardId}
+                disabled={isLoading || !selectedDashboardId || isSelectedAtLimit}
               >
                 {isLoading ? "Saving..." : "Save"}
               </Button>
