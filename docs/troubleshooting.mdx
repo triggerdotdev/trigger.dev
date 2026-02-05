@@ -151,6 +151,10 @@ Your code is deployed separately from the rest of your app(s) so you need to mak
 
 Prisma uses code generation to create the client from your schema file. This means you need to add a bit of config so we can generate this file before your tasks run: [Read the guide](/config/extensions/prismaExtension).
 
+### Database connection requires IPv4
+
+Trigger.dev currently only supports IPv4 database connections. If your database provider only provides an IPv6 connection string, you'll need to use an IPv4 address instead. [Upvote IPv6 support](https://triggerdev.featurebase.app/p/support-ipv6-database-connections).
+
 ### `Parallel waits are not supported`
 
 In the current version, you can't perform more that one "wait" in parallel.
@@ -171,11 +175,51 @@ The most common situation this happens is if you're using `Promise.all` around s
 
 Make sure that you always use `await` when you call `trigger`, `triggerAndWait`, `batchTrigger`, and `batchTriggerAndWait`. If you don't then it's likely the task(s) won't be triggered because the calling function process can be terminated before the networks calls are sent.
 
+### `COULD_NOT_FIND_EXECUTOR` 
+
+If you see a `COULD_NOT_FIND_EXECUTOR` error when triggering a task, it may be caused by dynamically importing the child task. When tasks are dynamically imported, the executor may not be properly registered.
+
+Use a top-level import instead:
+
+```ts
+import { myChildTask } from "~/trigger/my-child-task";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: string) => {
+    await myChildTask.trigger({ payload: "data" });
+  },
+});
+```
+
+Alternatively, use `tasks.trigger()` or `batch.triggerAndWait()` without importing the task:
+
+```ts
+import { batch } from "@trigger.dev/sdk";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: string) => {
+    await batch.triggerAndWait([{ id: "my-child-task", payload: "data" }]);
+  },
+});
+```
+
 ### Rate limit exceeded
 
 <RateLimitHitUseBatchTrigger />
 
 View the [rate limits](/limits) page for more information.
+
+### Runs waiting in queue due to concurrency limits
+
+If runs are staying in the `QUEUED` state for extended periods, check your concurrency usage in the dashboard. Review how many runs are `EXECUTING` or `DEQUEUED` (these count against limits) and check if any runs are stuck in `EXECUTING` state, as they may be blocking new runs.
+
+**Solutions:**
+
+- **Increase concurrency limits** - If you're on a paid plan, increase your environment concurrency limit via the dashboard
+- **Review queue concurrency limits** - Check if individual queues have restrictive `concurrencyLimit` settings
+- **Check for stuck runs** - See if stalled runs are blocking new executions
 
 ### `Crypto is not defined`
 

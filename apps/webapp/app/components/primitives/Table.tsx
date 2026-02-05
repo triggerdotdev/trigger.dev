@@ -64,18 +64,30 @@ type TableProps = {
   className?: string;
   children: ReactNode;
   fullWidth?: boolean;
+  showTopBorder?: boolean;
 };
 
 // Add TableContext
 const TableContext = createContext<{ variant: TableVariant }>({ variant: "dimmed" });
 
 export const Table = forwardRef<HTMLTableElement, TableProps & { variant?: TableVariant }>(
-  ({ className, containerClassName, children, fullWidth, variant = "dimmed" }, ref) => {
+  (
+    {
+      className,
+      containerClassName,
+      children,
+      fullWidth,
+      variant = "dimmed",
+      showTopBorder = true,
+    },
+    ref
+  ) => {
     return (
       <TableContext.Provider value={{ variant }}>
         <div
           className={cn(
-            "overflow-x-auto whitespace-nowrap border-t scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+            "overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+            showTopBorder && "border-t",
             containerClassName,
             fullWidth && "w-full"
           )}
@@ -230,6 +242,7 @@ type TableCellProps = TableCellBasicProps & {
   isSelected?: boolean;
   isTabbableCell?: boolean;
   children?: ReactNode;
+  style?: React.CSSProperties;
 };
 
 export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
@@ -246,6 +259,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       isSticky = false,
       isSelected,
       isTabbableCell = false,
+      style,
     },
     ref
   ) => {
@@ -291,6 +305,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           className
         )}
         colSpan={colSpan}
+        style={style}
       >
         {to ? (
           <Link

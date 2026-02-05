@@ -1,6 +1,6 @@
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
-import { FEATURE_FLAG, makeFlags } from "~/v3/featureFlags.server";
+import { FEATURE_FLAG, makeFlag } from "~/v3/featureFlags.server";
 import { BasePresenter } from "./basePresenter.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 
@@ -48,7 +48,7 @@ export class RegionsPresenter extends BasePresenter {
       throw new Error("Project not found");
     }
 
-    const getFlag = makeFlags(this._replica);
+    const getFlag = makeFlag(this._replica);
     const defaultWorkerInstanceGroupId = await getFlag({
       key: FEATURE_FLAG.defaultWorkerInstanceGroupId,
     });

@@ -4,35 +4,30 @@ import {
   endOfDay,
   endOfMonth,
   endOfWeek,
-  isSaturday,
-  isSunday,
-  previousSaturday,
   startOfDay,
   startOfMonth,
   startOfWeek,
-  startOfYear,
   subDays,
-  subMonths,
-  subWeeks,
+  subWeeks
 } from "date-fns";
 import parse from "parse-duration";
 import { startTransition, useCallback, useEffect, useState, type ReactNode } from "react";
+import simplur from "simplur";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
+import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
 import { DateTimePicker } from "~/components/primitives/DateTimePicker";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import { ComboboxProvider, SelectPopover, SelectProvider } from "~/components/primitives/Select";
+import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type ShortcutDefinition } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { Button } from "../../primitives/Buttons";
+import { organizationBillingPath } from "~/utils/pathBuilder";
+import { Button, LinkButton } from "../../primitives/Buttons";
 import { filterIcon } from "./RunFilters";
-
-export type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {
-  userName?: string;
-};
 
 export function FilterMenuProvider({
   children,
@@ -96,6 +91,10 @@ const timePeriods = [
     value: "3d",
   },
   {
+    label: "5 days",
+    value: "5d",
+  },
+  {
     label: "7 days",
     value: "7d",
   },
@@ -106,11 +105,7 @@ const timePeriods = [
   {
     label: "30 days",
     value: "30d",
-  },
-  {
-    label: "90 days",
-    value: "90d",
-  },
+  }
 ];
 
 const timeUnits = [
@@ -126,6 +121,22 @@ function parsePeriodString(period: string): { value: number; unit: string } | nu
     return { value: parseInt(match[1], 10), unit: match[2] };
   }
   return null;
+}
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+// Convert a period string to days using parse-duration
+function periodToDays(period: string): number {
+  const ms = parse(period);
+  if (!ms) return 0;
+  return ms / MS_PER_DAY;
+}
+
+// Calculate the number of days a date range spans from now
+function dateRangeToDays(from?: Date): number {
+  if (!from) return 0;
+  const now = new Date();
+  return Math.ceil((now.getTime() - from.getTime()) / MS_PER_DAY);
 }
 
 const DEFAULT_PERIOD = "7d";
@@ -292,6 +303,8 @@ export interface TimeFilterProps {
   applyShortcut?: ShortcutDefinition | undefined;
   /** Callback when the user applies a time filter selection, receives the applied values */
   onValueChange?: (values: TimeFilterApplyValues) => void;
+  /** When set an upgrade message will be shown if you select a period further back than this number of days */
+  maxPeriodDays?: number;
 }
 
 export function TimeFilter({
@@ -303,6 +316,7 @@ export function TimeFilter({
   hideLabel = false,
   applyShortcut,
   onValueChange,
+  maxPeriodDays,
 }: TimeFilterProps = {}) {
   const { value } = useSearchParams();
   const periodValue = period ?? value("period");
@@ -339,6 +353,7 @@ export function TimeFilter({
           labelName={labelName}
           applyShortcut={applyShortcut}
           onValueChange={onValueChange}
+          maxPeriodDays={maxPeriodDays}
         />
       )}
     </FilterMenuProvider>
@@ -356,6 +371,8 @@ function getInitialCustomDuration(period?: string): { value: string; unit: strin
   return { value: "", unit: "m" };
 }
 
+type SectionType = "duration" | "dateRange";
+
 export function TimeDropdown({
   trigger,
   period,
@@ -366,6 +383,7 @@ export function TimeDropdown({
   applyShortcut,
   onApply,
   onValueChange,
+  maxPeriodDays,
 }: {
   trigger: ReactNode;
   period?: string;
@@ -377,14 +395,16 @@ export function TimeDropdown({
   onApply?: (values: TimeFilterApplyValues) => void;
   /** When provided, the component operates in controlled mode and skips URL navigation */
   onValueChange?: (values: TimeFilterApplyValues) => void;
+  /** When set an upgrade message will be shown if you select a period further back than this number of days */
+  maxPeriodDays?: number;
 }) {
+  const organization = useOptionalOrganization();
   const [open, setOpen] = useState<boolean | undefined>();
   const { replace } = useSearchParams();
   const [fromValue, setFromValue] = useState(from);
   const [toValue, setToValue] = useState(to);
 
   // Section selection state: "duration" or "dateRange"
-  type SectionType = "duration" | "dateRange";
   const initialSection: SectionType = from || to ? "dateRange" : "duration";
   const [activeSection, setActiveSection] = useState<SectionType>(initialSection);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -418,8 +438,27 @@ export function TimeDropdown({
     return !isNaN(value) && value > 0;
   })();
 
+  // Calculate if the current selection exceeds maxPeriodDays
+  const exceedsMaxPeriod = (() => {
+    if (!maxPeriodDays) return false;
+
+    if (activeSection === "duration") {
+      const periodToCheck = selectedPeriod === "custom" ? `${customValue}${customUnit}` : selectedPeriod;
+      if (!periodToCheck) return false;
+      return periodToDays(periodToCheck) > maxPeriodDays;
+    } else {
+      // For date range, check if fromValue is further back than maxPeriodDays
+      return dateRangeToDays(fromValue) > maxPeriodDays;
+    }
+  })();
+
   const applySelection = useCallback(() => {
     setValidationError(null);
+
+    if (exceedsMaxPeriod) {
+      setValidationError(`Your plan allows a maximum of ${maxPeriodDays} days. Upgrade for longer retention.`);
+      return;
+    }
 
     if (activeSection === "duration") {
       // Validate custom duration
@@ -498,6 +537,8 @@ export function TimeDropdown({
     replace,
     onApply,
     onValueChange,
+    exceedsMaxPeriod,
+    maxPeriodDays
   ]);
 
   return (
@@ -683,7 +724,7 @@ export function TimeDropdown({
                 />
               </div>
               {/* Quick select date ranges */}
-              <div className="mt-2 grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="mt-2 grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
                 <QuickDateButton
                   label="Yesterday"
                   isActive={selectedQuickDate === "yesterday"}
@@ -702,43 +743,24 @@ export function TimeDropdown({
                   onClick={() => {
                     const today = new Date();
                     setFromValue(startOfDay(today));
-                    setToValue(today);
+                    setToValue(endOfDay(today));
                     setActiveSection("dateRange");
                     setValidationError(null);
                     setSelectedQuickDate("today");
                   }}
                 />
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
                 <QuickDateButton
                   label="This week"
                   isActive={selectedQuickDate === "thisWeek"}
                   onClick={() => {
                     const now = new Date();
                     setFromValue(startOfWeek(now, { weekStartsOn: 1 }));
-                    setToValue(now);
+                    setToValue(endOfWeek(now, { weekStartsOn: 1 }));
                     setActiveSection("dateRange");
                     setValidationError(null);
                     setSelectedQuickDate("thisWeek");
-                  }}
-                />
-                <QuickDateButton
-                  label="Last weekend"
-                  isActive={selectedQuickDate === "lastWeekend"}
-                  onClick={() => {
-                    const now = new Date();
-                    let saturday: Date;
-                    if (isSaturday(now)) {
-                      saturday = subDays(now, 7);
-                    } else if (isSunday(now)) {
-                      saturday = subDays(now, 8);
-                    } else {
-                      saturday = previousSaturday(now);
-                    }
-                    const sunday = endOfDay(subDays(saturday, -1));
-                    setFromValue(startOfDay(saturday));
-                    setToValue(sunday);
-                    setActiveSection("dateRange");
-                    setValidationError(null);
-                    setSelectedQuickDate("lastWeekend");
                   }}
                 />
                 <QuickDateButton
@@ -754,53 +776,15 @@ export function TimeDropdown({
                   }}
                 />
                 <QuickDateButton
-                  label="Last weekdays"
-                  isActive={selectedQuickDate === "lastWeekdays"}
-                  onClick={() => {
-                    const lastWeek = subWeeks(new Date(), 1);
-                    const monday = startOfWeek(lastWeek, { weekStartsOn: 1 });
-                    const friday = endOfDay(subDays(monday, -4)); // Monday + 4 days = Friday
-                    setFromValue(startOfDay(monday));
-                    setToValue(friday);
-                    setActiveSection("dateRange");
-                    setValidationError(null);
-                    setSelectedQuickDate("lastWeekdays");
-                  }}
-                />
-                <QuickDateButton
-                  label="Last month"
-                  isActive={selectedQuickDate === "lastMonth"}
-                  onClick={() => {
-                    const lastMonth = subMonths(new Date(), 1);
-                    setFromValue(startOfMonth(lastMonth));
-                    setToValue(endOfMonth(lastMonth));
-                    setActiveSection("dateRange");
-                    setValidationError(null);
-                    setSelectedQuickDate("lastMonth");
-                  }}
-                />
-                <QuickDateButton
                   label="This month"
                   isActive={selectedQuickDate === "thisMonth"}
                   onClick={() => {
                     const now = new Date();
                     setFromValue(startOfMonth(now));
-                    setToValue(now);
+                    setToValue(endOfMonth(now));
                     setActiveSection("dateRange");
                     setValidationError(null);
                     setSelectedQuickDate("thisMonth");
-                  }}
-                />
-                <QuickDateButton
-                  label="Year to date"
-                  isActive={selectedQuickDate === "yearToDate"}
-                  onClick={() => {
-                    const now = new Date();
-                    setFromValue(startOfYear(now));
-                    setToValue(now);
-                    setActiveSection("dateRange");
-                    setValidationError(null);
-                    setSelectedQuickDate("yearToDate");
                   }}
                 />
               </div>
@@ -811,6 +795,17 @@ export function TimeDropdown({
               )}
             </div>
           </div>
+
+          {/* Upgrade callout when exceeding maxPeriodDays */}
+          {exceedsMaxPeriod && organization && (
+            <Callout
+              variant="pricing"
+              cta={<LinkButton variant="primary/small" to={organizationBillingPath({ slug: organization.slug })}>Upgrade</LinkButton>}
+              className="items-center"
+            >
+              {simplur`Your plan allows a maximum of ${maxPeriodDays} day[|s].`}
+            </Callout>
+          )}
 
           {/* Action buttons */}
           <div className="flex justify-between gap-1 border-t border-grid-bright px-0 pt-3">
@@ -839,6 +834,7 @@ export function TimeDropdown({
                 applySelection();
               }}
               type="button"
+              disabled={exceedsMaxPeriod}
             >
               Apply
             </Button>
