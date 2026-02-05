@@ -109,7 +109,8 @@ export class OrgIntegrationRepository {
     // The user goes to Vercel's marketplace to install the integration
     // After installation, Vercel redirects to our callback with the authorization code
     const redirectUri = encodeURIComponent(`${env.APP_ORIGIN}/vercel/callback`);
-    return `https://vercel.com/integrations/${env.VERCEL_INTEGRATION_APP_SLUG}/new?state=${state}&redirect_uri=${redirectUri}`;
+    const encodedState = encodeURIComponent(state);
+    return `https://vercel.com/integrations/${env.VERCEL_INTEGRATION_APP_SLUG}/new?state=${encodedState}&redirect_uri=${redirectUri}`;
   }
 
   static slackAuthorizationUrl(

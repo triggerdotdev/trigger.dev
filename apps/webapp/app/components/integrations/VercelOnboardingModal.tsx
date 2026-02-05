@@ -33,7 +33,6 @@ import { BuildSettingsFields } from "~/components/integrations/VercelBuildSettin
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import {
   ConnectGitHubRepoModal,
-  type GitHubAppInstallation,
 } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 import {
   type SyncEnvVarsMapping,
@@ -337,7 +336,7 @@ export function VercelOnboardingModal({
         setState("loading-env-vars");
       }
     }
-  }, [state, onboardingData, hasStagingEnvironment]);
+  }, [state, onboardingData, hasStagingEnvironment, fromMarketplaceContext]);
 
   const secretEnvVars = envVars.filter((v) => v.isSecret);
   const syncableEnvVars = envVars.filter((v) => !v.isSecret);
@@ -990,7 +989,7 @@ export function VercelOnboardingModal({
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center gap-3">
                       <ConnectGitHubRepoModal
-                        gitHubAppInstallations={gitHubAppInstallations as GitHubAppInstallation[]}
+                        gitHubAppInstallations={gitHubAppInstallations}
                         organizationSlug={organizationSlug}
                         projectSlug={projectSlug}
                         environmentSlug={environmentSlug}

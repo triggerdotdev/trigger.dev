@@ -1,3 +1,4 @@
+import { Result } from "neverthrow";
 import { z } from "zod";
 
 export const EnvSlugSchema = z.enum(["dev", "stg", "prod", "preview"]);
@@ -5,18 +6,21 @@ export type EnvSlug = z.infer<typeof EnvSlugSchema>;
 
 export const ALL_ENV_SLUGS: EnvSlug[] = ["dev", "stg", "prod", "preview"];
 
+const safeJsonParse = Result.fromThrowable(
+  (val: string) => JSON.parse(val) as unknown,
+  () => null
+);
+
 /**
  * Zod transform for form fields that submit JSON-encoded arrays.
  * Parses the string as JSON and returns the array, or null if invalid.
  */
 export const jsonArrayField = z.string().optional().transform((val) => {
   if (!val) return null;
-  try {
-    const parsed = JSON.parse(val);
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
+  return safeJsonParse(val).match(
+    (parsed) => (Array.isArray(parsed) ? parsed : null),
+    () => null
+  );
 });
 
 export const VercelIntegrationConfigSchema = z.object({

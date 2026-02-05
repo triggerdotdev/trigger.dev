@@ -43,16 +43,12 @@ function formatDate(date: Date): string {
   }).format(date);
 }
 
-const SearchParamsSchema = OrganizationParamsSchema.extend({
-  configurationId: z.string().optional(),
-});
-
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const { organizationSlug, configurationId } = SearchParamsSchema.parse(params);
+  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+  const url = new URL(request.url);
+  const configurationId = url.searchParams.get("configurationId") ?? undefined;
   const { organization } = await requireOrganization(request, organizationSlug);
   
-  const url = new URL(request.url);
-
   // Find Vercel integration for this organization
   let vercelIntegration = await prisma.organizationIntegration.findFirst({
     where: {
@@ -146,41 +142,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return json({ error: "Vercel integration not found" }, { status: 404 });
   }
 
-  const uninstallActionResult = await fromPromise(
-    (async () => {
-      // First, attempt to uninstall the integration from Vercel side
-      const uninstallResult = await VercelIntegrationRepository.uninstallVercelIntegration(vercelIntegration);
+  // Uninstall from Vercel side
+  const uninstallResult = await VercelIntegrationRepository.uninstallVercelIntegration(vercelIntegration);
 
-      // Then soft-delete the integration and all connected projects in a transaction
-      await $transaction(prisma, async (tx) => {
-        // Soft-delete all connected projects
-        await tx.organizationProjectIntegration.updateMany({
-          where: {
-            organizationIntegrationId: vercelIntegration.id,
-            deletedAt: null,
-          },
-          data: { deletedAt: new Date() },
-        });
-
-        // Soft-delete the integration record
-        await tx.organizationIntegration.update({
-          where: { id: vercelIntegration.id },
-          data: { deletedAt: new Date() },
-        });
-      });
-
-      return uninstallResult;
-    })(),
-    (error) => error
-  );
-
-  if (uninstallActionResult.isErr()) {
+  if (uninstallResult.isErr()) {
     logger.error("Failed to uninstall Vercel integration", {
       organizationId: organization.id,
       organizationSlug,
       userId,
       integrationId: vercelIntegration.id,
-      error: uninstallActionResult.error instanceof Error ? uninstallActionResult.error.message : String(uninstallActionResult.error),
+      error: uninstallResult.error.message,
     });
 
     return json(
@@ -189,7 +160,41 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     );
   }
 
-  if (uninstallActionResult.value.authInvalid) {
+  // Soft-delete the integration and all connected projects in a transaction
+  const txResult = await fromPromise(
+    $transaction(prisma, async (tx) => {
+      await tx.organizationProjectIntegration.updateMany({
+        where: {
+          organizationIntegrationId: vercelIntegration.id,
+          deletedAt: null,
+        },
+        data: { deletedAt: new Date() },
+      });
+
+      await tx.organizationIntegration.update({
+        where: { id: vercelIntegration.id },
+        data: { deletedAt: new Date() },
+      });
+    }),
+    (error) => error
+  );
+
+  if (txResult.isErr()) {
+    logger.error("Failed to soft-delete Vercel integration records", {
+      organizationId: organization.id,
+      organizationSlug,
+      userId,
+      integrationId: vercelIntegration.id,
+      error: txResult.error instanceof Error ? txResult.error.message : String(txResult.error),
+    });
+
+    return json(
+      { error: "Failed to uninstall Vercel integration. Please try again." },
+      { status: 500 }
+    );
+  }
+
+  if (uninstallResult.value.authInvalid) {
     logger.warn("Vercel integration uninstalled with auth error - token invalid", {
       organizationId: organization.id,
       organizationSlug,

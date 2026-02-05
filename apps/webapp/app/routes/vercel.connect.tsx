@@ -12,7 +12,7 @@ import { validateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 
 const VercelConnectSchema = z.object({
   state: z.string(),
-  configurationId: z.string(),
+  configurationId: z.string().optional(),
   code: z.string(),
   next: z.string().optional(),
   origin: z.enum(["marketplace", "dashboard"]),
@@ -22,7 +22,7 @@ async function createOrFindVercelIntegration(
   organizationId: string,
   projectId: string,
   tokenResponse: TokenResponse,
-  configurationId: string,
+  configurationId: string | undefined,
   origin: 'marketplace' | 'dashboard'
 ): Promise<void> {
   const project = await prisma.project.findUnique({
@@ -116,11 +116,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
     throw new Response("Project not found", { status: 404 });
   }
 
-  const tokenResponse = await VercelIntegrationRepository.exchangeCodeForToken(code);
-  if (!tokenResponse) {
+  const tokenResult = await VercelIntegrationRepository.exchangeCodeForToken(code);
+  if (tokenResult.isErr()) {
     const params = new URLSearchParams({ error: "expired" });
     return redirect(`/vercel/onboarding?${params.toString()}`);
   }
+  const tokenResponse = tokenResult.value;
 
   const environment = await prisma.runtimeEnvironment.findFirst({
     where: {

@@ -4,6 +4,7 @@ import type {
   OrganizationIntegration,
   SecretReference,
 } from "@trigger.dev/database";
+import { ResultAsync } from "neverthrow";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
@@ -184,13 +185,16 @@ export class VercelIntegrationService {
         },
       });
 
-      const syncResult = await VercelIntegrationRepository.syncApiKeysToVercel({
+      const syncResultAsync = await VercelIntegrationRepository.syncApiKeysToVercel({
         projectId: params.projectId,
         vercelProjectId: params.vercelProjectId,
         teamId,
         vercelStagingEnvironment: existing.parsedIntegrationData.config.vercelStagingEnvironment,
         orgIntegration,
       });
+      const syncResult = syncResultAsync.isOk()
+        ? { success: syncResultAsync.value.errors.length === 0, errors: syncResultAsync.value.errors }
+        : { success: false, errors: [syncResultAsync.error.message] };
 
       return { integration: updated, syncResult };
     }
@@ -204,26 +208,31 @@ export class VercelIntegrationService {
       installedByUserId: params.userId,
     });
 
-    const syncResult = await VercelIntegrationRepository.syncApiKeysToVercel({
+    const syncResultAsync = await VercelIntegrationRepository.syncApiKeysToVercel({
       projectId: params.projectId,
       vercelProjectId: params.vercelProjectId,
       teamId,
       vercelStagingEnvironment: null,
       orgIntegration,
     });
+    const syncResult = syncResultAsync.isOk()
+      ? { success: syncResultAsync.value.errors.length === 0, errors: syncResultAsync.value.errors }
+      : { success: false, errors: [syncResultAsync.error.message] };
 
-    try {
-      const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
-      await VercelIntegrationRepository.disableAutoAssignCustomDomains(
-        client,
-        params.vercelProjectId,
-        teamId
+    const disableResult = await VercelIntegrationRepository.getVercelClient(orgIntegration)
+      .andThen((client) =>
+        VercelIntegrationRepository.disableAutoAssignCustomDomains(
+          client,
+          params.vercelProjectId,
+          teamId
+        )
       );
-    } catch (error) {
+
+    if (disableResult.isErr()) {
       logger.warn("Failed to disable autoAssignCustomDomains during project selection", {
         projectId: params.projectId,
         vercelProjectId: params.vercelProjectId,
-        error,
+        error: disableResult.error.message,
       });
     }
 
@@ -416,15 +425,11 @@ export class VercelIntegrationService {
       },
     });
 
-    try {
-      const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(
-        projectId
-      );
+    const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(
+      projectId
+    );
 
-      if (!orgIntegration) {
-        return { ...updated, parsedIntegrationData: updatedData };
-      }
-
+    if (orgIntegration) {
       const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
 
       logger.info("Vercel onboarding: pulling env vars from Vercel", {
@@ -444,18 +449,24 @@ export class VercelIntegrationService {
         orgIntegration,
       });
 
-      if (!pullResult.success) {
+      if (pullResult.isErr()) {
+        logger.error("Failed to pull env vars from Vercel during onboarding", {
+          projectId,
+          vercelProjectId: updatedData.vercelProjectId,
+          error: pullResult.error.message,
+        });
+      } else if (pullResult.value.errors.length > 0) {
         logger.warn("Some errors occurred while pulling env vars from Vercel", {
           projectId,
           vercelProjectId: updatedData.vercelProjectId,
-          errors: pullResult.errors,
-          syncedCount: pullResult.syncedCount,
+          errors: pullResult.value.errors,
+          syncedCount: pullResult.value.syncedCount,
         });
       } else {
         logger.info("Successfully pulled env vars from Vercel", {
           projectId,
           vercelProjectId: updatedData.vercelProjectId,
-          syncedCount: pullResult.syncedCount,
+          syncedCount: pullResult.value.syncedCount,
         });
       }
 
@@ -464,12 +475,6 @@ export class VercelIntegrationService {
         updatedData.config.atomicBuilds,
         orgIntegration
       );
-    } catch (error) {
-      logger.error("Failed to pull env vars from Vercel during onboarding", {
-        projectId,
-        vercelProjectId: updatedData.vercelProjectId,
-        error,
-      });
     }
 
     return {
@@ -483,80 +488,88 @@ export class VercelIntegrationService {
     atomicBuilds: string[] | null | undefined,
     orgIntegration: OrganizationIntegration & { tokenReference: SecretReference }
   ): Promise<void> {
-    try {
-      if (!atomicBuilds?.includes("prod")) {
-        return;
-      }
+    if (!atomicBuilds?.includes("prod")) {
+      return;
+    }
 
-      const prodEnvironment = await this.#prismaClient.runtimeEnvironment.findFirst({
-        where: {
-          projectId,
-          type: "PRODUCTION",
-        },
-        select: {
-          id: true,
-        },
+    const prodEnvironment = await this.#prismaClient.runtimeEnvironment.findFirst({
+      where: {
+        projectId,
+        type: "PRODUCTION",
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!prodEnvironment) {
+      return;
+    }
+
+    const currentDeployment = await findCurrentWorkerDeployment({
+      environmentId: prodEnvironment.id,
+    });
+
+    if (!currentDeployment?.version) {
+      return;
+    }
+
+    const clientResult = await VercelIntegrationRepository.getVercelClient(orgIntegration);
+    if (clientResult.isErr()) {
+      logger.error("Failed to get Vercel client for TRIGGER_VERSION sync", {
+        projectId,
+        error: clientResult.error.message,
       });
+      return;
+    }
+    const client = clientResult.value;
+    const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
 
-      if (!prodEnvironment) {
-        return;
-      }
+    // Get the Vercel project ID from the project integration
+    const projectIntegration = await this.#prismaClient.organizationProjectIntegration.findFirst({
+      where: {
+        projectId,
+        organizationIntegrationId: orgIntegration.id,
+        deletedAt: null,
+      },
+      select: {
+        externalEntityId: true,
+      },
+    });
 
-      const currentDeployment = await findCurrentWorkerDeployment({
-        environmentId: prodEnvironment.id,
-      });
+    if (!projectIntegration) {
+      return;
+    }
 
-      if (!currentDeployment?.version) {
-        return;
-      }
+    const vercelProjectId = projectIntegration.externalEntityId;
 
-      const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
-      const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
+    // Check if TRIGGER_VERSION already exists targeting production
+    const envVarsResult = await VercelIntegrationRepository.getVercelEnvironmentVariables(
+      client,
+      vercelProjectId,
+      teamId
+    );
 
-      // Get the Vercel project ID from the project integration
-      const projectIntegration = await this.#prismaClient.organizationProjectIntegration.findFirst({
-        where: {
-          projectId,
-          organizationIntegrationId: orgIntegration.id,
-          deletedAt: null,
-        },
-        select: {
-          externalEntityId: true,
-        },
-      });
-
-      if (!projectIntegration) {
-        return;
-      }
-
-      const vercelProjectId = projectIntegration.externalEntityId;
-
-      // Check if TRIGGER_VERSION already exists targeting production
-      const envVarsResult = await VercelIntegrationRepository.getVercelEnvironmentVariables(
-        client,
+    if (envVarsResult.isErr()) {
+      logger.warn("Failed to fetch Vercel env vars for TRIGGER_VERSION sync", {
+        projectId,
         vercelProjectId,
-        teamId
-      );
+        error: envVarsResult.error.message,
+      });
+      return;
+    }
 
-      if (!envVarsResult.success) {
-        logger.warn("Failed to fetch Vercel env vars for TRIGGER_VERSION sync", {
-          projectId,
-          vercelProjectId,
-          error: envVarsResult.error,
-        });
-        return;
-      }
+    const existingTriggerVersion = envVarsResult.value.find(
+      (env) => env.key === "TRIGGER_VERSION" && env.target.includes("production")
+    );
 
-      const existingTriggerVersion = envVarsResult.data.find(
-        (env) => env.key === "TRIGGER_VERSION" && env.target.includes("production")
-      );
+    if (existingTriggerVersion) {
+      return;
+    }
 
-      if (existingTriggerVersion) {
-        return;
-      }
-
-      // Push TRIGGER_VERSION to Vercel production
-      await client.projects.createProjectEnv({
+    // Push TRIGGER_VERSION to Vercel production
+    const createResult = await ResultAsync.fromPromise(
+      client.projects.createProjectEnv({
         idOrName: vercelProjectId,
         ...(teamId && { teamId }),
         upsert: "true",
@@ -566,19 +579,24 @@ export class VercelIntegrationService {
           target: ["production"] as any,
           type: "encrypted",
         },
-      });
+      }),
+      (error) => error
+    );
 
-      logger.info("Synced TRIGGER_VERSION to Vercel production", {
-        projectId,
-        vercelProjectId,
-        version: currentDeployment.version,
-      });
-    } catch (error) {
+    if (createResult.isErr()) {
       logger.error("Failed to sync TRIGGER_VERSION to Vercel production", {
         projectId,
-        error,
+        vercelProjectId,
+        error: createResult.error instanceof Error ? createResult.error.message : String(createResult.error),
       });
+      return;
     }
+
+    logger.info("Synced TRIGGER_VERSION to Vercel production", {
+      projectId,
+      vercelProjectId,
+      version: currentDeployment.version,
+    });
   }
 
   async disconnectVercelProject(projectId: string): Promise<boolean> {

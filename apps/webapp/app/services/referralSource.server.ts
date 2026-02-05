@@ -1,9 +1,12 @@
 import { createCookie } from "@remix-run/node";
+import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { telemetry } from "~/services/telemetry.server";
 
-export type ReferralSource = "vercel";
+const ReferralSourceSchema = z.enum(["vercel"]);
+
+export type ReferralSource = z.infer<typeof ReferralSourceSchema>;
 
 // Cookie that persists for 1 hour to track referral source during login flow
 export const referralSourceCookie = createCookie("referral-source", {
@@ -16,10 +19,8 @@ export const referralSourceCookie = createCookie("referral-source", {
 export async function getReferralSource(request: Request): Promise<ReferralSource | null> {
   const cookie = request.headers.get("Cookie");
   const value = await referralSourceCookie.parse(cookie);
-  if (value === "vercel") {
-    return value;
-  }
-  return null;
+  const parsed = ReferralSourceSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 export async function setReferralSourceCookie(source: ReferralSource): Promise<string> {

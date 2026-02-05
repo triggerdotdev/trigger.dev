@@ -25,7 +25,7 @@ import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 
 const LoaderParamsSchema = z.object({
   organizationId: z.string().optional().nullable(),
-  code: z.string(),
+  code: z.string().optional().nullable(),
   configurationId: z.string().optional().nullable(),
   next: z.string().optional().nullable(),
   error: z.string().optional().nullable(),
@@ -79,11 +79,22 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return typedjson({
       step: "error" as const,
       error: "Your installation session has expired. Please start the installation again.",
-      code: params.data.code,
+      code: params.data.code ?? null,
       configurationId: params.data.configurationId ?? null,
       next: params.data.next ?? null,
     });
   }
+
+  if (!params.data.code) {
+    logger.error("Missing code parameter for Vercel onboarding");
+    throw redirectWithErrorMessage(
+      "/",
+      request,
+      "Invalid installation parameters. Please try again from Vercel."
+    );
+  }
+
+  const code = params.data.code;
 
   const organizations = await prisma.organization.findMany({
     where: {
@@ -118,7 +129,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // New user: no organizations
   if (organizations.length === 0) {
     const onboardingParams = new URLSearchParams();
-    onboardingParams.set("code", params.data.code);
+    onboardingParams.set("code", code);
     if (params.data.configurationId) {
       onboardingParams.set("configurationId", params.data.configurationId);
     }
@@ -149,7 +160,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       step: "project" as const,
       organization,
       organizations,
-      code: params.data.code,
+      code: code,
       configurationId: params.data.configurationId ?? null,
       next: params.data.next ?? null,
     });
@@ -158,7 +169,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   return typedjson({
     step: "org" as const,
     organizations,
-    code: params.data.code,
+    code: code,
     configurationId: params.data.configurationId ?? null,
     next: params.data.next ?? null,
   });

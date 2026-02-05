@@ -59,7 +59,7 @@ import {
   getAvailableEnvSlugs,
   getAvailableEnvSlugsForBuildSettings,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
-import { fromPromise } from "neverthrow";
+import { Result, fromPromise } from "neverthrow";
 import { useEffect, useState } from "react";
 
 export type ConnectedVercelProject = {
@@ -71,19 +71,24 @@ export type ConnectedVercelProject = {
   createdAt: Date;
 };
 
+const safeJsonParse = Result.fromThrowable(
+  (val: string) => JSON.parse(val) as Record<string, unknown>,
+  () => null
+);
+
 function parseVercelStagingEnvironment(
   value: string | null | undefined
 ): { environmentId: string; displayName: string } | null {
   if (!value) return null;
-  try {
-    const parsed = JSON.parse(value) as { environmentId?: string; displayName?: string };
-    if (parsed?.environmentId && parsed?.displayName) {
-      return { environmentId: parsed.environmentId, displayName: parsed.displayName };
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  return safeJsonParse(value).match(
+    (parsed) => {
+      if (typeof parsed?.environmentId === "string" && typeof parsed?.displayName === "string") {
+        return { environmentId: parsed.environmentId, displayName: parsed.displayName };
+      }
+      return null;
+    },
+    () => null
+  );
 }
 
 const UpdateVercelConfigFormSchema = z.object({
@@ -139,69 +144,63 @@ const VercelActionSchema = z.discriminatedUnion("action", [
 ]);
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  try {
-    const userId = await requireUserId(request);
-    const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+  const userId = await requireUserId(request);
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
-    const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-    if (!project) {
-      throw new Response("Not Found", { status: 404 });
-    }
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) {
+    throw new Response("Not Found", { status: 404 });
+  }
 
-    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-    if (!environment) {
-      throw new Response("Not Found", { status: 404 });
-    }
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    throw new Response("Not Found", { status: 404 });
+  }
 
-    const presenter = new VercelSettingsPresenter();
-    const resultOrFail = await presenter.call({
+  const presenter = new VercelSettingsPresenter();
+  const resultOrFail = await fromPromise(
+    presenter.call({
       projectId: project.id,
       organizationId: project.organizationId,
-    });
+    }),
+    (error) => error
+  );
 
-    if (!resultOrFail?.isOk()) {
-      throw new Response("Failed to load Vercel settings", { status: 500 });
-    }
-
-    const result = resultOrFail.value;
-    const url = new URL(request.url);
-    const needsOnboarding = url.searchParams.get("vercelOnboarding") === "true";
-    const vercelEnvironmentId = url.searchParams.get("vercelEnvironmentId") || undefined;
-
-    let onboardingData: VercelOnboardingData | null = null;
-    if (needsOnboarding) {
-      onboardingData = await presenter.getOnboardingData(
-        project.id, 
-        project.organizationId,
-        vercelEnvironmentId
-      );
-    }
-
-    const authInvalid = onboardingData?.authInvalid || result.authInvalid || false;
-
-    return typedjson({
-      ...result,
-      authInvalid: authInvalid || result.authInvalid,
-      onboardingData,
-      organizationSlug,
-      projectSlug: projectParam,
-      environmentSlug: envParam,
-      projectId: project.id,
-      organizationId: project.organizationId,
-    });
-  } catch (error) {
-    if (error instanceof Response) {
-      throw error;
-    }
-
-    logger.error("Unexpected error in Vercel settings loader", {
+  if (resultOrFail.isErr() || !resultOrFail.value?.isOk()) {
+    logger.error("Failed to load Vercel settings", {
       url: request.url,
       params,
-      error,
+      error: resultOrFail.isErr() ? resultOrFail.error : undefined,
     });
-    
-    throw new Response("Internal Server Error", { status: 500 });
+    throw new Response("Failed to load Vercel settings", { status: 500 });
   }
+
+  const result = resultOrFail.value.value;
+  const url = new URL(request.url);
+  const needsOnboarding = url.searchParams.get("vercelOnboarding") === "true";
+  const vercelEnvironmentId = url.searchParams.get("vercelEnvironmentId") || undefined;
+
+  let onboardingData: VercelOnboardingData | null = null;
+  if (needsOnboarding) {
+    onboardingData = await presenter.getOnboardingData(
+      project.id,
+      project.organizationId,
+      vercelEnvironmentId
+    );
+  }
+
+  const authInvalid = onboardingData?.authInvalid || result.authInvalid || false;
+
+  return typedjson({
+    ...result,
+    authInvalid: authInvalid || result.authInvalid,
+    onboardingData,
+    organizationSlug,
+    projectSlug: projectParam,
+    environmentSlug: envParam,
+    projectId: project.id,
+    organizationId: project.organizationId,
+  });
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -282,10 +281,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
       let parsedMapping: SyncEnvVarsMapping = {};
       if (syncEnvVarsMapping) {
-        try {
-          parsedMapping = JSON.parse(syncEnvVarsMapping) as SyncEnvVarsMapping;
-        } catch (e) {
-          logger.error("Failed to parse syncEnvVarsMapping", { error: e });
+        const parseResult = safeJsonParse(syncEnvVarsMapping);
+        if (parseResult.isOk()) {
+          parsedMapping = parseResult.value as SyncEnvVarsMapping;
+        } else {
+          logger.error("Failed to parse syncEnvVarsMapping", { error: parseResult.error });
         }
       }
 
@@ -305,14 +305,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
         }
 
         if (next) {
-          try {
-            const nextUrl = new URL(next);
-            // Only allow https URLs for security
-            if (nextUrl.protocol === "https:") {
-              return json({ success: true, redirectTo: next });
-            }
-          } catch (e) {
-            logger.warn("Invalid next URL provided", { next, error: e });
+          const urlResult = Result.fromThrowable(() => new URL(next), (e) => e)();
+          if (urlResult.isOk() && urlResult.value.protocol === "https:") {
+            return json({ success: true, redirectTo: next });
+          }
+          if (urlResult.isErr()) {
+            logger.warn("Invalid next URL provided", { next, error: urlResult.error });
           }
         }
 
@@ -381,51 +379,37 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     case "disable-auto-assign": {
-      const disableResult = await fromPromise(
-        (async () => {
-          const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(
-            project.id
-          );
+      const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(
+        project.id
+      );
 
-          if (!orgIntegration) {
-            return { success: false as const, errorMessage: "No Vercel integration found" };
-          }
+      if (!orgIntegration) {
+        return redirectWithErrorMessage(settingsPath, request, "No Vercel integration found");
+      }
 
-          const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
-          const projectIntegration = await vercelService.getVercelProjectIntegration(project.id);
+      const projectIntegration = await vercelService.getVercelProjectIntegration(project.id);
 
-          if (!projectIntegration) {
-            return { success: false as const, errorMessage: "No Vercel project connected" };
-          }
+      if (!projectIntegration) {
+        return redirectWithErrorMessage(settingsPath, request, "No Vercel project connected");
+      }
 
-          const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
-          const result = await VercelIntegrationRepository.disableAutoAssignCustomDomains(
+      const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
+
+      const disableResult = await VercelIntegrationRepository.getVercelClient(orgIntegration)
+        .andThen((client) =>
+          VercelIntegrationRepository.disableAutoAssignCustomDomains(
             client,
             projectIntegration.parsedIntegrationData.vercelProjectId,
             teamId
-          );
-
-          return { success: result.success, errorMessage: null };
-        })(),
-        (error) => error
-      );
+          )
+        );
 
       if (disableResult.isErr()) {
         logger.error("Failed to disable auto-assign custom domains", { error: disableResult.error });
         return redirectWithErrorMessage(settingsPath, request, "Failed to disable auto-assign custom domains");
       }
 
-      const { success: disableSuccess, errorMessage } = disableResult.value;
-
-      if (disableSuccess) {
-        return redirectWithSuccessMessage(settingsPath, request, "Auto-assign custom domains disabled");
-      }
-
-      return redirectWithErrorMessage(
-        settingsPath,
-        request,
-        errorMessage ?? "Failed to disable auto-assign custom domains"
-      );
+      return redirectWithSuccessMessage(settingsPath, request, "Auto-assign custom domains disabled");
     }
 
     default: {
@@ -554,8 +538,8 @@ function VercelGitHubWarning() {
   return (
     <Callout variant="warning" className="mb-4">
       <p className="font-sans text-xs font-normal text-text-dimmed">
-        GitHub integration is not connected. Vercel integration cannot pull environment variables or
-        spawn Trigger.dev builds without a properly installed GitHub integration.
+        GitHub integration is not connected. Vercel integration cannot sync environment variables and
+        link deployments without a properly installed GitHub integration.
       </p>
     </Callout>
   );
@@ -946,8 +930,8 @@ function VercelSettingsPanel({
           </Hint>
           {!data.isGitHubConnected && (
             <Hint>
-              GitHub integration is not connected. Vercel integration cannot pull environment variables or
-              spawn Trigger.dev builds without a properly installed GitHub integration.
+              GitHub integration is not connected. Vercel integration cannot sync environment variables and
+              link deployments without a properly installed GitHub integration.
             </Hint>
           )}
         </>
