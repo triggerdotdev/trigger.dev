@@ -40,7 +40,7 @@ export function SaveToDashboardDialog({
 
   // Build the form action URL
   const formAction = selectedDashboardId
-    ? `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${selectedDashboardId}/add-widget`
+    ? `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${selectedDashboardId}/widgets`
     : "";
 
   const isLoading = navigation.formAction === formAction && navigation.state === "submitting";
@@ -86,6 +86,7 @@ export function SaveToDashboardDialog({
       <DialogContent>
         <DialogHeader>Save to Dashboard</DialogHeader>
         <Form method="post" action={formAction} className="space-y-4 pt-3">
+          <input type="hidden" name="action" value="add" />
           <input type="hidden" name="title" value={title} />
           <input type="hidden" name="query" value={query} />
           <input type="hidden" name="config" value={JSON.stringify(config)} />

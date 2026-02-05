@@ -373,6 +373,7 @@ export default function Page() {
             editable={true}
             onLayoutChange={actions.updateLayout}
             onEditWidget={actions.openEditEditor}
+            onRenameWidget={actions.renameWidget}
             onDeleteWidget={actions.deleteWidget}
             onDuplicateWidget={actions.duplicateWidget}
           />

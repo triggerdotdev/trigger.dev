@@ -86,6 +86,7 @@ export function MetricDashboard({
   editable,
   onLayoutChange,
   onEditWidget,
+  onRenameWidget,
   onDeleteWidget,
   onDuplicateWidget,
 }: {
@@ -97,6 +98,7 @@ export function MetricDashboard({
   editable: boolean;
   onLayoutChange?: (layout: LayoutItem[]) => void;
   onEditWidget?: (widgetId: string, widget: WidgetData) => void;
+  onRenameWidget?: (widgetId: string, newTitle: string) => void;
   onDeleteWidget?: (widgetId: string) => void;
   onDuplicateWidget?: (widgetId: string, widget: WidgetData) => void;
 }) {
@@ -172,6 +174,9 @@ export function MetricDashboard({
                     onEditWidget
                       ? (resultData) => onEditWidget(key, { ...widget, resultData })
                       : undefined
+                  }
+                  onRename={
+                    onRenameWidget ? (newTitle) => onRenameWidget(key, newTitle) : undefined
                   }
                   onDelete={onDeleteWidget ? () => onDeleteWidget(key) : undefined}
                   onDuplicate={

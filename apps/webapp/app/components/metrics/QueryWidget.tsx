@@ -5,11 +5,12 @@ import { z } from "zod";
 import { assertNever } from "assert-never";
 import { TSQLResultsTable } from "../code/TSQLResultsTable";
 import { QueryResultsChart } from "../code/QueryResultsChart";
-import { Dialog, DialogContent, DialogHeader } from "../primitives/Dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader } from "../primitives/Dialog";
 import { Button } from "../primitives/Buttons";
 import {
   ArrowsPointingOutIcon,
   DocumentDuplicateIcon,
+  PencilIcon,
   PencilSquareIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
@@ -23,6 +24,10 @@ import {
   PopoverMenuItem,
   PopoverVerticalEllipseTrigger,
 } from "../primitives/Popover";
+import { Input } from "../primitives/Input";
+import { InputGroup } from "../primitives/InputGroup";
+import { Label } from "../primitives/Label";
+import { DialogClose } from "@radix-ui/react-dialog";
 
 const ChartType = z.union([z.literal("bar"), z.literal("line")]);
 export type ChartType = z.infer<typeof ChartType>;
@@ -91,6 +96,8 @@ export type WidgetData = {
 
 export type QueryWidgetProps = {
   title: ReactNode;
+  /** String title for rename dialog (optional - if not provided, rename won't be available) */
+  titleString?: string;
   isLoading?: boolean;
   error?: string;
   data: QueryWidgetData;
@@ -100,6 +107,8 @@ export type QueryWidgetProps = {
   isDraggable?: boolean;
   /** Callback when edit is clicked. Receives the current data. */
   onEdit?: (data: QueryWidgetData) => void;
+  /** Callback when rename is clicked. Receives the new title. */
+  onRename?: (newTitle: string) => void;
   /** Callback when delete is clicked. */
   onDelete?: () => void;
   /** Callback when duplicate is clicked. Receives the current data. */
@@ -108,20 +117,24 @@ export type QueryWidgetProps = {
 
 export function QueryWidget({
   title,
+  titleString,
   accessory,
   isLoading,
   error,
   isResizing,
   isDraggable,
   onEdit,
+  onRename,
   onDelete,
   onDuplicate,
   ...props
 }: QueryWidgetProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState(titleString ?? "");
 
-  const hasMenu = onEdit || onDelete || onDuplicate;
+  const hasMenu = onEdit || onRename || onDelete || onDuplicate;
 
   return (
     <div className="h-full">
@@ -145,6 +158,17 @@ export function QueryWidget({
                       title="Edit chart"
                       onClick={() => {
                         onEdit(props.data);
+                        setIsMenuOpen(false);
+                      }}
+                    />
+                  )}
+                  {onRename && (
+                    <PopoverMenuItem
+                      icon={PencilIcon}
+                      title="Rename"
+                      onClick={() => {
+                        setRenameValue(titleString ?? "");
+                        setIsRenameDialogOpen(true);
                         setIsMenuOpen(false);
                       }}
                     />
@@ -200,6 +224,43 @@ export function QueryWidget({
           )}
         </Card.Content>
       </Card>
+
+      {/* Rename Dialog */}
+      {onRename && (
+        <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>Rename chart</DialogHeader>
+            <form
+              className="space-y-4 pt-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (renameValue.trim()) {
+                  onRename(renameValue.trim());
+                  setIsRenameDialogOpen(false);
+                }
+              }}
+            >
+              <InputGroup>
+                <Label>Title</Label>
+                <Input
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  placeholder="Chart title"
+                  autoFocus
+                />
+              </InputGroup>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="tertiary/medium">Cancel</Button>
+                </DialogClose>
+                <Button type="submit" variant="primary/medium" disabled={!renameValue.trim()}>
+                  Save
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
