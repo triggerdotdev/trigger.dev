@@ -112,6 +112,13 @@ export type QueryEditorMode =
       widgetName: string;
     };
 
+/** Data passed to the save render prop */
+export type QueryEditorSaveData = {
+  title: string;
+  query: string;
+  config: QueryWidgetConfig;
+};
+
 export type QueryEditorProps = {
   // Default values - used to initialize state
   defaultQuery: string;
@@ -137,8 +144,8 @@ export type QueryEditorProps = {
   // Max period days (from plan)
   maxPeriodDays?: number;
 
-  // Callbacks
-  onSave?: (data: { title: string; query: string; config: QueryWidgetConfig }) => void;
+  // Render prop for save functionality - receives current data, returns ReactNode
+  save?: (data: QueryEditorSaveData) => ReactNode;
   onClose?: () => void;
 };
 
@@ -350,7 +357,7 @@ export function QueryEditor({
   queryActionUrl,
   mode,
   maxPeriodDays,
-  onSave,
+  save,
   onClose,
 }: QueryEditorProps) {
   const fetcher = useTypedFetcher<QueryActionResponse>();
@@ -494,25 +501,16 @@ export function QueryEditor({
     setShouldGenerateTitle(false); // Don't generate title for history items
   }, []);
 
-  // Handle save for dashboard modes
-  const handleSave = useCallback(() => {
-    if (!onSave) return;
-
-    const currentQuery = editorRef.current?.getQuery() ?? "";
-    const config: QueryWidgetConfig =
+  // Compute current save data for the save render prop
+  const currentQuery = editorRef.current?.getQuery() ?? "";
+  const saveData: QueryEditorSaveData = {
+    title: queryTitle ?? "Untitled Query",
+    query: currentQuery,
+    config:
       resultsView === "table"
         ? { type: "table", prettyFormatting, sorting: [] }
-        : { type: "chart", ...chartConfig };
-
-    onSave({
-      title: queryTitle ?? "Untitled Query",
-      query: currentQuery,
-      config,
-    });
-  }, [onSave, resultsView, prettyFormatting, chartConfig, queryTitle]);
-
-  // Determine if save button should be enabled
-  const canSave = results?.rows && results.rows.length > 0 && !results.error;
+        : { type: "chart", ...chartConfig },
+  };
 
   // Render NavBar based on mode
   const renderNavBar = () => {
@@ -719,22 +717,8 @@ export function QueryEditor({
                                 >
                                   Save to dashboard
                                 </Button>
-                              ) : mode.type === "dashboard-add" ? (
-                                <Button
-                                  variant="primary/small"
-                                  onClick={handleSave}
-                                  disabled={!canSave}
-                                >
-                                  Add to dashboard
-                                </Button>
-                              ) : mode.type === "dashboard-edit" ? (
-                                <Button
-                                  variant="primary/small"
-                                  onClick={handleSave}
-                                  disabled={!canSave}
-                                >
-                                  Save changes
-                                </Button>
+                              ) : save ? (
+                                save(saveData)
                               ) : undefined
                             }
                           />
@@ -782,22 +766,8 @@ export function QueryEditor({
                                 }
                                 content="Save to dashboard"
                               />
-                            ) : mode.type === "dashboard-add" ? (
-                              <Button
-                                variant="primary/small"
-                                onClick={handleSave}
-                                disabled={!canSave}
-                              >
-                                Add to dashboard
-                              </Button>
-                            ) : mode.type === "dashboard-edit" ? (
-                              <Button
-                                variant="primary/small"
-                                onClick={handleSave}
-                                disabled={!canSave}
-                              >
-                                Save changes
-                              </Button>
+                            ) : save ? (
+                              save(saveData)
                             ) : undefined
                           }
                         />
