@@ -141,6 +141,8 @@ type MetricWidgetProps = {
   isDraggable?: boolean;
   /** Callback when edit button is clicked - receives current data */
   onEdit?: (data: QueryWidgetData) => void;
+  /** Callback when rename is clicked - receives new title */
+  onRename?: (newTitle: string) => void;
   /** Callback when delete is clicked */
   onDelete?: () => void;
   /** Callback when duplicate is clicked - receives current data */
@@ -155,6 +157,7 @@ export function MetricWidget({
   isResizing,
   isDraggable,
   onEdit,
+  onRename,
   onDelete,
   onDuplicate,
   ...props
@@ -185,6 +188,7 @@ export function MetricWidget({
   return (
     <QueryWidget
       title={title}
+      titleString={title}
       config={config}
       isLoading={isLoading}
       data={data}
@@ -192,6 +196,7 @@ export function MetricWidget({
       isResizing={isResizing}
       isDraggable={isDraggable}
       onEdit={onEdit}
+      onRename={onRename}
       onDelete={onDelete}
       onDuplicate={onDuplicate}
     />

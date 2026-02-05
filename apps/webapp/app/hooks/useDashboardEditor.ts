@@ -32,6 +32,7 @@ type DashboardState = {
 type DashboardAction =
   | { type: "ADD_WIDGET"; payload: { id: string; widget: Widget; layoutItem: LayoutItem } }
   | { type: "UPDATE_WIDGET"; payload: { id: string; widget: Widget } }
+  | { type: "RENAME_WIDGET"; payload: { id: string; title: string } }
   | { type: "DELETE_WIDGET"; payload: { id: string } }
   | { type: "DUPLICATE_WIDGET"; payload: { id: string; newId: string } }
   | { type: "UPDATE_LAYOUT"; payload: { layout: LayoutItem[] } }
@@ -66,6 +67,21 @@ function dashboardReducer(state: DashboardState, action: DashboardAction): Dashb
         },
         editorMode: null,
       };
+
+    case "RENAME_WIDGET": {
+      const existingWidget = state.widgets[action.payload.id];
+      if (!existingWidget) return state;
+      return {
+        ...state,
+        widgets: {
+          ...state.widgets,
+          [action.payload.id]: {
+            ...existingWidget,
+            title: action.payload.title,
+          },
+        },
+      };
+    }
 
     case "DELETE_WIDGET": {
       const { [action.payload.id]: _, ...remainingWidgets } = state.widgets;
@@ -371,6 +387,17 @@ export function useDashboardEditor({
     [queueWidgetSync]
   );
 
+  const renameWidget = useCallback(
+    (widgetId: string, title: string) => {
+      // Update local state immediately
+      dispatch({ type: "RENAME_WIDGET", payload: { id: widgetId, title } });
+
+      // Queue sync to server (processed sequentially)
+      queueWidgetSync("rename", { widgetId, title });
+    },
+    [queueWidgetSync]
+  );
+
   const updateLayout = useCallback(
     (newLayout: LayoutItem[]) => {
       // Skip if not yet initialized (prevents saving during mount/navigation)
@@ -427,6 +454,7 @@ export function useDashboardEditor({
     actions: {
       addWidget,
       updateWidget,
+      renameWidget,
       deleteWidget,
       duplicateWidget,
       updateLayout,

@@ -1,13 +1,14 @@
-import { type ActionFunctionArgs } from "@remix-run/node";
+import { type ActionFunctionArgs, redirect } from "@remix-run/node";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { typedjson } from "remix-typedjson";
 import { prisma } from "~/db.server";
 import { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { DashboardLayout } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3CustomDashboardPath } from "~/utils/pathBuilder";
 
 // Schemas for each action type
 const AddWidgetSchema = z.object({
@@ -61,6 +62,11 @@ const UpdateWidgetSchema = z.object({
   }),
 });
 
+const RenameWidgetSchema = z.object({
+  widgetId: z.string().min(1, "Widget ID is required"),
+  title: z.string().min(1, "Title is required"),
+});
+
 const DeleteWidgetSchema = z.object({
   widgetId: z.string().min(1, "Widget ID is required"),
 });
@@ -75,11 +81,16 @@ const ParamsSchema = EnvironmentParamSchema.extend({
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, dashboardId } = ParamsSchema.parse(params);
+  const { organizationSlug, projectParam, envParam, dashboardId } = ParamsSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
     throw new Response("Project not found", { status: 404 });
+  }
+
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    throw new Response("Environment not found", { status: 404 });
   }
 
   // Load the dashboard
@@ -190,7 +201,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         },
       });
 
-      return typedjson({ success: true, addedTitle: title });
+      // Redirect to the dashboard
+      const dashboardPath = v3CustomDashboardPath(
+        { slug: organizationSlug },
+        { slug: projectParam },
+        { slug: envParam },
+        { friendlyId: dashboardId }
+      );
+      return redirect(dashboardPath);
     }
 
     case "update": {
@@ -238,6 +256,47 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       });
 
       return typedjson({ success: true, updatedTitle: title });
+    }
+
+    case "rename": {
+      const rawData = {
+        widgetId: formData.get("widgetId"),
+        title: formData.get("title"),
+      };
+
+      const result = RenameWidgetSchema.safeParse(rawData);
+      if (!result.success) {
+        throw new Response("Invalid form data: " + result.error.message, { status: 400 });
+      }
+
+      const { widgetId, title } = result.data;
+
+      // Check if widget exists
+      if (!existingLayout.widgets[widgetId]) {
+        throw new Response("Widget not found", { status: 404 });
+      }
+
+      // Update just the title
+      const updatedLayout = {
+        ...existingLayout,
+        widgets: {
+          ...existingLayout.widgets,
+          [widgetId]: {
+            ...existingLayout.widgets[widgetId],
+            title,
+          },
+        },
+      };
+
+      // Save to database
+      await prisma.metricsDashboard.update({
+        where: { id: dashboard.id },
+        data: {
+          layout: JSON.stringify(updatedLayout),
+        },
+      });
+
+      return typedjson({ success: true, renamedTitle: title });
     }
 
     case "delete": {

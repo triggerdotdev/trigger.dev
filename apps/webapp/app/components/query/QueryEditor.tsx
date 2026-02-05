@@ -2,6 +2,7 @@ import {
   ArrowDownTrayIcon,
   BookmarkIcon,
   ClipboardIcon,
+  PencilIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
@@ -71,6 +72,11 @@ import {
 } from "~/components/metrics/QueryWidget";
 import { SaveToDashboardDialog } from "~/components/metrics/SaveToDashboardDialog";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Dialog, DialogContent, DialogFooter, DialogHeader } from "~/components/primitives/Dialog";
+import { DialogClose } from "@radix-ui/react-dialog";
+import { Input } from "~/components/primitives/Input";
+import { InputGroup } from "~/components/primitives/InputGroup";
+import { Label } from "~/components/primitives/Label";
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {
@@ -409,16 +415,21 @@ export function QueryEditor({
   const initialTitle = mode.type === "dashboard-edit" ? mode.widgetName : null;
   const [editModeTitle, setEditModeTitle] = useState<string | null>(initialTitle);
 
-  // Effective title: edit mode title > history title > generated title
-  const queryTitle =
-    mode.type === "dashboard-edit"
+  // User-set title (takes priority, and disables AI regeneration)
+  const [userTitle, setUserTitle] = useState<string | null>(null);
+
+  // Effective title: user title > edit mode title > history title > generated title
+  const queryTitle = userTitle ?? (mode.type === "dashboard-edit"
       ? editModeTitle ?? historyTitle ?? generatedTitle ?? null
-      : historyTitle ?? generatedTitle ?? null;
+      : historyTitle ?? generatedTitle ?? null);
+
+  // Track if user has manually set a title (disables AI regeneration)
+  const hasUserTitle = userTitle !== null;
 
   // Track whether we should generate a title for the current results
   const [shouldGenerateTitle, setShouldGenerateTitle] = useState(false);
 
-  // Trigger title generation when query succeeds (only for new queries, not history)
+  // Trigger title generation when query succeeds (only for new queries, not history, not if user set title)
   useEffect(() => {
     if (
       results?.rows &&
@@ -426,6 +437,7 @@ export function QueryEditor({
       results.queryId &&
       shouldGenerateTitle &&
       !historyTitle &&
+      !hasUserTitle &&
       titleFetcher.state === "idle"
     ) {
       const currentQuery = editorRef.current?.getQuery();
@@ -445,6 +457,7 @@ export function QueryEditor({
     results,
     shouldGenerateTitle,
     historyTitle,
+    hasUserTitle,
     titleFetcher,
     organization.slug,
     project.slug,
@@ -491,14 +504,25 @@ export function QueryEditor({
   const handleQuerySubmit = useCallback(() => {
     setHistoryTitle(null); // Clear history title when running a new query
     setEditModeTitle(null); // Clear edit mode title when running a new query
-    setShouldGenerateTitle(true); // Enable title generation for new results
-  }, []);
+    // Only enable title generation if user hasn't manually set a title
+    // userTitle persists across query edits once set
+    setShouldGenerateTitle(!hasUserTitle);
+  }, [hasUserTitle]);
 
   // Handle history selection - use existing title if available
   const handleHistorySelected = useCallback((item: QueryHistoryItem) => {
     setHistoryTitle(item.title ?? null);
     setEditModeTitle(null);
+    setUserTitle(null); // Clear user title when selecting from history
     setShouldGenerateTitle(false); // Don't generate title for history items
+  }, []);
+
+  // Handle user renaming the title
+  const handleRenameTitle = useCallback((newTitle: string) => {
+    setUserTitle(newTitle);
+    // Clear other title sources since user has explicitly set the title
+    setHistoryTitle(null);
+    setEditModeTitle(null);
   }, []);
 
   // Compute current save data for the save render prop
@@ -697,7 +721,11 @@ export function QueryEditor({
                         <div className="overflow-hidden p-2">
                           <QueryWidget
                             title={
-                              <QueryTitle isTitleLoading={isTitleLoading} title={queryTitle} />
+                              <QueryTitle
+                                isTitleLoading={isTitleLoading}
+                                title={queryTitle}
+                                onRename={handleRenameTitle}
+                              />
                             }
                             data={{
                               rows: results.rows,
@@ -754,6 +782,7 @@ export function QueryEditor({
                           onChartConfigChange={handleChartConfigChange}
                           queryTitle={queryTitle}
                           isTitleLoading={isTitleLoading}
+                          onRenameTitle={handleRenameTitle}
                           accessory={
                             mode.type === "standalone" ? (
                               <SimpleTooltip
@@ -827,7 +856,23 @@ export function QueryEditor({
   );
 }
 
-function QueryTitle({ isTitleLoading, title }: { isTitleLoading: boolean; title: string | null }) {
+function QueryTitle({
+  isTitleLoading,
+  title,
+  onRename,
+}: {
+  isTitleLoading: boolean;
+  title: string | null;
+  onRename?: (newTitle: string) => void;
+}) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState(title ?? "");
+
+  // Update rename value when title changes
+  useEffect(() => {
+    setRenameValue(title ?? "");
+  }, [title]);
+
   if (isTitleLoading)
     return (
       <span className="flex items-center gap-2 text-text-dimmed">
@@ -835,7 +880,60 @@ function QueryTitle({ isTitleLoading, title }: { isTitleLoading: boolean; title:
       </span>
     );
 
-  return title ?? "Results";
+  return (
+    <>
+      <span className="flex items-center gap-1">
+        {title ?? "Results"}
+        {onRename && title && (
+          <button
+            onClick={() => {
+              setRenameValue(title);
+              setIsDialogOpen(true);
+            }}
+            className="rounded p-0.5 text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+            title="Rename chart"
+          >
+            <PencilIcon className="size-3.5" />
+          </button>
+        )}
+      </span>
+      {onRename && (
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>Rename chart</DialogHeader>
+            <form
+              className="space-y-4 pt-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (renameValue.trim()) {
+                  onRename(renameValue.trim());
+                  setIsDialogOpen(false);
+                }
+              }}
+            >
+              <InputGroup>
+                <Label>Title</Label>
+                <Input
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  placeholder="Chart title"
+                  autoFocus
+                />
+              </InputGroup>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="tertiary/medium">Cancel</Button>
+                </DialogClose>
+                <Button type="submit" variant="primary/medium" disabled={!renameValue.trim()}>
+                  Save
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  );
 }
 
 function ExportResultsButton({
@@ -973,6 +1071,7 @@ function ResultsChart({
   onChartConfigChange,
   queryTitle,
   isTitleLoading,
+  onRenameTitle,
   accessory,
 }: {
   rows: Record<string, unknown>[];
@@ -981,6 +1080,7 @@ function ResultsChart({
   onChartConfigChange: (config: ChartConfiguration) => void;
   queryTitle: string | null;
   isTitleLoading: boolean;
+  onRenameTitle?: (newTitle: string) => void;
   accessory?: ReactNode;
 }) {
   return (
@@ -989,7 +1089,13 @@ function ResultsChart({
         <ResizablePanel id="chart-results">
           <div className="h-full overflow-hidden bg-charcoal-900 p-2">
             <QueryWidget
-              title={<QueryTitle isTitleLoading={isTitleLoading} title={queryTitle} />}
+              title={
+                <QueryTitle
+                  isTitleLoading={isTitleLoading}
+                  title={queryTitle}
+                  onRename={onRenameTitle}
+                />
+              }
               data={{
                 rows,
                 columns,
