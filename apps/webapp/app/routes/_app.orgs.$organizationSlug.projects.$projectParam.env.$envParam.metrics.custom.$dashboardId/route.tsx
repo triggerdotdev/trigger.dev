@@ -43,10 +43,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
-import {
-  LayoutItem,
-  MetricDashboardPresenter,
-} from "~/presenters/v3/MetricDashboardPresenter.server";
+import { MetricDashboardPresenter } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
@@ -118,29 +115,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-const SaveLayoutSchema = z.object({
-  layout: z.string().transform((str, ctx) => {
-    try {
-      const parsed = JSON.parse(str);
-      const result = z.array(LayoutItem).safeParse(parsed);
-      if (!result.success) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Invalid layout format",
-        });
-        return z.NEVER;
-      }
-      return result.data;
-    } catch {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Invalid JSON",
-      });
-      return z.NEVER;
-    }
-  }),
-});
-
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam, dashboardId } = ParamSchema.parse(params);
@@ -195,34 +169,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       return typedjson({ success: true });
     }
-    case "layout": {
-      const result = SaveLayoutSchema.safeParse({
-        layout: formData.get("layout"),
-      });
-
-      if (!result.success) {
-        throw new Response("Invalid form data: " + result.error.message, { status: 400 });
-      }
-
-      // Parse existing layout to preserve widgets
-      const existingLayout = JSON.parse(dashboard.layout) as Record<string, unknown>;
-
-      // Update layout positions while preserving widgets
-      const updatedLayout = {
-        ...existingLayout,
-        layout: result.data.layout,
-      };
-
-      // Save to database
-      await prisma.metricsDashboard.update({
-        where: { id: dashboard.id },
-        data: {
-          layout: JSON.stringify(updatedLayout),
-        },
-      });
-
-      return typedjson({ success: true });
-    }
     default: {
       throw new Response("Invalid action", { status: 400 });
     }
@@ -255,9 +201,9 @@ export default function Page() {
   const canExceedWidgets =
     typeof planLimits === "object" && planLimits.canExceed === true;
 
-  // Build the action URLs
+  // Build the action URLs - both use the resource route to avoid full page renders on POST
   const widgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/widgets`;
-  const layoutActionUrl = ""; // Uses form action on current route
+  const layoutActionUrl = widgetActionUrl;
 
   // Handle sync errors by showing a toast
   const handleSyncError = useCallback((error: Error, action: string) => {
@@ -393,11 +339,10 @@ export default function Page() {
       <NavBar>
         <PageTitle title={title} />
         <PageAccessories>
-<<<<<<< ours
           {widgetIsAtLimit ? (
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="tertiary/small" LeadingIcon={PlusIcon}>
+                <Button variant="secondary/small" LeadingIcon={PlusIcon}>
                   Add chart
                 </Button>
               </DialogTrigger>
@@ -422,22 +367,13 @@ export default function Page() {
             </Dialog>
           ) : (
             <Button
-              variant="tertiary/small"
+              variant="secondary/small"
               LeadingIcon={PlusIcon}
               onClick={actions.openAddEditor}
             >
               Add chart
             </Button>
           )}
-||||||| ancestor
-          <Button variant="tertiary/small" LeadingIcon={PlusIcon} onClick={actions.openAddEditor}>
-            Add chart
-          </Button>
-=======
-          <Button variant="secondary/small" LeadingIcon={PlusIcon} onClick={actions.openAddEditor}>
-            Add chart
-          </Button>
->>>>>>> theirs
           <Popover>
             <PopoverVerticalEllipseTrigger variant="secondary" />
             <PopoverContent className="w-fit min-w-[10rem] p-1" align="end">
