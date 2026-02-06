@@ -1298,7 +1298,7 @@ function CreateDashboardUpgradeDialog({
           </LinkButton>
         ) : (
           <Feedback
-            button={<Button variant="primary/medium">Request increase…</Button>}
+            button={<Button variant="primary/medium">Request more…</Button>}
             defaultValue="help"
           />
         )}

@@ -480,7 +480,7 @@ export default function Page() {
                   </LinkButton>
                 ) : (
                   <Feedback
-                    button={<Button variant="secondary/small">Request more</Button>}
+                    button={<Button variant="secondary/small">Request more…</Button>}
                     defaultValue="help"
                   />
                 )}
