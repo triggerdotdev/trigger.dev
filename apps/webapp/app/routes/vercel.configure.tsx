@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { requireUserId } from "~/services/session.server";
 import { organizationVercelIntegrationPath } from "~/utils/pathBuilder";
 
 const SearchParamsSchema = z.object({
@@ -12,6 +13,7 @@ const SearchParamsSchema = z.object({
  * Endpoint to handle Vercel integration configuration request coming from marketplace
  */
 export const loader = async ({ request }: LoaderFunctionArgs) => {
+  await requireUserId(request);
   const url = new URL(request.url);
   const searchParams = Object.fromEntries(url.searchParams);
   

@@ -52,7 +52,10 @@ import { useEffect, useState, useCallback, useRef } from "react";
 function safeRedirectUrl(url: string): string | null {
   try {
     const parsed = new URL(url, window.location.origin);
-    if (parsed.protocol === "https:" || parsed.origin === window.location.origin) {
+    if (parsed.origin === window.location.origin) {
+      return parsed.toString();
+    }
+    if (parsed.protocol === "https:" && /^([a-z0-9-]+\.)*vercel\.com$/i.test(parsed.hostname)) {
       return parsed.toString();
     }
   } catch {
@@ -1033,7 +1036,10 @@ export function VercelOnboardingModal({
                       variant="primary/medium"
                       onClick={() => {
                         setState("completed");
-                        window.location.href = nextUrl;
+                        const validUrl = safeRedirectUrl(nextUrl);
+                        if (validUrl) {
+                          window.location.href = validUrl;
+                        }
                       }}
                     >
                       Complete
@@ -1044,7 +1050,10 @@ export function VercelOnboardingModal({
                       onClick={() => {
                         setState("completed");
                         if (fromMarketplaceContext && nextUrl) {
-                          window.location.href = nextUrl;
+                          const validUrl = safeRedirectUrl(nextUrl);
+                          if (validUrl) {
+                            window.location.href = validUrl;
+                          }
                         }
                       }}
                     >

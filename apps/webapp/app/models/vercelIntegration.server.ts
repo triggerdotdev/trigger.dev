@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import { Vercel } from "@vercel/sdk";
 import type {
   ResponseBodyEnvs,
@@ -441,7 +442,21 @@ export class VercelIntegrationRepository {
       }),
       "Failed to fetch Vercel environment variables",
       { projectId, teamId }
-    ).map((response) => extractVercelEnvs(response).map(toVercelEnvironmentVariable));
+    ).map((response) => {
+      // Warn if response is paginated (more data exists that we're not fetching)
+      if (
+        "pagination" in response &&
+        response.pagination &&
+        "next" in response.pagination &&
+        response.pagination.next !== null
+      ) {
+        logger.warn(
+          "Vercel filterProjectEnvs returned paginated response - some env vars may be missing",
+          { projectId, count: response.pagination.count }
+        );
+      }
+      return extractVercelEnvs(response).map(toVercelEnvironmentVariable);
+    });
   }
 
   static getVercelEnvironmentVariableValues(
@@ -469,9 +484,12 @@ export class VercelIntegrationRepository {
       });
 
       // Fetch decrypted values for encrypted vars, use list values for others
+      const concurrencyLimit = pLimit(5);
       return ResultAsync.fromPromise(
         Promise.all(
-          filteredEnvs.map((env) => this.#resolveEnvVarValue(client, projectId, teamId, env))
+          filteredEnvs.map((env) =>
+            concurrencyLimit(() => this.#resolveEnvVarValue(client, projectId, teamId, env))
+          )
         ),
         (error) => toVercelApiError(error)
       ).map((results) => results.filter((v): v is VercelEnvironmentVariableValue => v !== null));
@@ -588,97 +606,100 @@ export class VercelIntegrationRepository {
         return okAsync([]);
       }
 
+      const concurrencyLimit = pLimit(5);
       return ResultAsync.fromPromise(
         Promise.all(
-          envVars.map(async (env) => {
-            if (!env.id || !env.key) return null;
+          envVars.map((env) =>
+            concurrencyLimit(async () => {
+              if (!env.id || !env.key) return null;
 
-            const envId = env.id;
-            const envKey = env.key;
-            const type = env.type || "plain";
-            const isSecret = isVercelSecretType(type);
+              const envId = env.id;
+              const envKey = env.key;
+              const type = env.type || "plain";
+              const isSecret = isVercelSecretType(type);
 
-            if (isSecret) return null;
+              if (isSecret) return null;
 
-            const listValue = (env as any).value as string | undefined;
-            const applyToAllCustomEnvs = (env as any).applyToAllCustomEnvironments as boolean | undefined;
+              const listValue = (env as any).value as string | undefined;
+              const applyToAllCustomEnvs = (env as any).applyToAllCustomEnvironments as boolean | undefined;
 
-            if (listValue) {
-              return {
-                key: envKey,
-                value: listValue,
-                target: normalizeTarget(env.target),
-                type,
-                isSecret,
-                applyToAllCustomEnvironments: applyToAllCustomEnvs,
-              };
-            }
-
-            // Try to get the decrypted value for this shared env var
-            const getResult = await ResultAsync.fromPromise(
-              client.environment.getSharedEnvVar({
-                id: envId,
-                teamId,
-              }),
-              (error) => error
-            );
-
-            if (getResult.isOk()) {
-              if (!getResult.value.value) return null;
-              return {
-                key: envKey,
-                value: getResult.value.value,
-                target: normalizeTarget(env.target),
-                type,
-                isSecret,
-                applyToAllCustomEnvironments: applyToAllCustomEnvs,
-              };
-            }
-
-            // Workaround: Vercel SDK may throw ResponseValidationError even when the API response
-            // is valid (e.g., deletedAt: null vs expected number). Extract value from rawValue.
-            const error = getResult.error;
-            let errorValue: string | undefined;
-            if (error && typeof error === "object" && "rawValue" in error) {
-              const rawValue = (error as any).rawValue;
-              if (rawValue && typeof rawValue === "object" && "value" in rawValue) {
-                errorValue = rawValue.value as string | undefined;
+              if (listValue) {
+                return {
+                  key: envKey,
+                  value: listValue,
+                  target: normalizeTarget(env.target),
+                  type,
+                  isSecret,
+                  applyToAllCustomEnvironments: applyToAllCustomEnvs,
+                };
               }
-            }
 
-            const fallbackValue = errorValue || listValue;
+              // Try to get the decrypted value for this shared env var
+              const getResult = await ResultAsync.fromPromise(
+                client.environment.getSharedEnvVar({
+                  id: envId,
+                  teamId,
+                }),
+                (error) => error
+              );
 
-            if (fallbackValue) {
-              logger.warn("getSharedEnvVar failed validation, using value from error.rawValue or list response", {
+              if (getResult.isOk()) {
+                if (!getResult.value.value) return null;
+                return {
+                  key: envKey,
+                  value: getResult.value.value,
+                  target: normalizeTarget(env.target),
+                  type,
+                  isSecret,
+                  applyToAllCustomEnvironments: applyToAllCustomEnvs,
+                };
+              }
+
+              // Workaround: Vercel SDK may throw ResponseValidationError even when the API response
+              // is valid (e.g., deletedAt: null vs expected number). Extract value from rawValue.
+              const error = getResult.error;
+              let errorValue: string | undefined;
+              if (error && typeof error === "object" && "rawValue" in error) {
+                const rawValue = (error as any).rawValue;
+                if (rawValue && typeof rawValue === "object" && "value" in rawValue) {
+                  errorValue = rawValue.value as string | undefined;
+                }
+              }
+
+              const fallbackValue = errorValue || listValue;
+
+              if (fallbackValue) {
+                logger.warn("getSharedEnvVar failed validation, using value from error.rawValue or list response", {
+                  teamId,
+                  envId,
+                  envKey,
+                  error: error instanceof Error ? error.message : String(error),
+                  hasErrorRawValue: !!errorValue,
+                  hasListValue: !!listValue,
+                  valueLength: fallbackValue.length,
+                });
+                return {
+                  key: envKey,
+                  value: fallbackValue,
+                  target: normalizeTarget(env.target),
+                  type,
+                  isSecret,
+                  applyToAllCustomEnvironments: applyToAllCustomEnvs,
+                };
+              }
+
+              logger.warn("Failed to get decrypted value for shared env var, no fallback available", {
                 teamId,
+                projectId,
                 envId,
                 envKey,
                 error: error instanceof Error ? error.message : String(error),
-                hasErrorRawValue: !!errorValue,
-                hasListValue: !!listValue,
-                valueLength: fallbackValue.length,
+                errorStack: error instanceof Error ? error.stack : undefined,
+                hasRawValue: error && typeof error === "object" && "rawValue" in error,
               });
-              return {
-                key: envKey,
-                value: fallbackValue,
-                target: normalizeTarget(env.target),
-                type,
-                isSecret,
-                applyToAllCustomEnvironments: applyToAllCustomEnvs,
-              };
-            }
-
-            logger.warn("Failed to get decrypted value for shared env var, no fallback available", {
-              teamId,
-              projectId,
-              envId,
-              envKey,
-              error: error instanceof Error ? error.message : String(error),
-              errorStack: error instanceof Error ? error.stack : undefined,
-              hasRawValue: error && typeof error === "object" && "rawValue" in error,
-            });
-            return null;
-          })
+              return null;
+            })
+          )
         ),
         (error) => {
           logger.error("Failed to process shared environment variable values", {
@@ -696,21 +717,43 @@ export class VercelIntegrationRepository {
     client: Vercel,
     teamId?: string | null
   ): ResultAsync<VercelProject[], VercelApiError> {
-    return wrapVercelCall(
-      client.projects.getProjects({
-        ...(teamId && { teamId }),
-      }),
-      "Failed to fetch Vercel projects",
-      { teamId }
-    ).map((response) => {
-      // GetProjectsResponseBody is a union: objects with `projects` array, or direct array
-      const projects = Array.isArray(response)
-        ? response
-        : "projects" in response
-          ? response.projects
-          : [];
-      return projects.map(({ id, name }): VercelProject => ({ id, name }));
-    });
+    return ResultAsync.fromPromise(
+      (async () => {
+        const allProjects: VercelProject[] = [];
+        let from: string | undefined;
+
+        do {
+          const response = await client.projects.getProjects({
+            ...(teamId && { teamId }),
+            limit: "100",
+            ...(from && { from }),
+          });
+
+          const projects = Array.isArray(response)
+            ? response
+            : "projects" in response
+              ? response.projects
+              : [];
+          allProjects.push(...projects.map(({ id, name }): VercelProject => ({ id, name })));
+
+          // Get pagination token for next page
+          const pagination =
+            !Array.isArray(response) && "pagination" in response
+              ? response.pagination
+              : undefined;
+          from =
+            pagination && "next" in pagination && pagination.next !== null
+              ? String(pagination.next)
+              : undefined;
+        } while (from);
+
+        return allProjects;
+      })(),
+      (error) => {
+        logger.error("Failed to fetch Vercel projects", { teamId, error });
+        return toVercelApiError(error);
+      }
+    );
   }
 
   static async updateVercelOrgIntegrationToken(params: {

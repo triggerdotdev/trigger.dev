@@ -427,7 +427,8 @@ export class VercelIntegrationService {
         discoverEnvVars: params.discoverEnvVars ?? null,
         vercelStagingEnvironment: params.vercelStagingEnvironment ?? null,
       },
-      syncEnvVarsMapping: existing.parsedIntegrationData.syncEnvVarsMapping,
+      //This is intentionally not updated here, in case of resetting the onboarding it should not override the existing mapping with an empty one
+      syncEnvVarsMapping: existing.parsedIntegrationData.syncEnvVarsMapping, 
       onboardingCompleted: true,
     };
 

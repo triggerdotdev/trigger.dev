@@ -220,7 +220,7 @@ export class EnvironmentVariablesRepository implements Repository {
                   version: {
                     increment: 1,
                   },
-                  lastUpdatedBy: options.lastUpdatedBy ? options.lastUpdatedBy : undefined,
+                  ...(options.lastUpdatedBy ? { lastUpdatedBy: options.lastUpdatedBy } : {}),
                   valueReferenceId: secretReference.id,
                   ...(options.isSecret !== undefined
                     ? {

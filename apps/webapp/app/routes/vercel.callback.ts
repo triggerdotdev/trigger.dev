@@ -5,6 +5,7 @@ import { logger } from "~/services/logger.server";
 import { getUserId } from "~/services/session.server";
 import { setReferralSourceCookie } from "~/services/referralSource.server";
 import { requestUrl } from "~/utils/requestUrl.server";
+import { sanitizeVercelNextUrl } from "~/v3/vercel/vercelUrls.server";
 
 const VercelCallbackSchema = z
   .object({
@@ -42,7 +43,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     throw new Response("Invalid callback parameters", { status: 400 });
   }
 
-  const { code, state, error, error_description, configurationId, next: nextUrl } = parsed.data;
+  const { code, state, error, error_description, configurationId, next: rawNextUrl } = parsed.data;
+
+  // Sanitize the `next` parameter to prevent open redirects
+  const nextUrl = sanitizeVercelNextUrl(rawNextUrl);
 
   if (error) {
     logger.error("Vercel OAuth error", { error, error_description });
