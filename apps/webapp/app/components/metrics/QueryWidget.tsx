@@ -161,7 +161,6 @@ export function QueryWidget({
                           onEdit(props.data);
                           setIsMenuOpen(false);
                         }}
-                        className="w-fit"
                       />
                     )}
                     {onRename && (
@@ -173,7 +172,6 @@ export function QueryWidget({
                           setIsRenameDialogOpen(true);
                           setIsMenuOpen(false);
                         }}
-                        className="w-fit"
                       />
                     )}
                     {onDuplicate && (
@@ -184,7 +182,7 @@ export function QueryWidget({
                           onDuplicate(props.data);
                           setIsMenuOpen(false);
                         }}
-                        className="w-fit"
+                        className="pr-4"
                       />
                     )}
                     {onDelete && (
@@ -192,7 +190,7 @@ export function QueryWidget({
                         icon={TrashIcon}
                         title="Delete chart"
                         leadingIconClassName="text-error"
-                        className="w-fit text-error hover:!bg-error/10"
+                        className="text-error hover:!bg-error/10"
                         onClick={() => {
                           onDelete();
                           setIsMenuOpen(false);
