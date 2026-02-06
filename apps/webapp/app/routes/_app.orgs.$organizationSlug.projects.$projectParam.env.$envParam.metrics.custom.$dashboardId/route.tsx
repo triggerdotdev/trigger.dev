@@ -198,8 +198,7 @@ export default function Page() {
   // Widget limits
   const widgetLimitPerDashboard = useWidgetLimitPerDashboard();
   const planLimits = (plan?.v3Subscription?.plan?.limits as any)?.metricWidgetsPerDashboard;
-  const canExceedWidgets =
-    typeof planLimits === "object" && planLimits.canExceed === true;
+  const canExceedWidgets = typeof planLimits === "object" && planLimits.canExceed === true;
 
   // Build the action URLs - both use the resource route to avoid full page renders on POST
   const widgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/widgets`;
@@ -435,8 +434,8 @@ export default function Page() {
               <div className="flex w-full items-center justify-between gap-6">
                 {widgetIsAtLimit ? (
                   <Header3 className="text-error">
-                    You've used all {widgetLimits.limit} of your available widgets. Upgrade your plan
-                    to enable more.
+                    You've used all {widgetLimits.limit} of your available widgets. Upgrade your
+                    plan to enable more.
                   </Header3>
                 ) : (
                   <Header3>
@@ -623,14 +622,14 @@ function DeleteDashboardDialog({ title }: { title: string }) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>Delete dashboard</DialogHeader>
         <div className="mb-2 mt-4 flex flex-col gap-2">
-          <Paragraph variant="small">
+          <Paragraph>
             Are you sure you want to delete <strong>"{title}"</strong>? This action cannot be undone
             and all widgets on this dashboard will be permanently removed.
           </Paragraph>
         </div>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="tertiary/medium">Cancel</Button>
+            <Button variant="secondary/medium">Cancel</Button>
           </DialogClose>
           <Form method="post">
             <Button
