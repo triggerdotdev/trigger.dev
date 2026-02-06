@@ -6,6 +6,7 @@ import { authenticator } from "~/services/auth.server";
 import { setLastAuthMethodHeader } from "~/services/lastAuthMethod.server";
 import { getRedirectTo } from "~/services/redirectTo.server";
 import { commitSession, getSession } from "~/services/sessionStorage.server";
+import { trackAndClearReferralSource } from "~/services/referralSource.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const redirectTo = await getRedirectTo(request);
@@ -52,6 +53,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const headers = new Headers();
   headers.append("Set-Cookie", await commitSession(session));
   headers.append("Set-Cookie", await setLastAuthMethodHeader("email"));
+
+  await trackAndClearReferralSource(request, auth.userId, headers);
 
   return redirect(redirectTo ?? "/", { headers });
 }

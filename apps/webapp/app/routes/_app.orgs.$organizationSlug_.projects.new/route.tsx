@@ -32,6 +32,7 @@ import {
   selectPlanPath,
   v3ProjectPath,
 } from "~/utils/pathBuilder";
+import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -103,6 +104,12 @@ export const action: ActionFunction = async ({ request, params }) => {
     return json(submission);
   }
 
+  // Check for Vercel integration params in URL
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
+  const configurationId = url.searchParams.get("configurationId");
+  const next = url.searchParams.get("next");
+
   try {
     const project = await createProject({
       organizationSlug: organizationSlug,
@@ -110,6 +117,44 @@ export const action: ActionFunction = async ({ request, params }) => {
       userId,
       version: submission.value.projectVersion,
     });
+
+    // If this is a Vercel integration flow, generate state and redirect to connect
+    if (code && configurationId) {
+      const environment = await prisma.runtimeEnvironment.findFirst({
+        where: {
+          projectId: project.id,
+          slug: "prod",
+          archivedAt: null,
+        },
+      });
+
+      if (!environment) {
+        return redirectWithErrorMessage(
+          newProjectPath({ slug: organizationSlug }),
+          request,
+          "Failed to find project environment."
+        );
+      }
+
+      const state = await generateVercelOAuthState({
+        organizationId: project.organization.id,
+        projectId: project.id,
+        environmentSlug: environment.slug,
+        organizationSlug: project.organization.slug,
+        projectSlug: project.slug,
+      });
+
+      const params = new URLSearchParams({
+        state,
+        code,
+        configurationId,
+        origin: "marketplace",
+      });
+      if (next) {
+        params.set("next", next);
+      }
+      return redirect(`/vercel/connect?${params.toString()}`);
+    }
 
     return redirectWithSuccessMessage(
       v3ProjectPath(project.organization, project),

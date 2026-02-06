@@ -694,6 +694,7 @@ export const GetDeploymentResponseBody = z.object({
   version: z.string(),
   imageReference: z.string().nullish(),
   imagePlatform: z.string(),
+  commitSHA: z.string().nullish(),
   externalBuildData: ExternalBuildData.optional().nullable(),
   errorData: DeploymentErrorData.nullish(),
   worker: z
@@ -710,6 +711,17 @@ export const GetDeploymentResponseBody = z.object({
       ),
     })
     .optional(),
+  integrationDeployments: z
+    .array(
+      z.object({
+        id: z.string(),
+        integrationName: z.string(),
+        integrationDeploymentId: z.string(),
+        commitSHA: z.string(),
+        createdAt: z.coerce.date(),
+      })
+    )
+    .nullish(),
 });
 
 export type GetDeploymentResponseBody = z.infer<typeof GetDeploymentResponseBody>;
@@ -1139,6 +1151,12 @@ export const ImportEnvironmentVariablesRequestBody = z.object({
   variables: z.record(z.string()),
   parentVariables: z.record(z.string()).optional(),
   override: z.boolean().optional(),
+  source: z
+    .discriminatedUnion("type", [
+      z.object({ type: z.literal("user"), userId: z.string() }),
+      z.object({ type: z.literal("integration"), integration: z.string() }),
+    ])
+    .optional(),
 });
 
 export type ImportEnvironmentVariablesRequestBody = z.infer<

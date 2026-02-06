@@ -6,9 +6,12 @@ import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
+  type CreateEnvironmentVariables,
   type CreateResult,
   type DeleteEnvironmentVariable,
   type DeleteEnvironmentVariableValue,
+  type EditEnvironmentVariable,
+  type EditEnvironmentVariableValue,
   type EnvironmentVariable,
   type EnvironmentVariableWithSecret,
   type ProjectEnvironmentVariable,
@@ -45,18 +48,7 @@ const SecretValue = z.object({ secret: z.string() });
 export class EnvironmentVariablesRepository implements Repository {
   constructor(private prismaClient: PrismaClient = prisma) {}
 
-  async create(
-    projectId: string,
-    options: {
-      override: boolean;
-      environmentIds: string[];
-      isSecret?: boolean;
-      variables: {
-        key: string;
-        value: string;
-      }[];
-    }
-  ): Promise<CreateResult> {
+  async create(projectId: string, options: CreateEnvironmentVariables): Promise<CreateResult> {
     const project = await this.prismaClient.project.findFirst({
       where: {
         id: projectId,
@@ -164,9 +156,48 @@ export class EnvironmentVariablesRepository implements Repository {
             prismaClient: tx,
           });
 
+          // If parentEnvironmentId is provided and isSecret is not explicitly set,
+          // look up if the parent has this variable marked as secret
+          let inheritedIsSecret: boolean | undefined = undefined;
+          if (options.isSecret === undefined && options.parentEnvironmentId) {
+            const parentVariableValue = await tx.environmentVariableValue.findFirst({
+              where: {
+                variableId: environmentVariable.id,
+                environmentId: options.parentEnvironmentId,
+              },
+              select: {
+                isSecret: true,
+              },
+            });
+            if (parentVariableValue?.isSecret) {
+              inheritedIsSecret = true;
+            }
+          }
+
+          const effectiveIsSecret = options.isSecret ?? inheritedIsSecret;
+
           //set the secret values and references
           for (const environmentId of options.environmentIds) {
             const key = secretKey(projectId, environmentId, variable.key);
+
+            const existingValueRecord = await tx.environmentVariableValue.findFirst({
+              where: {
+                variableId: environmentVariable.id,
+                environmentId,
+              },
+            });
+
+            // Check if value already exists and is the same, and no metadata change (e.g. isSecret toggle)
+            const existingSecret = await secretStore.getSecret(SecretValue, key);
+            const canSkip =
+              existingSecret &&
+              existingSecret.secret === variable.value &&
+              existingValueRecord &&
+              (options.isSecret === undefined ||
+                existingValueRecord.isSecret === options.isSecret);
+            if (canSkip) {
+              continue;
+            }
 
             //create the secret reference
             const secretReference = await tx.secretReference.upsert({
@@ -180,23 +211,36 @@ export class EnvironmentVariablesRepository implements Repository {
               update: {},
             });
 
-            const variableValue = await tx.environmentVariableValue.upsert({
-              where: {
-                variableId_environmentId: {
-                  variableId: environmentVariable.id,
-                  environmentId,
+            if (existingValueRecord) {
+              await tx.environmentVariableValue.update({
+                where: {
+                  id: existingValueRecord.id,
                 },
-              },
-              create: {
-                variableId: environmentVariable.id,
-                environmentId: environmentId,
-                valueReferenceId: secretReference.id,
-                isSecret: options.isSecret,
-              },
-              update: {
-                isSecret: options.isSecret,
-              },
-            });
+                data: {
+                  version: {
+                    increment: 1,
+                  },
+                  ...(options.lastUpdatedBy ? { lastUpdatedBy: options.lastUpdatedBy } : {}),
+                  valueReferenceId: secretReference.id,
+                  ...(options.isSecret !== undefined
+                    ? {
+                        isSecret: options.isSecret,
+                      }
+                    : {}),
+                },
+              });
+            } else {
+              await tx.environmentVariableValue.create({
+                data: {
+                  variableId: environmentVariable.id,
+                  environmentId: environmentId,
+                  valueReferenceId: secretReference.id,
+                  isSecret: effectiveIsSecret,
+                  version: 1,
+                  lastUpdatedBy: options.lastUpdatedBy ? options.lastUpdatedBy : Prisma.JsonNull,
+                },
+              });
+            }
 
             await secretStore.setSecret<{ secret: string }>(key, {
               secret: variable.value,
@@ -226,14 +270,7 @@ export class EnvironmentVariablesRepository implements Repository {
     }
   }
 
-  async edit(
-    projectId: string,
-    options: {
-      values: { value: string; environmentId: string }[];
-      id: string;
-      keepEmptyValues?: boolean;
-    }
-  ): Promise<Result> {
+  async edit(projectId: string, options: EditEnvironmentVariable): Promise<Result> {
     const project = await this.prismaClient.project.findFirst({
       where: {
         id: projectId,
@@ -323,6 +360,20 @@ export class EnvironmentVariablesRepository implements Repository {
               await secretStore.setSecret<{ secret: string }>(key, {
                 secret: value.value,
               });
+              await tx.environmentVariableValue.update({
+                where: {
+                  variableId_environmentId: {
+                    variableId: environmentVariable.id,
+                    environmentId: value.environmentId,
+                  },
+                },
+                data: {
+                  version: {
+                    increment: 1,
+                  },
+                  lastUpdatedBy: options.lastUpdatedBy ? options.lastUpdatedBy : undefined,
+                },
+              });
             }
             continue;
           }
@@ -340,6 +391,8 @@ export class EnvironmentVariablesRepository implements Repository {
               variableId: environmentVariable.id,
               environmentId: value.environmentId,
               valueReferenceId: secretReference.id,
+              version: 1,
+              lastUpdatedBy: options.lastUpdatedBy ? options.lastUpdatedBy : Prisma.JsonNull,
             },
           });
 
@@ -360,14 +413,7 @@ export class EnvironmentVariablesRepository implements Repository {
     }
   }
 
-  async editValue(
-    projectId: string,
-    options: {
-      id: string;
-      environmentId: string;
-      value: string;
-    }
-  ): Promise<Result> {
+  async editValue(projectId: string, options: EditEnvironmentVariableValue): Promise<Result> {
     const project = await this.prismaClient.project.findFirst({
       where: {
         id: projectId,
@@ -425,6 +471,21 @@ export class EnvironmentVariablesRepository implements Repository {
         const key = secretKey(projectId, options.environmentId, environmentVariable.key);
         await secretStore.setSecret<{ secret: string }>(key, {
           secret: options.value,
+        });
+
+        await tx.environmentVariableValue.update({
+          where: {
+            variableId_environmentId: {
+              variableId: environmentVariable.id,
+              environmentId: options.environmentId,
+            },
+          },
+          data: {
+            version: {
+              increment: 1,
+            },
+            lastUpdatedBy: options.lastUpdatedBy ? options.lastUpdatedBy : undefined,
+          },
         });
       });
 

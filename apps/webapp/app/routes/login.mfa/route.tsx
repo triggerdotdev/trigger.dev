@@ -26,6 +26,7 @@ import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuth
 import { redirectWithErrorMessage, redirectBackWithErrorMessage } from "~/models/message.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { checkMfaRateLimit, MfaRateLimitError } from "~/services/mfa/mfaRateLimiter.server";
+import { trackAndClearReferralSource } from "~/services/referralSource.server";
 
 export const meta: MetaFunction = ({ matches }) => {
   const parentMeta = matches
@@ -160,11 +161,13 @@ async function completeLogin(request: Request, session: Session, userId: string)
   session.unset("pending-mfa-user-id");
   session.unset("pending-mfa-redirect-to");
 
-  return redirect(redirectTo, {
-    headers: {
-      "Set-Cookie": await sessionStorage.commitSession(authSession),
-    },
-  });
+  const headers = new Headers();
+  headers.append("Set-Cookie", await sessionStorage.commitSession(authSession));
+  headers.append("Set-Cookie", await commitSession(session));
+
+  await trackAndClearReferralSource(request, userId, headers);
+
+  return redirect(redirectTo, { headers });
 }
 
 export default function LoginMfaPage() {

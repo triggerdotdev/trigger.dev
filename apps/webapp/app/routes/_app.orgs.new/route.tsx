@@ -69,6 +69,27 @@ export const action: ActionFunction = async ({ request }) => {
       });
     }
 
+    // Preserve Vercel integration params if present
+    const url = new URL(request.url);
+    const code = url.searchParams.get("code");
+    const configurationId = url.searchParams.get("configurationId");
+    const integration = url.searchParams.get("integration");
+    const next = url.searchParams.get("next");
+
+    if (code && configurationId && integration === "vercel") {
+      // Redirect to projects/new with params preserved
+      const params = new URLSearchParams({
+        code,
+        configurationId,
+        integration,
+      });
+      if (next) {
+        params.set("next", next);
+      }
+      const redirectUrl = `${organizationPath(organization)}/projects/new?${params.toString()}`;
+      return redirect(redirectUrl);
+    }
+
     return redirect(organizationPath(organization));
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });

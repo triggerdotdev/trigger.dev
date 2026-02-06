@@ -10,11 +10,14 @@ import { FormButtons } from "../primitives/FormButtons";
 import { Input } from "../primitives/Input";
 import { InputGroup } from "../primitives/InputGroup";
 import { Paragraph } from "../primitives/Paragraph";
+import { CheckboxWithLabel } from "../primitives/Checkbox";
 import { Spinner } from "../primitives/Spinner";
 
 type ModalProps = {
   id: string;
   title: string;
+  hasVercelIntegration: boolean;
+  isDevelopment: boolean;
 };
 
 type ModalContentProps = ModalProps & {
@@ -22,7 +25,12 @@ type ModalContentProps = ModalProps & {
   closeModal: () => void;
 };
 
-export function RegenerateApiKeyModal({ id, title }: ModalProps) {
+export function RegenerateApiKeyModal({
+  id,
+  title,
+  hasVercelIntegration,
+  isDevelopment,
+}: ModalProps) {
   const randomWord = generateTwoRandomWords();
   const [open, setOpen] = useState(false);
   return (
@@ -37,6 +45,8 @@ export function RegenerateApiKeyModal({ id, title }: ModalProps) {
         <RegenerateApiKeyModalContent
           id={id}
           title={title}
+          hasVercelIntegration={hasVercelIntegration}
+          isDevelopment={isDevelopment}
           randomWord={randomWord}
           closeModal={() => setOpen(false)}
         />
@@ -45,7 +55,14 @@ export function RegenerateApiKeyModal({ id, title }: ModalProps) {
   );
 }
 
-const RegenerateApiKeyModalContent = ({ id, randomWord, title, closeModal }: ModalContentProps) => {
+const RegenerateApiKeyModalContent = ({
+  id,
+  randomWord,
+  title,
+  hasVercelIntegration,
+  isDevelopment,
+  closeModal,
+}: ModalContentProps) => {
   const [confirmationText, setConfirmationText] = useState("");
   const fetcher = useFetcher();
   const isSubmitting = fetcher.state === "submitting";
@@ -83,6 +100,15 @@ const RegenerateApiKeyModalContent = ({ id, randomWord, title, closeModal }: Mod
               onChange={(e) => setConfirmationText(e.target.value)}
             />
           </InputGroup>
+          {hasVercelIntegration && !isDevelopment && (
+            <CheckboxWithLabel
+              name="syncToVercel"
+              variant="simple/small"
+              label="Also update TRIGGER_SECRET_KEY in Vercel"
+              defaultChecked={true}
+              value="on"
+            />
+          )}
           <FormButtons
             confirmButton={
               <Button

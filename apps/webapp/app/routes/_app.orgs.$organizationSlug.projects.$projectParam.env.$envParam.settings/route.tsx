@@ -38,12 +38,20 @@ import {
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { organizationPath, v3ProjectPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
-import React, { useEffect, useState } from "react";
+import { organizationPath, v3ProjectPath, EnvironmentParamSchema, v3BillingPath, vercelResourcePath } from "~/utils/pathBuilder";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams } from "@remix-run/react";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.server";
 import { type BuildSettings } from "~/v3/buildSettings";
 import { GitHubSettingsPanel } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
+import {
+  VercelSettingsPanel,
+  VercelOnboardingModal,
+} from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
+import type { loader as vercelLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
+import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
+import { useTypedFetcher } from "remix-typedjson";
 
 export const meta: MetaFunction = () => {
   return [
@@ -92,6 +100,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({
     githubAppEnabled: gitHubApp.enabled,
     buildSettings,
+    vercelIntegrationEnabled: OrgIntegrationRepository.isVercelSupported,
   });
 };
 
@@ -290,12 +299,121 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function Page() {
-  const { githubAppEnabled, buildSettings } = useTypedLoaderData<typeof loader>();
+  const { githubAppEnabled, buildSettings, vercelIntegrationEnabled } =
+    useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
   const environment = useEnvironment();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Vercel onboarding modal state
+  const hasQueryParam = searchParams.get("vercelOnboarding") === "true";
+  const nextUrl = searchParams.get("next");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const vercelFetcher = useTypedFetcher<typeof vercelLoader>();
+
+  // Helper to open modal and ensure query param is present
+  const openVercelOnboarding = useCallback(() => {
+    setIsModalOpen(true);
+    // Ensure query param is present to maintain state during form submissions
+    if (!hasQueryParam) {
+      setSearchParams((prev) => {
+        prev.set("vercelOnboarding", "true");
+        return prev;
+      });
+    }
+  }, [hasQueryParam, setSearchParams]);
+
+  const closeVercelOnboarding = useCallback(() => {
+    // Remove query param if present
+    if (hasQueryParam) {
+      setSearchParams((prev) => {
+        prev.delete("vercelOnboarding");
+        return prev;
+      });
+    }
+    // Close modal
+    setIsModalOpen(false);
+  }, [hasQueryParam, setSearchParams]);
+
+  // When query param is present, handle modal opening
+  // Note: We don't close the modal based on data state during onboarding - only when explicitly closed
+  useEffect(() => {
+    if (hasQueryParam && vercelIntegrationEnabled) {
+      // Ensure query param is present and modal is open
+      if (vercelFetcher.data?.onboardingData && vercelFetcher.state === "idle") {
+        // Data is loaded, ensure modal is open (query param takes precedence)
+        if (!isModalOpen) {
+          openVercelOnboarding();
+        }
+      } else if (vercelFetcher.state === "idle" && vercelFetcher.data === undefined) {
+        // Load onboarding data
+        vercelFetcher.load(
+          `${vercelResourcePath(organization.slug, project.slug, environment.slug)}?vercelOnboarding=true`
+        );
+      }
+    } else if (!hasQueryParam && isModalOpen) {
+      // Query param removed but modal is open, close modal
+      setIsModalOpen(false);
+    }
+  }, [hasQueryParam, vercelIntegrationEnabled, organization.slug, project.slug, environment.slug, vercelFetcher.data, vercelFetcher.state, isModalOpen, openVercelOnboarding]);
+
+  // Ensure modal stays open when query param is present (even after data reloads)
+  // This is a safeguard to prevent the modal from closing during form submissions
+  useEffect(() => {
+    if (hasQueryParam && !isModalOpen) {
+      // Query param is present but modal is closed, open it
+      // This ensures the modal stays open during the onboarding flow
+      openVercelOnboarding();
+    }
+  }, [hasQueryParam, isModalOpen, openVercelOnboarding]);
+
+  // When data finishes loading (from query param), ensure modal is open
+  useEffect(() => {
+    if (hasQueryParam && vercelFetcher.data?.onboardingData && vercelFetcher.state === "idle") {
+      // Data loaded and query param is present, ensure modal is open
+      if (!isModalOpen) {
+        openVercelOnboarding();
+      }
+    }
+  }, [hasQueryParam, vercelFetcher.data, vercelFetcher.state, isModalOpen, openVercelOnboarding]);
+
+
+  // Track if we're waiting for data from button click (not query param)
+  const waitingForButtonClickRef = useRef(false);
+
+  // Handle opening modal from button click (without query param)
+  const handleOpenVercelModal = useCallback(() => {
+    // Add query param to maintain state during form submissions
+    if (!hasQueryParam) {
+      setSearchParams((prev) => {
+        prev.set("vercelOnboarding", "true");
+        return prev;
+      });
+    }
+
+    if (vercelFetcher.data && vercelFetcher.data.onboardingData) {
+      // Data already loaded, open modal immediately
+      openVercelOnboarding();
+    } else {
+      // Need to load data first, mark that we're waiting for button click
+      waitingForButtonClickRef.current = true;
+      vercelFetcher.load(
+        `${vercelResourcePath(organization.slug, project.slug, environment.slug)}?vercelOnboarding=true`
+      );
+    }
+  }, [organization.slug, project.slug, environment.slug, vercelFetcher, setSearchParams, hasQueryParam, openVercelOnboarding]);
+
+  // When data loads from button click, open modal
+  useEffect(() => {
+    if (waitingForButtonClickRef.current && vercelFetcher.data?.onboardingData && vercelFetcher.state === "idle") {
+      // Data loaded from button click, open modal and ensure query param is present
+      waitingForButtonClickRef.current = false;
+      openVercelOnboarding();
+    }
+  }, [vercelFetcher.data, vercelFetcher.state, openVercelOnboarding]);
 
   const [hasRenameFormChanges, setHasRenameFormChanges] = useState(false);
 
@@ -425,6 +543,21 @@ export default function Page() {
                   </div>
                 </div>
 
+                {vercelIntegrationEnabled && (
+                  <div>
+                    <Header2 spacing>Vercel integration</Header2>
+                    <div className="w-full rounded-sm border border-grid-dimmed p-4">
+                      <VercelSettingsPanel
+                        organizationSlug={organization.slug}
+                        projectSlug={project.slug}
+                        environmentSlug={environment.slug}
+                        onOpenVercelModal={handleOpenVercelModal}
+                        isLoadingVercelData={vercelFetcher.state === "loading" || vercelFetcher.state === "submitting"}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <Header2 spacing>Build settings</Header2>
                   <div className="w-full rounded-sm border border-grid-dimmed p-4">
@@ -477,6 +610,29 @@ export default function Page() {
           </div>
         </MainHorizontallyCenteredContainer>
       </PageBody>
+
+      {/* Vercel Onboarding Modal */}
+      {vercelIntegrationEnabled && (
+        <VercelOnboardingModal
+          isOpen={isModalOpen}
+          onClose={closeVercelOnboarding}
+          onboardingData={vercelFetcher.data?.onboardingData ?? null}
+          organizationSlug={organization.slug}
+          projectSlug={project.slug}
+          environmentSlug={environment.slug}
+          hasStagingEnvironment={vercelFetcher.data?.hasStagingEnvironment ?? false}
+          hasPreviewEnvironment={vercelFetcher.data?.hasPreviewEnvironment ?? false}
+          hasOrgIntegration={vercelFetcher.data?.hasOrgIntegration ?? false}
+          nextUrl={nextUrl ?? undefined}
+          onDataReload={(vercelEnvironmentId) => {
+            vercelFetcher.load(
+              `${vercelResourcePath(organization.slug, project.slug, environment.slug)}?vercelOnboarding=true${
+                vercelEnvironmentId ? `&vercelEnvironmentId=${vercelEnvironmentId}` : ""
+              }`
+            );
+          }}
+        />
+      )}
     </PageContainer>
   );
 }
