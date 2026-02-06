@@ -358,6 +358,10 @@ TRIGGER_IMAGE_TAG=v4.0.0
 
 - **ClickHouse migrations say "no migrations to run" but schema is missing.** The goose migration tracker is out of sync. Exec into the webapp container, set the GOOSE env vars (from webapp startup logs), and run `goose reset && goose up`.
 
+  <Warning>
+    **Data Loss Warning:** The `goose reset` command is destructive and will drop the entire schema. Make sure to backup your data and confirm you are running this in a non-production environment before executing this command.
+  </Warning>
+
 ## CLI usage
 
 This section highlights some of the CLI commands and options that are useful when self-hosting. Please check the [CLI reference](/cli-introduction) for more in-depth documentation.
