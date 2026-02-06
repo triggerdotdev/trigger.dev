@@ -230,7 +230,7 @@ export function SideMenu({
     mounted: gridMounted,
   } = useContainerWidth({ initialWidth: 216 });
 
-  const canReorder = orderedDashboards.length >= 2 && !isCollapsed;
+  const canReorder = orderedDashboards.length >= 2;
 
   // Handle drag stop - extract new order from layout y-positions
   const handleDashboardDragStop = useCallback(
@@ -582,7 +582,7 @@ export function SideMenu({
                   }
                 />
                 <div ref={gridContainerRef as Ref<HTMLDivElement>}>
-                  {canReorder && gridMounted ? (
+                  {canReorder ? (
                     <ReactGridLayout
                       layout={dashboardLayout}
                       width={gridWidth}
@@ -593,7 +593,7 @@ export function SideMenu({
                         containerPadding: [0, 0] as const,
                       }}
                       resizeConfig={{ enabled: false }}
-                      dragConfig={{ enabled: true, handle: ".sidebar-drag-handle" }}
+                      dragConfig={{ enabled: !isCollapsed, handle: ".sidebar-drag-handle" }}
                       onDragStop={handleDashboardDragStop}
                       className="sidebar-reorder-grid"
                       autoSize
