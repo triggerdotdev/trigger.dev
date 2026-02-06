@@ -629,8 +629,8 @@ export function SideMenu({
                                 isCollapsed
                                   ? LineChartIcon
                                   : isLast
-                                    ? TreeConnectorEnd
-                                    : TreeConnectorBranch
+                                  ? TreeConnectorEnd
+                                  : TreeConnectorBranch
                               }
                               activeIconColor={isCollapsed ? "text-customDashboards" : undefined}
                               inactiveIconColor={isCollapsed ? "text-customDashboards" : undefined}
@@ -1220,6 +1220,11 @@ function CreateDashboardButton({
   );
 }
 
+const PROGRESS_RING_R = 27.5;
+const PROGRESS_RING_CIRCUMFERENCE = 2 * Math.PI * PROGRESS_RING_R;
+const PROGRESS_COLOR_SUCCESS = "#28BF5C"; // mint-500 / success
+const PROGRESS_COLOR_ERROR = "#E11D48"; // rose-600 / error
+
 function CreateDashboardUpgradeDialog({
   limits,
   canUpgrade,
@@ -1229,20 +1234,71 @@ function CreateDashboardUpgradeDialog({
   canUpgrade: boolean;
   organization: MatchedOrganization;
 }) {
+  const percentage = Math.min(limits.used / limits.limit, 1);
+  const filled = percentage * PROGRESS_RING_CIRCUMFERENCE;
+
   return (
     <DialogContent>
-      <DialogHeader>You've exceeded your limit</DialogHeader>
-      <DialogDescription>
-        You've used {limits.used}/{limits.limit} of your custom dashboards.
-      </DialogDescription>
-      <DialogFooter>
+      <DialogHeader>Dashboard limit reached</DialogHeader>
+      <div className="flex items-center gap-4 pt-3">
+        <div className="relative ml-1 mt-2 shrink-0" style={{ width: 60, height: 60 }}>
+          <svg className="h-full w-full -rotate-90 overflow-visible">
+            <circle
+              className="fill-none stroke-grid-bright"
+              strokeWidth="5"
+              r={PROGRESS_RING_R}
+              cx="30"
+              cy="30"
+            />
+            <motion.circle
+              className="fill-none"
+              strokeWidth="5"
+              r={PROGRESS_RING_R}
+              cx="30"
+              cy="30"
+              strokeLinecap="round"
+              initial={{
+                strokeDasharray: `0 ${PROGRESS_RING_CIRCUMFERENCE}`,
+                stroke: PROGRESS_COLOR_SUCCESS,
+              }}
+              animate={{
+                strokeDasharray: `${filled} ${PROGRESS_RING_CIRCUMFERENCE}`,
+                stroke: PROGRESS_COLOR_ERROR,
+              }}
+              transition={{ duration: 1.2, ease: "easeInOut" }}
+            />
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center text-lg text-text-dimmed">
+            {limits.limit}
+          </span>
+        </div>
+        <DialogDescription className="pt-0">
+          {canUpgrade ? (
+            <>
+              You've used all {limits.limit} of your custom dashboards. Upgrade your plan to create
+              more.
+            </>
+          ) : (
+            <>
+              You've used all {limits.limit} of your custom dashboards. To create more, request a
+              limit increase or visit the{" "}
+              <TextLink to={v3BillingPath(organization)}>billing page</TextLink> for pricing
+              details.
+            </>
+          )}
+        </DialogDescription>
+      </div>
+      <DialogFooter className="flex justify-between">
+        <DialogClose asChild>
+          <Button variant="secondary/medium">Cancel</Button>
+        </DialogClose>
         {canUpgrade ? (
-          <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
-            Upgrade
+          <LinkButton variant="primary/medium" to={v3BillingPath(organization)}>
+            Upgrade plan
           </LinkButton>
         ) : (
           <Feedback
-            button={<Button variant="primary/small">Request more</Button>}
+            button={<Button variant="primary/medium">Request increase…</Button>}
             defaultValue="help"
           />
         )}
