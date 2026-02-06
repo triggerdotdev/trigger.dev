@@ -4,7 +4,10 @@ import {
   SideMenuSectionIdSchema,
   type SideMenuSectionId,
 } from "~/components/navigation/sideMenuTypes";
-import { updateSideMenuPreferences } from "~/services/dashboardPreferences.server";
+import {
+  updateCustomDashboardOrder,
+  updateSideMenuPreferences,
+} from "~/services/dashboardPreferences.server";
 import { requireUser } from "~/services/session.server";
 
 // Transforms form data string "true"/"false" to boolean, or undefined if not present
@@ -17,6 +20,9 @@ const RequestSchema = z.object({
   isCollapsed: booleanFromFormData,
   sectionId: SideMenuSectionIdSchema.optional(),
   sectionCollapsed: booleanFromFormData,
+  // Dashboard reorder fields
+  organizationId: z.string().optional(),
+  customDashboardOrder: z.string().optional(), // JSON-encoded string[]
 });
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -30,10 +36,26 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ success: false, error: "Invalid request data" }, { status: 400 });
   }
 
+  // Handle dashboard order update
+  if (result.data.organizationId && result.data.customDashboardOrder) {
+    const orderResult = z.array(z.string()).safeParse(JSON.parse(result.data.customDashboardOrder));
+    if (orderResult.success) {
+      await updateCustomDashboardOrder({
+        user,
+        organizationId: result.data.organizationId,
+        order: orderResult.data,
+      });
+    }
+    return json({ success: true });
+  }
+
   // Build sectionCollapsed parameter if both sectionId and sectionCollapsed are provided
   const sectionCollapsed =
     result.data.sectionId !== undefined && result.data.sectionCollapsed !== undefined
-      ? { sectionId: result.data.sectionId as SideMenuSectionId, collapsed: result.data.sectionCollapsed }
+      ? {
+          sectionId: result.data.sectionId as SideMenuSectionId,
+          collapsed: result.data.sectionCollapsed,
+        }
       : undefined;
 
   await updateSideMenuPreferences({

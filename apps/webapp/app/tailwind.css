@@ -9,6 +9,13 @@
   background: rgb(99 102 241) !important; /* indigo-500 */
 }
 
+/* Sidebar reorder grid: subtle placeholder */
+.sidebar-reorder-grid .react-grid-item.react-grid-placeholder {
+  background: rgb(39 42 46) !important; /* charcoal-700 */
+  border-radius: 0.25rem;
+  opacity: 1 !important;
+}
+
 /* Override resize handle icon to white */
 .react-resizable-handle {
   background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSA2IDYgTCAwIDYgTCAwIDQuMiBMIDQgNC4yIEwgNC4yIDQuMiBMIDQuMiAwIEwgNiAwIEwgNiA2IEwgNiA2IFoiIGZpbGw9IiNmZmZmZmYiLz48L2c+PC9zdmc+') !important;

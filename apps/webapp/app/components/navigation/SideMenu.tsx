@@ -25,8 +25,9 @@ import {
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, Link, useFetcher, useNavigation } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
-import { LineChartIcon } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { GripVerticalIcon, LineChartIcon } from "lucide-react";
+import { type Ref, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ReactGridLayout, { useContainerWidth, type Layout } from "react-grid-layout";
 import simplur from "simplur";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
@@ -182,6 +183,75 @@ export function SideMenu({
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
   const customDashboards = useCustomDashboards();
+  const dashboardOrderFetcher = useFetcher();
+
+  // Dashboard reorder state
+  const [dashboardOrder, setDashboardOrder] = useState<string[]>(
+    () =>
+      user.dashboardPreferences.sideMenu?.customDashboardOrder?.[organization.id] ??
+      customDashboards.map((d) => d.friendlyId)
+  );
+
+  // Sync order when organization changes (component may not remount)
+  useEffect(() => {
+    setDashboardOrder(
+      user.dashboardPreferences.sideMenu?.customDashboardOrder?.[organization.id] ??
+        customDashboards.map((d) => d.friendlyId)
+    );
+  }, [organization.id]);
+
+  // Sort dashboards by stored order, new dashboards go to end
+  const orderedDashboards = useMemo(() => {
+    const orderMap = new Map(dashboardOrder.map((id, i) => [id, i]));
+    return [...customDashboards].sort((a, b) => {
+      const aIdx = orderMap.get(a.friendlyId) ?? Infinity;
+      const bIdx = orderMap.get(b.friendlyId) ?? Infinity;
+      return aIdx - bIdx;
+    });
+  }, [customDashboards, dashboardOrder]);
+
+  // Layout for ReactGridLayout (1-column vertical list, each item h=1 row)
+  const dashboardLayout = useMemo(
+    () =>
+      orderedDashboards.map((d, i) => ({
+        i: d.friendlyId,
+        x: 0,
+        y: i,
+        w: 1,
+        h: 1,
+      })),
+    [orderedDashboards]
+  );
+
+  // Width measurement for ReactGridLayout
+  const {
+    width: gridWidth,
+    containerRef: gridContainerRef,
+    mounted: gridMounted,
+  } = useContainerWidth({ initialWidth: 216 });
+
+  const canReorder = orderedDashboards.length >= 2 && !isCollapsed;
+
+  // Handle drag stop - extract new order from layout y-positions
+  const handleDashboardDragStop = useCallback(
+    (layout: Layout) => {
+      const sorted = [...layout].sort((a, b) => a.y - b.y);
+      const newOrder = sorted.map((item) => item.i);
+      if (JSON.stringify(newOrder) === JSON.stringify(dashboardOrder)) return;
+      setDashboardOrder(newOrder);
+      // Persist immediately
+      if (!user.isImpersonating) {
+        const formData = new FormData();
+        formData.append("organizationId", organization.id);
+        formData.append("customDashboardOrder", JSON.stringify(newOrder));
+        dashboardOrderFetcher.submit(formData, {
+          method: "POST",
+          action: "/resources/preferences/sidemenu",
+        });
+      }
+    },
+    [dashboardOrder, organization.id, user.isImpersonating, dashboardOrderFetcher]
+  );
 
   const persistSideMenuPreferences = useCallback(
     (data: {
@@ -511,26 +581,82 @@ export function SideMenu({
                     />
                   }
                 />
-                {customDashboards.map((dashboard, index) => {
-                  const isLast = index === customDashboards.length - 1;
-                  return (
-                    <SideMenuItem
-                      key={dashboard.friendlyId}
-                      name={dashboard.title}
-                      icon={
-                        isCollapsed
-                          ? LineChartIcon
-                          : isLast
-                          ? TreeConnectorEnd
-                          : TreeConnectorBranch
-                      }
-                      activeIconColor={isCollapsed ? "text-text-dimmed" : "text-customDashboards"}
-                      inactiveIconColor={isCollapsed ? "text-text-dimmed" : "text-customDashboards"}
-                      to={v3CustomDashboardPath(organization, project, environment, dashboard)}
-                      isCollapsed={isCollapsed}
-                    />
-                  );
-                })}
+                <div ref={gridContainerRef as Ref<HTMLDivElement>}>
+                  {canReorder && gridMounted ? (
+                    <ReactGridLayout
+                      layout={dashboardLayout}
+                      width={gridWidth}
+                      gridConfig={{
+                        cols: 1,
+                        rowHeight: 32,
+                        margin: [0, 0] as const,
+                        containerPadding: [0, 0] as const,
+                      }}
+                      resizeConfig={{ enabled: false }}
+                      dragConfig={{ enabled: true, handle: ".sidebar-drag-handle" }}
+                      onDragStop={handleDashboardDragStop}
+                      className="sidebar-reorder-grid"
+                      autoSize
+                    >
+                      {orderedDashboards.map((dashboard, index) => {
+                        const isLast = index === orderedDashboards.length - 1;
+                        return (
+                          <div key={dashboard.friendlyId}>
+                            <SideMenuItem
+                              name={dashboard.title}
+                              icon={
+                                isCollapsed
+                                  ? LineChartIcon
+                                  : isLast
+                                  ? TreeConnectorEnd
+                                  : TreeConnectorBranch
+                              }
+                              activeIconColor={isCollapsed ? "text-customDashboards" : undefined}
+                              inactiveIconColor={isCollapsed ? "text-customDashboards" : undefined}
+                              to={v3CustomDashboardPath(
+                                organization,
+                                project,
+                                environment,
+                                dashboard
+                              )}
+                              isCollapsed={isCollapsed}
+                              action={
+                                <div className="sidebar-drag-handle flex h-full w-full cursor-grab items-center justify-center rounded text-text-dimmed opacity-0 transition group-hover/menuitem:opacity-100 hover:text-text-bright active:cursor-grabbing">
+                                  <GripVerticalIcon className="size-3.5" />
+                                </div>
+                              }
+                            />
+                          </div>
+                        );
+                      })}
+                    </ReactGridLayout>
+                  ) : (
+                    orderedDashboards.map((dashboard, index) => {
+                      const isLast = index === orderedDashboards.length - 1;
+                      return (
+                        <SideMenuItem
+                          key={dashboard.friendlyId}
+                          name={dashboard.title}
+                          icon={
+                            isCollapsed
+                              ? LineChartIcon
+                              : isLast
+                              ? TreeConnectorEnd
+                              : TreeConnectorBranch
+                          }
+                          activeIconColor={
+                            isCollapsed ? "text-customDashboards" : "text-charcoal-700"
+                          }
+                          inactiveIconColor={
+                            isCollapsed ? "text-customDashboards" : "text-charcoal-700"
+                          }
+                          to={v3CustomDashboardPath(organization, project, environment, dashboard)}
+                          isCollapsed={isCollapsed}
+                        />
+                      );
+                    })
+                  )}
+                </div>
               </SideMenuSection>
             )}
 
@@ -1236,7 +1362,11 @@ function AnimatedChevron({
 // Lines extend to y=-6 and y=26 to fill the full 32px row height (6px gap above/below the 20px icon).
 function TreeConnectorBranch({ className }: { className?: string }) {
   return (
-    <svg className={cn("overflow-visible", className)} viewBox="0 0 20 20" fill="none">
+    <svg
+      className={cn("overflow-visible", className, "text-charcoal-600")}
+      viewBox="0 0 20 20"
+      fill="none"
+    >
       <line x1="10" y1="-6" x2="10" y2="26" stroke="currentColor" strokeWidth="1" />
       <line x1="10" y1="10" x2="20" y2="10" stroke="currentColor" strokeWidth="1" />
     </svg>
@@ -1245,7 +1375,11 @@ function TreeConnectorBranch({ className }: { className?: string }) {
 
 function TreeConnectorEnd({ className }: { className?: string }) {
   return (
-    <svg className={cn("overflow-visible", className)} viewBox="0 0 20 20" fill="none">
+    <svg
+      className={cn("overflow-visible", className, "text-charcoal-600")}
+      viewBox="0 0 20 20"
+      fill="none"
+    >
       <line x1="10" y1="-6" x2="10" y2="10" stroke="currentColor" strokeWidth="1" />
       <line x1="10" y1="10" x2="20" y2="10" stroke="currentColor" strokeWidth="1" />
     </svg>
