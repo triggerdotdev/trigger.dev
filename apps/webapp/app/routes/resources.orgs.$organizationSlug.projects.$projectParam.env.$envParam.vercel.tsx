@@ -43,6 +43,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
+import { sanitizeVercelNextUrl } from "~/v3/vercel/vercelUrls.server";
 import { EnvironmentParamSchema, v3ProjectSettingsPath, vercelAppInstallPath, vercelResourcePath } from "~/utils/pathBuilder";
 import {
   VercelSettingsPresenter,
@@ -54,7 +55,7 @@ import {
   type VercelProjectIntegrationData,
   type SyncEnvVarsMapping,
   type EnvSlug,
-  jsonArrayField,
+  envSlugArrayField,
   envTypeToSlug,
   getAvailableEnvSlugs,
   getAvailableEnvSlugsForBuildSettings,
@@ -93,9 +94,9 @@ function parseVercelStagingEnvironment(
 
 const UpdateVercelConfigFormSchema = z.object({
   action: z.literal("update-config"),
-  atomicBuilds: jsonArrayField,
-  pullEnvVarsBeforeBuild: jsonArrayField,
-  discoverEnvVars: jsonArrayField,
+  atomicBuilds: envSlugArrayField,
+  pullEnvVarsBeforeBuild: envSlugArrayField,
+  discoverEnvVars: envSlugArrayField,
   vercelStagingEnvironment: z.string().nullable().optional(),
 });
 
@@ -106,9 +107,9 @@ const DisconnectVercelFormSchema = z.object({
 const CompleteOnboardingFormSchema = z.object({
   action: z.literal("complete-onboarding"),
   vercelStagingEnvironment: z.string().nullable().optional(),
-  pullEnvVarsBeforeBuild: jsonArrayField,
-  atomicBuilds: jsonArrayField,
-  discoverEnvVars: jsonArrayField,
+  pullEnvVarsBeforeBuild: envSlugArrayField,
+  atomicBuilds: envSlugArrayField,
+  discoverEnvVars: envSlugArrayField,
   syncEnvVarsMapping: z.string().optional(),
   next: z.string().optional(),
   skipRedirect: z.string().optional().transform((val) => val === "true"),
@@ -190,7 +191,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   return typedjson({
     ...result,
-    authInvalid: authInvalid || result.authInvalid,
+    authInvalid,
     onboardingData,
     organizationSlug,
     projectSlug: projectParam,
@@ -242,9 +243,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
       const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
 
       const result = await vercelService.updateVercelIntegrationConfig(project.id, {
-        atomicBuilds: atomicBuilds as EnvSlug[] | null,
-        pullEnvVarsBeforeBuild: pullEnvVarsBeforeBuild as EnvSlug[] | null,
-        discoverEnvVars: discoverEnvVars as EnvSlug[] | null,
+        atomicBuilds,
+        pullEnvVarsBeforeBuild,
+        discoverEnvVars,
         vercelStagingEnvironment: parsedStagingEnv,
       });
 
@@ -283,9 +284,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
       const result = await vercelService.completeOnboarding(project.id, {
         vercelStagingEnvironment: parsedStagingEnv,
-        pullEnvVarsBeforeBuild: pullEnvVarsBeforeBuild as EnvSlug[] | null,
-        atomicBuilds: atomicBuilds as EnvSlug[] | null,
-        discoverEnvVars: discoverEnvVars as EnvSlug[] | null,
+        pullEnvVarsBeforeBuild,
+        atomicBuilds,
+        discoverEnvVars,
         syncEnvVarsMapping: parsedSyncEnvVarsMapping,
       });
 
@@ -295,13 +296,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
         }
 
         if (next) {
-          const urlResult = Result.fromThrowable(() => new URL(next), (e) => e)();
-          if (urlResult.isOk() && urlResult.value.protocol === "https:") {
-            return json({ success: true, redirectTo: next });
+          const sanitizedNext = sanitizeVercelNextUrl(next);
+          if (sanitizedNext) {
+            return json({ success: true, redirectTo: sanitizedNext });
           }
-          if (urlResult.isErr()) {
-            logger.warn("Invalid next URL provided", { next, error: urlResult.error });
-          }
+          logger.warn("Rejected next URL - not same-origin or vercel.com", { next });
         }
 
         return json({ success: true, redirectTo: settingsPath });

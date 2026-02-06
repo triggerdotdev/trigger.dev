@@ -5,7 +5,7 @@ import type {
   SecretReference,
 } from "@trigger.dev/database";
 import { ResultAsync } from "neverthrow";
-import { prisma } from "~/db.server";
+import { prisma, $transaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
@@ -178,81 +178,123 @@ export class VercelIntegrationService {
         () => undefined
       );
 
-    const existing = await this.getVercelProjectIntegration(params.projectId);
-    if (existing) {
-      const updated = await this.#prismaClient.organizationProjectIntegration.update({
-        where: { id: existing.id },
-        data: {
-          externalEntityId: params.vercelProjectId,
-          integrationData: {
-            ...existing.parsedIntegrationData,
-            vercelProjectId: params.vercelProjectId,
-            vercelProjectName: params.vercelProjectName,
-            vercelTeamId: teamId,
-            vercelTeamSlug,
+    // Use a serializable transaction to prevent duplicate project integrations
+    // from concurrent selectVercelProject calls (read-then-write race condition).
+    const txResult = await $transaction(
+      this.#prismaClient,
+      "selectVercelProject",
+      async (tx) => {
+        const existing = await tx.organizationProjectIntegration.findFirst({
+          where: {
+            projectId: params.projectId,
+            deletedAt: null,
+            organizationIntegration: {
+              service: "VERCEL",
+              deletedAt: null,
+            },
           },
-        },
-      });
+          include: {
+            organizationIntegration: true,
+          },
+        });
 
-      const syncResultAsync = await VercelIntegrationRepository.syncApiKeysToVercel({
-        projectId: params.projectId,
-        vercelProjectId: params.vercelProjectId,
-        teamId,
-        vercelStagingEnvironment: existing.parsedIntegrationData.config.vercelStagingEnvironment,
-        orgIntegration,
-      });
-      const syncResult = syncResultAsync.isOk()
-        ? { success: syncResultAsync.value.errors.length === 0, errors: syncResultAsync.value.errors }
-        : { success: false, errors: [syncResultAsync.error.message] };
+        if (existing) {
+          const parsedData = VercelProjectIntegrationDataSchema.safeParse(
+            existing.integrationData
+          );
 
-      return { integration: updated, syncResult };
+          const updated = await tx.organizationProjectIntegration.update({
+            where: { id: existing.id },
+            data: {
+              externalEntityId: params.vercelProjectId,
+              integrationData: {
+                ...(parsedData.success ? parsedData.data : {}),
+                vercelProjectId: params.vercelProjectId,
+                vercelProjectName: params.vercelProjectName,
+                vercelTeamId: teamId,
+                vercelTeamSlug,
+              },
+            },
+          });
+
+          return {
+            integration: updated,
+            wasCreated: false,
+            vercelStagingEnvironment: parsedData.success
+              ? parsedData.data.config.vercelStagingEnvironment
+              : null,
+          };
+        }
+
+        const integrationData = createDefaultVercelIntegrationData(
+          params.vercelProjectId,
+          params.vercelProjectName,
+          teamId,
+          vercelTeamSlug
+        );
+
+        const created = await tx.organizationProjectIntegration.create({
+          data: {
+            organizationIntegrationId: orgIntegration.id,
+            projectId: params.projectId,
+            externalEntityId: params.vercelProjectId,
+            integrationData: integrationData,
+            installedBy: params.userId,
+          },
+        });
+
+        return {
+          integration: created,
+          wasCreated: true,
+          vercelStagingEnvironment: null,
+        };
+      },
+      { isolationLevel: "Serializable" }
+    );
+
+    if (!txResult) {
+      throw new Error("Failed to select Vercel project: transaction returned undefined");
     }
 
-    const integration = await this.createVercelProjectIntegration({
-      organizationIntegrationId: orgIntegration.id,
-      projectId: params.projectId,
-      vercelProjectId: params.vercelProjectId,
-      vercelProjectName: params.vercelProjectName,
-      vercelTeamId: teamId,
-      vercelTeamSlug,
-      installedByUserId: params.userId,
-    });
+    const { integration, wasCreated, vercelStagingEnvironment } = txResult;
 
     const syncResultAsync = await VercelIntegrationRepository.syncApiKeysToVercel({
       projectId: params.projectId,
       vercelProjectId: params.vercelProjectId,
       teamId,
-      vercelStagingEnvironment: null,
+      vercelStagingEnvironment,
       orgIntegration,
     });
     const syncResult = syncResultAsync.isOk()
       ? { success: syncResultAsync.value.errors.length === 0, errors: syncResultAsync.value.errors }
       : { success: false, errors: [syncResultAsync.error.message] };
 
-    const disableResult = await VercelIntegrationRepository.getVercelClient(orgIntegration)
-      .andThen((client) =>
-        VercelIntegrationRepository.disableAutoAssignCustomDomains(
-          client,
-          params.vercelProjectId,
-          teamId
-        )
-      );
+    if (wasCreated) {
+      const disableResult = await VercelIntegrationRepository.getVercelClient(orgIntegration)
+        .andThen((client) =>
+          VercelIntegrationRepository.disableAutoAssignCustomDomains(
+            client,
+            params.vercelProjectId,
+            teamId
+          )
+        );
 
-    if (disableResult.isErr()) {
-      logger.warn("Failed to disable autoAssignCustomDomains during project selection", {
+      if (disableResult.isErr()) {
+        logger.warn("Failed to disable autoAssignCustomDomains during project selection", {
+          projectId: params.projectId,
+          vercelProjectId: params.vercelProjectId,
+          error: disableResult.error.message,
+        });
+      }
+
+      logger.info("Vercel project selected and API keys synced", {
         projectId: params.projectId,
         vercelProjectId: params.vercelProjectId,
-        error: disableResult.error.message,
+        vercelProjectName: params.vercelProjectName,
+        syncSuccess: syncResult.success,
+        syncErrors: syncResult.errors,
       });
     }
-
-    logger.info("Vercel project selected and API keys synced", {
-      projectId: params.projectId,
-      vercelProjectId: params.vercelProjectId,
-      vercelProjectName: params.vercelProjectName,
-      syncSuccess: syncResult.success,
-      syncErrors: syncResult.errors,
-    });
 
     return { integration, syncResult };
   }

@@ -23,6 +23,22 @@ export const jsonArrayField = z.string().optional().transform((val) => {
   );
 });
 
+/**
+ * Zod transform for form fields that submit JSON-encoded EnvSlug arrays.
+ * Parses the string as JSON and validates each element is a valid EnvSlug.
+ * Invalid elements are filtered out rather than rejecting the whole array.
+ */
+export const envSlugArrayField = z.string().optional().transform((val): EnvSlug[] | null => {
+  if (!val) return null;
+  return safeJsonParse(val).match(
+    (parsed) => {
+      if (!Array.isArray(parsed)) return null;
+      return parsed.filter((item): item is EnvSlug => EnvSlugSchema.safeParse(item).success);
+    },
+    () => null
+  );
+});
+
 export const VercelIntegrationConfigSchema = z.object({
   atomicBuilds: z.array(EnvSlugSchema).nullable().optional(),
   pullEnvVarsBeforeBuild: z.array(EnvSlugSchema).nullable().optional(),
