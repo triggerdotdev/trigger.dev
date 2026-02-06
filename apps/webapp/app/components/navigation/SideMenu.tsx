@@ -24,10 +24,11 @@ import {
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, Link, useFetcher, useNavigation } from "@remix-run/react";
+import { IconChartHistogram } from "@tabler/icons-react";
 import { LayoutGroup, motion } from "framer-motion";
 import { GripVerticalIcon, LineChartIcon } from "lucide-react";
-import { type Ref, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ReactGridLayout, { useContainerWidth, type Layout } from "react-grid-layout";
+import { type ReactNode, type Ref, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ReactGridLayout, { type Layout, useContainerWidth } from "react-grid-layout";
 import simplur from "simplur";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
@@ -627,7 +628,7 @@ export function SideMenu({
                               name={dashboard.title}
                               icon={
                                 isCollapsed
-                                  ? LineChartIcon
+                                  ? IconChartHistogram
                                   : isLast
                                   ? TreeConnectorEnd
                                   : TreeConnectorBranch

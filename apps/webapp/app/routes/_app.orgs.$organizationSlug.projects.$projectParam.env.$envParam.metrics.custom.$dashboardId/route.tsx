@@ -393,7 +393,7 @@ export default function Page() {
               <MainCenteredContainer className="max-w-md">
                 <InfoPanel
                   icon={IconLayoutDashboardFilled}
-                  iconClassName="text-indigo-500"
+                  iconClassName="text-metrics"
                   panelClassName="max-full"
                   title="Add your first chart"
                   accessory={
