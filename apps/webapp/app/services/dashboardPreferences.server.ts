@@ -7,11 +7,14 @@ const SideMenuPreferences = z.object({
   isCollapsed: z.boolean().default(false),
   // Map for section collapsed states - keys are section identifiers
   collapsedSections: z.record(z.string(), z.boolean()).optional(),
+  // Map of organization ID -> ordered array of dashboard friendlyIds
+  customDashboardOrder: z.record(z.string(), z.array(z.string())).optional(),
 });
 
 export type SideMenuPreferences = z.infer<typeof SideMenuPreferences>;
 
-export { type SideMenuSectionId } from "~/components/navigation/sideMenuTypes";
+import { type SideMenuSectionId } from "~/components/navigation/sideMenuTypes";
+export type { SideMenuSectionId };
 
 const DashboardPreferences = z.object({
   version: z.literal("1"),
@@ -152,6 +155,44 @@ export async function updateSideMenuPreferences({
   ) {
     return;
   }
+
+  const updatedPreferences: DashboardPreferences = {
+    ...user.dashboardPreferences,
+    sideMenu: updatedSideMenu,
+  };
+
+  return prisma.user.update({
+    where: {
+      id: user.id,
+    },
+    data: {
+      dashboardPreferences: updatedPreferences,
+    },
+  });
+}
+
+export async function updateCustomDashboardOrder({
+  user,
+  organizationId,
+  order,
+}: {
+  user: UserFromSession;
+  organizationId: string;
+  order: string[];
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  const currentSideMenu = SideMenuPreferences.parse(user.dashboardPreferences.sideMenu ?? {});
+
+  const updatedSideMenu = SideMenuPreferences.parse({
+    ...currentSideMenu,
+    customDashboardOrder: {
+      ...currentSideMenu.customDashboardOrder,
+      [organizationId]: order,
+    },
+  });
 
   const updatedPreferences: DashboardPreferences = {
     ...user.dashboardPreferences,
