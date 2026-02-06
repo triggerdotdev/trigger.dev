@@ -5,7 +5,6 @@ import {
   BeakerIcon,
   BellAlertIcon,
   ChartBarIcon,
-  ChartBarSquareIcon,
   ChevronRightIcon,
   ClockIcon,
   Cog8ToothIcon,
@@ -26,7 +25,8 @@ import {
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, Link, useFetcher, useNavigation } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { LineChartIcon } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
@@ -36,8 +36,9 @@ import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
+import { Feedback } from "~/components/Feedback";
 import { Avatar } from "~/components/primitives/Avatar";
-import { type MatchedEnvironment, useEnvironment } from "~/hooks/useEnvironment";
+import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
 import {
@@ -45,21 +46,10 @@ import {
   useCustomDashboards,
   useDashboardLimits,
 } from "~/hooks/useOrganizations";
-import { type MatchedProject, useProject } from "~/hooks/useProject";
-import { useHasAdminAccess } from "~/hooks/useUser";
+import { type MatchedProject } from "~/hooks/useProject";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { ShortcutKey } from "../primitives/ShortcutKey";
+import { useHasAdminAccess } from "~/hooks/useUser";
 import { type UserWithDashboardPreferences } from "~/models/user.server";
-import { type SideMenuSectionId } from "./sideMenuTypes";
-
-/** Get the collapsed state for a specific side menu section from user preferences */
-function getSectionCollapsed(
-  sideMenu: { collapsedSections?: Record<string, boolean> } | undefined,
-  sectionId: SideMenuSectionId
-): boolean {
-  return sideMenu?.collapsedSections?.[sectionId] ?? false;
-}
-import { Feedback } from "~/components/Feedback";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
 import { IncidentStatusPanel } from "~/routes/resources.incidents";
@@ -98,7 +88,7 @@ import {
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
-import { AlphaBadge, BetaBadge } from "../AlphaBadge";
+import { AlphaBadge } from "../AlphaBadge";
 import { AskAI } from "../AskAI";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
@@ -118,6 +108,7 @@ import { InputGroup } from "../primitives/InputGroup";
 import { Label } from "../primitives/Label";
 import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverMenuItem, PopoverTrigger } from "../primitives/Popover";
+import { ShortcutKey } from "../primitives/ShortcutKey";
 import { TextLink } from "../primitives/TextLink";
 import {
   SimpleTooltip,
@@ -133,7 +124,15 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { BarChart2Icon, LineChartIcon } from "lucide-react";
+import { type SideMenuSectionId } from "./sideMenuTypes";
+
+/** Get the collapsed state for a specific side menu section from user preferences */
+function getSectionCollapsed(
+  sideMenu: { collapsedSections?: Record<string, boolean> } | undefined,
+  sectionId: SideMenuSectionId
+): boolean {
+  return sideMenu?.collapsedSections?.[sectionId] ?? false;
+}
 
 type SideMenuUser = Pick<
   UserWithDashboardPreferences,
@@ -497,7 +496,7 @@ export function SideMenu({
                 />
                 <SideMenuItem
                   name="Metrics"
-                  icon={BarChart2Icon}
+                  icon={ChartBarIcon}
                   activeIconColor="text-metrics"
                   inactiveIconColor="text-metrics"
                   to={v3BuiltInDashboardPath(organization, project, environment, "overview")}
@@ -512,17 +511,26 @@ export function SideMenu({
                     />
                   }
                 />
-                {customDashboards.map((dashboard) => (
-                  <SideMenuItem
-                    key={dashboard.friendlyId}
-                    name={dashboard.title}
-                    icon={LineChartIcon}
-                    activeIconColor="text-customDashboards"
-                    inactiveIconColor="text-customDashboards"
-                    to={v3CustomDashboardPath(organization, project, environment, dashboard)}
-                    isCollapsed={isCollapsed}
-                  />
-                ))}
+                {customDashboards.map((dashboard, index) => {
+                  const isLast = index === customDashboards.length - 1;
+                  return (
+                    <SideMenuItem
+                      key={dashboard.friendlyId}
+                      name={dashboard.title}
+                      icon={
+                        isCollapsed
+                          ? LineChartIcon
+                          : isLast
+                          ? TreeConnectorEnd
+                          : TreeConnectorBranch
+                      }
+                      activeIconColor="text-customDashboards"
+                      inactiveIconColor="text-customDashboards"
+                      to={v3CustomDashboardPath(organization, project, environment, dashboard)}
+                      isCollapsed={isCollapsed}
+                    />
+                  );
+                })}
               </SideMenuSection>
             )}
 
@@ -1221,6 +1229,26 @@ function AnimatedChevron({
         style={{ transformOrigin: "2px 15px" }}
       />
     </motion.svg>
+  );
+}
+
+// Tree connector icons for sub-items. The SVG viewBox is 20x20 matching the size-5 icon area.
+// Lines extend to y=-6 and y=26 to fill the full 32px row height (6px gap above/below the 20px icon).
+function TreeConnectorBranch({ className }: { className?: string }) {
+  return (
+    <svg className={cn("overflow-visible", className)} viewBox="0 0 20 20" fill="none">
+      <line x1="10" y1="-6" x2="10" y2="26" stroke="currentColor" strokeWidth="1" />
+      <line x1="10" y1="10" x2="20" y2="10" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  );
+}
+
+function TreeConnectorEnd({ className }: { className?: string }) {
+  return (
+    <svg className={cn("overflow-visible", className)} viewBox="0 0 20 20" fill="none">
+      <line x1="10" y1="-6" x2="10" y2="10" stroke="currentColor" strokeWidth="1" />
+      <line x1="10" y1="10" x2="20" y2="10" stroke="currentColor" strokeWidth="1" />
+    </svg>
   );
 }
 
