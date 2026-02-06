@@ -8,6 +8,7 @@ import { LogsListPresenter, type LogLevel, LogsListOptionsSchema } from "~/prese
 import { $replica } from "~/db.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
+import { getTimezonePreference } from "~/services/preferences/uiPreferences.server";
 
 // Valid log levels for filtering
 const validLevels: LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR"];

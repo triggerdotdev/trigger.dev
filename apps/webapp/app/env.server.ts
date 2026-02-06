@@ -1176,7 +1176,7 @@ const EnvironmentSchema = z
     CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
 
     // Logs List Query Settings (for paginated log views)
-    CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE: z.coerce.number().int().default(256_000_000),
+    CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE: z.coerce.number().int().default(1_000_000_000),
     CLICKHOUSE_LOGS_LIST_MAX_BYTES_BEFORE_EXTERNAL_SORT: z.coerce
       .number()
       .int()

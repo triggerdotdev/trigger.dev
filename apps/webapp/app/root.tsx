@@ -10,10 +10,12 @@ import { RouteErrorDisplay } from "./components/ErrorDisplay";
 import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
 import { ShortcutsProvider } from "./components/primitives/ShortcutsProvider";
 import { Toast } from "./components/primitives/Toast";
+import { TimezoneSetter } from "./components/TimezoneSetter";
 import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
 import { getUser } from "./services/session.server";
+import { getTimezonePreference } from "./services/preferences/uiPreferences.server";
 import { appEnvTitleTag } from "./utils";
 
 export const links: LinksFunction = () => {
@@ -50,6 +52,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const toastMessage = session.get("toastMessage") as ToastMessage;
   const posthogProjectKey = env.POSTHOG_PROJECT_KEY;
   const features = featuresForRequest(request);
+  const timezone = await getTimezonePreference(request);
 
   const kapa = {
     websiteId: env.KAPA_AI_WEBSITE_ID,
@@ -65,6 +68,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       appOrigin: env.APP_ORIGIN,
       triggerCliTag: env.TRIGGER_CLI_TAG,
       kapa,
+      timezone,
     },
     { headers: { "Set-Cookie": await commitSession(session) } }
   );
@@ -118,6 +122,7 @@ export default function App() {
         </head>
         <body className="h-full overflow-hidden bg-background-dimmed">
           <ShortcutsProvider>
+            <TimezoneSetter />
             <Outlet />
             <Toast />
           </ShortcutsProvider>
