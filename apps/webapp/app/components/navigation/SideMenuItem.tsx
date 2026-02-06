@@ -82,7 +82,7 @@ export function SideMenuItem({
     </Link>
   );
 
-  if (action && !isCollapsed) {
+  if (action) {
     return (
       <div className="group/menuitem relative h-8 w-full">
         <SimpleTooltip
@@ -95,9 +95,11 @@ export function SideMenuItem({
           asChild
           disableHoverableContent
         />
-        <div className="absolute top-1 right-1 bottom-1 flex aspect-square items-center justify-center">
-          {action}
-        </div>
+        {!isCollapsed && (
+          <div className="absolute top-1 right-1 bottom-1 flex aspect-square items-center justify-center">
+            {action}
+          </div>
+        )}
       </div>
     );
   }
