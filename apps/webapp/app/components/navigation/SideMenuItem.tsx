@@ -59,7 +59,7 @@ export function SideMenuItem({
         }}
         transition={{ duration: 0.2, ease: "easeOut" }}
       >
-        <span className="truncate text-2sm">{name}</span>
+        <span className="truncate select-none text-2sm">{name}</span>
         {badge && !isCollapsed && (
           <motion.div
             className="ml-1 flex shrink-0 items-center gap-1"
