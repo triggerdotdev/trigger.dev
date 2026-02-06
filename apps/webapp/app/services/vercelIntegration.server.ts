@@ -131,12 +131,14 @@ export class VercelIntegrationService {
     vercelProjectId: string;
     vercelProjectName: string;
     vercelTeamId: string | null;
+    vercelTeamSlug?: string;
     installedByUserId?: string;
   }): Promise<OrganizationProjectIntegration> {
     const integrationData = createDefaultVercelIntegrationData(
       params.vercelProjectId,
       params.vercelProjectName,
-      params.vercelTeamId
+      params.vercelTeamId,
+      params.vercelTeamSlug
     );
 
     return this.#prismaClient.organizationProjectIntegration.create({
@@ -170,6 +172,13 @@ export class VercelIntegrationService {
 
     const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
 
+    const vercelTeamSlug = await VercelIntegrationRepository.getVercelClient(orgIntegration)
+      .andThen((client) => VercelIntegrationRepository.getTeamSlug(client, teamId))
+      .match(
+        (slug) => slug,
+        () => undefined
+      );
+
     const existing = await this.getVercelProjectIntegration(params.projectId);
     if (existing) {
       const updated = await this.#prismaClient.organizationProjectIntegration.update({
@@ -181,6 +190,7 @@ export class VercelIntegrationService {
             vercelProjectId: params.vercelProjectId,
             vercelProjectName: params.vercelProjectName,
             vercelTeamId: teamId,
+            vercelTeamSlug,
           },
         },
       });
@@ -205,6 +215,7 @@ export class VercelIntegrationService {
       vercelProjectId: params.vercelProjectId,
       vercelProjectName: params.vercelProjectName,
       vercelTeamId: teamId,
+      vercelTeamSlug,
       installedByUserId: params.userId,
     });
 

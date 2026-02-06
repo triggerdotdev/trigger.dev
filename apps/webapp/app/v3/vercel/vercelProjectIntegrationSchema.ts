@@ -53,6 +53,7 @@ export const VercelProjectIntegrationDataSchema = z.object({
   syncEnvVarsMapping: SyncEnvVarsMappingSchema,
   vercelProjectName: z.string(),
   vercelTeamId: z.string().nullable(),
+  vercelTeamSlug: z.string().optional(),
   vercelProjectId: z.string(),
   onboardingCompleted: z.boolean().optional(),
 });
@@ -62,7 +63,8 @@ export type VercelProjectIntegrationData = z.infer<typeof VercelProjectIntegrati
 export function createDefaultVercelIntegrationData(
   vercelProjectId: string,
   vercelProjectName: string,
-  vercelTeamId: string | null
+  vercelTeamId: string | null,
+  vercelTeamSlug?: string
 ): VercelProjectIntegrationData {
   return {
     config: {
@@ -75,6 +77,7 @@ export function createDefaultVercelIntegrationData(
     vercelProjectId,
     vercelProjectName,
     vercelTeamId,
+    vercelTeamSlug,
   };
 }
 

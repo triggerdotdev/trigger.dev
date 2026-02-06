@@ -308,6 +308,25 @@ export class VercelIntegrationRepository {
     );
   }
 
+  static getTeamSlug(
+    client: Vercel,
+    teamId: string | null
+  ): ResultAsync<string, VercelApiError> {
+    if (teamId) {
+      return wrapVercelCall(
+        client.teams.getTeam({ teamId }),
+        "Failed to fetch Vercel team",
+        { teamId }
+      ).map((response) => response.slug);
+    }
+
+    return wrapVercelCall(
+      client.user.getAuthUser(),
+      "Failed to fetch Vercel user",
+      {}
+    ).map((response) => response?.user.username ?? "unknown");
+  }
+
   static validateVercelToken(
     integration: OrganizationIntegration & { tokenReference: SecretReference }
   ): ResultAsync<{ isValid: boolean }, VercelApiError> {
