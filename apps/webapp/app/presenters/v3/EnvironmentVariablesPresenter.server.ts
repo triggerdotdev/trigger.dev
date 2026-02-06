@@ -140,7 +140,7 @@ export class EnvironmentVariablesPresenter {
 
     // Get Vercel integration data if it exists
     const vercelService = new VercelIntegrationService(this.#prismaClient);
-    const vercelIntegration = await vercelService.getVercelProjectIntegration(project.id, true);
+    const vercelIntegration = await vercelService.getVercelProjectIntegration(project.id);
 
     let vercelSyncEnvVarsMapping: SyncEnvVarsMapping = {};
     let vercelPullEnvVarsBeforeBuild: EnvSlug[] | null = null;

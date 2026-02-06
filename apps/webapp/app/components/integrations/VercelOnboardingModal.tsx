@@ -44,8 +44,7 @@ import {
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { type VercelCustomEnvironment } from "~/models/vercelIntegration.server";
 import { type VercelOnboardingData } from "~/presenters/v3/VercelSettingsPresenter.server";
-import { vercelAppInstallPath, v3ProjectSettingsPath, githubAppInstallPath } from "~/utils/pathBuilder";
-import { vercelResourcePath } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
+import { vercelAppInstallPath, v3ProjectSettingsPath, githubAppInstallPath, vercelResourcePath } from "~/utils/pathBuilder";
 import type { loader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import { useEffect, useState, useCallback, useRef } from "react";
 
@@ -520,7 +519,10 @@ export function VercelOnboardingModal({
         return;
       }
       if ("redirectTo" in completeOnboardingFetcher.data && typeof completeOnboardingFetcher.data.redirectTo === "string") {
-        window.location.href = completeOnboardingFetcher.data.redirectTo;
+        const validRedirect = safeRedirectUrl(completeOnboardingFetcher.data.redirectTo);
+        if (validRedirect) {
+          window.location.href = validRedirect;
+        }
         return;
       }
       setState("completed");

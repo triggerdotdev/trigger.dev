@@ -168,13 +168,11 @@ export function vercelCallbackPath() {
 }
 
 export function vercelResourcePath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  environment: EnvironmentForPath
+  organizationSlug: string,
+  projectSlug: string,
+  environmentSlug: string
 ) {
-  return `/resources/orgs/${organizationParam(organization)}/projects/${projectParam(
-    project
-  )}/env/${environmentParam(environment)}/vercel`;
+  return `/resources/orgs/${organizationSlug}/projects/${projectSlug}/env/${environmentSlug}/vercel`;
 }
 
 export function v3EnvironmentPath(

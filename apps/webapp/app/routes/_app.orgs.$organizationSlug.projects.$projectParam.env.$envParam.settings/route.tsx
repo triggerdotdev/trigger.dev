@@ -38,7 +38,7 @@ import {
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { organizationPath, v3ProjectPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
+import { organizationPath, v3ProjectPath, EnvironmentParamSchema, v3BillingPath, vercelResourcePath } from "~/utils/pathBuilder";
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "@remix-run/react";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -48,7 +48,6 @@ import { GitHubSettingsPanel } from "../resources.orgs.$organizationSlug.project
 import {
   VercelSettingsPanel,
   VercelOnboardingModal,
-  vercelResourcePath,
 } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import type { loader as vercelLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";

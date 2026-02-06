@@ -31,7 +31,6 @@ import {
   organizationPath,
   selectPlanPath,
   v3ProjectPath,
-  v3ProjectSettingsPath,
 } from "~/utils/pathBuilder";
 import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 

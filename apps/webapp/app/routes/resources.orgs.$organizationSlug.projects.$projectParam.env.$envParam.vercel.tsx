@@ -43,7 +43,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema, v3ProjectSettingsPath, vercelAppInstallPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3ProjectSettingsPath, vercelAppInstallPath, vercelResourcePath } from "~/utils/pathBuilder";
 import {
   VercelSettingsPresenter,
   type VercelOnboardingData,
@@ -408,15 +408,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
   }
 }
-
-export function vercelResourcePath(
-  organizationSlug: string,
-  projectSlug: string,
-  environmentSlug: string
-) {
-  return `/resources/orgs/${organizationSlug}/projects/${projectSlug}/env/${environmentSlug}/vercel`;
-}
-
 
 function VercelConnectionPrompt({
   organizationSlug,

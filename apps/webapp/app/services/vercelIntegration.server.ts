@@ -45,7 +45,6 @@ export class VercelIntegrationService {
 
   async getVercelProjectIntegration(
     projectId: string,
-    migrateIfNeeded: boolean = false
   ): Promise<VercelProjectIntegrationWithData | null> {
     const integration = await this.#prismaClient.organizationProjectIntegration.findFirst({
       where: {
