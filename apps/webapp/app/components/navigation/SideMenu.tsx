@@ -232,9 +232,17 @@ export function SideMenu({
 
   const canReorder = orderedDashboards.length >= 2;
 
+  // Track layout during drag for real-time tree connector updates
+  const [dragLayout, setDragLayout] = useState<Layout | null>(null);
+
+  const handleDashboardDrag = useCallback((layout: Layout) => {
+    setDragLayout(layout);
+  }, []);
+
   // Handle drag stop - extract new order from layout y-positions
   const handleDashboardDragStop = useCallback(
     (layout: Layout) => {
+      setDragLayout(null);
       const sorted = [...layout].sort((a, b) => a.y - b.y);
       const newOrder = sorted.map((item) => item.i);
       if (JSON.stringify(newOrder) === JSON.stringify(dashboardOrder)) return;
@@ -251,6 +259,18 @@ export function SideMenu({
       }
     },
     [dashboardOrder, organization.id, user.isImpersonating, dashboardOrderFetcher]
+  );
+
+  // Compute which dashboard is visually last (during drag or at rest)
+  const getIsLastDashboard = useCallback(
+    (friendlyId: string, index: number) => {
+      if (dragLayout) {
+        const maxY = Math.max(...dragLayout.map((l) => l.y));
+        return dragLayout.find((l) => l.i === friendlyId)?.y === maxY;
+      }
+      return index === orderedDashboards.length - 1;
+    },
+    [dragLayout, orderedDashboards.length]
   );
 
   const persistSideMenuPreferences = useCallback(
@@ -594,12 +614,13 @@ export function SideMenu({
                       }}
                       resizeConfig={{ enabled: false }}
                       dragConfig={{ enabled: !isCollapsed, handle: ".sidebar-drag-handle" }}
+                      onDrag={handleDashboardDrag}
                       onDragStop={handleDashboardDragStop}
                       className="sidebar-reorder-grid"
                       autoSize
                     >
                       {orderedDashboards.map((dashboard, index) => {
-                        const isLast = index === orderedDashboards.length - 1;
+                        const isLast = getIsLastDashboard(dashboard.friendlyId, index);
                         return (
                           <div key={dashboard.friendlyId}>
                             <SideMenuItem
@@ -608,8 +629,8 @@ export function SideMenu({
                                 isCollapsed
                                   ? LineChartIcon
                                   : isLast
-                                  ? TreeConnectorEnd
-                                  : TreeConnectorBranch
+                                    ? TreeConnectorEnd
+                                    : TreeConnectorBranch
                               }
                               activeIconColor={isCollapsed ? "text-customDashboards" : undefined}
                               inactiveIconColor={isCollapsed ? "text-customDashboards" : undefined}
