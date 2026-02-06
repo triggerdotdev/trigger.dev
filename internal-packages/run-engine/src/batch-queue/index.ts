@@ -377,6 +377,14 @@ export class BatchQueue {
     return this.completionTracker.getEnqueuedCount(batchId);
   }
 
+  /**
+   * Update the runCount for a batch.
+   * Used when items are skipped due to queue limits.
+   */
+  async updateRunCount(batchId: string, newRunCount: number): Promise<void> {
+    return this.completionTracker.updateRunCount(batchId, newRunCount);
+  }
+
   // ============================================================================
   // Public API - Query
   // ============================================================================

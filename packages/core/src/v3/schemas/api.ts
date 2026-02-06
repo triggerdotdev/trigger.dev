@@ -409,6 +409,8 @@ export const StreamBatchItemsResponse = z.object({
   itemsAccepted: z.number(),
   /** Number of items that were deduplicated (already enqueued) */
   itemsDeduplicated: z.number(),
+  /** Number of items skipped due to queue size limits */
+  itemsSkipped: z.number().optional(),
   /** Whether the batch was sealed and is ready for processing.
    * If false, the batch needs more items before processing can start.
    * Clients should check this field and retry with missing items if needed. */
@@ -417,6 +419,9 @@ export const StreamBatchItemsResponse = z.object({
   enqueuedCount: z.number().optional(),
   /** Expected total item count (only present when sealed=false to help with retries) */
   expectedCount: z.number().optional(),
+  /** Actual run count after processing (may differ from original if items were skipped).
+   * SDK should use this value for waitForBatch. */
+  runCount: z.number().optional(),
 });
 
 export type StreamBatchItemsResponse = z.infer<typeof StreamBatchItemsResponse>;

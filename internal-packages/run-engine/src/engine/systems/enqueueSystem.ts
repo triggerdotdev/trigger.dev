@@ -4,6 +4,7 @@ import {
   TaskRun,
   TaskRunExecutionStatus,
 } from "@trigger.dev/database";
+import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
@@ -81,6 +82,15 @@ export class EnqueueSystem {
 
       const timestamp = (run.queueTimestamp ?? run.createdAt).getTime() - run.priorityMs;
 
+      // Calculate TTL expiration timestamp if the run has a TTL
+      let ttlExpiresAt: number | undefined;
+      if (run.ttl) {
+        const expireAt = parseNaturalLanguageDuration(run.ttl);
+        if (expireAt) {
+          ttlExpiresAt = expireAt.getTime();
+        }
+      }
+
       await this.$.runQueue.enqueueMessage({
         env,
         workerQueue,
@@ -95,6 +105,7 @@ export class EnqueueSystem {
           concurrencyKey: run.concurrencyKey ?? undefined,
           timestamp,
           attempt: 0,
+          ttlExpiresAt,
         },
       });
 

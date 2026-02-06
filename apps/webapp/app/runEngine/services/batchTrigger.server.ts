@@ -264,6 +264,16 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
           return batch;
         }
+        case "ABORTED": {
+          // Batch was aborted due to queue limits - already marked as ABORTED in the database
+          logger.error("[RunEngineBatchTrigger][call] Batch aborted due to queue limits", {
+            batchId: batch.friendlyId,
+          });
+
+          throw new ServiceValidationError(
+            `Batch ${batch.friendlyId} was aborted: queue size limit exceeded`
+          );
+        }
       }
     } else {
       const batch = await this._prisma.batchTaskRun.create({
@@ -515,6 +525,15 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
         return;
       }
+      case "ABORTED": {
+        // Batch was aborted due to queue limits - already marked as ABORTED in the database
+        logger.error("[RunEngineBatchTrigger][processBatchTaskRun] Batch aborted due to queue limits", {
+          batchId: batch.friendlyId,
+        });
+
+        // No retry, no requeue - batch is permanently failed
+        return;
+      }
     }
   }
 
@@ -542,30 +561,64 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     | { status: "COMPLETE" }
     | { status: "INCOMPLETE"; workingIndex: number }
     | { status: "ERROR"; error: string; workingIndex: number }
+    | { status: "ABORTED" }
   > {
     // Grab the next PROCESSING_BATCH_SIZE items
     const itemsToProcess = items.slice(currentIndex, currentIndex + batchSize);
 
-    const newRunCount = await this.#countNewRuns(environment, itemsToProcess);
+    // Get items that will result in new runs (not cached)
+    const newRunItems = await this.#getNewRunItems(environment, itemsToProcess);
 
     // Only validate queue size if we have new runs to create, i.e. they're not all cached
-    if (newRunCount > 0) {
-      const queueSizeGuard = await this.queueConcern.validateQueueLimits(environment, newRunCount);
+    if (newRunItems.length > 0) {
+      // Resolve queue names for new items and group by queue
+      const queueCounts = await this.queueConcern.resolveQueueNamesForBatchItems(
+        environment,
+        newRunItems
+      );
+
+      // Validate limits for each queue
+      const queueSizeGuard = await this.queueConcern.validateMultipleQueueLimits(
+        environment,
+        queueCounts
+      );
 
       logger.debug("Queue size guard result for chunk", {
         batchId: batch.friendlyId,
         currentIndex,
         runCount: batch.runCount,
-        newRunCount,
+        newRunCount: newRunItems.length,
+        queueCounts: Object.fromEntries(queueCounts),
         queueSizeGuard,
       });
 
       if (!queueSizeGuard.ok) {
-        return {
-          status: "ERROR",
-          error: `Cannot trigger ${newRunCount} new tasks as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
-          workingIndex: currentIndex,
-        };
+        // Queue limit exceeded is a client error - abort the batch immediately
+        const errorMessage = `Queue size limit exceeded for queue '${queueSizeGuard.queueName}'. Current size: ${queueSizeGuard.queueSize}, maximum: ${queueSizeGuard.maximumSize}`;
+
+        logger.error("[RunEngineBatchTrigger] Aborting batch due to queue limit", {
+          batchId: batch.friendlyId,
+          queueName: queueSizeGuard.queueName,
+          queueSize: queueSizeGuard.queueSize,
+          maximumSize: queueSizeGuard.maximumSize,
+        });
+
+        // Update batch status to ABORTED
+        await this._prisma.batchTaskRun.update({
+          where: { id: batch.id },
+          data: {
+            status: "ABORTED",
+            errors: {
+              create: {
+                index: currentIndex,
+                taskIdentifier: itemsToProcess[0]?.task ?? "unknown",
+                error: errorMessage,
+              },
+            },
+          },
+        });
+
+        return { status: "ABORTED" };
       }
     } else {
       logger.debug("[RunEngineBatchTrigger][processBatchTaskRun] All runs are cached", {
@@ -832,5 +885,76 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     }
 
     return newRunCount;
+  }
+
+  /**
+   * Returns items that are NOT cached (will result in new runs).
+   * Similar to #countNewRuns but returns the actual items instead of count.
+   */
+  async #getNewRunItems(
+    environment: AuthenticatedEnvironment,
+    items: BatchTriggerTaskV2RequestBody["items"]
+  ): Promise<BatchTriggerTaskV2RequestBody["items"]> {
+    // If cached runs check is disabled, all items are new
+    if (!env.BATCH_TRIGGER_CACHED_RUNS_CHECK_ENABLED) {
+      return items;
+    }
+
+    // Group items by taskIdentifier for efficient lookup
+    const itemsByTask = this.#groupItemsByTaskIdentifier(items);
+
+    // If no items have idempotency keys, all are new runs
+    if (Object.keys(itemsByTask).length === 0) {
+      return items;
+    }
+
+    // Fetch cached runs for each task identifier separately to make use of the index
+    const cachedRuns = await Promise.all(
+      Object.entries(itemsByTask).map(([taskIdentifier, taskItems]) =>
+        this._prisma.taskRun.findMany({
+          where: {
+            runtimeEnvironmentId: environment.id,
+            taskIdentifier,
+            idempotencyKey: {
+              in: taskItems.map((i) => i.options?.idempotencyKey).filter(Boolean),
+            },
+          },
+          select: {
+            idempotencyKey: true,
+            idempotencyKeyExpiresAt: true,
+          },
+        })
+      )
+    ).then((results) => results.flat());
+
+    // Create a Map for O(1) lookups instead of O(m) find operations
+    const cachedRunsMap = new Map(cachedRuns.map((run) => [run.idempotencyKey, run]));
+
+    // Filter items that are NOT cached (or have expired cache)
+    const newItems: BatchTriggerTaskV2RequestBody["items"] = [];
+    const now = new Date();
+
+    for (const item of items) {
+      const idempotencyKey = item.options?.idempotencyKey;
+
+      if (!idempotencyKey) {
+        // No idempotency key = always a new run
+        newItems.push(item);
+        continue;
+      }
+
+      const cachedRun = cachedRunsMap.get(idempotencyKey);
+
+      if (!cachedRun) {
+        // No cached run = new run
+        newItems.push(item);
+      } else if (cachedRun.idempotencyKeyExpiresAt && cachedRun.idempotencyKeyExpiresAt < now) {
+        // Expired cached run = new run
+        newItems.push(item);
+      }
+      // else: valid cached run = skip
+    }
+
+    return newItems;
   }
 }

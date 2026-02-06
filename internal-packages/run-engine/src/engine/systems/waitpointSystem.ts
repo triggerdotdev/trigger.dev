@@ -14,6 +14,7 @@ import { sendNotificationToWorker } from "../eventBus.js";
 import { EnqueueSystem } from "./enqueueSystem.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
+import { isFinalRunStatus } from "../statuses.js";
 
 export type WaitpointSystemOptions = {
   resources: SystemResources;
@@ -770,5 +771,72 @@ export class WaitpointSystem {
       projectId,
       environmentId,
     };
+  }
+
+  /**
+   * Gets an existing run waitpoint or creates one lazily.
+   * Used for debounce/idempotency when a late-arriving triggerAndWait caller
+   * needs to block on an existing run that was created without a waitpoint.
+   *
+   * Returns null if the run has already completed (caller should return result directly).
+   */
+  public async getOrCreateRunWaitpoint({
+    runId,
+    projectId,
+    environmentId,
+  }: {
+    runId: string;
+    projectId: string;
+    environmentId: string;
+  }): Promise<Waitpoint | null> {
+    // Fast path: check if waitpoint already exists
+    const run = await this.$.prisma.taskRun.findFirst({
+      where: { id: runId },
+      include: { associatedWaitpoint: true },
+    });
+
+    if (!run) {
+      throw new Error(`Run not found: ${runId}`);
+    }
+
+    if (run.associatedWaitpoint) {
+      return run.associatedWaitpoint;
+    }
+
+    // Run already completed - no waitpoint needed
+    if (isFinalRunStatus(run.status)) {
+      return null;
+    }
+
+    // Need to create - use run lock to prevent races
+    return this.$.runLock.lock("getOrCreateRunWaitpoint", [runId], async () => {
+      // Double-check after acquiring lock
+      const runAfterLock = await this.$.prisma.taskRun.findFirst({
+        where: { id: runId },
+        include: { associatedWaitpoint: true },
+      });
+
+      if (!runAfterLock) {
+        throw new Error(`Run not found: ${runId}`);
+      }
+
+      if (runAfterLock.associatedWaitpoint) {
+        return runAfterLock.associatedWaitpoint;
+      }
+
+      if (isFinalRunStatus(runAfterLock.status)) {
+        return null;
+      }
+
+      // Create waitpoint and link to run atomically
+      const waitpointData = this.buildRunAssociatedWaitpoint({ projectId, environmentId });
+
+      return this.$.prisma.waitpoint.create({
+        data: {
+          ...waitpointData,
+          completedByTaskRunId: runId,
+        },
+      });
+    });
   }
 }
