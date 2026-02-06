@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { defaultChartConfig } from "~/components/code/ChartConfigPanel";
 import { Feedback } from "~/components/Feedback";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
+import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import {
   Dialog,
@@ -55,7 +56,7 @@ import {
 } from "~/utils/pathBuilder";
 import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.metrics.$dashboardKey/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { IconEdit } from "@tabler/icons-react";
+import { IconEdit, IconLayoutDashboardFilled } from "@tabler/icons-react";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardId: z.string(),
@@ -338,41 +339,42 @@ export default function Page() {
       <NavBar>
         <PageTitle title={title} />
         <PageAccessories>
-          {widgetIsAtLimit ? (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="secondary/small" LeadingIcon={PlusIcon}>
-                  Add chart
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>You've exceeded your widget limit</DialogHeader>
-                <DialogDescription>
-                  You've used {widgetLimits.used}/{widgetLimits.limit} widgets on this dashboard.
-                </DialogDescription>
-                <DialogFooter>
-                  {widgetCanUpgrade ? (
-                    <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
-                      Upgrade
-                    </LinkButton>
-                  ) : (
-                    <Feedback
-                      button={<Button variant="primary/small">Request more</Button>}
-                      defaultValue="help"
-                    />
-                  )}
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          ) : (
-            <Button
-              variant="secondary/small"
-              LeadingIcon={PlusIcon}
-              onClick={actions.openAddEditor}
-            >
-              Add chart
-            </Button>
-          )}
+          {currentWidgetCount > 0 &&
+            (widgetIsAtLimit ? (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="primary/small" LeadingIcon={PlusIcon}>
+                    Add chart
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>You've exceeded your widget limit</DialogHeader>
+                  <DialogDescription>
+                    You've used {widgetLimits.used}/{widgetLimits.limit} widgets on this dashboard.
+                  </DialogDescription>
+                  <DialogFooter>
+                    {widgetCanUpgrade ? (
+                      <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+                        Upgrade
+                      </LinkButton>
+                    ) : (
+                      <Feedback
+                        button={<Button variant="primary/small">Request more</Button>}
+                        defaultValue="help"
+                      />
+                    )}
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            ) : (
+              <Button
+                variant="primary/small"
+                LeadingIcon={PlusIcon}
+                onClick={actions.openAddEditor}
+              >
+                Add chart
+              </Button>
+            ))}
           <Popover>
             <PopoverVerticalEllipseTrigger variant="secondary" />
             <PopoverContent className="w-fit min-w-[10rem] p-1" align="end">
@@ -387,19 +389,44 @@ export default function Page() {
       <PageBody scrollable={false}>
         <div className="flex h-full flex-col">
           <div className="min-h-0 flex-1">
-            <MetricDashboard
-              key={friendlyId}
-              layout={state.layout}
-              widgets={state.widgets}
-              defaultPeriod={defaultPeriod}
-              editable={true}
-              possibleTasks={possibleTasks}
-              onLayoutChange={actions.updateLayout}
-              onEditWidget={actions.openEditEditor}
-              onRenameWidget={actions.renameWidget}
-              onDeleteWidget={actions.deleteWidget}
-              onDuplicateWidget={actions.duplicateWidget}
-            />
+            {currentWidgetCount === 0 ? (
+              <MainCenteredContainer className="max-w-md">
+                <InfoPanel
+                  icon={IconLayoutDashboardFilled}
+                  iconClassName="text-indigo-500"
+                  panelClassName="max-full"
+                  title="Add your first chart"
+                  accessory={
+                    <Button
+                      variant="primary/small"
+                      LeadingIcon={PlusIcon}
+                      onClick={actions.openAddEditor}
+                    >
+                      Add chart
+                    </Button>
+                  }
+                >
+                  <Paragraph variant="small">
+                    Charts let you visualize your task metrics. Write a query to pull data from your
+                    runs, then choose how to display it on this dashboard.
+                  </Paragraph>
+                </InfoPanel>
+              </MainCenteredContainer>
+            ) : (
+              <MetricDashboard
+                key={friendlyId}
+                layout={state.layout}
+                widgets={state.widgets}
+                defaultPeriod={defaultPeriod}
+                editable={true}
+                possibleTasks={possibleTasks}
+                onLayoutChange={actions.updateLayout}
+                onEditWidget={actions.openEditEditor}
+                onRenameWidget={actions.renameWidget}
+                onDeleteWidget={actions.deleteWidget}
+                onDuplicateWidget={actions.duplicateWidget}
+              />
+            )}
           </div>
           <div className="flex w-full items-start justify-between">
             <div className="flex h-fit w-full items-center gap-4 border-t border-grid-bright bg-background-bright p-[0.86rem] pl-4">
