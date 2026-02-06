@@ -276,24 +276,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
         skipRedirect,
       } = submission.value;
 
-      let parsedMapping: SyncEnvVarsMapping = {};
-      if (syncEnvVarsMapping) {
-        const parseResult = safeJsonParse(syncEnvVarsMapping);
-        if (parseResult.isOk()) {
-          parsedMapping = parseResult.value as SyncEnvVarsMapping;
-        } else {
-          logger.error("Failed to parse syncEnvVarsMapping", { error: parseResult.error });
-        }
-      }
-
       const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
+      const parsedSyncEnvVarsMapping = syncEnvVarsMapping
+        ? safeJsonParse(syncEnvVarsMapping).unwrapOr(undefined) as SyncEnvVarsMapping | undefined
+        : undefined;
 
       const result = await vercelService.completeOnboarding(project.id, {
         vercelStagingEnvironment: parsedStagingEnv,
         pullEnvVarsBeforeBuild: pullEnvVarsBeforeBuild as EnvSlug[] | null,
         atomicBuilds: atomicBuilds as EnvSlug[] | null,
         discoverEnvVars: discoverEnvVars as EnvSlug[] | null,
-        syncEnvVarsMapping: parsedMapping,
+        syncEnvVarsMapping: parsedSyncEnvVarsMapping,
       });
 
       if (result) {

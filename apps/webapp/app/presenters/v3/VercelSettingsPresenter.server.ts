@@ -489,11 +489,12 @@ export class VercelSettingsPresenter extends BasePresenter {
         const projectEnvVars = projectEnvVarsResult.isOk() ? projectEnvVarsResult.value : [];
         const sharedEnvVars = sharedEnvVarsResult.isOk() ? sharedEnvVarsResult.value : [];
 
-        // Filter out TRIGGER_SECRET_KEY (managed by Trigger.dev) and merge project + shared env vars
+        // Filter out TRIGGER_SECRET_KEY and TRIGGER_VERSION (managed by Trigger.dev) and merge project + shared env vars
+        const excludedKeys = new Set(["TRIGGER_SECRET_KEY", "TRIGGER_VERSION"]);
         const projectEnvVarKeys = new Set(projectEnvVars.map((v) => v.key));
         const mergedEnvVars: VercelEnvironmentVariable[] = [
           ...projectEnvVars
-            .filter((v) => v.key !== "TRIGGER_SECRET_KEY")
+            .filter((v) => !excludedKeys.has(v.key))
             .map((v) => {
               const envVar = { ...v };
               if (vercelEnvironmentId && (v as any).customEnvironmentIds?.includes(vercelEnvironmentId)) {
@@ -502,7 +503,7 @@ export class VercelSettingsPresenter extends BasePresenter {
               return envVar;
             }),
           ...sharedEnvVars
-            .filter((v) => !projectEnvVarKeys.has(v.key) && v.key !== "TRIGGER_SECRET_KEY")
+            .filter((v) => !projectEnvVarKeys.has(v.key) && !excludedKeys.has(v.key))
             .map((v) => {
               const envVar = {
                 id: v.id,

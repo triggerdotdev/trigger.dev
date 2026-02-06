@@ -398,7 +398,7 @@ export class VercelIntegrationService {
       pullEnvVarsBeforeBuild?: EnvSlug[] | null;
       atomicBuilds?: EnvSlug[] | null;
       discoverEnvVars?: EnvSlug[] | null;
-      syncEnvVarsMapping: SyncEnvVarsMapping;
+      syncEnvVarsMapping?: SyncEnvVarsMapping;
     }
   ): Promise<VercelProjectIntegrationWithParsedData | null> {
     const existing = await this.getVercelProjectIntegration(projectId);
@@ -406,6 +406,7 @@ export class VercelIntegrationService {
       return null;
     }
 
+    const syncEnvVarsMapping = params.syncEnvVarsMapping ?? { "dev":{}, "stg":{}, "prod":{}, "preview":{} };
     const updatedData: VercelProjectIntegrationData = {
       ...existing.parsedIntegrationData,
       config: {
@@ -415,7 +416,7 @@ export class VercelIntegrationService {
         discoverEnvVars: params.discoverEnvVars ?? null,
         vercelStagingEnvironment: params.vercelStagingEnvironment ?? null,
       },
-      syncEnvVarsMapping: params.syncEnvVarsMapping ?? existing.parsedIntegrationData.syncEnvVarsMapping,
+      syncEnvVarsMapping: existing.parsedIntegrationData.syncEnvVarsMapping,
       onboardingCompleted: true,
     };
 
@@ -433,41 +434,24 @@ export class VercelIntegrationService {
     if (orgIntegration) {
       const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
 
-      logger.info("Vercel onboarding: pulling env vars from Vercel", {
-        projectId,
-        vercelProjectId: updatedData.vercelProjectId,
-        teamId,
-        vercelStagingEnvironment: params.vercelStagingEnvironment,
-        syncEnvVarsMappingKeys: Object.keys(params.syncEnvVarsMapping),
-      });
-
       const pullResult = await VercelIntegrationRepository.pullEnvVarsFromVercel({
         projectId,
         vercelProjectId: updatedData.vercelProjectId,
         teamId,
         vercelStagingEnvironment: params.vercelStagingEnvironment,
-        syncEnvVarsMapping: params.syncEnvVarsMapping,
+        syncEnvVarsMapping,
         orgIntegration,
       });
 
       if (pullResult.isErr()) {
         logger.error("Failed to pull env vars from Vercel during onboarding", {
           projectId,
-          vercelProjectId: updatedData.vercelProjectId,
           error: pullResult.error.message,
         });
       } else if (pullResult.value.errors.length > 0) {
-        logger.warn("Some errors occurred while pulling env vars from Vercel", {
+        logger.warn("Errors pulling env vars from Vercel during onboarding", {
           projectId,
-          vercelProjectId: updatedData.vercelProjectId,
           errors: pullResult.value.errors,
-          syncedCount: pullResult.value.syncedCount,
-        });
-      } else {
-        logger.info("Successfully pulled env vars from Vercel", {
-          projectId,
-          vercelProjectId: updatedData.vercelProjectId,
-          syncedCount: pullResult.value.syncedCount,
         });
       }
 

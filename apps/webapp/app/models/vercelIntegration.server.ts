@@ -6,7 +6,7 @@ import type {
 import type {
   GetV9ProjectsIdOrNameCustomEnvironmentsEnvironments,
 } from "@vercel/sdk/models/getv9projectsidornamecustomenvironmentsop";
-import type { GetProjectsProjects } from "@vercel/sdk/models/getprojectsop";
+import type { ResponseBodyProjects } from "@vercel/sdk/models/getprojectsop";
 import {
   Organization,
   OrganizationIntegration,
@@ -192,7 +192,7 @@ export type VercelEnvironmentVariableValue = {
 };
 
 /** Narrowed Vercel project type – only id and name. */
-export type VercelProject = Pick<GetProjectsProjects, "id" | "name">;
+export type VercelProject = Pick<ResponseBodyProjects, "id" | "name">;
 
 // ---------------------------------------------------------------------------
 // Mapper functions – narrow wide SDK responses into our domain types.
@@ -429,27 +429,79 @@ export class VercelIntegrationRepository {
     client: Vercel,
     projectId: string,
     teamId?: string | null,
-    target?: string
+    target?: string,
+    /** If provided, only include keys that pass this filter */
+    shouldIncludeKey?: (key: string) => boolean
   ): ResultAsync<VercelEnvironmentVariableValue[], VercelApiError> {
     return wrapVercelCall(
       client.projects.filterProjectEnvs({
         idOrName: projectId,
         ...(teamId && { teamId }),
-        decrypt: "true",
       }),
       "Failed to fetch Vercel environment variable values",
       { projectId, teamId, target }
-    ).map((response) => {
-      const envs = extractVercelEnvs(response);
-      return envs
-        .filter((env) => {
-          if (!env.value) return false;
-          if (target) return normalizeTarget(env.target).includes(target);
-          return true;
-        })
-        .map(toVercelEnvironmentVariableValue)
-        .filter((v): v is VercelEnvironmentVariableValue => v !== null);
+    ).andThen((response) => {
+      // Apply all filters BEFORE decryption to avoid unnecessary API calls
+      const filteredEnvs = extractVercelEnvs(response).filter((env) => {
+        if (target && !normalizeTarget(env.target).includes(target)) return false;
+        if (shouldIncludeKey && !shouldIncludeKey(env.key)) return false;
+        if (isVercelSecretType(env.type)) return false;
+        return true;
+      });
+
+      // Fetch decrypted values for encrypted vars, use list values for others
+      return ResultAsync.fromPromise(
+        Promise.all(
+          filteredEnvs.map((env) => this.#resolveEnvVarValue(client, projectId, teamId, env))
+        ),
+        (error) => toVercelApiError(error)
+      ).map((results) => results.filter((v): v is VercelEnvironmentVariableValue => v !== null));
     });
+  }
+
+  static async #resolveEnvVarValue(
+    client: Vercel,
+    projectId: string,
+    teamId: string | null | undefined,
+    env: ResponseBodyEnvs
+  ): Promise<VercelEnvironmentVariableValue | null> {
+    // Non-encrypted vars: use value from list response if present
+    if (env.type !== "encrypted" || !env.id) {
+      if (env.value === undefined || env.value === null) return null;
+      return toVercelEnvironmentVariableValue(env);
+    }
+
+    // Encrypted vars: fetch decrypted value via individual endpoint
+    // (list endpoint's decrypt param is deprecated)
+    const result = await ResultAsync.fromPromise(
+      client.projects.getProjectEnv({
+        idOrName: projectId,
+        id: env.id,
+        ...(teamId && { teamId }),
+      }),
+      (error) => error
+    );
+
+    if (result.isErr()) {
+      logger.warn("Failed to decrypt Vercel env var", {
+        projectId,
+        envVarKey: env.key,
+        error: result.error instanceof Error ? result.error.message : String(result.error),
+      });
+      return null;
+    }
+
+    // API returns union: ResponseBody1 has no value, ResponseBody2/3 have value
+    const decryptedValue = (result.value as { value?: string }).value;
+    if (typeof decryptedValue !== "string") return null;
+
+    return {
+      key: env.key,
+      value: decryptedValue,
+      target: normalizeTarget(env.target),
+      type: env.type,
+      isSecret: false,
+    };
   }
 
   static getVercelSharedEnvironmentVariables(
@@ -632,7 +684,12 @@ export class VercelIntegrationRepository {
       "Failed to fetch Vercel projects",
       { teamId }
     ).map((response) => {
-      const projects = response.projects || [];
+      // GetProjectsResponseBody is a union: objects with `projects` array, or direct array
+      const projects = Array.isArray(response)
+        ? response
+        : "projects" in response
+          ? response.projects
+          : [];
       return projects.map(({ id, name }): VercelProject => ({ id, name }));
     });
   }
@@ -970,6 +1027,14 @@ export class VercelIntegrationRepository {
     syncEnvVarsMapping: SyncEnvVarsMapping;
     orgIntegration: OrganizationIntegration & { tokenReference: SecretReference };
   }): ResultAsync<{ syncedCount: number; errors: string[] }, VercelApiError> {
+    logger.info("pullEnvVarsFromVercel: Starting", {
+      projectId: params.projectId,
+      vercelProjectId: params.vercelProjectId,
+      teamId: params.teamId,
+      vercelStagingEnvironment: params.vercelStagingEnvironment,
+      syncEnvVarsMappingKeys: Object.keys(params.syncEnvVarsMapping),
+    });
+
     return this.getVercelClient(params.orgIntegration).andThen((client) =>
       ResultAsync.fromPromise(
         (async () => {
@@ -1046,20 +1111,31 @@ export class VercelIntegrationRepository {
           for (const mapping of envMapping) {
             const iterResult = await ResultAsync.fromPromise(
               (async () => {
+                // Build filter to avoid decrypting vars that will be filtered out anyway
+                const excludeKeys = new Set(["TRIGGER_SECRET_KEY", "TRIGGER_VERSION"]);
+                const shouldIncludeKey = (key: string) =>
+                  !excludeKeys.has(key) &&
+                  shouldSyncEnvVar(params.syncEnvVarsMapping, key, mapping.triggerEnvType as TriggerEnvironmentType);
+
                 const envVarsResult = await this.getVercelEnvironmentVariableValues(
                   client,
                   params.vercelProjectId,
                   params.teamId,
-                  mapping.vercelTarget
+                  mapping.vercelTarget,
+                  shouldIncludeKey
                 );
 
                 if (envVarsResult.isErr()) {
+                  logger.error("pullEnvVarsFromVercel: Failed to get env vars", {
+                    triggerEnvType: mapping.triggerEnvType,
+                    vercelTarget: mapping.vercelTarget,
+                    error: envVarsResult.error.message,
+                  });
                   errors.push(`Failed to get env vars for ${mapping.triggerEnvType}: ${envVarsResult.error.message}`);
                   return;
                 }
 
                 const projectEnvVars = envVarsResult.value;
-
                 const standardTargets = ["production", "preview", "development"];
                 const isCustomEnvironment = !standardTargets.includes(mapping.vercelTarget);
 
@@ -1084,7 +1160,7 @@ export class VercelIntegrationRepository {
                   if (envVar.isSecret) {
                     return false;
                   }
-                  if (envVar.key === "TRIGGER_SECRET_KEY") {
+                  if (envVar.key === "TRIGGER_SECRET_KEY" || envVar.key === "TRIGGER_VERSION") {
                     return false;
                   }
                   return shouldSyncEnvVar(
