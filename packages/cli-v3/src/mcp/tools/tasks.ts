@@ -7,6 +7,8 @@ export const getCurrentWorker = {
   name: toolsMetadata.get_current_worker.name,
   title: toolsMetadata.get_current_worker.title,
   description: toolsMetadata.get_current_worker.description,
+  readOnlyHint: true,
+  destructiveHint: false,
   inputSchema: CommonProjectsInput.shape,
   handler: toolHandler(CommonProjectsInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling get_current_worker", { input });
@@ -86,6 +88,8 @@ export const triggerTaskTool = {
   name: toolsMetadata.trigger_task.name,
   title: toolsMetadata.trigger_task.title,
   description: toolsMetadata.trigger_task.description,
+  readOnlyHint: false,
+  destructiveHint: true,
   inputSchema: TriggerTaskInput.shape,
   handler: toolHandler(TriggerTaskInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling trigger_task", { input });
