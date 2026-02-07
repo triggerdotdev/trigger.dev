@@ -59,7 +59,7 @@ export function HelpAndFeedback({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center gap-1.5 rounded pl-[0.4375rem] pr-2 transition-colors hover:bg-charcoal-750",
+              "group flex h-8 items-center gap-1.5 rounded pl-[0.4375rem] pr-2 transition-colors hover:bg-charcoal-750 focus-custom",
               isCollapsed ? "w-full" : "w-full justify-between"
             )}
           >
