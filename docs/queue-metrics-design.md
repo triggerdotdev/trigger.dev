@@ -503,9 +503,346 @@ These are the new user-facing metrics enabled by this system:
 
 ---
 
-## 6. Implementation Plan
+## 6. Generic Metrics Pipeline
 
-### Phase 1: Lua script changes
+The transport layer (Redis Stream → Consumer → ClickHouse) is not queue-specific. It should be built as a generic pipeline that any part of the application can use to ship metrics to ClickHouse. Queue metrics is the first consumer.
+
+### 6.1 Architecture
+
+```
+┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────────┐
+│   Queue Lua Scripts  │  │   Worker Health       │  │   Future: API Metrics│
+│   (XADD in Lua)      │  │   (XADD from Node.js) │  │   (XADD from Node.js)│
+└──────────┬───────────┘  └──────────┬───────────┘  └──────────┬───────────┘
+           │                         │                         │
+           ▼                         ▼                         ▼
+┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
+│ metrics:queue:0  │    │ metrics:worker:0 │    │ metrics:api:0    │
+│ metrics:queue:1  │    │ metrics:worker:1 │    │ metrics:api:1    │
+│ (Redis Streams)  │    │ (Redis Streams)  │    │ (Redis Streams)  │
+└──────────┬───────┘    └──────────┬───────┘    └──────────┬───────┘
+           │                       │                       │
+           └───────────┬───────────┘───────────────────────┘
+                       ▼
+         ┌──────────────────────────────┐
+         │  MetricsStreamConsumer       │
+         │  (generic, one per metric    │
+         │   definition)                │
+         │                              │
+         │  - XREADGROUP per shard      │
+         │  - pre-aggregate via         │
+         │    MetricDefinition          │
+         │  - INSERT into target table  │
+         │  - XACK on success           │
+         └──────────────────────────────┘
+```
+
+### 6.2 MetricDefinition interface
+
+Each metric type registers a definition that tells the pipeline how to parse, aggregate, and store its data:
+
+```typescript
+/**
+ * Defines a metric type for the generic Redis Stream → ClickHouse pipeline.
+ *
+ * The pipeline handles: stream consumption, consumer groups, PEL recovery,
+ * retry with backoff, batching, and graceful shutdown.
+ *
+ * The metric definition handles: what the data looks like, how to aggregate
+ * it, and where it goes.
+ */
+interface MetricDefinition<TEntry, TAggregated> {
+  /** Unique name for this metric (used in stream keys, consumer groups) */
+  name: string;
+
+  /** Target ClickHouse table for inserts */
+  clickhouseTable: string;
+
+  /** Number of stream shards (streams are named `metrics:{name}:{shard}`) */
+  shardCount: number;
+
+  /** MAXLEN for each stream shard */
+  maxStreamLength: number;
+
+  /** Bucket size in milliseconds for pre-aggregation */
+  bucketSizeMs: number;
+
+  /**
+   * Parse a raw Redis Stream entry (string key-value pairs)
+   * into a typed entry. Return null to skip/filter the entry.
+   */
+  parseEntry(fields: Record<string, string>, streamId: string): TEntry | null;
+
+  /**
+   * Extract the dimension key for grouping.
+   * Entries with the same dimension key and time bucket are aggregated together.
+   * Returns a string that uniquely identifies the dimension combination.
+   */
+  dimensionKey(entry: TEntry): string;
+
+  /**
+   * Extract the timestamp from a parsed entry (ms since epoch).
+   * Used to assign entries to time buckets.
+   */
+  timestamp(entry: TEntry): number;
+
+  /**
+   * Aggregate a batch of entries that share the same dimension key
+   * and time bucket into a single row for ClickHouse insertion.
+   */
+  aggregate(dimensionKey: string, bucketStart: Date, entries: TEntry[]): TAggregated;
+
+  /**
+   * Convert aggregated rows into the format expected by the ClickHouse client.
+   * Returns column names and values for JSONEachRow insert.
+   */
+  toInsertRow(row: TAggregated): Record<string, unknown>;
+}
+```
+
+### 6.3 MetricsStreamConsumer (generic pipeline)
+
+```typescript
+/**
+ * Generic consumer that reads from Redis Streams and inserts into ClickHouse.
+ * One instance per MetricDefinition.
+ */
+class MetricsStreamConsumer<TEntry, TAggregated> {
+  constructor(options: {
+    redis: RedisOptions;
+    clickhouse: ClickHouseClient;
+    definition: MetricDefinition<TEntry, TAggregated>;
+    consumerGroup: string;
+    consumerId: string;
+    pollIntervalMs?: number;  // default: 1000
+    batchSize?: number;       // default: 1000
+  }) {}
+
+  async start(): Promise<void> {
+    // For each shard:
+    // 1. XGROUP CREATE metrics:{name}:{shard} {consumerGroup} $ MKSTREAM
+    // 2. Start polling loop
+  }
+
+  private async pollShard(shard: number): Promise<void> {
+    // 1. Read pending entries first (PEL recovery): XREADGROUP ... 0
+    //    - INSERT these as a separate batch (enables CH insert dedup)
+    //    - XACK on success
+    // 2. Read new entries: XREADGROUP ... >
+    //    - Parse via definition.parseEntry()
+    //    - Group by definition.dimensionKey() + time bucket
+    //    - Aggregate via definition.aggregate()
+    //    - Convert via definition.toInsertRow()
+    //    - INSERT batch into definition.clickhouseTable
+    //    - XACK on success
+    // 3. On failure: back off, retry from PEL next iteration
+  }
+
+  async stop(): Promise<void> {
+    // Signal shutdown, drain in-flight batches
+  }
+}
+```
+
+### 6.4 MetricsStreamEmitter (convenience for Node.js producers)
+
+For metrics emitted from Node.js (not Lua), provide a thin helper:
+
+```typescript
+/**
+ * Emits metric entries to a Redis Stream. For use in Node.js code.
+ * Lua scripts use XADD directly — this is for non-Lua producers.
+ */
+class MetricsStreamEmitter {
+  constructor(options: {
+    redis: Redis;
+    streamPrefix: string;       // e.g., "metrics"
+    metricName: string;         // e.g., "worker_health"
+    shardCount: number;
+    maxStreamLength?: number;   // default: 100000
+  }) {}
+
+  /**
+   * Emit a metric entry to the appropriate shard.
+   * Shard selection can be based on a dimension value (e.g., envId)
+   * for locality, or round-robin.
+   */
+  async emit(
+    fields: Record<string, string | number>,
+    shardKey?: string
+  ): Promise<void> {
+    const shard = shardKey
+      ? jumpHash(shardKey, this.shardCount)
+      : this.roundRobinShard();
+    const streamKey = `${this.streamPrefix}:${this.metricName}:${shard}`;
+    await this.redis.xadd(
+      streamKey, 'MAXLEN', '~', this.maxStreamLength.toString(), '*',
+      ...Object.entries(fields).flat()
+    );
+  }
+}
+```
+
+### 6.5 Queue metrics as the first MetricDefinition
+
+```typescript
+const queueMetricsDefinition: MetricDefinition<QueueMetricEntry, QueueMetricRow> = {
+  name: "queue",
+  clickhouseTable: "queue_metrics_5s_v1",
+  shardCount: 2,       // match RunQueue shard count
+  maxStreamLength: 100_000,
+  bucketSizeMs: 5_000,  // 5 seconds
+
+  parseEntry(fields, streamId) {
+    return {
+      organizationId: fields.org,
+      projectId: fields.proj,
+      environmentId: fields.env,
+      queueName: fields.queue,
+      operation: fields.op,
+      timestamp: redisStreamIdToMs(streamId),
+      queueLength: parseInt(fields.ql ?? "0"),
+      concurrencyCurrent: parseInt(fields.cc ?? "0"),
+      envQueueLength: parseInt(fields.eql ?? "0"),
+      envConcurrency: parseInt(fields.ec ?? "0"),
+      oldestMessageAgeMs: parseInt(fields.age ?? "0"),
+      enqueueCount: parseInt(fields.eq ?? "0"),
+      dequeueCount: parseInt(fields.dq ?? "0"),
+      ackCount: parseInt(fields.ak ?? "0"),
+      nackCount: parseInt(fields.nk ?? "0"),
+      dlqCount: parseInt(fields.dlq ?? "0"),
+      ttlExpireCount: parseInt(fields.ttl ?? "0"),
+      waitDurationMs: parseInt(fields.wd ?? "0"),
+    };
+  },
+
+  dimensionKey(entry) {
+    return `${entry.organizationId}:${entry.projectId}:${entry.environmentId}:${entry.queueName}`;
+  },
+
+  timestamp(entry) {
+    return entry.timestamp;
+  },
+
+  aggregate(dimensionKey, bucketStart, entries) {
+    const [orgId, projId, envId, queue] = dimensionKey.split(":");
+    return {
+      organization_id: orgId,
+      project_id: projId,
+      environment_id: envId,
+      queue_name: queue,
+      bucket_start: bucketStart,
+      enqueue_count: sum(entries, "enqueueCount"),
+      dequeue_count: sum(entries, "dequeueCount"),
+      ack_count: sum(entries, "ackCount"),
+      nack_count: sum(entries, "nackCount"),
+      dlq_count: sum(entries, "dlqCount"),
+      ttl_expire_count: sum(entries, "ttlExpireCount"),
+      max_queue_length: max(entries, "queueLength"),
+      max_concurrency_current: max(entries, "concurrencyCurrent"),
+      max_env_queue_length: max(entries, "envQueueLength"),
+      max_env_concurrency: max(entries, "envConcurrency"),
+      max_oldest_message_age_ms: max(entries, "oldestMessageAgeMs"),
+      total_wait_duration_ms: sum(entries, "waitDurationMs"),
+      wait_duration_count: countNonZero(entries, "waitDurationMs"),
+    };
+  },
+
+  toInsertRow(row) {
+    return { ...row, bucket_start: formatDateTime(row.bucket_start) };
+  },
+};
+```
+
+### 6.6 Example: adding a second metric type
+
+To ship a new metric to ClickHouse, you only need:
+
+1. **A ClickHouse table** (+ optional MVs for rollup)
+2. **A MetricDefinition** implementation
+3. **XADD calls** at the emission points (Lua or Node.js)
+4. **Register the consumer** at startup
+
+For example, worker health metrics:
+
+```typescript
+const workerHealthDefinition: MetricDefinition<WorkerHealthEntry, WorkerHealthRow> = {
+  name: "worker_health",
+  clickhouseTable: "worker_health_5s_v1",
+  shardCount: 1,
+  maxStreamLength: 50_000,
+  bucketSizeMs: 5_000,
+
+  parseEntry(fields, streamId) {
+    return {
+      workerId: fields.wid,
+      environmentId: fields.env,
+      timestamp: redisStreamIdToMs(streamId),
+      cpuPercent: parseFloat(fields.cpu ?? "0"),
+      memoryMb: parseInt(fields.mem ?? "0"),
+      activeConnections: parseInt(fields.conn ?? "0"),
+    };
+  },
+
+  dimensionKey(entry) { return `${entry.environmentId}:${entry.workerId}`; },
+  timestamp(entry) { return entry.timestamp; },
+
+  aggregate(dimensionKey, bucketStart, entries) {
+    const [envId, workerId] = dimensionKey.split(":");
+    return {
+      environment_id: envId,
+      worker_id: workerId,
+      bucket_start: bucketStart,
+      max_cpu_percent: max(entries, "cpuPercent"),
+      max_memory_mb: max(entries, "memoryMb"),
+      max_active_connections: max(entries, "activeConnections"),
+      sample_count: entries.length,
+    };
+  },
+
+  toInsertRow(row) { return { ...row, bucket_start: formatDateTime(row.bucket_start) }; },
+};
+
+// At startup:
+const workerHealthConsumer = new MetricsStreamConsumer({
+  redis: redisOptions,
+  clickhouse: clickhouseClient,
+  definition: workerHealthDefinition,
+  consumerGroup: "worker_health_cg",
+  consumerId: `consumer_${process.pid}`,
+});
+await workerHealthConsumer.start();
+```
+
+### 6.7 Where to put the generic pipeline
+
+```
+internal-packages/
+  metrics-pipeline/            # NEW package: @internal/metrics-pipeline
+    src/
+      types.ts                 # MetricDefinition interface
+      consumer.ts              # MetricsStreamConsumer
+      emitter.ts               # MetricsStreamEmitter
+      helpers.ts               # sum(), max(), countNonZero(), redisStreamIdToMs()
+      index.ts                 # public exports
+
+  run-engine/
+    src/run-queue/
+      queueMetrics.ts          # queueMetricsDefinition (implements MetricDefinition)
+      index.ts                 # Lua scripts with XADD emission
+```
+
+The generic pipeline lives in its own internal package so it can be used by any app (webapp, supervisor) without depending on run-engine.
+
+---
+
+## 7. Queue-Specific Implementation Plan
+
+### Phase 1: Generic pipeline package
+
+Create `@internal/metrics-pipeline` with `MetricDefinition`, `MetricsStreamConsumer`, `MetricsStreamEmitter`, and helpers. This is framework code with no queue-specific logic.
+
+### Phase 2: Lua script changes
 
 Modify each Lua script to accept an additional KEYS entry (the metrics stream key) and emit an XADD at the end. The additional KEYS/ARGV entries to pass:
 
@@ -528,66 +865,15 @@ pcall(function()
 end)
 ```
 
-### Phase 2: Stream consumer
+### Phase 3: Queue metric definition + consumer wiring
 
-Create a new service class `QueueMetricsConsumer` in `internal-packages/run-engine/src/run-queue/`:
+Create `queueMetricsDefinition` (section 6.5) and wire a `MetricsStreamConsumer` for it in the webapp startup. The queue metric definition specifies the 5s bucket size, the target ClickHouse table, and the aggregation logic.
 
-```typescript
-export class QueueMetricsConsumer {
-  constructor(options: {
-    redis: RedisOptions;
-    clickhouse: ClickHouseClient;
-    shardCount: number;
-    consumerGroup: string;
-    consumerId: string;
-    pollIntervalMs?: number;  // default: 1000
-    batchSize?: number;       // default: 1000
-    maxRetries?: number;      // default: 3
-  }) {}
-
-  async start(): Promise<void> {
-    // 1. Create consumer group if not exists (XGROUP CREATE ... MKSTREAM)
-    // 2. Start polling loop for each shard
-  }
-
-  private async pollShard(shard: number): Promise<void> {
-    // 1. First, check for pending (unacked) entries: XREADGROUP ... 0
-    // 2. Then read new entries: XREADGROUP ... >
-    // 3. Pre-aggregate entries into 5s buckets in memory (see below)
-    // 4. Bulk INSERT aggregated rows into queue_metrics_5s_v1
-    // 5. On success: XACK all processed IDs
-    // 6. On failure: back off, retry from PEL next iteration
-  }
-
-  /**
-   * Pre-aggregates raw stream entries into 5-second buckets.
-   *
-   * Groups entries by (org, project, env, queue, floor(timestamp / 5000))
-   * and computes:
-   *   - Counters: sum of enqueue_count, dequeue_count, etc.
-   *   - Gauges: max of queue_length, concurrency_current, etc.
-   *   - Latency: sum of wait_duration_ms, count of non-zero waits
-   *
-   * This reduces N raw stream entries into M << N aggregated rows
-   * (one per active queue per 5s window in the batch).
-   *
-   * SummingMergeTree handles the case where two consumer batches
-   * produce rows for the same 5s bucket — they merge correctly
-   * on background merge.
-   */
-  private preAggregate(entries: StreamEntry[]): AggregatedRow[] { ... }
-
-  async stop(): Promise<void> {
-    // Graceful shutdown
-  }
-}
-```
-
-### Phase 3: ClickHouse migration
+### Phase 4: ClickHouse migration
 
 Add migration `016_add_queue_metrics.sql` with the 5s table, minute/hour tables, and the two materialized views (5s→minute, minute→hour) from section 3.
 
-### Phase 4: API and presenters
+### Phase 5: API and presenters
 
 - New `QueueMetricsPresenter` that queries the 5s/minute/hour tables (auto-selects based on time range)
 - New API endpoint `GET /api/v1/queues/:queueParam/metrics`
@@ -595,7 +881,7 @@ Add migration `016_add_queue_metrics.sql` with the 5s table, minute/hour tables,
 
 ---
 
-## 7. Alerting Architecture
+## 8. Alerting Architecture
 
 ### How alerts fit in
 
@@ -699,7 +985,7 @@ When the condition is no longer met, the evaluator can optionally auto-resolve:
 
 ---
 
-## 8. Risks
+## 9. Risks
 
 ### Risk 1: Double-counting on consumer crash (MEDIUM)
 
@@ -765,7 +1051,7 @@ Adding a metrics stream key (e.g., `queue_metrics:shard:0`) to these Lua scripts
 
 ---
 
-## 9. Metric Importance Ranking
+## 10. Metric Importance Ranking
 
 Ranked by user value — how directly the metric answers questions users actually ask.
 
@@ -827,7 +1113,7 @@ Ranked by user value — how directly the metric answers questions users actuall
 
 ---
 
-## 10. Performance Considerations
+## 11. Performance Considerations
 
 ### Redis impact
 
@@ -872,7 +1158,7 @@ The critical scaling property: a queue that processes 1 event/5s and a queue tha
 
 ---
 
-## 11. Failure Modes and Recovery
+## 12. Failure Modes and Recovery
 
 | Failure | Impact | Recovery |
 |---------|--------|----------|
@@ -886,7 +1172,7 @@ The key invariant: **queue operations (enqueue/dequeue/ack) are never blocked or
 
 ---
 
-## 12. Migration and Rollout Strategy
+## 13. Migration and Rollout Strategy
 
 1. **Feature flag**: Pass a metrics-enabled flag as an ARGV to Lua scripts from Node.js (see Risk 5 — avoids an extra GET on every Lua invocation). The Node.js layer caches the flag from a Redis key (`queue_metrics:enabled`) and refreshes every 10s:
    ```lua
@@ -906,7 +1192,7 @@ The key invariant: **queue operations (enqueue/dequeue/ack) are never blocked or
 
 ---
 
-## 13. Summary of Tradeoffs
+## 14. Summary of Tradeoffs
 
 | Decision | Alternative | Why This Choice |
 |----------|-------------|-----------------|
