@@ -323,7 +323,46 @@ FROM trigger_dev.queue_metrics_by_minute_v1
 GROUP BY organization_id, project_id, environment_id, queue_name, bucket_start;
 ```
 
-### 3.5 Query routing by time range (ABR-inspired)
+### 3.5 Handling idle queues (the "stale gauge" problem)
+
+Since we only emit metrics on queue operations, an idle queue with 500 items sitting in it produces **zero rows** in any 5s window where no enqueue/dequeue/ack occurs. But the queue isn't empty — the user's dashboard should still show depth = 500.
+
+This only affects **gauge metrics** (queue_length, concurrency_current, oldest_message_age_ms). Counter metrics are fine — zero rows correctly means zero activity.
+
+**Solution: "last known value" carry-forward at query time**
+
+When the presenter queries a time window, it also fetches the most recent row *before* the window start for each queue to seed the initial gauge values:
+
+```sql
+-- Get the last known gauge values before the requested window
+SELECT queue_name,
+       max_queue_length,
+       max_concurrency_current,
+       max_oldest_message_age_ms
+FROM queue_metrics_5s_v1
+WHERE environment_id = {envId}
+  AND queue_name = {queueName}
+  AND bucket_start < {windowStart}
+ORDER BY bucket_start DESC
+LIMIT 1
+```
+
+The presenter then fills gaps in the timeseries:
+- For any 5s bucket with no row, carry forward the gauge values from the most recent preceding bucket (or the seed query above)
+- Counter metrics are zero-filled (no row = no activity, which is correct)
+
+This is the standard approach for gauge metrics in time-series systems (Prometheus/Grafana use identical "last value" semantics for `gauge` types). The worst-case staleness is bounded by the 5s resolution.
+
+**Why not periodic heartbeats?**
+
+An alternative is emitting a "heartbeat" snapshot for all non-empty queues every 5s from Node.js, guaranteeing every active queue has at least one row per window. This would work but:
+- Adds Redis polling overhead (ZCARD per queue per 5s) that scales with total queues, not active queues — exactly the scaling property we want to avoid
+- Requires maintaining a "known queues" registry
+- Carry-forward at query time achieves the same UX with zero additional infrastructure
+
+Heartbeats could be added later if carry-forward proves insufficient (e.g., if alert evaluation needs gap-free data). But alert evaluation can also use the same seed query pattern.
+
+### 3.6 Query routing by time range (ABR-inspired)
 
 The query routing here borrows the core idea from [Cloudflare's ABR (Adaptive Bit Rate) analytics](https://blog.cloudflare.com/explaining-cloudflares-abr-analytics/): automatically select the best resolution table for each query based on the requested time range, so dashboards stay fast regardless of how far back the user looks.
 
