@@ -2,13 +2,13 @@ import { ArrowUpCircleIcon, PlusIcon, TrashIcon } from "@heroicons/react/20/soli
 import { DialogClose } from "@radix-ui/react-dialog";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
+import { IconChartHistogram, IconEdit } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { toast } from "sonner";
 import { z } from "zod";
 import { defaultChartConfig } from "~/components/code/ChartConfigPanel";
 import { Feedback } from "~/components/Feedback";
-import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import {
@@ -19,8 +19,9 @@ import {
   DialogHeader,
   DialogTrigger,
 } from "~/components/primitives/Dialog";
-import { Header3 } from "~/components/primitives/Headers";
 import { FormButtons } from "~/components/primitives/FormButtons";
+import { Header3 } from "~/components/primitives/Headers";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
@@ -33,6 +34,7 @@ import {
 } from "~/components/primitives/Popover";
 import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
 import { ToastUI } from "~/components/primitives/Toast";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { QueryEditor, type QueryEditorSaveData } from "~/components/query/QueryEditor";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -47,7 +49,6 @@ import { getAllTaskIdentifiers } from "~/models/task.server";
 import { MetricDashboardPresenter } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
 import { requireUser, requireUserId } from "~/services/session.server";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import {
   EnvironmentParamSchema,
   queryPath,
@@ -56,7 +57,6 @@ import {
 } from "~/utils/pathBuilder";
 import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.metrics.$dashboardKey/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { IconEdit, IconLayoutDashboardFilled } from "@tabler/icons-react";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardId: z.string(),
@@ -392,7 +392,7 @@ export default function Page() {
             {currentWidgetCount === 0 ? (
               <MainCenteredContainer className="max-w-md">
                 <InfoPanel
-                  icon={IconLayoutDashboardFilled}
+                  icon={IconChartHistogram}
                   iconClassName="text-metrics"
                   panelClassName="max-full"
                   title="Add your first chart"
