@@ -58,6 +58,18 @@ describe("LoopsClient", () => {
       expect(result).toBe(true);
     });
 
+    it("should return true when API returns 404 (contact already deleted)", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+      });
+
+      const client = new LoopsClient("test-api-key", noopLogger);
+      const result = await client.deleteContact({ email: "test@example.com" });
+
+      expect(result).toBe(true);
+    });
+
     it("should return false on API error (500)", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,

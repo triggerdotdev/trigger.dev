@@ -43,6 +43,11 @@ export class LoopsClient {
         body: JSON.stringify({ email }),
       });
 
+      if (response.status === 404) {
+        this.#logger.info(`Loops contact already deleted`, { email });
+        return true;
+      }
+
       if (!response.ok) {
         this.#logger.error(`Loops deleteContact bad status`, { status: response.status, email });
         return false;
