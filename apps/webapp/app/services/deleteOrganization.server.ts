@@ -3,6 +3,7 @@ import { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { DeleteProjectService } from "./deleteProject.server";
+import { loopsClient } from "./loops.server";
 import { getCurrentPlan } from "./platform.v3.server";
 
 export class DeleteOrganizationService {
@@ -82,5 +83,27 @@ export class DeleteOrganizationService {
         deletedAt: new Date(),
       },
     });
+
+    // Unsubscribe user from Loops if this was their last organization
+    const otherOrgs = await this.#prismaClient.organization.count({
+      where: {
+        members: { some: { userId } },
+        deletedAt: null,
+        id: { not: organization.id },
+      },
+    });
+
+    if (otherOrgs === 0) {
+      // This was user's last org - delete from Loops
+      const user = await this.#prismaClient.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
+      });
+
+      if (user) {
+        // Fire and forget - don't block deletion on Loops API
+        loopsClient?.deleteContact({ email: user.email });
+      }
+    }
   }
 }

@@ -22,6 +22,35 @@ class LoopsClient {
     });
   }
 
+  async deleteContact({ email }: { email: string }): Promise<boolean> {
+    logger.info(`Loops deleting contact`, { email });
+
+    try {
+      const response = await fetch(
+        `https://app.loops.so/api/v1/contacts/${encodeURIComponent(email)}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${this.apiKey}` },
+        }
+      );
+
+      if (!response.ok) {
+        // 404 is okay - contact already deleted
+        if (response.status === 404) {
+          logger.info(`Loops contact already deleted`, { email });
+          return true;
+        }
+        logger.error(`Loops deleteContact bad status`, { status: response.status, email });
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      logger.error(`Loops deleteContact failed`, { error, email });
+      return false;
+    }
+  }
+
   async #sendEvent({
     email,
     userId,
