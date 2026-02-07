@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 4.3.4
+
+### Patch Changes
+
+- Aligned the SDK's `getRunIdForOptions` logic with the Core package to handle semantic targets (`root`, `parent`) in root tasks. ([#2874](https://github.com/triggerdotdev/trigger.dev/pull/2874))
+- Export `AnyOnStartAttemptHookFunction` type to allow defining `onStartAttempt` hooks for individual tasks. ([#2966](https://github.com/triggerdotdev/trigger.dev/pull/2966))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.4`
+
 ## 4.3.3
 
 ### Patch Changes
