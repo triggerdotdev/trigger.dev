@@ -80,6 +80,12 @@ function createRunEngine() {
         scanJitterInMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS,
         processMarkedJitterInMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS,
       },
+      ttlSystem: {
+        disabled: env.RUN_ENGINE_TTL_SYSTEM_DISABLED,
+        shardCount: env.RUN_ENGINE_TTL_SYSTEM_SHARD_COUNT,
+        pollIntervalMs: env.RUN_ENGINE_TTL_SYSTEM_POLL_INTERVAL_MS,
+        batchSize: env.RUN_ENGINE_TTL_SYSTEM_BATCH_SIZE,
+      },
     },
     runLock: {
       redis: {

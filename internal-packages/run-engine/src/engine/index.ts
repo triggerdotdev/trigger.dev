@@ -182,6 +182,51 @@ export class RunEngine {
       processWorkerQueueDebounceMs: options.queue?.processWorkerQueueDebounceMs,
       dequeueBlockingTimeoutSeconds: options.queue?.dequeueBlockingTimeoutSeconds,
       meter: options.meter,
+      ttlSystem: options.queue?.ttlSystem?.disabled
+        ? undefined
+        : {
+            shardCount: options.queue?.ttlSystem?.shardCount,
+            pollIntervalMs: options.queue?.ttlSystem?.pollIntervalMs,
+            batchSize: options.queue?.ttlSystem?.batchSize,
+            callback: this.#ttlExpiredCallback.bind(this),
+          },
+      // Run data provider for V3 optimized format - reads from PostgreSQL when no Redis message key exists
+      runDataProvider: {
+        getRunData: async (runId: string) => {
+          const run = await this.prisma.taskRun.findUnique({
+            where: { id: runId },
+            select: {
+              queue: true,
+              organizationId: true,
+              projectId: true,
+              runtimeEnvironmentId: true,
+              environmentType: true,
+              concurrencyKey: true,
+              attemptNumber: true,
+              queueTimestamp: true,
+              workerQueue: true,
+              taskIdentifier: true,
+            },
+          });
+
+          if (!run || !run.organizationId || !run.environmentType) {
+            return undefined;
+          }
+
+          return {
+            queue: run.queue,
+            orgId: run.organizationId,
+            projectId: run.projectId,
+            environmentId: run.runtimeEnvironmentId,
+            environmentType: run.environmentType,
+            concurrencyKey: run.concurrencyKey ?? undefined,
+            attempt: run.attemptNumber ?? 0,
+            timestamp: run.queueTimestamp?.getTime() ?? Date.now(),
+            workerQueue: run.workerQueue,
+            taskIdentifier: run.taskIdentifier,
+          };
+        },
+      },
     });
 
     this.worker = new Worker({
@@ -2064,6 +2109,35 @@ export class RunEngine {
         id: run.id,
         orgId: run.organizationId!,
       }));
+  }
+
+  /**
+   * Callback for the TTL system when runs expire.
+   * Calls ttlSystem.expireRun() for each expired run to update database and emit events.
+   */
+  async #ttlExpiredCallback(
+    runs: Array<{ queueKey: string; runId: string; orgId: string }>
+  ): Promise<void> {
+    // Process expired runs concurrently with limited parallelism
+    await pMap(
+      runs,
+      async (run) => {
+        try {
+          await this.ttlSystem.expireRun({ runId: run.runId });
+          this.logger.debug("TTL system expired run", {
+            runId: run.runId,
+            orgId: run.orgId,
+          });
+        } catch (error) {
+          this.logger.error("Failed to expire run via TTL system", {
+            runId: run.runId,
+            orgId: run.orgId,
+            error,
+          });
+        }
+      },
+      { concurrency: 10 }
+    );
   }
 
   /**

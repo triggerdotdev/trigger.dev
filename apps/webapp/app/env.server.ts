@@ -591,6 +591,12 @@ const EnvironmentSchema = z
     RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS: z.coerce.number().int().optional(),
     RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS: z.coerce.number().int().optional(),
 
+    // TTL System settings for automatic run expiration
+    RUN_ENGINE_TTL_SYSTEM_DISABLED: BoolEnv.default(false),
+    RUN_ENGINE_TTL_SYSTEM_SHARD_COUNT: z.coerce.number().int().optional(),
+    RUN_ENGINE_TTL_SYSTEM_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
+    RUN_ENGINE_TTL_SYSTEM_BATCH_SIZE: z.coerce.number().int().default(100),
+
     RUN_ENGINE_RUN_LOCK_DURATION: z.coerce.number().int().default(5000),
     RUN_ENGINE_RUN_LOCK_AUTOMATIC_EXTENSION_THRESHOLD: z.coerce.number().int().default(1000),
     RUN_ENGINE_RUN_LOCK_MAX_RETRIES: z.coerce.number().int().default(10),

@@ -133,3 +133,31 @@ export interface RunQueueSelectionStrategy {
     consumerId: string
   ): Promise<Array<EnvQueues>>;
 }
+
+/**
+ * Provider for fetching run data from a persistent store (e.g., PostgreSQL).
+ * Used for V3 optimized format where message data is not stored in Redis.
+ */
+export interface RunDataProvider {
+  /**
+   * Fetch run data for ack/nack operations.
+   * Returns undefined if the run is not found.
+   */
+  getRunData(runId: string): Promise<RunData | undefined>;
+}
+
+/**
+ * Run data needed for queue operations (ack, nack, release concurrency).
+ */
+export type RunData = {
+  queue: string;
+  orgId: string;
+  projectId: string;
+  environmentId: string;
+  environmentType: RuntimeEnvironmentType;
+  concurrencyKey?: string;
+  attempt: number;
+  timestamp: number;
+  workerQueue: string;
+  taskIdentifier: string;
+};

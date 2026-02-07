@@ -39,10 +39,19 @@ import {
   InputPayload,
   OutputPayload,
   OutputPayloadV2,
+  RunDataProvider,
   RunQueueKeyProducer,
   RunQueueKeyProducerEnvironment,
   RunQueueSelectionStrategy,
 } from "./types.js";
+import {
+  encodeMessageKeyValue,
+  isV3MessageKeyValue,
+  encodeWorkerQueueEntry,
+  decodeWorkerQueueEntry,
+  isEncodedWorkerQueueEntry,
+  reconstructMessageFromWorkerEntry,
+} from "./messageEncoding.js";
 import { WorkerQueueResolver } from "./workerQueueResolver.js";
 
 const SemanticAttributes = {
@@ -92,6 +101,22 @@ export type RunQueueOptions = {
     processMarkedJitterInMs?: number;
     callback: ConcurrencySweeperCallback;
   };
+  /**
+   * When enabled, uses an optimized message format that eliminates separate message keys.
+   * This reduces Redis storage by ~80% for pending messages.
+   *
+   * Migration strategy:
+   * 1. Deploy with this disabled (default) - new code can read both formats
+   * 2. Enable this flag - new messages use optimized format
+   * 3. Old messages drain naturally as they're processed
+   */
+  useOptimizedMessageFormat?: boolean;
+  /**
+   * Provider for fetching run data from PostgreSQL.
+   * Required when using V3 optimized format for ack/nack operations.
+   * Falls back to Redis message key if not provided (legacy behavior).
+   */
+  runDataProvider?: RunDataProvider;
 };
 
 export interface ConcurrencySweeperCallback {
@@ -175,8 +200,12 @@ export class RunQueue {
   private _observableWorkerQueues: Set<string> = new Set();
   private _meter: Meter;
   private _queueCooloffStates: Map<string, QueueCooloffState> = new Map();
+  private _useOptimizedMessageFormat: boolean;
+  private _runDataProvider?: RunDataProvider;
 
   constructor(public readonly options: RunQueueOptions) {
+    this._useOptimizedMessageFormat = options.useOptimizedMessageFormat ?? false;
+    this._runDataProvider = options.runDataProvider;
     this.shardCount = options.shardCount ?? 2;
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = createRedisClient(options.redis, {
@@ -555,11 +584,49 @@ export class RunQueue {
     return this.redis.exists(this.keys.messageKey(orgId, messageId));
   }
 
-  public async readMessage(orgId: string, messageId: string) {
-    return this.readMessageFromKey(this.keys.messageKey(orgId, messageId));
+  public async readMessage(orgId: string, messageId: string): Promise<OutputPayload | undefined> {
+    // First try to read from Redis (handles both legacy JSON and V3 compact format)
+    const redisMessage = await this.readMessageFromKey(
+      this.keys.messageKey(orgId, messageId),
+      messageId
+    );
+    if (redisMessage) {
+      return redisMessage;
+    }
+
+    // Fall back to runDataProvider (for cases where message key doesn't exist)
+    if (this._runDataProvider) {
+      const runData = await this._runDataProvider.getRunData(messageId);
+      if (runData) {
+        // Convert RunData to OutputPayloadV2
+        const queueKey = this.keys.queueKey(
+          runData.orgId,
+          runData.projectId,
+          runData.environmentId,
+          runData.taskIdentifier,
+          runData.concurrencyKey
+        );
+        return {
+          version: "2" as const,
+          runId: messageId,
+          taskIdentifier: runData.taskIdentifier,
+          orgId: runData.orgId,
+          projectId: runData.projectId,
+          environmentId: runData.environmentId,
+          environmentType: runData.environmentType,
+          queue: queueKey,
+          concurrencyKey: runData.concurrencyKey,
+          timestamp: runData.timestamp,
+          attempt: runData.attempt,
+          workerQueue: runData.workerQueue,
+        };
+      }
+    }
+
+    return undefined;
   }
 
-  public async readMessageFromKey(messageKey: string) {
+  public async readMessageFromKey(messageKey: string, runId?: string) {
     return this.#trace(
       "readMessageFromKey",
       async (span) => {
@@ -569,7 +636,10 @@ export class RunQueue {
           return;
         }
 
-        const [error, message] = parseRawMessage(rawMessage);
+        const [error, message] = parseRawMessage(rawMessage, {
+          keys: this.keys,
+          runId,
+        });
 
         if (error) {
           this.logger.error(`[${this.name}] Failed to parse message`, {
@@ -1434,14 +1504,31 @@ export class RunQueue {
           this.#getWorkerQueueFromMessage(message.message)
         );
 
-        const messageKeyValue = this.keys.messageKey(message.message.orgId, message.messageId);
+        let workerQueueEntry: string;
+
+        if (this._useOptimizedMessageFormat) {
+          // V3 format: encode all needed data in worker queue entry
+          // This allows full reconstruction without a message key lookup
+          workerQueueEntry = encodeWorkerQueueEntry({
+            runId: message.messageId,
+            workerQueue: this.#getWorkerQueueFromMessage(message.message),
+            attempt: message.message.attempt,
+            environmentType: message.message.environmentType,
+            queueKey: message.message.queue,
+            timestamp: message.message.timestamp,
+          });
+        } else {
+          // Legacy format: store message key path
+          workerQueueEntry = this.keys.messageKey(message.message.orgId, message.messageId);
+        }
 
         operations.push({
           workerQueueKey: workerQueueKey,
           messageId: message.messageId,
+          format: this._useOptimizedMessageFormat ? "v3" : "legacy",
         });
 
-        pipeline.rpush(workerQueueKey, messageKeyValue);
+        pipeline.rpush(workerQueueKey, workerQueueEntry);
       }
 
       span.setAttribute("operations_count", operations.length);
@@ -1470,39 +1557,79 @@ export class RunQueue {
 
     const queueName = message.queue;
     const messageId = message.runId;
-    const messageData = JSON.stringify(message);
     const messageScore = String(message.timestamp);
 
-    this.logger.debug("Calling enqueueMessage", {
-      queueKey,
-      messageKey,
-      queueCurrentConcurrencyKey,
-      envCurrentConcurrencyKey,
-      queueCurrentDequeuedKey,
-      envCurrentDequeuedKey,
-      envQueueKey,
-      queueName,
-      messageId,
-      messageData,
-      messageScore,
-      masterQueueKey,
-      service: this.name,
-    });
+    if (this._useOptimizedMessageFormat) {
+      // V3 optimized format: compact message key, runId in sorted set
+      const messageData = encodeMessageKeyValue({
+        queue: message.queue,
+        timestamp: message.timestamp,
+        attempt: message.attempt,
+        environmentType: message.environmentType,
+        workerQueue: message.workerQueue,
+      });
 
-    await this.redis.enqueueMessage(
-      masterQueueKey,
-      queueKey,
-      messageKey,
-      queueCurrentConcurrencyKey,
-      envCurrentConcurrencyKey,
-      queueCurrentDequeuedKey,
-      envCurrentDequeuedKey,
-      envQueueKey,
-      queueName,
-      messageId,
-      messageData,
-      messageScore
-    );
+      this.logger.debug("Calling enqueueMessageV3 (optimized)", {
+        queueKey,
+        messageKey,
+        messageData,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        envQueueKey,
+        messageScore,
+        masterQueueKey,
+        service: this.name,
+      });
+
+      await this.redis.enqueueMessageV3(
+        masterQueueKey,
+        queueKey,
+        messageKey,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        queueName,
+        messageId,
+        messageData,
+        messageScore
+      );
+    } else {
+      // Legacy format: store full JSON in separate message key
+      const messageData = JSON.stringify(message);
+
+      this.logger.debug("Calling enqueueMessage (legacy)", {
+        queueKey,
+        messageKey,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        queueName,
+        messageId,
+        messageData,
+        messageScore,
+        masterQueueKey,
+        service: this.name,
+      });
+
+      await this.redis.enqueueMessage(
+        masterQueueKey,
+        queueKey,
+        messageKey,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        queueName,
+        messageId,
+        messageData,
+        messageScore
+      );
+    }
   }
 
   async #callDequeueMessagesFromQueue({
@@ -1583,25 +1710,29 @@ export class RunQueue {
         const messageScore = result[i + 1];
         const rawMessage = result[i + 2];
 
-        //read message
-        const parsedMessage = OutputPayload.safeParse(JSON.parse(rawMessage));
-        if (!parsedMessage.success) {
-          this.logger.error(`[${this.name}] Failed to parse message`, {
+        // Parse message - handles both JSON (legacy) and V3 compact format
+        const [error, message] = parseRawMessage(rawMessage, {
+          keys: this.keys,
+          runId: messageId,
+        });
+
+        if (error) {
+          this.logger.error(`[${this.name}] Failed to parse dequeued message`, {
             messageId,
-            error: parsedMessage.error,
+            error,
+            rawMessage,
             service: this.name,
           });
-
           continue;
         }
 
-        const message = parsedMessage.data;
-
-        messages.push({
-          messageId,
-          messageScore,
-          message,
-        });
+        if (message) {
+          messages.push({
+            messageId,
+            messageScore,
+            message,
+          });
+        }
       }
 
       this.logger.debug("dequeueMessagesFromQueue parsed result", {
@@ -1873,37 +2004,79 @@ export class RunQueue {
     const nextRetryDelay = calculateNextRetryDelay(this.retryOptions, message.attempt);
     const messageScore = retryAt ?? (nextRetryDelay ? Date.now() + nextRetryDelay : Date.now());
 
-    this.logger.debug("Calling nackMessage", {
-      messageKey,
-      messageQueue,
-      masterQueueKey,
-      queueCurrentConcurrencyKey,
-      envCurrentConcurrencyKey,
-      queueCurrentDequeuedKey,
-      envCurrentDequeuedKey,
-      envQueueKey,
-      messageId,
-      messageScore,
-      attempt: message.attempt,
-      service: this.name,
-    });
+    if (this._useOptimizedMessageFormat) {
+      // V3 format: compact message key, runId in sorted set
+      const messageData = encodeMessageKeyValue({
+        queue: message.queue,
+        timestamp: message.timestamp,
+        attempt: message.attempt,
+        environmentType: message.environmentType,
+        workerQueue: this.#getWorkerQueueFromMessage(message),
+      });
 
-    await this.redis.nackMessage(
-      //keys
-      masterQueueKey,
-      messageKey,
-      messageQueue,
-      queueCurrentConcurrencyKey,
-      envCurrentConcurrencyKey,
-      queueCurrentDequeuedKey,
-      envCurrentDequeuedKey,
-      envQueueKey,
-      //args
-      messageId,
-      messageQueue,
-      JSON.stringify(message),
-      String(messageScore)
-    );
+      this.logger.debug("Calling nackMessageV3 (optimized)", {
+        messageKey,
+        messageData,
+        messageQueue,
+        masterQueueKey,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        messageId,
+        messageScore,
+        attempt: message.attempt,
+        service: this.name,
+      });
+
+      await this.redis.nackMessageV3(
+        //keys
+        masterQueueKey,
+        messageKey,
+        messageQueue,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        //args
+        messageId,
+        messageQueue,
+        messageData,
+        String(messageScore)
+      );
+    } else {
+      // Legacy format
+      this.logger.debug("Calling nackMessage (legacy)", {
+        messageKey,
+        messageQueue,
+        masterQueueKey,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        messageId,
+        messageScore,
+        attempt: message.attempt,
+        service: this.name,
+      });
+
+      await this.redis.nackMessage(
+        //keys
+        masterQueueKey,
+        messageKey,
+        messageQueue,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        //args
+        messageId,
+        messageQueue,
+        JSON.stringify(message),
+        String(messageScore)
+      );
+    }
   }
 
   async #callMoveToDeadLetterQueue({ message }: { message: OutputPayload }) {
@@ -2212,12 +2385,43 @@ export class RunQueue {
     });
   }
 
-  async #dequeueMessageFromKey(messageKey: string) {
+  async #dequeueMessageFromKey(workerQueueEntry: string) {
     return this.#trace("dequeueMessageFromKey", async (span) => {
       span.setAttributes({
-        messageKey,
+        workerQueueEntry,
       });
 
+      // Check if this is a V3 encoded worker queue entry
+      if (isEncodedWorkerQueueEntry(workerQueueEntry)) {
+        // V3 format: decode the entry directly, no Redis lookup needed
+        const decoded = decodeWorkerQueueEntry(workerQueueEntry);
+        if (!decoded) {
+          this.logger.error(`[${this.name}] Failed to decode V3 worker queue entry`, {
+            workerQueueEntry,
+            service: this.name,
+          });
+          span.setAttribute("result", "DECODE_ERROR");
+          return;
+        }
+
+        const descriptor = this.keys.descriptorFromQueue(decoded.queueKey);
+        const message = reconstructMessageFromWorkerEntry(decoded, descriptor);
+
+        // Update the currentDequeued sets (this is done in the Lua script for legacy)
+        const queueCurrentDequeuedKey = this.keys.queueCurrentDequeuedKeyFromQueue(decoded.queueKey);
+        const envCurrentDequeuedKey = this.keys.envCurrentDequeuedKeyFromQueue(decoded.queueKey);
+        await this.redis.sadd(queueCurrentDequeuedKey, message.runId);
+        await this.redis.sadd(envCurrentDequeuedKey, message.runId);
+
+        span.setAttribute("result", "SUCCESS");
+        span.setAttribute("messageId", message.runId);
+        span.setAttribute("format", "v3");
+
+        return message;
+      }
+
+      // Legacy format: workerQueueEntry is the message key path
+      const messageKey = workerQueueEntry;
       const rawMessage = await this.redis.dequeueMessageFromKey(
         messageKey,
         this.options.redis.keyPrefix ?? ""
@@ -2225,11 +2429,16 @@ export class RunQueue {
 
       if (!rawMessage) {
         span.setAttribute("result", "NO_MESSAGE");
-
         return;
       }
 
-      const [error, message] = parseRawMessage(rawMessage);
+      // Extract runId from message key path (format: {org:orgId}:message:{runId})
+      const runIdFromKey = messageKey.split(":message:").pop();
+
+      const [error, message] = parseRawMessage(rawMessage, {
+        keys: this.keys,
+        runId: runIdFromKey,
+      });
 
       if (error) {
         this.logger.error(`[${this.name}] Failed to parse message`, {
@@ -2243,6 +2452,7 @@ export class RunQueue {
       if (message) {
         span.setAttribute("result", "SUCCESS");
         span.setAttribute("messageId", message.runId);
+        span.setAttribute("format", "legacy");
       } else {
         span.setAttribute("result", "NO_MESSAGE");
       }
@@ -2318,6 +2528,50 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
       `,
     });
 
+    // V3 optimized enqueue: compact message key format, runId in sorted set
+    this.redis.defineCommand("enqueueMessageV3", {
+      numberOfKeys: 8,
+      lua: `
+local masterQueueKey = KEYS[1]
+local queueKey = KEYS[2]
+local messageKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+
+local queueName = ARGV[1]
+local messageId = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = ARGV[4]
+
+-- Write the compact V3 message data to the message key
+redis.call('SET', messageKey, messageData)
+
+-- Add the messageId (runId) to the queue - simple and reliable
+redis.call('ZADD', queueKey, messageScore, messageId)
+
+-- Add the messageId to the env queue (for counting)
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+
+-- Rebalance the parent queues
+local earliestMessage = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+
+if #earliestMessage == 0 then
+  redis.call('ZREM', masterQueueKey, queueName)
+else
+  redis.call('ZADD', masterQueueKey, earliestMessage[2], queueName)
+end
+
+-- Update the concurrency keys (clear any existing entries for this run)
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+      `,
+    });
+
     this.redis.defineCommand("dequeueMessagesFromQueue", {
       numberOfKeys: 9,
       lua: `
@@ -2377,27 +2631,29 @@ end
 local results = {}
 local dequeuedCount = 0
 
--- Process messages in pairs (messageId, score)
+-- Process messages in pairs (member, score)
+-- Member is always runId (both legacy and V3 formats use runId in sorted set)
 for i = 1, #messages, 2 do
-    local messageId = messages[i]
+    local runId = messages[i]
     local messageScore = tonumber(messages[i + 1])
-    
-    -- Get the message payload
-    local messageKey = messageKeyPrefix .. messageId
+
+    -- Fetch message data from message key
+    local messageKey = messageKeyPrefix .. runId
     local messagePayload = redis.call('GET', messageKey)
-    
+
     if messagePayload then
-        -- Update concurrency
-        redis.call('ZREM', queueKey, messageId)
-        redis.call('ZREM', envQueueKey, messageId)
-        redis.call('SADD', queueCurrentConcurrencyKey, messageId)
-        redis.call('SADD', envCurrentConcurrencyKey, messageId)
-        
-        -- Add to results
-        table.insert(results, messageId)
+        -- Remove from queues and update concurrency
+        redis.call('ZREM', queueKey, runId)
+        redis.call('ZREM', envQueueKey, runId)
+        redis.call('SADD', queueCurrentConcurrencyKey, runId)
+        redis.call('SADD', envCurrentConcurrencyKey, runId)
+
+        -- Add to results: [runId, score, payload, ...]
+        -- Payload can be JSON (legacy) or V3 compact format
+        table.insert(results, runId)
         table.insert(results, messageScore)
         table.insert(results, messagePayload)
-        
+
         dequeuedCount = dequeuedCount + 1
     end
 end
@@ -2411,7 +2667,8 @@ else
   redis.call('ZADD', masterQueueKey, earliestMessage[2], queueName)
 end
 
--- Return results as a flat array: [messageId1, messageScore1, messagePayload1, messageId2, messageScore2, messagePayload2, ...]
+-- Return results as a flat array: [runId1, messageScore1, messagePayload1, runId2, messageScore2, messagePayload2, ...]
+-- messagePayload can be JSON (legacy) or V3 compact format - TypeScript handles parsing
 return results
       `,
     });
@@ -2545,6 +2802,49 @@ redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
 
 -- Enqueue the message into the queue
+redis.call('ZADD', messageQueueKey, messageScore, messageId)
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+
+-- Rebalance the parent queues
+local earliestMessage = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
+if #earliestMessage == 0 then
+  redis.call('ZREM', masterQueueKey, messageQueueName)
+else
+  redis.call('ZADD', masterQueueKey, earliestMessage[2], messageQueueName)
+end
+`,
+    });
+
+    // V3 optimized nack: compact message key format, runId in sorted set
+    this.redis.defineCommand("nackMessageV3", {
+      numberOfKeys: 8,
+      lua: `
+-- Keys:
+local masterQueueKey = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueueKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = tonumber(ARGV[4])
+
+-- Write the compact V3 message data to the message key
+redis.call('SET', messageKey, messageData)
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+
+-- Enqueue the messageId (runId) into the queue - simple and reliable
 redis.call('ZADD', messageQueueKey, messageScore, messageId)
 redis.call('ZADD', envQueueKey, messageScore, messageId)
 
@@ -2878,12 +3178,87 @@ declare module "@internal/redis" {
       maxCount: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
+
+    // V3 optimized commands (compact message key format)
+    enqueueMessageV3(
+      //keys
+      masterQueueKey: string,
+      queue: string,
+      messageKey: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      //args
+      queueName: string,
+      messageId: string,
+      messageData: string,
+      messageScore: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    nackMessageV3(
+      // keys
+      masterQueueKey: string,
+      messageKey: string,
+      messageQueue: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      // args
+      messageId: string,
+      messageQueueName: string,
+      messageData: string,
+      messageScore: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
   }
 }
 
 type ParseRawMessageResult = [Error | null, OutputPayload | null];
 
-function parseRawMessage(rawMessage: string): ParseRawMessageResult {
+function parseRawMessage(
+  rawMessage: string,
+  options?: {
+    keys?: RunQueueKeyProducer;
+    runId?: string;
+  }
+): ParseRawMessageResult {
+  // Check for V3 compact format (starts with "v3:" prefix)
+  if (isV3MessageKeyValue(rawMessage)) {
+    const decoded = decodeMessageKeyValue(rawMessage);
+    if (!decoded) {
+      return [new Error("Failed to decode V3 message format"), undefined];
+    }
+
+    // Extract additional fields from the queue key
+    if (!options?.keys) {
+      return [new Error("Keys required to parse V3 message format"), undefined];
+    }
+    const descriptor = options.keys.descriptorFromQueue(decoded.queue);
+
+    const message: OutputPayloadV2 = {
+      version: "2",
+      runId: options.runId ?? "", // Filled in by caller
+      taskIdentifier: descriptor.queue,
+      orgId: descriptor.orgId,
+      projectId: descriptor.projectId,
+      environmentId: descriptor.envId,
+      environmentType: decoded.environmentType,
+      queue: decoded.queue,
+      concurrencyKey: descriptor.concurrencyKey,
+      timestamp: decoded.timestamp,
+      attempt: decoded.attempt,
+      workerQueue: decoded.workerQueue,
+    };
+
+    return [null, message];
+  }
+
+  // Legacy JSON format
   const deserializedMessage = safeJsonParse(rawMessage);
 
   const message = OutputPayload.safeParse(deserializedMessage);

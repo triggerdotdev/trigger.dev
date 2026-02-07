@@ -63,6 +63,17 @@ export type RunEngineOptions = {
       scanJitterInMs?: number;
       processMarkedJitterInMs?: number;
     };
+    /** TTL system options for automatic run expiration */
+    ttlSystem?: {
+      /** Number of shards for TTL sorted sets (default: same as queue shards) */
+      shardCount?: number;
+      /** How often to poll each shard for expired runs (ms, default: 1000) */
+      pollIntervalMs?: number;
+      /** Max number of runs to expire per poll per shard (default: 100) */
+      batchSize?: number;
+      /** Whether TTL consumers are disabled (default: false) */
+      disabled?: boolean;
+    };
   };
   runLock: {
     redis: RedisOptions;
