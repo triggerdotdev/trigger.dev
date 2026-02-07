@@ -135,60 +135,30 @@ This matches the existing retry pattern in `DynamicFlushScheduler` but adapted f
 
 ## 3. ClickHouse Schema
 
-### 3.1 Raw metrics table
+### 3.1 Cardinality analysis
+
+The dimension cardinality of queue metrics is **not low** and should be designed for growth:
+
+| Dimension | Current | Future Growth Path |
+|-----------|---------|-------------------|
+| `organization_id` | Hundreds | Thousands (hosted platform growth) |
+| `project_id` | ~1-10 per org | Tens per org |
+| `environment_id` | ~3-5 per project | Thousands per project (preview envs, ephemeral test envs) |
+| `queue_name` | Tens per project (task-based) | Stable — per-entity queue names have been removed |
+
+The cross-product of `(org × project × env × queue)` could reach millions of unique combinations at scale. However, the critical insight is that **only active queues produce rows** — a queue with no operations in a 5-second window produces zero rows. Most queues are idle most of the time, so the actual row count is driven by active queue-seconds, not total queues.
+
+This means:
+- **No raw per-event table**: Storing a row per Lua script invocation would be wasteful at high throughput. Instead, the consumer pre-aggregates stream entries into 5-second buckets before inserting into ClickHouse.
+- **SummingMergeTree is safe**: Even with high cardinality, SummingMergeTree handles the merge load well because the ORDER BY key matches exactly what we group by.
+- **ABR-style sampling is not needed yet** but could become relevant if the active queue count grows into the tens of thousands.
+
+### 3.2 5-second table (primary tier, direct ingest target)
+
+The consumer pre-aggregates raw stream entries into 5-second buckets in memory, then inserts directly into this table. There is no raw table and no materialized view — the consumer does the aggregation.
 
 ```sql
 -- +goose Up
-CREATE TABLE trigger_dev.raw_queue_metrics_v1
-(
-  -- Identifiers
-  organization_id     String,
-  project_id          String,
-  environment_id      String,
-  queue_name          String,
-
-  -- Timestamp of the metric snapshot
-  timestamp           DateTime64(3),
-
-  -- What operation triggered this snapshot
-  operation           LowCardinality(String),  -- 'enqueue', 'dequeue', 'ack', 'nack', 'dlq', 'ttl_expire'
-
-  -- Gauge metrics (point-in-time snapshots after the operation)
-  queue_length        UInt32 DEFAULT 0,        -- ZCARD of the queue sorted set
-  concurrency_current UInt32 DEFAULT 0,        -- SCARD of currentConcurrency set
-  concurrency_limit   UInt32 DEFAULT 0,        -- GET of concurrency limit key
-  env_queue_length    UInt32 DEFAULT 0,        -- ZCARD of env queue
-  env_concurrency     UInt32 DEFAULT 0,        -- SCARD of env currentConcurrency set
-  env_concurrency_limit UInt32 DEFAULT 0,      -- GET of env concurrency limit key
-
-  -- Counter/event metrics
-  enqueue_count       UInt32 DEFAULT 0,        -- 1 if this was an enqueue, 0 otherwise
-  dequeue_count       UInt32 DEFAULT 0,        -- number of messages dequeued (can be > 1)
-  ack_count           UInt32 DEFAULT 0,
-  nack_count          UInt32 DEFAULT 0,
-  dlq_count           UInt32 DEFAULT 0,
-  ttl_expire_count    UInt32 DEFAULT 0,
-
-  -- Latency metrics (only populated on dequeue/ack)
-  oldest_message_age_ms  UInt64 DEFAULT 0,     -- currentTime - score of oldest message in queue
-  wait_duration_ms       UInt64 DEFAULT 0      -- time from enqueue to dequeue (on ack)
-)
-ENGINE = MergeTree()
-PARTITION BY toYYYYMM(timestamp)
-ORDER BY (organization_id, project_id, environment_id, queue_name, timestamp)
-TTL timestamp + INTERVAL 8 DAY;
-```
-
-**Why MergeTree (not ReplacingMergeTree)?**
-- These are append-only metric events, not mutable state. No need for deduplication or versioning.
-- MergeTree has the best insert performance and simplest query semantics.
-- TTL of 8 days keeps raw data manageable; aggregated data lives longer.
-
-### 3.2 5-second aggregation (primary tier, materialized view)
-
-5-second buckets are the finest aggregation tier — they provide near-real-time resolution for dashboards while dramatically reducing row count vs. querying raw data. ClickHouse's `toStartOfFiveSeconds()` aligns naturally to 5s boundaries.
-
-```sql
 CREATE TABLE trigger_dev.queue_metrics_5s_v1
 (
   organization_id     String,
@@ -197,7 +167,7 @@ CREATE TABLE trigger_dev.queue_metrics_5s_v1
   queue_name          String,
   bucket_start        DateTime,
 
-  -- Counters (summed)
+  -- Counters (summed by SummingMergeTree on merge)
   enqueue_count       UInt64,
   dequeue_count       UInt64,
   ack_count           UInt64,
@@ -205,14 +175,14 @@ CREATE TABLE trigger_dev.queue_metrics_5s_v1
   dlq_count           UInt64,
   ttl_expire_count    UInt64,
 
-  -- Gauges (use SimpleAggregateFunction for proper max)
+  -- Gauges (SimpleAggregateFunction takes max on merge)
   max_queue_length          SimpleAggregateFunction(max, UInt32),
   max_concurrency_current   SimpleAggregateFunction(max, UInt32),
   max_env_queue_length      SimpleAggregateFunction(max, UInt32),
   max_env_concurrency       SimpleAggregateFunction(max, UInt32),
   max_oldest_message_age_ms SimpleAggregateFunction(max, UInt64),
 
-  -- For computing averages at query time
+  -- For computing averages at query time (summed on merge)
   total_wait_duration_ms    UInt64,
   wait_duration_count       UInt64
 )
@@ -220,35 +190,19 @@ ENGINE = SummingMergeTree()
 PARTITION BY toYYYYMM(bucket_start)
 ORDER BY (organization_id, project_id, environment_id, queue_name, bucket_start)
 TTL bucket_start + INTERVAL 2 DAY;
-
-CREATE MATERIALIZED VIEW trigger_dev.queue_metrics_5s_mv_v1
-TO trigger_dev.queue_metrics_5s_v1 AS
-SELECT
-  organization_id,
-  project_id,
-  environment_id,
-  queue_name,
-  toStartOfFiveSeconds(timestamp) AS bucket_start,
-  sum(enqueue_count) AS enqueue_count,
-  sum(dequeue_count) AS dequeue_count,
-  sum(ack_count) AS ack_count,
-  sum(nack_count) AS nack_count,
-  sum(dlq_count) AS dlq_count,
-  sum(ttl_expire_count) AS ttl_expire_count,
-  max(queue_length) AS max_queue_length,
-  max(concurrency_current) AS max_concurrency_current,
-  max(env_queue_length) AS max_env_queue_length,
-  max(env_concurrency) AS max_env_concurrency,
-  max(oldest_message_age_ms) AS max_oldest_message_age_ms,
-  sum(wait_duration_ms) AS total_wait_duration_ms,
-  countIf(wait_duration_ms > 0) AS wait_duration_count
-FROM trigger_dev.raw_queue_metrics_v1
-GROUP BY organization_id, project_id, environment_id, queue_name, bucket_start;
 ```
+
+**Why no raw table?**
+
+A raw per-event table (one row per Lua script invocation) would be the most flexible but is wasteful for this use case:
+- At 1000 ops/sec → 86M rows/day in raw vs. ~17K rows/day per active queue in 5s buckets
+- We don't need per-event granularity — 5s resolution is sufficient for all user-facing queries
+- The consumer can pre-aggregate in memory trivially (group stream entries by `(org, proj, env, queue, floor(ts/5s))` and compute sums/maxes)
+- SummingMergeTree handles duplicate inserts gracefully — if two consumer batches insert rows for the same 5s bucket, ClickHouse merges them correctly
 
 **Why 5-second buckets with 2-day TTL?**
 - 5s gives 12 data points per minute — smooth enough for real-time graphs, coarse enough to keep row counts manageable
-- At 100 queues, that's 100 × 17,280 buckets/day = ~1.7M rows/day — trivial for ClickHouse
+- Row count scales with *active* queues, not total queues — idle queues produce zero rows
 - 2-day TTL is sufficient since this tier is for real-time/recent dashboards; minute and hour tiers cover longer windows
 
 ### 3.3 Minute-level aggregation (middle tier)
@@ -373,14 +327,14 @@ GROUP BY organization_id, project_id, environment_id, queue_name, bucket_start;
 
 The query routing here borrows the core idea from [Cloudflare's ABR (Adaptive Bit Rate) analytics](https://blog.cloudflare.com/explaining-cloudflares-abr-analytics/): automatically select the best resolution table for each query based on the requested time range, so dashboards stay fast regardless of how far back the user looks.
 
-**Why full ABR (sampling) isn't needed here**: Cloudflare's ABR stores the *same raw events* at decreasing sample rates (100%, 10%, 1%, 0.01%) across parallel tables and multiplies counts by the sample interval at query time. This is designed for extremely high-cardinality data (billions of unique IP/URL/rule combinations per day) where pre-aggregation is impractical because you don't know what dimensions the user will GROUP BY.
+**Why full ABR (sampling) isn't needed yet**: Cloudflare's ABR stores the *same raw events* at decreasing sample rates (100%, 10%, 1%, 0.01%) across parallel tables and multiplies counts by the sample interval at query time. This is designed for extremely high-cardinality data (billions of unique IP/URL/rule combinations per day) where pre-aggregation is impractical because you don't know what dimensions the user will GROUP BY.
 
-Queue metrics are fundamentally different:
-- **Low cardinality**: only ~4 dimensions (org, project, env, queue_name)
-- **Fixed aggregations**: we always want the same sums/maxes — no ad-hoc GROUP BY on arbitrary fields
-- **Modest volume**: even at 1000 ops/sec, the 5s table produces only ~1.7M rows/day per 100 queues
+Queue metrics differ in one critical way:
+- **Fixed aggregations**: we always want the same sums/maxes — no ad-hoc GROUP BY on arbitrary fields. This means pre-aggregation works, unlike Cloudflare's analytics where users query arbitrary dimension combinations.
 
-For this workload, **tiered materialized views** (5s → 1m → 1h) are simpler and give deterministic query performance without the complexity of sample-interval arithmetic or managing 7 parallel tables. We get the *spirit* of ABR — adaptive resolution selection — via table routing:
+However, the cardinality is **not low** (see section 3.1) — the `(org × project × env × queue)` cross-product can reach millions. The saving grace is that volume scales with *active* queues, not total queues. If this assumption changes (e.g., many queues with low-frequency but steady activity across thousands of environments), ABR-style sampling at the 5s tier would become the right move.
+
+For now, **tiered pre-aggregation** (5s → 1m → 1h) is simpler and gives deterministic query performance without sample-interval arithmetic. We get the *spirit* of ABR — adaptive resolution selection — via table routing:
 
 | Requested Period | Resolution | Table | Max Data Points |
 |-----------------|------------|-------|-----------------|
@@ -389,8 +343,6 @@ For this workload, **tiered materialized views** (5s → 1m → 1h) are simpler 
 | Last 24 hours | 1m | `queue_metrics_by_minute_v1` | 1,440 |
 | Last 7 days | 1m | `queue_metrics_by_minute_v1` | 10,080 |
 | Last 30+ days | 1h | `queue_metrics_by_hour_v1` | 720 |
-
-**If queue metrics volume grows significantly** (e.g., thousands of queues across many environments), ABR-style sampling at the raw table level would become worthwhile — particularly storing a 10% sampled version of `raw_queue_metrics_v1` to handle longer-range queries on the raw data. But for the initial system, tiered MVs are the right call.
 
 The presenter can also downsample at query time (e.g., `GROUP BY toStartOfMinute(bucket_start)` on the 5s table) for periods between 2h-24h where you want fewer data points but higher fidelity than the minute table.
 
@@ -562,11 +514,29 @@ export class QueueMetricsConsumer {
   private async pollShard(shard: number): Promise<void> {
     // 1. First, check for pending (unacked) entries: XREADGROUP ... 0
     // 2. Then read new entries: XREADGROUP ... >
-    // 3. Parse entries into ClickHouse insert format
-    // 4. Bulk INSERT into raw_queue_metrics_v1
+    // 3. Pre-aggregate entries into 5s buckets in memory (see below)
+    // 4. Bulk INSERT aggregated rows into queue_metrics_5s_v1
     // 5. On success: XACK all processed IDs
     // 6. On failure: back off, retry from PEL next iteration
   }
+
+  /**
+   * Pre-aggregates raw stream entries into 5-second buckets.
+   *
+   * Groups entries by (org, project, env, queue, floor(timestamp / 5000))
+   * and computes:
+   *   - Counters: sum of enqueue_count, dequeue_count, etc.
+   *   - Gauges: max of queue_length, concurrency_current, etc.
+   *   - Latency: sum of wait_duration_ms, count of non-zero waits
+   *
+   * This reduces N raw stream entries into M << N aggregated rows
+   * (one per active queue per 5s window in the batch).
+   *
+   * SummingMergeTree handles the case where two consumer batches
+   * produce rows for the same 5s bucket — they merge correctly
+   * on background merge.
+   */
+  private preAggregate(entries: StreamEntry[]): AggregatedRow[] { ... }
 
   async stop(): Promise<void> {
     // Graceful shutdown
@@ -576,7 +546,7 @@ export class QueueMetricsConsumer {
 
 ### Phase 3: ClickHouse migration
 
-Add migration `016_add_queue_metrics.sql` with the tables and materialized views from section 3.
+Add migration `016_add_queue_metrics.sql` with the 5s table, minute/hour tables, and the two materialized views (5s→minute, minute→hour) from section 3.
 
 ### Phase 4: API and presenters
 
@@ -715,12 +685,16 @@ With MAXLEN ~100000 per shard and 2 shards:
 
 ### ClickHouse impact
 
-- Raw table: ~8 days retention, auto-pruned by TTL
-- At 1000 ops/sec, that's ~86M rows/day → ~690M rows in 8 days
-- With ZSTD compression and LowCardinality, expect ~10-20 bytes per row on disk → **~7-14GB** for raw data
-- 5-second aggregation: 17,280 rows/day/queue, 2-day TTL → very small footprint
-- Minute aggregation: 1,440 rows/day/queue, 31-day TTL → negligible
-- Hour aggregation: 24 rows/day/queue, 400-day TTL → negligible
+Since the consumer pre-aggregates into 5s buckets before inserting, row counts scale with *active queues per 5s window*, not with raw operation throughput:
+
+- **5s table** (primary): up to 17,280 rows/day per *continuously active* queue, 2-day TTL
+  - 1,000 active queues → ~17M rows/day → ~35M rows retained (2 days)
+  - With ZSTD compression: ~50-100 bytes/row → **~2-4GB** on disk
+- **Minute table**: 1,440 rows/day per active queue, 31-day TTL → modest
+- **Hour table**: 24 rows/day per active queue, 400-day TTL → negligible
+- **No raw table**: eliminates what would have been ~86M rows/day at 1000 ops/sec
+
+The critical scaling property: a queue that processes 1 event/5s and a queue that processes 10,000 events/5s produce the *same number of rows* in ClickHouse (1 per 5s window). Volume is proportional to distinct active queues, not throughput.
 
 ### Consumer resource usage
 
@@ -738,7 +712,7 @@ With MAXLEN ~100000 per shard and 2 shards:
 | XADD fails in Lua (pcall catches it) | Metric point lost | Acceptable — queue operation succeeds |
 | Stream consumer crashes | Messages accumulate in stream (bounded by MAXLEN) | Consumer restarts, reads from PEL + new entries |
 | ClickHouse INSERT fails | Messages stay in PEL | Retry with backoff; after 3 failures, pause + alert |
-| ClickHouse is down for extended period | Stream fills to MAXLEN, oldest entries trimmed | Gap in metrics; raw data lost but queue operations unaffected |
+| ClickHouse is down for extended period | Stream fills to MAXLEN, oldest entries trimmed | Gap in metrics; stream entries lost but queue operations unaffected |
 | Redis memory pressure | MAXLEN trimming kicks in aggressively | Some metric points lost; core queue operations unaffected |
 
 The key invariant: **queue operations (enqueue/dequeue/ack) are never blocked or slowed by metrics failures**.
@@ -769,11 +743,11 @@ The key invariant: **queue operations (enqueue/dequeue/ack) are never blocked or
 
 | Decision | Alternative | Why This Choice |
 |----------|-------------|-----------------|
-| MergeTree for raw metrics | ReplacingMergeTree | Append-only events, no updates needed. Simpler. |
-| SummingMergeTree for aggregations | AggregatingMergeTree | Simpler query semantics (`sum()` vs `merge()`). Matches existing codebase pattern (task_event_usage tables). |
+| No raw table, consumer pre-aggregates | Raw MergeTree + MV | Eliminates ~86M rows/day. Volume scales with active queues, not throughput. SummingMergeTree handles duplicate 5s bucket inserts via merge. |
+| SummingMergeTree for all tiers | AggregatingMergeTree | Simpler query semantics (`sum()` vs `merge()`). Matches existing codebase pattern (task_event_usage tables). |
 | XADD in Lua (inline) | Emit from Node.js after Lua returns | Lua gives atomic snapshot of queue state at exact moment of operation. Node.js would need separate Redis calls and introduce race conditions. |
 | Auto-generated stream IDs | Custom second+queue IDs | Avoids silent data loss from collisions. Redis auto-IDs are monotonic and unique. |
 | Separate alert evaluator | Alert in consumer pipeline | Decoupled failure domains, simpler consumer logic, richer query capabilities. |
-| 3-tier aggregation: 5s → 1m → 1h | Only minute + hour | 5s gives near-real-time dashboard resolution; minute and hour provide cost-effective longer-term storage. |
-| 8-day raw, 2-day 5s, 31-day minute, 400-day hour TTLs | Longer retention | Tiered retention balances storage cost vs. query needs. Raw and 5s are ephemeral; minute and hour are durable. |
+| 3-tier: 5s (ingest) → 1m → 1h | Raw + MV pipeline | Consumer pre-aggregation is simpler, avoids raw table bloat, and scales with active queues not throughput. |
+| 2-day 5s, 31-day minute, 400-day hour TTLs | Longer 5s retention | 5s is for real-time dashboards only; minute and hour tiers cover longer windows cost-effectively. |
 | Sharded streams | Single stream | Matches existing queue shard architecture. Enables horizontal scaling. |
