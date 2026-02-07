@@ -184,10 +184,12 @@ TTL timestamp + INTERVAL 8 DAY;
 - MergeTree has the best insert performance and simplest query semantics.
 - TTL of 8 days keeps raw data manageable; aggregated data lives longer.
 
-### 3.2 Minute-level aggregation (materialized view)
+### 3.2 5-second aggregation (primary tier, materialized view)
+
+5-second buckets are the finest aggregation tier — they provide near-real-time resolution for dashboards while dramatically reducing row count vs. querying raw data. ClickHouse's `toStartOfFiveSeconds()` aligns naturally to 5s boundaries.
 
 ```sql
-CREATE TABLE trigger_dev.queue_metrics_by_minute_v1
+CREATE TABLE trigger_dev.queue_metrics_5s_v1
 (
   organization_id     String,
   project_id          String,
@@ -203,15 +205,78 @@ CREATE TABLE trigger_dev.queue_metrics_by_minute_v1
   dlq_count           UInt64,
   ttl_expire_count    UInt64,
 
-  -- Gauges (use AggregateFunction for proper max/avg)
+  -- Gauges (use SimpleAggregateFunction for proper max)
   max_queue_length          SimpleAggregateFunction(max, UInt32),
   max_concurrency_current   SimpleAggregateFunction(max, UInt32),
   max_env_queue_length      SimpleAggregateFunction(max, UInt32),
   max_env_concurrency       SimpleAggregateFunction(max, UInt32),
   max_oldest_message_age_ms SimpleAggregateFunction(max, UInt64),
-  avg_wait_duration_ms      AggregateFunction(avg, UInt64),
 
-  -- For computing averages
+  -- For computing averages at query time
+  total_wait_duration_ms    UInt64,
+  wait_duration_count       UInt64
+)
+ENGINE = SummingMergeTree()
+PARTITION BY toYYYYMM(bucket_start)
+ORDER BY (organization_id, project_id, environment_id, queue_name, bucket_start)
+TTL bucket_start + INTERVAL 2 DAY;
+
+CREATE MATERIALIZED VIEW trigger_dev.queue_metrics_5s_mv_v1
+TO trigger_dev.queue_metrics_5s_v1 AS
+SELECT
+  organization_id,
+  project_id,
+  environment_id,
+  queue_name,
+  toStartOfFiveSeconds(timestamp) AS bucket_start,
+  sum(enqueue_count) AS enqueue_count,
+  sum(dequeue_count) AS dequeue_count,
+  sum(ack_count) AS ack_count,
+  sum(nack_count) AS nack_count,
+  sum(dlq_count) AS dlq_count,
+  sum(ttl_expire_count) AS ttl_expire_count,
+  max(queue_length) AS max_queue_length,
+  max(concurrency_current) AS max_concurrency_current,
+  max(env_queue_length) AS max_env_queue_length,
+  max(env_concurrency) AS max_env_concurrency,
+  max(oldest_message_age_ms) AS max_oldest_message_age_ms,
+  sum(wait_duration_ms) AS total_wait_duration_ms,
+  countIf(wait_duration_ms > 0) AS wait_duration_count
+FROM trigger_dev.raw_queue_metrics_v1
+GROUP BY organization_id, project_id, environment_id, queue_name, bucket_start;
+```
+
+**Why 5-second buckets with 2-day TTL?**
+- 5s gives 12 data points per minute — smooth enough for real-time graphs, coarse enough to keep row counts manageable
+- At 100 queues, that's 100 × 17,280 buckets/day = ~1.7M rows/day — trivial for ClickHouse
+- 2-day TTL is sufficient since this tier is for real-time/recent dashboards; minute and hour tiers cover longer windows
+
+### 3.3 Minute-level aggregation (middle tier)
+
+Rolls up from the 5-second table. Used for 1-hour to 7-day dashboard views and alert evaluation.
+
+```sql
+CREATE TABLE trigger_dev.queue_metrics_by_minute_v1
+(
+  organization_id     String,
+  project_id          String,
+  environment_id      String,
+  queue_name          String,
+  bucket_start        DateTime,
+
+  enqueue_count       UInt64,
+  dequeue_count       UInt64,
+  ack_count           UInt64,
+  nack_count          UInt64,
+  dlq_count           UInt64,
+  ttl_expire_count    UInt64,
+
+  max_queue_length          SimpleAggregateFunction(max, UInt32),
+  max_concurrency_current   SimpleAggregateFunction(max, UInt32),
+  max_env_queue_length      SimpleAggregateFunction(max, UInt32),
+  max_env_concurrency       SimpleAggregateFunction(max, UInt32),
+  max_oldest_message_age_ms SimpleAggregateFunction(max, UInt64),
+
   total_wait_duration_ms    UInt64,
   wait_duration_count       UInt64
 )
@@ -227,26 +292,27 @@ SELECT
   project_id,
   environment_id,
   queue_name,
-  toStartOfMinute(timestamp) AS bucket_start,
+  toStartOfMinute(bucket_start) AS bucket_start,
   sum(enqueue_count) AS enqueue_count,
   sum(dequeue_count) AS dequeue_count,
   sum(ack_count) AS ack_count,
   sum(nack_count) AS nack_count,
   sum(dlq_count) AS dlq_count,
   sum(ttl_expire_count) AS ttl_expire_count,
-  max(queue_length) AS max_queue_length,
-  max(concurrency_current) AS max_concurrency_current,
-  max(env_queue_length) AS max_env_queue_length,
-  max(env_concurrency) AS max_env_concurrency,
-  max(oldest_message_age_ms) AS max_oldest_message_age_ms,
-  avgState(wait_duration_ms) AS avg_wait_duration_ms,
-  sum(wait_duration_ms) AS total_wait_duration_ms,
-  countIf(wait_duration_ms > 0) AS wait_duration_count
-FROM trigger_dev.raw_queue_metrics_v1
+  max(max_queue_length) AS max_queue_length,
+  max(max_concurrency_current) AS max_concurrency_current,
+  max(max_env_queue_length) AS max_env_queue_length,
+  max(max_env_concurrency) AS max_env_concurrency,
+  max(max_oldest_message_age_ms) AS max_oldest_message_age_ms,
+  sum(total_wait_duration_ms) AS total_wait_duration_ms,
+  sum(wait_duration_count) AS wait_duration_count
+FROM trigger_dev.queue_metrics_5s_v1
 GROUP BY organization_id, project_id, environment_id, queue_name, bucket_start;
 ```
 
-### 3.3 Hour-level aggregation
+### 3.4 Hour-level aggregation (long-term tier)
+
+Rolls up from minute table. Used for 7-day+ views and long-term trends.
 
 ```sql
 CREATE TABLE trigger_dev.queue_metrics_by_hour_v1
@@ -302,6 +368,31 @@ SELECT
 FROM trigger_dev.queue_metrics_by_minute_v1
 GROUP BY organization_id, project_id, environment_id, queue_name, bucket_start;
 ```
+
+### 3.5 Query routing by time range (ABR-inspired)
+
+The query routing here borrows the core idea from [Cloudflare's ABR (Adaptive Bit Rate) analytics](https://blog.cloudflare.com/explaining-cloudflares-abr-analytics/): automatically select the best resolution table for each query based on the requested time range, so dashboards stay fast regardless of how far back the user looks.
+
+**Why full ABR (sampling) isn't needed here**: Cloudflare's ABR stores the *same raw events* at decreasing sample rates (100%, 10%, 1%, 0.01%) across parallel tables and multiplies counts by the sample interval at query time. This is designed for extremely high-cardinality data (billions of unique IP/URL/rule combinations per day) where pre-aggregation is impractical because you don't know what dimensions the user will GROUP BY.
+
+Queue metrics are fundamentally different:
+- **Low cardinality**: only ~4 dimensions (org, project, env, queue_name)
+- **Fixed aggregations**: we always want the same sums/maxes — no ad-hoc GROUP BY on arbitrary fields
+- **Modest volume**: even at 1000 ops/sec, the 5s table produces only ~1.7M rows/day per 100 queues
+
+For this workload, **tiered materialized views** (5s → 1m → 1h) are simpler and give deterministic query performance without the complexity of sample-interval arithmetic or managing 7 parallel tables. We get the *spirit* of ABR — adaptive resolution selection — via table routing:
+
+| Requested Period | Resolution | Table | Max Data Points |
+|-----------------|------------|-------|-----------------|
+| Last 30 minutes | 5s | `queue_metrics_5s_v1` | 360 |
+| Last 2 hours | 5s | `queue_metrics_5s_v1` | 1,440 |
+| Last 24 hours | 1m | `queue_metrics_by_minute_v1` | 1,440 |
+| Last 7 days | 1m | `queue_metrics_by_minute_v1` | 10,080 |
+| Last 30+ days | 1h | `queue_metrics_by_hour_v1` | 720 |
+
+**If queue metrics volume grows significantly** (e.g., thousands of queues across many environments), ABR-style sampling at the raw table level would become worthwhile — particularly storing a 10% sampled version of `raw_queue_metrics_v1` to handle longer-range queries on the raw data. But for the initial system, tiered MVs are the right call.
+
+The presenter can also downsample at query time (e.g., `GROUP BY toStartOfMinute(bucket_start)` on the 5s table) for periods between 2h-24h where you want fewer data points but higher fidelity than the minute table.
 
 ---
 
@@ -387,33 +478,34 @@ These are the new user-facing metrics enabled by this system:
 
 | Metric | Description | Query Source | User Value |
 |--------|-------------|-------------|------------|
-| **Throughput** | Enqueues/s, dequeues/s, completions/s | `sum(enqueue_count)` over time from minute table | "How busy is my queue?" |
-| **Queue depth over time** | Historical queue length graph | `max(max_queue_length)` from minute table | "Is my queue growing or draining?" |
-| **Wait time (queue latency)** | Time from enqueue to dequeue | `total_wait_duration_ms / wait_duration_count` from minute table | "How long do my tasks wait before starting?" — the most important user metric |
-| **Oldest message age** | How stale the oldest waiting run is | `max(max_oldest_message_age_ms)` from minute table | "Is something stuck?" |
+| **Throughput** | Enqueues/s, dequeues/s, completions/s | `sum(enqueue_count) / 5` over time from 5s table | "How busy is my queue?" |
+| **Queue depth over time** | Historical queue length graph | `max(max_queue_length)` from 5s table | "Is my queue growing or draining?" |
+| **Wait time (queue latency)** | Time from enqueue to dequeue | `total_wait_duration_ms / wait_duration_count` from 5s table | "How long do my tasks wait before starting?" — the most important user metric |
+| **Oldest message age** | How stale the oldest waiting run is | `max(max_oldest_message_age_ms)` from 5s table | "Is something stuck?" |
 | **Concurrency utilization over time** | Historical concurrency usage | `max(max_concurrency_current) / max(concurrency_limit)` | "Should I increase my concurrency limit?" |
-| **Failure rate** | Nacks + DLQ moves per minute | `sum(nack_count + dlq_count) / sum(dequeue_count)` | "Are my tasks failing?" |
+| **Failure rate** | Nacks + DLQ per 5s bucket | `sum(nack_count + dlq_count) / sum(dequeue_count)` | "Are my tasks failing?" |
 | **TTL expiration rate** | Runs expiring before execution | `sum(ttl_expire_count)` over time | "Am I losing work to TTLs?" |
 | **Environment-level totals** | Aggregate of all queues | Filtered by `environment_id`, grouped by time | "Overall environment health" |
 
 ### 5.3 Recommended API shape
 
 ```typescript
-// GET /api/v1/queues/:queueParam/metrics?period=1h&resolution=1m
+// GET /api/v1/queues/:queueParam/metrics?period=30m&resolution=5s
+// resolution: "5s" | "1m" | "1h" (auto-selected if omitted based on period)
 {
   queue: "my-queue",
-  period: { start: "2025-01-01T00:00:00Z", end: "2025-01-01T01:00:00Z" },
-  resolution: "1m",
+  period: { start: "2025-01-01T00:00:00Z", end: "2025-01-01T00:30:00Z" },
+  resolution: "5s",
   timeseries: [
     {
       timestamp: "2025-01-01T00:00:00Z",
-      throughput: { enqueued: 42, dequeued: 38, completed: 35 },
-      queue_depth: { max: 120, current: 95 },
+      throughput: { enqueued: 3, dequeued: 2, completed: 2 },
+      queue_depth: { max: 120 },
       latency: { avg_wait_ms: 1523, max_age_ms: 8200 },
-      concurrency: { current: 8, limit: 10, utilization_pct: 80 },
-      failures: { nack: 2, dlq: 0, ttl_expired: 1 }
+      concurrency: { max: 8, limit: 10, utilization_pct: 80 },
+      failures: { nack: 0, dlq: 0, ttl_expired: 0 }
     },
-    // ... one entry per minute
+    // ... one entry per 5 seconds (360 data points for 30 min)
   ]
 }
 ```
@@ -488,7 +580,7 @@ Add migration `016_add_queue_metrics.sql` with the tables and materialized views
 
 ### Phase 4: API and presenters
 
-- New `QueueMetricsPresenter` that queries the minute/hour tables
+- New `QueueMetricsPresenter` that queries the 5s/minute/hour tables (auto-selects based on time range)
 - New API endpoint `GET /api/v1/queues/:queueParam/metrics`
 - Environment-level metrics endpoint `GET /api/v1/environments/:envId/queue-metrics`
 
@@ -503,8 +595,8 @@ The alerting system should **not** be part of the stream consumer pipeline. Inst
 ```
 ┌─────────────────────────────────────┐
 │  QueueAlertEvaluator (cron job)     │
-│  - Runs every 60s via redis-worker  │
-│  - Queries queue_metrics_by_minute  │
+│  - Runs every 30s via redis-worker  │
+│  - Queries queue_metrics_5s / _min  │
 │  - Evaluates alert rules            │
 │  - Creates ProjectAlert records     │
 └─────────────────────────────────────┘
@@ -513,7 +605,7 @@ The alerting system should **not** be part of the stream consumer pipeline. Inst
 ### Why separate from the consumer?
 
 1. **Decoupled failure domains**: Alert evaluation failing shouldn't affect metric ingestion
-2. **Different cadence**: Metrics are ingested every second; alerts are evaluated every minute
+2. **Different cadence**: Metrics are ingested every second; alerts are evaluated every 30s
 3. **Query flexibility**: Alert conditions can use complex ClickHouse aggregations across multiple minutes
 4. **Reuses existing infrastructure**: The existing `ProjectAlert` + `ProjectAlertChannel` + `DeliverAlertService` system handles delivery via Slack/Email/Webhook
 
@@ -573,16 +665,16 @@ model QueueAlertRule {
 ### Alert evaluation flow
 
 ```
-1. QueueAlertEvaluator runs every 60s (via redis-worker cron)
+1. QueueAlertEvaluator runs every 30s (via redis-worker cron)
 2. Fetch all enabled QueueAlertRules
-3. For each rule, query ClickHouse:
-   - BACKLOG: SELECT max(max_queue_length) FROM queue_metrics_by_minute_v1
-              WHERE timestamp > now() - interval {windowMinutes} minute
+3. For each rule, query ClickHouse (uses 5s table for windows <= 2 hours, minute table otherwise):
+   - BACKLOG: SELECT max(max_queue_length) FROM queue_metrics_5s_v1
+              WHERE bucket_start > now() - interval {windowSeconds} second
               AND queue_name = {queueName}
-   - LATENCY: SELECT max(total_wait_duration_ms / wait_duration_count)
-              FROM queue_metrics_by_minute_v1 WHERE ...
+   - LATENCY: SELECT sum(total_wait_duration_ms) / sum(wait_duration_count)
+              FROM queue_metrics_5s_v1 WHERE ...
    - ERROR_RATE: SELECT sum(nack_count + dlq_count) / sum(dequeue_count)
-                 FROM queue_metrics_by_minute_v1 WHERE ...
+                 FROM queue_metrics_5s_v1 WHERE ...
 4. If threshold exceeded AND cooldown expired:
    a. Create ProjectAlert record
    b. Enqueue DeliverAlertService for each configured channel
@@ -626,8 +718,9 @@ With MAXLEN ~100000 per shard and 2 shards:
 - Raw table: ~8 days retention, auto-pruned by TTL
 - At 1000 ops/sec, that's ~86M rows/day → ~690M rows in 8 days
 - With ZSTD compression and LowCardinality, expect ~10-20 bytes per row on disk → **~7-14GB** for raw data
-- Minute aggregation: 1440 rows/day/queue → negligible
-- Hour aggregation: 24 rows/day/queue → negligible
+- 5-second aggregation: 17,280 rows/day/queue, 2-day TTL → very small footprint
+- Minute aggregation: 1,440 rows/day/queue, 31-day TTL → negligible
+- Hour aggregation: 24 rows/day/queue, 400-day TTL → negligible
 
 ### Consumer resource usage
 
@@ -681,5 +774,6 @@ The key invariant: **queue operations (enqueue/dequeue/ack) are never blocked or
 | XADD in Lua (inline) | Emit from Node.js after Lua returns | Lua gives atomic snapshot of queue state at exact moment of operation. Node.js would need separate Redis calls and introduce race conditions. |
 | Auto-generated stream IDs | Custom second+queue IDs | Avoids silent data loss from collisions. Redis auto-IDs are monotonic and unique. |
 | Separate alert evaluator | Alert in consumer pipeline | Decoupled failure domains, simpler consumer logic, richer query capabilities. |
-| 8-day raw TTL, 31-day minute, 400-day hour | Longer raw retention | Matches existing task_events pattern. Raw data is voluminous; aggregations are compact. |
+| 3-tier aggregation: 5s → 1m → 1h | Only minute + hour | 5s gives near-real-time dashboard resolution; minute and hour provide cost-effective longer-term storage. |
+| 8-day raw, 2-day 5s, 31-day minute, 400-day hour TTLs | Longer retention | Tiered retention balances storage cost vs. query needs. Raw and 5s are ephemeral; minute and hour are durable. |
 | Sharded streams | Single stream | Matches existing queue shard architecture. Enables horizontal scaling. |
