@@ -699,7 +699,135 @@ When the condition is no longer met, the evaluator can optionally auto-resolve:
 
 ---
 
-## 8. Performance Considerations
+## 8. Risks
+
+### Risk 1: Double-counting on consumer crash (MEDIUM)
+
+**The problem**: If the consumer crashes after a successful ClickHouse INSERT but before XACK, the entries remain in the PEL. On restart, they're re-read, re-aggregated, and re-inserted. SummingMergeTree will **sum the duplicate counters** (enqueue_count, dequeue_count, etc.), producing inflated values for that 5s bucket.
+
+Gauge metrics (SimpleAggregateFunction(max)) are unaffected — `max(x, x) = x`.
+
+**Likelihood**: Low. Requires a crash in the ~millisecond window between INSERT completing and XACK completing.
+
+**Impact**: One 5s bucket shows ~2x real counter values. Manifests as a brief spike in throughput graphs. Could trigger a false alert if the doubled count crosses a threshold (but the next evaluation 30s later would see normal values).
+
+**Mitigations** (pick one):
+1. **ClickHouse insert deduplication** (recommended): ClickHouse deduplicates identical inserted blocks by default (`insert_deduplicate=1`). If the consumer processes PEL entries separately from new entries (two separate INSERT calls), the PEL retry produces the exact same rows in the same order → same block hash → ClickHouse rejects the duplicate. **This works as long as PEL entries and new entries are never mixed in the same INSERT batch.**
+2. **Idempotency key per batch**: Include a `batch_id` column and use ReplacingMergeTree. But this changes merge semantics and adds complexity.
+3. **Accept it**: The window is small, the impact is bounded, and it self-corrects on the next bucket.
+
+### Risk 2: SummingMergeTree query correctness (MEDIUM)
+
+**The problem**: SummingMergeTree only guarantees correct results after background merges complete. Between inserts and the next merge, queries can return multiple rows for the same ORDER BY key, leading to over-counting.
+
+**Impact**: Dashboard briefly shows inflated numbers until the next merge (typically seconds to minutes).
+
+**Mitigation**: Every query must either:
+- Use `SELECT ... FROM table FINAL` (forces merge at query time — slower but correct)
+- Or use manual aggregation: `SELECT sum(enqueue_count), max(max_queue_length) ... GROUP BY org, proj, env, queue, bucket_start` (preferred — faster than FINAL, equally correct)
+
+The presenter layer should **always** use the manual aggregation pattern. This is a one-time implementation detail, not an ongoing risk, but it's easy to forget and introduce subtle bugs.
+
+### Risk 3: Redis Cluster incompatibility (LOW — but blocks future migration)
+
+**The problem**: The current Lua scripts use keys with different hash tag patterns in the same script. For example, `enqueueMessage` touches both `masterQueue:shard:0` (no hash tag) and `{org:X}:proj:Y:env:Z:queue:Q` (org hash tag). This works because the RunQueue uses a single Redis instance, not Redis Cluster.
+
+Adding a metrics stream key (e.g., `queue_metrics:shard:0`) to these Lua scripts continues this pattern — it's fine on a single instance but would fail on Redis Cluster because keys must hash to the same slot within a Lua script.
+
+**Impact**: Not a current issue, but constrains future Redis Cluster migration.
+
+**Mitigation**: If Redis Cluster becomes necessary, move the XADD out of the Lua script and into Node.js. The Node.js layer would read the Lua script's return values (which already include queue state) and issue the XADD to a separate connection. This loses the atomic snapshot property but the inaccuracy is negligible (microseconds between Lua return and XADD).
+
+### Risk 4: MAXLEN data loss during consumer outage (MEDIUM)
+
+**The problem**: If the consumer is down for an extended period, the stream fills to MAXLEN (~100K entries per shard). Once full, new XADD calls trim the oldest entries. Those entries are gone — they were never processed.
+
+**Impact**: Gap in metrics data proportional to the outage duration. At 1000 ops/sec with MAXLEN 100K, the stream fills in ~100 seconds. Any outage longer than that loses data.
+
+**Mitigations**:
+1. **Increase MAXLEN**: 500K entries ≈ 100MB per shard, buys ~8 minutes of buffer. Reasonable.
+2. **Monitor consumer lag**: Alert on `XPENDING` count growing. If the consumer is falling behind, intervene before data loss.
+3. **Accept bounded loss**: Queue operations are unaffected. Metrics gaps are visible but not catastrophic — the system is designed to be best-effort.
+
+### Risk 5: Feature flag adds latency even when disabled (LOW)
+
+**The problem**: The design proposes checking `redis.call('GET', 'queue_metrics:enabled')` inside every Lua script. This adds a GET to every queue operation even when metrics are disabled.
+
+**Mitigation**: Pass the enabled/disabled flag as an ARGV from Node.js instead of reading it from Redis inside Lua. The Node.js layer can cache the flag and refresh it periodically (e.g., every 10s). This moves the check out of the hot path entirely.
+
+### Risk 6: MV cascade propagates errors permanently (LOW)
+
+**The problem**: The minute MV reads from the 5s table, and the hour MV reads from the minute table. If incorrect data enters the 5s table (e.g., from double-counting), it propagates to minute and hour tables permanently. There's no way to retroactively fix aggregated data in downstream MVs.
+
+**Impact**: Low, because the scenarios that produce incorrect data (Risk 1) are rare and bounded to single 5s buckets.
+
+**Mitigation**: If correction is ever needed, the affected rows can be deleted from all three tables and re-inserted. ClickHouse supports `ALTER TABLE DELETE` mutations for this, though they're expensive and should be rare.
+
+---
+
+## 9. Metric Importance Ranking
+
+Ranked by user value — how directly the metric answers questions users actually ask.
+
+### Tier 1: Must-have (ship in v1)
+
+**1. Queue depth over time** — `max_queue_length`
+- Answers: "Is my queue backed up? Is it growing or draining?"
+- Why #1: This is the single most glanceable metric. A growing queue depth means processing can't keep up with ingest. Every user will look at this first.
+- Alert: `QUEUE_BACKLOG` — "queue depth > N for M minutes"
+
+**2. Wait time (queue latency)** — `total_wait_duration_ms / wait_duration_count`
+- Answers: "How long do tasks wait before starting execution?"
+- Why #2: Directly maps to end-user-perceived latency. If you trigger a task via an API call, wait time is your latency budget. This is often more actionable than queue depth — a queue with 1000 items draining fast might have lower wait time than a queue with 10 items and no concurrency.
+- Alert: `QUEUE_LATENCY` — "avg wait time > N seconds"
+
+**3. Concurrency utilization** — `max_concurrency_current` (with `concurrency_limit` for context)
+- Answers: "Am I at my concurrency limit? Should I increase it?"
+- Why #3: If utilization is consistently at 100%, the user knows exactly what to do (increase limit or optimize task duration). If it's low despite high queue depth, something else is wrong (paused queue, no workers, etc.). This is the diagnostic bridge between "queue is backed up" and "here's why."
+
+### Tier 2: Important (ship in v1 if feasible, otherwise v2)
+
+**4. Throughput** — `enqueue_count`, `dequeue_count`, `ack_count` per time window
+- Answers: "What's my processing rate? How busy is this queue?"
+- Why tier 2: Useful for capacity planning and spotting trends, but less immediately actionable than depth/latency/utilization. A user rarely wakes up and says "my throughput dropped" — they say "my queue is backed up" (depth) or "tasks are slow" (latency).
+
+**5. Oldest message age** — `max_oldest_message_age_ms`
+- Answers: "Is something stuck?"
+- Why tier 2: This is a specialization of queue depth but catches a different failure mode — a queue with only 5 items where the oldest is 30 minutes old suggests a stuck consumer or a permanently-failing task. Very useful for debugging but less universally applicable than depth/latency.
+
+### Tier 3: Good to have (v2)
+
+**6. Failure rate** — `nack_count + dlq_count` relative to `dequeue_count`
+- Answers: "What percentage of my tasks are failing?"
+- Why tier 3: Users already have per-run failure visibility in the existing dashboard. This adds the aggregate view (failure *rate* over time), which is useful for spotting trends but somewhat redundant with existing task run alerting (`TASK_RUN` alert type already exists).
+- Alert: `QUEUE_ERROR_RATE` — "failure rate > N% over M minutes"
+
+**7. TTL expiration rate** — `ttl_expire_count`
+- Answers: "Am I losing work to TTL expirations?"
+- Why tier 3: Only relevant for users who configure TTLs. When it fires, it's serious (work is being silently dropped), but the audience is small. Worth tracking from day one since it's nearly free (the counter is already in the schema), but the dashboard/alert for it can ship later.
+
+### Tier 4: Environment-level aggregates (v2)
+
+**8. Environment-level totals** — all above metrics aggregated across queues
+- Answers: "Is my environment healthy overall?"
+- Why tier 4: Useful for the dashboard overview page, but most debugging starts at the queue level. The per-queue metrics above are more actionable. Environment-level metrics are essentially `WHERE environment_id = X` without `AND queue_name = Y` — a query pattern, not a new metric.
+
+### Summary table
+
+| Rank | Metric | Primary Question | Alert | Ship in |
+|------|--------|-----------------|-------|---------|
+| 1 | Queue depth | "Is my queue backed up?" | QUEUE_BACKLOG | v1 |
+| 2 | Wait time | "How long do tasks wait?" | QUEUE_LATENCY | v1 |
+| 3 | Concurrency utilization | "Am I at my limit?" | — | v1 |
+| 4 | Throughput | "What's my processing rate?" | — | v1/v2 |
+| 5 | Oldest message age | "Is something stuck?" | — | v1/v2 |
+| 6 | Failure rate | "Are tasks failing?" | QUEUE_ERROR_RATE | v2 |
+| 7 | TTL expiration rate | "Am I losing work?" | — | v2 |
+| 8 | Environment aggregates | "Is my env healthy?" | — | v2 |
+
+---
+
+## 10. Performance Considerations
 
 ### Redis impact
 
@@ -744,7 +872,7 @@ The critical scaling property: a queue that processes 1 event/5s and a queue tha
 
 ---
 
-## 9. Failure Modes and Recovery
+## 11. Failure Modes and Recovery
 
 | Failure | Impact | Recovery |
 |---------|--------|----------|
@@ -758,11 +886,11 @@ The key invariant: **queue operations (enqueue/dequeue/ack) are never blocked or
 
 ---
 
-## 10. Migration and Rollout Strategy
+## 12. Migration and Rollout Strategy
 
-1. **Feature flag**: Gate the XADD emission in Lua scripts behind a Redis key (`queue_metrics:enabled`). Check at the start of the metrics emission block:
+1. **Feature flag**: Pass a metrics-enabled flag as an ARGV to Lua scripts from Node.js (see Risk 5 — avoids an extra GET on every Lua invocation). The Node.js layer caches the flag from a Redis key (`queue_metrics:enabled`) and refreshes every 10s:
    ```lua
-   local metricsEnabled = redis.call('GET', 'queue_metrics:enabled')
+   local metricsEnabled = ARGV[metricsEnabledIndex]
    if metricsEnabled == '1' then
      -- emit metrics
    end
@@ -778,7 +906,7 @@ The key invariant: **queue operations (enqueue/dequeue/ack) are never blocked or
 
 ---
 
-## 11. Summary of Tradeoffs
+## 13. Summary of Tradeoffs
 
 | Decision | Alternative | Why This Choice |
 |----------|-------------|-----------------|
