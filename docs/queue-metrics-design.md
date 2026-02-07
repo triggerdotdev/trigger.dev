@@ -644,7 +644,186 @@ class MetricsStreamConsumer<TEntry, TAggregated> {
 }
 ```
 
-### 6.4 MetricsStreamEmitter (convenience for Node.js producers)
+### 6.4 Lua emission helpers
+
+Every Lua XADD block has the same boilerplate: check the enabled flag, wrap in pcall, XADD with MAXLEN and auto-generated ID, convert values to strings. The package provides a TypeScript function that **generates the Lua code** at command registration time, so each Lua script just appends the generated block.
+
+```typescript
+/**
+ * Generates a Lua code block that emits a metric entry to a Redis Stream.
+ *
+ * Handles:
+ * - Enabled flag check (skips emission when disabled)
+ * - pcall wrapping (metric failures never abort the parent operation)
+ * - XADD with MAXLEN ~ and auto-generated ID
+ * - tostring() conversion for numeric values
+ *
+ * The caller provides:
+ * - KEYS/ARGV indices for the stream key and enabled flag
+ * - A block of Lua code that computes local variables (domain-specific)
+ * - A field mapping from stream field names to Lua expressions
+ */
+function createMetricsEmitLua(options: {
+  /** KEYS index for the metrics stream (e.g., 9 → KEYS[9]) */
+  streamKeyIndex: number;
+  /** ARGV index for the metrics-enabled flag (e.g., 5 → ARGV[5]) */
+  enabledFlagArgvIndex: number;
+  /** Max stream length for XADD MAXLEN ~ */
+  maxStreamLength: number;
+  /**
+   * Lua code block that computes local variables used in `fields`.
+   * These are domain-specific Redis calls (ZCARD, SCARD, etc.)
+   * that the generic layer doesn't know about.
+   * Variable names should be prefixed with _m_ to avoid collisions.
+   */
+  computeBlock: string;
+  /**
+   * Ordered list of [fieldName, luaExpression] pairs for the XADD.
+   * Expressions can reference variables from computeBlock, ARGV, or
+   * variables already in scope in the parent Lua script.
+   * Numeric expressions are automatically wrapped in tostring().
+   */
+  fields: Array<[string, string]>;
+}): string {
+  const fieldArgs = options.fields
+    .map(([name, expr]) => `'${name}', tostring(${expr})`)
+    .join(",\n      ");
+
+  return `
+if ARGV[${options.enabledFlagArgvIndex}] == '1' then
+  pcall(function()
+    ${options.computeBlock}
+    redis.call('XADD', KEYS[${options.streamKeyIndex}],
+      'MAXLEN', '~', '${options.maxStreamLength}', '*',
+      ${fieldArgs}
+    )
+  end)
+end
+`;
+}
+```
+
+Usage in a Lua script definition:
+
+```typescript
+// Generated once at command registration time
+const enqueueMetricsBlock = createMetricsEmitLua({
+  streamKeyIndex: 9,
+  enabledFlagArgvIndex: 5,
+  maxStreamLength: 100_000,
+  computeBlock: `
+    local _m_ql = redis.call('ZCARD', queueKey)
+    local _m_cc = redis.call('SCARD', queueCurrentConcurrencyKey)
+    local _m_eql = redis.call('ZCARD', envQueueKey)
+    local _m_ec = redis.call('SCARD', envCurrentConcurrencyKey)
+    local _m_age = 0
+    local _m_oldest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+    if #_m_oldest > 0 then
+      local _m_now = tonumber(redis.call('TIME')[1]) * 1000
+      _m_age = _m_now - tonumber(_m_oldest[2])
+    end
+  `,
+  fields: [
+    ['org', 'ARGV[6]'],
+    ['proj', 'ARGV[7]'],
+    ['env', 'ARGV[8]'],
+    ['queue', 'queueName'],
+    ['op', '"enqueue"'],
+    ['ql', '_m_ql'],
+    ['cc', '_m_cc'],
+    ['eql', '_m_eql'],
+    ['ec', '_m_ec'],
+    ['age', '_m_age'],
+    ['eq', '1'],
+  ],
+});
+
+// Then in #registerCommands():
+this.redis.defineCommand("enqueueMessage", {
+  numberOfKeys: 9,  // was 8, +1 for metricsStreamKey
+  lua: `
+    ${existingEnqueueLua}
+    ${enqueueMetricsBlock}
+  `,
+});
+```
+
+Since the gauge computations (ZCARD, SCARD, etc.) are the same across most queue operations, a queue-specific helper can eliminate further repetition:
+
+```typescript
+/**
+ * Queue-specific helper that generates the computeBlock + fields
+ * for queue metrics. Lives in run-engine, not in the generic package.
+ */
+function queueMetricsLuaBlock(options: {
+  streamKeyIndex: number;
+  enabledFlagArgvIndex: number;
+  orgArgvIndex: number;
+  projArgvIndex: number;
+  envArgvIndex: number;
+  operation: 'enqueue' | 'dequeue' | 'ack' | 'nack' | 'dlq';
+  counterField: 'eq' | 'dq' | 'ak' | 'nk' | 'dlq';
+  /** Lua variable names that are in scope in the parent script */
+  vars: {
+    queueKey: string;
+    queueConcurrencyKey: string;
+    envQueueKey: string;
+    envConcurrencyKey: string;
+    queueName: string;
+  };
+}): string {
+  return createMetricsEmitLua({
+    streamKeyIndex: options.streamKeyIndex,
+    enabledFlagArgvIndex: options.enabledFlagArgvIndex,
+    maxStreamLength: 100_000,
+    computeBlock: `
+      local _m_ql = redis.call('ZCARD', ${options.vars.queueKey})
+      local _m_cc = redis.call('SCARD', ${options.vars.queueConcurrencyKey})
+      local _m_eql = redis.call('ZCARD', ${options.vars.envQueueKey})
+      local _m_ec = redis.call('SCARD', ${options.vars.envConcurrencyKey})
+      local _m_age = 0
+      local _m_oldest = redis.call('ZRANGE', ${options.vars.queueKey}, 0, 0, 'WITHSCORES')
+      if #_m_oldest > 0 then
+        local _m_now = tonumber(redis.call('TIME')[1]) * 1000
+        _m_age = _m_now - tonumber(_m_oldest[2])
+      end
+    `,
+    fields: [
+      ['org', `ARGV[${options.orgArgvIndex}]`],
+      ['proj', `ARGV[${options.projArgvIndex}]`],
+      ['env', `ARGV[${options.envArgvIndex}]`],
+      ['queue', options.vars.queueName],
+      ['op', `"${options.operation}"`],
+      ['ql', '_m_ql'],
+      ['cc', '_m_cc'],
+      ['eql', '_m_eql'],
+      ['ec', '_m_ec'],
+      ['age', '_m_age'],
+      [options.counterField, '1'],
+    ],
+  });
+}
+
+// Adding metrics to enqueueMessage is now:
+const enqueueMetrics = queueMetricsLuaBlock({
+  streamKeyIndex: 9,
+  enabledFlagArgvIndex: 5,
+  orgArgvIndex: 6, projArgvIndex: 7, envArgvIndex: 8,
+  operation: 'enqueue',
+  counterField: 'eq',
+  vars: {
+    queueKey: 'KEYS[2]',
+    queueConcurrencyKey: 'KEYS[4]',
+    envQueueKey: 'KEYS[8]',
+    envConcurrencyKey: 'KEYS[5]',
+    queueName: 'queueName',
+  },
+});
+```
+
+This means adding metrics to all 6 Lua scripts is 6 calls to `queueMetricsLuaBlock()` with different variable mappings, instead of 6 hand-written copies of the same ~20-line Lua block.
+
+### 6.5 MetricsStreamEmitter (convenience for Node.js producers)
 
 For metrics emitted from Node.js (not Lua), provide a thin helper:
 
@@ -683,7 +862,7 @@ class MetricsStreamEmitter {
 }
 ```
 
-### 6.5 Queue metrics as the first MetricDefinition
+### 6.6 Queue metrics as the first MetricDefinition
 
 ```typescript
 const queueMetricsDefinition: MetricDefinition<QueueMetricEntry, QueueMetricRow> = {
@@ -754,7 +933,7 @@ const queueMetricsDefinition: MetricDefinition<QueueMetricEntry, QueueMetricRow>
 };
 ```
 
-### 6.6 Example: adding a second metric type
+### 6.7 Example: adding a second metric type
 
 To ship a new metric to ClickHouse, you only need:
 
@@ -814,7 +993,7 @@ const workerHealthConsumer = new MetricsStreamConsumer({
 await workerHealthConsumer.start();
 ```
 
-### 6.7 Where to put the generic pipeline
+### 6.8 Where to put the generic pipeline
 
 ```
 internal-packages/
@@ -822,17 +1001,21 @@ internal-packages/
     src/
       types.ts                 # MetricDefinition interface
       consumer.ts              # MetricsStreamConsumer
-      emitter.ts               # MetricsStreamEmitter
+      emitter.ts               # MetricsStreamEmitter (Node.js producers)
+      lua.ts                   # createMetricsEmitLua() (Lua code generation)
       helpers.ts               # sum(), max(), countNonZero(), redisStreamIdToMs()
       index.ts                 # public exports
 
   run-engine/
     src/run-queue/
-      queueMetrics.ts          # queueMetricsDefinition (implements MetricDefinition)
-      index.ts                 # Lua scripts with XADD emission
+      queueMetrics.ts          # queueMetricsDefinition + queueMetricsLuaBlock()
+      index.ts                 # Lua scripts with generated XADD blocks appended
 ```
 
-The generic pipeline lives in its own internal package so it can be used by any app (webapp, supervisor) without depending on run-engine.
+The generic pipeline lives in its own internal package so it can be used by any app (webapp, supervisor) without depending on run-engine. It provides three concerns:
+- **Consumer side**: `MetricDefinition` + `MetricsStreamConsumer` (stream → ClickHouse)
+- **Node.js emission**: `MetricsStreamEmitter` (convenience XADD wrapper)
+- **Lua emission**: `createMetricsEmitLua()` (generates Lua code for XADD with pcall/enabled/MAXLEN boilerplate)
 
 ---
 
@@ -840,40 +1023,38 @@ The generic pipeline lives in its own internal package so it can be used by any 
 
 ### Phase 1: Generic pipeline package
 
-Create `@internal/metrics-pipeline` with `MetricDefinition`, `MetricsStreamConsumer`, `MetricsStreamEmitter`, and helpers. This is framework code with no queue-specific logic.
+Create `@internal/metrics-pipeline` with:
+- `MetricDefinition` interface and `MetricsStreamConsumer` (consumer side)
+- `MetricsStreamEmitter` (Node.js emission)
+- `createMetricsEmitLua()` (Lua code generation)
+- Aggregation helpers: `sum()`, `max()`, `countNonZero()`, `redisStreamIdToMs()`
 
-### Phase 2: Lua script changes
+This is framework code with no queue-specific logic.
 
-Modify each Lua script to accept an additional KEYS entry (the metrics stream key) and emit an XADD at the end. The additional KEYS/ARGV entries to pass:
+### Phase 2: Queue metric definition + Lua script changes
 
-| Script | New KEYS | New ARGV |
-|--------|----------|----------|
-| `enqueueMessage` | `metricsStreamKey` | `orgId`, `projId`, `envId` |
-| `enqueueMessageWithTtl` | `metricsStreamKey` | `orgId`, `projId`, `envId` |
-| `dequeueMessagesFromQueue` | `metricsStreamKey` | `orgId`, `projId`, `envId` |
-| `acknowledgeMessage` | `metricsStreamKey` | `orgId`, `projId`, `envId` |
-| `nackMessage` | `metricsStreamKey` | `orgId`, `projId`, `envId` |
-| `moveToDeadLetterQueue` | `metricsStreamKey` | `orgId`, `projId`, `envId` |
+1. Create `queueMetricsLuaBlock()` helper in `run-engine/src/run-queue/queueMetrics.ts` that wraps `createMetricsEmitLua()` with queue-specific gauge computations (section 6.4).
 
-Note: The org/proj/env IDs are already available in the message payload (InputPayload/OutputPayload). For the enqueue script, they're directly in ARGV. For dequeue, they're parsed from the queue key. For ack/nack, the message data is available.
+2. For each Lua script, generate the metrics block via `queueMetricsLuaBlock()` and append it to the existing Lua string. Each script needs +1 to `numberOfKeys` (for `metricsStreamKey`) and +4 ARGV entries (`metricsEnabled`, `orgId`, `projId`, `envId`):
 
-**Important**: The XADD is fire-and-forget within the Lua script. If it fails (e.g., stream doesn't exist), it should not abort the main operation. Wrap in `pcall`:
+| Script | Counter field | Notes |
+|--------|--------------|-------|
+| `enqueueMessage` | `eq` | org/proj/env from ARGV |
+| `enqueueMessageWithTtl` | `eq` | org/proj/env from ARGV |
+| `dequeueMessagesFromQueue` | `dq` | org/proj/env parsed from queue key in Lua |
+| `acknowledgeMessage` | `ak` | org/proj/env from message data |
+| `nackMessage` | `nk` | org/proj/env from message data |
+| `moveToDeadLetterQueue` | `dlq` | org/proj/env from message data |
 
-```lua
-pcall(function()
-  redis.call('XADD', streamKey, 'MAXLEN', '~', '100000', '*', ...)
-end)
-```
+The pcall wrapping and enabled-flag check are handled by `createMetricsEmitLua()` — no manual boilerplate.
 
-### Phase 3: Queue metric definition + consumer wiring
+3. Create `queueMetricsDefinition` (section 6.6) and wire a `MetricsStreamConsumer` for it in the webapp startup.
 
-Create `queueMetricsDefinition` (section 6.5) and wire a `MetricsStreamConsumer` for it in the webapp startup. The queue metric definition specifies the 5s bucket size, the target ClickHouse table, and the aggregation logic.
-
-### Phase 4: ClickHouse migration
+### Phase 3: ClickHouse migration
 
 Add migration `016_add_queue_metrics.sql` with the 5s table, minute/hour tables, and the two materialized views (5s→minute, minute→hour) from section 3.
 
-### Phase 5: API and presenters
+### Phase 4: API and presenters
 
 - New `QueueMetricsPresenter` that queries the 5s/minute/hour tables (auto-selects based on time range)
 - New API endpoint `GET /api/v1/queues/:queueParam/metrics`
