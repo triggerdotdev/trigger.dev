@@ -21,9 +21,12 @@ import {
 } from "~/components/primitives/Table";
 import { useUser } from "~/hooks/useUser";
 import { adminGetUsers, redirectWithImpersonation } from "~/models/admin.server";
-import { commitImpersonationSession, setImpersonationId } from "~/services/impersonation.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser, requireUserId } from "~/services/session.server";
+import {
+  validateAndConsumeImpersonationToken,
+} from "~/services/impersonation.server";
 import { createSearchParams } from "~/utils/searchParams";
+import { logger } from "~/services/logger.server";
 
 export const SearchParams = z.object({
   page: z.coerce.number().optional(),
@@ -32,7 +35,44 @@ export const SearchParams = z.object({
 
 export type SearchParams = z.infer<typeof SearchParams>;
 
+const FormSchema = z.object({ id: z.string() });
+
+async function handleImpersonationRequest(
+  request: Request,
+  userId: string
+): Promise<Response> {
+  const user = await requireUser(request);
+  if (!user.admin) {
+    return redirect("/");
+  }
+  return redirectWithImpersonation(request, userId, "/");
+}
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  // Check if this is an impersonation request via query parameter (e.g., from Plain customer cards)
+  const url = new URL(request.url);
+  const impersonateUserId = url.searchParams.get("impersonate");
+  const impersonationToken = url.searchParams.get("impersonationToken");
+
+  if (impersonateUserId) {
+    // Require both userId and token for GET-based impersonation
+    if (!impersonationToken) {
+      logger.warn("Impersonation request missing token");
+      return redirect("/");
+    }
+
+    // Validate and consume the token (prevents replay attacks)
+    const validatedUserId = await validateAndConsumeImpersonationToken(impersonationToken);
+
+    if (!validatedUserId || validatedUserId !== impersonateUserId) {
+      logger.warn("Invalid or expired impersonation token");
+      return redirect("/");
+    }
+
+    return handleImpersonationRequest(request, impersonateUserId);
+  }
+
+  // Normal loader logic for admin dashboard
   const userId = await requireUserId(request);
 
   const searchParams = createSearchParams(request.url, SearchParams);
@@ -44,8 +84,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson(result);
 };
 
-const FormSchema = z.object({ id: z.string() });
-
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method.toLowerCase() !== "post") {
     return new Response("Method not allowed", { status: 405 });
@@ -54,12 +92,12 @@ export async function action({ request }: ActionFunctionArgs) {
   const payload = Object.fromEntries(await request.formData());
   const { id } = FormSchema.parse(payload);
 
-  return redirectWithImpersonation(request, id, "/");
+  return handleImpersonationRequest(request, id);
 }
 
 export default function AdminDashboardRoute() {
   const user = useUser();
-  const { users, filters, page, pageCount } = useTypedLoaderData<typeof loader>();
+  const { users, filters, page, pageCount } = useTypedLoaderData<typeof loader>() as any;
 
   return (
     <main
@@ -100,14 +138,14 @@ export default function AdminDashboardRoute() {
                 <Paragraph>No users found for search</Paragraph>
               </TableBlankRow>
             ) : (
-              users.map((user) => {
+              users.map((user: (typeof users)[0]) => {
                 return (
                   <TableRow key={user.id}>
                     <TableCell>
                       <CopyableText value={user.email} />
                     </TableCell>
                     <TableCell>
-                      {user.orgMemberships.map((org) => (
+                      {user.orgMemberships.map((org: (typeof user.orgMemberships)[0]) => (
                         <LinkButton
                           key={org.organization.slug}
                           variant="minimal/small"
