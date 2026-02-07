@@ -3,7 +3,7 @@ import { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { DeleteProjectService } from "./deleteProject.server";
-import { loopsClient } from "./loops.server";
+import { loopsClient } from "./loopsGlobal.server";
 import { getCurrentPlan } from "./platform.v3.server";
 
 export class DeleteOrganizationService {

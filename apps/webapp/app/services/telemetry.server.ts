@@ -5,7 +5,7 @@ import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import type { User } from "~/models/user.server";
 import { singleton } from "~/utils/singleton";
-import { loopsClient } from "./loops.server";
+import { loopsClient } from "./loopsGlobal.server";
 
 type Options = {
   postHogApiKey?: string;

@@ -1,8 +1,16 @@
-import { env } from "~/env.server";
-import { logger } from "./logger.server";
+import { logger as defaultLogger } from "./logger.server";
 
-class LoopsClient {
-  constructor(private readonly apiKey: string) {}
+type Logger = Pick<typeof defaultLogger, "info" | "error">;
+
+export class LoopsClient {
+  #logger: Logger;
+
+  constructor(
+    private readonly apiKey: string,
+    logger: Logger = defaultLogger
+  ) {
+    this.#logger = logger;
+  }
 
   async userCreated({
     userId,
@@ -13,7 +21,7 @@ class LoopsClient {
     email: string;
     name: string | null;
   }) {
-    logger.info(`Loops send "sign-up" event`, { userId, email, name });
+    this.#logger.info(`Loops send "sign-up" event`, { userId, email, name });
     return this.#sendEvent({
       email,
       userId,
@@ -23,30 +31,41 @@ class LoopsClient {
   }
 
   async deleteContact({ email }: { email: string }): Promise<boolean> {
-    logger.info(`Loops deleting contact`, { email });
+    this.#logger.info(`Loops deleting contact`, { email });
 
     try {
-      const response = await fetch(
-        `https://app.loops.so/api/v1/contacts/${encodeURIComponent(email)}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${this.apiKey}` },
-        }
-      );
+      const response = await fetch("https://app.loops.so/api/v1/contacts/delete", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      });
 
       if (!response.ok) {
-        // 404 is okay - contact already deleted
-        if (response.status === 404) {
-          logger.info(`Loops contact already deleted`, { email });
+        this.#logger.error(`Loops deleteContact bad status`, { status: response.status, email });
+        return false;
+      }
+
+      const responseBody = (await response.json()) as { success: boolean; message?: string };
+
+      if (!responseBody.success) {
+        // "Contact not found" means already deleted - treat as success
+        if (responseBody.message === "Contact not found.") {
+          this.#logger.info(`Loops contact already deleted`, { email });
           return true;
         }
-        logger.error(`Loops deleteContact bad status`, { status: response.status, email });
+        this.#logger.error(`Loops deleteContact failed response`, {
+          message: responseBody.message,
+          email,
+        });
         return false;
       }
 
       return true;
     } catch (error) {
-      logger.error(`Loops deleteContact failed`, { error, email });
+      this.#logger.error(`Loops deleteContact failed`, { error, email });
       return false;
     }
   }
@@ -80,7 +99,7 @@ class LoopsClient {
       const response = await fetch("https://app.loops.so/api/v1/events/send", options);
 
       if (!response.ok) {
-        logger.error(`Loops sendEvent ${eventName} bad status`, {
+        this.#logger.error(`Loops sendEvent ${eventName} bad status`, {
           status: response.status,
           email,
           userId,
@@ -94,7 +113,7 @@ class LoopsClient {
       const responseBody = (await response.json()) as any;
 
       if (!responseBody.success) {
-        logger.error(`Loops sendEvent ${eventName} failed response`, {
+        this.#logger.error(`Loops sendEvent ${eventName} failed response`, {
           message: responseBody.message,
         });
         return false;
@@ -102,10 +121,8 @@ class LoopsClient {
 
       return true;
     } catch (error) {
-      logger.error(`Loops sendEvent ${eventName} failed`, { error });
+      this.#logger.error(`Loops sendEvent ${eventName} failed`, { error });
       return false;
     }
   }
 }
-
-export const loopsClient = env.LOOPS_API_KEY ? new LoopsClient(env.LOOPS_API_KEY) : null;

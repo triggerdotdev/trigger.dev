@@ -1,35 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { LoopsClient } from "../app/services/loops.server";
 
-// We need to test the LoopsClient class directly, so we'll create a test instance
-// rather than importing the singleton (which depends on env vars)
-
-class LoopsClient {
-  constructor(private readonly apiKey: string) {}
-
-  async deleteContact({ email }: { email: string }): Promise<boolean> {
-    try {
-      const response = await fetch(
-        `https://app.loops.so/api/v1/contacts/${encodeURIComponent(email)}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${this.apiKey}` },
-        }
-      );
-
-      if (!response.ok) {
-        // 404 is okay - contact already deleted
-        if (response.status === 404) {
-          return true;
-        }
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
-}
+// No-op logger for tests
+const noopLogger = {
+  info: () => {},
+  error: () => {},
+};
 
 describe("LoopsClient", () => {
   const originalFetch = global.fetch;
@@ -45,32 +21,38 @@ describe("LoopsClient", () => {
   });
 
   describe("deleteContact", () => {
-    it("should return true on successful deletion (200)", async () => {
+    it("should return true on successful deletion", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
+        json: async () => ({ success: true, message: "Contact deleted." }),
       });
 
-      const client = new LoopsClient("test-api-key");
+      const client = new LoopsClient("test-api-key", noopLogger);
       const result = await client.deleteContact({ email: "test@example.com" });
 
       expect(result).toBe(true);
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://app.loops.so/api/v1/contacts/test%40example.com",
+        "https://app.loops.so/api/v1/contacts/delete",
         {
-          method: "DELETE",
-          headers: { Authorization: "Bearer test-api-key" },
+          method: "POST",
+          headers: {
+            Authorization: "Bearer test-api-key",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email: "test@example.com" }),
         }
       );
     });
 
-    it("should return true when contact already deleted (404)", async () => {
+    it("should return true when contact not found (already deleted)", async () => {
       mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
+        ok: true,
+        status: 200,
+        json: async () => ({ success: false, message: "Contact not found." }),
       });
 
-      const client = new LoopsClient("test-api-key");
+      const client = new LoopsClient("test-api-key", noopLogger);
       const result = await client.deleteContact({ email: "test@example.com" });
 
       expect(result).toBe(true);
@@ -82,7 +64,7 @@ describe("LoopsClient", () => {
         status: 500,
       });
 
-      const client = new LoopsClient("test-api-key");
+      const client = new LoopsClient("test-api-key", noopLogger);
       const result = await client.deleteContact({ email: "test@example.com" });
 
       expect(result).toBe(false);
@@ -94,7 +76,7 @@ describe("LoopsClient", () => {
         status: 401,
       });
 
-      const client = new LoopsClient("test-api-key");
+      const client = new LoopsClient("test-api-key", noopLogger);
       const result = await client.deleteContact({ email: "test@example.com" });
 
       expect(result).toBe(false);
@@ -103,25 +85,23 @@ describe("LoopsClient", () => {
     it("should return false on network error", async () => {
       mockFetch.mockRejectedValueOnce(new Error("Network error"));
 
-      const client = new LoopsClient("test-api-key");
+      const client = new LoopsClient("test-api-key", noopLogger);
       const result = await client.deleteContact({ email: "test@example.com" });
 
       expect(result).toBe(false);
     });
 
-    it("should properly encode email addresses with special characters", async () => {
+    it("should return false on other failure responses", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
+        json: async () => ({ success: false, message: "Some other error" }),
       });
 
-      const client = new LoopsClient("test-api-key");
-      await client.deleteContact({ email: "test+alias@example.com" });
+      const client = new LoopsClient("test-api-key", noopLogger);
+      const result = await client.deleteContact({ email: "test@example.com" });
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        "https://app.loops.so/api/v1/contacts/test%2Balias%40example.com",
-        expect.any(Object)
-      );
+      expect(result).toBe(false);
     });
   });
 });
