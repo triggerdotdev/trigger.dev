@@ -2,7 +2,7 @@ import { ArrowTrendingUpIcon } from "@heroicons/react/20/solid";
 import { IconTimeline } from "@tabler/icons-react";
 import { useMemo, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
-import { BigNumber } from "~/components/primitives/charts/BigNumber";
+import { BigNumberCard } from "~/components/primitives/charts/BigNumberCard";
 import { Card } from "~/components/primitives/charts/Card";
 import { type ChartConfig, type ChartState } from "~/components/primitives/charts/Chart";
 import { Chart } from "~/components/primitives/charts/ChartCompound";
@@ -256,7 +256,11 @@ function ChartsDashboard() {
             </Card.Accessory>
           </Card.Header>
           <Card.Content>
-            <BigNumber value={101} suffix="USD" />
+            <BigNumberCard
+              rows={[{ amount: 101 }]}
+              columns={[{ name: "amount", type: "Float64" }]}
+              config={{ column: "amount", aggregation: "sum" }}
+            />
           </Card.Content>
         </Card>
       </div>

@@ -318,6 +318,13 @@ export default function Page() {
                 aggregation: state.editorMode.widget.display.aggregation,
               }
             : defaultChartConfig;
+        const editorDefaultBigNumberConfig =
+          state.editorMode.type === "edit" && state.editorMode.widget.display.type === "bignumber"
+            ? {
+                column: state.editorMode.widget.display.column,
+                aggregation: state.editorMode.widget.display.aggregation,
+              }
+            : undefined;
         const editorDefaultResultsView =
           state.editorMode.type === "edit" ? state.editorMode.widget.display.type : "table";
         // Pass the existing result data when editing
@@ -328,6 +335,7 @@ export default function Page() {
           mode,
           editorDefaultQuery,
           editorDefaultChartConfig,
+          editorDefaultBigNumberConfig,
           editorDefaultResultsView,
           editorDefaultData,
         };
@@ -502,9 +510,14 @@ export default function Page() {
               defaultScope="environment"
               defaultPeriod={defaultPeriod}
               defaultResultsView={
-                editorProps.editorDefaultResultsView === "chart" ? "graph" : "table"
+                editorProps.editorDefaultResultsView === "chart"
+                  ? "graph"
+                  : editorProps.editorDefaultResultsView === "bignumber"
+                    ? "bignumber"
+                    : "table"
               }
               defaultChartConfig={editorProps.editorDefaultChartConfig}
+              defaultBigNumberConfig={editorProps.editorDefaultBigNumberConfig}
               defaultData={editorProps.editorDefaultData}
               history={queryHistory}
               isAdmin={isAdmin}

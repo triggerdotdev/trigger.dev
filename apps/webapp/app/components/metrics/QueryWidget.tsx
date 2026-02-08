@@ -5,6 +5,7 @@ import { z } from "zod";
 import { assertNever } from "assert-never";
 import { TSQLResultsTable } from "../code/TSQLResultsTable";
 import { QueryResultsChart } from "../code/QueryResultsChart";
+import { BigNumberCard } from "../primitives/charts/BigNumberCard";
 import { Dialog, DialogContent, DialogFooter, DialogHeader } from "../primitives/Dialog";
 import { Button } from "../primitives/Buttons";
 import {
@@ -58,6 +59,14 @@ const chartConfigOptions = {
 const ChartConfiguration = z.object({ ...chartConfigOptions });
 export type ChartConfiguration = z.infer<typeof ChartConfiguration>;
 
+const bigNumberConfigOptions = {
+  column: z.string(),
+  aggregation: AggregationType,
+};
+
+const BigNumberConfiguration = z.object({ ...bigNumberConfigOptions });
+export type BigNumberConfiguration = z.infer<typeof BigNumberConfiguration>;
+
 export const QueryWidgetConfig = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("table"),
@@ -74,6 +83,10 @@ export const QueryWidgetConfig = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("chart"),
     ...chartConfigOptions,
+  }),
+  z.object({
+    type: z.literal("bignumber"),
+    ...bigNumberConfigOptions,
   }),
 ]);
 
@@ -331,6 +344,31 @@ function QueryWidgetBody({
                   columns={data.columns}
                   config={config}
                   onViewAllLegendItems={() => setIsFullscreen(true)}
+                  isLoading={isLoading}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+        </>
+      );
+    }
+    case "bignumber": {
+      return (
+        <>
+          <BigNumberCard
+            rows={data.rows}
+            columns={data.columns}
+            config={config}
+            isLoading={isLoading}
+          />
+          <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
+            <DialogContent fullscreen>
+              <DialogHeader>{title}</DialogHeader>
+              <div className="flex h-full min-h-0 w-full flex-1 items-center justify-center pt-4">
+                <BigNumberCard
+                  rows={data.rows}
+                  columns={data.columns}
+                  config={config}
                   isLoading={isLoading}
                 />
               </div>

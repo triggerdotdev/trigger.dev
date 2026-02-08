@@ -65,7 +65,8 @@ import { QueryHelpSidebar } from "~/routes/_app.orgs.$organizationSlug.projects.
 import { QueryHistoryPopover } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/QueryHistoryPopover";
 import type { AITimeFilter } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/types";
 import {
-  ChartConfiguration,
+  type BigNumberConfiguration,
+  type ChartConfiguration,
   QueryWidget,
   type QueryWidgetConfig,
   type QueryWidgetData,
@@ -131,8 +132,9 @@ export type QueryEditorProps = {
   defaultScope: QueryScope;
   defaultPeriod: string;
   defaultTimeFilter?: { period?: string; from?: string; to?: string };
-  defaultResultsView?: "table" | "graph";
+  defaultResultsView?: "table" | "graph" | "bignumber";
   defaultChartConfig?: ChartConfiguration;
+  defaultBigNumberConfig?: BigNumberConfiguration;
   /** Initial result data to display (e.g., when editing an existing widget) */
   defaultData?: QueryWidgetData;
 
@@ -305,6 +307,7 @@ const QueryEditorForm = forwardRef<
           </Select>
           {queryHasTriggeredAt ? (
             <SimpleTooltip
+              asChild
               button={
                 <Button variant="tertiary/small" disabled={true} type="button">
                   Set in query
@@ -356,6 +359,7 @@ export function QueryEditor({
   defaultTimeFilter,
   defaultResultsView = "table",
   defaultChartConfig: initialChartConfig,
+  defaultBigNumberConfig: initialBigNumberConfig,
   defaultData,
   history,
   isAdmin,
@@ -393,9 +397,14 @@ export function QueryEditor({
 
   const editorRef = useRef<QueryEditorFormHandle>(null);
   const [prettyFormatting, setPrettyFormatting] = useState(true);
-  const [resultsView, setResultsView] = useState<"table" | "graph">(defaultResultsView);
+  const [resultsView, setResultsView] = useState<"table" | "graph" | "bignumber">(
+    defaultResultsView
+  );
   const [chartConfig, setChartConfig] = useState<ChartConfiguration>(
     initialChartConfig ?? defaultChartConfig
+  );
+  const [bigNumberConfig, setBigNumberConfig] = useState<BigNumberConfiguration>(
+    initialBigNumberConfig ?? { column: "", aggregation: "sum" }
   );
   const [sidebarTab, setSidebarTab] = useState<string>("ai");
   const [aiFixRequest, setAiFixRequest] = useState<{ prompt: string; key: number } | null>(null);
@@ -419,7 +428,9 @@ export function QueryEditor({
   const [userTitle, setUserTitle] = useState<string | null>(null);
 
   // Effective title: user title > edit mode title > history title > generated title
-  const queryTitle = userTitle ?? (mode.type === "dashboard-edit"
+  const queryTitle =
+    userTitle ??
+    (mode.type === "dashboard-edit"
       ? editModeTitle ?? historyTitle ?? generatedTitle ?? null
       : historyTitle ?? generatedTitle ?? null);
 
@@ -533,6 +544,8 @@ export function QueryEditor({
     config:
       resultsView === "table"
         ? { type: "table", prettyFormatting, sorting: [] }
+        : resultsView === "bignumber"
+        ? { type: "bignumber", ...bigNumberConfig }
         : { type: "chart", ...chartConfig },
   };
 
@@ -608,7 +621,7 @@ export function QueryEditor({
               >
                 <ClientTabs
                   value={resultsView}
-                  onValueChange={(v) => setResultsView(v as "table" | "graph")}
+                  onValueChange={(v) => setResultsView(v as "table" | "graph" | "bignumber")}
                   className="grid h-full max-h-full min-h-0 grid-rows-[auto_1fr] overflow-hidden"
                 >
                   <ClientTabsList
@@ -625,6 +638,14 @@ export function QueryEditor({
                       disabled={!results?.rows || results.rows.length === 0}
                     >
                       Graph
+                    </ClientTabsTrigger>
+                    <ClientTabsTrigger
+                      value="bignumber"
+                      variant="underline"
+                      layoutId="results-tabs"
+                      disabled={!results?.rows || results.rows.length === 0}
+                    >
+                      Big number
                     </ClientTabsTrigger>
                     {results?.rows ? (
                       <div className="flex flex-1 items-center justify-end gap-2 overflow-hidden border-b border-grid-dimmed pl-3">
@@ -786,6 +807,7 @@ export function QueryEditor({
                           accessory={
                             mode.type === "standalone" ? (
                               <SimpleTooltip
+                                asChild
                                 button={
                                   <Button
                                     variant="minimal/small"
@@ -804,6 +826,56 @@ export function QueryEditor({
                     ) : (
                       <Paragraph variant="small" className="p-4 text-text-dimmed">
                         Run a query to visualize results.
+                      </Paragraph>
+                    )}
+                  </ClientTabsContent>
+                  <ClientTabsContent
+                    value="bignumber"
+                    className={`m-0 grid h-full max-h-full min-h-0 overflow-hidden bg-charcoal-900 ${
+                      results?.rows &&
+                      results.rows.length > 0 &&
+                      hasQueryResultsCallouts(results.hiddenColumns, results.periodClipped)
+                        ? "grid-rows-[auto_1fr]"
+                        : "grid-rows-[1fr]"
+                    }`}
+                  >
+                    {results?.rows && results?.columns && results.rows.length > 0 ? (
+                      <>
+                        <QueryResultsCallouts
+                          hiddenColumns={results.hiddenColumns}
+                          periodClipped={results.periodClipped}
+                          organizationSlug={organization.slug}
+                        />
+                        <ResultsBigNumber
+                          rows={results.rows}
+                          columns={results.columns}
+                          bigNumberConfig={bigNumberConfig}
+                          onBigNumberConfigChange={setBigNumberConfig}
+                          queryTitle={queryTitle}
+                          isTitleLoading={isTitleLoading}
+                          onRenameTitle={handleRenameTitle}
+                          accessory={
+                            mode.type === "standalone" ? (
+                              <SimpleTooltip
+                                asChild
+                                button={
+                                  <Button
+                                    variant="minimal/small"
+                                    LeadingIcon={BookmarkIcon}
+                                    onClick={() => setIsSaveDialogOpen(true)}
+                                  />
+                                }
+                                content="Save to dashboard"
+                              />
+                            ) : save ? (
+                              save(saveData)
+                            ) : undefined
+                          }
+                        />
+                      </>
+                    ) : (
+                      <Paragraph variant="small" className="p-4 text-text-dimmed">
+                        Run a query to see a big number.
                       </Paragraph>
                     )}
                   </ClientTabsContent>
@@ -846,6 +918,8 @@ export function QueryEditor({
           config={
             resultsView === "table"
               ? { type: "table", prettyFormatting, sorting: [] }
+              : resultsView === "bignumber"
+              ? { type: "bignumber", ...bigNumberConfig }
               : { type: "chart", ...chartConfig }
           }
           isOpen={isSaveDialogOpen}
@@ -1114,5 +1188,163 @@ function ResultsChart({
         </ResizablePanel>
       </ResizablePanelGroup>
     </>
+  );
+}
+
+function isNumericColumnType(type: string): boolean {
+  return (
+    type.startsWith("Int") ||
+    type.startsWith("UInt") ||
+    type.startsWith("Float") ||
+    type.startsWith("Decimal") ||
+    type.startsWith("Nullable(Int") ||
+    type.startsWith("Nullable(UInt") ||
+    type.startsWith("Nullable(Float") ||
+    type.startsWith("Nullable(Decimal")
+  );
+}
+
+function ResultsBigNumber({
+  rows,
+  columns,
+  bigNumberConfig,
+  onBigNumberConfigChange,
+  queryTitle,
+  isTitleLoading,
+  onRenameTitle,
+  accessory,
+}: {
+  rows: Record<string, unknown>[];
+  columns: OutputColumnMetadata[];
+  bigNumberConfig: BigNumberConfiguration;
+  onBigNumberConfigChange: (config: BigNumberConfiguration) => void;
+  queryTitle: string | null;
+  isTitleLoading: boolean;
+  onRenameTitle?: (newTitle: string) => void;
+  accessory?: ReactNode;
+}) {
+  // Auto-select first numeric column if none selected
+  const numericColumns = columns.filter((c) => isNumericColumnType(c.type));
+
+  useEffect(() => {
+    if (!bigNumberConfig.column && numericColumns.length > 0) {
+      onBigNumberConfigChange({ ...bigNumberConfig, column: numericColumns[0].name });
+    }
+  }, [columns]);
+
+  return (
+    <>
+      <ResizablePanelGroup className="overflow-hidden">
+        <ResizablePanel id="bignumber-results">
+          <div className="h-full overflow-hidden bg-charcoal-900 p-2">
+            <QueryWidget
+              title={
+                <QueryTitle
+                  isTitleLoading={isTitleLoading}
+                  title={queryTitle}
+                  onRename={onRenameTitle}
+                />
+              }
+              data={{
+                rows,
+                columns,
+              }}
+              config={{
+                type: "bignumber",
+                ...bigNumberConfig,
+              }}
+              accessory={accessory}
+            />
+          </div>
+        </ResizablePanel>
+        <ResizableHandle id="bignumber-split" />
+        <ResizablePanel id="bignumber-config" min="50px" default="200px">
+          <BigNumberConfigPanel
+            columns={columns}
+            config={bigNumberConfig}
+            onChange={onBigNumberConfigChange}
+          />
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    </>
+  );
+}
+
+const aggregationOptions = [
+  { value: "sum", label: "Sum" },
+  { value: "avg", label: "Average" },
+  { value: "count", label: "Count" },
+  { value: "min", label: "Min" },
+  { value: "max", label: "Max" },
+] as const;
+
+function BigNumberConfigPanel({
+  columns,
+  config,
+  onChange,
+}: {
+  columns: OutputColumnMetadata[];
+  config: BigNumberConfiguration;
+  onChange: (config: BigNumberConfiguration) => void;
+}) {
+  const numericColumns = columns.filter((c) => isNumericColumnType(c.type));
+  const allColumns = columns;
+
+  // For count aggregation, any column works; for others, prefer numeric
+  const availableColumns = config.aggregation === "count" ? allColumns : numericColumns;
+
+  return (
+    <div className="flex h-full flex-col gap-4 overflow-y-auto p-3">
+      <Paragraph variant="small" className="font-medium text-text-bright">
+        Big Number Configuration
+      </Paragraph>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <Paragraph variant="extra-small" className="text-text-dimmed">
+            Column
+          </Paragraph>
+          <Select
+            value={config.column || ""}
+            setValue={(value) => onChange({ ...config, column: value })}
+            variant="tertiary/small"
+            dropdownIcon={true}
+            items={availableColumns.map((c) => ({ value: c.name, label: c.name }))}
+            text={(value) => value || "Select column"}
+            placeholder="Select column"
+          >
+            {(items) =>
+              items.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))
+            }
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <Paragraph variant="extra-small" className="text-text-dimmed">
+            Aggregation
+          </Paragraph>
+          <Select
+            value={config.aggregation}
+            setValue={(value) =>
+              onChange({ ...config, aggregation: value as BigNumberConfiguration["aggregation"] })
+            }
+            variant="tertiary/small"
+            dropdownIcon={true}
+            items={[...aggregationOptions]}
+            text={(value) => aggregationOptions.find((o) => o.value === value)?.label ?? value}
+          >
+            {(items) =>
+              items.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))
+            }
+          </Select>
+        </div>
+      </div>
+    </div>
   );
 }
