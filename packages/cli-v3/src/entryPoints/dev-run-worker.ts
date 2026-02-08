@@ -63,17 +63,9 @@ import {
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
 import { setInterval, setTimeout } from "node:timers/promises";
-import sourceMapSupport from "source-map-support";
-import { env } from "std-env";
-import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
-import { VERSION } from "../version.js";
-import { promiseWithResolvers } from "@trigger.dev/core/utils";
+import { installSourceMapSupport } from "../utilities/sourceMaps.js";
 
-sourceMapSupport.install({
-  handleUncaughtExceptions: false,
-  environment: "node",
-  hookRequire: false,
-});
+installSourceMapSupport();
 
 process.on("uncaughtException", function (error, origin) {
   logError("Uncaught exception", { error, origin });
@@ -109,9 +101,8 @@ process.on("uncaughtException", function (error, origin) {
   }
 });
 
-process.title = `trigger-dev-run-worker (${
-  getEnvVar("TRIGGER_WORKER_VERSION") ?? "unknown version"
-})`;
+process.title = `trigger-dev-run-worker (${getEnvVar("TRIGGER_WORKER_VERSION") ?? "unknown version"
+  })`;
 
 const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
 
@@ -156,7 +147,7 @@ const standardRealtimeStreamsManager = new StandardRealtimeStreamsManager(
   apiClientManager.clientOrThrow(),
   getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
   (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
-    false
+  false
 );
 realtimeStreams.setGlobalManager(standardRealtimeStreamsManager);
 
@@ -285,12 +276,12 @@ async function doBootstrap() {
 
 let bootstrapCache:
   | {
-      tracer: TriggerTracer;
-      tracingSDK: TracingSDK;
-      consoleInterceptor: ConsoleInterceptor;
-      config: TriggerConfig;
-      workerManifest: WorkerManifest;
-    }
+    tracer: TriggerTracer;
+    tracingSDK: TracingSDK;
+    consoleInterceptor: ConsoleInterceptor;
+    config: TriggerConfig;
+    workerManifest: WorkerManifest;
+  }
   | undefined;
 
 async function bootstrap() {
