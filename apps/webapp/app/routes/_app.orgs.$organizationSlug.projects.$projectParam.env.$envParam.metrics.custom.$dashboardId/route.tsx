@@ -323,6 +323,10 @@ export default function Page() {
             ? {
                 column: state.editorMode.widget.display.column,
                 aggregation: state.editorMode.widget.display.aggregation,
+                sortDirection: state.editorMode.widget.display.sortDirection,
+                abbreviate: state.editorMode.widget.display.abbreviate,
+                prefix: state.editorMode.widget.display.prefix,
+                suffix: state.editorMode.widget.display.suffix,
               }
             : undefined;
         const editorDefaultResultsView =

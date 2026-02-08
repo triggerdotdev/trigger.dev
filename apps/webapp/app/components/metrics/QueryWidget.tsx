@@ -59,9 +59,26 @@ const chartConfigOptions = {
 const ChartConfiguration = z.object({ ...chartConfigOptions });
 export type ChartConfiguration = z.infer<typeof ChartConfiguration>;
 
+const BigNumberAggregationType = z.union([
+  z.literal("sum"),
+  z.literal("avg"),
+  z.literal("count"),
+  z.literal("min"),
+  z.literal("max"),
+  z.literal("first"),
+  z.literal("last"),
+]);
+export type BigNumberAggregationType = z.infer<typeof BigNumberAggregationType>;
+
+const BigNumberSortDirection = z.union([z.literal("asc"), z.literal("desc")]);
+
 const bigNumberConfigOptions = {
   column: z.string(),
-  aggregation: AggregationType,
+  aggregation: BigNumberAggregationType,
+  sortDirection: BigNumberSortDirection.optional(),
+  abbreviate: z.boolean().default(false),
+  prefix: z.string().optional(),
+  suffix: z.string().optional(),
 };
 
 const BigNumberConfiguration = z.object({ ...bigNumberConfigOptions });

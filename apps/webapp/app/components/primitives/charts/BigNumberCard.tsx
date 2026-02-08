@@ -1,6 +1,9 @@
 import type { OutputColumnMetadata } from "@internal/tsql";
 import { useMemo } from "react";
-import type { AggregationType, BigNumberConfiguration } from "~/components/metrics/QueryWidget";
+import type {
+  BigNumberAggregationType,
+  BigNumberConfiguration,
+} from "~/components/metrics/QueryWidget";
 import { Spinner } from "../Spinner";
 import { Paragraph } from "../Paragraph";
 
@@ -12,11 +15,24 @@ interface BigNumberCardProps {
 }
 
 /**
- * Extracts numeric values from a specific column across all rows
+ * Extracts numeric values from a specific column across all rows,
+ * optionally sorting them first.
  */
-function extractColumnValues(rows: Record<string, unknown>[], column: string): number[] {
+function extractColumnValues(
+  rows: Record<string, unknown>[],
+  column: string,
+  sortDirection?: "asc" | "desc"
+): number[] {
   const values: number[] = [];
-  for (const row of rows) {
+  const sortedRows = sortDirection
+    ? [...rows].sort((a, b) => {
+        const aVal = toNumber(a[column]);
+        const bVal = toNumber(b[column]);
+        return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+      })
+    : rows;
+
+  for (const row of sortedRows) {
     const val = row[column];
     if (typeof val === "number") {
       values.push(val);
@@ -30,10 +46,19 @@ function extractColumnValues(rows: Record<string, unknown>[], column: string): n
   return values;
 }
 
+function toNumber(value: unknown): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = parseFloat(value);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
 /**
  * Aggregate an array of numbers using the specified aggregation function
  */
-function aggregateValues(values: number[], aggregation: AggregationType): number {
+function aggregateValues(values: number[], aggregation: BigNumberAggregationType): number {
   if (values.length === 0) return 0;
   switch (aggregation) {
     case "sum":
@@ -46,49 +71,59 @@ function aggregateValues(values: number[], aggregation: AggregationType): number
       return Math.min(...values);
     case "max":
       return Math.max(...values);
+    case "first":
+      return values[0];
+    case "last":
+      return values[values.length - 1];
   }
 }
 
 /**
- * Formats a number for display as a big number.
- * Uses K/M suffixes for large values, appropriate decimal places for small values.
+ * Formats a number for display as a big number with abbreviation (K/M/B suffixes).
  */
-function formatBigNumber(value: number): { formatted: string; suffix?: string } {
+function formatBigNumberAbbreviated(value: number): { formatted: string; unitSuffix?: string } {
   if (Math.abs(value) >= 1_000_000_000) {
     const v = value / 1_000_000_000;
-    return { formatted: v % 1 === 0 ? v.toFixed(0) : v.toFixed(1), suffix: "B" };
+    return { formatted: v % 1 === 0 ? v.toFixed(0) : v.toFixed(1), unitSuffix: "B" };
   }
   if (Math.abs(value) >= 1_000_000) {
     const v = value / 1_000_000;
-    return { formatted: v % 1 === 0 ? v.toFixed(0) : v.toFixed(1), suffix: "M" };
+    return { formatted: v % 1 === 0 ? v.toFixed(0) : v.toFixed(1), unitSuffix: "M" };
   }
   if (Math.abs(value) >= 1_000) {
     const v = value / 1_000;
-    return { formatted: v % 1 === 0 ? v.toFixed(0) : v.toFixed(1), suffix: "K" };
+    return { formatted: v % 1 === 0 ? v.toFixed(0) : v.toFixed(1), unitSuffix: "K" };
   }
+  return { formatted: formatPlainNumber(value) };
+}
+
+/**
+ * Formats a number for display without abbreviation.
+ */
+function formatPlainNumber(value: number): string {
   if (Number.isInteger(value)) {
-    return { formatted: value.toLocaleString() };
+    return value.toLocaleString();
   }
   if (Math.abs(value) < 0.01) {
-    return { formatted: value.toFixed(4) };
+    return value.toFixed(4);
   }
   if (Math.abs(value) < 1) {
-    return { formatted: value.toFixed(3) };
+    return value.toFixed(3);
   }
-  return { formatted: value.toFixed(2) };
+  return value.toFixed(2);
 }
 
 export function BigNumberCard({ rows, columns, config, isLoading = false }: BigNumberCardProps) {
-  const { column, aggregation } = config;
+  const { column, aggregation, sortDirection, abbreviate = false, prefix, suffix } = config;
 
   const result = useMemo(() => {
     if (rows.length === 0) return null;
 
-    const values = extractColumnValues(rows, column);
+    const values = extractColumnValues(rows, column, sortDirection);
     if (values.length === 0) return null;
 
     return aggregateValues(values, aggregation);
-  }, [rows, column, aggregation]);
+  }, [rows, column, aggregation, sortDirection]);
 
   if (isLoading) {
     return (
@@ -108,14 +143,23 @@ export function BigNumberCard({ rows, columns, config, isLoading = false }: BigN
     );
   }
 
-  const { formatted, suffix } = formatBigNumber(result);
+  const { formatted, unitSuffix } = abbreviate
+    ? formatBigNumberAbbreviated(result)
+    : { formatted: formatPlainNumber(result), unitSuffix: undefined };
 
   return (
     <div className="flex h-full items-center justify-center p-6">
       <div className="text-[3.75rem] font-normal tabular-nums leading-none text-text-bright">
         <div className="flex items-baseline gap-1">
+          {prefix && <span>{prefix}</span>}
           {formatted}
-          {suffix && <div className="text-2xl text-text-dimmed">{suffix}</div>}
+          {(unitSuffix || suffix) && (
+            <div className="text-2xl text-text-dimmed">
+              {unitSuffix}
+              {unitSuffix && suffix ? " " : ""}
+              {suffix}
+            </div>
+          )}
         </div>
       </div>
     </div>

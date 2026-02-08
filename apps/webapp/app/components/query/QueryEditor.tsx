@@ -404,7 +404,7 @@ export function QueryEditor({
     initialChartConfig ?? defaultChartConfig
   );
   const [bigNumberConfig, setBigNumberConfig] = useState<BigNumberConfiguration>(
-    initialBigNumberConfig ?? { column: "", aggregation: "sum" }
+    initialBigNumberConfig ?? { column: "", aggregation: "sum", abbreviate: true }
   );
   const [sidebarTab, setSidebarTab] = useState<string>("ai");
   const [aiFixRequest, setAiFixRequest] = useState<{ prompt: string; key: number } | null>(null);
@@ -1270,12 +1270,20 @@ function ResultsBigNumber({
   );
 }
 
-const aggregationOptions = [
+const bigNumberAggregationOptions = [
   { value: "sum", label: "Sum" },
   { value: "avg", label: "Average" },
   { value: "count", label: "Count" },
   { value: "min", label: "Min" },
   { value: "max", label: "Max" },
+  { value: "first", label: "First" },
+  { value: "last", label: "Last" },
+] as const;
+
+const bigNumberSortOptions = [
+  { value: "", label: "Unsorted" },
+  { value: "asc", label: "Ascending" },
+  { value: "desc", label: "Descending" },
 ] as const;
 
 function BigNumberConfigPanel({
@@ -1323,17 +1331,22 @@ function BigNumberConfigPanel({
         </div>
         <div className="flex flex-col gap-1">
           <Paragraph variant="extra-small" className="text-text-dimmed">
-            Aggregation
+            Sort order
           </Paragraph>
           <Select
-            value={config.aggregation}
+            value={config.sortDirection ?? ""}
             setValue={(value) =>
-              onChange({ ...config, aggregation: value as BigNumberConfiguration["aggregation"] })
+              onChange({
+                ...config,
+                sortDirection: value === "" ? undefined : (value as "asc" | "desc"),
+              })
             }
             variant="tertiary/small"
             dropdownIcon={true}
-            items={[...aggregationOptions]}
-            text={(value) => aggregationOptions.find((o) => o.value === value)?.label ?? value}
+            items={[...bigNumberSortOptions]}
+            text={(value) =>
+              bigNumberSortOptions.find((o) => o.value === value)?.label ?? "Unsorted"
+            }
           >
             {(items) =>
               items.map((item) => (
@@ -1343,6 +1356,62 @@ function BigNumberConfigPanel({
               ))
             }
           </Select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <Paragraph variant="extra-small" className="text-text-dimmed">
+            Aggregation
+          </Paragraph>
+          <Select
+            value={config.aggregation}
+            setValue={(value) =>
+              onChange({ ...config, aggregation: value as BigNumberConfiguration["aggregation"] })
+            }
+            variant="tertiary/small"
+            dropdownIcon={true}
+            items={[...bigNumberAggregationOptions]}
+            text={(value) =>
+              bigNumberAggregationOptions.find((o) => o.value === value)?.label ?? value
+            }
+          >
+            {(items) =>
+              items.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))
+            }
+          </Select>
+        </div>
+        <div className="flex items-center justify-between">
+          <Switch
+            label="Abbreviate large values"
+            labelPosition="right"
+            variant="small"
+            checked={config.abbreviate ?? false}
+            onCheckedChange={(checked) => onChange({ ...config, abbreviate: checked })}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Paragraph variant="extra-small" className="text-text-dimmed">
+            Prefix
+          </Paragraph>
+          <Input
+            value={config.prefix ?? ""}
+            onChange={(e) => onChange({ ...config, prefix: e.target.value || undefined })}
+            placeholder="e.g. $"
+            variant="small"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Paragraph variant="extra-small" className="text-text-dimmed">
+            Suffix
+          </Paragraph>
+          <Input
+            value={config.suffix ?? ""}
+            onChange={(e) => onChange({ ...config, suffix: e.target.value || undefined })}
+            placeholder="e.g. ms"
+            variant="small"
+          />
         </div>
       </div>
     </div>
