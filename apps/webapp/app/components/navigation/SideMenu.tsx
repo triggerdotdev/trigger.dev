@@ -22,13 +22,9 @@ import {
   TableCellsIcon,
   UsersIcon,
 } from "@heroicons/react/20/solid";
-import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, Link, useFetcher, useNavigation } from "@remix-run/react";
-import { IconChartHistogram } from "@tabler/icons-react";
+import { Link, useFetcher, useNavigation } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
-import { GripVerticalIcon, LineChartIcon } from "lucide-react";
-import { type ReactNode, type Ref, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ReactGridLayout, { type Layout, useContainerWidth } from "react-grid-layout";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
@@ -38,16 +34,11 @@ import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
-import { Feedback } from "~/components/Feedback";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
-import {
-  type MatchedOrganization,
-  useCustomDashboards,
-  useDashboardLimits,
-} from "~/hooks/useOrganizations";
+import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useHasAdminAccess } from "~/hooks/useUser";
@@ -75,7 +66,6 @@ import {
   v3BillingPath,
   v3BuiltInDashboardPath,
   v3BulkActionsPath,
-  v3CustomDashboardPath,
   v3DeploymentsPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
@@ -96,18 +86,7 @@ import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTrigger,
-} from "../primitives/Dialog";
-import { FormButtons } from "../primitives/FormButtons";
-import { Input } from "../primitives/Input";
-import { InputGroup } from "../primitives/InputGroup";
-import { Label } from "../primitives/Label";
+import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverMenuItem, PopoverTrigger } from "../primitives/Popover";
 import { ShortcutKey } from "../primitives/ShortcutKey";
@@ -121,6 +100,8 @@ import {
 } from "../primitives/Tooltip";
 import { ShortcutsAutoOpen } from "../Shortcuts";
 import { UserProfilePhoto } from "../UserProfilePhoto";
+import { CreateDashboardButton } from "./DashboardDialogs";
+import { DashboardList } from "./DashboardList";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
@@ -183,96 +164,6 @@ export function SideMenu({
   const isAdmin = useHasAdminAccess();
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
-  const customDashboards = useCustomDashboards();
-  const dashboardOrderFetcher = useFetcher();
-
-  // Dashboard reorder state
-  const [dashboardOrder, setDashboardOrder] = useState<string[]>(
-    () =>
-      user.dashboardPreferences.sideMenu?.customDashboardOrder?.[organization.id] ??
-      customDashboards.map((d) => d.friendlyId)
-  );
-
-  // Sync order when organization changes (component may not remount)
-  useEffect(() => {
-    setDashboardOrder(
-      user.dashboardPreferences.sideMenu?.customDashboardOrder?.[organization.id] ??
-        customDashboards.map((d) => d.friendlyId)
-    );
-  }, [organization.id]);
-
-  // Sort dashboards by stored order, new dashboards go to end
-  const orderedDashboards = useMemo(() => {
-    const orderMap = new Map(dashboardOrder.map((id, i) => [id, i]));
-    return [...customDashboards].sort((a, b) => {
-      const aIdx = orderMap.get(a.friendlyId) ?? Infinity;
-      const bIdx = orderMap.get(b.friendlyId) ?? Infinity;
-      return aIdx - bIdx;
-    });
-  }, [customDashboards, dashboardOrder]);
-
-  // Layout for ReactGridLayout (1-column vertical list, each item h=1 row)
-  const dashboardLayout = useMemo(
-    () =>
-      orderedDashboards.map((d, i) => ({
-        i: d.friendlyId,
-        x: 0,
-        y: i,
-        w: 1,
-        h: 1,
-      })),
-    [orderedDashboards]
-  );
-
-  // Width measurement for ReactGridLayout
-  const {
-    width: gridWidth,
-    containerRef: gridContainerRef,
-    mounted: gridMounted,
-  } = useContainerWidth({ initialWidth: 216 });
-
-  const canReorder = orderedDashboards.length >= 2;
-
-  // Track layout during drag for real-time tree connector updates
-  const [dragLayout, setDragLayout] = useState<Layout | null>(null);
-
-  const handleDashboardDrag = useCallback((layout: Layout) => {
-    setDragLayout(layout);
-  }, []);
-
-  // Handle drag stop - extract new order from layout y-positions
-  const handleDashboardDragStop = useCallback(
-    (layout: Layout) => {
-      setDragLayout(null);
-      const sorted = [...layout].sort((a, b) => a.y - b.y);
-      const newOrder = sorted.map((item) => item.i);
-      if (JSON.stringify(newOrder) === JSON.stringify(dashboardOrder)) return;
-      setDashboardOrder(newOrder);
-      // Persist immediately
-      if (!user.isImpersonating) {
-        const formData = new FormData();
-        formData.append("organizationId", organization.id);
-        formData.append("customDashboardOrder", JSON.stringify(newOrder));
-        dashboardOrderFetcher.submit(formData, {
-          method: "POST",
-          action: "/resources/preferences/sidemenu",
-        });
-      }
-    },
-    [dashboardOrder, organization.id, user.isImpersonating, dashboardOrderFetcher]
-  );
-
-  // Compute which dashboard is visually last (during drag or at rest)
-  const getIsLastDashboard = useCallback(
-    (friendlyId: string, index: number) => {
-      if (dragLayout) {
-        const maxY = Math.max(...dragLayout.map((l) => l.y));
-        return dragLayout.find((l) => l.i === friendlyId)?.y === maxY;
-      }
-      return index === orderedDashboards.length - 1;
-    },
-    [dragLayout, orderedDashboards.length]
-  );
 
   const persistSideMenuPreferences = useCallback(
     (data: {
@@ -602,83 +493,13 @@ export function SideMenu({
                     />
                   }
                 />
-                <div ref={gridContainerRef as Ref<HTMLDivElement>}>
-                  {canReorder ? (
-                    <ReactGridLayout
-                      layout={dashboardLayout}
-                      width={gridWidth}
-                      gridConfig={{
-                        cols: 1,
-                        rowHeight: 32,
-                        margin: [0, 0] as const,
-                        containerPadding: [0, 0] as const,
-                      }}
-                      resizeConfig={{ enabled: false }}
-                      dragConfig={{ enabled: !isCollapsed, handle: ".sidebar-drag-handle" }}
-                      onDrag={handleDashboardDrag}
-                      onDragStop={handleDashboardDragStop}
-                      className="sidebar-reorder-grid"
-                      autoSize
-                    >
-                      {orderedDashboards.map((dashboard, index) => {
-                        const isLast = getIsLastDashboard(dashboard.friendlyId, index);
-                        return (
-                          <div key={dashboard.friendlyId}>
-                            <SideMenuItem
-                              name={dashboard.title}
-                              icon={
-                                isCollapsed
-                                  ? IconChartHistogram
-                                  : isLast
-                                  ? TreeConnectorEnd
-                                  : TreeConnectorBranch
-                              }
-                              activeIconColor={isCollapsed ? "text-customDashboards" : undefined}
-                              inactiveIconColor={isCollapsed ? "text-customDashboards" : undefined}
-                              to={v3CustomDashboardPath(
-                                organization,
-                                project,
-                                environment,
-                                dashboard
-                              )}
-                              isCollapsed={isCollapsed}
-                              action={
-                                <div className="sidebar-drag-handle flex h-full w-full cursor-grab items-center justify-center rounded text-text-dimmed opacity-0 transition group-hover/menuitem:opacity-100 hover:text-text-bright active:cursor-grabbing">
-                                  <GripVerticalIcon className="size-3.5" />
-                                </div>
-                              }
-                            />
-                          </div>
-                        );
-                      })}
-                    </ReactGridLayout>
-                  ) : (
-                    orderedDashboards.map((dashboard, index) => {
-                      const isLast = index === orderedDashboards.length - 1;
-                      return (
-                        <SideMenuItem
-                          key={dashboard.friendlyId}
-                          name={dashboard.title}
-                          icon={
-                            isCollapsed
-                              ? LineChartIcon
-                              : isLast
-                              ? TreeConnectorEnd
-                              : TreeConnectorBranch
-                          }
-                          activeIconColor={
-                            isCollapsed ? "text-customDashboards" : "text-charcoal-700"
-                          }
-                          inactiveIconColor={
-                            isCollapsed ? "text-customDashboards" : "text-charcoal-700"
-                          }
-                          to={v3CustomDashboardPath(organization, project, environment, dashboard)}
-                          isCollapsed={isCollapsed}
-                        />
-                      );
-                    })
-                  )}
-                </div>
+                <DashboardList
+                  organization={organization}
+                  project={project}
+                  environment={environment}
+                  isCollapsed={isCollapsed}
+                  user={user}
+                />
               </SideMenuSection>
             )}
 
@@ -1157,203 +978,6 @@ function HelpAndAI({ isCollapsed }: { isCollapsed: boolean }) {
   );
 }
 
-function CreateDashboardButton({
-  organization,
-  project,
-  environment,
-  isCollapsed,
-}: {
-  organization: MatchedOrganization;
-  project: SideMenuProject;
-  environment: SideMenuEnvironment;
-  isCollapsed: boolean;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const navigation = useNavigation();
-  const limits = useDashboardLimits();
-  const plan = useCurrentPlan();
-
-  const isAtLimit = limits.used >= limits.limit;
-  const planLimits = (plan?.v3Subscription?.plan?.limits as any)?.metricDashboards;
-  const canExceed = typeof planLimits === "object" && planLimits.canExceed === true;
-  const canUpgrade = plan?.v3Subscription?.plan && !canExceed;
-
-  const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/create`;
-
-  // Close dialog when form submission starts (redirect is happening)
-  useEffect(() => {
-    if (navigation.formAction === formAction && navigation.state === "loading") {
-      setIsOpen(false);
-    }
-  }, [navigation.formAction, navigation.state, formAction]);
-
-  if (isCollapsed) return null;
-
-  return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <TooltipProvider disableHoverableContent>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DialogTrigger asChild>
-              <button
-                type="button"
-                className="flex h-full w-full items-center justify-center rounded text-text-dimmed transition focus-custom hover:bg-charcoal-600 hover:text-text-bright"
-              >
-                <PlusIcon className="size-4" />
-              </button>
-            </DialogTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="right" className="text-xs">
-            Create dashboard
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      {isAtLimit ? (
-        <CreateDashboardUpgradeDialog
-          limits={limits}
-          canUpgrade={!!canUpgrade}
-          organization={organization}
-        />
-      ) : (
-        <CreateDashboardDialog formAction={formAction} limits={limits} />
-      )}
-    </Dialog>
-  );
-}
-
-const PROGRESS_RING_R = 27.5;
-const PROGRESS_RING_CIRCUMFERENCE = 2 * Math.PI * PROGRESS_RING_R;
-const PROGRESS_COLOR_SUCCESS = "#28BF5C"; // mint-500 / success
-const PROGRESS_COLOR_ERROR = "#E11D48"; // rose-600 / error
-
-function CreateDashboardUpgradeDialog({
-  limits,
-  canUpgrade,
-  organization,
-}: {
-  limits: { used: number; limit: number };
-  canUpgrade: boolean;
-  organization: MatchedOrganization;
-}) {
-  const percentage = Math.min(limits.used / limits.limit, 1);
-  const filled = percentage * PROGRESS_RING_CIRCUMFERENCE;
-
-  return (
-    <DialogContent>
-      <DialogHeader>Dashboard limit reached</DialogHeader>
-      <div className="flex items-center gap-4 pt-3">
-        <div className="relative ml-1 mt-2 shrink-0" style={{ width: 60, height: 60 }}>
-          <svg className="h-full w-full -rotate-90 overflow-visible">
-            <circle
-              className="fill-none stroke-grid-bright"
-              strokeWidth="5"
-              r={PROGRESS_RING_R}
-              cx="30"
-              cy="30"
-            />
-            <motion.circle
-              className="fill-none"
-              strokeWidth="5"
-              r={PROGRESS_RING_R}
-              cx="30"
-              cy="30"
-              strokeLinecap="round"
-              initial={{
-                strokeDasharray: `0 ${PROGRESS_RING_CIRCUMFERENCE}`,
-                stroke: PROGRESS_COLOR_SUCCESS,
-              }}
-              animate={{
-                strokeDasharray: `${filled} ${PROGRESS_RING_CIRCUMFERENCE}`,
-                stroke: PROGRESS_COLOR_ERROR,
-              }}
-              transition={{ duration: 1.2, ease: "easeInOut" }}
-            />
-          </svg>
-          <span className="absolute inset-0 flex items-center justify-center text-lg text-text-dimmed">
-            {limits.limit}
-          </span>
-        </div>
-        <DialogDescription className="pt-0">
-          {canUpgrade ? (
-            <>
-              You've used all {limits.limit} of your custom dashboards. Upgrade your plan to create
-              more.
-            </>
-          ) : (
-            <>
-              You've used all {limits.limit} of your custom dashboards. To create more, request a
-              limit increase or visit the{" "}
-              <TextLink to={v3BillingPath(organization)}>billing page</TextLink> for pricing
-              details.
-            </>
-          )}
-        </DialogDescription>
-      </div>
-      <DialogFooter className="flex justify-between">
-        <DialogClose asChild>
-          <Button variant="secondary/medium">Cancel</Button>
-        </DialogClose>
-        {canUpgrade ? (
-          <LinkButton variant="primary/medium" to={v3BillingPath(organization)}>
-            Upgrade plan
-          </LinkButton>
-        ) : (
-          <Feedback
-            button={<Button variant="primary/medium">Request more…</Button>}
-            defaultValue="help"
-          />
-        )}
-      </DialogFooter>
-    </DialogContent>
-  );
-}
-
-function CreateDashboardDialog({
-  formAction,
-  limits,
-}: {
-  formAction: string;
-  limits: { used: number; limit: number };
-}) {
-  const navigation = useNavigation();
-  const [title, setTitle] = useState("");
-
-  const isLoading = navigation.formAction === formAction;
-
-  return (
-    <DialogContent className="sm:max-w-sm">
-      <DialogHeader>Create dashboard</DialogHeader>
-      <Form method="post" action={formAction} className="space-y-4 pt-3">
-        <InputGroup>
-          <Label>Title</Label>
-          <Input
-            name="title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="My Dashboard"
-            required
-          />
-        </InputGroup>
-        <Paragraph variant="extra-small" className="text-text-dimmed">
-          {limits.used}/{limits.limit} dashboards used
-        </Paragraph>
-        <FormButtons
-          confirmButton={
-            <Button type="submit" variant="primary/medium" disabled={isLoading || !title.trim()}>
-              {isLoading ? "Creating..." : "Create"}
-            </Button>
-          }
-          cancelButton={
-            <DialogClose asChild>
-              <Button variant="secondary/medium">Cancel</Button>
-            </DialogClose>
-          }
-        />
-      </Form>
-    </DialogContent>
-  );
-}
-
 function AnimatedChevron({
   isHovering,
   isCollapsed,
@@ -1433,34 +1057,6 @@ function AnimatedChevron({
         style={{ transformOrigin: "2px 15px" }}
       />
     </motion.svg>
-  );
-}
-
-// Tree connector icons for sub-items. The SVG viewBox is 20x20 matching the size-5 icon area.
-// Lines extend to y=-6 and y=26 to fill the full 32px row height (6px gap above/below the 20px icon).
-function TreeConnectorBranch({ className }: { className?: string }) {
-  return (
-    <svg
-      className={cn("overflow-visible", className, "text-charcoal-600")}
-      viewBox="0 0 20 20"
-      fill="none"
-    >
-      <line x1="10" y1="-6" x2="10" y2="26" stroke="currentColor" strokeWidth="1" />
-      <line x1="10" y1="10" x2="20" y2="10" stroke="currentColor" strokeWidth="1" />
-    </svg>
-  );
-}
-
-function TreeConnectorEnd({ className }: { className?: string }) {
-  return (
-    <svg
-      className={cn("overflow-visible", className, "text-charcoal-600")}
-      viewBox="0 0 20 20"
-      fill="none"
-    >
-      <line x1="10" y1="-6" x2="10" y2="10" stroke="currentColor" strokeWidth="1" />
-      <line x1="10" y1="10" x2="20" y2="10" stroke="currentColor" strokeWidth="1" />
-    </svg>
   );
 }
 

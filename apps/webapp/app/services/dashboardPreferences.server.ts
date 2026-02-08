@@ -7,8 +7,15 @@ const SideMenuPreferences = z.object({
   isCollapsed: z.boolean().default(false),
   // Map for section collapsed states - keys are section identifiers
   collapsedSections: z.record(z.string(), z.boolean()).optional(),
-  // Map of organization ID -> ordered array of dashboard friendlyIds
-  customDashboardOrder: z.record(z.string(), z.array(z.string())).optional(),
+  /** Organization-specific settings */
+  organizations: z
+    .record(
+      z.string(),
+      z.object({
+        orderedItems: z.record(z.string(), z.array(z.string())),
+      })
+    )
+    .optional(),
 });
 
 export type SideMenuPreferences = z.infer<typeof SideMenuPreferences>;
@@ -149,10 +156,7 @@ export async function updateSideMenuPreferences({
     JSON.stringify(updatedSideMenu.collapsedSections) !==
     JSON.stringify(currentSideMenu.collapsedSections);
 
-  if (
-    updatedSideMenu.isCollapsed === currentSideMenu.isCollapsed &&
-    !hasCollapsedSectionsChanged
-  ) {
+  if (updatedSideMenu.isCollapsed === currentSideMenu.isCollapsed && !hasCollapsedSectionsChanged) {
     return;
   }
 
@@ -171,13 +175,24 @@ export async function updateSideMenuPreferences({
   });
 }
 
-export async function updateCustomDashboardOrder({
+/** Get the stored item order for a specific list within an organization */
+export function getItemOrder(
+  sideMenu: SideMenuPreferences | undefined,
+  organizationId: string,
+  listId: string
+): string[] | undefined {
+  return sideMenu?.organizations?.[organizationId]?.orderedItems?.[listId];
+}
+
+export async function updateItemOrder({
   user,
   organizationId,
+  listId,
   order,
 }: {
   user: UserFromSession;
   organizationId: string;
+  listId: string;
   order: string[];
 }) {
   if (user.isImpersonating) {
@@ -185,12 +200,19 @@ export async function updateCustomDashboardOrder({
   }
 
   const currentSideMenu = SideMenuPreferences.parse(user.dashboardPreferences.sideMenu ?? {});
+  const currentOrg = currentSideMenu.organizations?.[organizationId];
 
   const updatedSideMenu = SideMenuPreferences.parse({
     ...currentSideMenu,
-    customDashboardOrder: {
-      ...currentSideMenu.customDashboardOrder,
-      [organizationId]: order,
+    organizations: {
+      ...currentSideMenu.organizations,
+      [organizationId]: {
+        ...currentOrg,
+        orderedItems: {
+          ...currentOrg?.orderedItems,
+          [listId]: order,
+        },
+      },
     },
   });
 

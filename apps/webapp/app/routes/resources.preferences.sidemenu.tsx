@@ -5,7 +5,7 @@ import {
   type SideMenuSectionId,
 } from "~/components/navigation/sideMenuTypes";
 import {
-  updateCustomDashboardOrder,
+  updateItemOrder,
   updateSideMenuPreferences,
 } from "~/services/dashboardPreferences.server";
 import { requireUser } from "~/services/session.server";
@@ -20,9 +20,10 @@ const RequestSchema = z.object({
   isCollapsed: booleanFromFormData,
   sectionId: SideMenuSectionIdSchema.optional(),
   sectionCollapsed: booleanFromFormData,
-  // Dashboard reorder fields
+  // Generic item order fields
   organizationId: z.string().optional(),
-  customDashboardOrder: z.string().optional(), // JSON-encoded string[]
+  listId: z.string().optional(),
+  itemOrder: z.string().optional(), // JSON-encoded string[]
 });
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -36,13 +37,14 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ success: false, error: "Invalid request data" }, { status: 400 });
   }
 
-  // Handle dashboard order update
-  if (result.data.organizationId && result.data.customDashboardOrder) {
-    const orderResult = z.array(z.string()).safeParse(JSON.parse(result.data.customDashboardOrder));
+  // Handle item order update
+  if (result.data.organizationId && result.data.listId && result.data.itemOrder) {
+    const orderResult = z.array(z.string()).safeParse(JSON.parse(result.data.itemOrder));
     if (orderResult.success) {
-      await updateCustomDashboardOrder({
+      await updateItemOrder({
         user,
         organizationId: result.data.organizationId,
+        listId: result.data.listId,
         order: orderResult.data,
       });
     }
