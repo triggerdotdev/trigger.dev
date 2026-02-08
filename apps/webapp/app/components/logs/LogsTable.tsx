@@ -214,16 +214,6 @@ export function LogsTable({
         <div className="flex items-center justify-center py-12">
           <div className="flex flex-col items-center gap-3">
             <span className="text-text-dimmed">Showing all {logs.length} logs</span>
-            {onCheckForMore && (
-              <Button
-                LeadingIcon={ArrowPathIcon}
-                variant="tertiary/small"
-                onClick={onCheckForMore}
-                disabled={isLoadingMore}
-              >
-                {isLoadingMore ? "Checking…" : "Check for new logs"}
-              </Button>
-            )}
           </div>
         </div>
       )}
