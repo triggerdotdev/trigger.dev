@@ -806,17 +806,13 @@ export function QueryEditor({
                           onRenameTitle={handleRenameTitle}
                           accessory={
                             mode.type === "standalone" ? (
-                              <SimpleTooltip
-                                asChild
-                                button={
-                                  <Button
-                                    variant="minimal/small"
-                                    LeadingIcon={BookmarkIcon}
-                                    onClick={() => setIsSaveDialogOpen(true)}
-                                  />
-                                }
-                                content="Save to dashboard"
-                              />
+                              <Button
+                                variant="minimal/small"
+                                LeadingIcon={BookmarkIcon}
+                                onClick={() => setIsSaveDialogOpen(true)}
+                              >
+                                Save to dashboard
+                              </Button>
                             ) : save ? (
                               save(saveData)
                             ) : undefined
@@ -856,17 +852,13 @@ export function QueryEditor({
                           onRenameTitle={handleRenameTitle}
                           accessory={
                             mode.type === "standalone" ? (
-                              <SimpleTooltip
-                                asChild
-                                button={
-                                  <Button
-                                    variant="minimal/small"
-                                    LeadingIcon={BookmarkIcon}
-                                    onClick={() => setIsSaveDialogOpen(true)}
-                                  />
-                                }
-                                content="Save to dashboard"
-                              />
+                              <Button
+                                variant="minimal/small"
+                                LeadingIcon={BookmarkIcon}
+                                onClick={() => setIsSaveDialogOpen(true)}
+                              >
+                                Save to dashboard
+                              </Button>
                             ) : save ? (
                               save(saveData)
                             ) : undefined

@@ -4,6 +4,7 @@ import type {
   BigNumberAggregationType,
   BigNumberConfiguration,
 } from "~/components/metrics/QueryWidget";
+import { AnimatedNumber } from "../AnimatedNumber";
 import { Spinner } from "../Spinner";
 import { Paragraph } from "../Paragraph";
 
@@ -79,42 +80,45 @@ function aggregateValues(values: number[], aggregation: BigNumberAggregationType
 }
 
 /**
- * Formats a number for display as a big number with abbreviation (K/M/B suffixes).
+ * Computes the display value and unit suffix for abbreviated display.
+ * Returns the divided-down number (e.g. 1.5 for 1500) and the suffix (e.g. "K"),
+ * along with the appropriate decimal places for formatting.
  */
-function formatBigNumberAbbreviated(value: number): { formatted: string; unitSuffix?: string } {
+function abbreviateValue(value: number): {
+  displayValue: number;
+  unitSuffix?: string;
+  decimalPlaces: number;
+} {
   if (Math.abs(value) >= 1_000_000_000) {
     const v = value / 1_000_000_000;
-    return { formatted: v % 1 === 0 ? v.toFixed(0) : v.toFixed(1), unitSuffix: "B" };
+    return { displayValue: v, unitSuffix: "B", decimalPlaces: v % 1 === 0 ? 0 : 1 };
   }
   if (Math.abs(value) >= 1_000_000) {
     const v = value / 1_000_000;
-    return { formatted: v % 1 === 0 ? v.toFixed(0) : v.toFixed(1), unitSuffix: "M" };
+    return { displayValue: v, unitSuffix: "M", decimalPlaces: v % 1 === 0 ? 0 : 1 };
   }
   if (Math.abs(value) >= 1_000) {
     const v = value / 1_000;
-    return { formatted: v % 1 === 0 ? v.toFixed(0) : v.toFixed(1), unitSuffix: "K" };
+    return { displayValue: v, unitSuffix: "K", decimalPlaces: v % 1 === 0 ? 0 : 1 };
   }
-  return { formatted: formatPlainNumber(value) };
+  return { displayValue: value, decimalPlaces: getDecimalPlaces(value) };
 }
 
 /**
- * Formats a number for display without abbreviation.
+ * Determines decimal places for plain (non-abbreviated) display.
  */
-function formatPlainNumber(value: number): string {
-  if (Number.isInteger(value)) {
-    return value.toLocaleString();
-  }
-  if (Math.abs(value) < 0.01) {
-    return value.toFixed(4);
-  }
-  if (Math.abs(value) < 1) {
-    return value.toFixed(3);
-  }
-  return value.toFixed(2);
+function getDecimalPlaces(value: number): number {
+  if (Number.isInteger(value)) return 0;
+  const abs = Math.abs(value);
+  if (abs >= 100) return 0;
+  if (abs >= 10) return 1;
+  if (abs >= 1) return 2;
+  if (abs >= 0.01) return 3;
+  return 4;
 }
 
 export function BigNumberCard({ rows, columns, config, isLoading = false }: BigNumberCardProps) {
-  const { column, aggregation, sortDirection, abbreviate = false, prefix, suffix } = config;
+  const { column, aggregation, sortDirection, abbreviate = true, prefix, suffix } = config;
 
   const result = useMemo(() => {
     if (rows.length === 0) return null;
@@ -127,7 +131,7 @@ export function BigNumberCard({ rows, columns, config, isLoading = false }: BigN
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center p-6">
+      <div className="grid h-full place-items-center [container-type:size]">
         <Spinner className="size-6" />
       </div>
     );
@@ -135,7 +139,7 @@ export function BigNumberCard({ rows, columns, config, isLoading = false }: BigN
 
   if (result === null) {
     return (
-      <div className="flex h-full items-center justify-center p-6">
+      <div className="grid h-full place-items-center [container-type:size]">
         <Paragraph variant="small" className="text-text-dimmed">
           No data to display
         </Paragraph>
@@ -143,22 +147,22 @@ export function BigNumberCard({ rows, columns, config, isLoading = false }: BigN
     );
   }
 
-  const { formatted, unitSuffix } = abbreviate
-    ? formatBigNumberAbbreviated(result)
-    : { formatted: formatPlainNumber(result), unitSuffix: undefined };
+  const { displayValue, unitSuffix, decimalPlaces } = abbreviate
+    ? abbreviateValue(result)
+    : { displayValue: result, unitSuffix: undefined, decimalPlaces: getDecimalPlaces(result) };
 
   return (
-    <div className="flex h-full items-center justify-center p-6">
-      <div className="text-[3.75rem] font-normal tabular-nums leading-none text-text-bright">
-        <div className="flex items-baseline gap-1">
+    <div className="h-full w-full [container-type:size]">
+      <div className="grid h-full w-full place-items-center">
+        <div className="flex items-baseline gap-[0.15em] whitespace-nowrap font-normal tabular-nums leading-none text-text-bright text-[clamp(24px,12cqw,96px)]">
           {prefix && <span>{prefix}</span>}
-          {formatted}
+          <AnimatedNumber value={displayValue} decimalPlaces={decimalPlaces} />
           {(unitSuffix || suffix) && (
-            <div className="text-2xl text-text-dimmed">
+            <span className="text-[0.4em] text-text-dimmed">
               {unitSuffix}
               {unitSuffix && suffix ? " " : ""}
               {suffix}
-            </div>
+            </span>
           )}
         </div>
       </div>
