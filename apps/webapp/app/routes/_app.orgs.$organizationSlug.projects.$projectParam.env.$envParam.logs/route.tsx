@@ -402,24 +402,25 @@ function LogsList({
         return;
       }
 
-      const existingIds = new Set(accumulatedLogs.map((log) => log.id));
-      const newLogs = fetcher.data.logs.filter((log) => !existingIds.has(log.id));
-
       if (isCheckingForNewRef.current) {
         // "Check for new" - prepend new logs, don't update cursor
-        if (newLogs.length > 0) {
-          setAccumulatedLogs((prev) => [...newLogs, ...prev]);
-        }
+        setAccumulatedLogs((prev) => {
+          const existingIds = new Set(prev.map((log) => log.id));
+          const newLogs = fetcher.data!.logs.filter((log) => !existingIds.has(log.id));
+          return newLogs.length > 0 ? [...newLogs, ...prev] : prev;
+        });
         isCheckingForNewRef.current = false;
       } else {
         // "Load more" - append logs and update cursor
-        if (newLogs.length > 0) {
-          setAccumulatedLogs((prev) => [...prev, ...newLogs]);
-        }
+        setAccumulatedLogs((prev) => {
+          const existingIds = new Set(prev.map((log) => log.id));
+          const newLogs = fetcher.data!.logs.filter((log) => !existingIds.has(log.id));
+          return newLogs.length > 0 ? [...prev, ...newLogs] : prev;
+        });
         setNextCursor(fetcher.data.pagination.next);
       }
     }
-  }, [fetcher.data, fetcher.state, accumulatedLogs, location.search]);
+  }, [fetcher.data, fetcher.state, location.search]);
 
   // Build resource URL for loading more
   const loadMoreUrl = useMemo(() => {

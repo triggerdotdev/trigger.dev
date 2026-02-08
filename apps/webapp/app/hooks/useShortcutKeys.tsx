@@ -23,7 +23,6 @@ type useShortcutKeysProps = {
   action: (event: KeyboardEvent) => void;
   disabled?: boolean;
   enabledOnInputElements?: boolean;
-  scopes?: string | string[];
 };
 
 export function useShortcutKeys({
@@ -31,7 +30,6 @@ export function useShortcutKeys({
   action,
   disabled = false,
   enabledOnInputElements,
-  scopes = "global",
 }: useShortcutKeysProps) {
   const { platform } = useOperatingSystem();
   const { areShortcutsEnabled } = useShortcuts();
@@ -52,7 +50,6 @@ export function useShortcutKeys({
     },
     {
       enabled: isEnabled,
-      scopes,
       enableOnFormTags:
         isEnabled && (enabledOnInputElements ?? relevantShortcut?.enabledOnInputElements),
       enableOnContentEditable:

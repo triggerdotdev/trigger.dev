@@ -64,7 +64,10 @@ const defaultProps: TSQLEditorDefaultProps = {
 const toggleLineComment = (view: EditorView): boolean => {
   const { from, to } = view.state.selection.main;
   const startLine = view.state.doc.lineAt(from);
-  const endLine = view.state.doc.lineAt(to);
+  // When `to` is exactly at the start of a line and there's an actual selection,
+  // the caret sits before that line — so exclude it by stepping back one position.
+  const adjustedTo = to > from && view.state.doc.lineAt(to).from === to ? to - 1 : to;
+  const endLine = view.state.doc.lineAt(adjustedTo);
 
   // Collect all lines in the selection
   const lines: { from: number; to: number; text: string }[] = [];
