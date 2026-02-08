@@ -60,27 +60,46 @@ const defaultProps: TSQLEditorDefaultProps = {
   schema: [],
 };
 
-// Toggle comment on current line with -- comment symbol
+// Toggle comment on current line or selected lines with -- comment symbol
 const toggleLineComment = (view: EditorView): boolean => {
-  const { from } = view.state.selection.main;
-  const line = view.state.doc.lineAt(from);
-  const lineText = line.text;
-  const trimmed = lineText.trimStart();
-  const indent = lineText.length - trimmed.length;
+  const { from, to } = view.state.selection.main;
+  const startLine = view.state.doc.lineAt(from);
+  const endLine = view.state.doc.lineAt(to);
 
-  if (trimmed.startsWith("--")) {
-    // Remove comment: strip "-- " or just "--"
-    const afterComment = trimmed.slice(2);
-    const newText = lineText.slice(0, indent) + afterComment.replace(/^\s/, "");
-    view.dispatch({
-      changes: { from: line.from, to: line.to, insert: newText },
-    });
-  } else {
-    // Add comment: prepend "-- " to the line content
-    const newText = lineText.slice(0, indent) + "-- " + trimmed;
-    view.dispatch({
-      changes: { from: line.from, to: line.to, insert: newText },
-    });
+  // Collect all lines in the selection
+  const lines: { from: number; to: number; text: string }[] = [];
+  for (let i = startLine.number; i <= endLine.number; i++) {
+    const line = view.state.doc.line(i);
+    lines.push({ from: line.from, to: line.to, text: line.text });
+  }
+
+  // Determine action: if all non-empty lines are commented, uncomment; otherwise comment
+  const allCommented = lines.every((line) => {
+    const trimmed = line.text.trimStart();
+    return trimmed.length === 0 || trimmed.startsWith("--");
+  });
+
+  const changes = lines
+    .map((line) => {
+      const trimmed = line.text.trimStart();
+      if (trimmed.length === 0) return null; // skip empty lines
+      const indent = line.text.length - trimmed.length;
+
+      if (allCommented) {
+        // Remove comment: strip "-- " or just "--"
+        const afterComment = trimmed.slice(2);
+        const newText = line.text.slice(0, indent) + afterComment.replace(/^\s/, "");
+        return { from: line.from, to: line.to, insert: newText };
+      } else {
+        // Add comment: prepend "-- " to the line content
+        const newText = line.text.slice(0, indent) + "-- " + trimmed;
+        return { from: line.from, to: line.to, insert: newText };
+      }
+    })
+    .filter((c): c is { from: number; to: number; insert: string } => c !== null);
+
+  if (changes.length > 0) {
+    view.dispatch({ changes });
   }
 
   return true;
