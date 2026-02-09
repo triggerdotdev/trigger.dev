@@ -5,6 +5,7 @@ import {
   PencilIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
+import { IconChartHistogram } from "@tabler/icons-react";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { useFetcher } from "@remix-run/react";
 import {
@@ -774,9 +775,12 @@ export function QueryEditor({
                         </div>
                       </div>
                     ) : (
-                      <Paragraph variant="small" className="p-4 text-text-dimmed">
-                        Run a query to see results here.
-                      </Paragraph>
+                      <div className="flex h-full flex-col items-center justify-center gap-3">
+                        <IconChartHistogram className="size-16 text-charcoal-650" />
+                        <Paragraph className="max-w-48 text-center text-text-dimmed">
+                          Run a query to visualize the results.
+                        </Paragraph>
+                      </div>
                     )}
                   </ClientTabsContent>
                   <ClientTabsContent
@@ -820,9 +824,12 @@ export function QueryEditor({
                         />
                       </>
                     ) : (
-                      <Paragraph variant="small" className="p-4 text-text-dimmed">
-                        Run a query to visualize results.
-                      </Paragraph>
+                      <div className="flex h-full flex-col items-center justify-center gap-3">
+                        <IconChartHistogram className="size-16 text-charcoal-650" />
+                        <Paragraph className="max-w-48 text-center text-text-dimmed">
+                          Run a query to visualize the results.
+                        </Paragraph>
+                      </div>
                     )}
                   </ClientTabsContent>
                   <ClientTabsContent
@@ -866,9 +873,12 @@ export function QueryEditor({
                         />
                       </>
                     ) : (
-                      <Paragraph variant="small" className="p-4 text-text-dimmed">
-                        Run a query to see a big number.
-                      </Paragraph>
+                      <div className="flex h-full flex-col items-center justify-center gap-3">
+                        <IconChartHistogram className="size-16 text-charcoal-650" />
+                        <Paragraph className="max-w-48 text-center text-text-dimmed">
+                          Run a query to visualize the results.
+                        </Paragraph>
+                      </div>
                     )}
                   </ClientTabsContent>
                 </ClientTabs>
