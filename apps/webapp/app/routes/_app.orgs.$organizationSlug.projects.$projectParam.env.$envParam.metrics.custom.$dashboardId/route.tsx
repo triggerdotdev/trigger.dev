@@ -538,7 +538,7 @@ export default function Page() {
       <Sheet open={!!state.editorMode} onOpenChange={(open) => !open && actions.closeEditor()}>
         <SheetContent
           side="right"
-          className="w-[90vw] max-w-none border-l border-grid-dimmed p-0 sm:max-w-none"
+          className="w-[90vw] max-w-none rounded-l-lg border-l border-grid-dimmed p-0 sm:max-w-none"
         >
           {editorProps && (
             <QueryEditor
@@ -549,8 +549,8 @@ export default function Page() {
                 editorProps.editorDefaultResultsView === "chart"
                   ? "graph"
                   : editorProps.editorDefaultResultsView === "bignumber"
-                    ? "bignumber"
-                    : "table"
+                  ? "bignumber"
+                  : "table"
               }
               defaultChartConfig={editorProps.editorDefaultChartConfig}
               defaultBigNumberConfig={editorProps.editorDefaultBigNumberConfig}
