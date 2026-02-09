@@ -1,4 +1,4 @@
-import { type ActionFunctionArgs, redirect } from "@remix-run/node";
+import { type ActionFunctionArgs } from "@remix-run/node";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { typedjson } from "remix-typedjson";
@@ -12,10 +12,11 @@ import {
 } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema, v3CustomDashboardPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 
 // Schemas for each action type
 const AddWidgetSchema = z.object({
+  widgetId: z.string().min(1, "Widget ID is required").optional(),
   title: z.string().min(1, "Title is required"),
   query: z.string().default(""),
   config: z.string().transform((str, ctx) => {
@@ -77,6 +78,7 @@ const DeleteWidgetSchema = z.object({
 
 const DuplicateWidgetSchema = z.object({
   widgetId: z.string().min(1, "Widget ID is required"),
+  newId: z.string().min(1, "New widget ID is required").optional(),
 });
 
 const SaveLayoutSchema = z.object({
@@ -188,6 +190,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   switch (action) {
     case "add": {
       const rawData = {
+        widgetId: formData.get("widgetId"),
         title: formData.get("title"),
         query: formData.get("query"),
         config: formData.get("config"),
@@ -210,8 +213,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         await checkWidgetLimit();
       }
 
-      // Generate new widget ID
-      const widgetId = nanoid(8);
+      // Use client-provided widget ID if available, otherwise generate one
+      // Using the client's ID ensures optimistic UI state stays in sync with the server
+      const widgetId = result.data.widgetId || nanoid(8);
 
       // Calculate position at the bottom
       let maxBottom = 0;
@@ -256,14 +260,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         },
       });
 
-      // Redirect to the dashboard
-      const dashboardPath = v3CustomDashboardPath(
-        { slug: organizationSlug },
-        { slug: projectParam },
-        { slug: envParam },
-        { friendlyId: dashboardId }
-      );
-      return redirect(dashboardPath);
+      return typedjson({ success: true, widgetId });
     }
 
     case "update": {
@@ -395,6 +392,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       const rawData = {
         widgetId: formData.get("widgetId"),
+        newId: formData.get("newId"),
       };
 
       const result = DuplicateWidgetSchema.safeParse(rawData);
@@ -416,8 +414,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         throw new Response("Widget layout not found", { status: 404 });
       }
 
-      // Generate new widget ID
-      const newWidgetId = nanoid(8);
+      // Use client-provided ID if available, otherwise generate one
+      // Using the client's ID ensures optimistic UI state stays in sync with the server
+      const newWidgetId = result.data.newId || nanoid(8);
 
       // Calculate position at the bottom
       let maxBottom = 0;

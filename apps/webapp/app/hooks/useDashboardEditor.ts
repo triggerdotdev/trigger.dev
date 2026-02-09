@@ -351,7 +351,9 @@ export function useDashboardEditor({
       dispatch({ type: "ADD_WIDGET", payload: { id, widget, layoutItem } });
 
       // Queue sync to server (processed sequentially)
+      // Send the client-generated ID so the server uses the same ID
       queueWidgetSync("add", {
+        widgetId: id,
         title,
         query,
         config: JSON.stringify(config),
@@ -373,7 +375,9 @@ export function useDashboardEditor({
       dispatch({ type: "ADD_WIDGET", payload: { id, widget, layoutItem } });
 
       // Queue sync to server (processed sequentially)
+      // Send the client-generated ID so the server uses the same ID
       queueWidgetSync("add", {
+        widgetId: id,
         title,
         query: "",
         config: JSON.stringify(config),
@@ -425,9 +429,8 @@ export function useDashboardEditor({
       dispatch({ type: "DUPLICATE_WIDGET", payload: { id: widgetId, newId } });
 
       // Queue sync to server (processed sequentially)
-      // Note: Server will generate its own ID, but our local state uses newId
-      // This is fine since we're optimistic - the server state will be consistent
-      queueWidgetSync("duplicate", { widgetId });
+      // Send the client-generated newId so the server uses the same ID for the duplicate
+      queueWidgetSync("duplicate", { widgetId, newId });
     },
     [countedWidgets, widgetLimit, onWidgetLimitReached, queueWidgetSync]
   );
