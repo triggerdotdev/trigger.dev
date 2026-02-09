@@ -364,10 +364,7 @@ export default function Page() {
                   />
                 </div>
               }
-              valueClassName={
-                getQueueUsageColorClass(environment.queued, environment.queueSizeLimit) ??
-                (env.paused ? "text-warning tabular-nums" : "tabular-nums")
-              }
+              valueClassName={env.paused ? "text-warning tabular-nums" : "tabular-nums"}
               compactThreshold={1000000}
             />
             <BigNumber
