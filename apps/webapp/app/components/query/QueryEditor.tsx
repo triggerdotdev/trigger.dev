@@ -690,7 +690,7 @@ export function QueryEditor({
                     {isLoading ? (
                       <div className="flex items-center gap-2 p-4 text-sm text-text-dimmed">
                         <Spinner className="size-4" />
-                        <span>Executing query...</span>
+                        <span>Executing query…</span>
                       </div>
                     ) : results?.error ? (
                       <div className="p-4">
