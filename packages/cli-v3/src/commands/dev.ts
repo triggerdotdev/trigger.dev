@@ -171,8 +171,7 @@ export async function devCommand(options: DevCommandOptions) {
       );
     } else {
       logger.log(
-        `${chalkError("X Error:")} You must login first. Use the \`login\` CLI command.\n\n${
-          authorization.error
+        `${chalkError("X Error:")} You must login first. Use the \`login\` CLI command.\n\n${authorization.error
         }`
       );
     }
@@ -180,13 +179,30 @@ export async function devCommand(options: DevCommandOptions) {
     return;
   }
 
-  let watcher;
+  let devInstance: Awaited<ReturnType<typeof startDev>> | undefined;
+
+  const cleanup = async () => {
+    if (devInstance) {
+      await devInstance.stop();
+    }
+  };
+
+  const signalHandler = async (signal: string) => {
+    logger.debug(`Received ${signal}, cleaning up...`);
+    await cleanup();
+    process.exit(0);
+  };
+
   try {
-    const devInstance = await startDev({ ...options, cwd: process.cwd(), login: authorization });
-    watcher = devInstance.watcher;
+    process.on("SIGINT", signalHandler);
+    process.on("SIGTERM", signalHandler);
+
+    devInstance = await startDev({ ...options, cwd: process.cwd(), login: authorization });
     await devInstance.waitUntilExit();
   } finally {
-    await watcher?.stop();
+    process.off("SIGINT", signalHandler);
+    process.off("SIGTERM", signalHandler);
+    await cleanup();
   }
 }
 
@@ -272,7 +288,7 @@ async function startDev(options: StartDevOptions) {
 
     devInstance = await bootDevSession(watcher.config);
 
-    const waitUntilExit = async () => {};
+    const waitUntilExit = async () => { };
 
     return {
       watcher,

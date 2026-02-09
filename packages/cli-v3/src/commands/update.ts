@@ -18,6 +18,7 @@ import * as semver from "semver";
 export const UpdateCommandOptions = CommonCommandOptions.pick({
   logLevel: true,
   skipTelemetry: true,
+  ignoreEngines: true,
 });
 
 export type UpdateCommandOptions = z.infer<typeof UpdateCommandOptions>;
@@ -257,11 +258,26 @@ export async function updateTriggerPackages(
       `Installing new package versions${packageManager ? ` with ${packageManager.name}` : ""}`
     );
 
-    await installDependencies({ cwd: projectPath, silent: true });
+    const installArgs: string[] = [];
+
+    if (options.ignoreEngines && packageManager) {
+      switch (packageManager.name) {
+        case "npm":
+          installArgs.push("--no-engine-strict");
+          break;
+        case "pnpm":
+          installArgs.push("--config.engine-strict=false");
+          break;
+        case "yarn":
+          installArgs.push("--ignore-engines");
+          break;
+      }
+    }
+
+    await installDependencies({ cwd: projectPath, silent: true, args: installArgs });
   } catch (error) {
     installSpinner.stop(
-      `Failed to install new package versions${
-        packageManager ? ` with ${packageManager.name}` : ""
+      `Failed to install new package versions${packageManager ? ` with ${packageManager.name}` : ""
       }`
     );
 

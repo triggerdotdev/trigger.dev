@@ -473,6 +473,40 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
 
   const errors: string[] = [];
 
+  // Authenticate to Docker Hub if credentials are provided (fixes rate limit issues)
+  let loggedInToDockerHub = false;
+  if (process.env.DOCKER_USERNAME && process.env.DOCKER_PASSWORD) {
+    logger.debug("Logging in to Docker Hub");
+    const loginProcess = x(
+      "docker",
+      ["login", "--username", process.env.DOCKER_USERNAME, "--password-stdin"],
+      {
+        nodeOptions: {
+          cwd: options.cwd,
+        },
+      }
+    );
+
+    loginProcess.process?.stdin?.write(process.env.DOCKER_PASSWORD);
+    loginProcess.process?.stdin?.end();
+
+    for await (const line of loginProcess) {
+      errors.push(line);
+      logger.debug(line);
+    }
+
+    if (loginProcess.exitCode !== 0) {
+      return {
+        ok: false as const,
+        error: `Failed to login to Docker Hub`,
+        logs: extractLogs(errors),
+      };
+    }
+
+    loggedInToDockerHub = true;
+    options.onLog?.("Successfully logged in to Docker Hub");
+  }
+
   let cloudRegistryHost: string | undefined;
   if (push && options.authenticateToRegistry) {
     cloudRegistryHost =
@@ -550,13 +584,12 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     options.noCache ? "--no-cache" : undefined,
     ...(useRegistryCache
       ? [
-          "--cache-to",
-          `type=registry,mode=max,image-manifest=true,oci-mediatypes=true,ref=${projectCacheRef}${
-            cacheCompression === "zstd" ? ",compression=zstd" : ""
-          }`,
-          "--cache-from",
-          `type=registry,ref=${projectCacheRef}`,
-        ]
+        "--cache-to",
+        `type=registry,mode=max,image-manifest=true,oci-mediatypes=true,ref=${projectCacheRef}${cacheCompression === "zstd" ? ",compression=zstd" : ""
+        }`,
+        "--cache-from",
+        `type=registry,ref=${projectCacheRef}`,
+      ]
       : []),
     "--output",
     outputOptions.join(","),
@@ -660,6 +693,11 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
   if (cloudRegistryHost) {
     logger.debug(`Logging out from docker registry: ${cloudRegistryHost}`);
     await x("docker", ["logout", cloudRegistryHost]);
+  }
+
+  if (loggedInToDockerHub) {
+    logger.debug("Logging out from Docker Hub");
+    await x("docker", ["logout"]);
   }
 
   return {
