@@ -29,6 +29,7 @@ import {
   type BetweenCondition,
   type QuerySettings,
   type SimpleComparisonCondition,
+  type TimeRange,
   type WhereClauseCondition,
 } from "./query/printer_context.js";
 import { createSchemaRegistry, type FieldMappings, type TableSchema } from "./query/schema.js";
@@ -126,8 +127,15 @@ export {
   type QueryNotice,
   type QuerySettings,
   type SimpleComparisonCondition,
+  type TimeRange,
   type WhereClauseCondition,
 } from "./query/printer_context.js";
+
+// Re-export time bucket utilities
+export {
+  calculateTimeBucketInterval,
+  type TimeBucketInterval,
+} from "./query/time_buckets.js";
 
 // Re-export printer
 export { ClickHousePrinter, printToClickHouse, type PrintResult } from "./query/printer.js";
@@ -517,6 +525,20 @@ export interface CompileTSQLOptions {
    * ```
    */
   whereClauseFallback?: Record<string, WhereClauseCondition>;
+  /**
+   * Time range for `timeBucket()` interval calculation.
+   * When provided, `timeBucket()` uses this to determine the appropriate bucket size
+   * based on the span of the time range.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   from: new Date('2024-01-01'),
+   *   to: new Date('2024-01-08'),
+   * }
+   * ```
+   */
+  timeRange?: TimeRange;
 }
 
 /**
@@ -574,6 +596,7 @@ export function compileTSQL(query: string, options: CompileTSQLOptions): PrintRe
     settings: options.settings,
     fieldMappings: options.fieldMappings,
     enforcedWhereClause,
+    timeRange: options.timeRange,
   });
 
   // 6. Print the AST to ClickHouse SQL (enforced conditions applied at printer level)

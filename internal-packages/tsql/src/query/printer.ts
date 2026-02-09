@@ -47,6 +47,7 @@ import {
   validateFunctionArgs,
 } from "./functions";
 import { PrinterContext, WhereClauseCondition } from "./printer_context";
+import { calculateTimeBucketInterval } from "./time_buckets";
 import {
   findTable,
   validateTable,
@@ -568,9 +569,9 @@ export class ClickHousePrinter {
    * (SELECT COUNT() → 'count') should be added.
    */
   private extractSelectAlias(expr: Expression): void {
-    // Handle explicit Alias: SELECT ... AS name
+    // Handle explicit Alias: SELECT ... AS name (stored lowercase for case-insensitive lookup)
     if ((expr as Alias).expression_type === "alias") {
-      this.selectAliases.add((expr as Alias).alias);
+      this.selectAliases.add((expr as Alias).alias.toLowerCase());
       return;
     }
 
@@ -2628,7 +2629,8 @@ export class ClickHousePrinter {
     }
 
     // Check if it's a SELECT alias (e.g., from COUNT() or explicit AS)
-    if (this.selectAliases.has(columnName)) {
+    // Case-insensitive: aliases are stored lowercase in extractSelectAlias()
+    if (this.selectAliases.has(columnName.toLowerCase())) {
       return chain; // Valid alias reference
     }
 
@@ -2785,6 +2787,11 @@ export class ClickHousePrinter {
   private visitCall(node: Call): string {
     const name = node.name;
 
+    // Handle timeBucket() - special TSQL function for automatic time bucketing
+    if (name.toLowerCase() === "timebucket") {
+      return this.visitTimeBucket(node);
+    }
+
     // Check if this is a comparison function
     if (name in TSQL_COMPARISON_MAPPING) {
       const op = TSQL_COMPARISON_MAPPING[name];
@@ -2914,6 +2921,73 @@ export class ClickHousePrinter {
       return `SAMPLE ${sample} OFFSET ${this.visitRatioExpr(node.offset_value)}`;
     }
     return `SAMPLE ${sample}`;
+  }
+
+  // ============================================================
+  // timeBucket() Support
+  // ============================================================
+
+  /**
+   * Handle the `timeBucket()` TSQL function.
+   *
+   * Resolves the table's timeConstraint column to its ClickHouse name,
+   * calculates an appropriate interval from the query's time range,
+   * and emits `toStartOfInterval(column, INTERVAL N UNIT)`.
+   *
+   * @throws QueryError if timeBucket() is called with arguments, or if the table
+   *   has no timeConstraint, or if no timeRange is provided in the context.
+   */
+  private visitTimeBucket(node: Call): string {
+    // Validate: timeBucket() takes no arguments
+    if (node.args.length > 0) {
+      throw new QueryError(
+        "timeBucket() does not accept arguments. It automatically uses the table's time constraint column."
+      );
+    }
+
+    // Find the table with a timeConstraint
+    const tableWithConstraint = this.findTimeConstraintTable();
+    if (!tableWithConstraint) {
+      throw new QueryError(
+        "timeBucket() requires a table with a timeConstraint defined in its schema."
+      );
+    }
+
+    const { tableSchema, clickhouseColumnName } = tableWithConstraint;
+
+    // Get the time range from context
+    const timeRange = this.context.timeRange;
+    if (!timeRange) {
+      throw new QueryError(
+        "timeBucket() requires a time range to be provided. Pass a timeRange option when compiling the query."
+      );
+    }
+
+    // Calculate the appropriate interval
+    const interval = calculateTimeBucketInterval(timeRange.from, timeRange.to);
+
+    // Emit toStartOfInterval(column, INTERVAL N UNIT)
+    return `toStartOfInterval(${escapeClickHouseIdentifier(clickhouseColumnName)}, INTERVAL ${interval.value} ${interval.unit})`;
+  }
+
+  /**
+   * Find a table in the current query context that has a timeConstraint defined.
+   * Returns the table schema and the resolved ClickHouse column name for the constraint.
+   */
+  private findTimeConstraintTable(): {
+    tableSchema: TableSchema;
+    clickhouseColumnName: string;
+  } | null {
+    for (const tableSchema of this.tableContexts.values()) {
+      if (tableSchema.timeConstraint) {
+        const columnSchema = tableSchema.columns[tableSchema.timeConstraint];
+        if (columnSchema) {
+          const clickhouseColumnName = columnSchema.clickhouseName || columnSchema.name;
+          return { tableSchema, clickhouseColumnName };
+        }
+      }
+    }
+    return null;
   }
 
   // ============================================================

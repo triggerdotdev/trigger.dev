@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { parseTSQLSelect, parseTSQLExpr } from "../index.js";
+import { parseTSQLSelect, parseTSQLExpr, compileTSQL } from "../index.js";
 import { ClickHousePrinter, printToClickHouse, type PrintResult } from "./printer.js";
 import { createPrinterContext, PrinterContext } from "./printer_context.js";
 import { createSchemaRegistry, column, type TableSchema, type SchemaRegistry } from "./schema.js";
@@ -3286,5 +3286,288 @@ describe("Required Filters", () => {
     expect(sql).toContain("status");
     expect(sql).toContain("created_at");   // triggered_at maps to created_at
     expect(sql).toContain("cost_in_cents"); // total_cost is a virtual column
+  });
+});
+
+// ============================================================
+// timeBucket() Tests
+// ============================================================
+
+describe("timeBucket()", () => {
+  /**
+   * Schema with timeConstraint for timeBucket() tests.
+   * Uses column mapping: TSQL "triggered_at" → ClickHouse "created_at"
+   */
+  const timeBucketSchema: TableSchema = {
+    name: "runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    timeConstraint: "triggered_at",
+    columns: {
+      id: { name: "id", ...column("String") },
+      status: { name: "status", ...column("String") },
+      triggered_at: {
+        name: "triggered_at",
+        clickhouseName: "created_at",
+        ...column("DateTime64"),
+      },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  /**
+   * Schema without timeConstraint (for error tests)
+   */
+  const noTimeConstraintSchema: TableSchema = {
+    name: "events",
+    clickhouseName: "trigger_dev.events_v1",
+    columns: {
+      id: { name: "id", ...column("String") },
+      event_type: { name: "event_type", ...column("String") },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  /** 7-day time range: should produce 6 HOUR buckets */
+  const sevenDayRange = {
+    from: new Date("2024-01-01T00:00:00Z"),
+    to: new Date("2024-01-08T00:00:00Z"),
+  };
+
+  /** 1-hour time range: should produce 1 MINUTE buckets */
+  const oneHourRange = {
+    from: new Date("2024-01-01T00:00:00Z"),
+    to: new Date("2024-01-01T01:00:00Z"),
+  };
+
+  function createTimeBucketContext(
+    overrides: Partial<Parameters<typeof createPrinterContext>[0]> = {}
+  ): PrinterContext {
+    const schema = createSchemaRegistry([timeBucketSchema]);
+    return createPrinterContext({
+      schema,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test123" },
+        project_id: { op: "eq", value: "proj_test456" },
+        environment_id: { op: "eq", value: "env_test789" },
+      },
+      timeRange: sevenDayRange,
+      ...overrides,
+    });
+  }
+
+  function printTimeBucketQuery(query: string, context?: PrinterContext) {
+    const ast = parseTSQLSelect(query);
+    const ctx = context ?? createTimeBucketContext();
+    return printToClickHouse(ast, ctx);
+  }
+
+  describe("SELECT with timeBucket()", () => {
+    it("should compile timeBucket() to toStartOfInterval with correct column and interval", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket"
+      );
+
+      // Should use ClickHouse column name (created_at), not TSQL name (triggered_at)
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+      expect(sql).toContain("count()");
+    });
+
+    it("should use 1 MINUTE interval for 1-hour time range", () => {
+      const ctx = createTimeBucketContext({ timeRange: oneHourRange });
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket",
+        ctx
+      );
+
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 1 MINUTE)");
+    });
+
+    it("should work with other selected columns", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), status, count() FROM runs GROUP BY timeBucket, status"
+      );
+
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+      expect(sql).toContain("status");
+      expect(sql).toContain("count()");
+    });
+  });
+
+  describe("GROUP BY with timeBucket alias", () => {
+    it("should allow GROUP BY timeBucket (bare identifier, matching implicit alias)", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket"
+      );
+
+      // The GROUP BY should reference the alias, not re-expand
+      expect(sql).toContain("GROUP BY");
+      // The SELECT should have the toStartOfInterval call
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+    });
+
+    it("should allow GROUP BY timebucket (all lowercase)", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timebucket"
+      );
+
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+    });
+
+    it("should allow GROUP BY TIMEBUCKET (all uppercase)", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY TIMEBUCKET"
+      );
+
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+    });
+  });
+
+  describe("ORDER BY with timeBucket alias", () => {
+    it("should allow ORDER BY timeBucket", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket ORDER BY timeBucket"
+      );
+
+      expect(sql).toContain("ORDER BY timeBucket");
+    });
+
+    it("should allow ORDER BY timeBucket DESC", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket ORDER BY timeBucket DESC"
+      );
+
+      expect(sql).toContain("ORDER BY timeBucket DESC");
+    });
+  });
+
+  describe("error handling", () => {
+    it("should throw when timeBucket() is called with arguments", () => {
+      expect(() =>
+        printTimeBucketQuery("SELECT timeBucket(triggered_at) FROM runs")
+      ).toThrow("timeBucket() does not accept arguments");
+    });
+
+    it("should throw when table has no timeConstraint", () => {
+      const schema = createSchemaRegistry([noTimeConstraintSchema]);
+      const ctx = createPrinterContext({
+        schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test123" },
+          project_id: { op: "eq", value: "proj_test456" },
+          environment_id: { op: "eq", value: "env_test789" },
+        },
+        timeRange: sevenDayRange,
+      });
+
+      expect(() =>
+        printTimeBucketQuery("SELECT timeBucket(), count() FROM events GROUP BY timeBucket", ctx)
+      ).toThrow("timeConstraint");
+    });
+
+    it("should throw when no timeRange is provided", () => {
+      const ctx = createTimeBucketContext({ timeRange: undefined });
+
+      expect(() =>
+        printTimeBucketQuery("SELECT timeBucket(), count() FROM runs GROUP BY timeBucket", ctx)
+      ).toThrow("time range");
+    });
+  });
+
+  describe("column name mapping", () => {
+    it("should resolve timeConstraint through column mapping (TSQL → ClickHouse)", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket"
+      );
+
+      // timeConstraint is "triggered_at" which maps to CH "created_at"
+      expect(sql).toContain("created_at");
+      expect(sql).not.toContain("triggered_at");
+    });
+
+    it("should work with timeConstraint column that has no clickhouseName mapping", () => {
+      const schemaNoMapping: TableSchema = {
+        name: "logs",
+        clickhouseName: "trigger_dev.logs_v1",
+        timeConstraint: "timestamp",
+        columns: {
+          id: { name: "id", ...column("String") },
+          timestamp: { name: "timestamp", ...column("DateTime64") },
+          organization_id: { name: "organization_id", ...column("String") },
+          project_id: { name: "project_id", ...column("String") },
+          environment_id: { name: "environment_id", ...column("String") },
+        },
+        tenantColumns: {
+          organizationId: "organization_id",
+          projectId: "project_id",
+          environmentId: "environment_id",
+        },
+      };
+
+      const schema = createSchemaRegistry([schemaNoMapping]);
+      const ctx = createPrinterContext({
+        schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test123" },
+          project_id: { op: "eq", value: "proj_test456" },
+          environment_id: { op: "eq", value: "env_test789" },
+        },
+        timeRange: sevenDayRange,
+      });
+
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM logs GROUP BY timeBucket",
+        ctx
+      );
+
+      // No clickhouseName, so uses the TSQL name "timestamp" directly
+      expect(sql).toContain("toStartOfInterval(timestamp, INTERVAL 6 HOUR)");
+    });
+  });
+
+  describe("case insensitivity", () => {
+    it("should handle timeBucket() case-insensitively in SELECT", () => {
+      // The parser preserves case, but visitCall checks case-insensitively
+      const { sql } = printTimeBucketQuery(
+        "SELECT TIMEBUCKET(), count() FROM runs GROUP BY timeBucket"
+      );
+
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+    });
+  });
+
+  describe("integration with compileTSQL", () => {
+    it("should work through the full compileTSQL pipeline", () => {
+      const { sql, params } = compileTSQL(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket",
+        {
+          tableSchema: [timeBucketSchema],
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_test123" },
+            project_id: { op: "eq", value: "proj_test456" },
+            environment_id: { op: "eq", value: "env_test789" },
+          },
+          timeRange: sevenDayRange,
+        }
+      );
+
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+      expect(sql).toContain("count()");
+      // Tenant isolation should still be applied
+      expect(Object.values(params)).toContain("org_test123");
+    });
   });
 });

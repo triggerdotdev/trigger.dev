@@ -57,6 +57,16 @@ export interface InCondition {
 export type WhereClauseCondition = SimpleComparisonCondition | BetweenCondition | InCondition;
 
 /**
+ * A time range used by `timeBucket()` to determine the appropriate bucket interval.
+ */
+export interface TimeRange {
+  /** Start of the time range (inclusive) */
+  from: Date;
+  /** End of the time range (inclusive) */
+  to: Date;
+}
+
+/**
  * Default query settings
  */
 export const DEFAULT_QUERY_SETTINGS: Required<QuerySettings> = {
@@ -109,6 +119,12 @@ export class PrinterContext {
    */
   readonly enforcedWhereClause: Record<string, WhereClauseCondition>;
 
+  /**
+   * Time range for `timeBucket()` interval calculation.
+   * When provided, `timeBucket()` uses this to determine the appropriate bucket size.
+   */
+  readonly timeRange?: TimeRange;
+
   constructor(
     /** Schema registry containing allowed tables and columns */
     public readonly schema: SchemaRegistry,
@@ -120,12 +136,15 @@ export class PrinterContext {
      * Enforced WHERE conditions that are ALWAYS applied at the table level.
      * Must include tenant columns (e.g., organization_id) for multi-tenant tables.
      */
-    enforcedWhereClause: Record<string, WhereClauseCondition> = {}
+    enforcedWhereClause: Record<string, WhereClauseCondition> = {},
+    /** Time range for timeBucket() interval calculation */
+    timeRange?: TimeRange
   ) {
     // Initialize with default settings
     this.settings = { ...DEFAULT_QUERY_SETTINGS, ...settings };
     this.fieldMappings = fieldMappings;
     this.enforcedWhereClause = enforcedWhereClause;
+    this.timeRange = timeRange;
   }
 
   /**
@@ -205,7 +224,8 @@ export class PrinterContext {
       this.schema,
       this.settings,
       this.fieldMappings,
-      this.enforcedWhereClause
+      this.enforcedWhereClause,
+      this.timeRange
     );
     // Share the same values map so parameters are unified
     child.values = this.values;
@@ -251,6 +271,11 @@ export interface PrinterContextOptions {
    * ```
    */
   enforcedWhereClause: Record<string, WhereClauseCondition>;
+  /**
+   * Time range for `timeBucket()` interval calculation.
+   * When provided, `timeBucket()` uses this to determine the appropriate bucket size.
+   */
+  timeRange?: TimeRange;
 }
 
 /**
@@ -261,6 +286,7 @@ export function createPrinterContext(options: PrinterContextOptions): PrinterCon
     options.schema,
     options.settings,
     options.fieldMappings,
-    options.enforcedWhereClause
+    options.enforcedWhereClause,
+    options.timeRange
   );
 }
