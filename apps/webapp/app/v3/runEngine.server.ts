@@ -110,6 +110,7 @@ function createRunEngine() {
     },
     tracer,
     meter,
+    defaultMaxTtl: env.RUN_ENGINE_DEFAULT_MAX_TTL,
     heartbeatTimeoutsMs: {
       PENDING_EXECUTING: env.RUN_ENGINE_TIMEOUT_PENDING_EXECUTING,
       PENDING_CANCEL: env.RUN_ENGINE_TIMEOUT_PENDING_CANCEL,

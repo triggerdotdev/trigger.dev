@@ -129,6 +129,9 @@ export type RunEngineOptions = {
     factor?: number;
   };
   queueRunsWaitingForWorkerBatchSize?: number;
+  /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
+   *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
+  defaultMaxTtl?: string;
   tracer: Tracer;
   meter?: Meter;
   logger?: Logger;

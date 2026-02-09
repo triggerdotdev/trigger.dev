@@ -15,7 +15,11 @@ import {
   TaskRunInternalError,
 } from "@trigger.dev/core/v3";
 import { TaskRunError } from "@trigger.dev/core/v3/schemas";
-import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import {
+  parseNaturalLanguageDurationInMs,
+  RunId,
+  WaitpointId,
+} from "@trigger.dev/core/v3/isomorphic";
 import {
   Prisma,
   PrismaClient,
@@ -552,6 +556,9 @@ export class RunEngine {
 
         const status = delayUntil ? "DELAYED" : "PENDING";
 
+        // Apply defaultMaxTtl: use as default when no TTL is provided, clamp when larger
+        const resolvedTtl = this.#resolveMaxTtl(ttl);
+
         //create run
         let taskRun: TaskRun & { associatedWaitpoint: Waitpoint | null };
         const taskRunId = RunId.fromFriendlyId(friendlyId);
@@ -595,7 +602,7 @@ export class RunEngine {
               taskEventStore,
               priorityMs,
               queueTimestamp: queueTimestamp ?? delayUntil ?? new Date(),
-              ttl,
+              ttl: resolvedTtl,
               tags:
                 tags.length === 0
                   ? undefined
@@ -2263,6 +2270,33 @@ export class RunEngine {
         error,
       });
     }
+  }
+
+  /**
+   * Applies `defaultMaxTtl` to a run's TTL:
+   * - No max configured → pass through as-is.
+   * - No TTL on the run → use the max as the default.
+   * - Both exist → clamp to the smaller value.
+   */
+  #resolveMaxTtl(ttl: string | undefined): string | undefined {
+    const maxTtl = this.options.defaultMaxTtl;
+
+    if (!maxTtl) {
+      return ttl;
+    }
+
+    if (!ttl) {
+      return maxTtl;
+    }
+
+    const ttlMs = parseNaturalLanguageDurationInMs(ttl);
+    const maxTtlMs = parseNaturalLanguageDurationInMs(maxTtl);
+
+    if (ttlMs === undefined || maxTtlMs === undefined) {
+      return ttl;
+    }
+
+    return ttlMs <= maxTtlMs ? ttl : maxTtl;
   }
 
   async #concurrencySweeperCallback(
