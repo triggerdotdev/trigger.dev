@@ -555,7 +555,7 @@ export function QueryEditor({
       case "standalone":
         return (
           <NavBar>
-            <PageTitle title={<BetaTitle>Query</BetaTitle>} />
+            <PageTitle title="Query" />
           </NavBar>
         );
       case "dashboard-add":
