@@ -250,7 +250,7 @@ export function AIQueryInput({
     <div className="flex flex-col">
       {/* Gradient border wrapper like the schedules AI input */}
       <div
-        className="rounded-md p-px overflow-hidden"
+        className="overflow-hidden rounded-md p-px"
         style={{ background: "linear-gradient(to bottom right, #E543FF, #286399)" }}
       >
         <div className="overflow-hidden rounded-md bg-background-bright">
@@ -352,7 +352,7 @@ export function AIQueryInput({
             className="overflow-hidden"
           >
             <div className="px-1">
-              <div className="rounded-b-md border-x border-b border-grid-dimmed bg-charcoal-850 p-3 pb-1">
+              <div className="rounded-b-lg border-x border-b border-grid-dimmed bg-charcoal-850 p-3 pb-1">
                 <div className="mb-1 flex items-center justify-between">
                   <div className="flex items-center gap-1">
                     {isLoading ? (
@@ -400,7 +400,7 @@ export function AIQueryInput({
                     </Button>
                   )}
                 </div>
-                <div className="streamdown-container max-h-96 overflow-y-auto rounded-lg text-xs text-text-dimmed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                <div className="streamdown-container max-h-96 overflow-y-auto text-xs text-text-dimmed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
                   <Suspense fallback={<p className="whitespace-pre-wrap">{thinking}</p>}>
                     <StreamdownRenderer isAnimating={isLoading}>{thinking}</StreamdownRenderer>
                   </Suspense>

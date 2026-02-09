@@ -152,6 +152,14 @@
   --foreground: 210 20% 90%;
   --border: 217 19% 27%;
 
+  /* Code block styling */
+  & [data-code-block-container] {
+    @apply rounded border-charcoal-650 my-0;
+  }
+  & [data-code-block] {
+    border-top: none;
+  }
+
   & p {
     @apply my-1;
   }
