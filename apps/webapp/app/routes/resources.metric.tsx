@@ -1,7 +1,6 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
-import { useFetcher } from "@remix-run/react";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { requireUserId } from "~/services/session.server";
 import { hasAccessToEnvironment } from "~/models/runtimeEnvironment.server";
@@ -164,24 +163,60 @@ export function MetricWidget({
   onDuplicate,
   ...props
 }: MetricWidgetProps) {
-  const fetcher = useFetcher<MetricWidgetActionResponse>();
-  const isLoading = fetcher.state !== "idle";
+  const [response, setResponse] = useState<MetricWidgetActionResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const submit = useCallback(async () => {
-    fetcher.submit(props, {
+  // Track the latest props so the submit callback always uses fresh values
+  // without needing to be recreated (which would cause useInterval to re-register listeners).
+  const propsRef = useRef(props);
+  propsRef.current = props;
+
+  const submit = useCallback(() => {
+    // Abort any in-flight request for this widget
+    abortControllerRef.current?.abort();
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setIsLoading(true);
+
+    fetch(`/resources/metric`, {
       method: "POST",
-      action: `/resources/metric`,
-      encType: "application/json",
-    });
-  }, [JSON.stringify(props)]);
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(propsRef.current),
+      signal: controller.signal,
+    })
+      .then((res) => res.json() as Promise<MetricWidgetActionResponse>)
+      .then((data) => {
+        if (!controller.signal.aborted) {
+          setResponse(data);
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        // Ignore aborted requests
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      });
+  }, []);
 
-  // Reload periodically and on focus
-  useInterval({ interval: refreshIntervalMs, callback: submit });
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
-  // Reload when query, time period, or filters change
+  // Reload periodically and on focus (onLoad: false — the useEffect below handles initial load)
+  useInterval({ interval: refreshIntervalMs, callback: submit, onLoad: false });
+
+  // Reload on mount and when query, time period, or filters change
   useEffect(() => {
     submit();
   }, [
+    submit,
     props.query,
     props.from,
     props.to,
@@ -191,8 +226,8 @@ export function MetricWidget({
     JSON.stringify(props.queues),
   ]);
 
-  const data = fetcher.data?.success
-    ? { rows: fetcher.data.data.rows, columns: fetcher.data.data.columns }
+  const data = response?.success
+    ? { rows: response.data.rows, columns: response.data.columns }
     : { rows: [], columns: [] };
 
   return (
@@ -202,7 +237,7 @@ export function MetricWidget({
       config={config}
       isLoading={isLoading}
       data={data}
-      error={fetcher.data?.success === false ? fetcher.data.error : undefined}
+      error={response?.success === false ? response.error : undefined}
       isResizing={isResizing}
       isDraggable={isDraggable}
       onEdit={onEdit}
