@@ -1893,10 +1893,11 @@ export class RunAttemptSystem {
         });
 
       if (!queue) {
-        throw new ServiceValidationError(
-          `Could not resolve queue data for queue ${params.queueName}`,
-          404
-        );
+        // Return synthetic queue so run/span view still loads (e.g. createFailedTaskRun with fallback queue)
+        return {
+          id: params.queueName,
+          name: params.queueName,
+        };
       }
 
       return {

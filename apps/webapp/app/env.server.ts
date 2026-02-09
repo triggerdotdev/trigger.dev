@@ -542,6 +542,7 @@ const EnvironmentSchema = z
     MAXIMUM_DEPLOYED_QUEUE_SIZE: z.coerce.number().int().optional(),
     QUEUE_SIZE_CACHE_TTL_MS: z.coerce.number().int().optional().default(1_000), // 1 second
     QUEUE_SIZE_CACHE_MAX_SIZE: z.coerce.number().int().optional().default(5_000),
+    QUEUE_SIZE_CACHE_ENABLED: z.coerce.number().int().optional().default(1),
     MAX_BATCH_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
     MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
 

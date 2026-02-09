@@ -193,6 +193,13 @@ function createRunEngine() {
       globalRateLimiter: env.BATCH_QUEUE_GLOBAL_RATE_LIMIT
         ? createBatchGlobalRateLimiter(env.BATCH_QUEUE_GLOBAL_RATE_LIMIT)
         : undefined,
+      retry: {
+        maxAttempts: 6,
+        minTimeoutInMs: 1_000,
+        maxTimeoutInMs: 30_000,
+        factor: 2,
+        randomize: true,
+      },
     },
     // Debounce configuration
     debounce: {

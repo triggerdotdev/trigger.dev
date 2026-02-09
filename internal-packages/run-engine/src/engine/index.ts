@@ -14,6 +14,7 @@ import {
   TaskRunExecutionResult,
   TaskRunInternalError,
 } from "@trigger.dev/core/v3";
+import { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
   Prisma,
@@ -358,6 +359,7 @@ export class RunEngine {
       defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
       globalRateLimiter: options.batchQueue?.globalRateLimiter,
       startConsumers: startBatchQueueConsumers,
+      retry: options.batchQueue?.retry,
       tracer: options.tracer,
       meter: options.meter,
     });
@@ -746,6 +748,146 @@ export class RunEngine {
           time: new Date(),
           runId: taskRun.id,
         });
+
+        return taskRun;
+      },
+      {
+        attributes: {
+          friendlyId,
+          environmentId: environment.id,
+          projectId: environment.project.id,
+          taskIdentifier,
+        },
+      }
+    );
+  }
+
+  /**
+   * Creates a pre-failed TaskRun in SYSTEM_FAILURE status.
+   *
+   * Used when a batch item fails to trigger (e.g., queue limits, environment not found).
+   * Creates the run record so batch completion can track it, and if the batch has a
+   * waiting parent, creates and immediately completes a RUN waitpoint with the error.
+   */
+  async createFailedTaskRun({
+    friendlyId,
+    environment,
+    taskIdentifier,
+    payload,
+    payloadType,
+    error,
+    parentTaskRunId,
+    rootTaskRunId,
+    depth,
+    resumeParentOnCompletion,
+    batch,
+    traceId,
+    spanId,
+    traceContext,
+    taskEventStore,
+    queue: queueOverride,
+    lockedQueueId: lockedQueueIdOverride,
+  }: {
+    friendlyId: string;
+    environment: {
+      id: string;
+      type: RuntimeEnvironmentType;
+      project: { id: string };
+      organization: { id: string };
+    };
+    taskIdentifier: string;
+    payload?: string;
+    payloadType?: string;
+    error: TaskRunError;
+    parentTaskRunId?: string;
+    /** The root run of the task tree. If the parent is already a child, this is the parent's root. */
+    rootTaskRunId?: string;
+    /** Depth in the task tree (0 for root, parentDepth+1 for children). */
+    depth?: number;
+    resumeParentOnCompletion?: boolean;
+    batch?: { id: string; index: number };
+    traceId?: string;
+    spanId?: string;
+    traceContext?: Record<string, unknown>;
+    taskEventStore?: string;
+    /** Resolved queue name (e.g. custom queue). When provided, used instead of task/${taskIdentifier}. */
+    queue?: string;
+    /** Resolved TaskQueue.id when the task is locked to a specific queue. */
+    lockedQueueId?: string;
+  }): Promise<TaskRun> {
+    return startSpan(
+      this.tracer,
+      "createFailedTaskRun",
+      async (span) => {
+        const taskRunId = RunId.fromFriendlyId(friendlyId);
+
+        // Build associated waitpoint data if parent is waiting for this run
+        const waitpointData =
+          resumeParentOnCompletion && parentTaskRunId
+            ? this.waitpointSystem.buildRunAssociatedWaitpoint({
+                projectId: environment.project.id,
+                environmentId: environment.id,
+              })
+            : undefined;
+
+        // Create the run in terminal SYSTEM_FAILURE status.
+        // No execution snapshot is needed: this run never gets dequeued, executed,
+        // or heartbeated, so nothing will call getLatestExecutionSnapshot on it.
+        const taskRun = await this.prisma.taskRun.create({
+          include: {
+            associatedWaitpoint: true,
+          },
+          data: {
+            id: taskRunId,
+            engine: "V2",
+            status: "SYSTEM_FAILURE",
+            friendlyId,
+            runtimeEnvironmentId: environment.id,
+            environmentType: environment.type,
+            organizationId: environment.organization.id,
+            projectId: environment.project.id,
+            taskIdentifier,
+            payload: payload ?? "",
+            payloadType: payloadType ?? "application/json",
+            context: {},
+            traceContext: (traceContext ?? {}) as Record<string, string | undefined>,
+            traceId: traceId ?? "",
+            spanId: spanId ?? "",
+            queue: queueOverride ?? `task/${taskIdentifier}`,
+            lockedQueueId: lockedQueueIdOverride,
+            isTest: false,
+            completedAt: new Date(),
+            error: error as unknown as Prisma.InputJsonObject,
+            parentTaskRunId,
+            rootTaskRunId,
+            depth: depth ?? 0,
+            batchId: batch?.id,
+            resumeParentOnCompletion,
+            taskEventStore,
+            associatedWaitpoint: waitpointData
+              ? { create: waitpointData }
+              : undefined,
+          },
+        });
+
+        span.setAttribute("runId", taskRun.id);
+
+        // If parent is waiting, block it with the waitpoint then immediately
+        // complete it with the error output so the parent can resume.
+        if (
+          resumeParentOnCompletion &&
+          parentTaskRunId &&
+          taskRun.associatedWaitpoint
+        ) {
+          await this.waitpointSystem.blockRunAndCompleteWaitpoint({
+            runId: parentTaskRunId,
+            waitpointId: taskRun.associatedWaitpoint.id,
+            output: { value: JSON.stringify(error), isError: true },
+            projectId: environment.project.id,
+            organizationId: environment.organization.id,
+            batch,
+          });
+        }
 
         return taskRun;
       },

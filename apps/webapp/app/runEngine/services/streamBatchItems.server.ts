@@ -1,16 +1,14 @@
 import {
-  type BatchItemNDJSON,
   type StreamBatchItemsResponse,
   BatchItemNDJSON as BatchItemNDJSONSchema,
 } from "@trigger.dev/core/v3";
-import { BatchId, sanitizeQueueName } from "@trigger.dev/core/v3/isomorphic";
+import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import type { BatchItem, RunEngine } from "@internal/run-engine";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { BatchPayloadProcessor } from "../concerns/batchPayloads.server";
-import { getMaximumSizeForEnvironment } from "../concerns/queues.server";
 
 export type StreamBatchItemsServiceOptions = {
   maxItemBytes: number;
@@ -52,30 +50,6 @@ export class StreamBatchItemsService extends WithRunEngine {
     } catch {
       throw new ServiceValidationError(`Invalid batchFriendlyId: ${friendlyId}`, 400);
     }
-  }
-
-  /**
-   * Resolve the queue name for a batch item.
-   * Uses explicit queue name if provided, otherwise falls back to task default queue.
-   */
-  private resolveQueueName(item: BatchItemNDJSON): string {
-    // Check for explicit queue name in options
-    const explicitQueue = item.options?.queue;
-    if (explicitQueue) {
-      // Handle both string and object forms
-      if (typeof explicitQueue === "string") {
-        return sanitizeQueueName(explicitQueue) || `task/${item.task}`;
-      }
-      if (typeof explicitQueue === "object" && "name" in explicitQueue) {
-        const name = (explicitQueue as { name: unknown }).name;
-        if (typeof name === "string") {
-          return sanitizeQueueName(name) || `task/${item.task}`;
-        }
-      }
-    }
-
-    // Default to task-based queue name
-    return sanitizeQueueName(`task/${item.task}`) || `task/${item.task}`;
   }
 
   /**
@@ -130,19 +104,8 @@ export class StreamBatchItemsService extends WithRunEngine {
           );
         }
 
-        // Get maximum queue size limit for this environment
-        const maximumQueueSize = getMaximumSizeForEnvironment(environment);
-
-        // Track projected additions per queue for limit validation
-        // Map of queue_name -> { currentSize: number, projectedAdditions: number }
-        const queueSizeTracking = new Map<
-          string,
-          { currentSize: number; projectedAdditions: number }
-        >();
-
         let itemsAccepted = 0;
         let itemsDeduplicated = 0;
-        let itemsSkipped = 0;
         let lastIndex = -1;
 
         // Process items from the stream
@@ -163,42 +126,6 @@ export class StreamBatchItemsService extends WithRunEngine {
             throw new ServiceValidationError(
               `Item index ${item.index} exceeds batch runCount ${batch.runCount}`
             );
-          }
-
-          // Validate queue size limit before enqueuing
-          if (maximumQueueSize !== undefined) {
-            const queueName = this.resolveQueueName(item);
-
-            // Get or initialize tracking for this queue
-            let tracking = queueSizeTracking.get(queueName);
-            if (!tracking) {
-              // Fetch current queue size from Redis (first time seeing this queue)
-              const currentSize = await this._engine.lengthOfQueue(environment, queueName);
-              tracking = { currentSize, projectedAdditions: 0 };
-              queueSizeTracking.set(queueName, tracking);
-            }
-
-            // Check if adding this item would exceed the limit
-            const projectedTotal =
-              tracking.currentSize + tracking.projectedAdditions + 1;
-
-            if (projectedTotal > maximumQueueSize) {
-              logger.warn("Skipping batch item due to queue size limit", {
-                batchId: batchFriendlyId,
-                queueName,
-                currentSize: tracking.currentSize,
-                projectedAdditions: tracking.projectedAdditions,
-                maximumQueueSize,
-                itemIndex: item.index,
-              });
-
-              // Skip this item - don't enqueue it
-              itemsSkipped++;
-              continue;
-            }
-
-            // Increment projected additions for this queue
-            tracking.projectedAdditions++;
           }
 
           // Get the original payload type
@@ -239,19 +166,14 @@ export class StreamBatchItemsService extends WithRunEngine {
         // Get the actual enqueued count from Redis
         const enqueuedCount = await this._engine.getBatchEnqueuedCount(batchId);
 
-        // Calculate expected count accounting for skipped items
-        const expectedAfterSkips = batch.runCount - itemsSkipped;
-
-        // Validate we received the expected number of items (minus skipped ones)
-        if (enqueuedCount !== expectedAfterSkips) {
+        // Validate we received the expected number of items
+        if (enqueuedCount !== batch.runCount) {
           logger.warn("Batch item count mismatch", {
             batchId: batchFriendlyId,
-            originalExpected: batch.runCount,
-            expectedAfterSkips,
+            expected: batch.runCount,
             received: enqueuedCount,
             itemsAccepted,
             itemsDeduplicated,
-            itemsSkipped,
           });
 
           // Don't seal the batch if count doesn't match
@@ -260,25 +182,11 @@ export class StreamBatchItemsService extends WithRunEngine {
             id: batchFriendlyId,
             itemsAccepted,
             itemsDeduplicated,
-            itemsSkipped: itemsSkipped > 0 ? itemsSkipped : undefined,
             sealed: false,
             enqueuedCount,
             expectedCount: batch.runCount,
             runCount: batch.runCount,
           };
-        }
-
-        // If items were skipped, update the batch's runCount to match actual enqueued count
-        // This ensures the batch completes correctly with fewer runs
-        if (itemsSkipped > 0) {
-          await this._engine.updateBatchRunCount(batchId, enqueuedCount);
-
-          logger.info("Updated batch runCount due to skipped items", {
-            batchId: batchFriendlyId,
-            originalRunCount: batch.runCount,
-            newRunCount: enqueuedCount,
-            itemsSkipped,
-          });
         }
 
         // Seal the batch - use conditional update to prevent TOCTOU race
@@ -295,8 +203,6 @@ export class StreamBatchItemsService extends WithRunEngine {
             sealedAt: now,
             status: "PROCESSING",
             processingStartedAt: now,
-            // Also update runCount in Postgres if items were skipped
-            ...(itemsSkipped > 0 ? { runCount: enqueuedCount } : {}),
           },
         });
 
@@ -319,22 +225,19 @@ export class StreamBatchItemsService extends WithRunEngine {
               batchId: batchFriendlyId,
               itemsAccepted,
               itemsDeduplicated,
-              itemsSkipped,
               envId: environment.id,
             });
 
             span.setAttribute("itemsAccepted", itemsAccepted);
             span.setAttribute("itemsDeduplicated", itemsDeduplicated);
-            span.setAttribute("itemsSkipped", itemsSkipped);
             span.setAttribute("sealedByConcurrentRequest", true);
 
             return {
               id: batchFriendlyId,
               itemsAccepted,
               itemsDeduplicated,
-              itemsSkipped: itemsSkipped > 0 ? itemsSkipped : undefined,
               sealed: true,
-              runCount: itemsSkipped > 0 ? enqueuedCount : batch.runCount,
+              runCount: batch.runCount,
             };
           }
 
@@ -359,22 +262,19 @@ export class StreamBatchItemsService extends WithRunEngine {
           batchId: batchFriendlyId,
           itemsAccepted,
           itemsDeduplicated,
-          itemsSkipped,
           totalEnqueued: enqueuedCount,
           envId: environment.id,
         });
 
         span.setAttribute("itemsAccepted", itemsAccepted);
         span.setAttribute("itemsDeduplicated", itemsDeduplicated);
-        span.setAttribute("itemsSkipped", itemsSkipped);
 
         return {
           id: batchFriendlyId,
           itemsAccepted,
           itemsDeduplicated,
-          itemsSkipped: itemsSkipped > 0 ? itemsSkipped : undefined,
           sealed: true,
-          runCount: itemsSkipped > 0 ? enqueuedCount : batch.runCount,
+          runCount: batch.runCount,
         };
       }
     );

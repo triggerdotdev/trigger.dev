@@ -423,6 +423,10 @@ async function getCachedQueueSize(
   environment: AuthenticatedEnvironment,
   queueName: string
 ): Promise<number> {
+  if (!env.QUEUE_SIZE_CACHE_ENABLED) {
+    return engine.lengthOfQueue(environment, queueName);
+  }
+
   const cacheKey = `${environment.id}:${queueName}`;
   const result = await queueSizeCache.queueSize.swr(cacheKey, async () => {
     return engine.lengthOfQueue(environment, queueName);

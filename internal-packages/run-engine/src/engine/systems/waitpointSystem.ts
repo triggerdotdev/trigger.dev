@@ -497,6 +497,42 @@ export class WaitpointSystem {
     });
   }
 
+  /**
+   * Blocks a run with a waitpoint and immediately completes the waitpoint.
+   *
+   * Used when creating a pre-failed child run: the parent needs to be blocked
+   * by the waitpoint so it can receive the error output, but the waitpoint is
+   * already resolved because the child run is terminal from the start.
+   */
+  async blockRunAndCompleteWaitpoint({
+    runId,
+    waitpointId,
+    output,
+    projectId,
+    organizationId,
+    batch,
+  }: {
+    runId: string;
+    waitpointId: string;
+    output: { value: string; type?: string; isError: boolean };
+    projectId: string;
+    organizationId: string;
+    batch?: { id: string; index?: number };
+  }): Promise<void> {
+    await this.blockRunWithWaitpoint({
+      runId,
+      waitpoints: waitpointId,
+      projectId,
+      organizationId,
+      batch,
+    });
+
+    await this.completeWaitpoint({
+      id: waitpointId,
+      output,
+    });
+  }
+
   public async continueRunIfUnblocked({
     runId,
   }: {

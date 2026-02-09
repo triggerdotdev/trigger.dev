@@ -126,7 +126,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       organizationSlug,
       runParam,
       spanParam,
-      error,
+      linkedRunId,
+      error:
+        error instanceof Error
+          ? {
+              name: error.name,
+              message: error.message,
+              stack: error.stack,
+              cause: error.cause instanceof Error
+                ? { name: error.cause.name, message: error.cause.message }
+                : error.cause,
+            }
+          : error,
     });
     return redirectWithErrorMessage(
       v3RunPath(

@@ -98,6 +98,19 @@ export type RunEngineOptions = {
     defaultConcurrency?: number;
     /** Optional global rate limiter to limit processing across all consumers */
     globalRateLimiter?: GlobalRateLimiter;
+    /** Retry configuration for failed batch items */
+    retry?: {
+      /** Maximum number of attempts (including the first). Default: 1 (no retries) */
+      maxAttempts: number;
+      /** Base delay in milliseconds. Default: 1000 */
+      minTimeoutInMs?: number;
+      /** Maximum delay in milliseconds. Default: 30000 */
+      maxTimeoutInMs?: number;
+      /** Exponential backoff factor. Default: 2 */
+      factor?: number;
+      /** Whether to add jitter to retry delays. Default: true */
+      randomize?: boolean;
+    };
   };
   debounce?: {
     redis?: RedisOptions;
