@@ -2170,5 +2170,332 @@ describe("RunEngine debounce", () => {
       }
     }
   );
+
+  containerTest(
+    "Debounce: per-trigger maxDelay overrides global maxDebounceDuration",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      // Set a long global max debounce duration (1 minute)
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        debounce: {
+          maxDebounceDurationMs: 60_000, // 1 minute global max
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        // First trigger with a very short per-trigger maxDelay (1 second)
+        const run1 = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_maxwait1",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: '{"data": "first"}',
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 5000),
+            debounce: {
+              key: "maxwait-key",
+              delay: "5s",
+              maxDelay: "1s", // Very short per-trigger maxDelay (1 second)
+            },
+          },
+          prisma
+        );
+
+        expect(run1.friendlyId).toBe("run_maxwait1");
+
+        // Wait for the per-trigger maxDelay to be exceeded (1.5s > 1s)
+        await setTimeout(1500);
+
+        // Second trigger should create a new run because per-trigger maxDelay exceeded
+        // (even though global maxDebounceDurationMs is 60 seconds)
+        const run2 = await engine.trigger(
+          {
+            number: 2,
+            friendlyId: "run_maxwait2",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: '{"data": "second"}',
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12346",
+            spanId: "s12346",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 5000),
+            debounce: {
+              key: "maxwait-key",
+              delay: "5s",
+              maxDelay: "1s",
+            },
+          },
+          prisma
+        );
+
+        // Should be a different run because per-trigger maxDelay was exceeded
+        expect(run2.id).not.toBe(run1.id);
+        expect(run2.friendlyId).toBe("run_maxwait2");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "Debounce: falls back to global config when maxDelay not specified",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      // Set a very short global max debounce duration (1 second)
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        debounce: {
+          maxDebounceDurationMs: 1000, // 1 second global max
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        // First trigger without maxDelay - should use global config
+        const run1 = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_noglobal1",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: '{"data": "first"}',
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 5000),
+            debounce: {
+              key: "global-fallback-key",
+              delay: "5s",
+              // No maxDelay specified - should use global maxDebounceDurationMs
+            },
+          },
+          prisma
+        );
+
+        // Wait for global maxDebounceDurationMs to be exceeded (1.5s > 1s)
+        await setTimeout(1500);
+
+        // Second trigger should create a new run because global max exceeded
+        const run2 = await engine.trigger(
+          {
+            number: 2,
+            friendlyId: "run_noglobal2",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: '{"data": "second"}',
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12346",
+            spanId: "s12346",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 5000),
+            debounce: {
+              key: "global-fallback-key",
+              delay: "5s",
+            },
+          },
+          prisma
+        );
+
+        // Should be a different run because global max exceeded
+        expect(run2.id).not.toBe(run1.id);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "Debounce: long maxDelay allows more debounce time than global config",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      // Set a short global max debounce duration (1 second)
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        debounce: {
+          maxDebounceDurationMs: 1000, // 1 second global max
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        // First trigger with long maxDelay that overrides the short global config
+        const run1 = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_longmax1",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: '{"data": "first"}',
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 2000),
+            debounce: {
+              key: "long-maxwait-key",
+              delay: "2s",
+              maxDelay: "60s", // Long per-trigger maxDelay overrides short global config
+            },
+          },
+          prisma
+        );
+
+        // Wait past the global maxDebounceDurationMs (1s) but within our per-trigger maxDelay (60s)
+        await setTimeout(1500);
+
+        // Second trigger should return SAME run because per-trigger maxDelay is 60s
+        const run2 = await engine.trigger(
+          {
+            number: 2,
+            friendlyId: "run_longmax2",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: '{"data": "second"}',
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12346",
+            spanId: "s12346",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 2000),
+            debounce: {
+              key: "long-maxwait-key",
+              delay: "2s",
+              maxDelay: "60s",
+            },
+          },
+          prisma
+        );
+
+        // Should be the SAME run because per-trigger maxDelay allows it
+        expect(run2.id).toBe(run1.id);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 });
 

@@ -945,6 +945,22 @@ export type TriggerOptions = {
      * @default "leading"
      */
     mode?: "leading" | "trailing";
+    /**
+     * Maximum total delay before the run must execute, regardless of subsequent triggers.
+     * This prevents indefinite delays when continuous triggers keep pushing the execution time.
+     *
+     * When specified, if a new trigger would push the execution time beyond this limit
+     * (measured from the first trigger), the current debounced run will be allowed to execute
+     * and a new run will be created for subsequent triggers.
+     *
+     * If not specified, falls back to the server's default maximum (typically 1 hour).
+     *
+     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` (hours),
+     * `{number}d` (days), `{number}w` (weeks).
+     *
+     * @example "30m", "2h", "1d"
+     */
+    maxDelay?: string;
   };
 };
 

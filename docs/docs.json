@@ -49,9 +49,10 @@
               "building-with-ai",
               {
                 "group": "MCP Server",
-                "pages": ["mcp-introduction", "mcp-tools", "mcp-agent-rules"]
+                "pages": ["mcp-introduction", "mcp-tools"]
               },
-              "skills"
+              "skills",
+              "mcp-agent-rules"
             ]
           },
           {
@@ -276,6 +277,14 @@
               "management/envvars/update",
               "management/envvars/delete"
             ]
+          },
+          {
+            "group": "Deployments API",
+            "pages": [
+              "management/deployments/retrieve",
+              "management/deployments/get-latest",
+              "management/deployments/promote"
+            ]
           }
         ]
       },
@@ -344,7 +353,8 @@
                   "guides/frameworks/webhooks-guides-overview",
                   "guides/frameworks/nextjs-webhooks",
                   "guides/frameworks/remix-webhooks",
-                  "guides/examples/stripe-webhook"
+                  "guides/examples/stripe-webhook",
+                  "guides/examples/hookdeck-webhook"
                 ]
               }
             ]
