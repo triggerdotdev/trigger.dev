@@ -258,23 +258,7 @@ export async function updateTriggerPackages(
       `Installing new package versions${packageManager ? ` with ${packageManager.name}` : ""}`
     );
 
-    const installArgs: string[] = [];
-
-    if (options.ignoreEngines && packageManager) {
-      switch (packageManager.name) {
-        case "npm":
-          installArgs.push("--no-engine-strict");
-          break;
-        case "pnpm":
-          installArgs.push("--config.engine-strict=false");
-          break;
-        case "yarn":
-          installArgs.push("--ignore-engines");
-          break;
-      }
-    }
-
-    await installDependencies({ cwd: projectPath, silent: true, args: installArgs });
+    await installDependencies({ cwd: projectPath, silent: true });
   } catch (error) {
     installSpinner.stop(
       `Failed to install new package versions${packageManager ? ` with ${packageManager.name}` : ""

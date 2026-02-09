@@ -14,6 +14,7 @@ export const CommonCommandOptions = z.object({
   logLevel: z.enum(["debug", "info", "log", "warn", "error", "none"]).default("log"),
   skipTelemetry: z.boolean().default(false),
   profile: z.string().default(readAuthConfigCurrentProfileName()),
+  ignoreEngines: z.boolean().default(false),
 });
 
 export type CommonCommandOptions = z.infer<typeof CommonCommandOptions>;
@@ -30,9 +31,9 @@ export function commonOptions(command: Command) {
     .option("--skip-telemetry", "Opt-out of sending telemetry");
 }
 
-export class SkipLoggingError extends Error {}
-export class SkipCommandError extends Error {}
-export class OutroCommandError extends SkipCommandError {}
+export class SkipLoggingError extends Error { }
+export class SkipCommandError extends Error { }
+export class OutroCommandError extends SkipCommandError { }
 
 export async function handleTelemetry(action: () => Promise<void>) {
   try {

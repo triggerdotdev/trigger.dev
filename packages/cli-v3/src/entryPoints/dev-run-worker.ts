@@ -64,6 +64,10 @@ import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
 import { setInterval, setTimeout } from "node:timers/promises";
 import { installSourceMapSupport } from "../utilities/sourceMaps.js";
+import { env } from "std-env";
+import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
+import { VERSION } from "../version.js";
+import { promiseWithResolvers } from "@trigger.dev/core/utils";
 
 installSourceMapSupport();
 

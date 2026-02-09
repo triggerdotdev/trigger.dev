@@ -138,6 +138,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
             profile: options?.profile ?? "default",
             skipTelemetry: !span.isRecording(),
             logLevel: logger.loggerLevel,
+            ignoreEngines: false,
           },
           true,
           opts.silent
@@ -148,8 +149,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
 
           if (!opts.embedded) {
             outro(
-              `Login failed using stored token. To fix, first logout using \`trigger.dev logout${
-                options?.profile ? ` --profile ${options.profile}` : ""
+              `Login failed using stored token. To fix, first logout using \`trigger.dev logout${options?.profile ? ` --profile ${options.profile}` : ""
               }\` and then try again.`
             );
 
@@ -290,6 +290,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
             profile: options?.profile ?? "default",
             skipTelemetry: !span.isRecording(),
             logLevel: logger.loggerLevel,
+            ignoreEngines: false,
           },
           opts.embedded
         );
