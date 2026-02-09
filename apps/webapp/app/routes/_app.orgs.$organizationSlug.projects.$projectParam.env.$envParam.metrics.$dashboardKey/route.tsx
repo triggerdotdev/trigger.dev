@@ -15,9 +15,10 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { z } from "zod";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactGridLayout from "react-grid-layout";
 import { MetricWidget } from "../resources.metric";
+import { TitleWidget } from "~/components/metrics/TitleWidget";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -153,6 +154,19 @@ export function MetricDashboard({
     [onLayoutChange]
   );
 
+  // Apply constraints for title widgets: fixed height of 2, allow horizontal resize only
+  const constrainedLayout = useMemo(
+    () =>
+      layout.map((item) => {
+        const widget = widgets[item.i];
+        if (widget?.display.type === "title") {
+          return { ...item, h: 2, minH: 2, maxH: 2 };
+        }
+        return item;
+      }),
+    [layout, widgets]
+  );
+
   return (
     <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
       <div className="flex items-center gap-1 border-b border-b-grid-bright py-2 pl-2 pr-3">
@@ -173,7 +187,7 @@ export function MetricDashboard({
       >
         {mounted && (
           <ReactGridLayout
-            layout={layout}
+            layout={constrainedLayout}
             width={width}
             gridConfig={{ cols: 12, rowHeight: 30 }}
             resizeConfig={{
@@ -187,38 +201,50 @@ export function MetricDashboard({
           >
             {Object.entries(widgets).map(([key, widget]) => (
               <div key={key}>
-                <MetricWidget
-                  widgetKey={key}
-                  title={widget.title}
-                  query={widget.query}
-                  scope={scope}
-                  period={period ?? null}
-                  from={from ?? null}
-                  to={to ?? null}
-                  taskIdentifiers={tasks.length > 0 ? tasks : undefined}
-                  queues={queues.length > 0 ? queues : undefined}
-                  config={widget.display}
-                  organizationId={organization.id}
-                  projectId={project.id}
-                  environmentId={environment.id}
-                  refreshIntervalMs={60_000}
-                  isResizing={resizingItemId === key}
-                  isDraggable={editable}
-                  onEdit={
-                    onEditWidget
-                      ? (resultData) => onEditWidget(key, { ...widget, resultData })
-                      : undefined
-                  }
-                  onRename={
-                    onRenameWidget ? (newTitle) => onRenameWidget(key, newTitle) : undefined
-                  }
-                  onDelete={onDeleteWidget ? () => onDeleteWidget(key) : undefined}
-                  onDuplicate={
-                    onDuplicateWidget
-                      ? (resultData) => onDuplicateWidget(key, { ...widget, resultData })
-                      : undefined
-                  }
-                />
+                {widget.display.type === "title" ? (
+                  <TitleWidget
+                    title={widget.title}
+                    isDraggable={editable}
+                    isResizing={resizingItemId === key}
+                    onRename={
+                      onRenameWidget ? (newTitle) => onRenameWidget(key, newTitle) : undefined
+                    }
+                    onDelete={onDeleteWidget ? () => onDeleteWidget(key) : undefined}
+                  />
+                ) : (
+                  <MetricWidget
+                    widgetKey={key}
+                    title={widget.title}
+                    query={widget.query}
+                    scope={scope}
+                    period={period ?? null}
+                    from={from ?? null}
+                    to={to ?? null}
+                    taskIdentifiers={tasks.length > 0 ? tasks : undefined}
+                    queues={queues.length > 0 ? queues : undefined}
+                    config={widget.display}
+                    organizationId={organization.id}
+                    projectId={project.id}
+                    environmentId={environment.id}
+                    refreshIntervalMs={60_000}
+                    isResizing={resizingItemId === key}
+                    isDraggable={editable}
+                    onEdit={
+                      onEditWidget
+                        ? (resultData) => onEditWidget(key, { ...widget, resultData })
+                        : undefined
+                    }
+                    onRename={
+                      onRenameWidget ? (newTitle) => onRenameWidget(key, newTitle) : undefined
+                    }
+                    onDelete={onDeleteWidget ? () => onDeleteWidget(key) : undefined}
+                    onDuplicate={
+                      onDuplicateWidget
+                        ? (resultData) => onDuplicateWidget(key, { ...widget, resultData })
+                        : undefined
+                    }
+                  />
+                )}
               </div>
             ))}
           </ReactGridLayout>

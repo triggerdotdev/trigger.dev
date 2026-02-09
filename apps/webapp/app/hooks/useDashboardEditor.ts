@@ -329,10 +329,15 @@ export function useDashboardEditor({
   // Action handlers
   // -------------------------------------------------------------------------
 
+  // Count only non-title widgets for limit checks (title widgets are free)
+  const countedWidgets = Object.values(state.widgets).filter(
+    (w) => w.display.type !== "title"
+  ).length;
+
   const addWidget = useCallback(
     (title: string, query: string, config: QueryWidgetConfig) => {
-      // Guard: check widget limit
-      if (widgetLimit !== undefined && Object.keys(state.widgets).length >= widgetLimit) {
+      // Guard: check widget limit (title widgets don't count)
+      if (widgetLimit !== undefined && countedWidgets >= widgetLimit) {
         onWidgetLimitReached?.();
         return;
       }
@@ -352,7 +357,29 @@ export function useDashboardEditor({
         config: JSON.stringify(config),
       });
     },
-    [state.layout, state.widgets, widgetLimit, onWidgetLimitReached, queueWidgetSync]
+    [state.layout, countedWidgets, widgetLimit, onWidgetLimitReached, queueWidgetSync]
+  );
+
+  const addTitleWidget = useCallback(
+    (title: string) => {
+      const id = nanoid(8);
+      const maxBottom = Math.max(0, ...state.layout.map((l) => l.y + l.h));
+      // Title widgets are fixed at h=2 and full width
+      const layoutItem: LayoutItem = { i: id, x: 0, y: maxBottom, w: 12, h: 2 };
+      const config: QueryWidgetConfig = { type: "title" };
+      const widget: Widget = { title, query: "", display: config };
+
+      // Update local state immediately
+      dispatch({ type: "ADD_WIDGET", payload: { id, widget, layoutItem } });
+
+      // Queue sync to server (processed sequentially)
+      queueWidgetSync("add", {
+        title,
+        query: "",
+        config: JSON.stringify(config),
+      });
+    },
+    [state.layout, queueWidgetSync]
   );
 
   const updateWidget = useCallback(
@@ -386,8 +413,8 @@ export function useDashboardEditor({
 
   const duplicateWidget = useCallback(
     (widgetId: string) => {
-      // Guard: check widget limit
-      if (widgetLimit !== undefined && Object.keys(state.widgets).length >= widgetLimit) {
+      // Guard: check widget limit (title widgets don't count)
+      if (widgetLimit !== undefined && countedWidgets >= widgetLimit) {
         onWidgetLimitReached?.();
         return;
       }
@@ -402,7 +429,7 @@ export function useDashboardEditor({
       // This is fine since we're optimistic - the server state will be consistent
       queueWidgetSync("duplicate", { widgetId });
     },
-    [state.widgets, widgetLimit, onWidgetLimitReached, queueWidgetSync]
+    [countedWidgets, widgetLimit, onWidgetLimitReached, queueWidgetSync]
   );
 
   const renameWidget = useCallback(
@@ -471,6 +498,7 @@ export function useDashboardEditor({
     /** Action dispatchers */
     actions: {
       addWidget,
+      addTitleWidget,
       updateWidget,
       renameWidget,
       deleteWidget,

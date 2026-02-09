@@ -227,6 +227,10 @@ export default function Page() {
     ));
   }, []);
 
+  // Add title dialog state
+  const [showAddTitleDialog, setShowAddTitleDialog] = useState(false);
+  const [newTitleValue, setNewTitleValue] = useState("");
+
   // Widget limit dialog state (triggered when hook blocks add/duplicate)
   const [showWidgetLimitDialog, setShowWidgetLimitDialog] = useState(false);
 
@@ -244,8 +248,11 @@ export default function Page() {
     onWidgetLimitReached: handleWidgetLimitReached,
   });
 
-  // Reactive widget count from editor state
-  const currentWidgetCount = Object.keys(state.widgets).length;
+  // Reactive widget count from editor state (title widgets don't count against limits)
+  const currentWidgetCount = Object.values(state.widgets).filter(
+    (w) => w.display.type !== "title"
+  ).length;
+  const totalWidgetCount = Object.keys(state.widgets).length;
   const widgetLimits = { used: currentWidgetCount, limit: widgetLimitPerDashboard };
   const widgetIsAtLimit = currentWidgetCount >= widgetLimitPerDashboard;
   const widgetCanUpgrade = plan?.v3Subscription?.plan && !canExceedWidgets;
@@ -351,41 +358,66 @@ export default function Page() {
       <NavBar>
         <PageTitle title={title} />
         <PageAccessories>
-          {currentWidgetCount > 0 &&
+          {totalWidgetCount > 0 &&
             (widgetIsAtLimit ? (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="primary/small" LeadingIcon={PlusIcon}>
-                    Add chart
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>You've exceeded your widget limit</DialogHeader>
-                  <DialogDescription>
-                    You've used {widgetLimits.used}/{widgetLimits.limit} widgets on this dashboard.
-                  </DialogDescription>
-                  <DialogFooter>
-                    {widgetCanUpgrade ? (
-                      <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
-                        Upgrade
-                      </LinkButton>
-                    ) : (
-                      <Feedback
-                        button={<Button variant="primary/small">Request more</Button>}
-                        defaultValue="help"
-                      />
-                    )}
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+              <>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="primary/small" LeadingIcon={PlusIcon}>
+                      Add chart
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>You've exceeded your widget limit</DialogHeader>
+                    <DialogDescription>
+                      You've used {widgetLimits.used}/{widgetLimits.limit} widgets on this
+                      dashboard.
+                    </DialogDescription>
+                    <DialogFooter>
+                      {widgetCanUpgrade ? (
+                        <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+                          Upgrade
+                        </LinkButton>
+                      ) : (
+                        <Feedback
+                          button={<Button variant="primary/small">Request more</Button>}
+                          defaultValue="help"
+                        />
+                      )}
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+                <Button
+                  variant="secondary/small"
+                  LeadingIcon={PlusIcon}
+                  onClick={() => {
+                    setNewTitleValue("");
+                    setShowAddTitleDialog(true);
+                  }}
+                >
+                  Add title
+                </Button>
+              </>
             ) : (
-              <Button
-                variant="primary/small"
-                LeadingIcon={PlusIcon}
-                onClick={actions.openAddEditor}
-              >
-                Add chart
-              </Button>
+              <>
+                <Button
+                  variant="primary/small"
+                  LeadingIcon={PlusIcon}
+                  onClick={actions.openAddEditor}
+                >
+                  Add chart
+                </Button>
+                <Button
+                  variant="secondary/small"
+                  LeadingIcon={PlusIcon}
+                  onClick={() => {
+                    setNewTitleValue("");
+                    setShowAddTitleDialog(true);
+                  }}
+                >
+                  Add title
+                </Button>
+              </>
             ))}
           <Popover>
             <PopoverVerticalEllipseTrigger variant="secondary" />
@@ -401,7 +433,7 @@ export default function Page() {
       <PageBody scrollable={false}>
         <div className="flex h-full flex-col">
           <div className="min-h-0 flex-1">
-            {currentWidgetCount === 0 ? (
+            {totalWidgetCount === 0 ? (
               <MainCenteredContainer className="max-w-md">
                 <InfoPanel
                   icon={IconChartHistogram}
@@ -535,6 +567,41 @@ export default function Page() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Add title dialog */}
+      <Dialog open={showAddTitleDialog} onOpenChange={setShowAddTitleDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>Add title</DialogHeader>
+          <form
+            className="space-y-4 pt-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (newTitleValue.trim()) {
+                actions.addTitleWidget(newTitleValue.trim());
+                setShowAddTitleDialog(false);
+              }
+            }}
+          >
+            <InputGroup>
+              <Label>Title</Label>
+              <Input
+                value={newTitleValue}
+                onChange={(e) => setNewTitleValue(e.target.value)}
+                placeholder="Section title"
+                autoFocus
+              />
+            </InputGroup>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="tertiary/medium">Cancel</Button>
+              </DialogClose>
+              <Button type="submit" variant="primary/medium" disabled={!newTitleValue.trim()}>
+                Add
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Widget limit dialog - triggered by hook when add/duplicate is blocked */}
       <Dialog open={showWidgetLimitDialog} onOpenChange={setShowWidgetLimitDialog}>

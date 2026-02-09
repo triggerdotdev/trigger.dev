@@ -26,13 +26,15 @@ export const LayoutItem = z.object({
   y: z.number(),
   w: z.number(),
   h: z.number(),
+  minH: z.number().optional(),
+  maxH: z.number().optional(),
 });
 
 export type LayoutItem = z.infer<typeof LayoutItem>;
 
 export const Widget = z.object({
   title: z.string(),
-  query: z.string(),
+  query: z.string().default(""),
   display: QueryWidgetConfig,
 });
 

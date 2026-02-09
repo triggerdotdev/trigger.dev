@@ -17,7 +17,7 @@ import { EnvironmentParamSchema, v3CustomDashboardPath } from "~/utils/pathBuild
 // Schemas for each action type
 const AddWidgetSchema = z.object({
   title: z.string().min(1, "Title is required"),
-  query: z.string().min(1, "Query is required"),
+  query: z.string().default(""),
   config: z.string().transform((str, ctx) => {
     try {
       const parsed = JSON.parse(str);
@@ -167,10 +167,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
   }
 
-  // Check widget limit for add/duplicate actions
+  // Check widget limit for add/duplicate actions (title widgets don't count)
   async function checkWidgetLimit() {
-    const currentWidgetCount = Object.keys(existingLayout.widgets).length;
-    const plan = await getCurrentPlan(project.organizationId);
+    const currentWidgetCount = Object.values(existingLayout.widgets).filter(
+      (w) => w.display.type !== "title"
+    ).length;
+    const plan = await getCurrentPlan(project!.organizationId);
     const metricWidgetsLimitValue = (plan?.v3Subscription?.plan?.limits as any)
       ?.metricWidgetsPerDashboard;
     const widgetLimit =
@@ -185,8 +187,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   switch (action) {
     case "add": {
-      await checkWidgetLimit();
-
       const rawData = {
         title: formData.get("title"),
         query: formData.get("query"),
@@ -200,6 +200,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       const { title, query, config } = result.data;
 
+      // Validate that non-title widgets have a query
+      if (config.type !== "title" && !query) {
+        throw new Response("Query is required for chart widgets", { status: 400 });
+      }
+
+      // Title widgets don't count against the limit
+      if (config.type !== "title") {
+        await checkWidgetLimit();
+      }
+
       // Generate new widget ID
       const widgetId = nanoid(8);
 
@@ -212,13 +222,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         }
       }
 
-      // Add new layout item (full width, reasonable height)
+      // Add new layout item (full width, height depends on widget type)
       const newLayoutItem = {
         i: widgetId,
         x: 0,
         y: maxBottom,
         w: 12,
-        h: 15,
+        h: config.type === "title" ? 2 : 15,
       };
 
       // Add new widget

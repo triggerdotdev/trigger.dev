@@ -105,6 +105,9 @@ export const QueryWidgetConfig = z.discriminatedUnion("type", [
     type: z.literal("bignumber"),
     ...bigNumberConfigOptions,
   }),
+  z.object({
+    type: z.literal("title"),
+  }),
 ]);
 
 export type QueryWidgetConfig = z.infer<typeof QueryWidgetConfig>;
@@ -393,6 +396,10 @@ function QueryWidgetBody({
           </Dialog>
         </>
       );
+    }
+    case "title": {
+      // Title widgets are rendered by TitleWidget, not QueryWidget
+      return null;
     }
     default: {
       assertNever(type);
