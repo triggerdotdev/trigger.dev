@@ -250,10 +250,10 @@ export function AIQueryInput({
     <div className="flex flex-col">
       {/* Gradient border wrapper like the schedules AI input */}
       <div
-        className="rounded-md p-px"
+        className="rounded-md p-px overflow-hidden"
         style={{ background: "linear-gradient(to bottom right, #E543FF, #286399)" }}
       >
-        <div className="overflow-hidden rounded-b-md bg-background-bright">
+        <div className="overflow-hidden rounded-md bg-background-bright">
           <form onSubmit={handleSubmit}>
             <textarea
               ref={textareaRef}
