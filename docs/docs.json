@@ -70,6 +70,7 @@
               "machines",
               "idempotency",
               "runs/max-duration",
+              "runs/heartbeats",
               "tags",
               "runs/metadata",
               "tasks/streams",

@@ -1,0 +1,38 @@
+---
+title: "Heartbeats"
+sidebarTitle: "Heartbeats"
+description: "Keep long-running or CPU-heavy tasks from being marked as stalled."
+---
+
+We send a heartbeat from your task to the platform every 30 seconds. If we don't receive a heartbeat within 5 minutes, we mark the run as stalled and stop it with a `TASK_RUN_STALLED_EXECUTING` error.
+
+Code that blocks the event loop for too long (for example, a tight loop doing synchronous work on a large dataset) can prevent heartbeats from being sent. In that case, use `heartbeats.yield()` inside the loop so the runtime can yield to the event loop and send a heartbeat. You can call it every iteration; the implementation only yields when needed.
+
+```ts
+import { task, heartbeats } from "@trigger.dev/sdk";
+
+export const processLargeDataset = task({
+  id: "process-large-dataset",
+  run: async (payload: { items: string[] }) => {
+    for (const row of payload.items) {
+      process(row);
+      await heartbeats.yield();
+    }
+    return { processed: payload.items.length };
+  },
+});
+
+function process(row: string) {
+  // synchronous CPU-heavy work
+}
+```
+
+If you see `TASK_RUN_STALLED_EXECUTING`, see [Task run stalled executing](/troubleshooting#task-run-stalled-executing) in the troubleshooting guide.
+
+## Sending progress to Trigger.dev
+
+To stream progress or status updates to the dashboard and your app, use [run metadata](/runs/metadata). Call `metadata.set()` (or `metadata.append()`) as the task runs. The dashboard and [Realtime](/realtime) (including `runs.subscribeToRun` and the React hooks) receive those updates as they happen. See [Progress monitoring](/realtime/backend/subscribe#progress-monitoring) for a full example.
+
+## Sending updates to your own system
+
+Trigger.dev doesn’t push run updates to external services. To send progress or heartbeats to your own backend (for example Supabase Realtime), call your API or client from inside the task when you want to emit an update—e.g. in the same loop where you call `heartbeats.yield()` or `metadata.set()`. Use whatever your stack supports: HTTP, the Supabase client, or another SDK.
