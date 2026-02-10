@@ -884,7 +884,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
 
   // Determine appropriate angle for X-axis labels based on granularity
   const xAxisAngle = timeGranularity === "hours" || timeGranularity === "seconds" ? -45 : 0;
-  const xAxisHeight = xAxisAngle !== 0 ? 60 : undefined;
+  const xAxisHeight = xAxisAngle !== 0 ? 65 : undefined;
 
   // Check if the data would produce duplicate labels at the current granularity.
   // Only use the custom tick renderer (with interval:0) when duplicates exist,
@@ -901,11 +901,10 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     return labels.size < data.length;
   }, [isDateBased, timeGranularity, data, xDataKey]);
 
-  // Custom tick renderer for date-based axes: shows either a text label or
-  // a small tick mark, but never both. This avoids duplicate labels while
-  // still giving visual markers for unlabelled data points.
+  // Custom tick renderer for date-based axes: renders a tick mark alongside
+  // each label, and for unlabelled points (de-duplicated) just a subtle tick mark.
   const dateAxisTick = useMemo(() => {
-    if (!isDateBased || !xAxisTickFormatter || !hasDuplicateLabels) return undefined;
+    if (!isDateBased || !xAxisTickFormatter) return undefined;
     return (props: Record<string, unknown>) => {
       const { x, y, payload } = props as { x: number; y: number; payload: { value: number } };
       const label = xAxisTickFormatter(payload.value);
@@ -914,16 +913,25 @@ export const QueryResultsChart = memo(function QueryResultsChart({
       if (label) {
         return (
           <g>
-            <line x1={x as number} y1={axisY} x2={x as number} y2={axisY - 3} stroke="#878C99" strokeWidth={1} />
+            <line
+              x1={x as number}
+              y1={axisY}
+              x2={x as number}
+              y2={axisY - 3}
+              stroke="#878C99"
+              strokeWidth={1}
+            />
             <text
               x={x}
               y={axisY}
-              dy={16}
+              dy={10}
               fill="#878C99"
               fontSize={11}
               textAnchor={xAxisAngle !== 0 ? "end" : "middle"}
               style={{ fontVariantNumeric: "tabular-nums" }}
-              transform={xAxisAngle !== 0 ? `rotate(${xAxisAngle}, ${x}, ${axisY + 16})` : undefined}
+              transform={
+                xAxisAngle !== 0 ? `rotate(${xAxisAngle}, ${x}, ${axisY + 10})` : undefined
+              }
             >
               {label}
             </text>
@@ -942,7 +950,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         />
       );
     };
-  }, [isDateBased, xAxisTickFormatter, xAxisAngle, hasDuplicateLabels]);
+  }, [isDateBased, xAxisTickFormatter, xAxisAngle]);
 
   // Validation — all hooks must be above this point
   if (!xAxisColumn) {
@@ -964,7 +972,14 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   // Base x-axis props shared by all chart types
   const baseXAxisProps = {
     ...(dateAxisTick
-      ? { tick: dateAxisTick, tickLine: false, tickFormatter: undefined, interval: 0 }
+      ? {
+          tick: dateAxisTick,
+          tickLine: false,
+          tickFormatter: undefined,
+          // Only force every tick to render when there are duplicates to de-duplicate;
+          // otherwise let Recharts auto-space to avoid label collisions
+          ...(hasDuplicateLabels ? { interval: 0 } : {}),
+        }
       : { tickFormatter: xAxisTickFormatter }),
     angle: xAxisAngle,
     textAnchor: xAxisAngle !== 0 ? ("end" as const) : ("middle" as const),
