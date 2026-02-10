@@ -786,7 +786,7 @@ function HeaderCellContent({
   return (
     <div
       className={cn(
-        "flex w-full items-center gap-1 overflow-hidden bg-background-bright py-1.5 pl-2 pr-1",
+        "flex w-full items-center gap-1 overflow-hidden bg-background-bright py-2 pl-2 pr-1",
         "font-mono text-xs font-medium text-text-bright",
         alignment === "right" && "justify-end",
         canSort && "cursor-pointer select-none"
