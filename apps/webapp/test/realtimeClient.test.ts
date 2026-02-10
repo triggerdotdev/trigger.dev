@@ -1,4 +1,3 @@
-import { containerWithElectricAndRedisTest } from "@internal/testcontainers";
 import { expect, describe } from "vitest";
 import { RealtimeClient } from "../app/services/realtimeClient.server.js";
 import Redis from "ioredis";

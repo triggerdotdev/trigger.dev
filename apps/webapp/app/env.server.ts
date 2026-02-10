@@ -226,7 +226,7 @@ const EnvironmentSchema = z
     REALTIME_MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS: z.coerce
       .number()
       .int()
-      .default(24 * 60 * 60 * 1000), // 1 day in milliseconds
+      .default(30 * 24 * 60 * 60 * 1000), // 30 days in milliseconds
 
     PUBSUB_REDIS_HOST: z
       .string()

@@ -1023,6 +1023,19 @@ export function prepareDeploymentError(
     }
   }
 
+  if (
+    errorData.message.includes("resource_exhausted") ||
+    errorData.stderr?.includes("resource_exhausted")
+  ) {
+    return {
+      name: "BuildError",
+      message:
+        "The build failed because it ran out of resources (memory or disk space). This can happen if you have a large build context or are installing heavy dependencies. Try reducing the size of your build context (use .dockerignore) or contact support if this persists.",
+      stderr: errorData.stderr,
+      stack: errorData.stack,
+    };
+  }
+
   return {
     name: errorData.name,
     message: errorData.message,

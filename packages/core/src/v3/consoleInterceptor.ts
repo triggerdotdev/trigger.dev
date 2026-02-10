@@ -92,31 +92,29 @@ export class ConsoleInterceptor {
   ): void {
     const body = util.format(...args);
 
-    if (this.sendToStdIO) {
-      if (this.originalConsole) {
-        switch (severityNumber) {
-          case SeverityNumber.INFO:
-            this.originalConsole.log(...args);
-            break;
-          case SeverityNumber.WARN:
-            this.originalConsole.warn(...args);
-            break;
-          case SeverityNumber.ERROR:
-            this.originalConsole.error(...args);
-            break;
-          case SeverityNumber.DEBUG:
-            this.originalConsole.debug(...args);
-            break;
-          default:
-            this.originalConsole.log(...args);
-            break;
-        }
+    if (this.originalConsole) {
+      switch (severityNumber) {
+        case SeverityNumber.INFO:
+          this.originalConsole.log(...args);
+          break;
+        case SeverityNumber.WARN:
+          this.originalConsole.warn(...args);
+          break;
+        case SeverityNumber.ERROR:
+          this.originalConsole.error(...args);
+          break;
+        case SeverityNumber.DEBUG:
+          this.originalConsole.debug(...args);
+          break;
+        default:
+          this.originalConsole.log(...args);
+          break;
+      }
+    } else if (this.sendToStdIO) {
+      if (severityNumber === SeverityNumber.ERROR) {
+        process.stderr.write(body + "\n");
       } else {
-        if (severityNumber === SeverityNumber.ERROR) {
-          process.stderr.write(body + "\n");
-        } else {
-          process.stdout.write(body + "\n");
-        }
+        process.stdout.write(body + "\n");
       }
     }
 

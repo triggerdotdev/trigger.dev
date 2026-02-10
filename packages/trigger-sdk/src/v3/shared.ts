@@ -599,13 +599,13 @@ export async function batchTriggerById<TTask extends AnyTask>(
   ...args:
     | [Array<BatchByIdItem<InferRunTypes<TTask>>>, BatchTriggerOptions?, TriggerApiRequestOptions?]
     | [
-        (
-          | AsyncIterable<BatchByIdItem<InferRunTypes<TTask>>>
-          | ReadableStream<BatchByIdItem<InferRunTypes<TTask>>>
-        ),
-        BatchTriggerOptions?,
-        TriggerApiRequestOptions?,
-      ]
+      (
+        | AsyncIterable<BatchByIdItem<InferRunTypes<TTask>>>
+        | ReadableStream<BatchByIdItem<InferRunTypes<TTask>>>
+      ),
+      BatchTriggerOptions?,
+      TriggerApiRequestOptions?,
+    ]
 ): Promise<BatchRunHandleFromTypes<InferRunTypes<TTask>>> {
   const [items, options, requestOptions] = args;
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
@@ -844,18 +844,18 @@ export function batchTriggerByIdAndWait<TTask extends AnyTask>(
 export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
   ...args:
     | [
-        Array<BatchByIdAndWaitItem<InferRunTypes<TTask>>>,
-        BatchTriggerAndWaitOptions?,
-        TriggerApiRequestOptions?,
-      ]
+      Array<BatchByIdAndWaitItem<InferRunTypes<TTask>>>,
+      BatchTriggerAndWaitOptions?,
+      TriggerApiRequestOptions?,
+    ]
     | [
-        (
-          | AsyncIterable<BatchByIdAndWaitItem<InferRunTypes<TTask>>>
-          | ReadableStream<BatchByIdAndWaitItem<InferRunTypes<TTask>>>
-        ),
-        BatchTriggerAndWaitOptions?,
-        TriggerApiRequestOptions?,
-      ]
+      (
+        | AsyncIterable<BatchByIdAndWaitItem<InferRunTypes<TTask>>>
+        | ReadableStream<BatchByIdAndWaitItem<InferRunTypes<TTask>>>
+      ),
+      BatchTriggerAndWaitOptions?,
+      TriggerApiRequestOptions?,
+    ]
 ): Promise<BatchByIdResult<TTask>> {
   const [items, options, requestOptions] = args;
   const ctx = taskContext.ctx;
@@ -1110,18 +1110,18 @@ export function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
 export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
   ...args:
     | [
-        { [K in keyof TTasks]: BatchByTaskItem<TTasks[K]> },
-        BatchTriggerOptions?,
-        TriggerApiRequestOptions?,
-      ]
+      { [K in keyof TTasks]: BatchByTaskItem<TTasks[K]> },
+      BatchTriggerOptions?,
+      TriggerApiRequestOptions?,
+    ]
     | [
-        (
-          | AsyncIterable<BatchByTaskItem<TTasks[number]>>
-          | ReadableStream<BatchByTaskItem<TTasks[number]>>
-        ),
-        BatchTriggerOptions?,
-        TriggerApiRequestOptions?,
-      ]
+      (
+        | AsyncIterable<BatchByTaskItem<TTasks[number]>>
+        | ReadableStream<BatchByTaskItem<TTasks[number]>>
+      ),
+      BatchTriggerOptions?,
+      TriggerApiRequestOptions?,
+    ]
 ): Promise<BatchTasksRunHandleFromTypes<TTasks>> {
   const [items, options, requestOptions] = args;
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
@@ -1365,18 +1365,18 @@ export function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]>(
 export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]>(
   ...args:
     | [
-        { [K in keyof TTasks]: BatchByTaskAndWaitItem<TTasks[K]> },
-        BatchTriggerAndWaitOptions?,
-        TriggerApiRequestOptions?,
-      ]
+      { [K in keyof TTasks]: BatchByTaskAndWaitItem<TTasks[K]> },
+      BatchTriggerAndWaitOptions?,
+      TriggerApiRequestOptions?,
+    ]
     | [
-        (
-          | AsyncIterable<BatchByTaskAndWaitItem<TTasks[number]>>
-          | ReadableStream<BatchByTaskAndWaitItem<TTasks[number]>>
-        ),
-        BatchTriggerAndWaitOptions?,
-        TriggerApiRequestOptions?,
-      ]
+      (
+        | AsyncIterable<BatchByTaskAndWaitItem<TTasks[number]>>
+        | ReadableStream<BatchByTaskAndWaitItem<TTasks[number]>>
+      ),
+      BatchTriggerAndWaitOptions?,
+      TriggerApiRequestOptions?,
+    ]
 ): Promise<BatchByTaskResult<TTasks>> {
   const [items, options, requestOptions] = args;
   const ctx = taskContext.ctx;
@@ -2017,8 +2017,8 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
         queue: item.options?.queue
           ? { name: item.options.queue }
           : queue
-          ? { name: queue }
-          : undefined,
+            ? { name: queue }
+            : undefined,
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2078,8 +2078,8 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
         queue: item.options?.queue
           ? { name: item.options.queue }
           : queue
-          ? { name: queue }
-          : undefined,
+            ? { name: queue }
+            : undefined,
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2212,8 +2212,8 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
             queue: item.options?.queue
               ? { name: item.options.queue }
               : queue
-              ? { name: queue }
-              : undefined,
+                ? { name: queue }
+                : undefined,
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -2487,8 +2487,8 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
             queue: item.options?.queue
               ? { name: item.options.queue }
               : queue
-              ? { name: queue }
-              : undefined,
+                ? { name: queue }
+                : undefined,
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -2509,6 +2509,34 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
       })
     );
 
+    // Deduplicate items by idempotencyKey to prevent hang when duplicate keys are used.
+    // When items share the same idempotencyKey, the server creates only one run but the
+    // SDK would wait for completions for every item index, causing an infinite hang.
+    // We send only unique items and map the results back to all original positions.
+    const uniqueItems: BatchItemNDJSON[] = [];
+    // Maps each original index to the deduplicated index in uniqueItems
+    const originalToDedupIndex = new Map<number, number>();
+    const seenIdempotencyKeys = new Map<string, number>(); // idempotencyKey -> deduplicated index
+
+    for (const item of ndJsonItems) {
+      const key = item.options?.idempotencyKey as string | undefined;
+      if (key && seenIdempotencyKeys.has(key)) {
+        // Duplicate: map this original index to the same deduplicated index
+        originalToDedupIndex.set(item.index, seenIdempotencyKeys.get(key)!);
+      } else {
+        // Unique item: assign a new deduplicated index
+        const dedupIndex = uniqueItems.length;
+        originalToDedupIndex.set(item.index, dedupIndex);
+        if (key) {
+          seenIdempotencyKeys.set(key, dedupIndex);
+        }
+        // Re-index the item for the server
+        uniqueItems.push({ ...item, index: dedupIndex });
+      }
+    }
+
+    const hasDuplicates = uniqueItems.length < ndJsonItems.length;
+
     // Process batch-level idempotency key
     const batchIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
     const batchIdempotencyKeyOptions = batchIdempotencyKey
@@ -2518,10 +2546,10 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
     return await tracer.startActiveSpan(
       name,
       async (span) => {
-        // Execute 2-phase batch
+        // Execute 2-phase batch with deduplicated items
         const response = await executeBatchTwoPhase(
           apiClient,
-          ndJsonItems,
+          uniqueItems,
           {
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
@@ -2541,10 +2569,21 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
           ctx,
         });
 
-        const runs = await handleBatchTaskRunExecutionResult<TIdentifier, TOutput>(
+        const uniqueRuns = await handleBatchTaskRunExecutionResult<TIdentifier, TOutput>(
           result.items,
           id
         );
+
+        // Fan out deduplicated results back to all original positions
+        let runs: Array<TaskRunResult<TIdentifier, TOutput>>;
+        if (hasDuplicates) {
+          runs = ndJsonItems.map((item) => {
+            const dedupIndex = originalToDedupIndex.get(item.index)!;
+            return uniqueRuns[dedupIndex]!;
+          });
+        } else {
+          runs = uniqueRuns;
+        }
 
         return {
           id: result.id,
@@ -2578,6 +2617,33 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
       queue
     );
 
+    // Buffer the stream so we can deduplicate by idempotencyKey
+    const allStreamItems: BatchItemNDJSON[] = [];
+    for await (const item of transformedItems) {
+      allStreamItems.push(item);
+    }
+
+    // Deduplicate items by idempotencyKey (same logic as array path)
+    const uniqueStreamItems: BatchItemNDJSON[] = [];
+    const streamOriginalToDedupIndex = new Map<number, number>();
+    const streamSeenKeys = new Map<string, number>();
+
+    for (const item of allStreamItems) {
+      const key = item.options?.idempotencyKey as string | undefined;
+      if (key && streamSeenKeys.has(key)) {
+        streamOriginalToDedupIndex.set(item.index, streamSeenKeys.get(key)!);
+      } else {
+        const dedupIndex = uniqueStreamItems.length;
+        streamOriginalToDedupIndex.set(item.index, dedupIndex);
+        if (key) {
+          streamSeenKeys.set(key, dedupIndex);
+        }
+        uniqueStreamItems.push({ ...item, index: dedupIndex });
+      }
+    }
+
+    const streamHasDuplicates = uniqueStreamItems.length < allStreamItems.length;
+
     // Process batch-level idempotency key for streaming path
     const streamBatchIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
     const streamBatchIdempotencyKeyOptions = streamBatchIdempotencyKey
@@ -2587,10 +2653,10 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
     return await tracer.startActiveSpan(
       name,
       async (span) => {
-        // Execute streaming 2-phase batch
-        const response = await executeBatchTwoPhaseStreaming(
+        // Execute 2-phase batch with deduplicated items
+        const response = await executeBatchTwoPhase(
           apiClient,
-          transformedItems,
+          uniqueStreamItems,
           {
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
@@ -2610,10 +2676,21 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
           ctx,
         });
 
-        const runs = await handleBatchTaskRunExecutionResult<TIdentifier, TOutput>(
+        const uniqueRuns = await handleBatchTaskRunExecutionResult<TIdentifier, TOutput>(
           result.items,
           id
         );
+
+        // Fan out deduplicated results back to all original positions
+        let runs: Array<TaskRunResult<TIdentifier, TOutput>>;
+        if (streamHasDuplicates) {
+          runs = allStreamItems.map((item) => {
+            const dedupIndex = streamOriginalToDedupIndex.get(item.index)!;
+            return uniqueRuns[dedupIndex]!;
+          });
+        } else {
+          runs = uniqueRuns;
+        }
 
         return {
           id: result.id,
