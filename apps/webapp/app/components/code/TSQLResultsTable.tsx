@@ -493,16 +493,14 @@ function CellValue({
           ? runStatusFromFriendlyTitle(value)
           : undefined;
         if (status) {
-          if (hovered) {
-            return (
-              <SimpleTooltip
-                content={descriptionForTaskRunStatus(status)}
-                disableHoverableContent
-                button={<TaskRunStatusCombo status={status} />}
-              />
-            );
-          }
-          return <TaskRunStatusCombo status={status} />;
+          return (
+            <SimpleTooltip
+              content={descriptionForTaskRunStatus(status)}
+              disableHoverableContent
+              hidden={!hovered}
+              button={<TaskRunStatusCombo status={status} />}
+            />
+          );
         }
         break;
       }
