@@ -178,15 +178,16 @@ export function QueryWidget({
           <div className="flex items-center gap-1.5">{title}</div>
           <Card.Accessory>
             <SimpleTooltip
-              asChild
               button={
-                <Button
-                  variant="minimal/small"
-                  LeadingIcon={Maximize2}
-                  leadingIconClassName="text-text-bright"
-                  onClick={() => setIsFullscreen(true)}
-                  className="!px-1 opacity-0 transition-opacity group-hover:opacity-100"
-                />
+                <span className="opacity-0 transition-opacity group-hover:opacity-100">
+                  <Button
+                    variant="minimal/small"
+                    LeadingIcon={Maximize2}
+                    leadingIconClassName="text-text-bright"
+                    onClick={() => setIsFullscreen(true)}
+                    className="!px-1"
+                  />
+                </span>
               }
               content="Maximize"
             />
