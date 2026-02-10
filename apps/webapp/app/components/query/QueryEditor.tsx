@@ -782,11 +782,10 @@ export function QueryEditor({
                             accessory={
                               mode.type === "standalone" ? (
                                 <Button
-                                  variant="minimal/small"
-                                  LeadingIcon={BookmarkIcon}
+                                  variant="primary/small"
                                   onClick={() => setIsSaveDialogOpen(true)}
                                 >
-                                  Save to dashboard
+                                  Add to dashboard
                                 </Button>
                               ) : save ? (
                                 save(saveData)
