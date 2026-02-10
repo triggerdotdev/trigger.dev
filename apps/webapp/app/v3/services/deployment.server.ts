@@ -2,7 +2,7 @@ import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService } from "./baseService.server";
 import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
 import { type WorkerDeployment, type Project } from "@trigger.dev/database";
-import { logger, type GitMeta, type DeploymentEvent } from "@trigger.dev/core/v3";
+import { BuildServerMetadata, logger, type GitMeta, type DeploymentEvent } from "@trigger.dev/core/v3";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { env } from "~/env.server";
 import { createRemoteImageBuild } from "../remoteImageBuilder.server";
@@ -40,7 +40,7 @@ export class DeploymentService extends BaseService {
     friendlyId: string,
     updates: Partial<Pick<WorkerDeployment, "contentHash" | "runtime"> & { git: GitMeta }>
   ) {
-    const validateDeployment = (deployment: Pick<WorkerDeployment, "id" | "status">) => {
+    const validateDeployment = (deployment: Pick<WorkerDeployment, "id" | "status"> & { buildServerMetadata?: BuildServerMetadata }) => {
       if (deployment.status !== "PENDING" && deployment.status !== "INSTALLING") {
         logger.warn(
           "Attempted progressing deployment that is not in PENDING or INSTALLING status",
@@ -75,14 +75,17 @@ export class DeploymentService extends BaseService {
         return okAsync({ id: deployment.id, status: "INSTALLING" as const });
       });
 
-    const createRemoteBuild = (deployment: Pick<WorkerDeployment, "id">) =>
-      fromPromise(createRemoteImageBuild(authenticatedEnv.project), (error) => ({
-        type: "failed_to_create_remote_build" as const,
-        cause: error,
-      }));
+    const progressToBuilding = (
+      deployment: Pick<WorkerDeployment, "id"> & { buildServerMetadata?: BuildServerMetadata }
+    ) => {
+      const createRemoteBuildIfNeeded = deployment.buildServerMetadata?.isNativeBuild
+        ? okAsync(undefined)
+        : fromPromise(createRemoteImageBuild(authenticatedEnv.project), (error) => ({
+          type: "failed_to_create_remote_build" as const,
+          cause: error,
+        }));
 
-    const progressToBuilding = (deployment: Pick<WorkerDeployment, "id">) =>
-      createRemoteBuild(deployment)
+      return createRemoteBuildIfNeeded
         .andThen((externalBuildData) =>
           fromPromise(
             this._prisma.workerDeployment.updateMany({
@@ -106,6 +109,7 @@ export class DeploymentService extends BaseService {
           }
           return okAsync({ id: deployment.id, status: "BUILDING" as const });
         });
+    };
 
     const extendTimeout = (deployment: Pick<WorkerDeployment, "id" | "status">) =>
       fromPromise(
@@ -432,6 +436,7 @@ export class DeploymentService extends BaseService {
         select: {
           status: true,
           id: true,
+          buildServerMetadata: true,
           imageReference: true,
           shortCode: true,
           environment: {
@@ -454,6 +459,9 @@ export class DeploymentService extends BaseService {
         return errAsync({ type: "deployment_not_found" as const });
       }
       return okAsync(deployment);
-    });
+    }).map((deployment) => ({
+      ...deployment,
+      buildServerMetadata: BuildServerMetadata.safeParse(deployment.buildServerMetadata).data,
+    }));
   }
 }
