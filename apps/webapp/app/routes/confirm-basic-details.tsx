@@ -25,6 +25,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import { requireUserId } from "~/services/session.server";
 import { rootPath } from "~/utils/pathBuilder";
+import { getVercelInstallParams } from "~/v3/vercel";
 
 function createSchema(
   constraints: {
@@ -105,7 +106,24 @@ export const action: ActionFunction = async ({ request }) => {
       referralSource: submission.value.referralSource,
     });
 
-    return redirectWithSuccessMessage(rootPath(), request, "Your details have been updated.");
+    // Preserve Vercel integration params if present
+    const vercelParams = getVercelInstallParams(request);
+    let redirectUrl = rootPath();
+
+    if (vercelParams) {
+      // Redirect to orgs/new with params preserved
+      const params = new URLSearchParams({
+        code: vercelParams.code,
+        configurationId: vercelParams.configurationId,
+        integration: "vercel",
+      });
+      if (vercelParams.next) {
+        params.set("next", vercelParams.next);
+      }
+      redirectUrl = `/orgs/new?${params.toString()}`;
+    }
+
+    return redirectWithSuccessMessage(redirectUrl, request, "Your details have been updated.");
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
