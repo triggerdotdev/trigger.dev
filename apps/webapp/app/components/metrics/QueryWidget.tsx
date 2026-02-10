@@ -192,6 +192,7 @@ export function QueryWidget({
                 </span>
               }
               content="Maximize"
+              asChild
             />
             {accessory}
             {hasMenu && (
