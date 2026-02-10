@@ -359,9 +359,12 @@ function QueryWidgetBody({
             sorting={config.sorting}
           />
           <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
-            <DialogContent fullscreen>
-              <DialogHeader>{title}</DialogHeader>
-              <div className="h-full min-h-0 w-full flex-1 overflow-hidden pt-4">
+            <DialogContent
+              fullscreen
+              className="flex flex-col gap-0 bg-background-bright px-0 pb-0"
+            >
+              <DialogHeader className="px-4">{title}</DialogHeader>
+              <div className="min-h-0 w-full flex-1 pt-2.5">
                 <TSQLResultsTable
                   rows={data.rows}
                   columns={data.columns}
@@ -385,9 +388,9 @@ function QueryWidgetBody({
             onViewAllLegendItems={() => setIsFullscreen(true)}
           />
           <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
-            <DialogContent fullscreen>
+            <DialogContent fullscreen className="flex flex-col bg-background-bright">
               <DialogHeader>{title}</DialogHeader>
-              <div className="h-full min-h-0 w-full flex-1 overflow-hidden pt-4">
+              <div className="min-h-0 w-full flex-1 overflow-hidden pt-4">
                 <QueryResultsChart
                   rows={data.rows}
                   columns={data.columns}
@@ -412,9 +415,9 @@ function QueryWidgetBody({
             isLoading={showLoading}
           />
           <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
-            <DialogContent fullscreen>
+            <DialogContent fullscreen className="flex flex-col bg-background-bright">
               <DialogHeader>{title}</DialogHeader>
-              <div className="flex h-full min-h-0 w-full flex-1 items-center justify-center pt-4">
+              <div className="flex min-h-0 w-full flex-1 items-center justify-center pt-4">
                 <BigNumberCard
                   rows={data.rows}
                   columns={data.columns}
