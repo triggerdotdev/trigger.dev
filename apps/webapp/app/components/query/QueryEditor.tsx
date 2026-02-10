@@ -291,7 +291,7 @@ const QueryEditorForm = forwardRef<
           <Select
             value={scope}
             setValue={(value) => setScope(value as QueryScope)}
-            variant="tertiary/small"
+            variant="secondary/small"
             dropdownIcon={true}
             items={[...scopeOptions]}
             text={(value) => {
