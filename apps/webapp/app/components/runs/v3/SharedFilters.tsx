@@ -871,7 +871,7 @@ export function TimeDropdown({
           {/* Action buttons */}
           <div className="flex justify-between gap-1 border-t border-grid-bright px-0 pt-3">
             <Button
-              variant="tertiary/small"
+              variant="secondary/small"
               onClick={(e) => {
                 e.preventDefault();
                 setFromValue(from);
