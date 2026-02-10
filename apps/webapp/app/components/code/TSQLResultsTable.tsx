@@ -1139,7 +1139,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
             height: `${rowVirtualizer.getTotalSize()}px`,
             position: "relative",
           }}
-          className="divide-y divide-charcoal-700 border-b border-grid-bright bg-background-bright"
+          className="divide-y divide-charcoal-700 bg-background-bright after:absolute after:bottom-0 after:left-0 after:right-0 after:z-[1] after:h-px after:bg-grid-bright"
         >
           {rowVirtualizer.getVirtualItems().map((virtualRow) => {
             const row = tableRows[virtualRow.index];
