@@ -28,6 +28,7 @@ export const runsSchema: TableSchema = {
   name: "runs",
   clickhouseName: "trigger_dev.task_runs_v2",
   description: "Task runs - stores all task execution records",
+  timeConstraint: "triggered_at",
   tenantColumns: {
     organizationId: "organization_id",
     projectId: "project_id",

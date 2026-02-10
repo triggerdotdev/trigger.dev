@@ -18,7 +18,7 @@ import {
   GLOBAL_CONCURRENCY_LIMIT,
 } from "./queryConcurrencyLimiter.server";
 import { getLimit } from "./platform.v3.server";
-import { timeFilters } from "~/components/runs/v3/SharedFilters";
+import { timeFilters, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import parse from "parse-duration";
 import { querySchemas } from "~/v3/querySchemas";
 
@@ -205,6 +205,14 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     queue: queues && queues.length > 0 ? { op: "in", values: queues } : undefined,
   } satisfies Record<string, WhereClauseCondition | undefined>;
 
+  // Compute the effective time range for timeBucket() interval calculation
+  const timeRange = timeFilterFromTo({
+    period: period ?? undefined,
+    from: from ?? undefined,
+    to: to ?? undefined,
+    defaultPeriod,
+  });
+
   try {
     // Build field mappings for project_ref → project_id and environment_id → slug translation
     const projects = await prisma.project.findMany({
@@ -232,6 +240,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       whereClauseFallback: {
         triggered_at: triggeredAtFallback,
       },
+      timeRange,
       clickhouseSettings: {
         ...getDefaultClickhouseSettings(),
         ...baseOptions.clickhouseSettings, // Allow caller overrides if needed
