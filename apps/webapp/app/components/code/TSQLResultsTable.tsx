@@ -714,7 +714,7 @@ function CopyableCell({
     <div
       className={cn(
         "relative flex w-full items-center overflow-hidden px-2 py-1.5",
-        "bg-background-dimmed group-hover/row:bg-charcoal-800",
+        "bg-background-bright group-hover/row:bg-charcoal-750",
         "font-mono text-xs text-text-dimmed group-hover/row:text-text-bright",
         alignment === "right" && "justify-end"
       )}
@@ -786,7 +786,7 @@ function HeaderCellContent({
   return (
     <div
       className={cn(
-        "flex w-full items-center gap-1 overflow-hidden bg-background-dimmed py-1.5 pl-2 pr-1",
+        "flex w-full items-center gap-1 overflow-hidden bg-background-bright py-1.5 pl-2 pr-1",
         "font-mono text-xs font-medium text-text-bright",
         alignment === "right" && "justify-end",
         canSort && "cursor-pointer select-none"
@@ -866,7 +866,7 @@ function FilterCell({
   }, [shouldFocus, onFocused]);
 
   return (
-    <div className="flex items-center bg-background-dimmed px-1.5 pb-1" style={{ width }}>
+    <div className="flex items-center bg-background-bright px-1.5 pb-1" style={{ width }}>
       <DebouncedInput
         ref={inputRef}
         value={columnFilterValue ?? ""}
@@ -968,7 +968,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
       >
         <table style={{ display: "grid" }}>
           <thead
-            className="bg-background-dimmed"
+            className="border-t border-grid-bright bg-background-bright"
             style={{
               display: "grid",
               position: "sticky",
@@ -1040,7 +1040,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
               </tr>
             )}
           </thead>
-          <tbody style={{ display: "grid" }}>
+          <tbody className="border-b border-grid-bright" style={{ display: "grid" }}>
             <tr style={{ display: "flex" }}>
               <td>
                 <Paragraph variant="extra-small" className="p-4 text-text-dimmed">
@@ -1062,7 +1062,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
     >
       <table style={{ display: "grid" }}>
         <thead
-          className="bg-background-dimmed after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright"
+          className="border-t border-grid-bright bg-background-bright after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright"
           style={{
             display: "grid",
             position: "sticky",
@@ -1141,7 +1141,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
             height: `${rowVirtualizer.getTotalSize()}px`,
             position: "relative",
           }}
-          className="divide-y divide-charcoal-700 bg-background-dimmed"
+          className="divide-y divide-charcoal-700 border-b border-grid-bright bg-background-bright"
         >
           {rowVirtualizer.getVirtualItems().map((virtualRow) => {
             const row = tableRows[virtualRow.index];
@@ -1149,7 +1149,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
               <tr
                 key={row.id}
                 data-index={virtualRow.index}
-                className="group/row hover:bg-charcoal-800"
+                className="group/row hover:bg-charcoal-750"
                 style={{
                   display: "flex",
                   position: "absolute",
