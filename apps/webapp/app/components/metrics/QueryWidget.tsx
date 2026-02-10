@@ -319,6 +319,12 @@ function QueryWidgetBody({
 }: QueryWidgetBodyProps) {
   const type = config.type;
 
+  // Only show the loading state if we have no data yet (initial load).
+  // During a reload with existing data, keep showing the current data
+  // while the loading bar in the header indicates a refresh is in progress.
+  const hasData = data.rows.length > 0;
+  const showLoading = isLoading && !hasData;
+
   switch (type) {
     case "table": {
       return (
@@ -363,7 +369,7 @@ function QueryWidgetBody({
                   columns={data.columns}
                   config={config}
                   onViewAllLegendItems={() => setIsFullscreen(true)}
-                  isLoading={isLoading}
+                  isLoading={showLoading}
                 />
               </div>
             </DialogContent>
@@ -378,7 +384,7 @@ function QueryWidgetBody({
             rows={data.rows}
             columns={data.columns}
             config={config}
-            isLoading={isLoading}
+            isLoading={showLoading}
           />
           <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
             <DialogContent fullscreen>
@@ -388,7 +394,7 @@ function QueryWidgetBody({
                   rows={data.rows}
                   columns={data.columns}
                   config={config}
-                  isLoading={isLoading}
+                  isLoading={showLoading}
                 />
               </div>
             </DialogContent>
