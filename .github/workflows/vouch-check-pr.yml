@@ -1,0 +1,23 @@
+name: Vouch - Check PR
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+jobs:
+  check-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mitchellh/vouch/action/check-pr@main
+        with:
+          pr-number: ${{ github.event.pull_request.number }}
+          auto-close: true
+          require-vouch: true
+        env:
+          GH_TOKEN: ${{ github.token }}
