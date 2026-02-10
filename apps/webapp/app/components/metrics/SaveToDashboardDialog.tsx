@@ -77,7 +77,7 @@ export function SaveToDashboardDialog({
     return (
       <Dialog open={isOpen} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader>Save to dashboard</DialogHeader>
+          <DialogHeader>Add to dashboard</DialogHeader>
           <div className="!mt-1 space-y-4">
             <Paragraph variant="small" className="text-text-dimmed">
               You don't have any custom dashboards yet. Create one first from the sidebar menu.
@@ -99,7 +99,7 @@ export function SaveToDashboardDialog({
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
-        <DialogHeader>Save to dashboard</DialogHeader>
+        <DialogHeader>Add to dashboard</DialogHeader>
         <Form method="post" action={formAction} className="space-y-4">
           <input type="hidden" name="action" value="add" />
           <input type="hidden" name="title" value={title} />
