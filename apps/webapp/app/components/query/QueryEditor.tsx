@@ -11,6 +11,7 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher } from "@remix-run/react";
 import { IconChartHistogram } from "@tabler/icons-react";
 import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
+import { Clipboard } from "lucide-react";
 import {
   forwardRef,
   useCallback,
@@ -698,7 +699,7 @@ export function QueryEditor({
                           )}
                           {resultsView === "table" && (
                             <Switch
-                              variant="secondary/small"
+                              variant="tertiary/small"
                               label="Pretty formatting"
                               checked={prettyFormatting}
                               onCheckedChange={setPrettyFormatting}
@@ -1068,14 +1069,24 @@ function ExportResultsButton({
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
-      <PopoverArrowTrigger variant="tertiary" isOpen={isOpen}>
+      <PopoverArrowTrigger variant="minimal" isOpen={isOpen}>
         Export
       </PopoverArrowTrigger>
       <PopoverContent className="min-w-[10rem] p-1" align="end">
         <div className="flex flex-col gap-1">
-          <PopoverMenuItem icon={ClipboardIcon} title="Copy CSV" onClick={handleCopyCSV} />
+          <PopoverMenuItem
+            icon={Clipboard}
+            title="Copy CSV"
+            onClick={handleCopyCSV}
+            className="pl-1"
+          />
           <PopoverMenuItem icon={ArrowDownTrayIcon} title="Export CSV" onClick={handleExportCSV} />
-          <PopoverMenuItem icon={ClipboardIcon} title="Copy JSON" onClick={handleCopyJSON} />
+          <PopoverMenuItem
+            icon={Clipboard}
+            title="Copy JSON"
+            onClick={handleCopyJSON}
+            className="pl-1"
+          />
           <PopoverMenuItem
             icon={ArrowDownTrayIcon}
             title="Export JSON"
