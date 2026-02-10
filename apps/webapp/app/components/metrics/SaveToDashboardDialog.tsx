@@ -1,19 +1,19 @@
-import { ChartBarSquareIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation } from "@remix-run/react";
+import { IconChartHistogram } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import {
   useCustomDashboards,
+  useOrganization,
   useWidgetLimitPerDashboard,
 } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useOrganization } from "~/hooks/useOrganizations";
+import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader } from "../primitives/Dialog";
 import { FormButtons } from "../primitives/FormButtons";
 import { Paragraph } from "../primitives/Paragraph";
-import { cn } from "~/utils/cn";
 import type { QueryWidgetConfig } from "./QueryWidget";
 
 export type SaveToDashboardDialogProps = {
@@ -42,7 +42,7 @@ export function SaveToDashboardDialog({
   const firstAvailableDashboard = customDashboards.find((d) => d.widgetCount < widgetLimit);
 
   const [selectedDashboardId, setSelectedDashboardId] = useState<string | null>(
-    firstAvailableDashboard?.friendlyId ?? (customDashboards[0]?.friendlyId ?? null)
+    firstAvailableDashboard?.friendlyId ?? customDashboards[0]?.friendlyId ?? null
   );
 
   // Build the form action URL
@@ -54,7 +54,9 @@ export function SaveToDashboardDialog({
 
   // Check if selected dashboard is at widget limit
   const selectedDashboard = customDashboards.find((d) => d.friendlyId === selectedDashboardId);
-  const isSelectedAtLimit = selectedDashboard ? selectedDashboard.widgetCount >= widgetLimit : false;
+  const isSelectedAtLimit = selectedDashboard
+    ? selectedDashboard.widgetCount >= widgetLimit
+    : false;
 
   // Close dialog when navigation completes (redirect is happening)
   useEffect(() => {
@@ -74,16 +76,17 @@ export function SaveToDashboardDialog({
   if (customDashboards.length === 0) {
     return (
       <Dialog open={isOpen} onOpenChange={onOpenChange}>
-        <DialogContent>
-          <DialogHeader>Save to Dashboard</DialogHeader>
-          <div className="space-y-4 pt-3">
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>Save to dashboard</DialogHeader>
+          <div className="!mt-1 space-y-4">
             <Paragraph variant="small" className="text-text-dimmed">
               You don't have any custom dashboards yet. Create one first from the sidebar menu.
             </Paragraph>
             <FormButtons
+              className="justify-end"
               cancelButton={
                 <DialogClose asChild>
-                  <Button variant="tertiary/medium">Close</Button>
+                  <Button variant="secondary/medium">Close</Button>
                 </DialogClose>
               }
             />
@@ -95,17 +98,17 @@ export function SaveToDashboardDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>Save to Dashboard</DialogHeader>
-        <Form method="post" action={formAction} className="space-y-4 pt-3">
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>Save to dashboard</DialogHeader>
+        <Form method="post" action={formAction} className="space-y-4">
           <input type="hidden" name="action" value="add" />
           <input type="hidden" name="title" value={title} />
           <input type="hidden" name="query" value={query} />
           <input type="hidden" name="config" value={JSON.stringify(config)} />
 
-          <div className="space-y-2">
+          <div className="!mt-1 space-y-2">
             <Paragraph variant="small" className="text-text-dimmed">
-              Select a dashboard to add this widget to:
+              Select a dashboard to add this chart to:
             </Paragraph>
             <div className="max-h-64 space-y-1 overflow-y-auto">
               {customDashboards.map((dashboard) => {
@@ -121,11 +124,11 @@ export function SaveToDashboardDialog({
                       isAtLimit
                         ? "cursor-not-allowed opacity-50"
                         : selectedDashboardId === dashboard.friendlyId
-                          ? "bg-charcoal-700 text-text-bright"
-                          : "text-text-dimmed hover:bg-charcoal-750 hover:text-text-bright"
+                        ? "bg-charcoal-700 text-text-bright"
+                        : "text-text-dimmed hover:bg-charcoal-750 hover:text-text-bright"
                     )}
                   >
-                    <ChartBarSquareIcon className="size-4 shrink-0 text-purple-500" />
+                    <IconChartHistogram className="size-4 shrink-0 text-text-dimmed" />
                     <span className="flex-1 truncate">{dashboard.title}</span>
                     <span
                       className={cn(
@@ -153,7 +156,7 @@ export function SaveToDashboardDialog({
             }
             cancelButton={
               <DialogClose asChild>
-                <Button variant="tertiary/medium">Cancel</Button>
+                <Button variant="secondary/medium">Cancel</Button>
               </DialogClose>
             }
           />
