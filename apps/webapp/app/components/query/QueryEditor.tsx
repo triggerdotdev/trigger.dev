@@ -4,6 +4,7 @@ import {
   CalendarIcon,
   ClipboardIcon,
   PencilIcon,
+  PencilSquareIcon,
 } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { DialogClose } from "@radix-ui/react-dialog";
@@ -978,19 +979,19 @@ function QueryTitle({
 
   return (
     <>
-      <span className="flex items-center gap-1">
+      <span className="group flex items-center gap-1">
         {title ?? "Results"}
         {onRename && title && (
-          <button
+          <Button
+            variant="minimal/small"
+            LeadingIcon={PencilSquareIcon}
+            leadingIconClassName="text-text-bright"
+            className="opacity-0 transition-opacity group-hover:opacity-100"
             onClick={() => {
               setRenameValue(title);
               setIsDialogOpen(true);
             }}
-            className="rounded p-0.5 text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
-            title="Rename chart"
-          >
-            <PencilIcon className="size-3.5" />
-          </button>
+          />
         )}
       </span>
       {onRename && (
