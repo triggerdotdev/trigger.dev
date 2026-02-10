@@ -2284,8 +2284,12 @@ export class RunEngine {
     const ttlMs = parseNaturalLanguageDurationInMs(ttl);
     const maxTtlMs = parseNaturalLanguageDurationInMs(maxTtl);
 
-    if (ttlMs === undefined || maxTtlMs === undefined) {
+    if (maxTtlMs === undefined) {
       return ttl;
+    }
+
+    if (ttlMs === undefined) {
+      return maxTtl;
     }
 
     return ttlMs <= maxTtlMs ? ttl : maxTtl;
