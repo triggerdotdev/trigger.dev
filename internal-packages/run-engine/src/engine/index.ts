@@ -190,11 +190,11 @@ export class RunEngine {
       ttlSystem: options.queue?.ttlSystem?.disabled
         ? undefined
         : {
-            shardCount: options.queue?.ttlSystem?.shardCount,
-            pollIntervalMs: options.queue?.ttlSystem?.pollIntervalMs,
-            batchSize: options.queue?.ttlSystem?.batchSize,
-            callback: this.#ttlExpiredCallback.bind(this),
-          },
+          shardCount: options.queue?.ttlSystem?.shardCount,
+          pollIntervalMs: options.queue?.ttlSystem?.pollIntervalMs,
+          batchSize: options.queue?.ttlSystem?.batchSize,
+          callback: this.#ttlExpiredCallback.bind(this),
+        },
     });
 
     this.worker = new Worker({
@@ -655,11 +655,11 @@ export class RunEngine {
               associatedWaitpoint:
                 resumeParentOnCompletion && parentTaskRunId
                   ? {
-                      create: this.waitpointSystem.buildRunAssociatedWaitpoint({
-                        projectId: environment.project.id,
-                        environmentId: environment.id,
-                      }),
-                    }
+                    create: this.waitpointSystem.buildRunAssociatedWaitpoint({
+                      projectId: environment.project.id,
+                      environmentId: environment.id,
+                    }),
+                  }
                   : undefined,
             },
           });
@@ -832,9 +832,9 @@ export class RunEngine {
         const waitpointData =
           resumeParentOnCompletion && parentTaskRunId
             ? this.waitpointSystem.buildRunAssociatedWaitpoint({
-                projectId: environment.project.id,
-                environmentId: environment.id,
-              })
+              projectId: environment.project.id,
+              environmentId: environment.id,
+            })
             : undefined;
 
         // Create the run in terminal SYSTEM_FAILURE status.
@@ -1338,14 +1338,6 @@ export class RunEngine {
    */
   async getBatchEnqueuedCount(batchId: string): Promise<number> {
     return this.batchQueue.getEnqueuedCount(batchId);
-  }
-
-  /**
-   * Update the runCount for a batch.
-   * Used when items are skipped due to queue limits.
-   */
-  async updateBatchRunCount(batchId: string, newRunCount: number): Promise<void> {
-    return this.batchQueue.updateRunCount(batchId, newRunCount);
   }
 
   async getWaitpoint({

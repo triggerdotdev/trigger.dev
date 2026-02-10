@@ -96,17 +96,37 @@ describe("RunEngine ttl", () => {
       const assertedExpiredEventData = expiredEventData as EventBusEventArgs<"runExpired">[0];
       expect(assertedExpiredEventData.run.spanId).toBe(run.spanId);
 
-      const executionData2 = await engine.getRunExecutionData({ runId: run.id });
-      assertNonNullable(executionData2);
-      expect(executionData2.snapshot.executionStatus).toBe("FINISHED");
-      expect(executionData2.run.attemptNumber).toBe(undefined);
-      expect(executionData2.run.status).toBe("EXPIRED");
+      // Check the run status directly from the database (the batch TTL path
+      // does not create execution snapshots, so getRunExecutionData may not reflect it)
+      const expiredRun = await prisma.taskRun.findUnique({
+        where: { id: run.id },
+        select: { status: true },
+      });
+      expect(expiredRun?.status).toBe("EXPIRED");
 
       //concurrency should have been released
       const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
         authenticatedEnvironment
       );
       expect(envConcurrencyCompleted).toBe(0);
+
+      // Queue sorted set should be empty (run removed from queue)
+      const queueLength = await engine.runQueue.lengthOfQueue(
+        authenticatedEnvironment,
+        "task/test-task"
+      );
+      expect(queueLength).toBe(0);
+
+      // Env queue sorted set should be empty
+      const envQueueLength = await engine.runQueue.lengthOfEnvQueue(authenticatedEnvironment);
+      expect(envQueueLength).toBe(0);
+
+      // Message key should be deleted
+      const messageExists = await engine.runQueue.messageExists(
+        authenticatedEnvironment.organization.id,
+        run.id
+      );
+      expect(messageExists).toBe(0);
     } finally {
       await engine.quit();
     }
@@ -200,11 +220,14 @@ describe("RunEngine ttl", () => {
       // All runs should be expired
       expect(expiredEvents.length).toBe(3);
 
+      // Check the run status directly from the database (the batch TTL path
+      // does not create execution snapshots, so getRunExecutionData may not reflect it)
       for (const run of runs) {
-        const executionData = await engine.getRunExecutionData({ runId: run.id });
-        assertNonNullable(executionData);
-        expect(executionData.snapshot.executionStatus).toBe("FINISHED");
-        expect(executionData.run.status).toBe("EXPIRED");
+        const expiredRun = await prisma.taskRun.findUnique({
+          where: { id: run.id },
+          select: { status: true },
+        });
+        expect(expiredRun?.status).toBe("EXPIRED");
       }
 
       // Concurrency should be released for all
@@ -212,6 +235,26 @@ describe("RunEngine ttl", () => {
         authenticatedEnvironment
       );
       expect(envConcurrency).toBe(0);
+
+      // Queue sorted set should be empty (all runs removed from queue)
+      const queueLength = await engine.runQueue.lengthOfQueue(
+        authenticatedEnvironment,
+        "task/test-task"
+      );
+      expect(queueLength).toBe(0);
+
+      // Env queue sorted set should be empty
+      const envQueueLength = await engine.runQueue.lengthOfEnvQueue(authenticatedEnvironment);
+      expect(envQueueLength).toBe(0);
+
+      // All message keys should be deleted
+      for (const run of runs) {
+        const messageExists = await engine.runQueue.messageExists(
+          authenticatedEnvironment.organization.id,
+          run.id
+        );
+        expect(messageExists).toBe(0);
+      }
     } finally {
       await engine.quit();
     }
@@ -383,11 +426,13 @@ describe("RunEngine ttl", () => {
         expect(expiredEvents.length).toBe(1);
         expect(expiredEvents[0]?.run.id).toBe(expiredRun.id);
 
-        // The run should be in EXPIRED status
-        const executionData = await engine.getRunExecutionData({ runId: expiredRun.id });
-        assertNonNullable(executionData);
-        expect(executionData.run.status).toBe("EXPIRED");
-        expect(executionData.snapshot.executionStatus).toBe("FINISHED");
+        // Check the run status directly from the database (the batch TTL path
+        // does not create execution snapshots, so getRunExecutionData may not reflect it)
+        const expiredRunData = await prisma.taskRun.findUnique({
+          where: { id: expiredRun.id },
+          select: { status: true },
+        });
+        expect(expiredRunData?.status).toBe("EXPIRED");
 
         // The run should have been removed from the queue by the TTL Lua script
         // So dequeue should return nothing
@@ -403,6 +448,262 @@ describe("RunEngine ttl", () => {
         });
 
         expect(dequeued.length).toBe(0);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "Dequeue skips TTL-expired runs and TTL consumer expires them",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const expiredEvents: EventBusEventArgs<"runExpired">[0][] = [];
+
+      // Disable worker to prevent the scheduleExpireRun job from firing before
+      // we can test the dequeue path. Use masterQueueConsumersDisabled so we can
+      // manually trigger dequeue via processMasterQueueForEnvironment.
+      // TTL consumers start independently and will expire the run after their poll interval.
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          disabled: true,
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          processWorkerQueueDebounceMs: 50,
+          masterQueueConsumersDisabled: true,
+          ttlSystem: {
+            pollIntervalMs: 5000,
+            batchSize: 10,
+          },
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        engine.eventBus.on("runExpired", (result) => {
+          expiredEvents.push(result);
+        });
+
+        // Trigger a run with short TTL
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_dq1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t1",
+            spanId: "s1",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            ttl: "1s",
+          },
+          prisma
+        );
+
+        // Verify run is queued
+        const executionData = await engine.getRunExecutionData({ runId: run.id });
+        assertNonNullable(executionData);
+        expect(executionData.snapshot.executionStatus).toBe("QUEUED");
+
+        // Wait for TTL to expire
+        await setTimeout(1_500);
+
+        // Manually process the master queue - the dequeue Lua script should
+        // encounter the expired message and skip it (removing from queue sorted
+        // sets but leaving messageKey and ttlQueueKey for TTL consumer)
+        await engine.runQueue.processMasterQueueForEnvironment(
+          authenticatedEnvironment.id,
+          10
+        );
+
+        // Try to dequeue from worker queue - nothing should be there since
+        // the expired message was skipped by the Lua script
+        const dequeued = await engine.dequeueFromWorkerQueue({
+          consumerId: "test-consumer",
+          workerQueue: "main",
+          blockingPopTimeoutSeconds: 1,
+        });
+        expect(dequeued.length).toBe(0);
+
+        // The run should still be PENDING in the database (not yet expired by TTL consumer)
+        const executionData2 = await engine.getRunExecutionData({ runId: run.id });
+        assertNonNullable(executionData2);
+        expect(executionData2.run.status).toBe("PENDING");
+
+        // Now wait for the TTL consumer to poll and expire the run
+        // (pollIntervalMs is 5000, so we wait 7s to allow time for the poll + processing)
+        await setTimeout(7_000);
+
+        // The TTL consumer should have found and expired the run
+        expect(expiredEvents.length).toBe(1);
+        expect(expiredEvents[0]?.run.id).toBe(run.id);
+
+        // Check the run status directly from the database (the batch TTL path
+        // does not create execution snapshots, so getRunExecutionData may not reflect it)
+        const expiredRunData = await prisma.taskRun.findUnique({
+          where: { id: run.id },
+          select: { status: true },
+        });
+        expect(expiredRunData?.status).toBe("EXPIRED");
+
+        // Concurrency should be released
+        const envConcurrency = await engine.runQueue.currentConcurrencyOfEnvironment(
+          authenticatedEnvironment
+        );
+        expect(envConcurrency).toBe(0);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "Dequeue returns non-expired runs while skipping expired ones",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      // Disable worker to prevent the scheduleExpireRun job from firing.
+      // Use masterQueueConsumersDisabled so we can manually trigger dequeue.
+      // Very long TTL consumer interval so it doesn't interfere.
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          disabled: true,
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          processWorkerQueueDebounceMs: 50,
+          masterQueueConsumersDisabled: true,
+          ttlSystem: {
+            pollIntervalMs: 30000, // Very long so TTL consumer doesn't interfere
+            batchSize: 10,
+          },
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        // Trigger a run with short TTL (will expire)
+        const expiringRun = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_exp1",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t1",
+            spanId: "s1",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            ttl: "1s",
+          },
+          prisma
+        );
+
+        // Wait for first run's TTL to expire
+        await setTimeout(1_500);
+
+        // Trigger a second run WITHOUT TTL (should be dequeued normally)
+        const normalRun = await engine.trigger(
+          {
+            number: 2,
+            friendlyId: "run_norm1",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t2",
+            spanId: "s2",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            // No TTL
+          },
+          prisma
+        );
+
+        // Manually process the master queue - the Lua script should skip the
+        // expired message and dequeue only the non-expired one to the worker queue
+        await engine.runQueue.processMasterQueueForEnvironment(
+          authenticatedEnvironment.id,
+          10
+        );
+
+        // Dequeue from worker queue - only the non-expired run should be there
+        const dequeued = await engine.dequeueFromWorkerQueue({
+          consumerId: "test-consumer",
+          workerQueue: "main",
+        });
+        expect(dequeued.length).toBe(1);
+        expect(dequeued[0]?.run.id).toBe(normalRun.id);
+
+        // The expired run should still be PENDING (waiting for TTL consumer)
+        const expiringRunData = await engine.getRunExecutionData({ runId: expiringRun.id });
+        assertNonNullable(expiringRunData);
+        expect(expiringRunData.run.status).toBe("PENDING");
       } finally {
         await engine.quit();
       }
@@ -635,6 +936,164 @@ describe("RunEngine ttl", () => {
         expect(result.expired.length).toBe(0);
         expect(result.skipped.length).toBe(1);
         expect(result.skipped[0]?.reason).toBe("not_found");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "TTL-expired child run completes waitpoint and resumes parent",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          processWorkerQueueDebounceMs: 50,
+          masterQueueConsumersDisabled: true,
+          ttlSystem: {
+            pollIntervalMs: 100,
+            batchSize: 10,
+          },
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const parentTask = "parent-task";
+        const childTask = "child-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask, childTask]);
+
+        // Trigger the parent run
+        const parentRun = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_p1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier: parentTask,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            queue: `task/${parentTask}`,
+            isTest: false,
+            tags: [],
+            workerQueue: "main",
+          },
+          prisma
+        );
+
+        // Dequeue and start parent
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
+          consumerId: "test_12345",
+          workerQueue: "main",
+        });
+
+        const initialExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(initialExecutionData);
+        await engine.startRunAttempt({
+          runId: parentRun.id,
+          snapshotId: initialExecutionData.snapshot.id,
+        });
+
+        // Trigger child run with TTL and resumeParentOnCompletion
+        const childRun = await engine.trigger(
+          {
+            number: 2,
+            friendlyId: "run_c1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier: childTask,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12346",
+            spanId: "s12346",
+            queue: `task/${childTask}`,
+            isTest: false,
+            tags: [],
+            resumeParentOnCompletion: true,
+            parentTaskRunId: parentRun.id,
+            workerQueue: "main",
+            ttl: "1s",
+          },
+          prisma
+        );
+
+        // Verify parent is waiting on child
+        const parentExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentExecutionData);
+        expect(parentExecutionData.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+        const runWaitpoint = await prisma.taskRunWaitpoint.findFirst({
+          where: { taskRunId: parentRun.id },
+          include: { waitpoint: true },
+        });
+        assertNonNullable(runWaitpoint);
+        expect(runWaitpoint.waitpoint.type).toBe("RUN");
+        expect(runWaitpoint.waitpoint.completedByTaskRunId).toBe(childRun.id);
+
+        // Wait for TTL to expire + finishWaitpoint worker job to process
+        await setTimeout(3_000);
+
+        // Child run should be EXPIRED
+        const expiredChild = await prisma.taskRun.findUnique({
+          where: { id: childRun.id },
+          select: { status: true },
+        });
+        expect(expiredChild?.status).toBe("EXPIRED");
+
+        // Waitpoint should be completed with error output
+        const waitpointAfter = await prisma.waitpoint.findFirst({
+          where: { id: runWaitpoint.waitpointId },
+        });
+        assertNonNullable(waitpointAfter);
+        expect(waitpointAfter.status).toBe("COMPLETED");
+        expect(waitpointAfter.completedAt).not.toBeNull();
+        expect(waitpointAfter.outputIsError).toBe(true);
+
+        // TaskRunWaitpoint linking parent to child should be removed
+        const runWaitpointAfter = await prisma.taskRunWaitpoint.findFirst({
+          where: { taskRunId: parentRun.id },
+        });
+        expect(runWaitpointAfter).toBeNull();
+
+        // Parent should be back to EXECUTING
+        const parentExecutionDataAfter = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentExecutionDataAfter);
+        expect(parentExecutionDataAfter.snapshot.executionStatus).toBe("EXECUTING");
+
+        // Parent's completedWaitpoints should contain the waitpoint with error output
+        expect(parentExecutionDataAfter.completedWaitpoints?.length).toBe(1);
+        expect(parentExecutionDataAfter.completedWaitpoints![0].id).toBe(runWaitpoint.waitpointId);
+        expect(parentExecutionDataAfter.completedWaitpoints![0].outputIsError).toBe(true);
       } finally {
         await engine.quit();
       }

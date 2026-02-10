@@ -1343,10 +1343,39 @@ export class RunQueue {
     }
 
     // Parse the results: each item is "queueKey|runId|orgId"
-    return results.map((member: string) => {
+    const expiredRuns = results.map((member: string) => {
       const [queueKey, runId, orgId] = member.split("|");
       return { queueKey, runId, orgId };
     });
+
+    // Rebalance master queues for all affected queues.
+    // Group by master queue key (derived from environment) since different queues
+    // may belong to different master queue shards.
+    const queuesByMasterKey = new Map<string, string[]>();
+
+    for (const { queueKey } of expiredRuns) {
+      const envId = this.keys.envIdFromQueue(queueKey);
+      const masterQueueKey = this.keys.masterQueueKeyForEnvironment(envId, this.shardCount);
+
+      const queues = queuesByMasterKey.get(masterQueueKey) ?? [];
+      queues.push(queueKey);
+      queuesByMasterKey.set(masterQueueKey, queues);
+    }
+
+    if (queuesByMasterKey.size > 0) {
+      const pipeline = this.redis.pipeline();
+      const keyPrefix = this.options.redis.keyPrefix ?? "";
+
+      for (const [masterQueueKey, queueNames] of queuesByMasterKey) {
+        // Deduplicate queue names within each master queue shard
+        const uniqueQueueNames = [...new Set(queueNames)];
+        pipeline.migrateLegacyMasterQueues(masterQueueKey, keyPrefix, ...uniqueQueueNames);
+      }
+
+      await pipeline.exec();
+    }
+
+    return expiredRuns;
   }
 
   /**
@@ -2583,18 +2612,21 @@ for i, member in ipairs(expiredMembers) do
   if pipePos1 then
     local pipePos2 = string.find(member, "|", pipePos1 + 1, true)
     if pipePos2 then
-      local queueKey = string.sub(member, 1, pipePos1 - 1)
+      local rawQueueKey = string.sub(member, 1, pipePos1 - 1)
       local runId = string.sub(member, pipePos1 + 1, pipePos2 - 1)
       local orgId = string.sub(member, pipePos2 + 1)
+
+      -- Prefix the queue key so it matches the actual Redis keys
+      local queueKey = keyPrefix .. rawQueueKey
 
       -- Remove from TTL set
       redis.call('ZREM', ttlQueueKey, member)
 
       -- Construct keys for acknowledging the run from normal queue
-      -- Extract org from queueKey: {org:orgId}:proj:...
-      local orgKeyStart = string.find(queueKey, "{org:", 1, true)
-      local orgKeyEnd = string.find(queueKey, "}", orgKeyStart, true)
-      local orgFromQueue = string.sub(queueKey, orgKeyStart + 5, orgKeyEnd - 1)
+      -- Extract org from rawQueueKey: {org:orgId}:proj:...
+      local orgKeyStart = string.find(rawQueueKey, "{org:", 1, true)
+      local orgKeyEnd = string.find(rawQueueKey, "}", orgKeyStart, true)
+      local orgFromQueue = string.sub(rawQueueKey, orgKeyStart + 5, orgKeyEnd - 1)
 
       local messageKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:message:" .. runId
 
@@ -2604,16 +2636,12 @@ for i, member in ipairs(expiredMembers) do
       -- Remove from queue sorted set
       redis.call('ZREM', queueKey, runId)
 
-      -- Remove from env queue (derive from queueKey)
-      -- queueKey format: {org:X}:proj:Y:env:Z:queue:Q[:ck:C]
-      local envQueueKey = string.match(queueKey, "(.+):queue:")
-      if envQueueKey then
-        -- envQueueKey is now "{org:X}:proj:Y:env:Z" but we need "{org:X}:env:Z"
-        local envMatch = string.match(queueKey, ":env:([^:]+)")
-        if envMatch then
-          envQueueKey = "{org:" .. orgFromQueue .. "}:env:" .. envMatch
-          redis.call('ZREM', envQueueKey, runId)
-        end
+      -- Remove from env queue (derive from rawQueueKey)
+      -- rawQueueKey format: {org:X}:proj:Y:env:Z:queue:Q[:ck:C]
+      local envMatch = string.match(rawQueueKey, ":env:([^:]+)")
+      if envMatch then
+        local envQueueKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:env:" .. envMatch
+        redis.call('ZREM', envQueueKey, runId)
       end
 
       -- Remove from concurrency sets
@@ -2622,9 +2650,9 @@ for i, member in ipairs(expiredMembers) do
       redis.call('SREM', concurrencyKey, runId)
       redis.call('SREM', dequeuedKey, runId)
 
-      -- Env concurrency (derive from queueKey)
-      local envConcurrencyKey = "{org:" .. orgFromQueue .. "}:env:" .. (string.match(queueKey, ":env:([^:]+)") or "") .. ":currentConcurrency"
-      local envDequeuedKey = "{org:" .. orgFromQueue .. "}:env:" .. (string.match(queueKey, ":env:([^:]+)") or "") .. ":currentDequeued"
+      -- Env concurrency (derive from rawQueueKey)
+      local envConcurrencyKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:env:" .. (envMatch or "") .. ":currentConcurrency"
+      local envDequeuedKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:env:" .. (envMatch or "") .. ":currentDequeued"
       redis.call('SREM', envConcurrencyKey, runId)
       redis.call('SREM', envDequeuedKey, runId)
 
@@ -2714,18 +2742,11 @@ for i = 1, #messages, 2 do
 
         -- Check if TTL has expired
         if ttlExpiresAt and ttlExpiresAt <= currentTime then
-            -- TTL expired - remove from queues but don't add to results
+            -- TTL expired - remove from dequeue queues so it won't be retried,
+            -- but leave messageKey and ttlQueueKey intact for the TTL consumer
+            -- to discover and properly expire the run.
             redis.call('ZREM', queueKey, messageId)
             redis.call('ZREM', envQueueKey, messageId)
-            redis.call('DEL', messageKey)
-
-            -- Remove from TTL set if provided
-            if ttlQueueKey and ttlQueueKey ~= '' then
-                -- Construct TTL member: queueKey|runId|orgId
-                local ttlMember = queueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
-                redis.call('ZREM', ttlQueueKey, ttlMember)
-            end
-            -- Don't add to results - this run is expired
         else
             -- Not expired - process normally
             redis.call('ZREM', queueKey, messageId)
@@ -2746,6 +2767,12 @@ for i = 1, #messages, 2 do
 
             dequeuedCount = dequeuedCount + 1
         end
+    else
+        -- Stale entry: message key was already deleted (e.g. acknowledged),
+        -- but the sorted set member was not cleaned up. Remove it so it
+        -- doesn't block newer messages from being dequeued.
+        redis.call('ZREM', queueKey, messageId)
+        redis.call('ZREM', envQueueKey, messageId)
     end
 end
 

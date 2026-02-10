@@ -45,9 +45,9 @@ export class BatchCompletionTracker {
   }) {
     this.redis = createRedisClient(options.redis);
     this.logger = options.logger ?? {
-      debug: () => {},
-      info: () => {},
-      error: () => {},
+      debug: () => { },
+      info: () => { },
+      error: () => { },
     };
 
     this.#registerCommands();
@@ -107,26 +107,6 @@ export class BatchCompletionTracker {
     }
 
     return JSON.parse(metaJson) as BatchMeta;
-  }
-
-  /**
-   * Update the runCount in batch metadata.
-   * Used when items are skipped due to queue limits.
-   */
-  async updateRunCount(batchId: string, newRunCount: number): Promise<void> {
-    const meta = await this.getMeta(batchId);
-    if (!meta) {
-      this.logger.error("Cannot update runCount: batch metadata not found", { batchId });
-      return;
-    }
-
-    const updatedMeta: BatchMeta = {
-      ...meta,
-      runCount: newRunCount,
-    };
-
-    await this.storeMeta(batchId, updatedMeta);
-    this.logger.debug("Updated batch runCount", { batchId, oldRunCount: meta.runCount, newRunCount });
   }
 
   // ============================================================================

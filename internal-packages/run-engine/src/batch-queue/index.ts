@@ -183,17 +183,17 @@ export class BatchQueue {
       // so we don't need the DLQ - we just need the retry scheduling.
       ...(options.retry
         ? {
-            retry: {
-              strategy: new ExponentialBackoffRetry({
-                maxAttempts: options.retry.maxAttempts,
-                minTimeoutInMs: options.retry.minTimeoutInMs ?? 1_000,
-                maxTimeoutInMs: options.retry.maxTimeoutInMs ?? 30_000,
-                factor: options.retry.factor ?? 2,
-                randomize: options.retry.randomize ?? true,
-              }),
-              deadLetterQueue: false,
-            },
-          }
+          retry: {
+            strategy: new ExponentialBackoffRetry({
+              maxAttempts: options.retry.maxAttempts,
+              minTimeoutInMs: options.retry.minTimeoutInMs ?? 1_000,
+              maxTimeoutInMs: options.retry.maxTimeoutInMs ?? 30_000,
+              factor: options.retry.factor ?? 2,
+              randomize: options.retry.randomize ?? true,
+            }),
+            deadLetterQueue: false,
+          },
+        }
         : {}),
       logger: this.logger,
       tracer: options.tracer,
@@ -393,14 +393,6 @@ export class BatchQueue {
    */
   async getEnqueuedCount(batchId: string): Promise<number> {
     return this.completionTracker.getEnqueuedCount(batchId);
-  }
-
-  /**
-   * Update the runCount for a batch.
-   * Used when items are skipped due to queue limits.
-   */
-  async updateRunCount(batchId: string, newRunCount: number): Promise<void> {
-    return this.completionTracker.updateRunCount(batchId, newRunCount);
   }
 
   // ============================================================================
