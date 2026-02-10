@@ -1,0 +1,105 @@
+---
+title: "Background Cursor agent using the Cursor CLI"
+sidebarTitle: "Cursor background agent"
+description: "Run Cursor's headless CLI agent in a Trigger.dev task and stream the live output to the frontend using Trigger.dev Realtime Streams."
+---
+
+import RealtimeLearnMore from "/snippets/realtime-learn-more.mdx";
+
+## Overview
+
+This example runs [Cursor's headless CLI](https://cursor.com/cli) in a Trigger.dev task. The agent spawns as a child process, and its NDJSON stdout is parsed and piped to the browser in real-time using [Realtime Streams](/realtime/react-hooks/streams). The result is a live terminal UI that renders each Cursor event (system messages, assistant responses, tool calls, results) as it happens.
+
+**Tech stack:**
+
+- **[Next.js](https://nextjs.org/)** for the web app (App Router with server actions)
+- **[Cursor CLI](https://cursor.com/cli)** for the headless AI coding agent
+- **[Trigger.dev](https://trigger.dev)** for task orchestration, real-time streaming, and deployment
+
+## Video
+
+<video
+  controls
+  className="w-full aspect-video"
+  src="https://github.com/user-attachments/assets/459aa160-6659-478e-868f-32e74f79d21a"
+></video>
+
+**Features:**
+
+- **Build extensions**: Installs the `cursor-agent` binary into the task container image using `addLayer`, demonstrating how to ship system binaries with your tasks
+- **Realtime Streams v2**: NDJSON from a child process stdout is parsed and piped directly to the browser using `streams.define()` and `.pipe()`
+- **Live terminal rendering**: Each Cursor event renders as a distinct row with auto-scroll
+- **Long-running tasks**: Cursor agent runs for minutes; Trigger.dev handles lifecycle, timeouts, and retries automatically
+- **Machine selection**: Uses the `medium-2x` preset for resource-intensive CLI tools
+- **LLM model picker**: Switch between models from the UI before triggering a run
+
+## GitHub repo
+
+<Card
+  title="View the Cursor background agent repo"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/cursor-cli-demo"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
+
+## How it works
+
+### Task orchestration
+
+The task spawns the Cursor CLI as a child process and streams its output to the frontend:
+
+1. A Next.js server action triggers the `cursor-agent` task with the user's prompt and selected model
+2. The task spawns the Cursor CLI binary using a helper that returns a typed NDJSON stream and a `waitUntilExit()` promise
+3. Each line of NDJSON stdout is parsed into typed Cursor events and piped to a Realtime Stream
+4. The frontend subscribes to the stream using `useRealtimeRunWithStreams` and renders each event in a terminal UI
+5. The task waits for the CLI process to exit and returns the result
+
+### Build extension for system binaries
+
+The example includes a custom build extension that installs the `cursor-agent` binary into the container image using `addLayer`. At runtime, the binary is copied to `/tmp` and given execute permissions; this is a workaround needed when the container runtime strips execute permissions from added layers.
+
+```ts extensions/cursor-cli.ts
+export const cursorCli = defineExtension({
+  name: "cursor-cli",
+  onBuildComplete(params) {
+    params.addLayer({
+      id: "cursor-cli",
+      image: {
+        instructions: [
+          `COPY cursor-agent /usr/local/bin/cursor-agent`,
+          `RUN chmod +x /usr/local/bin/cursor-agent`,
+        ],
+      },
+    });
+  },
+});
+```
+
+### Streaming with Realtime Streams v2
+
+The stream is defined with a typed schema and piped from the child process:
+
+```ts trigger/cursor-stream.ts
+export const cursorStream = streams.define("cursor", cursorEventSchema);
+```
+
+```ts trigger/cursor-agent.ts
+const { stream, waitUntilExit } = spawnCursorAgent({ prompt, model });
+cursorStream.pipe(stream);
+await waitUntilExit();
+```
+
+On the frontend, the `useRealtimeRunWithStreams` hook subscribes to these events and renders them as they arrive.
+
+## Relevant code
+
+- **Build extension + spawn helper**: [extensions/cursor-cli.ts](https://github.com/triggerdotdev/examples/blob/main/cursor-cli-demo/extensions/cursor-cli.ts): installs the binary and provides a typed NDJSON stream with `waitUntilExit()`
+- **Task definition**: [trigger/cursor-agent.ts](https://github.com/triggerdotdev/examples/blob/main/cursor-cli-demo/trigger/cursor-agent.ts): spawns the CLI, pipes the stream, waits for exit
+- **Stream definition**: [trigger/cursor-stream.ts](https://github.com/triggerdotdev/examples/blob/main/cursor-cli-demo/trigger/cursor-stream.ts): Realtime Streams v2 stream with typed schema
+- **Terminal UI**: [components/terminal.tsx](https://github.com/triggerdotdev/examples/blob/main/cursor-cli-demo/components/terminal.tsx): renders live events using `useRealtimeRunWithStreams`
+- **Event types**: [lib/cursor-events.ts](https://github.com/triggerdotdev/examples/blob/main/cursor-cli-demo/lib/cursor-events.ts): TypeScript types and parsers for Cursor NDJSON events
+- **Trigger config**: [trigger.config.ts](https://github.com/triggerdotdev/examples/blob/main/cursor-cli-demo/trigger.config.ts): project config with the cursor CLI build extension
+
+<RealtimeLearnMore />
