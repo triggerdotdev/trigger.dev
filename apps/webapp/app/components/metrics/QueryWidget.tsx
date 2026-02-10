@@ -178,6 +178,7 @@ export function QueryWidget({
           <div className="flex items-center gap-1.5">{title}</div>
           <Card.Accessory>
             <SimpleTooltip
+              asChild
               button={
                 <Button
                   variant="minimal/small"
