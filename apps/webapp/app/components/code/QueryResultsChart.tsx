@@ -886,11 +886,26 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   const xAxisAngle = timeGranularity === "hours" || timeGranularity === "seconds" ? -45 : 0;
   const xAxisHeight = xAxisAngle !== 0 ? 60 : undefined;
 
+  // Check if the data would produce duplicate labels at the current granularity.
+  // Only use the custom tick renderer (with interval:0) when duplicates exist,
+  // otherwise let Recharts handle label spacing to avoid collisions.
+  const hasDuplicateLabels = useMemo(() => {
+    if (!isDateBased || !timeGranularity || data.length === 0) return false;
+    const labels = new Set<string>();
+    for (const point of data) {
+      const ts = point.__timestamp ?? point[xDataKey];
+      if (typeof ts === "number") {
+        labels.add(formatDateByGranularity(new Date(ts), timeGranularity));
+      }
+    }
+    return labels.size < data.length;
+  }, [isDateBased, timeGranularity, data, xDataKey]);
+
   // Custom tick renderer for date-based axes: shows either a text label or
   // a small tick mark, but never both. This avoids duplicate labels while
   // still giving visual markers for unlabelled data points.
   const dateAxisTick = useMemo(() => {
-    if (!isDateBased || !xAxisTickFormatter) return undefined;
+    if (!isDateBased || !xAxisTickFormatter || !hasDuplicateLabels) return undefined;
     return (props: Record<string, unknown>) => {
       const { x, y, payload } = props as { x: number; y: number; payload: { value: number } };
       const label = xAxisTickFormatter(payload.value);
@@ -927,7 +942,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         />
       );
     };
-  }, [isDateBased, xAxisTickFormatter, xAxisAngle]);
+  }, [isDateBased, xAxisTickFormatter, xAxisAngle, hasDuplicateLabels]);
 
   // Validation — all hooks must be above this point
   if (!xAxisColumn) {
