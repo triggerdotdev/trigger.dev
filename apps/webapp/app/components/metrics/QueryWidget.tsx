@@ -1,33 +1,36 @@
-import { Card } from "~/components/primitives/charts/Card";
-import { useState, type ReactNode } from "react";
-import { type OutputColumnMetadata } from "@internal/tsql";
-import { z } from "zod";
-import { assertNever } from "assert-never";
-import { TSQLResultsTable } from "../code/TSQLResultsTable";
-import { QueryResultsChart } from "../code/QueryResultsChart";
-import { BigNumberCard } from "../primitives/charts/BigNumberCard";
-import { Dialog, DialogContent, DialogFooter, DialogHeader } from "../primitives/Dialog";
-import { Button } from "../primitives/Buttons";
 import {
-  ArrowsPointingOutIcon,
   DocumentDuplicateIcon,
   PencilIcon,
   PencilSquareIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { LoadingBarDivider } from "../primitives/LoadingBarDivider";
-import { Callout } from "../primitives/Callout";
 import { ChartBarIcon } from "@heroicons/react/24/solid";
+import { type OutputColumnMetadata } from "@internal/tsql";
+import { DialogClose } from "@radix-ui/react-dialog";
+import { assertNever } from "assert-never";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { cn } from "~/utils/cn";
+import { Maximize2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { z } from "zod";
+import { Card } from "~/components/primitives/charts/Card";
+import { QueryResultsChart } from "../code/QueryResultsChart";
+import { TSQLResultsTable } from "../code/TSQLResultsTable";
+import { Button } from "../primitives/Buttons";
+import { Callout } from "../primitives/Callout";
+import { BigNumberCard } from "../primitives/charts/BigNumberCard";
+import { Dialog, DialogContent, DialogFooter, DialogHeader } from "../primitives/Dialog";
+import { Input } from "../primitives/Input";
+import { InputGroup } from "../primitives/InputGroup";
+import { Label } from "../primitives/Label";
+import { LoadingBarDivider } from "../primitives/LoadingBarDivider";
 import {
   Popover,
   PopoverContent,
   PopoverMenuItem,
   PopoverVerticalEllipseTrigger,
 } from "../primitives/Popover";
-import { Input } from "../primitives/Input";
-import { InputGroup } from "../primitives/InputGroup";
-import { Label } from "../primitives/Label";
-import { DialogClose } from "@radix-ui/react-dialog";
+import { IconChartHistogram } from "@tabler/icons-react";
 
 const ChartType = z.union([z.literal("bar"), z.literal("line")]);
 export type ChartType = z.infer<typeof ChartType>;
@@ -169,25 +172,38 @@ export function QueryWidget({
   const hasMenu = onEdit || onRename || onDelete || onDuplicate;
 
   return (
-    <div className="h-full">
+    <div className="group h-full">
       <Card className="h-full overflow-hidden px-0 pb-0">
         <Card.Header draggable={isDraggable}>
           <div className="flex items-center gap-1.5">{title}</div>
           <Card.Accessory>
-            {accessory}
-            <Button
-              variant="tertiary/small"
-              LeadingIcon={ArrowsPointingOutIcon}
-              onClick={() => setIsFullscreen(true)}
+            <SimpleTooltip
+              button={
+                <Button
+                  variant="minimal/small"
+                  LeadingIcon={Maximize2}
+                  leadingIconClassName="text-text-bright"
+                  onClick={() => setIsFullscreen(true)}
+                  className="!px-1 opacity-0 transition-opacity group-hover:opacity-100"
+                />
+              }
+              content="Maximize"
             />
+            {accessory}
             {hasMenu && (
               <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-                <PopoverVerticalEllipseTrigger isOpen={isMenuOpen} />
+                <PopoverVerticalEllipseTrigger
+                  isOpen={isMenuOpen}
+                  className={cn(
+                    "transition-opacity",
+                    isMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                  )}
+                />
                 <PopoverContent align="end" className="p-0">
                   <div className="flex flex-col gap-1 p-1">
                     {onEdit && (
                       <PopoverMenuItem
-                        icon={PencilSquareIcon}
+                        icon={IconChartHistogram}
                         title="Edit chart"
                         onClick={() => {
                           onEdit(props.data);
@@ -197,7 +213,7 @@ export function QueryWidget({
                     )}
                     {onRename && (
                       <PopoverMenuItem
-                        icon={PencilIcon}
+                        icon={PencilSquareIcon}
                         title="Rename"
                         onClick={() => {
                           setRenameValue(titleString ?? "");
