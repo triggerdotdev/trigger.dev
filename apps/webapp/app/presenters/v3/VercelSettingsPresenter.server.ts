@@ -25,6 +25,7 @@ export type VercelSettingsResult = {
   enabled: boolean;
   hasOrgIntegration: boolean;
   authInvalid?: boolean;
+  authError?: string;
   connectedProject?: {
     id: string;
     vercelProjectId: string;
@@ -52,6 +53,7 @@ export type VercelOnboardingData = {
   availableProjects: VercelAvailableProject[];
   hasProjectSelected: boolean;
   authInvalid?: boolean;
+  authError?: string;
   existingVariables: Record<string, { environments: string[] }>; // Environment slugs (non-archived only)
   gitHubAppInstallations: GitHubAppInstallation[];
   isGitHubConnected: boolean;
@@ -98,6 +100,7 @@ export class VercelSettingsPresenter extends BasePresenter {
         enabled: true,
         hasOrgIntegration: false,
         authInvalid: true,
+        authError: orgIntegrationResult.error instanceof Error ? orgIntegrationResult.error.message : "Failed to fetch organization integration",
         connectedProject: undefined,
         isGitHubConnected: false,
         hasStagingEnvironment: false,
@@ -116,6 +119,7 @@ export class VercelSettingsPresenter extends BasePresenter {
           enabled: true,
           hasOrgIntegration: true,
           authInvalid: true,
+          authError: tokenResult.isErr() ? tokenResult.error.message : "Vercel token is invalid",
           connectedProject: undefined,
           isGitHubConnected: false,
           hasStagingEnvironment: false,
@@ -382,6 +386,7 @@ export class VercelSettingsPresenter extends BasePresenter {
             availableProjects: [],
             hasProjectSelected: false,
             authInvalid: true,
+            authError: tokenResult.isErr() ? tokenResult.error.message : "Vercel token is invalid",
             existingVariables: {},
             gitHubAppInstallations,
             isGitHubConnected,
@@ -397,6 +402,7 @@ export class VercelSettingsPresenter extends BasePresenter {
             availableProjects: [],
             hasProjectSelected: false,
             authInvalid: clientResult.error.authInvalid,
+            authError: clientResult.error.authInvalid ? clientResult.error.message : undefined,
             existingVariables: {},
             gitHubAppInstallations,
             isGitHubConnected,
@@ -426,6 +432,7 @@ export class VercelSettingsPresenter extends BasePresenter {
             availableProjects: [],
             hasProjectSelected: false,
             authInvalid: availableProjectsResult.error.authInvalid,
+            authError: availableProjectsResult.error.authInvalid ? availableProjectsResult.error.message : undefined,
             existingVariables: {},
             gitHubAppInstallations,
             isGitHubConnected,
@@ -472,12 +479,19 @@ export class VercelSettingsPresenter extends BasePresenter {
           (sharedEnvVarsResult.isErr() && sharedEnvVarsResult.error.authInvalid);
 
         if (authInvalid) {
+          const authError =
+            (customEnvironmentsResult.isErr() && customEnvironmentsResult.error.authInvalid && customEnvironmentsResult.error.message) ||
+            (projectEnvVarsResult.isErr() && projectEnvVarsResult.error.authInvalid && projectEnvVarsResult.error.message) ||
+            (sharedEnvVarsResult.isErr() && sharedEnvVarsResult.error.authInvalid && sharedEnvVarsResult.error.message) ||
+            undefined;
+
           return {
             customEnvironments: [],
             environmentVariables: [],
             availableProjects: availableProjectsResult.value,
             hasProjectSelected: true,
             authInvalid: true,
+            authError: authError || undefined,
             existingVariables: {},
             gitHubAppInstallations,
             isGitHubConnected,

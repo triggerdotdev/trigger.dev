@@ -188,10 +188,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }
 
   const authInvalid = onboardingData?.authInvalid || result.authInvalid || false;
+  const authError = onboardingData?.authError || result.authError;
 
   return typedjson({
     ...result,
     authInvalid,
+    authError,
     onboardingData,
     organizationSlug,
     projectSlug: projectParam,
