@@ -329,6 +329,7 @@ const QueryEditorForm = forwardRef<
               defaultPeriod={defaultPeriod}
               labelName="Triggered"
               hideLabel
+              valueClassName="text-text-bright"
               period={period}
               from={from}
               to={to}
@@ -1095,17 +1096,17 @@ function ScopeItem({ scope }: { scope: QueryScope }) {
 
   switch (scope) {
     case "organization":
-      return `Org: ${organization.title}`;
+      return <span className="text-text-bright">{`Org: ${organization.title}`}</span>;
     case "project":
-      return `Project: ${project.name}`;
+      return <span className="text-text-bright">{`Project: ${project.name}`}</span>;
     case "environment":
       return (
-        <>
+        <span className="text-text-bright">
           Env: <EnvironmentLabel environment={environment} />
-        </>
+        </span>
       );
     default:
-      return scope;
+      return <span className="text-text-bright">{scope}</span>;
   }
 }
 
