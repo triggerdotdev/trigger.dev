@@ -100,14 +100,14 @@ export type RunQueueOptions = {
     pollIntervalMs?: number;
     /** Max number of runs to expire per poll per shard (default: 100) */
     batchSize?: number;
-    /** Callback to handle expired runs */
-    callback: TtlSystemCallback;
+    /** Key suffix for TTL worker's queue sorted set (relative to RunQueue keyPrefix) */
+    workerQueueSuffix: string;
+    /** Key suffix for TTL worker's items hash (relative to RunQueue keyPrefix) */
+    workerItemsSuffix: string;
+    /** Visibility timeout for TTL worker jobs (ms, default: 30000) */
+    visibilityTimeoutMs?: number;
   };
 };
-
-export interface TtlSystemCallback {
-  (runs: Array<{ queueKey: string; runId: string; orgId: string }>): Promise<void>;
-}
 
 export interface ConcurrencySweeperCallback {
   (runIds: string[]): Promise<Array<{ id: string; orgId: string }>>;
@@ -1289,19 +1289,7 @@ export class RunQueue {
             shard,
             count: expiredRuns.length,
           });
-
-          // Call the callback with expired runs
-          try {
-            await this.options.ttlSystem!.callback(expiredRuns);
-            processedCount += expiredRuns.length;
-          } catch (callbackError) {
-            this.logger.error(`TTL callback failed for shard ${shard}`, {
-              error: callbackError,
-              service: this.name,
-              shard,
-              runCount: expiredRuns.length,
-            });
-          }
+          processedCount += expiredRuns.length;
         }
       }
     } catch (error) {
@@ -1318,24 +1306,36 @@ export class RunQueue {
   }
 
   /**
-   * Atomically expire TTL runs: removes from TTL set AND acknowledges from normal queue.
-   * This prevents race conditions with the normal dequeue system.
+   * Atomically expire TTL runs: removes from TTL set, acknowledges from normal queue,
+   * and enqueues each run to the TTL worker for DB updates.
    */
   async #expireTtlRuns(
     shard: number,
     now: number,
     batchSize: number
   ): Promise<Array<{ queueKey: string; runId: string; orgId: string }>> {
-    const shardCount = this.options.ttlSystem?.shardCount ?? this.shardCount;
-    const ttlQueueKey = this.keys.ttlQueueKeyForShard(shard);
+    const ttlSystem = this.options.ttlSystem;
+    if (!ttlSystem) {
+      return [];
+    }
 
-    // Atomically get and remove expired runs from TTL set, and ack them from normal queues
+    const shardCount = ttlSystem.shardCount ?? this.shardCount;
+    const ttlQueueKey = this.keys.ttlQueueKeyForShard(shard);
+    const keyPrefix = this.options.redis.keyPrefix ?? "";
+    const workerQueueKey = keyPrefix + ttlSystem.workerQueueSuffix;
+    const workerItemsKey = keyPrefix + ttlSystem.workerItemsSuffix;
+    const visibilityTimeoutMs = (ttlSystem.visibilityTimeoutMs ?? 30_000).toString();
+
+    // Atomically get and remove expired runs from TTL set, ack them from normal queues, and enqueue to TTL worker
     const results = await this.redis.expireTtlRuns(
       ttlQueueKey,
-      this.options.redis.keyPrefix ?? "",
+      keyPrefix,
       now.toString(),
       batchSize.toString(),
-      shardCount.toString()
+      shardCount.toString(),
+      workerQueueKey,
+      workerItemsKey,
+      visibilityTimeoutMs
     );
 
     if (!results || results.length === 0) {
@@ -2587,7 +2587,7 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
       `,
     });
 
-    // Expire TTL runs - atomically removes from TTL set and acknowledges from normal queue
+    // Expire TTL runs - atomically removes from TTL set, acknowledges from normal queue, and enqueues to TTL worker
     this.redis.defineCommand("expireTtlRuns", {
       numberOfKeys: 1,
       lua: `
@@ -2596,6 +2596,9 @@ local keyPrefix = ARGV[1]
 local currentTime = tonumber(ARGV[2])
 local batchSize = tonumber(ARGV[3])
 local shardCount = tonumber(ARGV[4])
+local workerQueueKey = ARGV[5]
+local workerItemsKey = ARGV[6]
+local visibilityTimeoutMs = tonumber(ARGV[7])
 
 -- Get expired runs from TTL sorted set (score <= currentTime)
 local expiredMembers = redis.call('ZRANGEBYSCORE', ttlQueueKey, '-inf', currentTime, 'LIMIT', 0, batchSize)
@@ -2603,6 +2606,9 @@ local expiredMembers = redis.call('ZRANGEBYSCORE', ttlQueueKey, '-inf', currentT
 if #expiredMembers == 0 then
   return {}
 end
+
+local time = redis.call('TIME')
+local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
 
 local results = {}
 
@@ -2655,6 +2661,16 @@ for i, member in ipairs(expiredMembers) do
       local envDequeuedKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:env:" .. (envMatch or "") .. ":currentDequeued"
       redis.call('SREM', envConcurrencyKey, runId)
       redis.call('SREM', envDequeuedKey, runId)
+
+      -- Enqueue to TTL worker (runId is natural dedup key)
+      local serializedItem = cjson.encode({
+        job = "expireTtlRun",
+        item = { runId = runId, orgId = orgId, queueKey = rawQueueKey },
+        visibilityTimeoutMs = visibilityTimeoutMs,
+        attempt = 0
+      })
+      redis.call('ZADD', workerQueueKey, nowMs, runId)
+      redis.call('HSET', workerItemsKey, runId, serializedItem)
 
       -- Add to results
       table.insert(results, member)
@@ -3151,6 +3167,9 @@ declare module "@internal/redis" {
       currentTime: string,
       batchSize: string,
       shardCount: string,
+      workerQueueKey: string,
+      workerItemsKey: string,
+      visibilityTimeoutMs: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
 

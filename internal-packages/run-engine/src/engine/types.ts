@@ -73,6 +73,8 @@ export type RunEngineOptions = {
       batchSize?: number;
       /** Whether TTL consumers are disabled (default: false) */
       disabled?: boolean;
+      /** Visibility timeout for TTL worker jobs (ms, default: 30000) */
+      visibilityTimeoutMs?: number;
     };
   };
   runLock: {

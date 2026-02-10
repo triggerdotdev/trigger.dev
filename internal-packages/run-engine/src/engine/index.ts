@@ -75,6 +75,7 @@ import {
   RunEngineOptions,
   TriggerParams,
 } from "./types.js";
+import { ttlWorkerCatalog } from "./ttlWorkerCatalog.js";
 import { workerCatalog } from "./workerCatalog.js";
 import pMap from "p-map";
 
@@ -82,6 +83,7 @@ export class RunEngine {
   private runLockRedis: Redis;
   private runLock: RunLocker;
   private worker: EngineWorker;
+  private ttlWorker: Worker<typeof ttlWorkerCatalog>;
   private logger: Logger;
   private tracer: Tracer;
   private meter: Meter;
@@ -193,7 +195,9 @@ export class RunEngine {
           shardCount: options.queue?.ttlSystem?.shardCount,
           pollIntervalMs: options.queue?.ttlSystem?.pollIntervalMs,
           batchSize: options.queue?.ttlSystem?.batchSize,
-          callback: this.#ttlExpiredCallback.bind(this),
+          workerQueueSuffix: "ttl-worker:{queue:ttl-expiration:}queue",
+          workerItemsSuffix: "ttl-worker:{queue:ttl-expiration:}items",
+          visibilityTimeoutMs: options.queue?.ttlSystem?.visibilityTimeoutMs ?? 30_000,
         },
     });
 
@@ -336,6 +340,31 @@ export class RunEngine {
       resources,
       waitpointSystem: this.waitpointSystem,
     });
+
+    this.ttlWorker = new Worker({
+      name: "ttl-expiration",
+      redisOptions: {
+        ...options.queue.redis,
+        keyPrefix: `${options.queue.redis.keyPrefix}runqueue:ttl-worker:`,
+      },
+      catalog: ttlWorkerCatalog,
+      concurrency: { limit: 20 },
+      pollIntervalMs: options.worker.pollIntervalMs ?? 1000,
+      immediatePollIntervalMs: options.worker.immediatePollIntervalMs ?? 100,
+      shutdownTimeoutMs: options.worker.shutdownTimeoutMs ?? 10_000,
+      logger: new Logger("RunEngineTtlWorker", options.logLevel ?? "info"),
+      jobs: {
+        expireTtlRun: async ({ payload }) => {
+          await this.ttlSystem.expireRunsBatch([payload.runId]);
+        },
+      },
+    });
+
+    // Start TTL worker whenever TTL system is enabled, so expired runs enqueued by the
+    // Lua script get processed even when the main engine worker is disabled (e.g. in tests).
+    if (options.queue?.ttlSystem && !options.queue.ttlSystem.disabled) {
+      this.ttlWorker.start();
+    }
 
     this.batchSystem = new BatchSystem({
       resources,
@@ -1621,6 +1650,7 @@ export class RunEngine {
       //stop the run queue
       await this.runQueue.quit();
       await this.worker.stop();
+      await this.ttlWorker.stop();
       await this.runLock.quit();
 
       // This is just a failsafe
@@ -2227,41 +2257,6 @@ export class RunEngine {
         }
       }
     });
-  }
-
-  /**
-   * Callback for the TTL system when runs expire.
-   * Uses the optimized batch method that doesn't require run locks
-   * since the Lua script already atomically claimed these runs.
-   */
-  async #ttlExpiredCallback(
-    runs: Array<{ queueKey: string; runId: string; orgId: string }>
-  ): Promise<void> {
-    if (runs.length === 0) return;
-
-    try {
-      const runIds = runs.map((r) => r.runId);
-      const result = await this.ttlSystem.expireRunsBatch(runIds);
-
-      if (result.expired.length > 0) {
-        this.logger.debug("TTL system expired runs", {
-          expiredCount: result.expired.length,
-          expiredRunIds: result.expired,
-        });
-      }
-
-      if (result.skipped.length > 0) {
-        this.logger.debug("TTL system skipped runs", {
-          skippedCount: result.skipped.length,
-          skipped: result.skipped,
-        });
-      }
-    } catch (error) {
-      this.logger.error("Failed to expire runs via TTL system", {
-        runIds: runs.map((r) => r.runId),
-        error,
-      });
-    }
   }
 
   /**
