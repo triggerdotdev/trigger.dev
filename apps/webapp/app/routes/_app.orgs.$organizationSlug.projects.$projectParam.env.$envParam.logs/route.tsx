@@ -10,11 +10,10 @@ import {
 } from "remix-typedjson";
 import { requireUser } from "~/services/session.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
-
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { LogsListPresenter } from "~/presenters/v3/LogsListPresenter.server";
+import { LogsListPresenter, LogEntry } from "~/presenters/v3/LogsListPresenter.server";
 import type { LogLevel } from "~/utils/logUtils";
 import { $replica, prisma } from "~/db.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
@@ -26,7 +25,6 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Callout } from "~/components/primitives/Callout";
 import { LogsTable } from "~/components/logs/LogsTable";
-import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
 import { LogDetailView } from "~/components/logs/LogDetailView";
 import { LogsSearchInput } from "~/components/logs/LogsSearchInput";
 import { LogsLevelFilter } from "~/components/logs/LogsLevelFilter";
@@ -154,7 +152,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       to,
       includeDebugLogs: isAdmin && showDebug,
       defaultPeriod: "1h",
-      retentionLimitDays,
+      retentionLimitDays
     })
     .catch((error) => {
       if (error instanceof ServiceValidationError) {
@@ -168,11 +166,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     isAdmin,
     showDebug,
     defaultPeriod: "1h",
+    retentionLimitDays,
   });
 };
 
 export default function Page() {
-  const { data, isAdmin, showDebug, defaultPeriod } =
+  const { data, isAdmin, showDebug, defaultPeriod, retentionLimitDays } =
     useTypedLoaderData<typeof loader>();
 
   return (
@@ -203,6 +202,7 @@ export default function Page() {
                   isAdmin={isAdmin}
                   showDebug={showDebug}
                   defaultPeriod={defaultPeriod}
+                  retentionLimitDays={retentionLimitDays}
                 />
                 <div className="flex items-center justify-center px-3 py-12">
                   <Callout variant="error" className="max-w-fit">
@@ -221,6 +221,7 @@ export default function Page() {
                       isAdmin={isAdmin}
                       showDebug={showDebug}
                       defaultPeriod={defaultPeriod}
+                      retentionLimitDays={retentionLimitDays}
                     />
                     <div className="flex items-center justify-center px-3 py-12">
                       <Callout variant="error" className="max-w-fit">
@@ -237,6 +238,7 @@ export default function Page() {
                     isAdmin={isAdmin}
                     showDebug={showDebug}
                     defaultPeriod={defaultPeriod}
+                    retentionLimitDays={retentionLimitDays}
                   />
                   <LogsList
                     list={result}
@@ -254,40 +256,18 @@ export default function Page() {
   );
 }
 
-function RetentionNotice({
-  logCount,
-  retentionDays,
-}: {
-  logCount: number;
-  retentionDays: number;
-}) {
-  return (
-    <Paragraph variant="extra-small" className="flex items-center gap-1 whitespace-nowrap">
-      <span className="text-text-dimmed">
-       Showing last {retentionDays} {retentionDays === 1 ? 'day' : 'days'}
-      </span>
-      <a
-        href="https://trigger.dev/pricing"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-text-link hover:underline"
-      >
-        Upgrade
-      </a>
-    </Paragraph>
-  );
-}
-
 function FiltersBar({
   list,
   isAdmin,
   showDebug,
   defaultPeriod,
+  retentionLimitDays,
 }: {
   list?: Exclude<Awaited<UseDataFunctionReturn<typeof loader>["data"]>, { error: string }>;
   isAdmin: boolean;
   showDebug: boolean;
   defaultPeriod?: string;
+  retentionLimitDays: number;
 }) {
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -317,12 +297,16 @@ function FiltersBar({
           <>
             <LogsTaskFilter possibleTasks={list.possibleTasks} />
             <LogsRunIdFilter />
-            <TimeFilter defaultPeriod={defaultPeriod} />
-            <LogsLevelFilter/>
+            <TimeFilter defaultPeriod={defaultPeriod} maxPeriodDays={retentionLimitDays} />
+            <LogsLevelFilter />
             <LogsSearchInput />
             {hasFilters && (
               <Form className="h-6">
-                <Button variant="secondary/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
+                <Button
+                  variant="secondary/small"
+                  LeadingIcon={XMarkIcon}
+                  tooltip="Clear all filters"
+                />
               </Form>
             )}
           </>
@@ -330,24 +314,22 @@ function FiltersBar({
           <>
             <LogsTaskFilter possibleTasks={[]} />
             <LogsRunIdFilter />
-            <TimeFilter defaultPeriod={defaultPeriod} />
-            <LogsLevelFilter/>
+            <TimeFilter defaultPeriod={defaultPeriod} maxPeriodDays={retentionLimitDays} />
+            <LogsLevelFilter />
             <LogsSearchInput />
             {hasFilters && (
               <Form className="h-6">
-                <Button variant="secondary/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
+                <Button
+                  variant="secondary/small"
+                  LeadingIcon={XMarkIcon}
+                  tooltip="Clear all filters"
+                />
               </Form>
             )}
           </>
         )}
       </div>
       <div className="flex items-center gap-2">
-        {list?.retention?.wasClamped && (
-          <RetentionNotice
-            logCount={list.logs.length}
-            retentionDays={list.retention.limitDays}
-          />
-        )}
         {isAdmin && (
           <Switch
             variant="small"
@@ -384,6 +366,8 @@ function LogsList({
 
   // Track which filter state (search params) the current fetcher request corresponds to
   const fetcherFilterStateRef = useRef<string>(location.search);
+  // Track whether the current fetch is a "check for new" request vs "load more"
+  const isCheckingForNewRef = useRef<boolean>(false);
 
   // Clear accumulated logs immediately when filters change (for instant visual feedback)
   useEffect(() => {
@@ -410,7 +394,7 @@ function LogsList({
     }
   }, [selectedLogId]);
 
-  // Append new logs when fetcher completes (with deduplication)
+  // Append/prepend new logs when fetcher completes (with deduplication)
   useEffect(() => {
     if (fetcher.data && fetcher.state === "idle") {
       // Ignore fetcher data if it was loaded for a different filter state
@@ -418,14 +402,25 @@ function LogsList({
         return;
       }
 
-      const existingIds = new Set(accumulatedLogs.map((log) => log.id));
-      const newLogs = fetcher.data.logs.filter((log) => !existingIds.has(log.id));
-      if (newLogs.length > 0) {
-        setAccumulatedLogs((prev) => [...prev, ...newLogs]);
+      if (isCheckingForNewRef.current) {
+        // "Check for new" - prepend new logs, don't update cursor
+        setAccumulatedLogs((prev) => {
+          const existingIds = new Set(prev.map((log) => log.id));
+          const newLogs = fetcher.data!.logs.filter((log) => !existingIds.has(log.id));
+          return newLogs.length > 0 ? [...newLogs, ...prev] : prev;
+        });
+        isCheckingForNewRef.current = false;
+      } else {
+        // "Load more" - append logs and update cursor
+        setAccumulatedLogs((prev) => {
+          const existingIds = new Set(prev.map((log) => log.id));
+          const newLogs = fetcher.data!.logs.filter((log) => !existingIds.has(log.id));
+          return newLogs.length > 0 ? [...prev, ...newLogs] : prev;
+        });
+        setNextCursor(fetcher.data.pagination.next);
       }
-      setNextCursor(fetcher.data.pagination.next);
     }
-  }, [fetcher.data, fetcher.state, accumulatedLogs, location.search]);
+  }, [fetcher.data, fetcher.state, location.search]);
 
   // Build resource URL for loading more
   const loadMoreUrl = useMemo(() => {
@@ -477,6 +472,18 @@ function LogsList({
     updateUrlWithLog(undefined);
   }, [updateUrlWithLog, startTransition]);
 
+  const handleCheckForMore = useCallback(() => {
+    if (fetcher.state !== "idle") return;
+    // Fetch without cursor to check for new logs
+    const resourcePath = `/resources${location.pathname}`;
+    const params = new URLSearchParams(location.search);
+    params.delete("cursor");
+    params.delete("log");
+    fetcherFilterStateRef.current = location.search;
+    isCheckingForNewRef.current = true;
+    fetcher.load(`${resourcePath}?${params.toString()}`);
+  }, [fetcher, location.pathname, location.search]);
+
   return (
     <ResizablePanelGroup orientation="horizontal" className="max-h-full">
       <ResizablePanel id="logs-main" min="200px">
@@ -488,6 +495,7 @@ function LogsList({
           isLoadingMore={fetcher.state === "loading"}
           hasMore={!!nextCursor}
           onLoadMore={handleLoadMore}
+          onCheckForMore={handleCheckForMore}
           selectedLogId={selectedLogId}
           onLogSelect={handleLogSelect}
         />
