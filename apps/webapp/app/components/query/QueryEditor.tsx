@@ -1,13 +1,15 @@
 import {
   ArrowDownTrayIcon,
   BookmarkIcon,
+  CalendarIcon,
   ClipboardIcon,
   PencilIcon,
-  XMarkIcon,
 } from "@heroicons/react/20/solid";
-import { IconChartHistogram } from "@tabler/icons-react";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
+import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher } from "@remix-run/react";
+import { IconChartHistogram } from "@tabler/icons-react";
+import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
 import {
   forwardRef,
   useCallback,
@@ -20,12 +22,19 @@ import {
 import { flushSync } from "react-dom";
 import { useTypedFetcher } from "remix-typedjson";
 import simplur from "simplur";
-import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
-import { BetaTitle } from "~/components/AlphaBadge";
 import { ChartConfigPanel, defaultChartConfig } from "~/components/code/ChartConfigPanel";
 import { autoFormatSQL, TSQLEditor } from "~/components/code/TSQLEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import {
+  QueryWidget,
+  type BigNumberConfiguration,
+  type ChartConfiguration,
+  type QueryWidgetConfig,
+  type QueryWidgetData,
+} from "~/components/metrics/QueryWidget";
+import { SaveToDashboardDialog } from "~/components/metrics/SaveToDashboardDialog";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import {
@@ -34,7 +43,11 @@ import {
   ClientTabsList,
   ClientTabsTrigger,
 } from "~/components/primitives/ClientTabs";
+import { Dialog, DialogContent, DialogFooter, DialogHeader } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
+import { InputGroup } from "~/components/primitives/InputGroup";
+import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -57,28 +70,14 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { QueryHistoryItem } from "~/presenters/v3/QueryPresenter.server";
+import { QueryHelpSidebar } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/QueryHelpSidebar";
+import { QueryHistoryPopover } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/QueryHistoryPopover";
+import type { AITimeFilter } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/types";
 import type { action as titleAction } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query.ai-title";
 import type { QueryScope } from "~/services/queryService.server";
 import { downloadFile, rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { organizationBillingPath } from "~/utils/pathBuilder";
 import { querySchemas } from "~/v3/querySchemas";
-import { QueryHelpSidebar } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/QueryHelpSidebar";
-import { QueryHistoryPopover } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/QueryHistoryPopover";
-import type { AITimeFilter } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/types";
-import {
-  type BigNumberConfiguration,
-  type ChartConfiguration,
-  QueryWidget,
-  type QueryWidgetConfig,
-  type QueryWidgetData,
-} from "~/components/metrics/QueryWidget";
-import { SaveToDashboardDialog } from "~/components/metrics/SaveToDashboardDialog";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Dialog, DialogContent, DialogFooter, DialogHeader } from "~/components/primitives/Dialog";
-import { DialogClose } from "@radix-ui/react-dialog";
-import { Input } from "~/components/primitives/Input";
-import { InputGroup } from "~/components/primitives/InputGroup";
-import { Label } from "~/components/primitives/Label";
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {
@@ -310,10 +309,19 @@ const QueryEditorForm = forwardRef<
             <SimpleTooltip
               asChild
               button={
-                <Button variant="tertiary/small" disabled={true} type="button">
-                  Set in query
-                </Button>
+                <span>
+                  <Button
+                    variant="secondary/small"
+                    disabled={true}
+                    type="button"
+                    LeadingIcon={CalendarIcon}
+                    leadingIconClassName="text-text-dimmed/70"
+                  >
+                    Set in query
+                  </Button>
+                </span>
               }
+              className="max-w-48"
               content="Your query includes a WHERE clause with triggered_at so this filter is disabled."
             />
           ) : (
