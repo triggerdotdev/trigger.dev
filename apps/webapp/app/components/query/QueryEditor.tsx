@@ -708,7 +708,7 @@ export function QueryEditor({
                       </div>
                     ) : null}
                   </ClientTabsList>
-                  <ClientTabsContent value="table" className="min-h-0 overflow-y-hidden">
+                  <ClientTabsContent value="table" className="m-0 min-h-0 overflow-y-hidden">
                     {isLoading ? (
                       <div className="flex items-center gap-2 p-4 text-sm text-text-dimmed">
                         <Spinner className="size-4" />
@@ -832,11 +832,10 @@ export function QueryEditor({
                           accessory={
                             mode.type === "standalone" ? (
                               <Button
-                                variant="minimal/small"
-                                LeadingIcon={BookmarkIcon}
+                                variant="primary/small"
                                 onClick={() => setIsSaveDialogOpen(true)}
                               >
-                                Save to dashboard
+                                Add to dashboard
                               </Button>
                             ) : save ? (
                               save(saveData)
@@ -881,11 +880,10 @@ export function QueryEditor({
                           accessory={
                             mode.type === "standalone" ? (
                               <Button
-                                variant="minimal/small"
-                                LeadingIcon={BookmarkIcon}
+                                variant="primary/small"
                                 onClick={() => setIsSaveDialogOpen(true)}
                               >
-                                Save to dashboard
+                                Add to dashboard
                               </Button>
                             ) : save ? (
                               save(saveData)
@@ -1325,10 +1323,7 @@ function BigNumberConfigPanel({
   const availableColumns = config.aggregation === "count" ? allColumns : numericColumns;
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto p-3">
-      <Paragraph variant="small" className="font-medium text-text-bright">
-        Big Number Configuration
-      </Paragraph>
+    <div className="flex h-full flex-col gap-2 overflow-y-auto p-2">
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
           <Paragraph variant="extra-small" className="text-text-dimmed">
