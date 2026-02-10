@@ -15,14 +15,14 @@ export const processLargeDataset = task({
   id: "process-large-dataset",
   run: async (payload: { items: string[] }) => {
     for (const row of payload.items) {
-      process(row);
       await heartbeats.yield();
+      processRow(row);
     }
     return { processed: payload.items.length };
   },
 });
 
-function process(row: string) {
+function processRow(row: string) {
   // synchronous CPU-heavy work
 }
 ```
