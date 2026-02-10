@@ -572,7 +572,13 @@ export function QueryEditor({
           <NavBar>
             <PageTitle title={`Add chart to ${mode.dashboardName}`} />
             <PageAccessories>
-              <Button variant="tertiary/small" onClick={onClose}>
+              <Button
+                variant="secondary/small"
+                onClick={onClose}
+                shortcut={{ key: "esc" }}
+                shortcutPosition="before-trailing-icon"
+                // className="pl-1"
+              >
                 Cancel
               </Button>
             </PageAccessories>
@@ -583,7 +589,13 @@ export function QueryEditor({
           <NavBar>
             <PageTitle title={`Editing "${mode.widgetName}"`} />
             <PageAccessories>
-              <Button variant="tertiary/small" onClick={onClose}>
+              <Button
+                variant="secondary/small"
+                onClick={onClose}
+                shortcut={{ key: "esc" }}
+                shortcutPosition="before-trailing-icon"
+                // className="pl-1"
+              >
                 Cancel
               </Button>
             </PageAccessories>
@@ -1006,7 +1018,7 @@ function QueryTitle({
               </InputGroup>
               <DialogFooter>
                 <DialogClose asChild>
-                  <Button variant="tertiary/medium">Cancel</Button>
+                  <Button variant="secondary/medium">Cancel</Button>
                 </DialogClose>
                 <Button type="submit" variant="primary/medium" disabled={!renameValue.trim()}>
                   Save
