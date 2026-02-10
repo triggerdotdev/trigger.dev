@@ -259,7 +259,7 @@ function ChartsDashboard() {
             <BigNumberCard
               rows={[{ amount: 101 }]}
               columns={[{ name: "amount", type: "Float64" }]}
-              config={{ column: "amount", aggregation: "sum" }}
+              config={{ column: "amount", aggregation: "sum", abbreviate: true }}
             />
           </Card.Content>
         </Card>
