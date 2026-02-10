@@ -993,7 +993,10 @@ function CollapseToggle({
   return (
     <div className="absolute -right-3 top-1/2 z-10 -translate-y-1/2">
       {/* Vertical line to mask the side menu border */}
-      <div className="pointer-events-none absolute left-1/2 top-1/2 h-10 w-px -translate-y-1/2 bg-background-bright" />
+      <div className={cn(
+        "pointer-events-none absolute left-1/2 top-1/2 h-10 w-px -translate-y-1/2 transition-colors duration-200",
+        isHovering ? "bg-charcoal-750" : "bg-background-bright"
+      )} />
       <TooltipProvider disableHoverableContent>
         <Tooltip>
           <TooltipTrigger asChild>

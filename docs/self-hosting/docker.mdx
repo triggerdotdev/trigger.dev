@@ -354,6 +354,8 @@ TRIGGER_IMAGE_TAG=v4.0.0
   docker compose logs -f webapp
   ```
 
+- **Deploy fails with `ERROR: schema "graphile_worker" does not exist`.** This error occurs when Graphile Worker migrations fail to run during webapp startup. Check the webapp logs for certificate-related errors like `self-signed certificate in certificate chain`. This is often caused by PostgreSQL SSL certificate issues when using an external PostgreSQL instance with SSL enabled. Ensure that both the webapp and supervisor containers have access to the same CA certificate used by your PostgreSQL instance. You can configure this by mounting the certificate file and setting the `NODE_EXTRA_CA_CERTS` environment variable to point to the certificate path. Once the certificate issue is resolved, the migrations will complete and create the required `graphile_worker` schema.
+
 ## CLI usage
 
 This section highlights some of the CLI commands and options that are useful when self-hosting. Please check the [CLI reference](/cli-introduction) for more in-depth documentation.

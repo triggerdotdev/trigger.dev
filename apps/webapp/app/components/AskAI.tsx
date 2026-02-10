@@ -118,30 +118,31 @@ function AskAIProvider({ websiteId, isCollapsed = false }: AskAIProviderProps) {
       <motion.div layout="position" transition={{ duration: 0.2, ease: "easeInOut" }}>
         <TooltipProvider disableHoverableContent>
           <Tooltip>
-            <div className={isCollapsed ? "w-full" : "inline-flex"}>
-              <TooltipTrigger asChild>
+            <TooltipTrigger asChild>
+              <span className={cn("inline-flex h-8", isCollapsed && "w-full")}>
                 <Button
                   variant="small-menu-item"
                   data-action="ask-ai"
-                  shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
+                  shortcut={{ modifiers: ["mod"], key: "i", enabledOnInputElements: true }}
                   hideShortcutKey
                   data-modal-override-open-class-ask-ai="true"
                   onClick={() => openAskAI()}
-                  className={isCollapsed ? "w-full justify-center" : ""}
+                  fullWidth={isCollapsed}
+                  className={cn("h-full", isCollapsed && "justify-center")}
                 >
                   <AISparkleIcon className="size-5" />
                 </Button>
-              </TooltipTrigger>
-            </div>
+              </span>
+            </TooltipTrigger>
             <TooltipContent
-              side={isCollapsed ? "right" : "top"}
-              sideOffset={isCollapsed ? 8 : 4}
-              className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs"
+              side="right"
+              sideOffset={8}
+              className="flex items-center gap-2 text-xs"
             >
               Ask AI
               <span className="flex items-center">
                 <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
-                <ShortcutKey shortcut={{ key: "/" }} variant="medium/bright" />
+                <ShortcutKey shortcut={{ key: "i" }} variant="medium/bright" />
               </span>
             </TooltipContent>
           </Tooltip>
