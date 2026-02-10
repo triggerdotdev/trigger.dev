@@ -3442,7 +3442,7 @@ describe("timeBucket()", () => {
         "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket ORDER BY timeBucket"
       );
 
-      expect(sql).toContain("ORDER BY timeBucket");
+      expect(sql).toContain("ORDER BY timebucket");
     });
 
     it("should allow ORDER BY timeBucket DESC", () => {
@@ -3450,7 +3450,7 @@ describe("timeBucket()", () => {
         "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket ORDER BY timeBucket DESC"
       );
 
-      expect(sql).toContain("ORDER BY timeBucket DESC");
+      expect(sql).toContain("ORDER BY timebucket DESC");
     });
   });
 

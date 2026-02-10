@@ -120,10 +120,12 @@ export class ClickHousePrinter {
   /** Columns hidden when SELECT * is expanded to core columns only */
   private hiddenColumns: string[] = [];
   /**
-   * Set of column aliases defined in the current SELECT clause.
+   * Map of column aliases defined in the current SELECT clause.
+   * Key is the lowercase alias (for case-insensitive lookup),
+   * value is the canonical form (as it appears in the generated SQL).
    * Used to allow ORDER BY/HAVING to reference aliased columns.
    */
-  private selectAliases: Set<string> = new Set();
+  private selectAliases: Map<string, string> = new Map();
   /**
    * Set of internal ClickHouse column names that are allowed (e.g., tenant columns).
    * These are populated from tableSchema.tenantColumns when processing joins.
@@ -388,7 +390,7 @@ export class ClickHousePrinter {
     // Extract SELECT column aliases BEFORE visiting columns
     // This allows ORDER BY/HAVING to reference aliased columns
     const savedAliases = this.selectAliases;
-    this.selectAliases = new Set();
+    this.selectAliases = new Map();
     if (node.select) {
       for (const col of node.select) {
         this.extractSelectAlias(col);
@@ -569,21 +571,26 @@ export class ClickHousePrinter {
    * (SELECT COUNT() → 'count') should be added.
    */
   private extractSelectAlias(expr: Expression): void {
-    // Handle explicit Alias: SELECT ... AS name (stored lowercase for case-insensitive lookup)
+    // Handle explicit Alias: SELECT ... AS name
+    // Key is lowercase for case-insensitive lookup, value is the original casing
+    // so that ORDER BY/GROUP BY output matches the alias in the generated SQL.
     if ((expr as Alias).expression_type === "alias") {
-      this.selectAliases.add((expr as Alias).alias.toLowerCase());
+      const alias = (expr as Alias).alias;
+      this.selectAliases.set(alias.toLowerCase(), alias);
       return;
     }
 
     // Handle implicit names from function calls (e.g., COUNT() → 'count')
+    // ClickHouse generates implicit aliases as lowercase
     if ((expr as Call).expression_type === "call") {
       const call = expr as Call;
-      // Aggregations and functions get implicit lowercase names
-      this.selectAliases.add(call.name.toLowerCase());
+      const canonicalName = call.name.toLowerCase();
+      this.selectAliases.set(canonicalName, canonicalName);
       return;
     }
 
     // Handle implicit names from arithmetic operations (e.g., a + b → 'plus')
+    // ClickHouse generates these as lowercase
     if ((expr as ArithmeticOperation).expression_type === "arithmetic_operation") {
       const op = expr as ArithmeticOperation;
       const opNames: Record<ArithmeticOperationOp, string> = {
@@ -593,7 +600,8 @@ export class ClickHousePrinter {
         [ArithmeticOperationOp.Div]: "divide",
         [ArithmeticOperationOp.Mod]: "modulo",
       };
-      this.selectAliases.add(opNames[op.op]);
+      const canonicalName = opNames[op.op];
+      this.selectAliases.set(canonicalName, canonicalName);
       return;
     }
 
@@ -2629,9 +2637,11 @@ export class ClickHousePrinter {
     }
 
     // Check if it's a SELECT alias (e.g., from COUNT() or explicit AS)
-    // Case-insensitive: aliases are stored lowercase in extractSelectAlias()
-    if (this.selectAliases.has(columnName.toLowerCase())) {
-      return chain; // Valid alias reference
+    // Case-insensitive lookup: map key is lowercase, value is the canonical form
+    // that matches the alias as it appears in the generated SQL
+    const canonicalAlias = this.selectAliases.get(columnName.toLowerCase());
+    if (canonicalAlias !== undefined) {
+      return [canonicalAlias, ...chain.slice(1)];
     }
 
     // Check if this is an internal-only column being accessed in a user projection context
