@@ -73,6 +73,10 @@ This happens because Docker Desktop left behind a config file that's still tryin
 
 Usually there will be some useful guidance below this message. If you can't figure out what's going wrong then join [our Discord](https://trigger.dev/discord) and create a Help forum post with a link to your deployment.
 
+### `resource_exhausted`
+
+If you see a `resource_exhausted` error during deploy, the build may have hit resource limits on our build infrastructure. Try our [native builder](https://trigger.dev/changelog/deployments-with-native-builds).
+
 ### `No loader is configured for ".node" files`
 
 This happens because `.node` files are native code and can't be bundled like other packages. To fix this, add your package to [`build.external`](/config/config-file#external) in the `trigger.config.ts` file like this:
@@ -175,7 +179,7 @@ The most common situation this happens is if you're using `Promise.all` around s
 
 Make sure that you always use `await` when you call `trigger`, `triggerAndWait`, `batchTrigger`, and `batchTriggerAndWait`. If you don't then it's likely the task(s) won't be triggered because the calling function process can be terminated before the networks calls are sent.
 
-### `COULD_NOT_FIND_EXECUTOR` 
+### `COULD_NOT_FIND_EXECUTOR`
 
 If you see a `COULD_NOT_FIND_EXECUTOR` error when triggering a task, it may be caused by dynamically importing the child task. When tasks are dynamically imported, the executor may not be properly registered.
 
