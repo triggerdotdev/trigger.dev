@@ -18,7 +18,6 @@ import {
 import { LoadingBarDivider } from "../primitives/LoadingBarDivider";
 import { Callout } from "../primitives/Callout";
 import { ChartBarIcon } from "@heroicons/react/24/solid";
-import { cn } from "~/utils/cn";
 import {
   Popover,
   PopoverContent,
@@ -171,7 +170,7 @@ export function QueryWidget({
 
   return (
     <div className="h-full">
-      <Card className={cn("h-full overflow-hidden px-0 pb-0", isResizing && "select-none")}>
+      <Card className="h-full overflow-hidden px-0 pb-0">
         <Card.Header draggable={isDraggable}>
           <div className="flex items-center gap-1.5">{title}</div>
           <Card.Accessory>

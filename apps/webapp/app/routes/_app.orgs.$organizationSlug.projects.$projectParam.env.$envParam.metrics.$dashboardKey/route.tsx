@@ -16,6 +16,7 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { z } from "zod";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "~/utils/cn";
 import ReactGridLayout from "react-grid-layout";
 import { MetricWidget } from "../resources.metric";
 import { TitleWidget } from "~/components/metrics/TitleWidget";
@@ -131,6 +132,8 @@ export function MetricDashboard({
   const { value, values } = useSearchParams();
   const { width, containerRef, mounted } = useContainerWidth();
   const [resizingItemId, setResizingItemId] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const isInteracting = resizingItemId !== null || isDragging;
 
   const organization = useOrganization();
   const project = useProject();
@@ -183,7 +186,10 @@ export function MetricDashboard({
       </div>
       <div
         ref={containerRef}
-        className="overflow-y-auto scrollbar-thin scrollbar-track-charcoal-800 scrollbar-thumb-charcoal-700"
+        className={cn(
+          "overflow-y-auto scrollbar-thin scrollbar-track-charcoal-800 scrollbar-thumb-charcoal-700",
+          isInteracting && "select-none"
+        )}
       >
         {mounted && (
           <ReactGridLayout
@@ -198,6 +204,8 @@ export function MetricDashboard({
             onLayoutChange={handleLayoutChange}
             onResizeStart={(_layout, oldItem) => setResizingItemId(oldItem?.i ?? null)}
             onResizeStop={() => setResizingItemId(null)}
+            onDragStart={() => setIsDragging(true)}
+            onDragStop={() => setIsDragging(false)}
           >
             {Object.entries(widgets).map(([key, widget]) => (
               <div key={key}>

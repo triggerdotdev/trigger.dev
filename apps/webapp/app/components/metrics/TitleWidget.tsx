@@ -42,8 +42,7 @@ export function TitleWidget({
       <div
         className={cn(
           "group flex h-full items-center gap-2 rounded-lg border border-grid-bright bg-background-bright px-4",
-          isDraggable && "drag-handle cursor-grab active:cursor-grabbing",
-          isResizing && "select-none"
+          isDraggable && "drag-handle cursor-grab active:cursor-grabbing"
         )}
       >
         <span className="min-w-0 flex-1 truncate text-lg font-medium text-text-bright">
