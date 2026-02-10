@@ -132,11 +132,7 @@ export function ChartLegendCompound({
 
   return (
     <div
-      className={cn(
-        "flex flex-col pt-4 text-sm",
-        scrollable && "max-h-[50%] min-h-0",
-        className
-      )}
+      className={cn("flex flex-col pt-4 text-sm", scrollable && "max-h-[50%] min-h-0", className)}
     >
       {/* Total row */}
       <div
@@ -155,7 +151,13 @@ export function ChartLegendCompound({
       <div className="mx-2 my-1 shrink-0 border-t border-charcoal-750" />
 
       {/* Legend items - scrollable when scrollable prop is true */}
-      <div className={cn("flex flex-col", scrollable && "min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600")}>
+      <div
+        className={cn(
+          "flex flex-col",
+          scrollable &&
+            "min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        )}
+      >
         {legendItems.visible.map((item) => {
           const total = currentData[item.dataKey] ?? 0;
           const isActive = highlight.activeBarKey === item.dataKey;
@@ -211,7 +213,10 @@ export function ChartLegendCompound({
               remainingCount={legendItems.remaining - 1}
             />
           ) : (
-            <ViewAllDataRow remainingCount={legendItems.remaining} onViewAll={onViewAllLegendItems} />
+            <ViewAllDataRow
+              remainingCount={legendItems.remaining}
+              onViewAll={onViewAllLegendItems}
+            />
           ))}
       </div>
     </div>
@@ -234,11 +239,11 @@ function ViewAllDataRow({ remainingCount, onViewAll }: ViewAllDataRowProps) {
     >
       <div className="flex items-center gap-1.5 text-text-dimmed">
         <div className="h-3 w-1 rounded-[2px] border border-charcoal-600" />
-        <Paragraph variant="extra-small" className="tabular-nums">
+        <Paragraph variant="small" className="tabular-nums">
           {remainingCount} more…
         </Paragraph>
       </div>
-      <Paragraph variant="extra-small" className="text-indigo-500">
+      <Paragraph variant="small" className="text-indigo-500">
         View all
       </Paragraph>
     </Button>

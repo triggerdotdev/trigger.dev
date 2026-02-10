@@ -137,6 +137,8 @@ export type QueryWidgetProps = {
   error?: string;
   data: QueryWidgetData;
   config: QueryWidgetConfig;
+  /** The effective time range for the query (used to show full x-axis on time-based charts) */
+  timeRange?: { from: string; to: string };
   accessory?: ReactNode;
   isResizing?: boolean;
   isDraggable?: boolean;
@@ -322,6 +324,7 @@ type QueryWidgetBodyProps = {
   title: ReactNode;
   data: QueryWidgetData;
   config: QueryWidgetConfig;
+  timeRange?: { from: string; to: string };
   isFullscreen: boolean;
   setIsFullscreen: (open: boolean) => void;
   isLoading: boolean;
@@ -331,6 +334,7 @@ function QueryWidgetBody({
   title,
   data,
   config,
+  timeRange,
   isFullscreen,
   setIsFullscreen,
   isLoading,
@@ -376,6 +380,7 @@ function QueryWidgetBody({
             rows={data.rows}
             columns={data.columns}
             config={config}
+            timeRange={timeRange}
             onViewAllLegendItems={() => setIsFullscreen(true)}
           />
           <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
@@ -386,6 +391,7 @@ function QueryWidgetBody({
                   rows={data.rows}
                   columns={data.columns}
                   config={config}
+                  timeRange={timeRange}
                   onViewAllLegendItems={() => setIsFullscreen(true)}
                   isLoading={showLoading}
                 />

@@ -97,6 +97,7 @@ export type ExecuteQueryResult<T> =
       queryId: string | null;
       periodClipped: number | null;
       maxQueryPeriod: number;
+      timeRange: { from: Date; to: Date };
     }
   | { success: false; error: Error };
 
@@ -323,6 +324,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       queryId,
       periodClipped: periodClipped ? maxQueryPeriod : null,
       maxQueryPeriod,
+      timeRange,
     };
   } finally {
     // Always release the concurrency slot

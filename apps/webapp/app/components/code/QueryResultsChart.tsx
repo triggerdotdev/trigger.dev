@@ -50,6 +50,8 @@ interface QueryResultsChartProps {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
   config: ChartConfiguration;
+  /** The effective time range from the query filter (used to show the full x-axis period) */
+  timeRange?: { from: string; to: string };
   fullLegend?: boolean;
   /** Callback when "View all" legend button is clicked */
   onViewAllLegendItems?: () => void;
@@ -159,7 +161,7 @@ function formatDateByGranularity(date: Date, granularity: TimeGranularity): stri
  * This helps us understand the natural granularity of the data
  */
 function detectDataInterval(timestamps: number[]): number {
-  if (timestamps.length < 2) return 60 * 1000; // Default to 1 minute
+  if (timestamps.length < 2) return 24 * 60 * 60 * 1000; // Default to 1 day
 
   const sorted = [...timestamps].sort((a, b) => a - b);
   const gaps: number[] = [];
@@ -464,7 +466,8 @@ function tryParseDate(value: unknown): Date | null {
  */
 function transformDataForChart(
   rows: Record<string, unknown>[],
-  config: ChartConfiguration
+  config: ChartConfiguration,
+  timeRange?: { from: string; to: string }
 ): TransformedData {
   const { xAxisColumn, yAxisColumns, groupByColumn, aggregation } = config;
 
@@ -490,24 +493,37 @@ function transformDataForChart(
   }
 
   // Determine if X-axis is date-based (most values should be parseable as dates)
-  const isDateBased = dateValues.length >= rows.length * 0.8; // At least 80% are dates
-  const granularity = isDateBased ? detectTimeGranularity(dateValues) : "days";
+  // When there are no results but a timeRange is provided, treat as date-based
+  const isDateBased =
+    rows.length === 0 && timeRange ? true : dateValues.length >= rows.length * 0.8; // At least 80% are dates
+
+  // Detect granularity from the full time range when available, otherwise from data
+  const granularity = isDateBased
+    ? timeRange
+      ? detectTimeGranularity([new Date(timeRange.from), new Date(timeRange.to)])
+      : detectTimeGranularity(dateValues)
+    : "days";
 
   // For date-based axes, use a special key for the timestamp
   const xDataKey = isDateBased ? "__timestamp" : xAxisColumn;
 
   // Calculate time domain and ticks for date-based axes
+  // When a timeRange is provided (from the query filter), use it so the chart
+  // shows the full requested period rather than just the range of returned data.
   let timeDomain: [number, number] | null = null;
   let timeTicks: number[] | null = null;
-  if (isDateBased && dateValues.length > 0) {
-    const timestamps = dateValues.map((d) => d.getTime());
-    const minTime = Math.min(...timestamps);
-    const maxTime = Math.max(...timestamps);
+  // Raw min/max used for gap filling (without padding)
+  let rawMinTime = 0;
+  let rawMaxTime = 0;
+  if (isDateBased && (dateValues.length > 0 || timeRange)) {
+    const dataTimestamps = dateValues.map((d) => d.getTime());
+    rawMinTime = timeRange ? new Date(timeRange.from).getTime() : Math.min(...dataTimestamps);
+    rawMaxTime = timeRange ? new Date(timeRange.to).getTime() : Math.max(...dataTimestamps);
     // Add a small padding (2% on each side) so points aren't at the very edge
-    const padding = (maxTime - minTime) * 0.02;
-    timeDomain = [minTime - padding, maxTime + padding];
+    const padding = (rawMaxTime - rawMinTime) * 0.02;
+    timeDomain = [rawMinTime - padding, rawMaxTime + padding];
     // Generate evenly-spaced ticks across the entire range using nice intervals
-    timeTicks = generateTimeTicks(minTime, maxTime);
+    timeTicks = generateTimeTicks(rawMinTime, rawMaxTime);
   }
 
   // Helper to format X value for categorical axes (non-date)
@@ -569,8 +585,8 @@ function transformDataForChart(
         data,
         xDataKey,
         yAxisColumns,
-        timeDomain[0],
-        timeDomain[1],
+        rawMinTime,
+        rawMaxTime,
         dataInterval,
         granularity,
         aggregation
@@ -638,8 +654,8 @@ function transformDataForChart(
       data,
       xDataKey,
       series,
-      timeDomain[0],
-      timeDomain[1],
+      rawMinTime,
+      rawMaxTime,
       dataInterval,
       granularity,
       aggregation
@@ -726,6 +742,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   rows,
   columns,
   config,
+  timeRange,
   fullLegend = false,
   onViewAllLegendItems,
   isLoading = false,
@@ -750,7 +767,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     xDataKey,
     timeDomain,
     timeTicks,
-  } = useMemo(() => transformDataForChart(rows, config), [rows, config]);
+  } = useMemo(() => transformDataForChart(rows, config, timeRange), [rows, config, timeRange]);
 
   // Apply sorting (for date-based, sort by timestamp to ensure correct order)
   const data = useMemo(() => {

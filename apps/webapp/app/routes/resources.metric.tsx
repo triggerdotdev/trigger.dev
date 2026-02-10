@@ -27,6 +27,7 @@ type MetricWidgetActionResponse =
         reachedMaxRows: boolean;
         periodClipped: number | null;
         maxQueryPeriod: number | undefined;
+        timeRange: { from: string; to: string };
       };
     };
 
@@ -128,6 +129,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       reachedMaxRows: queryResult.result.reachedMaxRows,
       periodClipped: queryResult.periodClipped,
       maxQueryPeriod: queryResult.maxQueryPeriod,
+      timeRange: {
+        from: queryResult.timeRange.from.toISOString(),
+        to: queryResult.timeRange.to.toISOString(),
+      },
     },
   });
 };
@@ -230,6 +235,8 @@ export function MetricWidget({
     ? { rows: response.data.rows, columns: response.data.columns }
     : { rows: [], columns: [] };
 
+  const timeRange = response?.success ? response.data.timeRange : undefined;
+
   return (
     <QueryWidget
       title={title}
@@ -237,6 +244,7 @@ export function MetricWidget({
       config={config}
       isLoading={isLoading}
       data={data}
+      timeRange={timeRange}
       error={response?.success === false ? response.error : undefined}
       isResizing={isResizing}
       isDraggable={isDraggable}
