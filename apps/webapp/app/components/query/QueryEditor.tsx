@@ -984,7 +984,7 @@ function QueryTitle({
           <Button
             variant="minimal/small"
             LeadingIcon={PencilSquareIcon}
-            leadingIconClassName="text-text-bright"
+            leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
             className="opacity-0 transition-opacity group-hover:opacity-100"
             onClick={() => {
               setRenameValue(title);

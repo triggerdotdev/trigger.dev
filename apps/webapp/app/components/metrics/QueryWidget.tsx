@@ -185,7 +185,7 @@ export function QueryWidget({
                   <Button
                     variant="minimal/small"
                     LeadingIcon={Maximize2}
-                    leadingIconClassName="text-text-bright"
+                    leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
                     onClick={() => setIsFullscreen(true)}
                     className="!px-1"
                   />
