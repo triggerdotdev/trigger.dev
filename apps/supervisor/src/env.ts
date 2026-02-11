@@ -77,6 +77,10 @@ const Env = z.object({
    */
   DOCKER_RUNNER_NETWORKS: z.string().default("host"),
 
+  // Compute settings
+  COMPUTE_GATEWAY_URL: z.string().url().optional(),
+  COMPUTE_GATEWAY_AUTH_TOKEN: z.string().optional(),
+
   // Kubernetes settings
   KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
   KUBERNETES_NAMESPACE: z.string().default("default"),

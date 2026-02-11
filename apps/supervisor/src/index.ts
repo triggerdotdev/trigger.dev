@@ -14,6 +14,7 @@ import {
 } from "./resourceMonitor.js";
 import { KubernetesWorkloadManager } from "./workloadManager/kubernetes.js";
 import { DockerWorkloadManager } from "./workloadManager/docker.js";
+import { ComputeWorkloadManager } from "./workloadManager/compute.js";
 import {
   HttpServer,
   CheckpointClient,
@@ -77,9 +78,15 @@ class ManagedSupervisor {
         : new DockerResourceMonitor(new Docker())
       : new NoopResourceMonitor();
 
-    this.workloadManager = this.isKubernetes
-      ? new KubernetesWorkloadManager(workloadManagerOptions)
-      : new DockerWorkloadManager(workloadManagerOptions);
+    this.workloadManager = env.COMPUTE_GATEWAY_URL
+      ? new ComputeWorkloadManager({
+          ...workloadManagerOptions,
+          gatewayUrl: env.COMPUTE_GATEWAY_URL,
+          gatewayAuthToken: env.COMPUTE_GATEWAY_AUTH_TOKEN,
+        })
+      : this.isKubernetes
+        ? new KubernetesWorkloadManager(workloadManagerOptions)
+        : new DockerWorkloadManager(workloadManagerOptions);
 
     if (this.isKubernetes) {
       if (env.POD_CLEANER_ENABLED) {
