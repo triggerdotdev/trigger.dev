@@ -1,6 +1,6 @@
 import { ChevronDownIcon, ChevronUpDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
-import { IconFilter2 } from "@tabler/icons-react";
+import { IconFilter2, IconFilter2X } from "@tabler/icons-react";
 import { rankItem } from "@tanstack/match-sorter-utils";
 import {
   flexRender,
@@ -458,6 +458,7 @@ function CellValue({
             </pre>
           }
           button={<pre className="font-mono text-xs">{truncateString(plainValue)}</pre>}
+          disableHoverableContent
         />
       );
     }
@@ -478,7 +479,14 @@ function CellValue({
     switch (column.customRenderType) {
       case "runId": {
         if (typeof value === "string") {
-          return <TextLink to={v3RunPathFromFriendlyId(value)}>{value}</TextLink>;
+          return (
+            <SimpleTooltip
+              content="Jump to run"
+              disableHoverableContent
+              hidden={!hovered}
+              button={<TextLink to={v3RunPathFromFriendlyId(value)}>{value}</TextLink>}
+            />
+          );
         }
         break;
       }
@@ -601,6 +609,7 @@ function CellValue({
               {truncateString(arrayString)}
             </span>
           }
+          disableHoverableContent
         />
       );
     }
@@ -636,6 +645,7 @@ function CellValue({
           </pre>
         }
         button={<span>{truncateString(stringValue)}</span>}
+        disableHoverableContent
       />
     );
   }
@@ -682,6 +692,7 @@ function JSONCellValue({ value }: { value: unknown }) {
         button={
           <span className="font-mono text-xs text-text-dimmed">{truncateString(jsonString)}</span>
         }
+        disableHoverableContent
       />
     );
   }
@@ -764,7 +775,6 @@ function HeaderCellContent({
   sortDirection,
   onSortClick,
   canSort,
-  isHeaderRowHovered,
 }: {
   alignment: "left" | "right";
   tooltip?: React.ReactNode;
@@ -775,12 +785,10 @@ function HeaderCellContent({
   sortDirection?: SortDirection | false;
   onSortClick?: (event: React.MouseEvent) => void;
   canSort?: boolean;
-  isHeaderRowHovered?: boolean;
 }) {
   const [isCellHovered, setIsCellHovered] = useState(false);
   const [isFilterHovered, setIsFilterHovered] = useState(false);
 
-  const showIcons = isHeaderRowHovered || !!sortDirection || showFilters || hasActiveFilter;
   const sortHighlighted = isCellHovered && !isFilterHovered;
 
   return (
@@ -807,6 +815,7 @@ function HeaderCellContent({
               content={tooltip}
               contentClassName="normal-case tracking-normal"
               enabled={isCellHovered}
+              disableHoverableContent
             />
           </span>
         </div>
@@ -817,8 +826,7 @@ function HeaderCellContent({
       {canSort && (
         <span
           className={cn(
-            "flex-shrink-0 transition-all",
-            showIcons ? "opacity-100" : "opacity-0",
+            "flex-shrink-0 transition-colors",
             sortHighlighted ? "text-text-bright" : "text-text-dimmed"
           )}
         >
@@ -839,13 +847,14 @@ function HeaderCellContent({
           }}
           onMouseEnter={() => setIsFilterHovered(true)}
           onMouseLeave={() => setIsFilterHovered(false)}
-          className={cn(
-            "flex-shrink-0 rounded text-text-dimmed transition-all hover:bg-charcoal-700 hover:text-text-bright",
-            showIcons ? "opacity-100" : "opacity-0"
-          )}
+          className="flex-shrink-0 rounded text-text-dimmed transition-colors hover:text-text-bright"
           title="Toggle column filters"
         >
-          <IconFilter2 className="size-4" />
+          {showFilters ? (
+            <IconFilter2X className="size-4" />
+          ) : (
+            <IconFilter2 className="size-4" />
+          )}
         </button>
       )}
     </div>
@@ -913,8 +922,6 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   const [focusFilterColumn, setFocusFilterColumn] = useState<string | null>(null);
   // State for column sorting
   const [sorting, setSorting] = useState<SortingState>(defaultSorting);
-  // Track header row hover for showing sort/filter icons
-  const [isHeaderRowHovered, setIsHeaderRowHovered] = useState(false);
 
   // Create TanStack Table column definitions from OutputColumnMetadata
   // Calculate column widths based on content
@@ -988,8 +995,6 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
               top: 0,
               zIndex: 1,
             }}
-            onMouseEnter={() => setIsHeaderRowHovered(true)}
-            onMouseLeave={() => setIsHeaderRowHovered(false)}
           >
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} style={{ display: "flex", width: "100%" }}>
@@ -1020,7 +1025,6 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                         sortDirection={header.column.getIsSorted()}
                         onSortClick={header.column.getToggleSortingHandler()}
                         canSort={header.column.getCanSort()}
-                        isHeaderRowHovered={isHeaderRowHovered}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
                       </HeaderCellContent>
@@ -1085,8 +1089,6 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
             top: 0,
             zIndex: 1,
           }}
-          onMouseEnter={() => setIsHeaderRowHovered(true)}
-          onMouseLeave={() => setIsHeaderRowHovered(false)}
         >
           {/* Main header row */}
           {table.getHeaderGroups().map((headerGroup) => (
@@ -1118,7 +1120,6 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                       sortDirection={header.column.getIsSorted()}
                       onSortClick={header.column.getToggleSortingHandler()}
                       canSort={header.column.getCanSort()}
-                      isHeaderRowHovered={isHeaderRowHovered}
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
                     </HeaderCellContent>

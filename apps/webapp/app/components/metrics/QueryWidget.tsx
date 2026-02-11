@@ -187,6 +187,7 @@ export function QueryWidget({
                 </span>
               }
               content="Maximize"
+              disableHoverableContent
               asChild
             />
             {accessory}
