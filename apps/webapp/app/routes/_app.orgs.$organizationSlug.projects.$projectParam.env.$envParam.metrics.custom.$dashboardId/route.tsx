@@ -517,7 +517,7 @@ export default function Page() {
                   </Header3>
                 ) : (
                   <Header3>
-                    You've used {widgetLimits.used}/{widgetLimits.limit} of your widgets
+                    You've used {widgetLimits.used}/{widgetLimits.limit} of your charts
                   </Header3>
                 )}
                 {widgetCanUpgrade ? (
