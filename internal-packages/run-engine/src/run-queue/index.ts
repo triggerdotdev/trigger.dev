@@ -2656,9 +2656,11 @@ for i, member in ipairs(expiredMembers) do
       redis.call('SREM', concurrencyKey, runId)
       redis.call('SREM', dequeuedKey, runId)
 
-      -- Env concurrency (derive from rawQueueKey)
-      local envConcurrencyKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:env:" .. (envMatch or "") .. ":currentConcurrency"
-      local envDequeuedKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:env:" .. (envMatch or "") .. ":currentDequeued"
+      -- Env concurrency (derive from rawQueueKey; must match RunQueueKeyProducer: org + proj + env)
+      -- rawQueueKey format: {org:X}:proj:Y:env:Z:queue:Q[:ck:C]
+      local projMatch = string.match(rawQueueKey, ":proj:([^:]+):env:")
+      local envConcurrencyKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:proj:" .. (projMatch or "") .. ":env:" .. (envMatch or "") .. ":currentConcurrency"
+      local envDequeuedKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:proj:" .. (projMatch or "") .. ":env:" .. (envMatch or "") .. ":currentDequeued"
       redis.call('SREM', envConcurrencyKey, runId)
       redis.call('SREM', envDequeuedKey, runId)
 

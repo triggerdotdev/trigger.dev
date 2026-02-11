@@ -590,6 +590,119 @@ describe("RunEngine ttl", () => {
   );
 
   containerTest(
+    "TTL expiration clears env concurrency keys with proj segment",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment =
+        await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          disabled: true,
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          processWorkerQueueDebounceMs: 50,
+          masterQueueConsumersDisabled: true,
+          ttlSystem: {
+            pollIntervalMs: 5000,
+            batchSize: 10,
+          },
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_envkeys",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t1",
+            spanId: "s1",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            ttl: "1s",
+          },
+          prisma
+        );
+
+        const queue = engine.runQueue.keys.queueKey(
+          authenticatedEnvironment,
+          "task/test-task"
+        );
+        const envConcurrencyKey =
+          engine.runQueue.keys.envCurrentConcurrencyKeyFromQueue(queue);
+        const envDequeuedKey =
+          engine.runQueue.keys.envCurrentDequeuedKeyFromQueue(queue);
+
+        await engine.runQueue.redis.sadd(envConcurrencyKey, run.id);
+        await engine.runQueue.redis.sadd(envDequeuedKey, run.id);
+
+        const concurrencyBefore = await engine.runQueue.getCurrentConcurrencyOfEnvironment(
+          authenticatedEnvironment
+        );
+        expect(concurrencyBefore).toContain(run.id);
+
+        await setTimeout(1_500);
+        await engine.runQueue.processMasterQueueForEnvironment(
+          authenticatedEnvironment.id,
+          10
+        );
+        await setTimeout(7_000);
+
+        const expiredRun = await prisma.taskRun.findUnique({
+          where: { id: run.id },
+          select: { status: true },
+        });
+        expect(expiredRun?.status).toBe("EXPIRED");
+
+        const concurrencyAfter = await engine.runQueue.getCurrentConcurrencyOfEnvironment(
+          authenticatedEnvironment
+        );
+        expect(concurrencyAfter).not.toContain(run.id);
+
+        const stillInDequeued = await engine.runQueue.redis.sismember(
+          envDequeuedKey,
+          run.id
+        );
+        expect(stillInDequeued).toBe(0);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
     "Dequeue returns non-expired runs while skipping expired ones",
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
