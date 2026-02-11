@@ -94,11 +94,6 @@ export class IdempotencyKeyConcern {
           });
         }
 
-        // If run already completed, return without blocking
-        if (!associatedWaitpoint) {
-          return { isCached: true, run: existingRun };
-        }
-
         await this.traceEventConcern.traceIdempotentRun(
           request,
           parentStore,

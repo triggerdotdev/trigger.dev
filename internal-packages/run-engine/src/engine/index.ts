@@ -540,11 +540,6 @@ export class RunEngine {
                 });
               }
 
-              // If run already completed, return without blocking
-              if (!waitpoint) {
-                return debounceResult.run;
-              }
-
               // Call the onDebounced callback to create a span and get spanIdToComplete
               let spanIdToComplete: string | undefined;
               if (onDebounced) {
@@ -1460,8 +1455,8 @@ export class RunEngine {
    * Gets an existing run waitpoint or creates one lazily.
    * Used for debounce/idempotency when a late-arriving triggerAndWait caller
    * needs to block on an existing run that was created without a waitpoint.
-   *
-   * Returns null if the run has already completed (caller should return result directly).
+   * When the run has already completed, creates the waitpoint and immediately
+   * completes it with the run's output/error so the parent can resume.
    */
   async getOrCreateRunWaitpoint({
     runId,
@@ -1471,7 +1466,7 @@ export class RunEngine {
     runId: string;
     projectId: string;
     environmentId: string;
-  }): Promise<Waitpoint | null> {
+  }): Promise<Waitpoint> {
     return this.waitpointSystem.getOrCreateRunWaitpoint({
       runId,
       projectId,
