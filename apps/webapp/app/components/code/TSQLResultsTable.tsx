@@ -1,19 +1,21 @@
+import { ChevronDownIcon, ChevronUpDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
+import { IconFilter2 } from "@tabler/icons-react";
 import { rankItem } from "@tanstack/match-sorter-utils";
 import {
-  useReactTable,
+  flexRender,
   getCoreRowModel,
   getFilteredRowModel,
   getSortedRowModel,
-  flexRender,
-  type ColumnDef,
+  useReactTable,
   type CellContext,
-  type ColumnResizeMode,
-  type ColumnFiltersState,
-  type FilterFn,
   type Column,
-  type SortingState,
+  type ColumnDef,
+  type ColumnFiltersState,
+  type ColumnResizeMode,
+  type FilterFn,
   type SortDirection,
+  type SortingState,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
@@ -39,12 +41,6 @@ import { Paragraph } from "../primitives/Paragraph";
 import { TextLink } from "../primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "../primitives/Tooltip";
 import { QueueName } from "../runs/v3/QueueName";
-import {
-  FunnelIcon,
-  ChevronUpIcon,
-  ChevronDownIcon,
-  ChevronUpDownIcon,
-} from "@heroicons/react/20/solid";
 
 const MAX_STRING_DISPLAY_LENGTH = 64;
 const ROW_HEIGHT = 33; // Estimated row height in pixels
@@ -54,7 +50,7 @@ const MIN_COLUMN_WIDTH = 60;
 const MAX_COLUMN_WIDTH = 400;
 const CHAR_WIDTH_PX = 7.5; // Approximate width of a monospace character at text-xs (12px)
 const CELL_PADDING_PX = 40; // px-2 (8px) on each side + buffer for copy button
-const HEADER_ICONS_WIDTH_PX = 72; // Sort icon (16px) + filter icon (12px) + info icon (16px) + gaps (12px) + header padding (16px)
+const HEADER_ICONS_WIDTH_PX = 80; // Sort icon (16px) + filter icon (12px) + info icon (16px) + gaps (12px) + header padding (24px)
 const SAMPLE_SIZE = 100; // Number of rows to sample for width calculation
 
 // Type for row data
@@ -768,6 +764,7 @@ function HeaderCellContent({
   sortDirection,
   onSortClick,
   canSort,
+  isHeaderRowHovered,
 }: {
   alignment: "left" | "right";
   tooltip?: React.ReactNode;
@@ -778,19 +775,24 @@ function HeaderCellContent({
   sortDirection?: SortDirection | false;
   onSortClick?: (event: React.MouseEvent) => void;
   canSort?: boolean;
+  isHeaderRowHovered?: boolean;
 }) {
-  const [isHovered, setIsHovered] = useState(false);
+  const [isCellHovered, setIsCellHovered] = useState(false);
+  const [isFilterHovered, setIsFilterHovered] = useState(false);
+
+  const showIcons = isHeaderRowHovered || !!sortDirection || showFilters || hasActiveFilter;
+  const sortHighlighted = isCellHovered && !isFilterHovered;
 
   return (
     <div
       className={cn(
-        "flex w-full items-center gap-1 overflow-hidden bg-background-bright py-2 pl-2 pr-1",
+        "flex w-full items-center gap-1 overflow-hidden bg-background-bright py-2 pl-2 pr-3",
         "font-mono text-xs font-medium text-text-bright",
         alignment === "right" && "justify-end",
         canSort && "cursor-pointer select-none"
       )}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={() => setIsCellHovered(true)}
+      onMouseLeave={() => setIsCellHovered(false)}
       onClick={onSortClick}
     >
       {tooltip ? (
@@ -800,11 +802,13 @@ function HeaderCellContent({
           })}
         >
           <span className="truncate text-left">{children}</span>
-          <InfoIconTooltip
-            content={tooltip}
-            contentClassName="normal-case tracking-normal"
-            enabled={isHovered}
-          />
+          <span className="flex flex-shrink-0">
+            <InfoIconTooltip
+              content={tooltip}
+              contentClassName="normal-case tracking-normal"
+              enabled={isCellHovered}
+            />
+          </span>
         </div>
       ) : (
         <span className="min-w-0 flex-1 truncate text-left">{children}</span>
@@ -812,7 +816,11 @@ function HeaderCellContent({
       {/* Sort indicator */}
       {canSort && (
         <span
-          className={cn("flex-shrink-0", sortDirection ? "text-text-bright" : "text-text-dimmed")}
+          className={cn(
+            "flex-shrink-0 transition-all",
+            showIcons ? "opacity-100" : "opacity-0",
+            sortHighlighted ? "text-text-bright" : "text-text-dimmed"
+          )}
         >
           {sortDirection === "asc" ? (
             <ChevronUpIcon className="size-4" />
@@ -829,10 +837,15 @@ function HeaderCellContent({
             e.stopPropagation();
             onFilterClick();
           }}
-          className="flex-shrink-0 rounded text-text-dimmed transition-colors hover:bg-charcoal-700 hover:text-text-bright"
+          onMouseEnter={() => setIsFilterHovered(true)}
+          onMouseLeave={() => setIsFilterHovered(false)}
+          className={cn(
+            "flex-shrink-0 rounded text-text-dimmed transition-all hover:bg-charcoal-700 hover:text-text-bright",
+            showIcons ? "opacity-100" : "opacity-0"
+          )}
           title="Toggle column filters"
         >
-          <FunnelIcon className="size-3" />
+          <IconFilter2 className="size-4" />
         </button>
       )}
     </div>
@@ -900,6 +913,8 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   const [focusFilterColumn, setFocusFilterColumn] = useState<string | null>(null);
   // State for column sorting
   const [sorting, setSorting] = useState<SortingState>(defaultSorting);
+  // Track header row hover for showing sort/filter icons
+  const [isHeaderRowHovered, setIsHeaderRowHovered] = useState(false);
 
   // Create TanStack Table column definitions from OutputColumnMetadata
   // Calculate column widths based on content
@@ -973,6 +988,8 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
               top: 0,
               zIndex: 1,
             }}
+            onMouseEnter={() => setIsHeaderRowHovered(true)}
+            onMouseLeave={() => setIsHeaderRowHovered(false)}
           >
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} style={{ display: "flex", width: "100%" }}>
@@ -1003,6 +1020,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                         sortDirection={header.column.getIsSorted()}
                         onSortClick={header.column.getToggleSortingHandler()}
                         canSort={header.column.getCanSort()}
+                        isHeaderRowHovered={isHeaderRowHovered}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
                       </HeaderCellContent>
@@ -1067,6 +1085,8 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
             top: 0,
             zIndex: 1,
           }}
+          onMouseEnter={() => setIsHeaderRowHovered(true)}
+          onMouseLeave={() => setIsHeaderRowHovered(false)}
         >
           {/* Main header row */}
           {table.getHeaderGroups().map((headerGroup) => (
@@ -1098,6 +1118,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                       sortDirection={header.column.getIsSorted()}
                       onSortClick={header.column.getToggleSortingHandler()}
                       canSort={header.column.getCanSort()}
+                      isHeaderRowHovered={isHeaderRowHovered}
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
                     </HeaderCellContent>
