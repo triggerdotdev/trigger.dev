@@ -850,11 +850,7 @@ function HeaderCellContent({
           className="flex-shrink-0 rounded text-text-dimmed transition-colors hover:text-text-bright"
           title="Toggle column filters"
         >
-          {showFilters ? (
-            <IconFilter2X className="size-4" />
-          ) : (
-            <IconFilter2 className="size-4" />
-          )}
+          {showFilters ? <IconFilter2X className="size-4" /> : <IconFilter2 className="size-4" />}
         </button>
       )}
     </div>
