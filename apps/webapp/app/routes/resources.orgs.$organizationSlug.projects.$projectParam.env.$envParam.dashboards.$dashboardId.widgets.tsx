@@ -108,6 +108,50 @@ const ParamsSchema = EnvironmentParamSchema.extend({
   dashboardId: z.string(),
 });
 
+// Check widget limit for add/duplicate actions (title widgets don't count)
+async function checkWidgetLimit(
+  existingLayout: z.infer<typeof DashboardLayout>,
+  organizationId: string
+) {
+  const currentWidgetCount = Object.values(existingLayout.widgets).filter(
+    (w) => w.display.type !== "title"
+  ).length;
+  const plan = await getCurrentPlan(organizationId);
+  const metricWidgetsLimitValue = (plan?.v3Subscription?.plan?.limits as any)
+    ?.metricWidgetsPerDashboard;
+  const widgetLimit =
+    typeof metricWidgetsLimitValue === "number"
+      ? metricWidgetsLimitValue
+      : (metricWidgetsLimitValue?.number ?? 16);
+
+  if (currentWidgetCount >= widgetLimit) {
+    throw new Response("Widget limit reached", { status: 403 });
+  }
+}
+
+// Optimistic concurrency save: uses updateMany so we can include updatedAt
+// in the where clause. If another request modified the dashboard between our
+// read and this write, updatedAt won't match and count will be 0.
+async function saveDashboardLayout(
+  dashboardId: string,
+  expectedUpdatedAt: Date,
+  updatedLayout: z.infer<typeof DashboardLayout>
+) {
+  const result = await prisma.metricsDashboard.updateMany({
+    where: { id: dashboardId, updatedAt: expectedUpdatedAt },
+    data: {
+      layout: JSON.stringify(updatedLayout),
+    },
+  });
+
+  if (result.count === 0) {
+    throw new Response(
+      "Dashboard was modified by another request. Please refresh and try again.",
+      { status: 409 }
+    );
+  }
+}
+
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, envParam, dashboardId } = ParamsSchema.parse(params);
@@ -169,24 +213,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
   }
 
-  // Check widget limit for add/duplicate actions (title widgets don't count)
-  async function checkWidgetLimit() {
-    const currentWidgetCount = Object.values(existingLayout.widgets).filter(
-      (w) => w.display.type !== "title"
-    ).length;
-    const plan = await getCurrentPlan(project!.organizationId);
-    const metricWidgetsLimitValue = (plan?.v3Subscription?.plan?.limits as any)
-      ?.metricWidgetsPerDashboard;
-    const widgetLimit =
-      typeof metricWidgetsLimitValue === "number"
-        ? metricWidgetsLimitValue
-        : (metricWidgetsLimitValue?.number ?? 16);
-
-    if (currentWidgetCount >= widgetLimit) {
-      throw new Response("Widget limit reached", { status: 403 });
-    }
-  }
-
   switch (action) {
     case "add": {
       const rawData = {
@@ -210,7 +236,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       // Title widgets don't count against the limit
       if (config.type !== "title") {
-        await checkWidgetLimit();
+        await checkWidgetLimit(existingLayout, project.organizationId);
       }
 
       // Use client-provided widget ID if available, otherwise generate one
@@ -252,13 +278,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         },
       };
 
-      // Save to database
-      await prisma.metricsDashboard.update({
-        where: { id: dashboard.id },
-        data: {
-          layout: JSON.stringify(updatedLayout),
-        },
-      });
+      // Save to database (with optimistic concurrency check)
+      await saveDashboardLayout(dashboard.id, dashboard.updatedAt, updatedLayout);
 
       return typedjson({ success: true, widgetId });
     }
@@ -299,13 +320,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         },
       };
 
-      // Save to database
-      await prisma.metricsDashboard.update({
-        where: { id: dashboard.id },
-        data: {
-          layout: JSON.stringify(updatedLayout),
-        },
-      });
+      // Save to database (with optimistic concurrency check)
+      await saveDashboardLayout(dashboard.id, dashboard.updatedAt, updatedLayout);
 
       return typedjson({ success: true, updatedTitle: title });
     }
@@ -340,13 +356,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         },
       };
 
-      // Save to database
-      await prisma.metricsDashboard.update({
-        where: { id: dashboard.id },
-        data: {
-          layout: JSON.stringify(updatedLayout),
-        },
-      });
+      // Save to database (with optimistic concurrency check)
+      await saveDashboardLayout(dashboard.id, dashboard.updatedAt, updatedLayout);
 
       return typedjson({ success: true, renamedTitle: title });
     }
@@ -376,19 +387,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         ),
       };
 
-      // Save to database
-      await prisma.metricsDashboard.update({
-        where: { id: dashboard.id },
-        data: {
-          layout: JSON.stringify(updatedLayout),
-        },
-      });
+      // Save to database (with optimistic concurrency check)
+      await saveDashboardLayout(dashboard.id, dashboard.updatedAt, updatedLayout);
 
       return typedjson({ success: true, deletedTitle: widgetTitle });
     }
 
     case "duplicate": {
-      await checkWidgetLimit();
+      await checkWidgetLimit(existingLayout, project.organizationId);
 
       const rawData = {
         widgetId: formData.get("widgetId"),
@@ -452,13 +458,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         },
       };
 
-      // Save to database
-      await prisma.metricsDashboard.update({
-        where: { id: dashboard.id },
-        data: {
-          layout: JSON.stringify(updatedLayout),
-        },
-      });
+      // Save to database (with optimistic concurrency check)
+      await saveDashboardLayout(dashboard.id, dashboard.updatedAt, updatedLayout);
 
       return typedjson({ success: true, duplicatedTitle: originalWidget.title });
     }
@@ -478,13 +479,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         layout: result.data.layout,
       };
 
-      // Save to database
-      await prisma.metricsDashboard.update({
-        where: { id: dashboard.id },
-        data: {
-          layout: JSON.stringify(updatedLayout),
-        },
-      });
+      // Save to database (with optimistic concurrency check)
+      await saveDashboardLayout(dashboard.id, dashboard.updatedAt, updatedLayout);
 
       return typedjson({ success: true });
     }
