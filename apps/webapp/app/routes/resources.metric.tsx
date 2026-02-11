@@ -191,7 +191,13 @@ export function MetricWidget({
       body: JSON.stringify(propsRef.current),
       signal: controller.signal,
     })
-      .then((res) => res.json() as Promise<MetricWidgetActionResponse>)
+      .then(async (res) => {
+        try {
+          return (await res.json()) as MetricWidgetActionResponse;
+        } catch {
+          throw new Error(`Request failed (${res.status})`);
+        }
+      })
       .then((data) => {
         if (!controller.signal.aborted) {
           setResponse(data);
@@ -199,9 +205,14 @@ export function MetricWidget({
         }
       })
       .catch((err) => {
-        // Ignore aborted requests
         if (err instanceof DOMException && err.name === "AbortError") return;
         if (!controller.signal.aborted) {
+          // Only surface the error if there's no existing successful data to preserve
+          setResponse((prev) =>
+            prev?.success
+              ? prev
+              : { success: false, error: err.message || "Network error" }
+          );
           setIsLoading(false);
         }
       });
