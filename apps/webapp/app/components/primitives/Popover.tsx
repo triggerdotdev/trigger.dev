@@ -277,7 +277,7 @@ function PopoverVerticalEllipseTrigger({
         className
       )}
     >
-      <EllipsisVerticalIcon className={cn(styles.icon, "transition group-hover:text-text-bright")} />
+      <EllipsisVerticalIcon className={cn(styles.icon, "transition")} />
     </PopoverTrigger>
   );
 }
