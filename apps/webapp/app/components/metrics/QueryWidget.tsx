@@ -387,6 +387,7 @@ function QueryWidgetBody({
             config={config}
             timeRange={timeRange}
             onViewAllLegendItems={() => setIsFullscreen(true)}
+            isLoading={showLoading}
           />
           <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
             <DialogContent fullscreen className="flex flex-col bg-background-bright">
