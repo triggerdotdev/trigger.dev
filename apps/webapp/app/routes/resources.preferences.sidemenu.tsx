@@ -39,7 +39,13 @@ export async function action({ request }: ActionFunctionArgs) {
 
   // Handle item order update
   if (result.data.organizationId && result.data.listId && result.data.itemOrder) {
-    const orderResult = z.array(z.string()).safeParse(JSON.parse(result.data.itemOrder));
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(result.data.itemOrder);
+    } catch {
+      parsed = [];
+    }
+    const orderResult = z.array(z.string()).safeParse(parsed);
     if (orderResult.success) {
       await updateItemOrder({
         user,
