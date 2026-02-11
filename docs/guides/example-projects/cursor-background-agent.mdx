@@ -58,18 +58,24 @@ The task spawns the Cursor CLI as a child process and streams its output to the 
 
 ### Build extension for system binaries
 
-The example includes a custom build extension that installs the `cursor-agent` binary into the container image using `addLayer`. At runtime, the binary is copied to `/tmp` and given execute permissions; this is a workaround needed when the container runtime strips execute permissions from added layers.
+The example includes a custom build extension that installs `cursor-agent` into the container image using `addLayer`. The official install script is run at build time, then the resolved entry point and its dependencies are copied to a fixed path so the task can invoke them at runtime with the bundled Node binary.
 
 ```ts extensions/cursor-cli.ts
-export const cursorCli = defineExtension({
+const CURSOR_AGENT_DIR = "/usr/local/lib/cursor-agent";
+
+export const cursorCli = (): BuildExtension => ({
   name: "cursor-cli",
-  onBuildComplete(params) {
-    params.addLayer({
+  onBuildComplete(context) {
+    if (context.target === "dev") return;
+
+    context.addLayer({
       id: "cursor-cli",
       image: {
         instructions: [
-          `COPY cursor-agent /usr/local/bin/cursor-agent`,
-          `RUN chmod +x /usr/local/bin/cursor-agent`,
+          "RUN apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*",
+          'ENV PATH="/root/.local/bin:$PATH"',
+          "RUN curl -fsSL https://cursor.com/install | bash",
+          `RUN cp -r $(dirname $(readlink -f /root/.local/bin/cursor-agent)) ${CURSOR_AGENT_DIR}`,
         ],
       },
     });
