@@ -311,22 +311,22 @@ const titlesStatusesArray = Object.entries(runStatusTitleFromStatus);
  */
 const RUN_STATUS_HEX_COLORS: Record<TaskRunStatus, string> = {
   PENDING: "#5F6570", // charcoal-500
-  DELAYED: "#717B85", // charcoal-400
+  DELAYED: "#6B7580", // charcoal ~450
   PENDING_VERSION: "#f59e0b", // amber-500
   WAITING_FOR_DEPLOY: "#d97706", // amber-600
   EXECUTING: "#3b82f6", // blue-500
-  RETRYING_AFTER_FAILURE: "#2563eb", // blue-600
-  DEQUEUED: "#60a5fa", // blue-400
-  WAITING_TO_RESUME: "#4E535C", // charcoal-600
-  PAUSED: "#fcd34d", // amber-300
-  CANCELED: "#838D97", // charcoal-350
-  EXPIRED: "#969EA8", // charcoal-300
-  INTERRUPTED: "#e11d48", // rose-600 (error)
+  RETRYING_AFTER_FAILURE: "#2f6fec", // blue ~550
+  DEQUEUED: "#4D8EF5", // blue ~475
+  WAITING_TO_RESUME: "#555D67", // charcoal ~550
+  PAUSED: "#fbbf24", // amber-400
+  CANCELED: "#78828C", // charcoal ~400
+  EXPIRED: "#848D96", // charcoal ~350
+  INTERRUPTED: "#D52C4D", // rose — evenly spaced (error)
   COMPLETED_SUCCESSFULLY: "#28BF5C", // mint-500 (success)
-  COMPLETED_WITH_ERRORS: "#be123c", // rose-700 (error)
-  SYSTEM_FAILURE: "#f43f5e", // rose-500 (error)
-  CRASHED: "#9f1239", // rose-800 (error)
-  TIMED_OUT: "#fb7185", // rose-400 (error)
+  COMPLETED_WITH_ERRORS: "#DE405C", // rose — evenly spaced (error)
+  SYSTEM_FAILURE: "#E7536C", // rose — evenly spaced (error)
+  CRASHED: "#cc193d", // rose — darkest (error)
+  TIMED_OUT: "#F0667B", // rose — lightest (error)
 };
 
 /**
