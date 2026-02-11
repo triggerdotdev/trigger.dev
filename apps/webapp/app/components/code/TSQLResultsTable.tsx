@@ -726,7 +726,7 @@ function CopyableCell({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <span className="truncate">{children}</span>
+      <span className="flex h-4 items-center truncate">{children}</span>
       {isHovered && (
         <span
           onClick={(e) => {
