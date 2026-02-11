@@ -256,6 +256,13 @@ export default function Page() {
   const totalWidgetCount = Object.keys(state.widgets).length;
   const widgetLimits = { used: currentWidgetCount, limit: widgetLimitPerDashboard };
   const widgetIsAtLimit = currentWidgetCount >= widgetLimitPerDashboard;
+  const widgetLimitRatio =
+    widgetLimits.limit > 0
+      ? widgetLimits.used / widgetLimits.limit
+      : widgetLimits.used > 0
+        ? 1
+        : 0;
+  const widgetLimitPercent = Math.min(100, Math.max(0, Math.round(widgetLimitRatio * 100)));
   const widgetCanUpgrade = plan?.v3Subscription?.plan && !canExceedWidgets;
 
   // Build the query action URL for the editor
@@ -501,14 +508,14 @@ export default function Page() {
                         r="10"
                         cx="12"
                         cy="12"
-                        strokeDasharray={`${(widgetLimits.used / widgetLimits.limit) * 62.8} 62.8`}
+                        strokeDasharray={`${widgetLimitRatio * 62.8} 62.8`}
                         strokeDashoffset="0"
                         strokeLinecap="round"
                       />
                     </svg>
                   </div>
                 }
-                content={`${Math.round((widgetLimits.used / widgetLimits.limit) * 100)}%`}
+                content={`${widgetLimitPercent}%`}
               />
               <div className="flex w-full items-center justify-between gap-6">
                 {widgetIsAtLimit ? (
