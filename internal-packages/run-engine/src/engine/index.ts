@@ -777,6 +777,7 @@ export class RunEngine {
             runnerId,
             tx: prisma,
             skipRunLock: true,
+            includeTtl: true,
           });
         }
 

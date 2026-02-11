@@ -132,6 +132,176 @@ describe("RunEngine ttl", () => {
     }
   });
 
+  containerTest("First enqueue from trigger includes ttlExpiresAt in message", async ({
+    prisma,
+    redisOptions,
+  }) => {
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+    const engine = new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+        processWorkerQueueDebounceMs: 50,
+        masterQueueConsumersDisabled: true,
+        ttlSystem: {
+          pollIntervalMs: 100,
+          batchSize: 10,
+        },
+      },
+      runLock: {
+        redis: redisOptions,
+      },
+      machines: {
+        defaultMachine: "small-1x",
+        machines: {
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
+          },
+        },
+        baseCostInCents: 0.0001,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
+
+    try {
+      const taskIdentifier = "test-task";
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      const run = await engine.trigger(
+        {
+          number: 1,
+          friendlyId: "run_ttlmsg1",
+          environment: authenticatedEnvironment,
+          taskIdentifier,
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "t_ttl",
+          spanId: "s_ttl",
+          workerQueue: "main",
+          queue: "task/test-task",
+          isTest: false,
+          tags: [],
+          ttl: "1s",
+        },
+        prisma
+      );
+
+      const message = await engine.runQueue.readMessage(
+        authenticatedEnvironment.organization.id,
+        run.id
+      );
+      assertNonNullable(message);
+      expect(message.ttlExpiresAt).toBeDefined();
+      expect(typeof message.ttlExpiresAt).toBe("number");
+    } finally {
+      await engine.quit();
+    }
+  });
+
+  containerTest("Re-enqueue with includeTtl false does not set ttlExpiresAt", async ({
+    prisma,
+    redisOptions,
+  }) => {
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+    const engine = new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+        processWorkerQueueDebounceMs: 50,
+        masterQueueConsumersDisabled: true,
+        ttlSystem: {
+          pollIntervalMs: 100,
+          batchSize: 10,
+        },
+      },
+      runLock: {
+        redis: redisOptions,
+      },
+      machines: {
+        defaultMachine: "small-1x",
+        machines: {
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
+          },
+        },
+        baseCostInCents: 0.0001,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
+
+    try {
+      const taskIdentifier = "test-task";
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      const run = await engine.trigger(
+        {
+          number: 1,
+          friendlyId: "run_reenq01",
+          environment: authenticatedEnvironment,
+          taskIdentifier,
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "t_re",
+          spanId: "s_re",
+          workerQueue: "main",
+          queue: "task/test-task",
+          isTest: false,
+          tags: [],
+          ttl: "1s",
+        },
+        prisma
+      );
+
+      const messageAfterTrigger = await engine.runQueue.readMessage(
+        authenticatedEnvironment.organization.id,
+        run.id
+      );
+      assertNonNullable(messageAfterTrigger);
+      expect(messageAfterTrigger.ttlExpiresAt).toBeDefined();
+
+      await engine.enqueueSystem.enqueueRun({
+        run,
+        env: authenticatedEnvironment,
+        tx: prisma,
+        skipRunLock: true,
+        includeTtl: false,
+      });
+
+      const messageAfterReenqueue = await engine.runQueue.readMessage(
+        authenticatedEnvironment.organization.id,
+        run.id
+      );
+      assertNonNullable(messageAfterReenqueue);
+      expect(messageAfterReenqueue.ttlExpiresAt).toBeUndefined();
+    } finally {
+      await engine.quit();
+    }
+  });
+
   containerTest("Multiple runs expiring via TTL batch", async ({ prisma, redisOptions }) => {
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
