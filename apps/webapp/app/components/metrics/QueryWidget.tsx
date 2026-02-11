@@ -1,19 +1,15 @@
-import {
-  DocumentDuplicateIcon,
-  PencilIcon,
-  PencilSquareIcon,
-  TrashIcon,
-} from "@heroicons/react/20/solid";
-import { ChartBarIcon } from "@heroicons/react/24/solid";
+import { DocumentDuplicateIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { ArrowsPointingOutIcon } from "@heroicons/react/24/solid";
 import { type OutputColumnMetadata } from "@internal/tsql";
 import { DialogClose } from "@radix-ui/react-dialog";
+import { IconChartHistogram, IconResize } from "@tabler/icons-react";
 import { assertNever } from "assert-never";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { cn } from "~/utils/cn";
 import { Maximize2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { z } from "zod";
 import { Card } from "~/components/primitives/charts/Card";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { cn } from "~/utils/cn";
 import { QueryResultsChart } from "../code/QueryResultsChart";
 import { TSQLResultsTable } from "../code/TSQLResultsTable";
 import { Button } from "../primitives/Buttons";
@@ -30,7 +26,6 @@ import {
   PopoverMenuItem,
   PopoverVerticalEllipseTrigger,
 } from "../primitives/Popover";
-import { IconChartHistogram } from "@tabler/icons-react";
 
 const ChartType = z.union([z.literal("bar"), z.literal("line")]);
 export type ChartType = z.infer<typeof ChartType>;
@@ -261,8 +256,8 @@ export function QueryWidget({
           {isResizing ? (
             <div className="flex h-full flex-1 items-center justify-center p-3">
               <div className="flex flex-col items-center gap-1 text-text-dimmed">
-                <ChartBarIcon className="size-10 text-text-dimmed" />{" "}
-                <span className="text-base font-medium">Resizing...</span>
+                <IconResize className="size-10 text-text-dimmed/50" />
+                <span className="text-base font-medium">Resizing…</span>
               </div>
             </div>
           ) : error ? (
