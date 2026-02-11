@@ -5,6 +5,7 @@ import {
   type IOPacket,
   packetRequiresOffloading,
   parsePacket,
+  TaskRunErrorCodes,
 } from "@trigger.dev/core/v3";
 import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import { type BatchTaskRun, Prisma } from "@trigger.dev/database";
@@ -15,12 +16,11 @@ import { env } from "~/env.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { batchTriggerWorker } from "~/v3/batchTriggerWorker.server";
-import { DefaultQueueManager } from "../concerns/queues.server";
-import { DefaultTriggerTaskValidator } from "../validators/triggerTaskValidator";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../../v3/r2.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { TriggerTaskService } from "../../v3/services/triggerTask.server";
 import { startActiveSpan } from "../../v3/tracer.server";
+import { TriggerFailedTaskService } from "./triggerFailedTask.server";
 
 const PROCESSING_BATCH_SIZE = 50;
 const ASYNC_BATCH_PROCESS_SIZE_THRESHOLD = 20;
@@ -56,17 +56,12 @@ export type BatchTriggerTaskServiceOptions = {
 export class RunEngineBatchTriggerService extends WithRunEngine {
   private _batchProcessingStrategy: BatchProcessingStrategy;
   public onBatchTaskRunCreated: Evt<BatchTaskRun> = new Evt();
-  private readonly queueConcern: DefaultQueueManager;
-  private readonly validator: DefaultTriggerTaskValidator;
 
   constructor(
     batchProcessingStrategy?: BatchProcessingStrategy,
     protected readonly _prisma: PrismaClientOrTransaction = prisma
   ) {
     super({ prisma });
-
-    this.queueConcern = new DefaultQueueManager(this._prisma, this._engine);
-    this.validator = new DefaultTriggerTaskValidator();
 
     // Eric note: We need to force sequential processing because when doing parallel, we end up with high-contention on the parent run lock
     // becuase we are triggering a lot of runs at once, and each one is trying to lock the parent run.
@@ -88,18 +83,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
           span.setAttribute("batchId", friendlyId);
 
-          // Validate entitlement and extract planType for batch runs
-          const entitlementValidation = await this.validator.validateEntitlement({
-            environment,
-          });
-
-          if (!entitlementValidation.ok) {
-            throw entitlementValidation.error;
-          }
-
-          // Extract plan type from entitlement response
-          const planType = entitlementValidation.plan?.type;
-
           // Upload to object store
           const payloadPacket = await this.#handlePayloadPacket(
             body.items,
@@ -112,8 +95,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
             payloadPacket,
             environment,
             body,
-            options,
-            planType
+            options
           );
 
           if (!batch) {
@@ -166,8 +148,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     payloadPacket: IOPacket,
     environment: AuthenticatedEnvironment,
     body: BatchTriggerTaskV2RequestBody,
-    options: BatchTriggerTaskServiceOptions = {},
-    planType?: string
+    options: BatchTriggerTaskServiceOptions = {}
   ) {
     if (body.items.length <= ASYNC_BATCH_PROCESS_SIZE_THRESHOLD) {
       const batch = await this._prisma.batchTaskRun.create({
@@ -206,7 +187,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         options,
         parentRunId: body.parentRunId,
         resumeParentOnCompletion: body.resumeParentOnCompletion,
-        planType,
       });
 
       switch (result.status) {
@@ -236,7 +216,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
             strategy: "sequential",
             parentRunId: body.parentRunId,
             resumeParentOnCompletion: body.resumeParentOnCompletion,
-            planType,
           });
 
           return batch;
@@ -259,20 +238,9 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
             strategy: "sequential",
             parentRunId: body.parentRunId,
             resumeParentOnCompletion: body.resumeParentOnCompletion,
-            planType,
           });
 
           return batch;
-        }
-        case "ABORTED": {
-          // Batch was aborted due to queue limits - already marked as ABORTED in the database
-          logger.error("[RunEngineBatchTrigger][call] Batch aborted due to queue limits", {
-            batchId: batch.friendlyId,
-          });
-
-          throw new ServiceValidationError(
-            `Batch ${batch.friendlyId} was aborted: queue size limit exceeded`
-          );
         }
       }
     } else {
@@ -313,7 +281,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
             strategy: this._batchProcessingStrategy,
             parentRunId: body.parentRunId,
             resumeParentOnCompletion: body.resumeParentOnCompletion,
-            planType,
           });
 
           break;
@@ -336,7 +303,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
                 strategy: this._batchProcessingStrategy,
                 parentRunId: body.parentRunId,
                 resumeParentOnCompletion: body.resumeParentOnCompletion,
-                planType,
               })
             )
           );
@@ -440,7 +406,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
       options: $options,
       parentRunId: options.parentRunId,
       resumeParentOnCompletion: options.resumeParentOnCompletion,
-      planType: options.planType,
     });
 
     switch (result.status) {
@@ -474,7 +439,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
             strategy: options.strategy,
             parentRunId: options.parentRunId,
             resumeParentOnCompletion: options.resumeParentOnCompletion,
-            planType: options.planType,
           });
         }
 
@@ -502,7 +466,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
             strategy: options.strategy,
             parentRunId: options.parentRunId,
             resumeParentOnCompletion: options.resumeParentOnCompletion,
-            planType: options.planType,
           });
         } else {
           await this.#enqueueBatchTaskRun({
@@ -519,19 +482,9 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
             strategy: options.strategy,
             parentRunId: options.parentRunId,
             resumeParentOnCompletion: options.resumeParentOnCompletion,
-            planType: options.planType,
           });
         }
 
-        return;
-      }
-      case "ABORTED": {
-        // Batch was aborted due to queue limits - already marked as ABORTED in the database
-        logger.error("[RunEngineBatchTrigger][processBatchTaskRun] Batch aborted due to queue limits", {
-          batchId: batch.friendlyId,
-        });
-
-        // No retry, no requeue - batch is permanently failed
         return;
       }
     }
@@ -546,7 +499,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     options,
     parentRunId,
     resumeParentOnCompletion,
-    planType,
   }: {
     batch: BatchTaskRun;
     environment: AuthenticatedEnvironment;
@@ -556,77 +508,13 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     options?: BatchTriggerTaskServiceOptions;
     parentRunId?: string | undefined;
     resumeParentOnCompletion?: boolean | undefined;
-    planType?: string;
   }): Promise<
     | { status: "COMPLETE" }
     | { status: "INCOMPLETE"; workingIndex: number }
     | { status: "ERROR"; error: string; workingIndex: number }
-    | { status: "ABORTED" }
   > {
     // Grab the next PROCESSING_BATCH_SIZE items
     const itemsToProcess = items.slice(currentIndex, currentIndex + batchSize);
-
-    // Get items that will result in new runs (not cached)
-    const newRunItems = await this.#getNewRunItems(environment, itemsToProcess);
-
-    // Only validate queue size if we have new runs to create, i.e. they're not all cached
-    if (newRunItems.length > 0) {
-      // Resolve queue names for new items and group by queue
-      const queueCounts = await this.queueConcern.resolveQueueNamesForBatchItems(
-        environment,
-        newRunItems
-      );
-
-      // Validate limits for each queue
-      const queueSizeGuard = await this.queueConcern.validateMultipleQueueLimits(
-        environment,
-        queueCounts
-      );
-
-      logger.debug("Queue size guard result for chunk", {
-        batchId: batch.friendlyId,
-        currentIndex,
-        runCount: batch.runCount,
-        newRunCount: newRunItems.length,
-        queueCounts: Object.fromEntries(queueCounts),
-        queueSizeGuard,
-      });
-
-      if (!queueSizeGuard.ok) {
-        // Queue limit exceeded is a client error - abort the batch immediately
-        const errorMessage = `Queue size limit exceeded for queue '${queueSizeGuard.queueName}'. Current size: ${queueSizeGuard.queueSize}, maximum: ${queueSizeGuard.maximumSize}`;
-
-        logger.error("[RunEngineBatchTrigger] Aborting batch due to queue limit", {
-          batchId: batch.friendlyId,
-          queueName: queueSizeGuard.queueName,
-          queueSize: queueSizeGuard.queueSize,
-          maximumSize: queueSizeGuard.maximumSize,
-        });
-
-        // Update batch status to ABORTED
-        await this._prisma.batchTaskRun.update({
-          where: { id: batch.id },
-          data: {
-            status: "ABORTED",
-            errors: {
-              create: {
-                index: currentIndex,
-                taskIdentifier: itemsToProcess[0]?.task ?? "unknown",
-                error: errorMessage,
-              },
-            },
-          },
-        });
-
-        return { status: "ABORTED" };
-      }
-    } else {
-      logger.debug("[RunEngineBatchTrigger][processBatchTaskRun] All runs are cached", {
-        batchId: batch.friendlyId,
-        currentIndex,
-        runCount: batch.runCount,
-      });
-    }
 
     logger.debug("[RunEngineBatchTrigger][processBatchTaskRun] Processing batch items", {
       batchId: batch.friendlyId,
@@ -638,7 +526,14 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
     let runIds: string[] = [];
 
+    const triggerFailedTaskService = new TriggerFailedTaskService({
+      prisma: this._prisma,
+      engine: this._engine,
+    });
+
     for (const item of itemsToProcess) {
+      let runFriendlyId: string | null = null;
+
       try {
         const run = await this.#processBatchTaskRunItem({
           batch,
@@ -648,34 +543,58 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
           options,
           parentRunId,
           resumeParentOnCompletion,
-          planType,
         });
 
-        if (!run) {
-          logger.error("[RunEngineBatchTrigger][processBatchTaskRun] Failed to process item", {
+        if (run) {
+          runFriendlyId = run.friendlyId;
+        }
+      } catch (error) {
+        // Trigger failed - will try to create pre-failed run below
+        runFriendlyId = null;
+      }
+
+      if (!runFriendlyId) {
+        const errorMessage =
+          "Trigger failed for batch item (queue limit, entitlement, or validation error)";
+        logger.debug("[RunEngineBatchTrigger][processBatchTaskRun] Item trigger failed, creating pre-failed run", {
+          batchId: batch.friendlyId,
+          currentIndex: workingIndex,
+          task: item.task,
+        });
+
+        const failedRunId = await triggerFailedTaskService.call({
+          taskId: item.task,
+          environment,
+          payload: item.payload,
+          payloadType: item.options?.payloadType,
+          errorMessage,
+          parentRunId,
+          resumeParentOnCompletion,
+          batch: { id: batch.id, index: workingIndex },
+          options: item.options as Record<string, unknown>,
+          traceContext: options?.traceContext as Record<string, unknown> | undefined,
+          spanParentAsLink: options?.spanParentAsLink,
+          errorCode: TaskRunErrorCodes.BATCH_ITEM_COULD_NOT_TRIGGER,
+        });
+
+        if (failedRunId) {
+          runFriendlyId = failedRunId;
+        } else {
+          logger.error("[RunEngineBatchTrigger][processBatchTaskRun] Failed to create pre-failed run", {
             batchId: batch.friendlyId,
             currentIndex: workingIndex,
           });
 
-          throw new Error("[RunEngineBatchTrigger][processBatchTaskRun] Failed to process item");
+          return {
+            status: "ERROR",
+            error: "Could not trigger item and could not create pre-failed run",
+            workingIndex,
+          };
         }
-
-        runIds.push(run.friendlyId);
-
-        workingIndex++;
-      } catch (error) {
-        logger.error("[RunEngineBatchTrigger][processBatchTaskRun] Failed to process item", {
-          batchId: batch.friendlyId,
-          currentIndex: workingIndex,
-          error,
-        });
-
-        return {
-          status: "ERROR",
-          error: error instanceof Error ? error.message : String(error),
-          workingIndex,
-        };
       }
+
+      runIds.push(runFriendlyId);
+      workingIndex++;
     }
 
     //add the run ids to the batch
@@ -724,7 +643,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     options,
     parentRunId,
     resumeParentOnCompletion,
-    planType,
   }: {
     batch: BatchTaskRun;
     environment: AuthenticatedEnvironment;
@@ -733,7 +651,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     options?: BatchTriggerTaskServiceOptions;
     parentRunId: string | undefined;
     resumeParentOnCompletion: boolean | undefined;
-    planType?: string;
   }) {
     logger.debug("[RunEngineBatchTrigger][processBatchTaskRunItem] Processing item", {
       batchId: batch.friendlyId,
@@ -760,8 +677,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         spanParentAsLink: options?.spanParentAsLink,
         batchId: batch.id,
         batchIndex: currentIndex,
-        skipChecks: true, // Skip entitlement and queue checks since we already validated at batch/chunk level
-        planType, // Pass planType from batch-level entitlement check
         realtimeStreamsVersion: options?.realtimeStreamsVersion,
       },
       "V2"
@@ -804,157 +719,5 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         dataType: "application/store",
       };
     });
-  }
-
-  #groupItemsByTaskIdentifier(
-    items: BatchTriggerTaskV2RequestBody["items"]
-  ): Record<string, BatchTriggerTaskV2RequestBody["items"]> {
-    return items.reduce((acc, item) => {
-      if (!item.options?.idempotencyKey) return acc;
-
-      if (!acc[item.task]) {
-        acc[item.task] = [];
-      }
-      acc[item.task].push(item);
-      return acc;
-    }, {} as Record<string, BatchTriggerTaskV2RequestBody["items"]>);
-  }
-
-  async #countNewRuns(
-    environment: AuthenticatedEnvironment,
-    items: BatchTriggerTaskV2RequestBody["items"]
-  ): Promise<number> {
-    // If cached runs check is disabled, return the total number of items
-    if (!env.BATCH_TRIGGER_CACHED_RUNS_CHECK_ENABLED) {
-      return items.length;
-    }
-
-    // Group items by taskIdentifier for efficient lookup
-    const itemsByTask = this.#groupItemsByTaskIdentifier(items);
-
-    // If no items have idempotency keys, all are new runs
-    if (Object.keys(itemsByTask).length === 0) {
-      return items.length;
-    }
-
-    // Fetch cached runs for each task identifier separately to make use of the index
-    const cachedRuns = await Promise.all(
-      Object.entries(itemsByTask).map(([taskIdentifier, taskItems]) =>
-        this._prisma.taskRun.findMany({
-          where: {
-            runtimeEnvironmentId: environment.id,
-            taskIdentifier,
-            idempotencyKey: {
-              in: taskItems.map((i) => i.options?.idempotencyKey).filter(Boolean),
-            },
-          },
-          select: {
-            idempotencyKey: true,
-            idempotencyKeyExpiresAt: true,
-          },
-        })
-      )
-    ).then((results) => results.flat());
-
-    // Create a Map for O(1) lookups instead of O(m) find operations
-    const cachedRunsMap = new Map(cachedRuns.map((run) => [run.idempotencyKey, run]));
-
-    // Count items that are NOT cached (or have expired cache)
-    let newRunCount = 0;
-    const now = new Date();
-
-    for (const item of items) {
-      const idempotencyKey = item.options?.idempotencyKey;
-
-      if (!idempotencyKey) {
-        // No idempotency key = always a new run
-        newRunCount++;
-        continue;
-      }
-
-      const cachedRun = cachedRunsMap.get(idempotencyKey);
-
-      if (!cachedRun) {
-        // No cached run = new run
-        newRunCount++;
-      } else if (cachedRun.idempotencyKeyExpiresAt && cachedRun.idempotencyKeyExpiresAt < now) {
-        // Expired cached run = new run
-        newRunCount++;
-      }
-      // else: valid cached run = not a new run
-    }
-
-    return newRunCount;
-  }
-
-  /**
-   * Returns items that are NOT cached (will result in new runs).
-   * Similar to #countNewRuns but returns the actual items instead of count.
-   */
-  async #getNewRunItems(
-    environment: AuthenticatedEnvironment,
-    items: BatchTriggerTaskV2RequestBody["items"]
-  ): Promise<BatchTriggerTaskV2RequestBody["items"]> {
-    // If cached runs check is disabled, all items are new
-    if (!env.BATCH_TRIGGER_CACHED_RUNS_CHECK_ENABLED) {
-      return items;
-    }
-
-    // Group items by taskIdentifier for efficient lookup
-    const itemsByTask = this.#groupItemsByTaskIdentifier(items);
-
-    // If no items have idempotency keys, all are new runs
-    if (Object.keys(itemsByTask).length === 0) {
-      return items;
-    }
-
-    // Fetch cached runs for each task identifier separately to make use of the index
-    const cachedRuns = await Promise.all(
-      Object.entries(itemsByTask).map(([taskIdentifier, taskItems]) =>
-        this._prisma.taskRun.findMany({
-          where: {
-            runtimeEnvironmentId: environment.id,
-            taskIdentifier,
-            idempotencyKey: {
-              in: taskItems.map((i) => i.options?.idempotencyKey).filter(Boolean),
-            },
-          },
-          select: {
-            idempotencyKey: true,
-            idempotencyKeyExpiresAt: true,
-          },
-        })
-      )
-    ).then((results) => results.flat());
-
-    // Create a Map for O(1) lookups instead of O(m) find operations
-    const cachedRunsMap = new Map(cachedRuns.map((run) => [run.idempotencyKey, run]));
-
-    // Filter items that are NOT cached (or have expired cache)
-    const newItems: BatchTriggerTaskV2RequestBody["items"] = [];
-    const now = new Date();
-
-    for (const item of items) {
-      const idempotencyKey = item.options?.idempotencyKey;
-
-      if (!idempotencyKey) {
-        // No idempotency key = always a new run
-        newItems.push(item);
-        continue;
-      }
-
-      const cachedRun = cachedRunsMap.get(idempotencyKey);
-
-      if (!cachedRun) {
-        // No cached run = new run
-        newItems.push(item);
-      } else if (cachedRun.idempotencyKeyExpiresAt && cachedRun.idempotencyKeyExpiresAt < now) {
-        // Expired cached run = new run
-        newItems.push(item);
-      }
-      // else: valid cached run = skip
-    }
-
-    return newItems;
   }
 }

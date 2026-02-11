@@ -67,14 +67,6 @@ export interface QueueManager {
     queueName: string,
     itemsToAdd?: number
   ): Promise<QueueValidationResult>;
-  resolveQueueNamesForBatchItems(
-    env: AuthenticatedEnvironment,
-    items: Array<{ task: string; options?: { queue?: { name?: string } } }>
-  ): Promise<Map<string, number>>;
-  validateMultipleQueueLimits(
-    env: AuthenticatedEnvironment,
-    queueCounts: Map<string, number>
-  ): Promise<{ ok: true } | { ok: false; queueName: string; maximumSize: number; queueSize: number }>;
   getWorkerQueue(
     env: AuthenticatedEnvironment,
     regionOverride?: string
