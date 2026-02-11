@@ -209,6 +209,8 @@ export function QueryWidget({
                           onEdit(props.data);
                           setIsMenuOpen(false);
                         }}
+                        className="pl-1"
+                        leadingIconClassName="-mr-1"
                       />
                     )}
                     {onRename && (
