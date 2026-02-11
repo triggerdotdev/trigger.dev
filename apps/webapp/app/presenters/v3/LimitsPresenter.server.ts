@@ -234,72 +234,72 @@ export class LimitsPresenter extends BasePresenter {
         schedules:
           schedulesLimit !== null
             ? {
-                name: "Schedules",
-                description: "Maximum number of schedules per project",
-                limit: schedulesLimit,
-                currentUsage: scheduleCount,
-                source: "plan",
-                canExceed: limits?.schedules?.canExceed,
-                isUpgradable: true,
-              }
+              name: "Schedules",
+              description: "Maximum number of schedules per project",
+              limit: schedulesLimit,
+              currentUsage: scheduleCount,
+              source: "plan",
+              canExceed: limits?.schedules?.canExceed,
+              isUpgradable: true,
+            }
             : null,
         teamMembers:
           teamMembersLimit !== null
             ? {
-                name: "Team members",
-                description: "Maximum number of team members in this organization",
-                limit: teamMembersLimit,
-                currentUsage: organization._count.members,
-                source: "plan",
-                canExceed: limits?.teamMembers?.canExceed,
-                isUpgradable: true,
-              }
+              name: "Team members",
+              description: "Maximum number of team members in this organization",
+              limit: teamMembersLimit,
+              currentUsage: organization._count.members,
+              source: "plan",
+              canExceed: limits?.teamMembers?.canExceed,
+              isUpgradable: true,
+            }
             : null,
         alerts:
           alertsLimit !== null
             ? {
-                name: "Alert channels",
-                description: "Maximum number of alert channels per project",
-                limit: alertsLimit,
-                currentUsage: alertChannelCount,
-                source: "plan",
-                canExceed: limits?.alerts?.canExceed,
-                isUpgradable: true,
-              }
+              name: "Alert channels",
+              description: "Maximum number of alert channels per project",
+              limit: alertsLimit,
+              currentUsage: alertChannelCount,
+              source: "plan",
+              canExceed: limits?.alerts?.canExceed,
+              isUpgradable: true,
+            }
             : null,
         branches:
           branchesLimit !== null
             ? {
-                name: "Preview branches",
-                description: "Maximum number of active preview branches per project",
-                limit: branchesLimit,
-                currentUsage: activeBranchCount,
-                source: "plan",
-                canExceed: limits?.branches?.canExceed,
-                isUpgradable: true,
-              }
+              name: "Preview branches",
+              description: "Maximum number of active preview branches per project",
+              limit: branchesLimit,
+              currentUsage: activeBranchCount,
+              source: "plan",
+              canExceed: limits?.branches?.canExceed,
+              isUpgradable: true,
+            }
             : null,
         logRetentionDays:
           logRetentionDaysLimit !== null
             ? {
-                name: "Log retention",
-                description: "Number of days logs are retained",
-                limit: logRetentionDaysLimit,
-                currentUsage: 0, // Not applicable - this is a duration, not a count
-                source: "plan",
-              }
+              name: "Log retention",
+              description: "Number of days logs are retained",
+              limit: logRetentionDaysLimit,
+              currentUsage: 0, // Not applicable - this is a duration, not a count
+              source: "plan",
+            }
             : null,
         realtimeConnections:
           realtimeConnectionsLimit !== null
             ? {
-                name: "Realtime connections",
-                description: "Maximum concurrent Realtime connections",
-                limit: realtimeConnectionsLimit,
-                currentUsage: 0, // Would need to query realtime service for this
-                source: "plan",
-                canExceed: limits?.realtimeConcurrentConnections?.canExceed,
-                isUpgradable: true,
-              }
+              name: "Realtime connections",
+              description: "Maximum concurrent Realtime connections",
+              limit: realtimeConnectionsLimit,
+              currentUsage: 0, // Would need to query realtime service for this
+              source: "plan",
+              canExceed: limits?.realtimeConcurrentConnections?.canExceed,
+              isUpgradable: true,
+            }
             : null,
         batchProcessingConcurrency: {
           name: "Batch processing concurrency",
@@ -316,6 +316,7 @@ export class LimitsPresenter extends BasePresenter {
           limit: getQueueSizeLimit(environmentType, organization),
           currentUsage: currentQueueSize,
           source: getQueueSizeLimitSource(environmentType, organization),
+          isUpgradable: true,
         },
       },
       features: {

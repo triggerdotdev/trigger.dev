@@ -538,7 +538,7 @@ const EnvironmentSchema = z
     BATCH_TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(1_000_000), // 1MB
     TASK_RUN_METADATA_MAXIMUM_SIZE: z.coerce.number().int().default(262_144), // 256KB
 
-    MAXIMUM_DEV_QUEUE_SIZE: z.coerce.number().int().optional().default(500),
+    MAXIMUM_DEV_QUEUE_SIZE: z.coerce.number().int().optional(),
     MAXIMUM_DEPLOYED_QUEUE_SIZE: z.coerce.number().int().optional(),
     QUEUE_SIZE_CACHE_TTL_MS: z.coerce.number().int().optional().default(1_000), // 1 second
     QUEUE_SIZE_CACHE_MAX_SIZE: z.coerce.number().int().optional().default(5_000),
