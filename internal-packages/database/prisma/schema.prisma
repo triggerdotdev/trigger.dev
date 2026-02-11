@@ -2559,8 +2559,8 @@ model MetricsDashboard {
   projectId String?
 
   /// Who created the dashboard
-  owner   User   @relation(fields: [ownerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  ownerId String
+  owner   User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  ownerId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
