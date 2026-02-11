@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 type UseIntervalOptions = {
   /** If passed, will refresh every interval MS */
@@ -16,12 +16,19 @@ export function useInterval({
   disabled = false,
   callback,
 }: UseIntervalOptions) {
+  // Always keep the latest callback in a ref so the effects below
+  // never close over a stale version.
+  const latestCallback = useRef(callback);
+  useEffect(() => {
+    latestCallback.current = callback;
+  }, [callback]);
+
   // On interval
   useEffect(() => {
     if (!interval || interval <= 0 || disabled) return;
 
     const intervalId = setInterval(() => {
-      callback();
+      latestCallback.current();
     }, interval);
 
     return () => clearInterval(intervalId);
@@ -33,7 +40,7 @@ export function useInterval({
 
     const handleFocus = () => {
       if (document.visibilityState === "visible") {
-        callback();
+        latestCallback.current();
       }
     };
 
@@ -50,7 +57,7 @@ export function useInterval({
 
   // On load
   useEffect(() => {
-    if (disabled) return;
-    callback();
-  }, []);
+    if (disabled || !onLoad) return;
+    latestCallback.current();
+  }, [disabled, onLoad]);
 }
