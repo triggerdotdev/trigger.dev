@@ -2,8 +2,13 @@
 
 import { program } from "./cli/index.js";
 import { logger } from "./utilities/logger.js";
+import { ensureSufficientMemory } from "./utilities/memory.js";
 
 const main = async () => {
+  if (ensureSufficientMemory()) {
+    return;
+  }
+
   await program.parseAsync();
 };
 

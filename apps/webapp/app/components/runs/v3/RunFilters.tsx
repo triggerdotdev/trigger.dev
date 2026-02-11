@@ -635,7 +635,7 @@ function TasksDropdown({
     <SelectProvider value={values("tasks")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
-        className="min-w-0 max-w-[min(360px,var(--popover-available-width))]"
+        className="min-w-0 max-w-[min(500px,var(--popover-available-width))]"
         hideOnEscape={() => {
           if (onClose) {
             onClose();
@@ -655,7 +655,7 @@ function TasksDropdown({
                 <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
               }
             >
-              <MiddleTruncate text={item.slug}/>
+              <MiddleTruncate text={item.slug} />
             </SelectItem>
           ))}
         </SelectList>
@@ -896,10 +896,10 @@ function TagsDropdown({
         <SelectList>
           {filtered.length > 0
             ? filtered.map((tag, index) => (
-                <SelectItem key={tag} value={tag}>
-                  {tag}
-                </SelectItem>
-              ))
+              <SelectItem key={tag} value={tag}>
+                {tag}
+              </SelectItem>
+            ))
             : null}
           {filtered.length === 0 && fetcher.state !== "loading" && (
             <SelectItem disabled>No tags found</SelectItem>
@@ -981,8 +981,7 @@ function QueuesDropdown({
         searchParams.set("query", s);
       }
       fetcher.load(
-        `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
-          environment.slug
+        `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug
         }/queues?${searchParams.toString()}`
       );
     },
@@ -1054,20 +1053,20 @@ function QueuesDropdown({
         <SelectList>
           {filtered.length > 0
             ? filtered.map((queue) => (
-                <SelectItem
-                  key={queue.value}
-                  value={queue.value}
-                  icon={
-                    queue.type === "task" ? (
-                      <TaskIcon className="size-4 shrink-0 text-blue-500" />
-                    ) : (
-                      <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
-                    )
-                  }
-                >
-                  {queue.name}
-                </SelectItem>
-              ))
+              <SelectItem
+                key={queue.value}
+                value={queue.value}
+                icon={
+                  queue.type === "task" ? (
+                    <TaskIcon className="size-4 shrink-0 text-blue-500" />
+                  ) : (
+                    <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
+                  )
+                }
+              >
+                {queue.name}
+              </SelectItem>
+            ))
             : null}
           {filtered.length === 0 && fetcher.state !== "loading" && (
             <SelectItem disabled>No queues found</SelectItem>
@@ -1243,8 +1242,7 @@ function VersionsDropdown({
         searchParams.set("query", s);
       }
       fetcher.load(
-        `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
-          environment.slug
+        `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug
         }/versions?${searchParams.toString()}`
       );
     },
@@ -1305,13 +1303,13 @@ function VersionsDropdown({
         <SelectList>
           {filtered.length > 0
             ? filtered.map((version) => (
-                <SelectItem key={version.version} value={version.version}>
-                  <span className="flex items-center gap-2">
-                    <span className="grow truncate">{version.version}</span>
-                    {version.isCurrent ? <Badge variant="extra-small">Current</Badge> : null}
-                  </span>
-                </SelectItem>
-              ))
+              <SelectItem key={version.version} value={version.version}>
+                <span className="flex items-center gap-2">
+                  <span className="grow truncate">{version.version}</span>
+                  {version.isCurrent ? <Badge variant="extra-small">Current</Badge> : null}
+                </span>
+              </SelectItem>
+            ))
             : null}
           {filtered.length === 0 && fetcher.state !== "loading" && (
             <SelectItem disabled>No versions found</SelectItem>

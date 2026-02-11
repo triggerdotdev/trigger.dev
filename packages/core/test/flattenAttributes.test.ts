@@ -297,9 +297,9 @@ describe("flattenAttributes", () => {
   });
 
   it("handles function values correctly", () => {
-    function namedFunction() {}
-    const anonymousFunction = function () {};
-    const arrowFunction = () => {};
+    function namedFunction() { }
+    const anonymousFunction = function () { };
+    const arrowFunction = () => { };
 
     const result = flattenAttributes({
       named: namedFunction,
@@ -317,7 +317,7 @@ describe("flattenAttributes", () => {
   it("handles mixed problematic types", () => {
     const complexObj = {
       error: new Error("Mixed error"),
-      func: function testFunc() {},
+      func: function testFunc() { },
       date: new Date("2023-01-01"),
       normal: "string",
       number: 42,
@@ -415,10 +415,10 @@ describe("flattenAttributes", () => {
   it("handles Promise objects correctly", () => {
     const resolvedPromise = Promise.resolve("value");
     const rejectedPromise = Promise.reject(new Error("failed"));
-    const pendingPromise = new Promise(() => {}); // Never resolves
+    const pendingPromise = new Promise(() => { }); // Never resolves
 
     // Catch the rejection to avoid unhandled promise rejection warnings
-    rejectedPromise.catch(() => {});
+    rejectedPromise.catch(() => { });
 
     const result = flattenAttributes({
       resolved: resolvedPromise,
@@ -481,7 +481,7 @@ describe("flattenAttributes", () => {
   it("handles complex mixed object with all special types", () => {
     const complexObj = {
       error: new Error("Test error"),
-      func: function testFunc() {},
+      func: function testFunc() { },
       date: new Date("2023-01-01"),
       mySet: new Set([1, 2, 3]),
       myMap: new Map([["key", "value"]]),
@@ -546,6 +546,52 @@ describe("flattenAttributes", () => {
 
     // Should complete without stack overflow
     expect(() => flattenAttributes({ arr: deepArray })).not.toThrow();
+  });
+
+  it("handles keys with periods correctly (issue #1510)", () => {
+    const input = { "Key 0.002mm": 31.4 };
+    const flattened = flattenAttributes(input);
+    // The dot in the key should be escaped
+    expect(flattened["Key 0\\.002mm"]).toBe(31.4);
+    // Roundtrip should preserve the original key
+    expect(unflattenAttributes(flattened)).toEqual(input);
+  });
+
+  it("handles nested objects with dotted keys", () => {
+    const input = {
+      measurements: {
+        "diameter.mm": 12.5,
+        "length.cm": 30,
+      },
+    };
+    const flattened = flattenAttributes(input);
+    expect(flattened["measurements.diameter\\.mm"]).toBe(12.5);
+    expect(flattened["measurements.length\\.cm"]).toBe(30);
+    expect(unflattenAttributes(flattened)).toEqual(input);
+  });
+
+  it("handles keys with backslashes correctly", () => {
+    const input = { "path\\to\\file": "value" };
+    const flattened = flattenAttributes(input);
+    expect(flattened["path\\\\to\\\\file"]).toBe("value");
+    expect(unflattenAttributes(flattened)).toEqual(input);
+  });
+
+  it("handles keys with both dots and backslashes", () => {
+    const input = { "file\\.ext": "value" };
+    const flattened = flattenAttributes(input);
+    expect(unflattenAttributes(flattened)).toEqual(input);
+  });
+
+  it("handles multiple dotted keys at different nesting levels", () => {
+    const input = {
+      "v1.0": {
+        "config.json": "data",
+      },
+      normal: "value",
+    };
+    const flattened = flattenAttributes(input);
+    expect(unflattenAttributes(flattened)).toEqual(input);
   });
 });
 

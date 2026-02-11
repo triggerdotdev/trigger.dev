@@ -24,7 +24,7 @@ class AttributeFlattener {
   constructor(
     private maxAttributeCount?: number,
     private maxDepth: number = DEFAULT_MAX_DEPTH
-  ) {}
+  ) { }
 
   get attributes(): Attributes {
     return this.result;
@@ -200,7 +200,8 @@ class AttributeFlattener {
         break;
       }
 
-      const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
+      const escapedKey = Array.isArray(obj) ? `[${key}]` : escapeKey(key);
+      const newPrefix = `${prefix ? `${prefix}.` : ""}${escapedKey}`;
 
       if (Array.isArray(value)) {
         for (let i = 0; i < value.length; i++) {
@@ -249,6 +250,43 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/**
+ * Escapes dots and backslashes in a key so they are not confused with
+ * the `.` nesting separator used by flattenAttributes.
+ */
+function escapeKey(key: string): string {
+  if (!key.includes(".") && !key.includes("\\")) {
+    return key;
+  }
+  return key.replace(/\\/g, "\\\\").replace(/\./g, "\\.");
+}
+
+/**
+ * Splits a flattened attribute key on unescaped dots, then unescapes
+ * each resulting part.  Handles both the new escaped format (`\.`)
+ * and legacy unescaped keys transparently.
+ */
+function splitEscapedKey(key: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+
+  for (let i = 0; i < key.length; i++) {
+    const ch = key[i];
+    if (ch === "\\" && i + 1 < key.length) {
+      // Consume the escaped character literally
+      current += key[i + 1];
+      i++;
+    } else if (ch === ".") {
+      parts.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  parts.push(current);
+  return parts;
+}
+
 export function unflattenAttributes(
   obj: Attributes,
   filteredKeys?: string[],
@@ -278,7 +316,7 @@ export function unflattenAttributes(
       continue;
     }
 
-    const parts = key.split(".").reduce(
+    const parts = splitEscapedKey(key).reduce(
       (acc, part) => {
         if (part.startsWith("[") && part.endsWith("]")) {
           // Handle array indices more precisely
