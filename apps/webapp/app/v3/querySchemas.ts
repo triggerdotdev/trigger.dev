@@ -1,7 +1,11 @@
 import { column, type TableSchema } from "@internal/tsql";
+import { z } from "zod";
 import { autoFormatSQL } from "~/components/code/TSQLEditor";
 import { runFriendlyStatus, runStatusTitleFromStatus } from "~/components/runs/v3/TaskRunStatus";
 import { logger } from "~/services/logger.server";
+
+export const QueryScopeSchema = z.enum(["organization", "project", "environment"]);
+export type QueryScope = z.infer<typeof QueryScopeSchema>;
 
 /**
  * Environment type values

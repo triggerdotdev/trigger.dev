@@ -30,7 +30,7 @@ import { QueuesFilter } from "~/components/metrics/QueuesFilter";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type WidgetData } from "~/components/metrics/QueryWidget";
-import type { QueryScope } from "~/services/queryService.server";
+import { QueryScopeSchema } from "~/v3/querySchemas";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardKey: z.string(),
@@ -145,7 +145,8 @@ export function MetricDashboard({
   const period = value("period");
   const from = value("from");
   const to = value("to");
-  const scope = (value("scope") as QueryScope) ?? "environment";
+  const parsedScope = QueryScopeSchema.safeParse(value("scope") ?? "environment");
+  const scope = parsedScope.success ? parsedScope.data : "environment";
   const tasks = values("tasks").filter((v) => v !== "");
   const queues = values("queues").filter((v) => v !== "");
 
