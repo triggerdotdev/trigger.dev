@@ -8,9 +8,10 @@ import {
   resolvePluginsForContext,
 } from "./extensions.js";
 import { createExternalsBuildExtension } from "./externals.js";
-import { join, relative, sep } from "node:path";
+import { join, relative, sep, basename } from "node:path";
 import { generateContainerfile } from "../deploy/buildImage.js";
 import { writeFile } from "node:fs/promises";
+import fsModule from "node:fs/promises";
 import { buildManifestToJSON } from "../utilities/buildManifest.js";
 import { readPackageJSON } from "pkg-types";
 import { writeJSONFile } from "../utilities/fileSystem.js";
@@ -53,16 +54,16 @@ export async function buildWorker(options: BuildWorkerOptions) {
   const buildContext = createBuildContext(options.target, resolvedConfig, {
     logger: options.plain
       ? {
-          debug: (...args) => console.log(...args),
-          log: (...args) => console.log(...args),
-          warn: (...args) => console.log(...args),
-          progress: (message) => console.log(message),
-          spinner: (message) => {
-            const $spinner = spinner({ plain: true });
-            $spinner.start(message);
-            return $spinner;
-          },
-        }
+        debug: (...args) => console.log(...args),
+        log: (...args) => console.log(...args),
+        warn: (...args) => console.log(...args),
+        progress: (message) => console.log(message),
+        spinner: (message) => {
+          const $spinner = spinner({ plain: true });
+          $spinner.start(message);
+          return $spinner;
+        },
+      }
       : undefined,
   });
   buildContext.prependExtension(externalsExtension);
@@ -196,6 +197,7 @@ async function writeDeployFiles({
     join(outputPath, "package.json"),
     {
       ...packageJson,
+      version: "0.0.0", // Strip version for better docker caching
       name: packageJson.name ?? "trigger-project",
       dependencies: {
         ...dependencies,
@@ -208,8 +210,13 @@ async function writeDeployFiles({
     true
   );
 
+  if (resolvedConfig.lockfilePath) {
+    const lockfileName = basename(resolvedConfig.lockfilePath);
+    await fsModule.copyFile(resolvedConfig.lockfilePath, join(outputPath, lockfileName));
+  }
+
   await writeJSONFile(join(outputPath, "build.json"), buildManifestToJSON(buildManifest));
-  await writeContainerfile(outputPath, buildManifest);
+  await writeContainerfile(outputPath, buildManifest, resolvedConfig.lockfilePath);
 }
 
 async function readProjectPackageJson(packageJsonPath: string) {
@@ -218,10 +225,22 @@ async function readProjectPackageJson(packageJsonPath: string) {
   return packageJson;
 }
 
-async function writeContainerfile(outputPath: string, buildManifest: BuildManifest) {
+async function writeContainerfile(
+  outputPath: string,
+  buildManifest: BuildManifest,
+  lockfilePath?: string
+) {
   if (!buildManifest.runControllerEntryPoint || !buildManifest.indexControllerEntryPoint) {
     throw new Error("Something went wrong with the build. Aborting deployment. [code 7789]");
   }
+
+  const packageManager = lockfilePath
+    ? lockfilePath.endsWith("pnpm-lock.yaml")
+      ? ("pnpm" as const)
+      : lockfilePath.endsWith("yarn.lock")
+        ? ("yarn" as const)
+        : ("npm" as const)
+    : undefined;
 
   const containerfile = await generateContainerfile({
     runtime: buildManifest.runtime,
@@ -229,6 +248,8 @@ async function writeContainerfile(outputPath: string, buildManifest: BuildManife
     build: buildManifest.build,
     image: buildManifest.image,
     indexScript: buildManifest.indexControllerEntryPoint,
+    packageManager,
+    lockfile: lockfilePath ? basename(lockfilePath) : undefined,
   });
 
   const containerfilePath = join(outputPath, "Containerfile");

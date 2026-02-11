@@ -683,6 +683,8 @@ export type GenerateContainerfileOptions = {
   image: BuildManifest["image"];
   indexScript: string;
   entrypoint: string;
+  packageManager?: "npm" | "pnpm" | "yarn";
+  lockfile?: string;
 };
 
 const BASE_IMAGE: Record<BuildRuntime, string> = {
@@ -738,6 +740,7 @@ async function generateBunContainerfile(options: GenerateContainerfileOptions) {
 
   return `# syntax=docker/dockerfile:1
 # check=skip=SecretsUsedInArgOrEnv
+ARG SOURCE_DATE_EPOCH
 FROM ${baseImage} AS base
 
 ${baseInstructions}
@@ -763,8 +766,11 @@ ${buildArgs}
 
 ${buildEnvVars}
 
-COPY --chown=bun:bun package.json ./
-RUN bun install --production --no-save
+COPY --chown=bun:bun package.json ${options.lockfile ? `${options.lockfile} ` : ""}./
+RUN ${options.lockfile && options.lockfile.endsWith(".lockb")
+      ? "bun install --frozen-lockfile --production"
+      : "bun install --production --no-save"
+    }
 
 # Now copy all the files
 # IMPORTANT: Do this after running npm install because npm i will wipe out the node_modules directory
@@ -840,6 +846,7 @@ async function generateNodeContainerfile(options: GenerateContainerfileOptions) 
 
   return `# syntax=docker/dockerfile:1
 # check=skip=SecretsUsedInArgOrEnv
+ARG SOURCE_DATE_EPOCH
 FROM ${baseImage} AS base
 
 ${baseInstructions}
@@ -868,8 +875,15 @@ ${buildEnvVars}
 ENV NODE_ENV=production
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
-COPY --chown=node:node package.json ./
-RUN npm i --no-audit --no-fund --no-save --no-package-lock
+COPY --chown=node:node package.json ${options.lockfile ? `${options.lockfile} ` : ""}./
+RUN ${options.packageManager === "pnpm"
+      ? "npx pnpm i --prod --no-frozen-lockfile"
+      : options.packageManager === "yarn"
+        ? "yarn install --production --no-lockfile"
+        : options.lockfile && options.lockfile.endsWith("package-lock.json")
+          ? "npm ci --no-audit --no-fund"
+          : "npm i --no-audit --no-fund --no-save --no-package-lock"
+    }
 
 # Now copy all the files
 # IMPORTANT: Do this after running npm install because npm i will wipe out the node_modules directory

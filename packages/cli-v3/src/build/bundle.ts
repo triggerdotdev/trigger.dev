@@ -3,6 +3,7 @@ import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { createHash } from "node:crypto";
+import { copyFile, mkdir } from "node:fs/promises";
 import { basename, join, relative, resolve } from "node:path";
 import { createFile, createFileWithStore } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
@@ -128,10 +129,13 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
     },
   };
 
+  const buildShims = await prepareShims(resolvedConfig.workingDir);
+
   const buildOptions = await createBuildOptions({
     ...options,
     entryPoints: entryPointManager.entryPoints,
     buildResultPlugin,
+    shims: buildShims,
   });
 
   let result: esbuild.BuildResult<typeof buildOptions>;
@@ -176,7 +180,11 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
 
 // Helper function to create build options
 async function createBuildOptions(
-  options: BundleOptions & { entryPoints: string[]; buildResultPlugin?: esbuild.Plugin }
+  options: BundleOptions & {
+    entryPoints: string[];
+    buildResultPlugin?: esbuild.Plugin;
+    shims?: string[];
+  }
 ): Promise<esbuild.BuildOptions & { metafile: true }> {
   const customConditions = options.resolvedConfig.build?.conditions ?? [];
   const conditions = [...customConditions, "trigger.dev", "module", "node"];
@@ -216,7 +224,8 @@ async function createBuildOptions(
       ".wasm": "copy",
     },
     outExtension: { ".js": ".mjs" },
-    inject: [...shims], // TODO: copy this into the working dir to work with Yarn PnP
+    outExtension: { ".js": ".mjs" },
+    inject: options.shims ?? [...shims],
     jsx: options.jsxAutomatic ? "automatic" : undefined,
     jsxDev: options.jsxAutomatic && options.target === "dev" ? true : undefined,
     plugins: [
@@ -424,4 +433,20 @@ export async function createBuildManifestFromBundle({
   }
 
   return copyManifestToDir(buildManifest, destination, workerDir, storeDir);
+}
+
+async function prepareShims(workingDir: string): Promise<string[]> {
+  const shimsDir = join(workingDir, ".trigger", "shims");
+  await mkdir(shimsDir, { recursive: true });
+
+  const localShims: string[] = [];
+
+  for (const shimPath of shims) {
+    const shimFilename = basename(shimPath);
+    const destination = join(shimsDir, shimFilename);
+    await copyFile(shimPath, destination);
+    localShims.push(destination);
+  }
+
+  return localShims;
 }
