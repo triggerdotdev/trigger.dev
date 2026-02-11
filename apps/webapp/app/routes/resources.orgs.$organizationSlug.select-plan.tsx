@@ -11,7 +11,7 @@ import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { uiComponent } from "@team-plain/typescript-sdk";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import {
-  AddOnPricing,
+  type AddOnPricing,
   type FreePlanDefinition,
   type Limits,
   type PaidPlanDefinition,
