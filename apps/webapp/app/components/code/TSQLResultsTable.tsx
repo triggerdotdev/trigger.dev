@@ -877,7 +877,7 @@ function FilterCell({
   }, [shouldFocus, onFocused]);
 
   return (
-    <div className="flex items-center bg-background-bright px-1.5 pb-1" style={{ width }}>
+    <div className="flex items-center bg-background-bright px-1.5 pb-2" style={{ width }}>
       <DebouncedInput
         ref={inputRef}
         value={columnFilterValue ?? ""}
