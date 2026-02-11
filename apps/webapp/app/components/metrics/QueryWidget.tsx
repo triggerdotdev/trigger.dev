@@ -56,6 +56,7 @@ const chartConfigOptions = {
   sortByColumn: z.string().nullable(),
   sortDirection: SortDirection,
   aggregation: AggregationType,
+  seriesColors: z.record(z.string()).optional(),
 };
 
 const ChartConfiguration = z.object({ ...chartConfigOptions });

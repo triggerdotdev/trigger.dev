@@ -324,6 +324,7 @@ export default function Page() {
                 sortByColumn: state.editorMode.widget.display.sortByColumn,
                 sortDirection: state.editorMode.widget.display.sortDirection,
                 aggregation: state.editorMode.widget.display.aggregation,
+                seriesColors: state.editorMode.widget.display.seriesColors,
               }
             : defaultChartConfig;
         const editorDefaultBigNumberConfig =

@@ -304,3 +304,42 @@ export const runStatusTitleFromStatus: Record<TaskRunStatus, RunFriendlyStatus> 
 };
 
 const titlesStatusesArray = Object.entries(runStatusTitleFromStatus);
+
+/**
+ * Hex color for each TaskRunStatus, mirroring `runStatusClassNameColor` but as
+ * concrete hex values for non-CSS contexts (e.g. chart series colors).
+ */
+const RUN_STATUS_HEX_COLORS: Record<TaskRunStatus, string> = {
+  PENDING: "#5F6570", // charcoal-500
+  DELAYED: "#717B85", // charcoal-400
+  PENDING_VERSION: "#f59e0b", // amber-500
+  WAITING_FOR_DEPLOY: "#d97706", // amber-600
+  EXECUTING: "#3b82f6", // blue-500
+  RETRYING_AFTER_FAILURE: "#2563eb", // blue-600
+  DEQUEUED: "#60a5fa", // blue-400
+  WAITING_TO_RESUME: "#4E535C", // charcoal-600
+  PAUSED: "#fcd34d", // amber-300
+  CANCELED: "#838D97", // charcoal-350
+  EXPIRED: "#969EA8", // charcoal-300
+  INTERRUPTED: "#e11d48", // rose-600 (error)
+  COMPLETED_SUCCESSFULLY: "#28BF5C", // mint-500 (success)
+  COMPLETED_WITH_ERRORS: "#be123c", // rose-700 (error)
+  SYSTEM_FAILURE: "#f43f5e", // rose-500 (error)
+  CRASHED: "#9f1239", // rose-800 (error)
+  TIMED_OUT: "#fb7185", // rose-400 (error)
+};
+
+/**
+ * Get the hex color for a run status value. Accepts either a raw TaskRunStatus
+ * (e.g. "COMPLETED_SUCCESSFULLY") or a friendly name (e.g. "Completed").
+ * Returns `undefined` when the value is not a recognised status.
+ */
+export function getRunStatusHexColor(value: string): string | undefined {
+  if (isTaskRunStatus(value)) {
+    return RUN_STATUS_HEX_COLORS[value];
+  }
+  if (isRunFriendlyStatus(value)) {
+    return RUN_STATUS_HEX_COLORS[runStatusFromFriendlyTitle(value)];
+  }
+  return undefined;
+}

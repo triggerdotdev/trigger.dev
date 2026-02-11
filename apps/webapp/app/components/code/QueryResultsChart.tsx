@@ -4,47 +4,8 @@ import type { ChartConfig } from "~/components/primitives/charts/Chart";
 import { Chart } from "~/components/primitives/charts/ChartCompound";
 import { Paragraph } from "../primitives/Paragraph";
 import { AggregationType, ChartConfiguration } from "../metrics/QueryWidget";
-
-// Color palette for chart series - 30 distinct colors for large datasets
-const CHART_COLORS = [
-  // Primary colors
-  "#7655fd", // Purple
-  "#22c55e", // Green
-  "#f59e0b", // Amber
-  "#ef4444", // Red
-  "#06b6d4", // Cyan
-  "#ec4899", // Pink
-  "#8b5cf6", // Violet
-  "#14b8a6", // Teal
-  "#f97316", // Orange
-  "#6366f1", // Indigo
-  // Extended palette
-  "#84cc16", // Lime
-  "#0ea5e9", // Sky
-  "#f43f5e", // Rose
-  "#a855f7", // Fuchsia
-  "#eab308", // Yellow
-  "#10b981", // Emerald
-  "#3b82f6", // Blue
-  "#d946ef", // Magenta
-  "#78716c", // Stone
-  "#facc15", // Gold
-  // Additional distinct colors
-  "#2dd4bf", // Turquoise
-  "#fb923c", // Light orange
-  "#a3e635", // Yellow-green
-  "#38bdf8", // Light blue
-  "#c084fc", // Light purple
-  "#4ade80", // Light green
-  "#fbbf24", // Light amber
-  "#f472b6", // Light pink
-  "#67e8f9", // Light cyan
-  "#818cf8", // Light indigo
-];
-
-function getSeriesColor(index: number): string {
-  return CHART_COLORS[index % CHART_COLORS.length];
-}
+import { getRunStatusHexColor } from "~/components/runs/v3/TaskRunStatus";
+import { getSeriesColor } from "./chartColors";
 
 interface QueryResultsChartProps {
   rows: Record<string, unknown>[];
@@ -828,17 +789,25 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   // Create dynamic Y-axis formatter based on data range
   const yAxisFormatter = useMemo(() => createYAxisFormatter(data, series), [data, series]);
 
+  // Check if the group-by column has a runStatus customRenderType
+  const groupByIsRunStatus = useMemo(() => {
+    if (!groupByColumn) return false;
+    const col = columns.find((c) => c.name === groupByColumn);
+    return col?.customRenderType === "runStatus";
+  }, [groupByColumn, columns]);
+
   // Build chart config for colors/labels
   const chartConfig = useMemo(() => {
     const cfg: ChartConfig = {};
     series.forEach((s, i) => {
+      const statusColor = groupByIsRunStatus ? getRunStatusHexColor(s) : undefined;
       cfg[s] = {
         label: s,
-        color: getSeriesColor(i),
+        color: statusColor ?? config.seriesColors?.[s] ?? getSeriesColor(i),
       };
     });
     return cfg;
-  }, [series]);
+  }, [series, groupByIsRunStatus, config.seriesColors]);
 
   // Custom tooltip label formatter for better date display
   const tooltipLabelFormatter = useMemo(() => {
@@ -882,8 +851,8 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     return [min, "auto"] as [number, string];
   }, [data, series]);
 
-  // Determine appropriate angle for X-axis labels based on granularity
-  const xAxisAngle = timeGranularity === "hours" || timeGranularity === "seconds" ? -45 : 0;
+  // Angle all date-based labels for consistent appearance and to avoid overlap
+  const xAxisAngle = isDateBased ? -45 : 0;
   const xAxisHeight = xAxisAngle !== 0 ? 65 : undefined;
 
   // Check if the data would produce duplicate labels at the current granularity.
