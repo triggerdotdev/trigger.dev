@@ -269,10 +269,6 @@ export class LogsListPresenter extends BasePresenter {
         queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
           insertedAtStart: convertDateToClickhouseDateTime(effectiveFrom),
         });
-
-      queryBuilder.where("start_time >= {fromTime: String}", {
-        fromTime: formatNanosecondsForClickhouse(fromNs),
-      });
     }
 
     if (effectiveTo) {
@@ -281,10 +277,6 @@ export class LogsListPresenter extends BasePresenter {
 
       queryBuilder.where("inserted_at <= {insertedAtEnd: DateTime64(3)}", {
         insertedAtEnd: convertDateToClickhouseDateTime(clampedTo),
-      });
-
-      queryBuilder.where("start_time <= {toTime: String}", {
-        toTime: formatNanosecondsForClickhouse(toNs),
       });
     }
 
