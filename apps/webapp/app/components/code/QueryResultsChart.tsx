@@ -121,10 +121,16 @@ function formatDateByGranularity(date: Date, granularity: TimeGranularity): stri
  * Snap a millisecond value up to the nearest "nice" interval
  */
 function snapToNiceInterval(ms: number): number {
-  const MINUTE = 60 * 1000;
+  const SECOND = 1000;
+  const MINUTE = 60 * SECOND;
   const HOUR = 60 * MINUTE;
   const DAY = 24 * HOUR;
 
+  if (ms <= SECOND) return SECOND;
+  if (ms <= 5 * SECOND) return 5 * SECOND;
+  if (ms <= 10 * SECOND) return 10 * SECOND;
+  if (ms <= 15 * SECOND) return 15 * SECOND;
+  if (ms <= 30 * SECOND) return 30 * SECOND;
   if (ms <= MINUTE) return MINUTE;
   if (ms <= 5 * MINUTE) return 5 * MINUTE;
   if (ms <= 10 * MINUTE) return 10 * MINUTE;
@@ -187,20 +193,7 @@ function fillTimeGaps(
   // If filling would create too many points, increase the interval to stay within limits
   let effectiveInterval = interval;
   if (estimatedPoints > maxPoints) {
-    effectiveInterval = Math.ceil(range / maxPoints);
-    // Round up to a nice interval
-    const MINUTE = 60 * 1000;
-    const HOUR = 60 * MINUTE;
-    if (effectiveInterval < 5 * MINUTE) effectiveInterval = 5 * MINUTE;
-    else if (effectiveInterval < 10 * MINUTE) effectiveInterval = 10 * MINUTE;
-    else if (effectiveInterval < 15 * MINUTE) effectiveInterval = 15 * MINUTE;
-    else if (effectiveInterval < 30 * MINUTE) effectiveInterval = 30 * MINUTE;
-    else if (effectiveInterval < HOUR) effectiveInterval = HOUR;
-    else if (effectiveInterval < 2 * HOUR) effectiveInterval = 2 * HOUR;
-    else if (effectiveInterval < 4 * HOUR) effectiveInterval = 4 * HOUR;
-    else if (effectiveInterval < 6 * HOUR) effectiveInterval = 6 * HOUR;
-    else if (effectiveInterval < 12 * HOUR) effectiveInterval = 12 * HOUR;
-    else effectiveInterval = 24 * HOUR;
+    effectiveInterval = snapToNiceInterval(Math.ceil(range / maxPoints));
   }
 
   // Create a map to collect values for each bucket (for aggregation)
@@ -363,9 +356,12 @@ function generateTimeTicks(minTime: number, maxTime: number, maxTicks = 8): numb
  * Always includes time when the data point has a non-midnight time,
  * so hovering a specific bar at e.g. 14:00 shows the full timestamp
  * even when the axis labels only show the day.
+ * Seconds are shown whenever the granularity is "seconds" or the
+ * specific data point has non-zero seconds.
  */
 function formatDateForTooltip(date: Date, granularity: TimeGranularity): string {
   const hasTime = date.getHours() !== 0 || date.getMinutes() !== 0 || date.getSeconds() !== 0;
+  const hasSeconds = date.getSeconds() !== 0;
 
   if (
     granularity === "seconds" ||
@@ -377,7 +373,7 @@ function formatDateForTooltip(date: Date, granularity: TimeGranularity): string 
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      second: granularity === "seconds" ? "2-digit" : undefined,
+      second: granularity === "seconds" || hasSeconds ? "2-digit" : undefined,
       hour12: false,
     });
   }
