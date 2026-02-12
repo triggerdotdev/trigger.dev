@@ -1,7 +1,7 @@
 import { AnyRunShape } from "@trigger.dev/core/v3";
 import { toolsMetadata } from "../config.js";
 import { formatRun, formatRunList, formatRunShape, formatRunTrace } from "../formatters.js";
-import { CommonRunsInput, GetRunDetailsInput, ListRunsInput } from "../schemas.js";
+import { CommonRunsInput, GetRunDetailsInput, ListRunsInput, WaitForRunInput } from "../schemas.js";
 import { respondWithError, toolHandler } from "../utils.js";
 
 export const getRunDetailsTool = {
@@ -65,8 +65,8 @@ export const waitForRunToCompleteTool = {
   name: toolsMetadata.wait_for_run_to_complete.name,
   title: toolsMetadata.wait_for_run_to_complete.title,
   description: toolsMetadata.wait_for_run_to_complete.description,
-  inputSchema: CommonRunsInput.shape,
-  handler: toolHandler(CommonRunsInput.shape, async (input, { ctx, signal }) => {
+  inputSchema: WaitForRunInput.shape,
+  handler: toolHandler(WaitForRunInput.shape, async (input, { ctx, signal }) => {
     ctx.logger?.log("calling wait_for_run_to_complete", { input });
 
     if (ctx.options.devOnly && input.environment !== "dev") {
@@ -87,20 +87,35 @@ export const waitForRunToCompleteTool = {
       branch: input.branch,
     });
 
-    const runSubscription = apiClient.subscribeToRun(input.runId, { signal });
+    const timeoutMs = input.timeoutInSeconds * 1000;
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const combinedSignal = signal
+      ? AbortSignal.any([signal, timeoutSignal])
+      : timeoutSignal;
+
+    const runSubscription = apiClient.subscribeToRun(input.runId, { signal: combinedSignal });
     const readableStream = runSubscription.getReader();
 
     let run: AnyRunShape | null = null;
+    let timedOut = false;
 
-    while (true) {
-      const { done, value } = await readableStream.read();
-      if (done) {
-        break;
+    try {
+      while (true) {
+        const { done, value } = await readableStream.read();
+        if (done) {
+          break;
+        }
+        run = value;
+
+        if (value.isCompleted) {
+          break;
+        }
       }
-      run = value;
-
-      if (value.isCompleted) {
-        break;
+    } catch (error) {
+      if (timeoutSignal.aborted) {
+        timedOut = true;
+      } else {
+        throw error;
       }
     }
 
@@ -108,8 +123,12 @@ export const waitForRunToCompleteTool = {
       return respondWithError("Run not found");
     }
 
+    const prefix = timedOut
+      ? `Timed out after ${input.timeoutInSeconds}s. Returning current run state:\n\n`
+      : "";
+
     return {
-      content: [{ type: "text", text: formatRunShape(run) }],
+      content: [{ type: "text", text: prefix + formatRunShape(run) }],
     };
   }),
 };
