@@ -129,7 +129,11 @@ export { SubtaskUnwrapError, TaskRunPromise };
 export type Context = TaskRunContext;
 
 export function queue(options: QueueOptions): Queue {
-  resourceCatalog.registerQueueMetadata(options);
+  resourceCatalog.registerQueueMetadata({
+    name: options.name,
+    concurrencyLimit: options.concurrencyLimit,
+    rateLimit: options.rateLimit,
+  });
 
   // @ts-expect-error
   options[Symbol.for("trigger.dev/queue")] = true;
@@ -248,6 +252,7 @@ export function createTask<
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
+      rateLimit: queue.rateLimit,
     });
   }
 
@@ -380,6 +385,7 @@ export function createSchemaTask<
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
+      rateLimit: queue.rateLimit,
     });
   }
 
@@ -1813,6 +1819,7 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
       options: {
         queue: item.options?.queue ? { name: item.options.queue } : undefined,
         concurrencyKey: item.options?.concurrencyKey,
+        rateLimitKey: item.options?.rateLimitKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -1866,6 +1873,7 @@ async function* transformBatchItemsStreamForWait<TTask extends AnyTask>(
         lockToVersion: taskContext.worker?.version,
         queue: item.options?.queue ? { name: item.options.queue } : undefined,
         concurrencyKey: item.options?.concurrencyKey,
+        rateLimitKey: item.options?.rateLimitKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -1916,6 +1924,7 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
       options: {
         queue: item.options?.queue ? { name: item.options.queue } : undefined,
         concurrencyKey: item.options?.concurrencyKey,
+        rateLimitKey: item.options?.rateLimitKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -1968,6 +1977,7 @@ async function* transformBatchByTaskItemsStreamForWait<TTasks extends readonly A
         lockToVersion: taskContext.worker?.version,
         queue: item.options?.queue ? { name: item.options.queue } : undefined,
         concurrencyKey: item.options?.concurrencyKey,
+        rateLimitKey: item.options?.rateLimitKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -2020,6 +2030,7 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
           ? { name: queue }
           : undefined,
         concurrencyKey: item.options?.concurrencyKey,
+        rateLimitKey: item.options?.rateLimitKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -2081,6 +2092,7 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
           ? { name: queue }
           : undefined,
         concurrencyKey: item.options?.concurrencyKey,
+        rateLimitKey: item.options?.rateLimitKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -2128,6 +2140,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
       options: {
         queue: options?.queue ? { name: options.queue } : undefined,
         concurrencyKey: options?.concurrencyKey,
+        rateLimitKey: options?.rateLimitKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         idempotencyKey: processedIdempotencyKey?.toString(),
@@ -2215,6 +2228,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
               ? { name: queue }
               : undefined,
             concurrencyKey: item.options?.concurrencyKey,
+            rateLimitKey: item.options?.rateLimitKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
             delay: item.options?.delay,
@@ -2388,6 +2402,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
             queue: options?.queue ? { name: options.queue } : undefined,
             concurrencyKey: options?.concurrencyKey,
+            rateLimitKey: options?.rateLimitKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
             delay: options?.delay,
@@ -2490,6 +2505,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
               ? { name: queue }
               : undefined,
             concurrencyKey: item.options?.concurrencyKey,
+            rateLimitKey: item.options?.rateLimitKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
             delay: item.options?.delay,
