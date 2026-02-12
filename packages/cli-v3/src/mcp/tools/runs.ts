@@ -8,6 +8,8 @@ export const getRunDetailsTool = {
   name: toolsMetadata.get_run_details.name,
   title: toolsMetadata.get_run_details.title,
   description: toolsMetadata.get_run_details.description,
+  readOnlyHint: true,
+  destructiveHint: false,
   inputSchema: GetRunDetailsInput.shape,
   handler: toolHandler(GetRunDetailsInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling get_run_details", { input });
@@ -65,6 +67,8 @@ export const waitForRunToCompleteTool = {
   name: toolsMetadata.wait_for_run_to_complete.name,
   title: toolsMetadata.wait_for_run_to_complete.title,
   description: toolsMetadata.wait_for_run_to_complete.description,
+  readOnlyHint: true,
+  destructiveHint: false,
   inputSchema: CommonRunsInput.shape,
   handler: toolHandler(CommonRunsInput.shape, async (input, { ctx, signal }) => {
     ctx.logger?.log("calling wait_for_run_to_complete", { input });
@@ -118,6 +122,8 @@ export const cancelRunTool = {
   name: toolsMetadata.cancel_run.name,
   title: toolsMetadata.cancel_run.title,
   description: toolsMetadata.cancel_run.description,
+  readOnlyHint: false,
+  destructiveHint: true,
   inputSchema: CommonRunsInput.shape,
   handler: toolHandler(CommonRunsInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling cancel_run", { input });
@@ -158,6 +164,8 @@ export const listRunsTool = {
   name: toolsMetadata.list_runs.name,
   title: toolsMetadata.list_runs.title,
   description: toolsMetadata.list_runs.description,
+  readOnlyHint: true,
+  destructiveHint: false,
   inputSchema: ListRunsInput.shape,
   handler: toolHandler(ListRunsInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling list_runs", { input });

@@ -11,6 +11,8 @@ export const listOrgsTool = {
   name: toolsMetadata.list_orgs.name,
   title: toolsMetadata.list_orgs.title,
   description: toolsMetadata.list_orgs.description,
+  readOnlyHint: true,
+  destructiveHint: false,
   inputSchema: {},
   handler: async (input: unknown, { ctx }: ToolMeta): Promise<CallToolResult> => {
     ctx.logger?.log("calling list_orgs", { input });
@@ -39,6 +41,8 @@ export const listProjectsTool = {
   name: toolsMetadata.list_projects.name,
   title: toolsMetadata.list_projects.title,
   description: toolsMetadata.list_projects.description,
+  readOnlyHint: true,
+  destructiveHint: false,
   inputSchema: {},
   handler: async (input: unknown, { ctx }: ToolMeta): Promise<CallToolResult> => {
     ctx.logger?.log("calling list_projects", { input });
@@ -107,6 +111,8 @@ export const createProjectInOrgTool = {
   name: toolsMetadata.create_project_in_org.name,
   title: toolsMetadata.create_project_in_org.title,
   description: toolsMetadata.create_project_in_org.description,
+  readOnlyHint: false,
+  destructiveHint: true,
   inputSchema: CreateProjectInOrgInput.shape,
   handler: toolHandler(CreateProjectInOrgInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling create_project_in_org", { input });
@@ -137,6 +143,8 @@ export const initializeProjectTool = {
   name: toolsMetadata.initialize_project.name,
   title: toolsMetadata.initialize_project.title,
   description: toolsMetadata.initialize_project.description,
+  readOnlyHint: false,
+  destructiveHint: true,
   inputSchema: InitializeProjectInput.shape,
   handler: toolHandler(InitializeProjectInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling initialize_project", { input });

@@ -7,6 +7,8 @@ export const searchDocsTool = {
   name: toolsMetadata.search_docs.name,
   title: toolsMetadata.search_docs.title,
   description: toolsMetadata.search_docs.description,
+  readOnlyHint: true,
+  destructiveHint: false,
   inputSchema: {
     query: z.string(),
   },

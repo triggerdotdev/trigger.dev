@@ -7,6 +7,8 @@ export const listPreviewBranchesTool = {
   name: toolsMetadata.list_preview_branches.name,
   title: toolsMetadata.list_preview_branches.title,
   description: toolsMetadata.list_preview_branches.description,
+  readOnlyHint: true,
+  destructiveHint: false,
   inputSchema: ListPreviewBranchesInput.shape,
   handler: toolHandler(ListPreviewBranchesInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling list_preview_branches", { input });
