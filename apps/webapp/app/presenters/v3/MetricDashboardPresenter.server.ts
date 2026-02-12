@@ -1,5 +1,6 @@
 import { BasePresenter } from "./basePresenter.server";
-import { getDefaultPeriod, type QueryScope } from "~/services/queryService.server";
+import { type QueryScope } from "~/services/queryService.server";
+import { getLimit } from "~/services/platform.v3.server";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { builtInDashboard } from "./BuiltInDashboards.server";
@@ -81,7 +82,7 @@ export class MetricDashboardPresenter extends BasePresenter {
 
     const layout = this.#getLayout(dashboard.layout);
 
-    const defaultPeriod = await getDefaultPeriod(organizationId);
+    const defaultPeriod = await getDashboardDefaultPeriod(organizationId);
 
     return {
       friendlyId: dashboard.friendlyId,
@@ -92,7 +93,7 @@ export class MetricDashboardPresenter extends BasePresenter {
   }
 
   public async builtInDashboard({ organizationId, key }: { organizationId: string; key: string }) {
-    const defaultPeriod = await getDefaultPeriod(organizationId);
+    const defaultPeriod = await getDashboardDefaultPeriod(organizationId);
     const dashboard = builtInDashboard(key);
     return {
       ...dashboard,
@@ -109,4 +110,14 @@ export class MetricDashboardPresenter extends BasePresenter {
 
     return parsedLayout.data;
   }
+}
+
+/** Dashboard-specific default period (1 day), capped to the org's max query period */
+async function getDashboardDefaultPeriod(organizationId: string): Promise<string> {
+  const idealDefaultPeriodDays = 1;
+  const maxQueryPeriod = await getLimit(organizationId, "queryPeriodDays", 30);
+  if (maxQueryPeriod < idealDefaultPeriodDays) {
+    return `${maxQueryPeriod}d`;
+  }
+  return `${idealDefaultPeriodDays}d`;
 }
