@@ -80,62 +80,70 @@ export class ComputeWorkloadManager implements WorkloadManager {
 
     const url = `${this.opts.gatewayUrl}/api/sandboxes`;
 
+    // Wide event: single canonical log line emitted in finally
     const event: Record<string, unknown> = {
+      // High-cardinality identifiers
       runId: opts.runFriendlyId,
       runnerId,
+      envId: opts.envId,
+      envType: opts.envType,
+      orgId: opts.orgId,
+      projectId: opts.projectId,
+      deploymentVersion: opts.deploymentVersion,
+      machine: opts.machine.name,
+      // Environment
+      instanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
+      // Request
       image: imageRef,
       url,
     };
 
     const startMs = performance.now();
 
-    const [fetchError, response] = await tryCatch(
-      fetch(url, {
-        method: "POST",
-        headers,
-        signal: AbortSignal.timeout(this.opts.gatewayTimeoutMs),
-        body: JSON.stringify({
-          image: imageRef,
-          env: envVars,
-        }),
-      })
-    );
+    try {
+      const [fetchError, response] = await tryCatch(
+        fetch(url, {
+          method: "POST",
+          headers,
+          signal: AbortSignal.timeout(this.opts.gatewayTimeoutMs),
+          body: JSON.stringify({
+            image: imageRef,
+            env: envVars,
+          }),
+        })
+      );
 
-    event.durationMs = Math.round(performance.now() - startMs);
+      if (fetchError) {
+        event.error = fetchError instanceof Error ? fetchError.message : String(fetchError);
+        event.errorType =
+          fetchError instanceof DOMException && fetchError.name === "TimeoutError"
+            ? "timeout"
+            : "fetch";
+        return;
+      }
 
-    if (fetchError) {
-      event.ok = false;
-      event.error = fetchError instanceof Error ? fetchError.message : String(fetchError);
-      event.errorType =
-        fetchError instanceof DOMException && fetchError.name === "TimeoutError"
-          ? "timeout"
-          : "fetch";
-      this.logger.error("create sandbox", event);
-      return;
+      event.status = response.status;
+
+      if (!response.ok) {
+        const [bodyError, body] = await tryCatch(response.text());
+        event.responseBody = bodyError ? undefined : body;
+        return;
+      }
+
+      const [parseError, data] = await tryCatch(response.json());
+
+      if (parseError) {
+        event.error = parseError instanceof Error ? parseError.message : String(parseError);
+        event.errorType = "parse";
+        return;
+      }
+
+      event.sandboxId = data.id;
+      event.ok = true;
+    } finally {
+      event.durationMs = Math.round(performance.now() - startMs);
+      event.ok ??= false;
+      this.logger.info("create sandbox", event);
     }
-
-    event.status = response.status;
-
-    if (!response.ok) {
-      const [bodyError, body] = await tryCatch(response.text());
-      event.ok = false;
-      event.responseBody = bodyError ? undefined : body;
-      this.logger.error("create sandbox", event);
-      return;
-    }
-
-    const [parseError, data] = await tryCatch(response.json());
-
-    if (parseError) {
-      event.ok = false;
-      event.error = parseError instanceof Error ? parseError.message : String(parseError);
-      event.errorType = "parse";
-      this.logger.error("create sandbox", event);
-      return;
-    }
-
-    event.ok = true;
-    event.sandboxId = data.id;
-    this.logger.log("create sandbox", event);
   }
 }
