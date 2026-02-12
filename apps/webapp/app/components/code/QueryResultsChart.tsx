@@ -558,7 +558,16 @@ function transformDataForChart(
       // for the range size (target ~150 points) so we don't create overly dense charts
       const rangeMs = rawMaxTime - rawMinTime;
       const minRangeInterval = timeRange ? snapToNiceInterval(rangeMs / 150) : 0;
-      const effectiveInterval = Math.max(dataInterval, minRangeInterval);
+      // Also cap the interval so we get enough data points to visually represent
+      // the full time range. Without this, limited data (e.g. 1 point) defaults
+      // to a 1-day interval which can be far too coarse for shorter ranges,
+      // producing too few bars/points and potentially buckets outside the domain.
+      const maxRangeInterval =
+        timeRange && rangeMs > 0 ? snapToNiceInterval(rangeMs / 8) : Infinity;
+      const effectiveInterval = Math.min(
+        Math.max(dataInterval, minRangeInterval),
+        maxRangeInterval
+      );
       data = fillTimeGaps(
         data,
         xDataKey,
@@ -632,7 +641,16 @@ function transformDataForChart(
     // for the range size (target ~150 points) so we don't create overly dense charts
     const rangeMs = rawMaxTime - rawMinTime;
     const minRangeInterval = timeRange ? snapToNiceInterval(rangeMs / 150) : 0;
-    const effectiveInterval = Math.max(dataInterval, minRangeInterval);
+    // Also cap the interval so we get enough data points to visually represent
+    // the full time range. Without this, limited data (e.g. 1 point) defaults
+    // to a 1-day interval which can be far too coarse for shorter ranges,
+    // producing too few bars/points and potentially buckets outside the domain.
+    const maxRangeInterval =
+      timeRange && rangeMs > 0 ? snapToNiceInterval(rangeMs / 8) : Infinity;
+    const effectiveInterval = Math.min(
+      Math.max(dataInterval, minRangeInterval),
+      maxRangeInterval
+    );
     data = fillTimeGaps(
       data,
       xDataKey,
