@@ -14,6 +14,7 @@ import {
   type TableSchema,
   type QuerySettings,
   type FieldMappings,
+  type TimeRange,
   type WhereClauseCondition
 } from "@internal/tsql";
 import type { ClickhouseReader, QueryStats } from "./types.js";
@@ -25,7 +26,7 @@ const logger = new Logger("tsql", "info");
 
 export type { QueryStats };
 
-export type { TableSchema, QuerySettings, FieldMappings, WhereClauseCondition };
+export type { TableSchema, QuerySettings, FieldMappings, TimeRange, WhereClauseCondition };
 
 /**
  * Options for executing a TSQL query
@@ -101,6 +102,12 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
    * ```
    */
   whereClauseFallback?: Record<string, WhereClauseCondition>;
+  /**
+   * Time range for `timeBucket()` interval calculation.
+   * When provided, `timeBucket()` uses this to determine the appropriate bucket size
+   * based on the span of the time range.
+   */
+  timeRange?: TimeRange;
 }
 
 /**
@@ -183,6 +190,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       settings: compiledSettings,
       fieldMappings: options.fieldMappings,
       whereClauseFallback: options.whereClauseFallback,
+      timeRange: options.timeRange,
     });
 
     generatedSql = sql;

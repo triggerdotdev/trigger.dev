@@ -1,8 +1,6 @@
 import React, { useMemo } from "react";
 import { useChartContext } from "./ChartContext";
 import { useSeriesTotal } from "./ChartRoot";
-import { Button } from "../Buttons";
-import { Paragraph } from "../Paragraph";
 import { cn } from "~/utils/cn";
 import { AnimatedNumber } from "../AnimatedNumber";
 
@@ -132,11 +130,7 @@ export function ChartLegendCompound({
 
   return (
     <div
-      className={cn(
-        "flex flex-col pt-4 text-sm",
-        scrollable && "max-h-[50%] min-h-0",
-        className
-      )}
+      className={cn("flex flex-col pt-4 text-sm", scrollable && "max-h-[50%] min-h-0", className)}
     >
       {/* Total row */}
       <div
@@ -155,7 +149,13 @@ export function ChartLegendCompound({
       <div className="mx-2 my-1 shrink-0 border-t border-charcoal-750" />
 
       {/* Legend items - scrollable when scrollable prop is true */}
-      <div className={cn("flex flex-col", scrollable && "min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600")}>
+      <div
+        className={cn(
+          "flex flex-col",
+          scrollable &&
+            "min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        )}
+      >
         {legendItems.visible.map((item) => {
           const total = currentData[item.dataKey] ?? 0;
           const isActive = highlight.activeBarKey === item.dataKey;
@@ -211,7 +211,10 @@ export function ChartLegendCompound({
               remainingCount={legendItems.remaining - 1}
             />
           ) : (
-            <ViewAllDataRow remainingCount={legendItems.remaining} onViewAll={onViewAllLegendItems} />
+            <ViewAllDataRow
+              remainingCount={legendItems.remaining}
+              onViewAll={onViewAllLegendItems}
+            />
           ))}
       </div>
     </div>
@@ -225,23 +228,26 @@ type ViewAllDataRowProps = {
 
 function ViewAllDataRow({ remainingCount, onViewAll }: ViewAllDataRowProps) {
   return (
-    <Button
-      variant="minimal/small"
-      fullWidth
-      iconSpacing="justify-between"
-      className="px-2 py-1"
+    <div
+      className="relative flex w-full cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 transition hover:bg-charcoal-850"
       onClick={onViewAll}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onViewAll?.();
+        }
+      }}
     >
-      <div className="flex items-center gap-1.5 text-text-dimmed">
-        <div className="h-3 w-1 rounded-[2px] border border-charcoal-600" />
-        <Paragraph variant="extra-small" className="tabular-nums">
-          {remainingCount} more…
-        </Paragraph>
+      <div className="relative flex w-full items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5">
+          <div className="w-1 shrink-0 self-stretch rounded-[2px] border border-charcoal-600" />
+          <span className="text-text-dimmed tabular-nums">{remainingCount} more…</span>
+        </div>
+        <span className="self-start text-indigo-500">View all</span>
       </div>
-      <Paragraph variant="extra-small" className="text-indigo-500">
-        View all
-      </Paragraph>
-    </Button>
+    </div>
   );
 }
 
@@ -261,11 +267,11 @@ function HoveredHiddenItemRow({ item, value, remainingCount }: HoveredHiddenItem
           style={{ backgroundColor: item.color }}
         />
       )}
-      <div className="relative flex w-full items-center justify-between gap-2">
+      <div className="relative flex w-full items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
           {item.color && (
             <div
-              className="h-3 w-1 shrink-0 rounded-[2px]"
+              className="w-1 shrink-0 self-stretch rounded-[2px]"
               style={{ backgroundColor: item.color }}
             />
           )}

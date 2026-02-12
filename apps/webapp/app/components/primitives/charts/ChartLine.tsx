@@ -155,14 +155,12 @@ export function ChartLineRenderer({
         <CartesianGrid vertical={false} stroke="#272A2E" strokeDasharray="3 3" />
         <XAxis {...xAxisConfig} />
         <YAxis {...yAxisConfig} />
-        {/* Hide tooltip when legend is shown - legend displays hover data instead */}
-        {!showLegend && (
-          <ChartTooltip
-            cursor={false}
-            content={<ChartTooltipContent indicator="line" />}
-            labelFormatter={tooltipLabelFormatter}
-          />
-        )}
+        {/* When legend is shown below, render tooltip with cursor only (no content popup) */}
+        <ChartTooltip
+          cursor={{ stroke: "rgba(255, 255, 255, 0.1)", strokeWidth: 1 }}
+          content={showLegend ? () => null : <ChartTooltipContent indicator="line" />}
+          labelFormatter={tooltipLabelFormatter}
+        />
         {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
         {dataKeys.map((key) => (
           <Area
@@ -205,14 +203,12 @@ export function ChartLineRenderer({
       <CartesianGrid vertical={false} stroke="#272A2E" strokeDasharray="3 3" />
       <XAxis {...xAxisConfig} />
       <YAxis {...yAxisConfig} />
-      {/* Hide tooltip when legend is shown - legend displays hover data instead */}
-      {!showLegend && (
-        <ChartTooltip
-          cursor={false}
-          content={<ChartTooltipContent />}
-          labelFormatter={tooltipLabelFormatter}
-        />
-      )}
+      {/* When legend is shown below, render tooltip with cursor only (no content popup) */}
+      <ChartTooltip
+        cursor={{ stroke: "rgba(255, 255, 255, 0.1)", strokeWidth: 1 }}
+        content={showLegend ? () => null : <ChartTooltipContent />}
+        labelFormatter={tooltipLabelFormatter}
+      />
       {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
       {dataKeys.map((key) => (
         <Line
