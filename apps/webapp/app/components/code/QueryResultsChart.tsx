@@ -771,18 +771,14 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     return dateValues.length > 0 ? detectTimeGranularity(dateValues) : null;
   }, [dateValues, timeRange]);
 
-  // X-axis tick formatter for date-based axes
-  // De-duplicates consecutive labels so e.g. "Feb 4" isn't repeated for every
-  // data point within the same day
+  // X-axis tick formatter for date-based axes (pure – no deduplication).
+  // Label deduplication is handled inside dateAxisTick below so that the
+  // mutable "lastLabel" state is correctly reset on each Recharts render pass.
   const xAxisTickFormatter = useMemo(() => {
     if (!isDateBased || !timeGranularity) return undefined;
-    let lastLabel = "";
     return (value: number) => {
       const date = new Date(value);
-      const label = formatDateByGranularity(date, timeGranularity);
-      if (label === lastLabel) return "";
-      lastLabel = label;
-      return label;
+      return formatDateByGranularity(date, timeGranularity);
     };
   }, [isDateBased, timeGranularity]);
 
@@ -872,11 +868,25 @@ export const QueryResultsChart = memo(function QueryResultsChart({
 
   // Custom tick renderer for date-based axes: renders a tick mark alongside
   // each label, and for unlabelled points (de-duplicated) just a subtle tick mark.
+  // De-duplication lives here (not in xAxisTickFormatter) so that the mutable
+  // lastLabel is reset when Recharts starts a new render pass (index === 0).
   const dateAxisTick = useMemo(() => {
     if (!isDateBased || !xAxisTickFormatter) return undefined;
+    let lastLabel = "";
     return (props: Record<string, unknown>) => {
-      const { x, y, payload } = props as { x: number; y: number; payload: { value: number } };
-      const label = xAxisTickFormatter(payload.value);
+      const { x, y, payload, index } = props as {
+        x: number;
+        y: number;
+        payload: { value: number };
+        index: number;
+      };
+
+      // Reset dedup state at the start of each Recharts render pass
+      if (index === 0) lastLabel = "";
+
+      const formatted = xAxisTickFormatter(payload.value);
+      const label = formatted === lastLabel ? "" : formatted;
+      lastLabel = formatted;
       // y is the tick text position, offset from the axis by tickMargin + internal padding
       const axisY = (y as number) - 12;
       if (label) {
