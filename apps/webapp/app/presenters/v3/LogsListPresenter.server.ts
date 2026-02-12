@@ -85,13 +85,13 @@ export type LogsListAppliedFilters = LogsList["filters"];
 type LogCursor = {
   environmentId: string;
   triggeredTimestamp: string; // DateTime64(9) string
-  traceId: string;
+  spanId: string;
 };
 
 const LogCursorSchema = z.object({
   environmentId: z.string(),
   triggeredTimestamp: z.string(),
-  traceId: z.string(),
+  spanId: z.string(),
 });
 
 function encodeCursor(cursor: LogCursor): string {
@@ -360,20 +360,21 @@ export class LogsListPresenter extends BasePresenter {
 
     // SPAN, ANCESTOR_OVERRIDE, SPAN_EVENT kinds are already filtered out by the materialized view
 
-    // Cursor pagination
+    // Cursor pagination using explicit lexicographic comparison
+    // Must mirror the ORDER BY columns: (environment_id DESC, triggered_timestamp DESC, span_id DESC)
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
     if (decodedCursor) {
       queryBuilder.where(
-        "(environment_id, triggered_timestamp, trace_id) < ({cursorEnvId: String}, {cursorTriggeredTimestamp: String}, {cursorTraceId: String})",
+        `((environment_id = {cursorEnvId: String} AND triggered_timestamp < {cursorTriggeredTimestamp: String}) OR (environment_id = {cursorEnvId: String} AND triggered_timestamp = {cursorTriggeredTimestamp: String} AND span_id < {cursorSpanId: String}) OR (environment_id < {cursorEnvId: String}))`,
         {
           cursorEnvId: decodedCursor.environmentId,
           cursorTriggeredTimestamp: decodedCursor.triggeredTimestamp,
-          cursorTraceId: decodedCursor.traceId,
+          cursorSpanId: decodedCursor.spanId,
         }
       );
     }
 
-    queryBuilder.orderBy("environment_id DESC, triggered_timestamp DESC, trace_id DESC");
+    queryBuilder.orderBy("environment_id DESC, triggered_timestamp DESC, span_id DESC");
     // Limit + 1 to check if there are more results
     queryBuilder.limit(pageSize + 1);
 
@@ -394,7 +395,7 @@ export class LogsListPresenter extends BasePresenter {
       nextCursor = encodeCursor({
         environmentId,
         triggeredTimestamp: lastLog.triggered_timestamp,
-        traceId: lastLog.trace_id,
+        spanId: lastLog.span_id,
       });
     }
 
