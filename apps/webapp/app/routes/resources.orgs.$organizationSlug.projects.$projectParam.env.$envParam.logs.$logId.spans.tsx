@@ -5,13 +5,13 @@ import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { convertClickhouseDateTime64ToJsDate } from "~/v3/eventRepository/clickhouseEventRepository.server";
 
 // Convert ClickHouse kind to display level
 function kindToLevel(
   kind: string
 ): "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | "LOG" {
   switch (kind) {
-    case "DEBUG_EVENT":
     case "LOG_DEBUG":
       return "DEBUG";
     case "LOG_INFO":
@@ -23,7 +23,6 @@ function kindToLevel(
     case "LOG_LOG":
       return "LOG";
     case "SPAN":
-    case "ANCESTOR_OVERRIDE":
     case "SPAN_EVENT":
     default:
       return "TRACE";
@@ -91,7 +90,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     kind: row.kind,
     level: kindToLevel(row.kind),
     status: row.status,
-    startTime: new Date(Number(row.start_time) / 1_000_000).toISOString(),
+    startTime: convertClickhouseDateTime64ToJsDate(row.start_time).toISOString(),
     duration: Number(row.duration),
     isCurrent: row.span_id === currentSpanId,
   }));

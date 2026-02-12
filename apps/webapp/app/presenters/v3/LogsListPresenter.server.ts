@@ -116,7 +116,7 @@ function decodeCursor(cursor: string): LogCursor | null {
 function levelToKindsAndStatuses(level: LogLevel): { kinds?: string[]; statuses?: string[] } {
   switch (level) {
     case "DEBUG":
-      return { kinds: ["DEBUG_EVENT", "LOG_DEBUG"] };
+      return { kinds: ["LOG_DEBUG"] };
     case "INFO":
       return { kinds: ["LOG_INFO", "LOG_LOG"] };
     case "WARN":
@@ -352,18 +352,18 @@ export class LogsListPresenter extends BasePresenter {
     // Must mirror the ORDER BY columns: (organization_id DESC, environment_id DESC, triggered_timestamp DESC, span_id DESC)
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
     if (decodedCursor) {
+      // organization_id and environment_id are already pinned by equality filters above,
+      // so cursor only needs to compare triggered_timestamp and span_id
       queryBuilder.where(
-        `((organization_id = {cursorOrgId: String} AND environment_id = {cursorEnvId: String} AND triggered_timestamp = {cursorTriggeredTimestamp: String} AND span_id < {cursorSpanId: String}) OR (organization_id = {cursorOrgId: String} AND environment_id = {cursorEnvId: String} AND triggered_timestamp < {cursorTriggeredTimestamp: String}) OR (organization_id = {cursorOrgId: String} AND environment_id < {cursorEnvId: String}) OR (organization_id < {cursorOrgId: String}))`,
+        `(triggered_timestamp < {cursorTriggeredTimestamp: String} OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND span_id < {cursorSpanId: String}))`,
         {
-          cursorOrgId: decodedCursor.organizationId,
-          cursorEnvId: decodedCursor.environmentId,
           cursorTriggeredTimestamp: decodedCursor.triggeredTimestamp,
           cursorSpanId: decodedCursor.spanId,
         }
       );
     }
 
-    queryBuilder.orderBy("organization_id DESC, environment_id DESC, triggered_timestamp DESC, span_id DESC");
+    queryBuilder.orderBy("triggered_timestamp DESC, span_id DESC");
     // Limit + 1 to check if there are more results
     queryBuilder.limit(pageSize + 1);
 
