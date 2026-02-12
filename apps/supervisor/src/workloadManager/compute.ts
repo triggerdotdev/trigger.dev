@@ -25,8 +25,6 @@ export class ComputeWorkloadManager implements WorkloadManager {
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
-    this.logger.log("create()", { opts });
-
     const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
 
     const envVars: Record<string, string> = {
@@ -81,10 +79,20 @@ export class ComputeWorkloadManager implements WorkloadManager {
 
     const url = `${this.opts.gatewayUrl}/api/sandboxes`;
 
+    const event: Record<string, unknown> = {
+      runId: opts.runFriendlyId,
+      runnerId,
+      image: imageRef,
+      url,
+    };
+
+    const startMs = performance.now();
+
     const [fetchError, response] = await tryCatch(
       fetch(url, {
         method: "POST",
         headers,
+        signal: AbortSignal.timeout(30_000),
         body: JSON.stringify({
           image: imageRef,
           env: envVars,
@@ -92,28 +100,41 @@ export class ComputeWorkloadManager implements WorkloadManager {
       })
     );
 
+    event.durationMs = Math.round(performance.now() - startMs);
+
     if (fetchError) {
-      this.logger.error("Failed to create sandbox", { error: fetchError, url });
+      event.ok = false;
+      event.error = fetchError instanceof Error ? fetchError.message : String(fetchError);
+      event.errorType =
+        fetchError instanceof DOMException && fetchError.name === "TimeoutError"
+          ? "timeout"
+          : "fetch";
+      this.logger.error("create sandbox", event);
       return;
     }
 
+    event.status = response.status;
+
     if (!response.ok) {
       const [bodyError, body] = await tryCatch(response.text());
-      this.logger.error("Gateway returned error", {
-        status: response.status,
-        body: bodyError ? undefined : body,
-        url,
-      });
+      event.ok = false;
+      event.responseBody = bodyError ? undefined : body;
+      this.logger.error("create sandbox", event);
       return;
     }
 
     const [parseError, data] = await tryCatch(response.json());
 
     if (parseError) {
-      this.logger.error("Failed to parse gateway response", { error: parseError });
+      event.ok = false;
+      event.error = parseError instanceof Error ? parseError.message : String(parseError);
+      event.errorType = "parse";
+      this.logger.error("create sandbox", event);
       return;
     }
 
-    this.logger.debug("create succeeded", { sandboxId: data.id, runnerId });
+    event.ok = true;
+    event.sandboxId = data.id;
+    this.logger.log("create sandbox", event);
   }
 }
