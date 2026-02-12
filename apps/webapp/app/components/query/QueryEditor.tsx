@@ -772,6 +772,7 @@ export function QueryEditor({
                                 onRename={handleRenameTitle}
                               />
                             }
+                            query={query}
                             data={{
                               rows: results.rows,
                               columns: results.columns,
@@ -825,6 +826,7 @@ export function QueryEditor({
                         <ResultsChart
                           rows={results.rows}
                           columns={results.columns}
+                          query={query}
                           chartConfig={chartConfig}
                           onChartConfigChange={handleChartConfigChange}
                           queryTitle={queryTitle}
@@ -873,6 +875,7 @@ export function QueryEditor({
                         <ResultsBigNumber
                           rows={results.rows}
                           columns={results.columns}
+                          query={query}
                           bigNumberConfig={bigNumberConfig}
                           onBigNumberConfigChange={setBigNumberConfig}
                           queryTitle={queryTitle}
@@ -1173,6 +1176,7 @@ function hasQueryResultsCallouts(
 function ResultsChart({
   rows,
   columns,
+  query,
   chartConfig,
   onChartConfigChange,
   queryTitle,
@@ -1182,6 +1186,7 @@ function ResultsChart({
 }: {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
+  query?: string;
   chartConfig: ChartConfiguration;
   onChartConfigChange: (config: ChartConfiguration) => void;
   queryTitle: string | null;
@@ -1202,6 +1207,7 @@ function ResultsChart({
                   onRename={onRenameTitle}
                 />
               }
+              query={query}
               data={{
                 rows,
                 columns,
@@ -1239,6 +1245,7 @@ function isNumericColumnType(type: string): boolean {
 function ResultsBigNumber({
   rows,
   columns,
+  query,
   bigNumberConfig,
   onBigNumberConfigChange,
   queryTitle,
@@ -1248,6 +1255,7 @@ function ResultsBigNumber({
 }: {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
+  query?: string;
   bigNumberConfig: BigNumberConfiguration;
   onBigNumberConfigChange: (config: BigNumberConfiguration) => void;
   queryTitle: string | null;
@@ -1277,6 +1285,7 @@ function ResultsBigNumber({
                   onRename={onRenameTitle}
                 />
               }
+              query={query}
               data={{
                 rows,
                 columns,

@@ -252,6 +252,7 @@ export function MetricWidget({
     <QueryWidget
       title={title}
       titleString={title}
+      query={props.query}
       config={config}
       isLoading={isLoading}
       data={data}

@@ -1,4 +1,5 @@
 import {
+  ClipboardDocumentIcon,
   DocumentDuplicateIcon,
   PencilIcon,
   PencilSquareIcon,
@@ -11,7 +12,7 @@ import { assertNever } from "assert-never";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { cn } from "~/utils/cn";
 import { Maximize2 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { Card } from "~/components/primitives/charts/Card";
 import { QueryResultsChart } from "../code/QueryResultsChart";
@@ -30,7 +31,8 @@ import {
   PopoverMenuItem,
   PopoverVerticalEllipseTrigger,
 } from "../primitives/Popover";
-import { IconChartHistogram } from "@tabler/icons-react";
+import { IconChartHistogram, IconBraces, IconFileTypeCsv } from "@tabler/icons-react";
+import { rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 
 const ChartType = z.union([z.literal("bar"), z.literal("line")]);
 export type ChartType = z.infer<typeof ChartType>;
@@ -134,6 +136,8 @@ export type QueryWidgetProps = {
   title: ReactNode;
   /** String title for rename dialog (optional - if not provided, rename won't be available) */
   titleString?: string;
+  /** The TSQL query string (used for "Copy query" in the menu) */
+  query?: string;
   isLoading?: boolean;
   error?: string;
   data: QueryWidgetData;
@@ -156,6 +160,7 @@ export type QueryWidgetProps = {
 export function QueryWidget({
   title,
   titleString,
+  query,
   accessory,
   isLoading,
   error,
@@ -172,7 +177,26 @@ export function QueryWidget({
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState(titleString ?? "");
 
-  const hasMenu = onEdit || onRename || onDelete || onDuplicate;
+  const hasEditActions = onEdit || onRename || onDelete || onDuplicate;
+  const hasData = props.data.rows.length > 0;
+
+  const copyToClipboard = useCallback((text: string) => {
+    navigator.clipboard.writeText(text);
+  }, []);
+
+  const copyQuery = useCallback(() => {
+    if (query) {
+      copyToClipboard(query);
+    }
+  }, [query, copyToClipboard]);
+
+  const copyJSON = useCallback(() => {
+    copyToClipboard(rowsToJSON(props.data.rows));
+  }, [props.data.rows, copyToClipboard]);
+
+  const copyCSV = useCallback(() => {
+    copyToClipboard(rowsToCSV(props.data.rows, props.data.columns));
+  }, [props.data, copyToClipboard]);
 
   return (
     <div className="group h-full">
@@ -196,65 +220,95 @@ export function QueryWidget({
               asChild
             />
             {accessory}
-            {hasMenu && (
-              <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-                <PopoverVerticalEllipseTrigger
-                  isOpen={isMenuOpen}
-                  className={cn(
-                    "transition-opacity",
-                    isMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+              <PopoverVerticalEllipseTrigger
+                isOpen={isMenuOpen}
+                className={cn(
+                  "transition-opacity",
+                  isMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                )}
+              />
+              <PopoverContent align="end" className="p-0">
+                <div className="flex flex-col gap-1 p-1">
+                  {hasEditActions && (
+                    <>
+                      {onEdit && (
+                        <PopoverMenuItem
+                          icon={IconChartHistogram}
+                          title="Edit chart"
+                          onClick={() => {
+                            onEdit(props.data);
+                            setIsMenuOpen(false);
+                          }}
+                        />
+                      )}
+                      {onRename && (
+                        <PopoverMenuItem
+                          icon={PencilSquareIcon}
+                          title="Rename"
+                          onClick={() => {
+                            setRenameValue(titleString ?? "");
+                            setIsRenameDialogOpen(true);
+                            setIsMenuOpen(false);
+                          }}
+                        />
+                      )}
+                      {onDuplicate && (
+                        <PopoverMenuItem
+                          icon={DocumentDuplicateIcon}
+                          title="Duplicate chart"
+                          onClick={() => {
+                            onDuplicate(props.data);
+                            setIsMenuOpen(false);
+                          }}
+                          className="pr-4"
+                        />
+                      )}
+                      {onDelete && (
+                        <PopoverMenuItem
+                          icon={TrashIcon}
+                          title="Delete chart"
+                          leadingIconClassName="text-error"
+                          className="text-error hover:!bg-error/10"
+                          onClick={() => {
+                            onDelete();
+                            setIsMenuOpen(false);
+                          }}
+                        />
+                      )}
+                    </>
                   )}
-                />
-                <PopoverContent align="end" className="p-0">
-                  <div className="flex flex-col gap-1 p-1">
-                    {onEdit && (
-                      <PopoverMenuItem
-                        icon={IconChartHistogram}
-                        title="Edit chart"
-                        onClick={() => {
-                          onEdit(props.data);
-                          setIsMenuOpen(false);
-                        }}
-                      />
-                    )}
-                    {onRename && (
-                      <PopoverMenuItem
-                        icon={PencilSquareIcon}
-                        title="Rename"
-                        onClick={() => {
-                          setRenameValue(titleString ?? "");
-                          setIsRenameDialogOpen(true);
-                          setIsMenuOpen(false);
-                        }}
-                      />
-                    )}
-                    {onDuplicate && (
-                      <PopoverMenuItem
-                        icon={DocumentDuplicateIcon}
-                        title="Duplicate chart"
-                        onClick={() => {
-                          onDuplicate(props.data);
-                          setIsMenuOpen(false);
-                        }}
-                        className="pr-4"
-                      />
-                    )}
-                    {onDelete && (
-                      <PopoverMenuItem
-                        icon={TrashIcon}
-                        title="Delete chart"
-                        leadingIconClassName="text-error"
-                        className="text-error hover:!bg-error/10"
-                        onClick={() => {
-                          onDelete();
-                          setIsMenuOpen(false);
-                        }}
-                      />
-                    )}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            )}
+                  {query && (
+                    <PopoverMenuItem
+                      icon={ClipboardDocumentIcon}
+                      title="Copy query"
+                      onClick={() => {
+                        copyQuery();
+                        setIsMenuOpen(false);
+                      }}
+                    />
+                  )}
+                  <PopoverMenuItem
+                    icon={IconBraces}
+                    title="Copy JSON"
+                    disabled={!hasData}
+                    onClick={() => {
+                      copyJSON();
+                      setIsMenuOpen(false);
+                    }}
+                  />
+                  <PopoverMenuItem
+                    icon={IconFileTypeCsv}
+                    title="Copy CSV"
+                    disabled={!hasData}
+                    onClick={() => {
+                      copyCSV();
+                      setIsMenuOpen(false);
+                    }}
+                  />
+                </div>
+              </PopoverContent>
+            </Popover>
           </Card.Accessory>
         </Card.Header>
         <LoadingBarDivider isLoading={isLoading ?? false} className="bg-transparent" />
