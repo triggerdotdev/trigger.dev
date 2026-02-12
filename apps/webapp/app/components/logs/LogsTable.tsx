@@ -1,4 +1,5 @@
 import { ArrowPathIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
+import { Link } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Button } from "~/components/primitives/Buttons";
@@ -8,7 +9,7 @@ import { useProject } from "~/hooks/useProject";
 import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
 import { getLevelColor, highlightSearchText } from "~/utils/logUtils";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
-import { DateTime } from "../primitives/DateTime";
+import { DateTimeAccurate } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Spinner } from "../primitives/Spinner";
 import { TruncatedCopyableValue } from "../primitives/TruncatedCopyableValue";
@@ -24,8 +25,6 @@ import {
   TableRow,
   type TableVariant,
 } from "../primitives/Table";
-import { PopoverMenuItem } from "~/components/primitives/Popover";
-import { Link } from "@remix-run/react";
 
 type LogsTableProps = {
   logs: LogEntry[];
@@ -34,6 +33,7 @@ type LogsTableProps = {
   isLoadingMore?: boolean;
   hasMore?: boolean;
   onLoadMore?: () => void;
+  onCheckForMore?: () => void;
   variant?: TableVariant;
   selectedLogId?: string;
   onLogSelect?: (logId: string) => void;
@@ -63,6 +63,7 @@ export function LogsTable({
   isLoadingMore = false,
   hasMore = false,
   onLoadMore,
+  onCheckForMore,
   selectedLogId,
   onLogSelect,
 }: LogsTableProps) {
@@ -161,7 +162,7 @@ export function LogsTable({
                       boxShadow: getLevelBoxShadow(log.level),
                     }}
                   >
-                    <DateTime date={log.startTime} />
+                    <DateTimeAccurate date={log.startTime} />
                   </TableCell>
                   <TableCell className="min-w-24">
                     <TruncatedCopyableValue value={log.runId} />
@@ -203,20 +204,15 @@ export function LogsTable({
       {/* Infinite scroll trigger */}
       {hasMore && logs.length > 0 && (
         <div ref={loadMoreRef} className="flex items-center justify-center py-12">
-          <div
-            className={cn(
-              "flex items-center gap-2",
-              !showLoadMoreSpinner && "invisible"
-            )}
-          >
+          <div className={cn("flex items-center gap-2", !showLoadMoreSpinner && "invisible")}>
             <Spinner /> <span className="text-text-dimmed">Loading more…</span>
           </div>
         </div>
       )}
-      {/* Show all logs message */}
+      {/* Show all logs message with check for more button */}
       {!hasMore && logs.length > 0 && (
         <div className="flex items-center justify-center py-12">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col items-center gap-3">
             <span className="text-text-dimmed">Showing all {logs.length} logs</span>
           </div>
         </div>

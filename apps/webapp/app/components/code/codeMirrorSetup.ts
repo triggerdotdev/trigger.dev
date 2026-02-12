@@ -1,5 +1,5 @@
 import { closeBrackets } from "@codemirror/autocomplete";
-import { indentWithTab } from "@codemirror/commands";
+import { indentWithTab, history, historyKeymap, undo, redo } from "@codemirror/commands";
 import { bracketMatching } from "@codemirror/language";
 import { lintKeymap } from "@codemirror/lint";
 import { highlightSelectionMatches } from "@codemirror/search";
@@ -18,6 +18,7 @@ export function getEditorSetup(showLineNumbers = true, showHighlights = true): A
   const options = [
     drawSelection(),
     dropCursor(),
+    history(),
     bracketMatching(),
     closeBrackets(),
     Prec.highest(
@@ -31,7 +32,15 @@ export function getEditorSetup(showLineNumbers = true, showHighlights = true): A
         },
       ])
     ),
-    keymap.of([indentWithTab, ...lintKeymap]),
+    // Explicit undo/redo keybindings with high precedence
+    Prec.high(
+      keymap.of([
+        { key: "Mod-z", run: undo },
+        { key: "Mod-Shift-z", run: redo },
+        { key: "Mod-y", run: redo },
+      ])
+    ),
+    keymap.of([indentWithTab, ...historyKeymap, ...lintKeymap]),
   ];
 
   if (showLineNumbers) {

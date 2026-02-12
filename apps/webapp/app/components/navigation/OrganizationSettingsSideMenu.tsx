@@ -3,6 +3,7 @@ import {
   ChartBarIcon,
   Cog8ToothIcon,
   CreditCardIcon,
+  PuzzlePieceIcon,
   UserGroupIcon,
 } from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
@@ -12,6 +13,7 @@ import { cn } from "~/utils/cn";
 import {
   organizationSettingsPath,
   organizationTeamPath,
+  organizationVercelIntegrationPath,
   rootPath,
   v3BillingAlertsPath,
   v3BillingPath,
@@ -112,6 +114,13 @@ export function OrganizationSettingsSideMenu({
             activeIconColor="text-orgSettings"
             to={organizationSettingsPath(organization)}
             data-action="settings"
+          />
+          <SideMenuItem
+            name="Integrations"
+            icon={PuzzlePieceIcon}
+            activeIconColor="text-blue-500"
+            to={organizationVercelIntegrationPath(organization)}
+            data-action="integrations"
           />
         </div>
         <div className="flex flex-col gap-1">

@@ -121,6 +121,14 @@ export function organizationSettingsPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/settings`;
 }
 
+export function organizationIntegrationsPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/settings/integrations`;
+}
+
+export function organizationVercelIntegrationPath(organization: OrgForPath) {
+  return `${organizationIntegrationsPath(organization)}/vercel`;
+}
+
 function organizationParam(organization: OrgForPath) {
   return organization.slug;
 }
@@ -149,6 +157,22 @@ export function githubAppInstallPath(organizationSlug: string, redirectTo: strin
   return `/github/install?org_slug=${organizationSlug}&redirect_to=${encodeURIComponent(
     redirectTo
   )}`;
+}
+
+export function vercelAppInstallPath(organizationSlug: string, projectSlug: string) {
+  return `/vercel/install?org_slug=${organizationSlug}&project_slug=${projectSlug}`;
+}
+
+export function vercelCallbackPath() {
+  return `/vercel/callback`;
+}
+
+export function vercelResourcePath(
+  organizationSlug: string,
+  projectSlug: string,
+  environmentSlug: string
+) {
+  return `/resources/orgs/${organizationSlug}/projects/${projectSlug}/env/${environmentSlug}/vercel`;
 }
 
 export function v3EnvironmentPath(

@@ -139,8 +139,8 @@ function ShortcutContent() {
               <ShortcutKey shortcut={{ key: "arrowright" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="Jump to next/previous run">
-              <ShortcutKey shortcut={{ key: "[" }} variant="medium/bright" />
-              <ShortcutKey shortcut={{ key: "]" }} variant="medium/bright" />
+              <ShortcutKey shortcut={{ key: "j" }} variant="medium/bright" />
+              <ShortcutKey shortcut={{ key: "k" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="Expand all">
               <ShortcutKey shortcut={{ key: "e" }} variant="medium/bright" />

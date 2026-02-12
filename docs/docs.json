@@ -49,9 +49,10 @@
               "building-with-ai",
               {
                 "group": "MCP Server",
-                "pages": ["mcp-introduction", "mcp-tools", "mcp-agent-rules"]
+                "pages": ["mcp-introduction", "mcp-tools"]
               },
-              "skills"
+              "skills",
+              "mcp-agent-rules"
             ]
           },
           {
@@ -69,6 +70,7 @@
               "machines",
               "idempotency",
               "runs/max-duration",
+              "runs/heartbeats",
               "tags",
               "runs/metadata",
               "tasks/streams",
@@ -376,6 +378,7 @@
               "guides/example-projects/claude-changelog-generator",
               "guides/example-projects/claude-github-wiki",
               "guides/example-projects/claude-thinking-chatbot",
+              "guides/example-projects/cursor-background-agent",
               "guides/example-projects/human-in-the-loop-workflow",
               "guides/example-projects/mastra-agents-with-memory",
               "guides/example-projects/meme-generator-human-in-the-loop",

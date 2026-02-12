@@ -42,3 +42,15 @@ export async function setRootOnlyFilterPreference(rootOnly: boolean, request: Re
   session.set("rootOnly", rootOnly);
   return session;
 }
+
+export async function getTimezonePreference(request: Request): Promise<string> {
+  const session = await getUiPreferencesSession(request);
+  const timezone = session.get("timezone");
+  return typeof timezone === "string" ? timezone : "UTC";
+}
+
+export async function setTimezonePreference(timezone: string, request: Request) {
+  const session = await getUiPreferencesSession(request);
+  session.set("timezone", timezone);
+  return session;
+}

@@ -1,7 +1,7 @@
 import { sql, StandardSQL } from "@codemirror/lang-sql";
 import { autocompletion, startCompletion } from "@codemirror/autocomplete";
 import { linter, lintGutter } from "@codemirror/lint";
-import { EditorView } from "@codemirror/view";
+import { EditorView, keymap } from "@codemirror/view";
 import type { ViewUpdate } from "@codemirror/view";
 import { CheckIcon, ClipboardIcon, SparklesIcon, TrashIcon } from "@heroicons/react/20/solid";
 import {
@@ -58,6 +58,54 @@ const defaultProps: TSQLEditorDefaultProps = {
   showClearButton: false,
   showFormatButton: true,
   schema: [],
+};
+
+// Toggle comment on current line or selected lines with -- comment symbol
+const toggleLineComment = (view: EditorView): boolean => {
+  const { from, to } = view.state.selection.main;
+  const startLine = view.state.doc.lineAt(from);
+  // When `to` is exactly at the start of a line and there's an actual selection,
+  // the caret sits before that line — so exclude it by stepping back one position.
+  const adjustedTo = to > from && view.state.doc.lineAt(to).from === to ? to - 1 : to;
+  const endLine = view.state.doc.lineAt(adjustedTo);
+
+  // Collect all lines in the selection
+  const lines: { from: number; to: number; text: string }[] = [];
+  for (let i = startLine.number; i <= endLine.number; i++) {
+    const line = view.state.doc.line(i);
+    lines.push({ from: line.from, to: line.to, text: line.text });
+  }
+
+  // Determine action: if all non-empty lines are commented, uncomment; otherwise comment
+  const allCommented = lines.every((line) => {
+    const trimmed = line.text.trimStart();
+    return trimmed.length === 0 || trimmed.startsWith("--");
+  });
+
+  const changes = lines
+    .map((line) => {
+      const trimmed = line.text.trimStart();
+      if (trimmed.length === 0) return null; // skip empty lines
+      const indent = line.text.length - trimmed.length;
+
+      if (allCommented) {
+        // Remove comment: strip "-- " or just "--"
+        const afterComment = trimmed.slice(2);
+        const newText = line.text.slice(0, indent) + afterComment.replace(/^\s/, "");
+        return { from: line.from, to: line.to, insert: newText };
+      } else {
+        // Add comment: prepend "-- " to the line content
+        const newText = line.text.slice(0, indent) + "-- " + trimmed;
+        return { from: line.from, to: line.to, insert: newText };
+      }
+    })
+    .filter((c): c is { from: number; to: number; insert: string } => c !== null);
+
+  if (changes.length > 0) {
+    view.dispatch({ changes });
+  }
+
+  return true;
 };
 
 export function TSQLEditor(opts: TSQLEditorProps) {
@@ -132,6 +180,14 @@ export function TSQLEditor(opts: TSQLEditorProps) {
         })
       );
     }
+
+    // Add keyboard shortcut for toggling comments
+    exts.push(
+      keymap.of([
+        { key: "Cmd-/", run: toggleLineComment },
+        { key: "Ctrl-/", run: toggleLineComment },
+      ])
+    );
 
     return exts;
   }, [schema, linterEnabled]);
@@ -218,6 +274,9 @@ export function TSQLEditor(opts: TSQLEditorProps) {
           "min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         )}
         ref={editor}
+        onClick={() => {
+          view?.focus();
+        }}
         onBlur={() => {
           if (!onBlur) return;
           if (!view) return;
