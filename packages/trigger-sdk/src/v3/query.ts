@@ -12,7 +12,7 @@ export type QueryFormat = "json" | "csv";
 /**
  * Options for executing a TSQL query
  */
-export type QueryOptions<TFormat extends QueryFormat | undefined = QueryFormat | undefined> = {
+export type QueryOptions = {
   /**
    * The scope of the query - determines what data is accessible
    * - "environment": Current environment only (default)
@@ -48,31 +48,33 @@ export type QueryOptions<TFormat extends QueryFormat | undefined = QueryFormat |
    *
    * @default "json"
    */
-  format?: TFormat;
+  format?: QueryFormat;
 };
 
 /**
- * Result type that automatically narrows based on the format option
- * @template TFormat - The format type (json or csv)
- * @template TRow - The shape of each row in the result set
+ * Execute a TSQL query and export as CSV
  */
-export type QueryResult<
-  TFormat extends QueryFormat | undefined = undefined,
-  TRow extends Record<string, any> = Record<string, any>
-> = TFormat extends "csv"
-  ? QueryExecuteCSVResponseBody
-  : TFormat extends "json"
-  ? { rows: Array<TRow> }
-  : TFormat extends undefined
-  ? { rows: Array<TRow> }
-  : { rows: Array<TRow> } | QueryExecuteCSVResponseBody;
+function execute(
+  tsql: string,
+  options: QueryOptions & { format: "csv" },
+  requestOptions?: ApiRequestOptions
+): Promise<{ format: "csv"; results: string }>;
+
+/**
+ * Execute a TSQL query and return typed JSON rows
+ */
+function execute<TRow extends Record<string, any> = Record<string, any>>(
+  tsql: string,
+  options?: Omit<QueryOptions, "format"> | (QueryOptions & { format?: "json" }),
+  requestOptions?: ApiRequestOptions
+): Promise<{ format: "json"; results: Array<TRow> }>;
 
 /**
  * Execute a TSQL query against your Trigger.dev data
  *
- * @template TFormat - The format of the response (inferred from options)
+ * @template TRow - The shape of each row in the result set (provide for type safety)
  * @param {string} tsql - The TSQL query string to execute
- * @param {QueryOptions<TFormat>} [options] - Optional query configuration
+ * @param {QueryOptions} [options] - Optional query configuration
  * @param {ApiRequestOptions} [requestOptions] - Optional API request configuration
  * @returns A promise that resolves with the query results
  *
@@ -80,42 +82,55 @@ export type QueryResult<
  * ```typescript
  * // Basic query with defaults (environment scope, json format)
  * const result = await query.execute("SELECT * FROM runs LIMIT 10");
- * console.log(result.rows);
+ * console.log(result.format); // "json"
+ * console.log(result.results); // Array<Record<string, any>>
+ *
+ * // Type-safe query with row type
+ * type RunRow = { id: string; status: string; duration: number };
+ * const typedResult = await query.execute<RunRow>(
+ *   "SELECT id, status, duration FROM runs LIMIT 10"
+ * );
+ * typedResult.results.forEach(row => {
+ *   console.log(row.id, row.status); // Fully typed!
+ * });
+ *
+ * // Inline type for aggregation query
+ * const stats = await query.execute<{ status: string; count: number }>(
+ *   "SELECT status, COUNT(*) as count FROM runs GROUP BY status"
+ * );
+ * stats.results.forEach(row => {
+ *   console.log(row.status, row.count); // Fully type-safe
+ * });
  *
  * // Query with custom period
  * const lastMonth = await query.execute(
  *   "SELECT COUNT(*) as count FROM runs",
  *   { period: "30d" }
  * );
+ * console.log(lastMonth.results[0].count); // Type-safe access
  *
- * // Query with custom date range
- * const januaryRuns = await query.execute(
- *   "SELECT * FROM runs",
- *   {
- *     from: "2025-01-01T00:00:00Z",
- *     to: "2025-02-01T00:00:00Z"
- *   }
- * );
- *
- * // Organization-wide query
- * const orgStats = await query.execute(
- *   "SELECT project, COUNT(*) as count FROM runs GROUP BY project",
- *   { scope: "organization", period: "7d" }
- * );
- *
- * // Export as CSV
- * const csvData = await query.execute(
+ * // Export as CSV - automatically narrowed!
+ * const csvResult = await query.execute(
  *   "SELECT * FROM runs",
  *   { format: "csv", period: "7d" }
  * );
- * // csvData is a string containing CSV
+ * console.log(csvResult.format); // "csv"
+ * const lines = csvResult.results.split('\n'); // ✓ results is string
+ *
+ * // Discriminated union - can check format at runtime
+ * const dynamicResult = await query.execute("SELECT * FROM runs");
+ * if (dynamicResult.format === "json") {
+ *   dynamicResult.results.forEach(row => console.log(row)); // ✓ Typed as array
+ * } else {
+ *   console.log(dynamicResult.results.length); // ✓ Typed as string
+ * }
  * ```
  */
-function execute<TFormat extends QueryFormat | undefined = undefined>(
+function execute<TRow extends Record<string, any> = Record<string, any>>(
   tsql: string,
-  options?: QueryOptions<TFormat>,
+  options?: QueryOptions,
   requestOptions?: ApiRequestOptions
-): Promise<QueryResult<TFormat>> {
+): Promise<{ format: "json"; results: Array<TRow> } | { format: "csv"; results: string }> {
   const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
@@ -131,7 +146,14 @@ function execute<TFormat extends QueryFormat | undefined = undefined>(
     requestOptions
   );
 
-  return apiClient.executeQuery(tsql, options, $requestOptions) as Promise<QueryResult<TFormat>>;
+  const format = options?.format ?? "json";
+
+  return apiClient.executeQuery(tsql, options, $requestOptions).then((response) => {
+    if (typeof response === "string") {
+      return { format: "csv" as const, results: response };
+    }
+    return { format: "json" as const, results: response.rows };
+  }) as Promise<{ format: "json"; results: Array<TRow> } | { format: "csv"; results: string }>;
 }
 
 export const query = {
