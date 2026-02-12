@@ -1199,6 +1199,10 @@ const EnvironmentSchema = z
     QUERY_FEATURE_ENABLED: z.string().default("1"),
 
     // Query page ClickHouse limits (for TSQL queries)
+    QUERY_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
     QUERY_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().default(10),
     QUERY_CLICKHOUSE_MAX_MEMORY_USAGE: z.coerce.number().int().default(1_073_741_824), // 1GB in bytes
     QUERY_CLICKHOUSE_MAX_AST_ELEMENTS: z.coerce.number().int().default(4_000_000),
