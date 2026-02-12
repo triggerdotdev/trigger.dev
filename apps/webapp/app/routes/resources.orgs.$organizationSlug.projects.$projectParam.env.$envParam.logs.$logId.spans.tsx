@@ -64,6 +64,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Query ClickHouse for related spans in the same trace
   const queryBuilder = clickhouseClient.taskEventsSearch.logsListQueryBuilder();
 
+  queryBuilder.where("organization_id = {organizationId: String}", {
+    organizationId: project.organizationId,
+  });
   queryBuilder.where("environment_id = {environmentId: String}", {
     environmentId: environment.id,
   });
