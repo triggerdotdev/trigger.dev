@@ -141,7 +141,14 @@ export function OrganizationSettingsSideMenu({
           <div className="flex flex-col gap-1">
             <SideMenuHeader title="Git ref" />
             <Paragraph variant="extra-small" className="px-2 text-text-dimmed">
-              {buildInfo.gitRefName}
+              <a
+                href={`https://github.com/triggerdotdev/trigger.dev/tree/${buildInfo.gitRefName}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition hover:text-text-bright"
+              >
+                {buildInfo.gitRefName}
+              </a>
             </Paragraph>
           </div>
         )}
@@ -149,7 +156,14 @@ export function OrganizationSettingsSideMenu({
           <div className="flex flex-col gap-1">
             <SideMenuHeader title="Git sha" />
             <Paragraph variant="extra-small" className="px-2 text-text-dimmed">
-              {buildInfo.gitSha.slice(0, 9)}
+              <a
+                href={`https://github.com/triggerdotdev/trigger.dev/commit/${buildInfo.gitSha}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition hover:text-text-bright"
+              >
+                {buildInfo.gitSha.slice(0, 9)}
+              </a>
             </Paragraph>
           </div>
         )}
