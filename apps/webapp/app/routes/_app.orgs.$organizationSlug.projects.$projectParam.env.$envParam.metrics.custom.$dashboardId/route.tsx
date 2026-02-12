@@ -257,11 +257,7 @@ export default function Page() {
   const widgetLimits = { used: currentWidgetCount, limit: widgetLimitPerDashboard };
   const widgetIsAtLimit = currentWidgetCount >= widgetLimitPerDashboard;
   const widgetLimitRatio =
-    widgetLimits.limit > 0
-      ? widgetLimits.used / widgetLimits.limit
-      : widgetLimits.used > 0
-        ? 1
-        : 0;
+    widgetLimits.limit > 0 ? widgetLimits.used / widgetLimits.limit : widgetLimits.used > 0 ? 1 : 0;
   const widgetLimitPercent = Math.min(100, Math.max(0, Math.round(widgetLimitRatio * 100)));
   const widgetCanUpgrade = plan?.v3Subscription?.plan && !canExceedWidgets;
 

@@ -1,5 +1,5 @@
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useNavigation } from "@remix-run/react";
+import { useFetcher, useNavigate } from "@remix-run/react";
 import { IconChartHistogram } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -10,6 +10,7 @@ import {
 } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
+import { v3CustomDashboardPath } from "~/utils/pathBuilder";
 import { Button } from "../primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader } from "../primitives/Dialog";
 import { FormButtons } from "../primitives/FormButtons";
@@ -36,7 +37,8 @@ export function SaveToDashboardDialog({
   const environment = useEnvironment();
   const customDashboards = useCustomDashboards();
   const widgetLimit = useWidgetLimitPerDashboard();
-  const navigation = useNavigation();
+  const fetcher = useFetcher<{ success: boolean }>();
+  const navigate = useNavigate();
 
   // Find the first dashboard that isn't at the widget limit
   const firstAvailableDashboard = customDashboards.find((d) => d.widgetCount < widgetLimit);
@@ -50,7 +52,7 @@ export function SaveToDashboardDialog({
     ? `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${selectedDashboardId}/widgets`
     : "";
 
-  const isLoading = navigation.formAction === formAction && navigation.state === "submitting";
+  const isLoading = fetcher.state === "submitting";
 
   // Check if selected dashboard is at widget limit
   const selectedDashboard = customDashboards.find((d) => d.friendlyId === selectedDashboardId);
@@ -58,12 +60,20 @@ export function SaveToDashboardDialog({
     ? selectedDashboard.widgetCount >= widgetLimit
     : false;
 
-  // Close dialog when navigation completes (redirect is happening)
+  // Navigate to the dashboard when the fetcher completes successfully
   useEffect(() => {
-    if (navigation.formAction === formAction && navigation.state === "loading") {
+    if (fetcher.state === "idle" && fetcher.data?.success && selectedDashboardId) {
       onOpenChange(false);
+      navigate(
+        v3CustomDashboardPath(
+          { slug: organization.slug },
+          { slug: project.slug },
+          { slug: environment.slug },
+          { friendlyId: selectedDashboardId }
+        )
+      );
     }
-  }, [navigation.formAction, navigation.state, formAction, onOpenChange]);
+  }, [fetcher.state, fetcher.data, selectedDashboardId, onOpenChange, navigate, organization.slug, project.slug, environment.slug]);
 
   // Update selection if dashboards change
   useEffect(() => {
@@ -100,7 +110,7 @@ export function SaveToDashboardDialog({
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>Add to dashboard</DialogHeader>
-        <Form method="post" action={formAction} className="space-y-4">
+        <fetcher.Form method="post" action={formAction} className="space-y-4">
           <input type="hidden" name="action" value="add" />
           <input type="hidden" name="title" value={title} />
           <input type="hidden" name="query" value={query} />
@@ -160,7 +170,7 @@ export function SaveToDashboardDialog({
               </DialogClose>
             }
           />
-        </Form>
+        </fetcher.Form>
       </DialogContent>
     </Dialog>
   );

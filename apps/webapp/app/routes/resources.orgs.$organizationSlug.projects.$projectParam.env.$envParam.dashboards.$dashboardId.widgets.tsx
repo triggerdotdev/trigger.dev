@@ -16,7 +16,7 @@ import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 
 // Schemas for each action type
 const AddWidgetSchema = z.object({
-  widgetId: z.string().min(1, "Widget ID is required").optional(),
+  widgetId: z.string().min(1, "Widget ID is required").nullish(),
   title: z.string().min(1, "Title is required"),
   query: z.string().default(""),
   config: z.string().transform((str, ctx) => {
@@ -78,7 +78,7 @@ const DeleteWidgetSchema = z.object({
 
 const DuplicateWidgetSchema = z.object({
   widgetId: z.string().min(1, "Widget ID is required"),
-  newId: z.string().min(1, "New widget ID is required").optional(),
+  newId: z.string().min(1, "New widget ID is required").nullish(),
 });
 
 const SaveLayoutSchema = z.object({
