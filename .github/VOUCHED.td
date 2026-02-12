@@ -11,3 +11,5 @@ myftija
 nicktrn
 samejr
 isshaddad
+# Outside contributors
+gautamsi
