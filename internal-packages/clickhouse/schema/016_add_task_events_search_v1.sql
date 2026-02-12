@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS trigger_dev.task_events_search_v1
 )
 ENGINE = MergeTree
 PARTITION BY toDate(triggered_timestamp)
-ORDER BY (organization_id, environment_id, triggered_timestamp)
+ORDER BY (organization_id, environment_id, triggered_timestamp, span_id)
 --Right now we have maximum retention of up to 30 days based on plan.
 --We put a logical limit for now, the 90 DAY TTL is just a backup
 --This might need to be updated for longer retention periods
@@ -55,6 +55,7 @@ WHERE
     kind != 'DEBUG_EVENT'
     AND status != 'PARTIAL'
     AND NOT (kind = 'SPAN_EVENT' AND attributes_text = '{}')
+    AND kind != 'ANCESTOR_OVERRIDE'
     AND message != 'trigger.dev/start';
 
 -- +goose Down

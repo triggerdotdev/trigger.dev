@@ -21,7 +21,6 @@ function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
-  const isAdmin = user?.admin || user?.isImpersonating;
 
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
@@ -46,7 +45,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const search = url.searchParams.get("search") ?? undefined;
   const cursor = url.searchParams.get("cursor") ?? undefined;
   const levels = parseLevelsFromUrl(url);
-  const showDebug = url.searchParams.get("showDebug") === "true";
   const period = url.searchParams.get("period") ?? undefined;
   const fromStr = url.searchParams.get("from");
   const toStr = url.searchParams.get("to");
@@ -67,7 +65,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     from,
     to,
     levels,
-    includeDebugLogs: isAdmin && showDebug,
     defaultPeriod: "1h",
     retentionLimitDays,
   }) as any; // Validated by LogsListOptionsSchema at runtime

@@ -50,7 +50,6 @@ export type LogsListOptions = {
   retentionLimitDays?: number;
   // search
   search?: string;
-  includeDebugLogs?: boolean;
   // pagination
   direction?: Direction;
   cursor?: string;
@@ -69,7 +68,6 @@ export const LogsListOptionsSchema = z.object({
   defaultPeriod: z.string().optional(),
   retentionLimitDays: z.number().int().positive().optional(),
   search: z.string().max(1000).optional(),
-  includeDebugLogs: z.boolean().optional(),
   direction: z.enum(["forward", "backward"]).optional(),
   cursor: z.string().optional(),
   pageSize: z.number().int().positive().max(1000).optional(),
@@ -83,12 +81,14 @@ export type LogsListAppliedFilters = LogsList["filters"];
 
 // Cursor is a base64 encoded JSON of the pagination keys
 type LogCursor = {
+  organizationId: string;
   environmentId: string;
   triggeredTimestamp: string; // DateTime64(9) string
   spanId: string;
 };
 
 const LogCursorSchema = z.object({
+  organizationId: z.string(),
   environmentId: z.string(),
   triggeredTimestamp: z.string(),
   spanId: z.string(),
@@ -166,7 +166,6 @@ export class LogsListPresenter extends BasePresenter {
       to,
       cursor,
       pageSize = DEFAULT_PAGE_SIZE,
-      includeDebugLogs = true,
       defaultPeriod,
       retentionLimitDays,
     }: LogsListOptions
@@ -349,24 +348,14 @@ export class LogsListPresenter extends BasePresenter {
       }
     }
 
-    // Debug logs are available only to admins
-    // if (includeDebugLogs === false) {
-    //   queryBuilder.where("kind NOT IN {debugKinds: Array(String)}", {
-    //     debugKinds: ["DEBUG_EVENT"],
-    //   });
-    //
-    //   queryBuilder.where("NOT ((kind = 'LOG_INFO') AND (attributes_text = '{}'))");
-    // }
-
-    // SPAN, ANCESTOR_OVERRIDE, SPAN_EVENT kinds are already filtered out by the materialized view
-
     // Cursor pagination using explicit lexicographic comparison
-    // Must mirror the ORDER BY columns: (environment_id DESC, triggered_timestamp DESC, span_id DESC)
+    // Must mirror the ORDER BY columns: (organization_id DESC, environment_id DESC, triggered_timestamp DESC, span_id DESC)
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
     if (decodedCursor) {
       queryBuilder.where(
-        `((environment_id = {cursorEnvId: String} AND triggered_timestamp < {cursorTriggeredTimestamp: String}) OR (environment_id = {cursorEnvId: String} AND triggered_timestamp = {cursorTriggeredTimestamp: String} AND span_id < {cursorSpanId: String}) OR (environment_id < {cursorEnvId: String}))`,
+        `((organization_id = {cursorOrgId: String} AND environment_id = {cursorEnvId: String} AND triggered_timestamp = {cursorTriggeredTimestamp: String} AND span_id < {cursorSpanId: String}) OR (organization_id = {cursorOrgId: String} AND environment_id = {cursorEnvId: String} AND triggered_timestamp < {cursorTriggeredTimestamp: String}) OR (organization_id = {cursorOrgId: String} AND environment_id < {cursorEnvId: String}) OR (organization_id < {cursorOrgId: String}))`,
         {
+          cursorOrgId: decodedCursor.organizationId,
           cursorEnvId: decodedCursor.environmentId,
           cursorTriggeredTimestamp: decodedCursor.triggeredTimestamp,
           cursorSpanId: decodedCursor.spanId,
@@ -374,7 +363,7 @@ export class LogsListPresenter extends BasePresenter {
       );
     }
 
-    queryBuilder.orderBy("environment_id DESC, triggered_timestamp DESC, span_id DESC");
+    queryBuilder.orderBy("organization_id DESC, environment_id DESC, triggered_timestamp DESC, span_id DESC");
     // Limit + 1 to check if there are more results
     queryBuilder.limit(pageSize + 1);
 
@@ -393,6 +382,7 @@ export class LogsListPresenter extends BasePresenter {
     if (hasMore && logs.length > 0) {
       const lastLog = logs[logs.length - 1];
       nextCursor = encodeCursor({
+        organizationId,
         environmentId,
         triggeredTimestamp: lastLog.triggered_timestamp,
         spanId: lastLog.span_id,
