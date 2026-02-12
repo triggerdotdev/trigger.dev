@@ -10,6 +10,7 @@ import {
   type QueryWidgetConfig,
   type QueryWidgetData,
 } from "~/components/metrics/QueryWidget";
+import { useElementVisibility } from "~/hooks/useElementVisibility";
 import { useInterval } from "~/hooks/useInterval";
 
 const Scope = z.union([z.literal("environment"), z.literal("organization"), z.literal("project")]);
@@ -178,6 +179,9 @@ export function MetricWidget({
   propsRef.current = props;
 
   const submit = useCallback(() => {
+    // Skip fetching if the widget is not visible on screen
+    if (!isVisibleRef.current) return;
+
     // Abort any in-flight request for this widget
     abortControllerRef.current?.abort();
 
@@ -209,14 +213,22 @@ export function MetricWidget({
         if (!controller.signal.aborted) {
           // Only surface the error if there's no existing successful data to preserve
           setResponse((prev) =>
-            prev?.success
-              ? prev
-              : { success: false, error: err.message || "Network error" }
+            prev?.success ? prev : { success: false, error: err.message || "Network error" }
           );
           setIsLoading(false);
         }
       });
   }, []);
+
+  // Track visibility so we only fetch for on-screen widgets.
+  // When a widget scrolls into view and has no data yet, trigger a load.
+  const { ref: visibilityRef, isVisibleRef } = useElementVisibility({
+    onVisibilityChange: (visible) => {
+      if (visible && !response) {
+        submit();
+      }
+    },
+  });
 
   // Clean up on unmount
   useEffect(() => {
@@ -249,21 +261,23 @@ export function MetricWidget({
   const timeRange = response?.success ? response.data.timeRange : undefined;
 
   return (
-    <QueryWidget
-      title={title}
-      titleString={title}
-      query={props.query}
-      config={config}
-      isLoading={isLoading}
-      data={data}
-      timeRange={timeRange}
-      error={response?.success === false ? response.error : undefined}
-      isResizing={isResizing}
-      isDraggable={isDraggable}
-      onEdit={onEdit}
-      onRename={onRename}
-      onDelete={onDelete}
-      onDuplicate={onDuplicate}
-    />
+    <div ref={visibilityRef} className="h-full">
+      <QueryWidget
+        title={title}
+        titleString={title}
+        query={props.query}
+        config={config}
+        isLoading={isLoading}
+        data={data}
+        timeRange={timeRange}
+        error={response?.success === false ? response.error : undefined}
+        isResizing={isResizing}
+        isDraggable={isDraggable}
+        onEdit={onEdit}
+        onRename={onRename}
+        onDelete={onDelete}
+        onDuplicate={onDuplicate}
+      />
+    </div>
   );
 }

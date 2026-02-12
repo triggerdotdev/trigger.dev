@@ -772,7 +772,7 @@ export function QueryEditor({
                                 onRename={handleRenameTitle}
                               />
                             }
-                            query={query}
+                            query={editorRef.current?.getQuery() ?? defaultQuery}
                             data={{
                               rows: results.rows,
                               columns: results.columns,
@@ -826,7 +826,7 @@ export function QueryEditor({
                         <ResultsChart
                           rows={results.rows}
                           columns={results.columns}
-                          query={query}
+                          query={editorRef.current?.getQuery() ?? defaultQuery}
                           chartConfig={chartConfig}
                           onChartConfigChange={handleChartConfigChange}
                           queryTitle={queryTitle}
@@ -875,7 +875,7 @@ export function QueryEditor({
                         <ResultsBigNumber
                           rows={results.rows}
                           columns={results.columns}
-                          query={query}
+                          query={editorRef.current?.getQuery() ?? defaultQuery}
                           bigNumberConfig={bigNumberConfig}
                           onBigNumberConfigChange={setBigNumberConfig}
                           queryTitle={queryTitle}
