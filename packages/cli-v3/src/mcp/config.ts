@@ -68,7 +68,7 @@ export const toolsMetadata = {
     name: "wait_for_run_to_complete",
     title: "Wait for Run to Complete",
     description:
-      "Wait for a run to complete. The run ID is the ID of the run that was triggered. It starts with run_",
+      "Wait for a run to complete. The run ID is the ID of the run that was triggered. It starts with run_. Has an optional timeoutInSeconds parameter (default 60s) - if the run doesn't complete within that time, the current state of the run will be returned.",
   },
   cancel_run: {
     name: "cancel_run",
