@@ -17,10 +17,10 @@ export class ComputeWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("compute-workload-manager");
 
   constructor(private opts: ComputeWorkloadManagerOptions) {
-    if (!opts.workloadApiDomain) {
-      this.logger.warn(
-        "⚠️ workloadApiDomain is unset — VMs need an explicit host IP to reach the supervisor"
-      );
+    if (opts.workloadApiDomain) {
+      this.logger.warn("⚠️ Custom workload API domain", {
+        domain: opts.workloadApiDomain,
+      });
     }
   }
 
@@ -76,6 +76,9 @@ export class ComputeWorkloadManager implements WorkloadManager {
       headers["Authorization"] = `Bearer ${this.opts.gatewayAuthToken}`;
     }
 
+    // Strip image digest — resolve by tag, not digest
+    const imageRef = opts.image.split("@")[0]!;
+
     const url = `${this.opts.gatewayUrl}/api/sandboxes`;
 
     const [fetchError, response] = await tryCatch(
@@ -83,7 +86,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
         method: "POST",
         headers,
         body: JSON.stringify({
-          image: opts.image,
+          image: imageRef,
           env: envVars,
         }),
       })
