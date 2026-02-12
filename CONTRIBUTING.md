@@ -2,9 +2,22 @@
 
 Thank you for taking the time to contribute to Trigger.dev. Your involvement is not just welcomed, but we encourage it! 🚀
 
-Please take some time to read this guide to understand contributing best practices for Trigger.dev.
+Please take some time to read this guide to understand contributing best practices for Trigger.dev. Note that we use [vouch](https://github.com/mitchellh/vouch) to manage contributor trust, so you'll need to be vouched before opening a PR.
 
 Thank you for helping us make Trigger.dev even better! 🤩
+
+## Getting vouched (required before opening a PR)
+
+We use [vouch](https://github.com/mitchellh/vouch) to manage contributor trust. **PRs from unvouched users are automatically closed.**
+
+Before you open your first pull request, you need to be vouched by a maintainer. Here's how:
+
+1. Open a [Vouch Request](https://github.com/triggerdotdev/trigger.dev/issues/new?template=vouch-request.yml) issue.
+2. Tell us what you'd like to work on and share any relevant background.
+3. A maintainer will review your request and vouch for you by commenting on the issue.
+4. Once vouched, your PRs will be accepted normally.
+
+If you're unsure whether you're already vouched, go ahead and open a PR — the check will tell you.
 
 ## Developing
 
@@ -222,19 +235,6 @@ See the [Job Catalog](./references/job-catalog/README.md) file for more.
 
 4. Navigate to your trigger.dev instance ([http://localhost:3030](http://localhost:3030/)), to see the jobs.
    You can use the test feature to trigger them.
-
-## Getting vouched (required before opening a PR)
-
-We use [vouch](https://github.com/mitchellh/vouch) to manage contributor trust. **PRs from unvouched users are automatically closed.**
-
-Before you open your first pull request, you need to be vouched by a maintainer. Here's how:
-
-1. Open a [Vouch Request](https://github.com/triggerdotdev/trigger.dev/issues/new?template=vouch-request.yml) issue.
-2. Tell us what you'd like to work on and share any relevant background.
-3. A maintainer will review your request and vouch for you by commenting on the issue.
-4. Once vouched, your PRs will be accepted normally.
-
-If you're unsure whether you're already vouched, go ahead and open a PR — the check will tell you.
 
 ## Making a pull request
 
