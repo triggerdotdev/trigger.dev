@@ -75,7 +75,7 @@ import {
   RunEngineOptions,
   TriggerParams,
 } from "./types.js";
-import { ttlWorkerCatalog } from "./ttlWorkerCatalog.js";
+import { createTtlWorkerCatalog } from "./ttlWorkerCatalog.js";
 import { workerCatalog } from "./workerCatalog.js";
 import pMap from "p-map";
 
@@ -83,7 +83,7 @@ export class RunEngine {
   private runLockRedis: Redis;
   private runLock: RunLocker;
   private worker: EngineWorker;
-  private ttlWorker: Worker<typeof ttlWorkerCatalog>;
+  private ttlWorker: Worker<ReturnType<typeof createTtlWorkerCatalog>>;
   private logger: Logger;
   private tracer: Tracer;
   private meter: Meter;
@@ -341,6 +341,12 @@ export class RunEngine {
       waitpointSystem: this.waitpointSystem,
     });
 
+    const ttlWorkerCatalog = createTtlWorkerCatalog({
+      visibilityTimeoutMs: options.queue?.ttlSystem?.visibilityTimeoutMs,
+      batchMaxSize: options.queue?.ttlSystem?.batchMaxSize,
+      batchMaxWaitMs: options.queue?.ttlSystem?.batchMaxWaitMs,
+    });
+
     this.ttlWorker = new Worker({
       name: "ttl-expiration",
       redisOptions: {
@@ -348,14 +354,14 @@ export class RunEngine {
         keyPrefix: `${options.queue.redis.keyPrefix}runqueue:ttl-worker:`,
       },
       catalog: ttlWorkerCatalog,
-      concurrency: { limit: 20 },
+      concurrency: { limit: options.queue?.ttlSystem?.workerConcurrency ?? 1 },
       pollIntervalMs: options.worker.pollIntervalMs ?? 1000,
       immediatePollIntervalMs: options.worker.immediatePollIntervalMs ?? 100,
       shutdownTimeoutMs: options.worker.shutdownTimeoutMs ?? 10_000,
       logger: new Logger("RunEngineTtlWorker", options.logLevel ?? "info"),
       jobs: {
-        expireTtlRun: async ({ payload }) => {
-          await this.ttlSystem.expireRunsBatch([payload.runId]);
+        expireTtlRun: async (items) => {
+          await this.ttlSystem.expireRunsBatch(items.map((i) => i.payload.runId));
         },
       },
     });

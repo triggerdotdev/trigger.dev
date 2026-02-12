@@ -73,8 +73,14 @@ export type RunEngineOptions = {
       batchSize?: number;
       /** Whether TTL consumers are disabled (default: false) */
       disabled?: boolean;
-      /** Visibility timeout for TTL worker jobs (ms, default: 30000) */
+      /** Visibility timeout for TTL worker jobs (ms, default: 120000) */
       visibilityTimeoutMs?: number;
+      /** Concurrency limit for the TTL redis-worker (default: 1) */
+      workerConcurrency?: number;
+      /** Max items to accumulate before flushing a batch (default: 500) */
+      batchMaxSize?: number;
+      /** Max time (ms) to wait for more items before flushing a batch (default: 5000) */
+      batchMaxWaitMs?: number;
     };
   };
   runLock: {

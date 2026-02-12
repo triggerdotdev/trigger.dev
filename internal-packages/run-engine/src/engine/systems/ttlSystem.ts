@@ -171,7 +171,7 @@ export class TtlSystem {
         const skipped: { runId: string; reason: string }[] = [];
 
         // Fetch all runs in a single query (no snapshot data needed)
-        const runs = await this.$.prisma.taskRun.findMany({
+        const runs = await this.$.readOnlyPrisma.taskRun.findMany({
           where: { id: { in: runIds } },
           select: {
             id: true,
@@ -182,13 +182,9 @@ export class TtlSystem {
             taskEventStore: true,
             createdAt: true,
             associatedWaitpoint: { select: { id: true } },
-            runtimeEnvironment: {
-              select: {
-                id: true,
-                organizationId: true,
-                projectId: true,
-              },
-            },
+            organizationId: true,
+            projectId: true,
+            runtimeEnvironmentId: true,
           },
         });
 
@@ -259,6 +255,11 @@ export class TtlSystem {
                 });
               }
 
+              // This should really never happen
+              if (!run.organizationId) {
+                return;
+              }
+
               // Emit event
               this.$.eventBus.emit("runExpired", {
                 run: {
@@ -273,9 +274,9 @@ export class TtlSystem {
                   status: "EXPIRED" as TaskRunStatus,
                 },
                 time: now,
-                organization: { id: run.runtimeEnvironment.organizationId },
-                project: { id: run.runtimeEnvironment.projectId },
-                environment: { id: run.runtimeEnvironment.id },
+                organization: { id: run.organizationId },
+                project: { id: run.projectId },
+                environment: { id: run.runtimeEnvironmentId },
               });
 
               expired.push(run.id);

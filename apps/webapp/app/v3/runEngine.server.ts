@@ -85,6 +85,9 @@ function createRunEngine() {
         shardCount: env.RUN_ENGINE_TTL_SYSTEM_SHARD_COUNT,
         pollIntervalMs: env.RUN_ENGINE_TTL_SYSTEM_POLL_INTERVAL_MS,
         batchSize: env.RUN_ENGINE_TTL_SYSTEM_BATCH_SIZE,
+        workerConcurrency: env.RUN_ENGINE_TTL_WORKER_CONCURRENCY,
+        batchMaxSize: env.RUN_ENGINE_TTL_WORKER_BATCH_MAX_SIZE,
+        batchMaxWaitMs: env.RUN_ENGINE_TTL_WORKER_BATCH_MAX_WAIT_MS,
       },
     },
     runLock: {

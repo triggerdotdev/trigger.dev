@@ -733,8 +733,8 @@ describe("RunEngine ttl", () => {
         expect(executionData2.run.status).toBe("PENDING");
 
         // Now wait for the TTL consumer to poll and expire the run
-        // (pollIntervalMs is 5000, so we wait 7s to allow time for the poll + processing)
-        await setTimeout(7_000);
+        // (pollIntervalMs is 5000 for TTL scan + up to 5000ms batch maxWaitMs + processing)
+        await setTimeout(13_000);
 
         // The TTL consumer should have found and expired the run
         expect(expiredEvents.length).toBe(1);
@@ -848,7 +848,8 @@ describe("RunEngine ttl", () => {
           authenticatedEnvironment.id,
           10
         );
-        await setTimeout(7_000);
+        // Wait for TTL scan (5000ms) + batch maxWaitMs (5000ms) + processing buffer
+        await setTimeout(13_000);
 
         const expiredRun = await prisma.taskRun.findUnique({
           where: { id: run.id },
