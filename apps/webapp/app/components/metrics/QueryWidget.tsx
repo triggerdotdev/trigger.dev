@@ -1,20 +1,17 @@
-import {
-  ClipboardDocumentIcon,
-  DocumentDuplicateIcon,
-  PencilIcon,
-  PencilSquareIcon,
-  TrashIcon,
-} from "@heroicons/react/20/solid";
+import { DocumentDuplicateIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { ClipboardIcon } from "@heroicons/react/24/outline";
 import { ChartBarIcon } from "@heroicons/react/24/solid";
 import { type OutputColumnMetadata } from "@internal/tsql";
 import { DialogClose } from "@radix-ui/react-dialog";
+import { IconBraces, IconChartHistogram, IconFileTypeCsv } from "@tabler/icons-react";
 import { assertNever } from "assert-never";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { cn } from "~/utils/cn";
 import { Maximize2 } from "lucide-react";
 import { useCallback, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { Card } from "~/components/primitives/charts/Card";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { cn } from "~/utils/cn";
+import { rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { QueryResultsChart } from "../code/QueryResultsChart";
 import { TSQLResultsTable } from "../code/TSQLResultsTable";
 import { Button } from "../primitives/Buttons";
@@ -31,8 +28,6 @@ import {
   PopoverMenuItem,
   PopoverVerticalEllipseTrigger,
 } from "../primitives/Popover";
-import { IconChartHistogram, IconBraces, IconFileTypeCsv } from "@tabler/icons-react";
-import { rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 
 const ChartType = z.union([z.literal("bar"), z.literal("line")]);
 export type ChartType = z.infer<typeof ChartType>;
@@ -240,6 +235,7 @@ export function QueryWidget({
                             onEdit(props.data);
                             setIsMenuOpen(false);
                           }}
+                          leadingIconClassName="-ml-0.5 -mr-1"
                         />
                       )}
                       {onRename && (
@@ -264,23 +260,11 @@ export function QueryWidget({
                           className="pr-4"
                         />
                       )}
-                      {onDelete && (
-                        <PopoverMenuItem
-                          icon={TrashIcon}
-                          title="Delete chart"
-                          leadingIconClassName="text-error"
-                          className="text-error hover:!bg-error/10"
-                          onClick={() => {
-                            onDelete();
-                            setIsMenuOpen(false);
-                          }}
-                        />
-                      )}
                     </>
                   )}
                   {query && (
                     <PopoverMenuItem
-                      icon={ClipboardDocumentIcon}
+                      icon={ClipboardIcon}
                       title="Copy query"
                       onClick={() => {
                         copyQuery();
@@ -296,6 +280,7 @@ export function QueryWidget({
                       copyJSON();
                       setIsMenuOpen(false);
                     }}
+                    leadingIconClassName="-ml-0.5 -mr-1"
                   />
                   <PopoverMenuItem
                     icon={IconFileTypeCsv}
@@ -305,7 +290,20 @@ export function QueryWidget({
                       copyCSV();
                       setIsMenuOpen(false);
                     }}
+                    leadingIconClassName="-ml-0.5 -mr-1"
                   />
+                  {onDelete && (
+                    <PopoverMenuItem
+                      icon={TrashIcon}
+                      title="Delete chart"
+                      leadingIconClassName="text-error"
+                      className="text-error hover:!bg-error/10"
+                      onClick={() => {
+                        onDelete();
+                        setIsMenuOpen(false);
+                      }}
+                    />
+                  )}
                 </div>
               </PopoverContent>
             </Popover>
