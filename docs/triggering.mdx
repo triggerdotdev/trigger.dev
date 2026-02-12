@@ -867,8 +867,9 @@ await myTask.trigger({ updated: "data" }, { debounce: { key: "user-123", delay: 
 The `debounce` option accepts:
 
 - `key` - A unique string to identify the debounce group (scoped to the task)
-- `delay` - Duration string specifying how long to delay (e.g., "5s", "1m", "30s")
+- `delay` - Duration string specifying how long to delay. Supported units: `s` (seconds), `m` (minutes), `h`/`hr` (hours), `d` (days), `w` (weeks). Minimum is 1 second. Examples: `"5s"`, `"1m"`, `"2h30m"`
 - `mode` - Optional. Controls which trigger's data is used: `"leading"` (default) or `"trailing"`
+- `maxDelay` - Optional. Maximum total time from the first trigger before the run must execute. Uses the same duration format as `delay`
 
 **How it works:**
 
@@ -876,6 +877,52 @@ The `debounce` option accepts:
 2. Subsequent triggers with the same key (while the run is still delayed) push the execution time further
 3. Once no new triggers occur within the delay duration, the run executes
 4. After the run starts executing, a new trigger with the same key will create a new run
+
+**Limiting total delay with `maxDelay`:**
+
+By default, continuous triggers can delay execution indefinitely. The `maxDelay` option sets an upper bound on the total delay from the first trigger, ensuring the run eventually executes even with constant activity.
+
+```ts
+await summarizeChat.trigger(
+  { conversationId: "123" },
+  {
+    debounce: {
+      key: "conversation-123",
+      delay: "10s",    // Wait 10s after each message
+      maxDelay: "5m",  // But always run within 5 minutes of first trigger
+    },
+  }
+);
+```
+
+This is useful for scenarios like:
+
+- Summarizing AI chat threads that need periodic updates even during active conversations
+- Syncing data that should happen regularly despite continuous changes
+- Any case where you want debouncing but also guarantee timely execution
+
+**Timeline example with `maxDelay`:**
+
+Consider `delay: "5s"` and `maxDelay: "30s"` with triggers arriving every 2 seconds:
+
+| Time | Event | Result |
+| :--- | :--- | :--- |
+| 0s | Trigger 1 | Run A created, scheduled for 5s |
+| 2s | Trigger 2 | Run A rescheduled to 7s |
+| 4s | Trigger 3 | Run A rescheduled to 9s |
+| ... | ... | ... |
+| 26s | Trigger 14 | Run A rescheduled to 31s |
+| 28s | Trigger 15 | Would reschedule to 33s, but exceeds maxDelay (30s). Run A executes, Run B created |
+| 30s | Trigger 16 | Run B rescheduled to 35s |
+
+Without `maxDelay`, continuous triggers would prevent the run from ever executing. With `maxDelay: "30s"`, execution is guaranteed within 30 seconds of the first trigger.
+
+<Note>
+  The `maxDelay` value is evaluated from each trigger call, not stored with the original run. This
+  means if you pass different `maxDelay` values for the same debounce key, each trigger uses its own
+  `maxDelay` to check against the original run's creation time. For consistent behavior, use the
+  same `maxDelay` value for all triggers with the same debounce key.
+</Note>
 
 **Leading vs Trailing mode:**
 
