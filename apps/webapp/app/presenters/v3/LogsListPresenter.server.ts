@@ -264,19 +264,16 @@ export class LogsListPresenter extends BasePresenter {
 
 
     if (effectiveFrom) {
-      const fromNs = convertDateToNanoseconds(effectiveFrom);
-
-        queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
-          insertedAtStart: convertDateToClickhouseDateTime(effectiveFrom),
+        queryBuilder.where("triggered_timestamp >= {triggeredAtStart: DateTime64(3)}", {
+          triggeredAtStart: convertDateToClickhouseDateTime(effectiveFrom),
         });
     }
 
     if (effectiveTo) {
       const clampedTo = effectiveTo > new Date() ? new Date() : effectiveTo;
-      const toNs = convertDateToNanoseconds(clampedTo);
 
-      queryBuilder.where("inserted_at <= {insertedAtEnd: DateTime64(3)}", {
-        insertedAtEnd: convertDateToClickhouseDateTime(clampedTo),
+      queryBuilder.where("triggered_timestamp <= {triggeredAtEnd: DateTime64(3)}", {
+        triggeredAtEnd: convertDateToClickhouseDateTime(clampedTo),
       });
     }
 
@@ -404,6 +401,9 @@ export class LogsListPresenter extends BasePresenter {
         runId: log.run_id,
         taskIdentifier: log.task_identifier,
         startTime: convertClickhouseDateTime64ToJsDate(log.start_time).toISOString(),
+        triggeredTimestamp: convertClickhouseDateTime64ToJsDate(
+          log.triggered_timestamp
+        ).toISOString(),
         traceId: log.trace_id,
         spanId: log.span_id,
         parentSpanId: log.parent_span_id || null,

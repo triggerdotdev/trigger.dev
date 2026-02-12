@@ -162,7 +162,7 @@ export function LogsTable({
                       boxShadow: getLevelBoxShadow(log.level),
                     }}
                   >
-                    <DateTimeAccurate date={log.startTime} />
+                    <DateTimeAccurate date={log.triggeredTimestamp} />
                   </TableCell>
                   <TableCell className="min-w-24">
                     <TruncatedCopyableValue value={log.runId} />
