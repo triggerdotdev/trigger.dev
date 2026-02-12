@@ -565,6 +565,12 @@ export function VercelOnboardingModal({
     }
   }, [state, customEnvironments, vercelStagingEnvironment]);
 
+  useEffect(() => {
+    if (state === "project-selection" && availableProjects.length > 0 && !selectedVercelProject) {
+      setSelectedVercelProject(availableProjects[0]);
+    }
+  }, [state, availableProjects, selectedVercelProject]);
+
   if (!isOpen || onboardingData?.authInvalid) {
     return null;
   }
@@ -625,6 +631,7 @@ export function VercelOnboardingModal({
                 </Callout>
               ) : (
                 <Select
+                  disabled={availableProjects.length === 1}
                   value={selectedVercelProject?.id || ""}
                   setValue={(value) => {
                     if (!Array.isArray(value)) {
@@ -634,6 +641,7 @@ export function VercelOnboardingModal({
                     }
                   }}
                   items={availableProjects}
+                  filter={availableProjects.length > 5 ? { keys: ["name"] } : undefined}
                   variant="tertiary/medium"
                   placeholder="Select a Vercel project"
                   dropdownIcon
