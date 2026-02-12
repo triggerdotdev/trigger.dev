@@ -83,6 +83,7 @@ class ManagedSupervisor {
           ...workloadManagerOptions,
           gatewayUrl: env.COMPUTE_GATEWAY_URL,
           gatewayAuthToken: env.COMPUTE_GATEWAY_AUTH_TOKEN,
+          gatewayTimeoutMs: env.COMPUTE_GATEWAY_TIMEOUT_MS,
         })
       : this.isKubernetes
         ? new KubernetesWorkloadManager(workloadManagerOptions)

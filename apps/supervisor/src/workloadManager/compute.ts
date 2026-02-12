@@ -11,6 +11,7 @@ import { tryCatch } from "@trigger.dev/core";
 type ComputeWorkloadManagerOptions = WorkloadManagerOptions & {
   gatewayUrl: string;
   gatewayAuthToken?: string;
+  gatewayTimeoutMs: number;
 };
 
 export class ComputeWorkloadManager implements WorkloadManager {
@@ -92,7 +93,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       fetch(url, {
         method: "POST",
         headers,
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(this.opts.gatewayTimeoutMs),
         body: JSON.stringify({
           image: imageRef,
           env: envVars,
