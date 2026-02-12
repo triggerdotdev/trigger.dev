@@ -70,6 +70,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   queryBuilder.where("environment_id = {environmentId: String}", {
     environmentId: environment.id,
   });
+  queryBuilder.where("project_id = {projectId: String}", {
+    projectId: project.id,
+  });
   queryBuilder.where("trace_id = {traceId: String}", { traceId });
   queryBuilder.where("run_id = {runId: String}", { runId });
 

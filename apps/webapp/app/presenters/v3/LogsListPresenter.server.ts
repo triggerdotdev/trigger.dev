@@ -118,29 +118,12 @@ function levelToKindsAndStatuses(level: LogLevel): { kinds?: string[]; statuses?
     case "DEBUG":
       return { kinds: ["LOG_DEBUG"] };
     case "INFO":
-      return { kinds: ["LOG_INFO", "LOG_LOG"] };
+      return { kinds: ["LOG_INFO", "LOG_LOG", "SPAN"] };
     case "WARN":
       return { kinds: ["LOG_WARN"] };
     case "ERROR":
-      return { kinds: ["LOG_ERROR"], statuses: ["ERROR"] };
+      return { kinds: ["LOG_ERROR", "SPAN_EVENT"], statuses: ["ERROR"] };
   }
-}
-
-function convertDateToNanoseconds(date: Date): bigint {
-  return BigInt(date.getTime()) * 1_000_000n;
-}
-
-function formatNanosecondsForClickhouse(ns: bigint): string {
-  const nsString = ns.toString();
-  // Handle negative numbers (dates before 1970-01-01)
-  if (nsString.startsWith("-")) {
-    const absString = nsString.slice(1);
-    const padded = absString.padStart(19, "0");
-    return "-" + padded.slice(0, 10) + "." + padded.slice(10);
-  }
-  // Pad positive numbers to 19 digits to ensure correct slicing
-  const padded = nsString.padStart(19, "0");
-  return padded.slice(0, 10) + "." + padded.slice(10);
 }
 
 export class LogsListPresenter extends BasePresenter {
@@ -341,8 +324,6 @@ export class LogsListPresenter extends BasePresenter {
     // Must mirror the ORDER BY columns: (organization_id DESC, environment_id DESC, triggered_timestamp DESC, span_id DESC)
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
     if (decodedCursor) {
-      // organization_id and environment_id are already pinned by equality filters above,
-      // so cursor only needs to compare triggered_timestamp and span_id
       queryBuilder.where(
         `(triggered_timestamp < {cursorTriggeredTimestamp: String} OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND span_id < {cursorSpanId: String}))`,
         {

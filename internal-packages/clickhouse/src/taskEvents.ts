@@ -273,7 +273,7 @@ export function getLogsSearchListQueryBuilder(
       "trace_id",
       "span_id",
       "parent_span_id",
-      { name: "message", expression: "LEFT(message, 256)" },
+      { name: "message", expression: "LEFT(message, 512)" },
       "kind",
       "status",
       "duration",
