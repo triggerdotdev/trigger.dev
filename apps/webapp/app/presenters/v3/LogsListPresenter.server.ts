@@ -84,13 +84,13 @@ export type LogsListAppliedFilters = LogsList["filters"];
 // Cursor is a base64 encoded JSON of the pagination keys
 type LogCursor = {
   environmentId: string;
-  unixTimestamp: number;
+  triggeredTimestamp: string; // DateTime64(9) string
   traceId: string;
 };
 
 const LogCursorSchema = z.object({
   environmentId: z.string(),
-  unixTimestamp: z.number(),
+  triggeredTimestamp: z.string(),
   traceId: z.string(),
 });
 
@@ -252,7 +252,7 @@ export class LogsListPresenter extends BasePresenter {
       );
     }
 
-    const queryBuilder = this.clickhouse.taskEventsV2.logsListQueryBuilder();
+    const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder();
 
     queryBuilder.where("environment_id = {environmentId: String}", {
       environmentId,
@@ -350,38 +350,30 @@ export class LogsListPresenter extends BasePresenter {
     }
 
     // Debug logs are available only to admins
-    if (includeDebugLogs === false) {
-      queryBuilder.where("kind NOT IN {debugKinds: Array(String)}", {
-        debugKinds: ["DEBUG_EVENT"],
-      });
+    // if (includeDebugLogs === false) {
+    //   queryBuilder.where("kind NOT IN {debugKinds: Array(String)}", {
+    //     debugKinds: ["DEBUG_EVENT"],
+    //   });
+    //
+    //   queryBuilder.where("NOT ((kind = 'LOG_INFO') AND (attributes_text = '{}'))");
+    // }
 
-      queryBuilder.where("NOT ((kind = 'LOG_INFO') AND (attributes_text = '{}'))");
-    }
-
-    queryBuilder.where("kind NOT IN {debugSpans: Array(String)}", {
-      debugSpans: ["SPAN", "ANCESTOR_OVERRIDE", "SPAN_EVENT"],
-    });
-
-    // kindCondition += ` `;
-    // params["excluded_statuses"] = ["SPAN", "ANCESTOR_OVERRIDE", "SPAN_EVENT"];
-
-
-    queryBuilder.where("NOT (kind = 'SPAN' AND status = 'PARTIAL')");
+    // SPAN, ANCESTOR_OVERRIDE, SPAN_EVENT kinds are already filtered out by the materialized view
 
     // Cursor pagination
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
     if (decodedCursor) {
       queryBuilder.where(
-        "(environment_id, toUnixTimestamp(start_time), trace_id) < ({cursorEnvId: String}, {cursorUnixTimestamp: Int64}, {cursorTraceId: String})",
+        "(environment_id, triggered_timestamp, trace_id) < ({cursorEnvId: String}, {cursorTriggeredTimestamp: String}, {cursorTraceId: String})",
         {
           cursorEnvId: decodedCursor.environmentId,
-          cursorUnixTimestamp: decodedCursor.unixTimestamp,
+          cursorTriggeredTimestamp: decodedCursor.triggeredTimestamp,
           cursorTraceId: decodedCursor.traceId,
         }
       );
     }
 
-    queryBuilder.orderBy("environment_id DESC, toUnixTimestamp(start_time) DESC, trace_id DESC");
+    queryBuilder.orderBy("environment_id DESC, triggered_timestamp DESC, trace_id DESC");
     // Limit + 1 to check if there are more results
     queryBuilder.limit(pageSize + 1);
 
@@ -399,10 +391,9 @@ export class LogsListPresenter extends BasePresenter {
     let nextCursor: string | undefined;
     if (hasMore && logs.length > 0) {
       const lastLog = logs[logs.length - 1];
-      const unixTimestamp = Math.floor(new Date(lastLog.start_time).getTime() / 1000);
       nextCursor = encodeCursor({
         environmentId,
-        unixTimestamp,
+        triggeredTimestamp: lastLog.triggered_timestamp,
         traceId: lastLog.trace_id,
       });
     }
