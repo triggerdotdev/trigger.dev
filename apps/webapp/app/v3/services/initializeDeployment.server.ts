@@ -200,6 +200,7 @@ export class InitializeDeploymentService extends BaseService {
                     artifactKey: payload.artifactKey,
                     skipPromotion: payload.skipPromotion,
                     configFilePath: payload.configFilePath,
+                    skipEnqueue: payload.skipEnqueue,
                   }
                 : {}),
             }
@@ -238,7 +239,8 @@ export class InitializeDeploymentService extends BaseService {
         new Date(Date.now() + timeoutMs)
       );
 
-      if (payload.isNativeBuild) {
+      // For github integration there is no artifactKey, hence we skip it here
+      if (payload.isNativeBuild && payload.artifactKey && !payload.skipEnqueue) {
         const result = await deploymentService
           .enqueueBuild(environment, deployment, payload.artifactKey, {
             skipPromotion: payload.skipPromotion,
