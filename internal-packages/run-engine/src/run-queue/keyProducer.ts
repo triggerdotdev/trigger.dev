@@ -301,6 +301,10 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     return `*:${constants.ENV_PART}:*:queue:*:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
+  ttlQueueKeyForShard(shard: number): string {
+    return ["ttl", "shard", shard.toString()].join(":");
+  }
+
   descriptorFromQueue(queue: string): QueueDescriptor {
     const parts = queue.split(":");
     return {

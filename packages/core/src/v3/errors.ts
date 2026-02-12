@@ -307,6 +307,8 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_DEQUEUED_QUEUE_NOT_FOUND":
         case "TASK_HAS_N0_EXECUTION_SNAPSHOT":
         case "TASK_RUN_DEQUEUED_MAX_RETRIES":
+        case "BATCH_ITEM_COULD_NOT_TRIGGER":
+        case "UNSPECIFIED_ERROR":
           return false;
 
         //new heartbeat error

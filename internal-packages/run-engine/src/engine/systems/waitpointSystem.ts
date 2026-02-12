@@ -4,6 +4,7 @@ import {
   Prisma,
   PrismaClientOrTransaction,
   TaskQueue,
+  TaskRun,
   TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,
   Waitpoint,
@@ -14,6 +15,7 @@ import { sendNotificationToWorker } from "../eventBus.js";
 import { EnqueueSystem } from "./enqueueSystem.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
+import { isFinalRunStatus } from "../statuses.js";
 
 export type WaitpointSystemOptions = {
   resources: SystemResources;
@@ -496,6 +498,42 @@ export class WaitpointSystem {
     });
   }
 
+  /**
+   * Blocks a run with a waitpoint and immediately completes the waitpoint.
+   *
+   * Used when creating a pre-failed child run: the parent needs to be blocked
+   * by the waitpoint so it can receive the error output, but the waitpoint is
+   * already resolved because the child run is terminal from the start.
+   */
+  async blockRunAndCompleteWaitpoint({
+    runId,
+    waitpointId,
+    output,
+    projectId,
+    organizationId,
+    batch,
+  }: {
+    runId: string;
+    waitpointId: string;
+    output: { value: string; type?: string; isError: boolean };
+    projectId: string;
+    organizationId: string;
+    batch?: { id: string; index?: number };
+  }): Promise<void> {
+    await this.blockRunWithWaitpoint({
+      runId,
+      waitpoints: waitpointId,
+      projectId,
+      organizationId,
+      batch,
+    });
+
+    await this.completeWaitpoint({
+      id: waitpointId,
+      output,
+    });
+  }
+
   public async continueRunIfUnblocked({
     runId,
   }: {
@@ -770,5 +808,105 @@ export class WaitpointSystem {
       projectId,
       environmentId,
     };
+  }
+
+  /**
+   * Builds the waitpoint output payload from a completed run's stored output/error.
+   */
+  #buildWaitpointOutputFromRun(
+    run: Pick<TaskRun, "status" | "output" | "outputType" | "error">
+  ): { value: string; type?: string; isError: boolean } | undefined {
+    if (run.status === "COMPLETED_SUCCESSFULLY") {
+      if (run.output == null) {
+        return undefined;
+      }
+      return {
+        value: run.output,
+        type: run.outputType ?? undefined,
+        isError: false,
+      };
+    }
+    if (isFinalRunStatus(run.status)) {
+      return {
+        value: JSON.stringify(run.error ?? {}),
+        isError: true,
+      };
+    }
+    return undefined;
+  }
+
+  /**
+   * Gets an existing run waitpoint or creates one lazily.
+   * Used for debounce/idempotency when a late-arriving triggerAndWait caller
+   * needs to block on an existing run that was created without a waitpoint.
+   * When the run has already completed, creates the waitpoint and immediately
+   * completes it with the run's output/error so the parent can resume.
+   */
+  public async getOrCreateRunWaitpoint({
+    runId,
+    projectId,
+    environmentId,
+  }: {
+    runId: string;
+    projectId: string;
+    environmentId: string;
+  }): Promise<Waitpoint> {
+    // Fast path: check if waitpoint already exists
+    const run = await this.$.prisma.taskRun.findFirst({
+      where: { id: runId },
+      include: { associatedWaitpoint: true },
+    });
+
+    if (!run) {
+      throw new Error(`Run not found: ${runId}`);
+    }
+
+    if (run.associatedWaitpoint) {
+      return run.associatedWaitpoint;
+    }
+
+    // Need to create - use run lock to prevent races (operational decisions use latest snapshot inside lock)
+    return this.$.runLock.lock("getOrCreateRunWaitpoint", [runId], async () => {
+      const prisma = this.$.prisma;
+
+      // Double-check after acquiring lock
+      const runAfterLock = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        include: { associatedWaitpoint: true },
+      });
+
+      if (!runAfterLock) {
+        throw new Error(`Run not found: ${runId}`);
+      }
+
+      if (runAfterLock.associatedWaitpoint) {
+        return runAfterLock.associatedWaitpoint;
+      }
+
+      // Operational decision: use latest execution snapshot, not TaskRun status
+      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
+
+      // Create waitpoint and link to run atomically
+      const waitpointData = this.buildRunAssociatedWaitpoint({ projectId, environmentId });
+
+      const waitpoint = await prisma.waitpoint.create({
+        data: {
+          ...waitpointData,
+          completedByTaskRunId: runId,
+        },
+      });
+
+      // If run has already finished (per snapshot), complete the waitpoint immediately so the parent can resume
+      if (snapshot.executionStatus === "FINISHED") {
+        const output = this.#buildWaitpointOutputFromRun(runAfterLock);
+        const completed = await this.completeWaitpoint({
+          id: waitpoint.id,
+          output,
+        });
+        return completed;
+      }
+
+      return waitpoint;
+    });
   }
 }

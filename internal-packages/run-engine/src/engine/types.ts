@@ -63,6 +63,25 @@ export type RunEngineOptions = {
       scanJitterInMs?: number;
       processMarkedJitterInMs?: number;
     };
+    /** TTL system options for automatic run expiration */
+    ttlSystem?: {
+      /** Number of shards for TTL sorted sets (default: same as queue shards) */
+      shardCount?: number;
+      /** How often to poll each shard for expired runs (ms, default: 1000) */
+      pollIntervalMs?: number;
+      /** Max number of runs to expire per poll per shard (default: 100) */
+      batchSize?: number;
+      /** Whether TTL consumers are disabled (default: false) */
+      disabled?: boolean;
+      /** Visibility timeout for TTL worker jobs (ms, default: 120000) */
+      visibilityTimeoutMs?: number;
+      /** Concurrency limit for the TTL redis-worker (default: 1) */
+      workerConcurrency?: number;
+      /** Max items to accumulate before flushing a batch (default: 500) */
+      batchMaxSize?: number;
+      /** Max time (ms) to wait for more items before flushing a batch (default: 5000) */
+      batchMaxWaitMs?: number;
+    };
   };
   runLock: {
     redis: RedisOptions;
@@ -87,6 +106,19 @@ export type RunEngineOptions = {
     defaultConcurrency?: number;
     /** Optional global rate limiter to limit processing across all consumers */
     globalRateLimiter?: GlobalRateLimiter;
+    /** Retry configuration for failed batch items */
+    retry?: {
+      /** Maximum number of attempts (including the first). Default: 1 (no retries) */
+      maxAttempts: number;
+      /** Base delay in milliseconds. Default: 1000 */
+      minTimeoutInMs?: number;
+      /** Maximum delay in milliseconds. Default: 30000 */
+      maxTimeoutInMs?: number;
+      /** Exponential backoff factor. Default: 2 */
+      factor?: number;
+      /** Whether to add jitter to retry delays. Default: true */
+      randomize?: boolean;
+    };
   };
   debounce?: {
     redis?: RedisOptions;
@@ -105,6 +137,9 @@ export type RunEngineOptions = {
     factor?: number;
   };
   queueRunsWaitingForWorkerBatchSize?: number;
+  /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
+   *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
+  defaultMaxTtl?: string;
   tracer: Tracer;
   meter?: Meter;
   logger?: Logger;
