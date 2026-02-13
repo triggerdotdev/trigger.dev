@@ -244,17 +244,18 @@ function fillTimeGaps(
       }
       filledData.push(point);
     } else {
-      // Create a zero-filled data point
-      const zeroPoint: Record<string, unknown> = {
+      // Create a null-filled data point so gaps appear in line/bar charts
+      // and legend aggregations (avg/min/max) skip these slots
+      const gapPoint: Record<string, unknown> = {
         [xDataKey]: t,
         __rawDate: new Date(t),
         __granularity: granularity,
         __originalX: new Date(t).toISOString(),
       };
       for (const s of series) {
-        zeroPoint[s] = 0;
+        gapPoint[s] = null;
       }
-      filledData.push(zeroPoint);
+      filledData.push(gapPoint);
     }
   }
 

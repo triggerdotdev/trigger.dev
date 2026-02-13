@@ -228,7 +228,9 @@ export function useSeriesTotal(aggregation?: AggregationType): Record<string, nu
       const counts: Record<string, number> = {};
       for (const item of data) {
         for (const seriesKey of dataKeys) {
-          const val = Number(item[seriesKey] || 0);
+          const rawVal = item[seriesKey];
+          if (rawVal == null) continue; // skip gap-filled nulls
+          const val = Number(rawVal);
           sums[seriesKey] = (sums[seriesKey] || 0) + val;
           counts[seriesKey] = (counts[seriesKey] || 0) + 1;
         }
@@ -244,7 +246,8 @@ export function useSeriesTotal(aggregation?: AggregationType): Record<string, nu
       const result: Record<string, number> = {};
       for (const item of data) {
         for (const seriesKey of dataKeys) {
-          const val = Number(item[seriesKey] || 0);
+          if (item[seriesKey] == null) continue; // skip gap-filled nulls
+          const val = Number(item[seriesKey]);
           if (result[seriesKey] === undefined || val < result[seriesKey]) {
             result[seriesKey] = val;
           }
@@ -261,7 +264,8 @@ export function useSeriesTotal(aggregation?: AggregationType): Record<string, nu
     const result: Record<string, number> = {};
     for (const item of data) {
       for (const seriesKey of dataKeys) {
-        const val = Number(item[seriesKey] || 0);
+        if (item[seriesKey] == null) continue; // skip gap-filled nulls
+        const val = Number(item[seriesKey]);
         if (result[seriesKey] === undefined || val > result[seriesKey]) {
           result[seriesKey] = val;
         }
