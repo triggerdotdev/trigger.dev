@@ -55,7 +55,7 @@ export class AIQueryService {
 
   constructor(
     private readonly tableSchema: TableSchema[],
-    private readonly model: LanguageModelV1 = openai("gpt-4o-mini")
+    private readonly model: LanguageModelV1 = openai("codex-mini-latest")
   ) {}
 
   /**
@@ -65,7 +65,7 @@ export class AIQueryService {
   private buildSetTimeFilterTool() {
     return tool({
       description:
-        "Set the time filter for the query page UI instead of adding triggered_at conditions to the query. ALWAYS use this tool when the user wants to filter by time (e.g., 'last 7 days', 'past hour', 'yesterday'). The UI will apply this filter automatically. Do NOT add triggered_at to the WHERE clause - use this tool instead.",
+        "Set the time filter for the query page UI instead of adding time conditions to the query. ALWAYS use this tool when the user wants to filter by time (e.g., 'last 7 days', 'past hour', 'yesterday'). The UI will apply this filter automatically using the table's time column (triggered_at for runs, bucket_start for metrics). Do NOT add triggered_at or bucket_start to the WHERE clause for time filtering - use this tool instead.",
       parameters: z.object({
         period: z
           .string()
@@ -366,13 +366,20 @@ export class AIQueryService {
    * Build the system prompt for the AI
    */
   private buildSystemPrompt(schemaDescription: string): string {
-    return `You are an expert SQL assistant that generates TSQL queries for a task run analytics system. TSQL is a SQL dialect similar to ClickHouse SQL.
+    return `You are an expert SQL assistant that generates TSQL queries for a task analytics system. TSQL is a SQL dialect similar to ClickHouse SQL.
 
 ## Your Task
 Convert natural language requests into valid TSQL SELECT queries. Always validate your queries using the validateTSQLQuery tool before returning them.
 
 ## Available Schema
 ${schemaDescription}
+
+## Choosing the Right Table
+
+- **runs** — Task run records (status, timing, cost, output, etc.). Use for questions about runs, tasks, failures, durations, costs, queues.
+- **metrics** — Host and runtime metrics collected during task execution (CPU, memory). Use for questions about resource usage, CPU utilization, memory consumption, or performance monitoring. Each row is a 10-second aggregation bucket tied to a specific run.
+
+When the user mentions "CPU", "memory", "utilization", "resource usage", or similar terms, query the \`metrics\` table. When they mention "runs", "tasks", "failures", "status", "duration", or "cost", query the \`runs\` table.
 
 ## TSQL Syntax Guide
 
@@ -437,16 +444,45 @@ LIMIT 1000
 Only use explicit \`toStartOfHour\`/\`toStartOfDay\` etc. if the user specifically requests a particular bucket size (e.g., "group by hour", "bucket by day").
 
 ### Common Patterns
+
+#### Runs table
 - Status filter: WHERE status = 'Failed' or WHERE status IN ('Failed', 'Crashed')
-- Time filtering: Use the \`setTimeFilter\` tool (NOT triggered_at in WHERE clause)
+- Time filtering: Use the \`setTimeFilter\` tool (NOT triggered_at/bucket_start in WHERE clause)
+
+#### Metrics table
+- Filter by metric name: WHERE metric_name = 'process.cpu.utilization'
+- Filter by run: WHERE run_id = 'run_abc123'
+- Filter by task: WHERE task_identifier = 'my-task'
+- Available metric names: process.cpu.utilization, process.cpu.time, process.memory.usage, system.memory.usage, system.memory.utilization, system.network.io, system.network.dropped, system.network.errors
+- Use max_value or last_value for gauges (CPU utilization, memory usage), sum_value for counters (CPU time, network IO)
+
+\`\`\`sql
+-- CPU utilization over time for a task
+SELECT timeBucket(), task_identifier, avg(max_value) AS avg_cpu
+FROM metrics
+WHERE metric_name = 'process.cpu.utilization'
+GROUP BY timeBucket, task_identifier
+ORDER BY timeBucket
+LIMIT 1000
+\`\`\`
+
+\`\`\`sql
+-- Peak memory usage per run
+SELECT run_id, task_identifier, max(max_value) AS peak_memory_bytes
+FROM metrics
+WHERE metric_name = 'process.memory.usage'
+GROUP BY run_id, task_identifier
+ORDER BY peak_memory_bytes DESC
+LIMIT 100
+\`\`\`
 
 ## Important Rules
 
 1. NEVER use SELECT * - ClickHouse is a columnar database where SELECT * has very poor performance
 2. Always select only the specific columns needed for the request
 3. When column selection is ambiguous, use the core columns marked [CORE] in the schema
-4. **TIME FILTERING**: When the user wants to filter by time (e.g., "last 7 days", "past hour", "yesterday"), ALWAYS use the \`setTimeFilter\` tool instead of adding \`triggered_at\` conditions to the query. The UI has a time filter that will apply this automatically.
-5. Do NOT add \`triggered_at\` to WHERE clauses - use \`setTimeFilter\` tool instead. If the user doesn't specify a time period, do NOT add any time filter (the UI defaults to 7 days).
+4. **TIME FILTERING**: When the user wants to filter by time (e.g., "last 7 days", "past hour", "yesterday"), ALWAYS use the \`setTimeFilter\` tool instead of adding time conditions to the WHERE clause. The UI has a time filter that will apply this automatically. This applies to both the \`runs\` table (triggered_at) and the \`metrics\` table (bucket_start).
+5. Do NOT add \`triggered_at\` or \`bucket_start\` to WHERE clauses for time filtering - use \`setTimeFilter\` tool instead. If the user doesn't specify a time period, do NOT add any time filter (the UI defaults to 7 days).
 6. **TIME BUCKETING**: When the user wants to see data over time or in time buckets, use \`timeBucket()\` in SELECT and reference it as \`timeBucket\` in GROUP BY / ORDER BY. Only use manual bucketing functions (toStartOfHour, toStartOfDay, etc.) when the user explicitly requests a specific bucket size.
 7. ALWAYS use the validateTSQLQuery tool to check your query before returning it
 8. If validation fails, fix the issues and try again (up to 3 attempts)
@@ -472,13 +508,18 @@ If you cannot generate a valid query, explain why briefly.`;
    * Build the system prompt for edit mode
    */
   private buildEditSystemPrompt(schemaDescription: string): string {
-    return `You are an expert SQL assistant that modifies existing TSQL queries for a task run analytics system. TSQL is a SQL dialect similar to ClickHouse SQL.
+    return `You are an expert SQL assistant that modifies existing TSQL queries for a task analytics system. TSQL is a SQL dialect similar to ClickHouse SQL.
 
 ## Your Task
 Modify the provided TSQL query according to the user's instructions. Make only the changes requested - preserve the existing query structure where possible.
 
 ## Available Schema
 ${schemaDescription}
+
+## Choosing the Right Table
+
+- **runs** — Task run records (status, timing, cost, output, etc.). Use for questions about runs, tasks, failures, durations, costs, queues.
+- **metrics** — Host and runtime metrics collected during task execution (CPU, memory). Use for questions about resource usage, CPU utilization, memory consumption, or performance monitoring. Each row is a 10-second aggregation bucket tied to a specific run.
 
 ## TSQL Syntax Guide
 
@@ -539,11 +580,16 @@ ORDER BY timeBucket
 LIMIT 1000
 \`\`\`
 
+### Common Metrics Patterns
+- Filter by metric: WHERE metric_name = 'process.cpu.utilization'
+- Available metric names: process.cpu.utilization, process.cpu.time, process.memory.usage, system.memory.usage, system.memory.utilization, system.network.io, system.network.dropped, system.network.errors
+- Use max_value or last_value for gauges (CPU utilization, memory usage), sum_value for counters (CPU time, network IO)
+
 ## Important Rules
 
 1. NEVER use SELECT * - ClickHouse is a columnar database where SELECT * has very poor performance
 2. If the existing query uses SELECT *, replace it with specific columns (use core columns marked [CORE] as defaults)
-3. **TIME FILTERING**: When the user wants to change time filtering (e.g., "change to last 30 days"), use the \`setTimeFilter\` tool instead of modifying \`triggered_at\` conditions. If the existing query has \`triggered_at\` in WHERE, consider removing it and using \`setTimeFilter\` instead.
+3. **TIME FILTERING**: When the user wants to change time filtering (e.g., "change to last 30 days"), use the \`setTimeFilter\` tool instead of modifying time column conditions. If the existing query has \`triggered_at\` or \`bucket_start\` in WHERE for time filtering, consider removing it and using \`setTimeFilter\` instead.
 4. **TIME BUCKETING**: When adding time-series grouping, use \`timeBucket()\` in SELECT and reference it as \`timeBucket\` in GROUP BY / ORDER BY. Only use manual bucketing functions (toStartOfHour, toStartOfDay, etc.) when the user explicitly requests a specific bucket size.
 5. ALWAYS use the validateTSQLQuery tool to check your modified query before returning it
 6. If validation fails, fix the issues and try again (up to 3 attempts)
