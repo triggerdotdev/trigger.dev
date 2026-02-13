@@ -22,6 +22,7 @@ on:
       - ".github/workflows/e2e.yml"
       - ".github/workflows/publish-webapp.yml"
       - ".github/workflows/publish-worker.yml"
+      - ".github/workflows/publish-gcp-images.yml"
       - "packages/**"
       - "!packages/**/*.md"
       - "!packages/**/*.eslintrc"
@@ -73,6 +74,13 @@ jobs:
   publish-worker-v4:
     needs: [typecheck]
     uses: ./.github/workflows/publish-worker-v4.yml
+    secrets: inherit
+    with:
+      image_tag: ${{ inputs.image_tag }}
+
+  publish-gcp-images:
+    needs: [typecheck, units]
+    uses: ./.github/workflows/publish-gcp-images.yml
     secrets: inherit
     with:
       image_tag: ${{ inputs.image_tag }}

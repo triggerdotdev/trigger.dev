@@ -1,0 +1,168 @@
+name: "☁️ Publish Images to GCP"
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: The image tag to publish
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: "basicblock"
+  GAR_LOCATION: "us-central1"
+  GAR_REPOSITORY: "docker-images"
+  WORKLOAD_IDENTITY_PROVIDER: "projects/327281795986/locations/global/workloadIdentityPools/github-pool/providers/basicblock-repo"
+  SERVICE_ACCOUNT_EMAIL: "githubactions@basicblock.iam.gserviceaccount.com"
+
+jobs:
+  publish-webapp:
+    name: "Build and push webapp"
+    runs-on: ubuntu-latest
+    env:
+      PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: "#️⃣ Get image tag"
+        id: get_tag
+        uses: ./.github/actions/get-image-tag
+        with:
+          tag: ${{ inputs.image_tag }}
+
+      - name: 📛 Set tags to push
+        id: set_tags
+        run: |
+          ref_without_tag=${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/trigger.dev
+          image_tags=$ref_without_tag:${{ steps.get_tag.outputs.tag }}
+
+          if [[ "${{ steps.get_tag.outputs.is_semver }}" == true ]]; then
+            image_tags=$image_tags,$ref_without_tag:v4-beta
+          fi
+
+          echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
+
+      - name: 📝 Set build info
+        id: set_build_info
+        run: |
+          tag=${{ steps.get_tag.outputs.tag }}
+          if [[ "${{ steps.get_tag.outputs.is_semver }}" == true ]]; then
+            echo "BUILD_APP_VERSION=${tag}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "BUILD_GIT_SHA=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "BUILD_GIT_REF_NAME=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          echo "BUILD_TIMESTAMP_SECONDS=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: 'Authenticate to Google Cloud'
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: access_token
+          service_account: ${{ env.SERVICE_ACCOUNT_EMAIL }}
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: 'Docker auth'
+        uses: docker/login-action@v3
+        with:
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+          registry: ${{ env.GAR_LOCATION }}-docker.pkg.dev
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🐳 Build image and push to Artifact Registry
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          platforms: linux/amd64
+          tags: ${{ steps.set_tags.outputs.image_tags }}
+          push: true
+          build-args: |
+            BUILD_APP_VERSION=${{ steps.set_build_info.outputs.BUILD_APP_VERSION }}
+            BUILD_GIT_SHA=${{ steps.set_build_info.outputs.BUILD_GIT_SHA }}
+            BUILD_GIT_REF_NAME=${{ steps.set_build_info.outputs.BUILD_GIT_REF_NAME }}
+            BUILD_TIMESTAMP_SECONDS=${{ steps.set_build_info.outputs.BUILD_TIMESTAMP_SECONDS }}
+            SENTRY_RELEASE=${{ steps.set_build_info.outputs.BUILD_GIT_SHA }}
+            SENTRY_ORG=triggerdev
+            SENTRY_PROJECT=trigger-cloud
+          secrets: |
+            sentry_auth_token=
+
+  publish-workers:
+    name: "Build and push ${{ matrix.package }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [coordinator, docker-provider, kubernetes-provider, supervisor]
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v4
+
+      - name: "#️⃣ Get image tag"
+        id: get_tag
+        uses: ./.github/actions/get-image-tag
+        with:
+          tag: ${{ inputs.image_tag }}
+
+      - name: 📦 Get image repo
+        id: get_repository
+        run: |
+          if [[ "${{ matrix.package }}" == *-provider ]]; then
+            provider_type=$(echo "${{ matrix.package }}" | cut -d- -f1)
+            repo=provider/${provider_type}
+          else
+            repo="${{ matrix.package }}"
+          fi
+          echo "repo=${repo}" >> "$GITHUB_OUTPUT"
+
+      - name: 📛 Set tags to push
+        id: set_tags
+        run: |
+          ref_without_tag=${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ steps.get_repository.outputs.repo }}
+          image_tags=$ref_without_tag:${{ steps.get_tag.outputs.tag }}
+
+          if [[ "${{ matrix.package }}" == "supervisor" && "${{ steps.get_tag.outputs.is_semver }}" == true ]]; then
+            image_tags=$image_tags,$ref_without_tag:v4-beta
+          fi
+
+          echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
+
+      - name: 'Authenticate to Google Cloud'
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: access_token
+          service_account: ${{ env.SERVICE_ACCOUNT_EMAIL }}
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: 'Docker auth'
+        uses: docker/login-action@v3
+        with:
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+          registry: ${{ env.GAR_LOCATION }}-docker.pkg.dev
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🐳 Build image and push to Artifact Registry
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./apps/${{ matrix.package }}/Containerfile
+          platforms: linux/amd64
+          tags: ${{ steps.set_tags.outputs.image_tags }}
+          push: true
