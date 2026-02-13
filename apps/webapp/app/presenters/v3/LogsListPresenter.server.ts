@@ -50,7 +50,6 @@ export type LogsListOptions = {
   retentionLimitDays?: number;
   // search
   search?: string;
-  includeDebugLogs?: boolean;
   // pagination
   direction?: Direction;
   cursor?: string;
@@ -69,7 +68,6 @@ export const LogsListOptionsSchema = z.object({
   defaultPeriod: z.string().optional(),
   retentionLimitDays: z.number().int().positive().optional(),
   search: z.string().max(1000).optional(),
-  includeDebugLogs: z.boolean().optional(),
   direction: z.enum(["forward", "backward"]).optional(),
   cursor: z.string().optional(),
   pageSize: z.number().int().positive().max(1000).optional(),
@@ -83,14 +81,16 @@ export type LogsListAppliedFilters = LogsList["filters"];
 
 // Cursor is a base64 encoded JSON of the pagination keys
 type LogCursor = {
+  organizationId: string;
   environmentId: string;
-  unixTimestamp: number;
+  triggeredTimestamp: string; // DateTime64(9) string
   traceId: string;
 };
 
 const LogCursorSchema = z.object({
+  organizationId: z.string(),
   environmentId: z.string(),
-  unixTimestamp: z.number(),
+  triggeredTimestamp: z.string(),
   traceId: z.string(),
 });
 
@@ -116,31 +116,14 @@ function decodeCursor(cursor: string): LogCursor | null {
 function levelToKindsAndStatuses(level: LogLevel): { kinds?: string[]; statuses?: string[] } {
   switch (level) {
     case "DEBUG":
-      return { kinds: ["DEBUG_EVENT", "LOG_DEBUG"] };
+      return { kinds: ["LOG_DEBUG"] };
     case "INFO":
-      return { kinds: ["LOG_INFO", "LOG_LOG"] };
+      return { kinds: ["LOG_INFO", "LOG_LOG", "SPAN"] };
     case "WARN":
       return { kinds: ["LOG_WARN"] };
     case "ERROR":
-      return { kinds: ["LOG_ERROR"], statuses: ["ERROR"] };
+      return { kinds: ["LOG_ERROR", "SPAN_EVENT"], statuses: ["ERROR"] };
   }
-}
-
-function convertDateToNanoseconds(date: Date): bigint {
-  return BigInt(date.getTime()) * 1_000_000n;
-}
-
-function formatNanosecondsForClickhouse(ns: bigint): string {
-  const nsString = ns.toString();
-  // Handle negative numbers (dates before 1970-01-01)
-  if (nsString.startsWith("-")) {
-    const absString = nsString.slice(1);
-    const padded = absString.padStart(19, "0");
-    return "-" + padded.slice(0, 10) + "." + padded.slice(10);
-  }
-  // Pad positive numbers to 19 digits to ensure correct slicing
-  const padded = nsString.padStart(19, "0");
-  return padded.slice(0, 10) + "." + padded.slice(10);
 }
 
 export class LogsListPresenter extends BasePresenter {
@@ -166,7 +149,6 @@ export class LogsListPresenter extends BasePresenter {
       to,
       cursor,
       pageSize = DEFAULT_PAGE_SIZE,
-      includeDebugLogs = true,
       defaultPeriod,
       retentionLimitDays,
     }: LogsListOptions
@@ -252,7 +234,7 @@ export class LogsListPresenter extends BasePresenter {
       );
     }
 
-    const queryBuilder = this.clickhouse.taskEventsV2.logsListQueryBuilder();
+    const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder();
 
     queryBuilder.where("environment_id = {environmentId: String}", {
       environmentId,
@@ -265,27 +247,16 @@ export class LogsListPresenter extends BasePresenter {
 
 
     if (effectiveFrom) {
-      const fromNs = convertDateToNanoseconds(effectiveFrom);
-
-        queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
-          insertedAtStart: convertDateToClickhouseDateTime(effectiveFrom),
+        queryBuilder.where("triggered_timestamp >= {triggeredAtStart: DateTime64(3)}", {
+          triggeredAtStart: convertDateToClickhouseDateTime(effectiveFrom),
         });
-
-      queryBuilder.where("start_time >= {fromTime: String}", {
-        fromTime: formatNanosecondsForClickhouse(fromNs),
-      });
     }
 
     if (effectiveTo) {
       const clampedTo = effectiveTo > new Date() ? new Date() : effectiveTo;
-      const toNs = convertDateToNanoseconds(clampedTo);
 
-      queryBuilder.where("inserted_at <= {insertedAtEnd: DateTime64(3)}", {
-        insertedAtEnd: convertDateToClickhouseDateTime(clampedTo),
-      });
-
-      queryBuilder.where("start_time <= {toTime: String}", {
-        toTime: formatNanosecondsForClickhouse(toNs),
+      queryBuilder.where("triggered_timestamp <= {triggeredAtEnd: DateTime64(3)}", {
+        triggeredAtEnd: convertDateToClickhouseDateTime(clampedTo),
       });
     }
 
@@ -349,39 +320,20 @@ export class LogsListPresenter extends BasePresenter {
       }
     }
 
-    // Debug logs are available only to admins
-    if (includeDebugLogs === false) {
-      queryBuilder.where("kind NOT IN {debugKinds: Array(String)}", {
-        debugKinds: ["DEBUG_EVENT"],
-      });
-
-      queryBuilder.where("NOT ((kind = 'LOG_INFO') AND (attributes_text = '{}'))");
-    }
-
-    queryBuilder.where("kind NOT IN {debugSpans: Array(String)}", {
-      debugSpans: ["SPAN", "ANCESTOR_OVERRIDE", "SPAN_EVENT"],
-    });
-
-    // kindCondition += ` `;
-    // params["excluded_statuses"] = ["SPAN", "ANCESTOR_OVERRIDE", "SPAN_EVENT"];
-
-
-    queryBuilder.where("NOT (kind = 'SPAN' AND status = 'PARTIAL')");
-
-    // Cursor pagination
+    // Cursor pagination using explicit lexicographic comparison
+    // Must mirror the ORDER BY columns: (organization_id, environment_id, triggered_timestamp, trace_id)
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
     if (decodedCursor) {
       queryBuilder.where(
-        "(environment_id, toUnixTimestamp(start_time), trace_id) < ({cursorEnvId: String}, {cursorUnixTimestamp: Int64}, {cursorTraceId: String})",
+        `(triggered_timestamp < {cursorTriggeredTimestamp: String} OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id < {cursorTraceId: String}))`,
         {
-          cursorEnvId: decodedCursor.environmentId,
-          cursorUnixTimestamp: decodedCursor.unixTimestamp,
+          cursorTriggeredTimestamp: decodedCursor.triggeredTimestamp,
           cursorTraceId: decodedCursor.traceId,
         }
       );
     }
 
-    queryBuilder.orderBy("environment_id DESC, toUnixTimestamp(start_time) DESC, trace_id DESC");
+    queryBuilder.orderBy("triggered_timestamp DESC, trace_id DESC");
     // Limit + 1 to check if there are more results
     queryBuilder.limit(pageSize + 1);
 
@@ -399,10 +351,10 @@ export class LogsListPresenter extends BasePresenter {
     let nextCursor: string | undefined;
     if (hasMore && logs.length > 0) {
       const lastLog = logs[logs.length - 1];
-      const unixTimestamp = Math.floor(new Date(lastLog.start_time).getTime() / 1000);
       nextCursor = encodeCursor({
+        organizationId,
         environmentId,
-        unixTimestamp,
+        triggeredTimestamp: lastLog.triggered_timestamp,
         traceId: lastLog.trace_id,
       });
     }
@@ -430,6 +382,9 @@ export class LogsListPresenter extends BasePresenter {
         runId: log.run_id,
         taskIdentifier: log.task_identifier,
         startTime: convertClickhouseDateTime64ToJsDate(log.start_time).toISOString(),
+        triggeredTimestamp: convertClickhouseDateTime64ToJsDate(
+          log.triggered_timestamp
+        ).toISOString(),
         traceId: log.trace_id,
         spanId: log.span_id,
         parentSpanId: log.parent_span_id || null,

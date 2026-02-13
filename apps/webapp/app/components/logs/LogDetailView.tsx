@@ -234,7 +234,7 @@ function DetailsTab({ log, runPath, searchTerm }: { log: LogEntry; runPath: stri
       <div className="mb-6">
         <Header3 className="mb-2">Timestamp</Header3>
         <div className="text-sm text-text-dimmed">
-          <DateTimeAccurate date={log.startTime} />
+          <DateTimeAccurate date={log.triggeredTimestamp} />
         </div>
       </div>
 
