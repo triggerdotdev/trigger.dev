@@ -214,7 +214,6 @@ export function QueryWidget({
               content="Maximize"
               asChild
             />
-            {accessory}
             <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
               <PopoverVerticalEllipseTrigger
                 isOpen={isMenuOpen}
@@ -307,6 +306,7 @@ export function QueryWidget({
                 </div>
               </PopoverContent>
             </Popover>
+            {accessory}
           </Card.Accessory>
         </Card.Header>
         <LoadingBarDivider isLoading={isLoading ?? false} className="bg-transparent" />
