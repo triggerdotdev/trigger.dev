@@ -98,8 +98,6 @@ export type TriggerConfig = {
     /**
      * Span processors to use for OpenTelemetry. This is useful if you want to add custom span processors to your tasks.
      * There are executed in the order passed before running exporters
-     *
-     * @see https://trigger.dev/docs/config/config-file#spanProcessors
      */
     spanProcessors?: Array<SpanProcessor>;
 
