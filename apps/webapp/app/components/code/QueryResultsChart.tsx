@@ -775,6 +775,24 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     return sortData(unsortedData, sortByColumn, sortDirection, xDataKey);
   }, [unsortedData, sortByColumn, sortDirection, isDateBased, xDataKey]);
 
+  // Sort series by descending total sum so largest appears at bottom of
+  // stacked charts and first in the legend
+  const sortedSeries = useMemo(() => {
+    if (series.length <= 1) return series;
+    const totals = new Map<string, number>();
+    for (const s of series) {
+      let total = 0;
+      for (const point of data) {
+        const val = point[s];
+        if (typeof val === "number" && isFinite(val)) {
+          total += Math.abs(val);
+        }
+      }
+      totals.set(s, total);
+    }
+    return [...series].sort((a, b) => (totals.get(b) ?? 0) - (totals.get(a) ?? 0));
+  }, [series, data]);
+
   // Detect time granularity — use the full time range when available so tick
   // labels are appropriate for the period (e.g. "Jan 5" for a 7-day range
   // instead of just "16:00:00" when data is sparse)
@@ -809,7 +827,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   // Build chart config for colors/labels
   const chartConfig = useMemo(() => {
     const cfg: ChartConfig = {};
-    series.forEach((s, i) => {
+    sortedSeries.forEach((s, i) => {
       const statusColor = groupByIsRunStatus ? getRunStatusHexColor(s) : undefined;
       cfg[s] = {
         label: s,
@@ -817,7 +835,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
       };
     });
     return cfg;
-  }, [series, groupByIsRunStatus, config.seriesColors]);
+  }, [sortedSeries, groupByIsRunStatus, config.seriesColors]);
 
   // Custom tooltip label formatter for better date display
   const tooltipLabelFormatter = useMemo(() => {
@@ -1002,7 +1020,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     domain: yAxisDomain,
   };
 
-  const showLegend = series.length > 0;
+  const showLegend = sortedSeries.length > 0;
 
   if (chartType === "bar") {
     return (
@@ -1010,7 +1028,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         config={chartConfig}
         data={data}
         dataKey={xDataKey}
-        series={series}
+        series={sortedSeries}
         labelFormatter={legendLabelFormatter}
         showLegend={showLegend}
         maxLegendItems={fullLegend ? Infinity : 5}
@@ -1036,7 +1054,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
       config={chartConfig}
       data={data}
       dataKey={xDataKey}
-      series={series}
+      series={sortedSeries}
       labelFormatter={legendLabelFormatter}
       showLegend={showLegend}
       maxLegendItems={fullLegend ? Infinity : 5}
@@ -1049,7 +1067,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
       <Chart.Line
         xAxisProps={xAxisPropsForLine}
         yAxisProps={yAxisProps}
-        stacked={stacked && series.length > 1}
+        stacked={stacked && sortedSeries.length > 1}
         tooltipLabelFormatter={tooltipLabelFormatter}
         lineType="linear"
       />
