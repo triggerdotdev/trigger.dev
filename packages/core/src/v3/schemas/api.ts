@@ -9,6 +9,7 @@ import {
 } from "./common.js";
 import { BackgroundWorkerMetadata } from "./resources.js";
 import { DequeuedMessage, MachineResources } from "./runEngine.js";
+import { fa } from "zod/v4/locales";
 
 export const RunEngineVersion = z.union([z.literal("V1"), z.literal("V2")]);
 
@@ -602,21 +603,43 @@ const InitializeDeploymentRequestBodyBase = z.object({
   runtime: z.string().optional(),
   initialStatus: z.enum(["PENDING", "BUILDING"]).optional(),
   triggeredVia: DeploymentTriggeredVia.optional(),
-  buildId: z.string().optional(),
-  isNativeBuild: z.boolean().default(false).optional()
-})
-export const InitializeDeploymentRequestBody = z.discriminatedUnion("isNativeBuild", [
-  InitializeDeploymentRequestBodyBase.extend({
-    isNativeBuild: z.literal(true),
-    skipPromotion: z.boolean().optional(),
-    artifactKey: z.string().optional(),
-    configFilePath: z.string().optional(),
-    skipEnqueue: z.boolean().default(false).optional(),
-  }),
-  InitializeDeploymentRequestBodyBase.extend({
-    isNativeBuild: z.literal(false).optional(),
-  })
-]);
+  buildId: z.string().optional()
+});
+type BaseOutput = z.output<typeof InitializeDeploymentRequestBodyBase>;
+
+type NativeBuildOutput = BaseOutput & {
+  isNativeBuild: true;
+  skipPromotion?: boolean;
+  artifactKey?: string;
+  configFilePath?: string;
+  skipEnqueue?: boolean;
+};
+
+type NonNativeBuildOutput = BaseOutput & {
+  isNativeBuild: false;
+  skipPromotion?: never;
+  artifactKey?: never;
+  configFilePath?: never;
+  skipEnqueue?: never;
+};
+
+const InitializeDeploymentRequestBodyFull = InitializeDeploymentRequestBodyBase.extend({
+  isNativeBuild: z.boolean().default(false),
+  skipPromotion: z.boolean().optional(),
+  artifactKey: z.string().optional(),
+  configFilePath: z.string().optional(),
+  skipEnqueue: z.boolean().optional().default(false),
+});
+
+export const InitializeDeploymentRequestBody = InitializeDeploymentRequestBodyFull.transform(
+  (data): NativeBuildOutput | NonNativeBuildOutput => {
+    if (data.isNativeBuild) {
+      return { ...data, isNativeBuild: true as const };
+    }
+    const { skipPromotion, artifactKey, configFilePath, skipEnqueue, ...rest } = data;
+    return { ...rest, isNativeBuild: false as const };
+  }
+);
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
 
