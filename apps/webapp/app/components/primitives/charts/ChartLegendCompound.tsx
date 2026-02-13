@@ -5,6 +5,7 @@ import { useSeriesTotal } from "./ChartRoot";
 import { aggregateValues } from "./aggregation";
 import { cn } from "~/utils/cn";
 import { AnimatedNumber } from "../AnimatedNumber";
+import { SimpleTooltip } from "../Tooltip";
 
 const aggregationLabels: Record<AggregationType, string> = {
   sum: "Sum",
@@ -204,7 +205,7 @@ export function ChartLegendCompound({
             <div
               key={item.dataKey}
               className={cn(
-                "relative flex w-full cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 transition",
+                "relative flex w-full cursor-default items-center justify-between gap-2 rounded px-2 py-1 transition",
                 (total == null || total === 0) && "opacity-50"
               )}
               onMouseEnter={() => highlight.setHoveredLegendItem(item.dataKey)}
@@ -217,18 +218,32 @@ export function ChartLegendCompound({
                   style={{ backgroundColor: item.color }}
                 />
               )}
-              <div className="relative flex w-full items-center justify-between gap-3">
-                <div className="flex items-center gap-1.5">
-                  {item.color && (
-                    <div
-                      className="w-1 shrink-0 self-stretch rounded-[2px]"
-                      style={{ backgroundColor: item.color }}
-                    />
-                  )}
-                  <span className={isActive ? "text-text-bright" : "text-text-dimmed"}>
-                    {item.label}
-                  </span>
-                </div>
+              <div className="relative flex w-full items-center justify-between gap-3 overflow-hidden">
+                <SimpleTooltip
+                  button={
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      {item.color && (
+                        <div
+                          className="w-1 shrink-0 self-stretch rounded-[2px]"
+                          style={{ backgroundColor: item.color }}
+                        />
+                      )}
+                      <span
+                        className={cn(
+                          "truncate",
+                          isActive ? "text-text-bright" : "text-text-dimmed"
+                        )}
+                      >
+                        {item.label}
+                      </span>
+                    </div>
+                  }
+                  content={item.label}
+                  side="top"
+                  disableHoverableContent
+                  className="max-w-xs break-words"
+                  buttonClassName="cursor-default min-w-0"
+                />
                 <span
                   className={cn(
                     "self-start tabular-nums",
