@@ -109,6 +109,15 @@ export class ComputeWorkloadManager implements WorkloadManager {
           body: JSON.stringify({
             image: imageRef,
             env: envVars,
+            metadata: {
+              runId: opts.runFriendlyId,
+              envId: opts.envId,
+              envType: opts.envType,
+              orgId: opts.orgId,
+              projectId: opts.projectId,
+              deploymentVersion: opts.deploymentVersion,
+              machine: opts.machine.name,
+            },
           }),
         })
       );
