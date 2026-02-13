@@ -1,5 +1,5 @@
 import type { Instrumentation } from "@opentelemetry/instrumentation";
-import type { SpanExporter } from "@opentelemetry/sdk-trace-base";
+import type { SpanExporter, SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import type { BuildExtension } from "./build/extensions.js";
 import type {
   AnyOnFailureHookFunction,
@@ -94,6 +94,14 @@ export type TriggerConfig = {
      * @see https://trigger.dev/docs/config/config-file#instrumentations
      */
     instrumentations?: Array<Instrumentation>;
+
+    /**
+     * Span processors to use for OpenTelemetry. This is useful if you want to add custom span processors to your tasks.
+     * There are executed in the order passed before running                         exporters
+     *
+     * @see https://trigger.dev/docs/config/config-file#spanProcessors
+     */
+    spanProcessors?: Array<SpanProcessor>;
 
     /**
      * Exporters to use for OpenTelemetry. This is useful if you want to add custom exporters to your tasks.

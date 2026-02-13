@@ -188,6 +188,7 @@ async function doBootstrap() {
       forceFlushTimeoutMillis: 30_000,
       exporters: config.telemetry?.exporters ?? [],
       logExporters: config.telemetry?.logExporters ?? [],
+      spanProcessors: config.telemetry?.spanProcessors ?? [],
       resource: config.telemetry?.resource,
     });
 

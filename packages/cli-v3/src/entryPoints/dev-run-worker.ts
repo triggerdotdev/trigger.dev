@@ -207,6 +207,7 @@ async function doBootstrap() {
       instrumentations: config.telemetry?.instrumentations ?? config.instrumentations ?? [],
       exporters: config.telemetry?.exporters ?? [],
       logExporters: config.telemetry?.logExporters ?? [],
+      spanProcessors : config.telemetry?.spanProcessors ?? [],
       diagLogLevel: (env.TRIGGER_OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
       forceFlushTimeoutMillis: 30_000,
       resource: config.telemetry?.resource,

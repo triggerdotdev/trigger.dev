@@ -1,4 +1,5 @@
 import {
+  Context,
   DiagConsoleLogger,
   DiagLogLevel,
   TraceFlags,
@@ -66,6 +67,7 @@ export type TracingSDKConfig = {
   url: string;
   forceFlushTimeoutMillis?: number;
   instrumentations?: Instrumentation[];
+  spanProcessors?: SpanProcessor[];
   exporters?: SpanExporter[];
   logExporters?: LogRecordExporter[];
   diagLogLevel?: TracingDiagnosticLogLevel;
@@ -83,6 +85,7 @@ export class TracingSDK {
   public readonly getTracer: TracerProvider["getTracer"];
 
   constructor(private readonly config: TracingSDKConfig) {
+    console.log("tracing sdk constructor called");
     setLogLevel(config.diagLogLevel ?? "none");
 
     const envResourceAttributesSerialized = getEnvVar("TRIGGER_OTEL_RESOURCE_ATTRIBUTES");
@@ -120,6 +123,11 @@ export class TracingSDK {
 
     const spanProcessors: Array<SpanProcessor> = [];
 
+    //add span processor passed via config before exporters
+    for (const spanProcessor of config.spanProcessors ?? []) {
+      spanProcessors.push(spanProcessor);
+    }
+
     spanProcessors.push(
       new TaskContextSpanProcessor(
         VERSION,
@@ -139,10 +147,8 @@ export class TracingSDK {
           : new SimpleSpanProcessor(spanExporter)
       )
     );
-
     const externalTraceId = idGenerator.generateTraceId();
     const externalTraceContext = traceContext.getExternalTraceContext();
-
     for (const exporter of config.exporters ?? []) {
       spanProcessors.push(
         getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
