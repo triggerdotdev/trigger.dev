@@ -4,6 +4,7 @@ import {
   InformationCircleIcon,
   RectangleStackIcon,
   Squares2X2Icon,
+  TableCellsIcon,
   TagIcon,
 } from "@heroicons/react/20/solid";
 import { AttemptIcon } from "~/assets/icons/AttemptIcon";
@@ -81,6 +82,8 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
       return <WaitpointTokenIcon className={cn(className, "text-sky-500")} />;
     case "function":
       return <FunctionIcon className={cn(className, "text-text-dimmed")} />;
+    case "query":
+      return <TableCellsIcon className={cn(className, "text-query")} />;
     //log levels
     case "debug":
     case "log":
@@ -110,7 +113,7 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "task-hook-catchError":
       return <FunctionIcon className={cn(className, "text-error")} />;
     case "streams":
-        return <StreamsIcon className={cn(className, "text-text-dimmed")} />;
+      return <StreamsIcon className={cn(className, "text-text-dimmed")} />;
   }
 
   return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;

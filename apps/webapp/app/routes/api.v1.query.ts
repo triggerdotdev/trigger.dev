@@ -58,17 +58,15 @@ const { action, loader } = createActionApiRoute(
     if (format === "csv") {
       const csv = rowsToCSV(result.rows, result.columns);
 
-      return new Response(csv, {
-        status: 200,
-        headers: {
-          "Content-Type": "text/csv; charset=utf-8",
-          "Content-Disposition": "attachment; filename=query-results.csv",
-        },
+      return json({
+        format: "csv",
+        results: csv,
       });
     }
 
     return json({
-      rows: result.rows,
+      format: "json",
+      results: result.rows,
     });
   }
 );

@@ -4,8 +4,8 @@ import { logger, query, task } from "@trigger.dev/sdk";
 type RunRow = {
   id: string;
   status: string;
-  created_at: string;
-  duration: number;
+  triggered_at: string;
+  total_duration: number;
 };
 
 // Simple query example - just the query string, all defaults
@@ -25,7 +25,7 @@ export const simpleQueryTask = task({
 
     // Type-safe query with explicit row type
     const typedResult = await query.execute<RunRow>(
-      "SELECT id, status, created_at, duration FROM runs LIMIT 10"
+      "SELECT run_id, status, triggered_at, total_duration FROM runs LIMIT 10"
     );
 
     logger.info("Query results (typed)", {
@@ -39,7 +39,7 @@ export const simpleQueryTask = task({
       logger.info(`Run ${index + 1}`, {
         id: row.id, // TypeScript knows this is a string
         status: row.status, // TypeScript knows this is a string
-        duration: row.duration, // TypeScript knows this is a number
+        total_duration: row.total_duration, // TypeScript knows this is a number
       });
     });
 
@@ -65,7 +65,7 @@ export const fullJsonQueryTask = task({
       `SELECT
         status,
         COUNT(*) as count,
-        AVG(duration) as avg_duration
+        AVG(total_duration) as avg_duration
       FROM runs
       WHERE status IN ('COMPLETED', 'FAILED')
       GROUP BY status`,
@@ -104,7 +104,7 @@ export const csvQueryTask = task({
 
     // Query with CSV format - automatically typed as discriminated union!
     const result = await query.execute(
-      "SELECT id, status, created_at, duration FROM runs LIMIT 100",
+      "SELECT run_id, status, triggered_at, total_duration FROM runs LIMIT 10",
       {
         scope: "project", // Query all environments in the project
         period: "7d", // Last 7 days
@@ -116,22 +116,12 @@ export const csvQueryTask = task({
     logger.info("CSV query completed", {
       format: result.format,
       dataLength: result.results.length,
-      preview: result.results.substring(0, 200), // Show first 200 chars
-    });
-
-    // Count the number of rows (lines - 1 for header)
-    const lines = result.results.split("\n");
-    const rowCount = lines.length - 1;
-
-    logger.info("CSV stats", {
-      totalRows: rowCount,
-      headerLine: lines[0],
+      results: result.results,
     });
 
     return {
       format: result.format,
       csv: result.results,
-      rowCount,
     };
   },
 });

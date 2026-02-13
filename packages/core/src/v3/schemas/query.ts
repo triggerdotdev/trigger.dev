@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { TypeOf, z } from "zod";
 
 /**
  * Request body schema for executing a query
@@ -17,13 +17,25 @@ export type QueryExecuteRequestBody = z.infer<typeof QueryExecuteRequestBody>;
 /**
  * Response body schema for JSON format queries
  */
-export const QueryExecuteResponseBody = z.object({
-  rows: z.array(z.record(z.any())),
+export const QueryExecuteJSONResponseBody = z.object({
+  format: z.literal("json"),
+  results: z.array(z.record(z.any())),
 });
 
-export type QueryExecuteResponseBody = z.infer<typeof QueryExecuteResponseBody>;
+export type QueryExecuteJSONResponseBody = z.infer<typeof QueryExecuteResponseBody>;
 
 /**
- * Response body type for CSV format queries (returns a string)
+ * Response body type for CSV format queries
  */
-export type QueryExecuteCSVResponseBody = string;
+export const QueryExecuteCSVResponseBody = z.object({
+  format: z.literal("json"),
+  results: z.string(),
+});
+
+export type QueryExecuteCSVResponseBody = z.infer<typeof QueryExecuteCSVResponseBody>;
+
+export const QueryExecuteResponseBody = z.discriminatedUnion("format", [
+  QueryExecuteJSONResponseBody,
+  QueryExecuteCSVResponseBody,
+]);
+export type QueryExecuteResponseBody = z.infer<typeof QueryExecuteResponseBody>;

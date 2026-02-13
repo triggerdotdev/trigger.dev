@@ -1419,7 +1419,7 @@ export class ApiClient {
       format?: "json" | "csv";
     },
     requestOptions?: ZodFetchOptions
-  ): Promise<QueryExecuteResponseBody | QueryExecuteCSVResponseBody> {
+  ): Promise<QueryExecuteResponseBody> {
     const body = {
       query,
       scope: options?.scope ?? "environment",
@@ -1430,37 +1430,9 @@ export class ApiClient {
     };
 
     const format = options?.format ?? "json";
-
-    if (format === "csv") {
-      // For CSV, we get a text response
-      const response = await fetch(`${this.baseUrl}/api/v1/query`, {
-        method: "POST",
-        headers: this.#getHeaders(false),
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text().catch((e) => (e as Error).message);
-        let errJSON: Object | undefined;
-        try {
-          errJSON = JSON.parse(errText) as Object;
-        } catch {
-          // ignore
-        }
-        const errMessage = errJSON ? undefined : errText;
-        const responseHeaders = Object.fromEntries(response.headers.entries());
-
-        throw ApiError.generate(response.status, errJSON, errMessage, responseHeaders);
-      }
-
-      return await response.text();
-    }
-
     // For JSON, use zodfetch
     return zodfetch(
-      z.object({
-        rows: z.array(z.record(z.any())),
-      }),
+      QueryExecuteResponseBody,
       `${this.baseUrl}/api/v1/query`,
       {
         method: "POST",

@@ -81,14 +81,14 @@ function execute<TRow extends Record<string, any> = Record<string, any>>(
  * @example
  * ```typescript
  * // Basic query with defaults (environment scope, json format)
- * const result = await query.execute("SELECT * FROM runs LIMIT 10");
+ * const result = await query.execute("SELECT run_id, status FROM runs LIMIT 10");
  * console.log(result.format); // "json"
  * console.log(result.results); // Array<Record<string, any>>
  *
  * // Type-safe query with row type
  * type RunRow = { id: string; status: string; duration: number };
  * const typedResult = await query.execute<RunRow>(
- *   "SELECT id, status, duration FROM runs LIMIT 10"
+ *   "SELECT run_id, status, triggered_at FROM runs LIMIT 10"
  * );
  * typedResult.results.forEach(row => {
  *   console.log(row.id, row.status); // Fully typed!
@@ -105,14 +105,14 @@ function execute<TRow extends Record<string, any> = Record<string, any>>(
  * // Query with custom period
  * const lastMonth = await query.execute(
  *   "SELECT COUNT(*) as count FROM runs",
- *   { period: "30d" }
+ *   { period: "3d" }
  * );
  * console.log(lastMonth.results[0].count); // Type-safe access
  *
  * // Export as CSV - automatically narrowed!
  * const csvResult = await query.execute(
  *   "SELECT * FROM runs",
- *   { format: "csv", period: "7d" }
+ *   { format: "csv", period: "1d" }
  * );
  * console.log(csvResult.format); // "csv"
  * const lines = csvResult.results.split('\n'); // ✓ results is string
@@ -133,26 +133,27 @@ function execute<TRow extends Record<string, any> = Record<string, any>>(
 ): Promise<{ format: "json"; results: Array<TRow> } | { format: "csv"; results: string }> {
   const apiClient = apiClientManager.clientOrThrow();
 
+  const format = options?.format ?? "json";
+
   const $requestOptions = mergeRequestOptions(
     {
       tracer,
       name: "query.execute()",
-      icon: "sparkles",
+      icon: "query",
       attributes: {
         scope: options?.scope ?? "environment",
         format: options?.format ?? "json",
+        query: tsql,
+        period: options?.period,
+        from: options?.from,
+        to: options?.to,
       },
     },
     requestOptions
   );
 
-  const format = options?.format ?? "json";
-
   return apiClient.executeQuery(tsql, options, $requestOptions).then((response) => {
-    if (typeof response === "string") {
-      return { format: "csv" as const, results: response };
-    }
-    return { format: "json" as const, results: response.rows };
+    return response;
   }) as Promise<{ format: "json"; results: Array<TRow> } | { format: "csv"; results: string }>;
 }
 
