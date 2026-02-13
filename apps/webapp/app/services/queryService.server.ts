@@ -328,7 +328,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
   } finally {
     // Always release the concurrency slot
     await queryConcurrencyLimiter.release({
-      key: organizationId,
+      key: projectId,
       requestId,
     });
   }
