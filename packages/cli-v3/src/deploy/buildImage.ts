@@ -727,14 +727,26 @@ const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
     baseInstructions,
     buildArgs,
     buildEnvVars,
+    entrypointPrefix: options.image?.entrypointPrefix ?? [],
     packages,
     postInstallCommands,
   };
 };
 
+function serializeEntrypoint(entrypointPrefix: string[], entrypoint: string) {
+  return JSON.stringify(["dumb-init", ...entrypointPrefix, "node", entrypoint]);
+}
+
 async function generateBunContainerfile(options: GenerateContainerfileOptions) {
-  const { baseImage, buildArgs, buildEnvVars, postInstallCommands, baseInstructions, packages } =
-    parseGenerateOptions(options);
+  const {
+    baseImage,
+    buildArgs,
+    buildEnvVars,
+    entrypointPrefix,
+    postInstallCommands,
+    baseInstructions,
+    packages,
+  } = parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
 # check=skip=SecretsUsedInArgOrEnv
@@ -829,14 +841,21 @@ COPY --from=build --chown=bun:bun /app ./
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=bun:bun /app/index.json ./
 
-ENTRYPOINT [ "dumb-init", "node", "${options.entrypoint}" ]
+ENTRYPOINT ${serializeEntrypoint(entrypointPrefix, options.entrypoint)}
 CMD []
   `;
 }
 
 async function generateNodeContainerfile(options: GenerateContainerfileOptions) {
-  const { baseImage, buildArgs, buildEnvVars, postInstallCommands, baseInstructions, packages } =
-    parseGenerateOptions(options);
+  const {
+    baseImage,
+    buildArgs,
+    buildEnvVars,
+    entrypointPrefix,
+    postInstallCommands,
+    baseInstructions,
+    packages,
+  } = parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
 # check=skip=SecretsUsedInArgOrEnv
@@ -939,7 +958,7 @@ COPY --from=build --chown=node:node /app ./
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=node:node /app/index.json ./
 
-ENTRYPOINT [ "dumb-init", "node", "${options.entrypoint}" ]
+ENTRYPOINT ${serializeEntrypoint(entrypointPrefix, options.entrypoint)}
 CMD []
   `;
 }

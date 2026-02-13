@@ -208,6 +208,10 @@ function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): Build
       $manifest.image.pkgs = $manifest.image.pkgs.concat(layer.image.pkgs);
       $manifest.image.pkgs = Array.from(new Set($manifest.image.pkgs));
     }
+
+    if (layer.image.entrypointPrefix) {
+      $manifest.image.entrypointPrefix = [...layer.image.entrypointPrefix];
+    }
   }
 
   if (layer.conditions) {

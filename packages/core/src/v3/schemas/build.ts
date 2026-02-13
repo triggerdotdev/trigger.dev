@@ -60,6 +60,7 @@ export const BuildManifest = z.object({
     .object({
       pkgs: z.array(z.string()).optional(),
       instructions: z.array(z.string()).optional(),
+      entrypointPrefix: z.array(z.string()).optional(),
     })
     .optional(),
   otelImportHook: z

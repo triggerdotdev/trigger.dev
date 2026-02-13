@@ -56,6 +56,7 @@ export interface BuildLayer {
   image?: {
     pkgs?: string[];
     instructions?: string[];
+    entrypointPrefix?: string[];
   };
   build?: {
     env?: Record<string, string | undefined>;
