@@ -1,4 +1,8 @@
-import { redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import {
+  redirect,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+} from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { QueryEditor } from "~/components/query/QueryEditor";
@@ -89,6 +93,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     isImpersonating: user.isImpersonating,
     organizationSlug,
   });
+
   if (!canAccess) {
     return typedjson(
       {

@@ -138,7 +138,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
 
   // Acquire concurrency slot
   const acquireResult = await queryConcurrencyLimiter.acquire({
-    key: organizationId,
+    key: projectId,
     requestId,
     keyLimit: orgLimit,
     globalLimit: GLOBAL_CONCURRENCY_LIMIT,
