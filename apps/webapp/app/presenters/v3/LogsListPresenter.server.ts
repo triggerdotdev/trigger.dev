@@ -84,14 +84,14 @@ type LogCursor = {
   organizationId: string;
   environmentId: string;
   triggeredTimestamp: string; // DateTime64(9) string
-  spanId: string;
+  traceId: string;
 };
 
 const LogCursorSchema = z.object({
   organizationId: z.string(),
   environmentId: z.string(),
   triggeredTimestamp: z.string(),
-  spanId: z.string(),
+  traceId: z.string(),
 });
 
 function encodeCursor(cursor: LogCursor): string {
@@ -321,19 +321,19 @@ export class LogsListPresenter extends BasePresenter {
     }
 
     // Cursor pagination using explicit lexicographic comparison
-    // Must mirror the ORDER BY columns: (organization_id DESC, environment_id DESC, triggered_timestamp DESC, span_id DESC)
+    // Must mirror the ORDER BY columns: (organization_id, environment_id, triggered_timestamp, trace_id)
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
     if (decodedCursor) {
       queryBuilder.where(
-        `(triggered_timestamp < {cursorTriggeredTimestamp: String} OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND span_id < {cursorSpanId: String}))`,
+        `(triggered_timestamp < {cursorTriggeredTimestamp: String} OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id < {cursorTraceId: String}))`,
         {
           cursorTriggeredTimestamp: decodedCursor.triggeredTimestamp,
-          cursorSpanId: decodedCursor.spanId,
+          cursorTraceId: decodedCursor.traceId,
         }
       );
     }
 
-    queryBuilder.orderBy("triggered_timestamp DESC, span_id DESC");
+    queryBuilder.orderBy("triggered_timestamp DESC, trace_id DESC");
     // Limit + 1 to check if there are more results
     queryBuilder.limit(pageSize + 1);
 
@@ -355,7 +355,7 @@ export class LogsListPresenter extends BasePresenter {
         organizationId,
         environmentId,
         triggeredTimestamp: lastLog.triggered_timestamp,
-        spanId: lastLog.span_id,
+        traceId: lastLog.trace_id,
       });
     }
 
