@@ -4,7 +4,7 @@
 
 This plan covers upgrading all `@opentelemetry/*` packages across the monorepo to the latest coordinated release, and adding the packages needed to support OTEL metrics in `@trigger.dev/core`.
 
-The OpenTelemetry JS project releases packages in three synchronized version tracks. The latest coordinated release (February 12, 2025) includes:
+The OpenTelemetry JS project releases packages in three synchronized version tracks. The latest coordinated release (February 12, 2026) includes:
 
 | Track | Version | Packages |
 |-------|---------|----------|
