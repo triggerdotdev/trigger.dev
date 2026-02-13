@@ -1,5 +1,26 @@
 # @trigger.dev/sdk
 
+## 4.3.4
+
+### Patch Changes
+
+- Add `maxDelay` option to debounce feature. This allows setting a maximum time limit for how long a debounced run can be delayed, ensuring execution happens within a specified window even with continuous triggers. ([#2984](https://github.com/triggerdotdev/trigger.dev/pull/2984))
+
+  ```typescript
+  await myTask.trigger(payload, {
+    debounce: {
+      key: "my-key",
+      delay: "5s",
+      maxDelay: "30m", // Execute within 30 minutes regardless of continuous triggers
+    },
+  });
+  ```
+
+- Aligned the SDK's `getRunIdForOptions` logic with the Core package to handle semantic targets (`root`, `parent`) in root tasks. ([#2874](https://github.com/triggerdotdev/trigger.dev/pull/2874))
+- Export `AnyOnStartAttemptHookFunction` type to allow defining `onStartAttempt` hooks for individual tasks. ([#2966](https://github.com/triggerdotdev/trigger.dev/pull/2966))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.4`
+
 ## 4.3.3
 
 ### Patch Changes
