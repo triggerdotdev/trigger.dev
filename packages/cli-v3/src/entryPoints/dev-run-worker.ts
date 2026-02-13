@@ -213,8 +213,8 @@ async function doBootstrap() {
       forceFlushTimeoutMillis: 30_000,
       resource: config.telemetry?.resource,
       hostMetrics: true,
-      // Drop per-CPU per-state system.cpu metrics in dev to reduce noise
-      droppedMetrics: ["system.cpu.*"],
+      // Drop all system metrics from dev metrics export
+      droppedMetrics: ["system.*"],
     });
 
     const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);
