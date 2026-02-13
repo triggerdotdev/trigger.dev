@@ -372,6 +372,7 @@ const EnvironmentSchema = z
 
     // Development OTEL environment variables
     DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
+    DEV_OTEL_METRICS_ENDPOINT: z.string().optional(),
     // If this is set to 1, then the below variables are used to configure the batch processor for spans and logs
     DEV_OTEL_BATCH_PROCESSING_ENABLED: z.string().default("0"),
     DEV_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE: z.string().default("64"),
@@ -382,6 +383,7 @@ const EnvironmentSchema = z
     DEV_OTEL_LOG_SCHEDULED_DELAY_MILLIS: z.string().default("200"),
     DEV_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
     DEV_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
+    DEV_OTEL_METRICS_EXPORT_INTERVAL_MILLIS: z.string().optional(),
 
     PROD_OTEL_BATCH_PROCESSING_ENABLED: z.string().default("0"),
     PROD_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE: z.string().default("64"),
@@ -392,6 +394,7 @@ const EnvironmentSchema = z
     PROD_OTEL_LOG_SCHEDULED_DELAY_MILLIS: z.string().default("200"),
     PROD_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
     PROD_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
+    PROD_OTEL_METRICS_EXPORT_INTERVAL_MILLIS: z.string().optional(),
 
     TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT: z.string().default("1024"),
     TRIGGER_OTEL_LOG_ATTRIBUTE_COUNT_LIMIT: z.string().default("1024"),

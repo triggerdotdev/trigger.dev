@@ -4,10 +4,13 @@ import {
   AnyValue,
   ExportLogsServiceRequest,
   ExportLogsServiceResponse,
+  ExportMetricsServiceRequest,
+  ExportMetricsServiceResponse,
   ExportTraceServiceRequest,
   ExportTraceServiceResponse,
   KeyValue,
   ResourceLogs,
+  ResourceMetrics,
   ResourceSpans,
   SeverityNumber,
   Span,
@@ -15,7 +18,9 @@ import {
   Span_SpanKind,
   Status_StatusCode,
 } from "@trigger.dev/otlp-importer";
+import type { MetricsV1Input } from "@internal/clickhouse";
 import { logger } from "~/services/logger.server";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { ClickhouseEventRepository } from "./eventRepository/clickhouseEventRepository.server";
 import {
   clickhouseEventRepository,
@@ -63,6 +68,29 @@ class OTLPExporter {
       span.setAttribute("event_count", eventCount);
 
       return ExportTraceServiceResponse.create();
+    });
+  }
+
+  async exportMetrics(
+    request: ExportMetricsServiceRequest
+  ): Promise<ExportMetricsServiceResponse> {
+    return await startSpan(this._tracer, "exportMetrics", async (span) => {
+      const rows = this.#filterResourceMetrics(request.resourceMetrics).flatMap(
+        (resourceMetrics) => {
+          return convertMetricsToClickhouseRows(
+            resourceMetrics,
+            this._spanAttributeValueLengthLimit
+          );
+        }
+      );
+
+      span.setAttribute("metric_row_count", rows.length);
+
+      if (rows.length > 0) {
+        await clickhouseClient.metrics.insert(rows);
+      }
+
+      return ExportMetricsServiceResponse.create();
     });
   }
 
@@ -200,6 +228,18 @@ class OTLPExporter {
       if (!attribute) return false;
 
       return isBoolValue(attribute.value) ? attribute.value.boolValue : false;
+    });
+  }
+
+  #filterResourceMetrics(resourceMetrics: ResourceMetrics[]): ResourceMetrics[] {
+    return resourceMetrics.filter((rm) => {
+      const triggerAttribute = rm.resource?.attributes.find(
+        (attribute) => attribute.key === SemanticInternalAttributes.TRIGGER
+      );
+
+      if (!triggerAttribute) return false;
+
+      return isBoolValue(triggerAttribute.value) ? triggerAttribute.value.boolValue : false;
     });
   }
 }
@@ -408,6 +448,208 @@ function convertSpansToCreateableEvents(
   });
 
   return { events, taskEventStore };
+}
+
+function floorToTenSecondBucket(timeUnixNano: bigint | number): string {
+  const epochMs = Number(BigInt(timeUnixNano) / BigInt(1_000_000));
+  const flooredMs = Math.floor(epochMs / 10_000) * 10_000;
+  const date = new Date(flooredMs);
+  // Format as ClickHouse DateTime: YYYY-MM-DD HH:MM:SS
+  return date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, "");
+}
+
+function convertMetricsToClickhouseRows(
+  resourceMetrics: ResourceMetrics,
+  spanAttributeValueLengthLimit: number
+): MetricsV1Input[] {
+  const resourceAttributes = resourceMetrics.resource?.attributes ?? [];
+  const resourceProperties = extractEventProperties(resourceAttributes);
+
+  const organizationId = resourceProperties.organizationId ?? "unknown";
+  const projectId = resourceProperties.projectId ?? "unknown";
+  const environmentId = resourceProperties.environmentId ?? "unknown";
+  const resourceCtx = {
+    taskSlug: resourceProperties.taskSlug,
+    runId: resourceProperties.runId,
+    attemptNumber: resourceProperties.attemptNumber,
+    machineId: extractStringAttribute(resourceAttributes, SemanticInternalAttributes.MACHINE_ID),
+    workerId: extractStringAttribute(resourceAttributes, SemanticInternalAttributes.WORKER_ID),
+    workerVersion: extractStringAttribute(
+      resourceAttributes,
+      SemanticInternalAttributes.WORKER_VERSION
+    ),
+  };
+
+  const rows: MetricsV1Input[] = [];
+
+  for (const scopeMetrics of resourceMetrics.scopeMetrics) {
+    for (const metric of scopeMetrics.metrics) {
+      const metricName = metric.name;
+
+      // Process gauge data points
+      if (metric.gauge) {
+        for (const dp of metric.gauge.dataPoints) {
+          const value =
+            dp.asDouble !== 0 ? dp.asDouble : dp.asInt !== BigInt(0) ? Number(dp.asInt) : 0;
+          const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
+
+          rows.push({
+            organization_id: organizationId,
+            project_id: projectId,
+            environment_id: environmentId,
+            metric_name: metricName,
+            metric_type: "gauge",
+            metric_subject: resolved.machineId ?? "unknown",
+            bucket_start: floorToTenSecondBucket(dp.timeUnixNano),
+            count: 0,
+            sum_value: 0,
+            max_value: value,
+            min_value: value,
+            last_value: value,
+            attributes: resolved.attributes,
+          });
+        }
+      }
+
+      // Process sum data points
+      if (metric.sum) {
+        for (const dp of metric.sum.dataPoints) {
+          const value =
+            dp.asDouble !== 0 ? dp.asDouble : dp.asInt !== BigInt(0) ? Number(dp.asInt) : 0;
+          const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
+
+          rows.push({
+            organization_id: organizationId,
+            project_id: projectId,
+            environment_id: environmentId,
+            metric_name: metricName,
+            metric_type: "sum",
+            metric_subject: resolved.machineId ?? "unknown",
+            bucket_start: floorToTenSecondBucket(dp.timeUnixNano),
+            count: 1,
+            sum_value: value,
+            max_value: value,
+            min_value: value,
+            last_value: value,
+            attributes: resolved.attributes,
+          });
+        }
+      }
+
+      // Process histogram data points
+      if (metric.histogram) {
+        for (const dp of metric.histogram.dataPoints) {
+          const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
+          const count = Number(dp.count);
+          const sum = dp.sum ?? 0;
+          const max = dp.max ?? 0;
+          const min = dp.min ?? 0;
+
+          rows.push({
+            organization_id: organizationId,
+            project_id: projectId,
+            environment_id: environmentId,
+            metric_name: metricName,
+            metric_type: "histogram",
+            metric_subject: resolved.machineId ?? "unknown",
+            bucket_start: floorToTenSecondBucket(dp.timeUnixNano),
+            count,
+            sum_value: sum,
+            max_value: max,
+            min_value: min,
+            last_value: count > 0 ? sum / count : 0,
+            attributes: resolved.attributes,
+          });
+        }
+      }
+    }
+  }
+
+  return rows;
+}
+
+// Prefixes injected by TaskContextMetricExporter — these are extracted into
+// the nested `trigger` key and should not appear as top-level user attributes.
+const INTERNAL_METRIC_ATTRIBUTE_PREFIXES = ["ctx.", "worker."];
+
+interface ResourceContext {
+  taskSlug: string | undefined;
+  runId: string | undefined;
+  attemptNumber: number | undefined;
+  machineId: string | undefined;
+  workerId: string | undefined;
+  workerVersion: string | undefined;
+}
+
+function resolveDataPointContext(
+  dpAttributes: KeyValue[],
+  resourceCtx: ResourceContext
+): {
+  machineId: string | undefined;
+  attributes: Record<string, unknown>;
+} {
+  const runId =
+    resourceCtx.runId ??
+    extractStringAttribute(dpAttributes, SemanticInternalAttributes.RUN_ID);
+  const taskSlug =
+    resourceCtx.taskSlug ??
+    extractStringAttribute(dpAttributes, SemanticInternalAttributes.TASK_SLUG);
+  const attemptNumber =
+    resourceCtx.attemptNumber ??
+    extractNumberAttribute(dpAttributes, SemanticInternalAttributes.ATTEMPT_NUMBER);
+  const machineId =
+    resourceCtx.machineId ??
+    extractStringAttribute(dpAttributes, SemanticInternalAttributes.MACHINE_ID);
+  const workerId =
+    resourceCtx.workerId ??
+    extractStringAttribute(dpAttributes, SemanticInternalAttributes.WORKER_ID);
+  const workerVersion =
+    resourceCtx.workerVersion ??
+    extractStringAttribute(dpAttributes, SemanticInternalAttributes.WORKER_VERSION);
+  const machineName = extractStringAttribute(
+    dpAttributes,
+    SemanticInternalAttributes.MACHINE_PRESET_NAME
+  );
+  const environmentType = extractStringAttribute(
+    dpAttributes,
+    SemanticInternalAttributes.ENVIRONMENT_TYPE
+  );
+
+  // Build the trigger context object with only defined values
+  const trigger: Record<string, string | number> = {};
+  if (runId) trigger.run_id = runId;
+  if (taskSlug) trigger.task_slug = taskSlug;
+  if (attemptNumber !== undefined) trigger.attempt_number = attemptNumber;
+  if (machineId) trigger.machine_id = machineId;
+  if (machineName) trigger.machine_name = machineName;
+  if (workerId) trigger.worker_id = workerId;
+  if (workerVersion) trigger.worker_version = workerVersion;
+  if (environmentType) trigger.environment_type = environmentType;
+
+  // Build user attributes, filtering out internal ctx/worker keys
+  const result: Record<string, unknown> = {};
+
+  if (Object.keys(trigger).length > 0) {
+    result.trigger = trigger;
+  }
+
+  for (const attr of dpAttributes) {
+    if (INTERNAL_METRIC_ATTRIBUTE_PREFIXES.some((prefix) => attr.key.startsWith(prefix))) {
+      continue;
+    }
+
+    if (isStringValue(attr.value)) {
+      result[attr.key] = attr.value.stringValue;
+    } else if (isIntValue(attr.value)) {
+      result[attr.key] = Number(attr.value.intValue);
+    } else if (isDoubleValue(attr.value)) {
+      result[attr.key] = attr.value.doubleValue;
+    } else if (isBoolValue(attr.value)) {
+      result[attr.key] = attr.value.boolValue;
+    }
+  }
+
+  return { machineId, attributes: result };
 }
 
 function extractEventProperties(attributes: KeyValue[], prefix?: string) {
