@@ -39,7 +39,7 @@ const overviewDashboard: BuiltInDashboard = {
         display: {
           type: "bignumber",
           column: "success_percentage",
-          aggregation: "sum",
+          aggregation: "avg",
           abbreviate: true,
           suffix: "%",
         },
@@ -113,7 +113,7 @@ const overviewDashboard: BuiltInDashboard = {
         },
       },
       i3q1Awfz: {
-        title: "Run success",
+        title: "Run success %",
         query:
           "SELECT\r\n  timeBucket (),\r\n  count() as total,\r\n  countIf (status = 'Completed') / total * 100 AS completed,\r\n  countIf (status IN ('Failed', 'Crashed', 'System failure')) / total * 100 AS failed,\r\nFROM\r\n  runs\r\nGROUP BY\r\n  timeBucket\r\nORDER BY\r\n  timeBucket",
         display: {
@@ -125,7 +125,7 @@ const overviewDashboard: BuiltInDashboard = {
           stacked: false,
           sortByColumn: null,
           sortDirection: "asc",
-          aggregation: "sum",
+          aggregation: "avg",
           seriesColors: { failed: "#f43f5e" },
         },
       },
@@ -199,7 +199,7 @@ const overviewDashboard: BuiltInDashboard = {
           stacked: false,
           sortByColumn: null,
           sortDirection: "asc",
-          aggregation: "sum",
+          aggregation: "avg",
           seriesColors: {},
         },
       },
