@@ -956,6 +956,26 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
     },
   ];
 
+  if (env.DEV_OTEL_METRICS_ENDPOINT) {
+    result.push({
+      key: "TRIGGER_OTEL_METRICS_ENDPOINT",
+      value: env.DEV_OTEL_METRICS_ENDPOINT,
+    });
+  }
+
+  if (env.DEV_OTEL_METRICS_EXPORT_INTERVAL_MILLIS) {
+    result.push(
+      {
+        key: "TRIGGER_OTEL_METRICS_EXPORT_INTERVAL_MILLIS",
+        value: env.DEV_OTEL_METRICS_EXPORT_INTERVAL_MILLIS,
+      },
+      {
+        key: "TRIGGER_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS",
+        value: env.DEV_OTEL_METRICS_EXPORT_INTERVAL_MILLIS,
+      }
+    );
+  }
+
   if (env.DEV_OTEL_BATCH_PROCESSING_ENABLED === "1") {
     result = result.concat([
       {
@@ -1085,6 +1105,19 @@ async function resolveBuiltInProdVariables(
         value: runtimeEnvironment.branchName,
       },
     ]);
+  }
+
+  if (env.PROD_OTEL_METRICS_EXPORT_INTERVAL_MILLIS) {
+    result.push(
+      {
+        key: "TRIGGER_OTEL_METRICS_EXPORT_INTERVAL_MILLIS",
+        value: env.PROD_OTEL_METRICS_EXPORT_INTERVAL_MILLIS,
+      },
+      {
+        key: "TRIGGER_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS",
+        value: env.PROD_OTEL_METRICS_EXPORT_INTERVAL_MILLIS,
+      }
+    );
   }
 
   if (env.PROD_OTEL_BATCH_PROCESSING_ENABLED === "1") {

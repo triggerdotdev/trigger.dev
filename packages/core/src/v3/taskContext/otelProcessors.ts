@@ -1,5 +1,14 @@
-import { Context, trace, Tracer } from "@opentelemetry/api";
+import { Attributes, Context, trace, Tracer } from "@opentelemetry/api";
+import { ExportResult } from "@opentelemetry/core";
 import { LogRecordProcessor, SdkLogRecord } from "@opentelemetry/sdk-logs";
+import type {
+  AggregationOption,
+  AggregationTemporality,
+  InstrumentType,
+  MetricData,
+  PushMetricExporter,
+  ResourceMetrics,
+} from "@opentelemetry/sdk-metrics";
 import { Span, SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { taskContext } from "../task-context-api.js";
@@ -102,5 +111,75 @@ export class TaskContextLogProcessor implements LogRecordProcessor {
   }
   shutdown(): Promise<void> {
     return this._innerProcessor.shutdown();
+  }
+}
+
+export class TaskContextMetricExporter implements PushMetricExporter {
+  selectAggregationTemporality?: (instrumentType: InstrumentType) => AggregationTemporality;
+  selectAggregation?: (instrumentType: InstrumentType) => AggregationOption;
+
+  constructor(private _innerExporter: PushMetricExporter) {
+    if (_innerExporter.selectAggregationTemporality) {
+      this.selectAggregationTemporality =
+        _innerExporter.selectAggregationTemporality.bind(_innerExporter);
+    }
+    if (_innerExporter.selectAggregation) {
+      this.selectAggregation = _innerExporter.selectAggregation.bind(_innerExporter);
+    }
+  }
+
+  export(metrics: ResourceMetrics, resultCallback: (result: ExportResult) => void): void {
+    if (!taskContext.ctx) {
+      this._innerExporter.export(metrics, resultCallback);
+      return;
+    }
+
+    const ctx = taskContext.ctx;
+    const contextAttrs: Attributes = {
+      [SemanticInternalAttributes.RUN_ID]: ctx.run.id,
+      [SemanticInternalAttributes.TASK_SLUG]: ctx.task.id,
+      [SemanticInternalAttributes.ATTEMPT_NUMBER]: ctx.attempt.number,
+      [SemanticInternalAttributes.ENVIRONMENT_ID]: ctx.environment.id,
+      [SemanticInternalAttributes.ORGANIZATION_ID]: ctx.organization.id,
+      [SemanticInternalAttributes.PROJECT_ID]: ctx.project.id,
+      [SemanticInternalAttributes.MACHINE_PRESET_NAME]: ctx.machine?.name,
+      [SemanticInternalAttributes.ENVIRONMENT_TYPE]: ctx.environment.type,
+    };
+
+    if (taskContext.worker) {
+      contextAttrs[SemanticInternalAttributes.WORKER_ID] = taskContext.worker.id;
+      contextAttrs[SemanticInternalAttributes.WORKER_VERSION] = taskContext.worker.version;
+    }
+
+    if (ctx.run.tags?.length) {
+      contextAttrs[SemanticInternalAttributes.RUN_TAGS] = ctx.run.tags;
+    }
+
+    const modified: ResourceMetrics = {
+      resource: metrics.resource,
+      scopeMetrics: metrics.scopeMetrics.map((scope) => ({
+        ...scope,
+        metrics: scope.metrics.map(
+          (metric) =>
+            ({
+              ...metric,
+              dataPoints: metric.dataPoints.map((dp) => ({
+                ...dp,
+                attributes: { ...dp.attributes, ...contextAttrs },
+              })),
+            }) as MetricData
+        ),
+      })),
+    };
+
+    this._innerExporter.export(modified, resultCallback);
+  }
+
+  forceFlush(): Promise<void> {
+    return this._innerExporter.forceFlush();
+  }
+
+  shutdown(): Promise<void> {
+    return this._innerExporter.shutdown();
   }
 }

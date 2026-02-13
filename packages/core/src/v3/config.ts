@@ -1,5 +1,6 @@
 import type { Instrumentation } from "@opentelemetry/instrumentation";
 import type { SpanExporter } from "@opentelemetry/sdk-trace-base";
+import type { MetricReader } from "@opentelemetry/sdk-metrics";
 import type { BuildExtension } from "./build/extensions.js";
 import type {
   AnyOnFailureHookFunction,
@@ -108,6 +109,12 @@ export type TriggerConfig = {
      * @see https://trigger.dev/docs/config/config-file#exporters
      */
     logExporters?: Array<LogRecordExporter>;
+
+    /**
+     * Metric readers for OpenTelemetry. Add custom metric readers to export
+     * metrics to external services alongside the default Trigger.dev exporter.
+     */
+    metricReaders?: Array<MetricReader>;
 
     /**
      * Resource to use for OpenTelemetry. This is useful if you want to add custom resources to your tasks.

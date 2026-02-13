@@ -183,12 +183,15 @@ async function doBootstrap() {
 
     const tracingSDK = new TracingSDK({
       url: env.TRIGGER_OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
+      metricsUrl: env.TRIGGER_OTEL_METRICS_ENDPOINT,
       instrumentations: config.instrumentations ?? [],
       diagLogLevel: (env.TRIGGER_OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
       forceFlushTimeoutMillis: 30_000,
       exporters: config.telemetry?.exporters ?? [],
       logExporters: config.telemetry?.logExporters ?? [],
+      metricReaders: config.telemetry?.metricReaders ?? [],
       resource: config.telemetry?.resource,
+      hostMetrics: true,
     });
 
     const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);
