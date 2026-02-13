@@ -7,6 +7,5 @@
     "packages/cli-v3/e2e": true
   },
   "vitest.disableWorkspaceWarning": true,
-  "typescript.experimental.useTsgo": true,
   "chat.agent.maxRequests": 10000
 }

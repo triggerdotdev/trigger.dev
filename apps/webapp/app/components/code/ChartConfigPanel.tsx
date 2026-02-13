@@ -1,27 +1,18 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
-import { BarChart, LineChart, Plus, XIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { BarChart, CheckIcon, LineChart, Plus, XIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
-import { Header3 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
+import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
 import { Select, SelectItem } from "../primitives/Select";
 import { Switch } from "../primitives/Switch";
 import { Button } from "../primitives/Buttons";
-
-export type ChartType = "bar" | "line";
-export type SortDirection = "asc" | "desc";
-export type AggregationType = "sum" | "avg" | "count" | "min" | "max";
-
-export interface ChartConfiguration {
-  chartType: ChartType;
-  xAxisColumn: string | null;
-  yAxisColumns: string[];
-  groupByColumn: string | null;
-  stacked: boolean;
-  sortByColumn: string | null;
-  sortDirection: SortDirection;
-  aggregation: AggregationType;
-}
+import {
+  type AggregationType,
+  type ChartConfiguration,
+  type SortDirection,
+} from "../metrics/QueryWidget";
+import { CHART_COLORS_BY_HUE, getSeriesColor } from "./chartColors";
 
 export const defaultChartConfig: ChartConfiguration = {
   chartType: "bar",
@@ -32,6 +23,7 @@ export const defaultChartConfig: ChartConfiguration = {
   sortByColumn: null,
   sortDirection: "asc",
   aggregation: "sum",
+  seriesColors: {},
 };
 
 interface ChartConfigPanelProps {
@@ -329,60 +321,86 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
           ) : (
             <div className="flex flex-col gap-1.5">
               {/* Always show at least one dropdown, even if yAxisColumns is empty */}
-              {(config.yAxisColumns.length === 0 ? [""] : config.yAxisColumns).map(
-                (col, index) => (
-                  <div key={index} className="flex items-center gap-1">
-                    <Select
-                      value={col}
-                      setValue={(value) => {
-                        const newColumns = [...config.yAxisColumns];
-                        if (value) {
-                          // If this is a new slot (empty string), add it
-                          if (index >= config.yAxisColumns.length) {
-                            newColumns.push(value);
-                          } else {
-                            newColumns[index] = value;
-                          }
-                        } else if (index < config.yAxisColumns.length) {
-                          newColumns.splice(index, 1);
-                        }
-                        updateConfig({ yAxisColumns: newColumns });
+              {(config.yAxisColumns.length === 0 ? [""] : config.yAxisColumns).map((col, index) => (
+                <div key={index} className="flex items-center gap-1">
+                  {col && !config.groupByColumn && (
+                    <SeriesColorPicker
+                      color={config.seriesColors?.[col] ?? getSeriesColor(index)}
+                      onColorChange={(color) => {
+                        updateConfig({
+                          seriesColors: { ...config.seriesColors, [col]: color },
+                        });
                       }}
-                      variant="tertiary/small"
-                      placeholder="Select column"
-                      items={yAxisOptions.filter(
-                        (opt) => opt.value === col || !config.yAxisColumns.includes(opt.value)
-                      )}
-                      dropdownIcon
-                      className="min-w-[140px] flex-1"
-                    >
-                      {(items) =>
-                        items.map((item) => (
-                          <SelectItem key={item.value} value={item.value}>
-                            <span className="flex items-center gap-2">
-                              <span>{item.label}</span>
-                              <TypeBadge type={item.type} />
-                            </span>
-                          </SelectItem>
-                        ))
+                    />
+                  )}
+                  <Select
+                    value={col}
+                    setValue={(value) => {
+                      const newColumns = [...config.yAxisColumns];
+                      const updates: Partial<ChartConfiguration> = {};
+                      if (value) {
+                        // If this is a new slot (empty string), add it
+                        if (index >= config.yAxisColumns.length) {
+                          newColumns.push(value);
+                        } else {
+                          // If the column name changed, migrate the color
+                          const oldCol = newColumns[index];
+                          if (oldCol && oldCol !== value && config.seriesColors?.[oldCol]) {
+                            const newSeriesColors = { ...config.seriesColors };
+                            newSeriesColors[value] = newSeriesColors[oldCol];
+                            delete newSeriesColors[oldCol];
+                            updates.seriesColors = newSeriesColors;
+                          }
+                          newColumns[index] = value;
+                        }
+                      } else if (index < config.yAxisColumns.length) {
+                        newColumns.splice(index, 1);
                       }
-                    </Select>
-                    {index > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newColumns = config.yAxisColumns.filter((_, i) => i !== index);
-                          updateConfig({ yAxisColumns: newColumns });
-                        }}
-                        className="rounded p-1 text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
-                        title="Remove series"
-                      >
-                        <XIcon className="h-3.5 w-3.5" />
-                      </button>
+                      updateConfig({ ...updates, yAxisColumns: newColumns });
+                    }}
+                    variant="tertiary/small"
+                    placeholder="Select column"
+                    items={yAxisOptions.filter(
+                      (opt) => opt.value === col || !config.yAxisColumns.includes(opt.value)
                     )}
-                  </div>
-                )
-              )}
+                    dropdownIcon
+                    className="min-w-[140px] flex-1"
+                  >
+                    {(items) =>
+                      items.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          <span className="flex items-center gap-2">
+                            <span>{item.label}</span>
+                            <TypeBadge type={item.type} />
+                          </span>
+                        </SelectItem>
+                      ))
+                    }
+                  </Select>
+
+                  {index > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const removedCol = config.yAxisColumns[index];
+                        const newColumns = config.yAxisColumns.filter((_, i) => i !== index);
+                        const updates: Partial<ChartConfiguration> = { yAxisColumns: newColumns };
+                        // Clean up the color entry for the removed series
+                        if (removedCol && config.seriesColors?.[removedCol]) {
+                          const newSeriesColors = { ...config.seriesColors };
+                          delete newSeriesColors[removedCol];
+                          updates.seriesColors = newSeriesColors;
+                        }
+                        updateConfig(updates);
+                      }}
+                      className="rounded p-1 text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+                      title="Remove series"
+                    >
+                      <XIcon className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
 
               {/* Add another series button - only show when we have at least one series and not grouped */}
               {config.yAxisColumns.length > 0 &&
@@ -439,9 +457,7 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
         {/* Group By - disabled when multiple series are selected */}
         <ConfigField label="Group by">
           {config.yAxisColumns.length > 1 ? (
-            <span className="text-xs text-text-dimmed">
-              Not available with multiple series
-            </span>
+            <span className="text-xs text-text-dimmed">Not available with multiple series</span>
           ) : (
             <Select
               value={config.groupByColumn ?? "__none__"}
@@ -566,6 +582,52 @@ function SortDirectionToggle({
         Desc
       </button>
     </div>
+  );
+}
+
+function SeriesColorPicker({
+  color,
+  onColorChange,
+}: {
+  color: string;
+  onColorChange: (color: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex-shrink-0 rounded p-0.5 hover:bg-charcoal-700"
+          title="Change series color"
+        >
+          <span
+            className="block h-4 w-4 rounded-full border border-white/30"
+            style={{ backgroundColor: color }}
+          />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-2">
+        <div className="grid grid-cols-6 gap-1.5">
+          {CHART_COLORS_BY_HUE.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => {
+                onColorChange(c);
+                setOpen(false);
+              }}
+              className="group/swatch flex h-6 w-6 items-center justify-center rounded-full border border-white/30"
+              style={{ backgroundColor: c }}
+              title={c}
+            >
+              {c === color && <CheckIcon className="h-3.5 w-3.5 text-white drop-shadow-md" />}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

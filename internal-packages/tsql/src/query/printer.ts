@@ -47,6 +47,7 @@ import {
   validateFunctionArgs,
 } from "./functions";
 import { PrinterContext, WhereClauseCondition } from "./printer_context";
+import { calculateTimeBucketInterval } from "./time_buckets";
 import {
   findTable,
   validateTable,
@@ -119,10 +120,12 @@ export class ClickHousePrinter {
   /** Columns hidden when SELECT * is expanded to core columns only */
   private hiddenColumns: string[] = [];
   /**
-   * Set of column aliases defined in the current SELECT clause.
+   * Map of column aliases defined in the current SELECT clause.
+   * Key is the lowercase alias (for case-insensitive lookup),
+   * value is the canonical form (as it appears in the generated SQL).
    * Used to allow ORDER BY/HAVING to reference aliased columns.
    */
-  private selectAliases: Set<string> = new Set();
+  private selectAliases: Map<string, string> = new Map();
   /**
    * Set of internal ClickHouse column names that are allowed (e.g., tenant columns).
    * These are populated from tableSchema.tenantColumns when processing joins.
@@ -387,7 +390,7 @@ export class ClickHousePrinter {
     // Extract SELECT column aliases BEFORE visiting columns
     // This allows ORDER BY/HAVING to reference aliased columns
     const savedAliases = this.selectAliases;
-    this.selectAliases = new Set();
+    this.selectAliases = new Map();
     if (node.select) {
       for (const col of node.select) {
         this.extractSelectAlias(col);
@@ -569,20 +572,25 @@ export class ClickHousePrinter {
    */
   private extractSelectAlias(expr: Expression): void {
     // Handle explicit Alias: SELECT ... AS name
+    // Key is lowercase for case-insensitive lookup, value is the original casing
+    // so that ORDER BY/GROUP BY output matches the alias in the generated SQL.
     if ((expr as Alias).expression_type === "alias") {
-      this.selectAliases.add((expr as Alias).alias);
+      const alias = (expr as Alias).alias;
+      this.selectAliases.set(alias.toLowerCase(), alias);
       return;
     }
 
     // Handle implicit names from function calls (e.g., COUNT() → 'count')
+    // ClickHouse generates implicit aliases as lowercase
     if ((expr as Call).expression_type === "call") {
       const call = expr as Call;
-      // Aggregations and functions get implicit lowercase names
-      this.selectAliases.add(call.name.toLowerCase());
+      const canonicalName = call.name.toLowerCase();
+      this.selectAliases.set(canonicalName, canonicalName);
       return;
     }
 
     // Handle implicit names from arithmetic operations (e.g., a + b → 'plus')
+    // ClickHouse generates these as lowercase
     if ((expr as ArithmeticOperation).expression_type === "arithmetic_operation") {
       const op = expr as ArithmeticOperation;
       const opNames: Record<ArithmeticOperationOp, string> = {
@@ -592,7 +600,8 @@ export class ClickHousePrinter {
         [ArithmeticOperationOp.Div]: "divide",
         [ArithmeticOperationOp.Mod]: "modulo",
       };
-      this.selectAliases.add(opNames[op.op]);
+      const canonicalName = opNames[op.op];
+      this.selectAliases.set(canonicalName, canonicalName);
       return;
     }
 
@@ -1691,6 +1700,21 @@ export class ClickHousePrinter {
       return betweenExpr;
     }
 
+    if (condition.op === "in") {
+      // Create a tuple of values for the IN clause
+      const tupleExpr: Tuple = {
+        expression_type: "tuple",
+        exprs: condition.values.map((value) => this.createValueExpression(value)),
+      };
+      const inExpr: CompareOperation = {
+        expression_type: "compare_operation",
+        left: fieldExpr,
+        right: tupleExpr,
+        op: CompareOperationOp.In,
+      };
+      return inExpr;
+    }
+
     // Simple comparison
     const compareExpr: CompareOperation = {
       expression_type: "compare_operation",
@@ -2613,8 +2637,11 @@ export class ClickHousePrinter {
     }
 
     // Check if it's a SELECT alias (e.g., from COUNT() or explicit AS)
-    if (this.selectAliases.has(columnName)) {
-      return chain; // Valid alias reference
+    // Case-insensitive lookup: map key is lowercase, value is the canonical form
+    // that matches the alias as it appears in the generated SQL
+    const canonicalAlias = this.selectAliases.get(columnName.toLowerCase());
+    if (canonicalAlias !== undefined) {
+      return [canonicalAlias, ...chain.slice(1)];
     }
 
     // Check if this is an internal-only column being accessed in a user projection context
@@ -2770,6 +2797,11 @@ export class ClickHousePrinter {
   private visitCall(node: Call): string {
     const name = node.name;
 
+    // Handle timeBucket() - special TSQL function for automatic time bucketing
+    if (name.toLowerCase() === "timebucket") {
+      return this.visitTimeBucket(node);
+    }
+
     // Check if this is a comparison function
     if (name in TSQL_COMPARISON_MAPPING) {
       const op = TSQL_COMPARISON_MAPPING[name];
@@ -2899,6 +2931,73 @@ export class ClickHousePrinter {
       return `SAMPLE ${sample} OFFSET ${this.visitRatioExpr(node.offset_value)}`;
     }
     return `SAMPLE ${sample}`;
+  }
+
+  // ============================================================
+  // timeBucket() Support
+  // ============================================================
+
+  /**
+   * Handle the `timeBucket()` TSQL function.
+   *
+   * Resolves the table's timeConstraint column to its ClickHouse name,
+   * calculates an appropriate interval from the query's time range,
+   * and emits `toStartOfInterval(column, INTERVAL N UNIT)`.
+   *
+   * @throws QueryError if timeBucket() is called with arguments, or if the table
+   *   has no timeConstraint, or if no timeRange is provided in the context.
+   */
+  private visitTimeBucket(node: Call): string {
+    // Validate: timeBucket() takes no arguments
+    if (node.args.length > 0) {
+      throw new QueryError(
+        "timeBucket() does not accept arguments. It automatically uses the table's time constraint column."
+      );
+    }
+
+    // Find the table with a timeConstraint
+    const tableWithConstraint = this.findTimeConstraintTable();
+    if (!tableWithConstraint) {
+      throw new QueryError(
+        "timeBucket() requires a table with a timeConstraint defined in its schema."
+      );
+    }
+
+    const { tableSchema, clickhouseColumnName } = tableWithConstraint;
+
+    // Get the time range from context
+    const timeRange = this.context.timeRange;
+    if (!timeRange) {
+      throw new QueryError(
+        "timeBucket() requires a time range to be provided. Pass a timeRange option when compiling the query."
+      );
+    }
+
+    // Calculate the appropriate interval
+    const interval = calculateTimeBucketInterval(timeRange.from, timeRange.to);
+
+    // Emit toStartOfInterval(column, INTERVAL N UNIT)
+    return `toStartOfInterval(${escapeClickHouseIdentifier(clickhouseColumnName)}, INTERVAL ${interval.value} ${interval.unit})`;
+  }
+
+  /**
+   * Find a table in the current query context that has a timeConstraint defined.
+   * Returns the table schema and the resolved ClickHouse column name for the constraint.
+   */
+  private findTimeConstraintTable(): {
+    tableSchema: TableSchema;
+    clickhouseColumnName: string;
+  } | null {
+    for (const tableSchema of this.tableContexts.values()) {
+      if (tableSchema.timeConstraint) {
+        const columnSchema = tableSchema.columns[tableSchema.timeConstraint];
+        if (columnSchema) {
+          const clickhouseColumnName = columnSchema.clickhouseName || columnSchema.name;
+          return { tableSchema, clickhouseColumnName };
+        }
+      }
+    }
+    return null;
   }
 
   // ============================================================

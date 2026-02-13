@@ -8,7 +8,7 @@ import {
   startOfMonth,
   startOfWeek,
   subDays,
-  subWeeks
+  subWeeks,
 } from "date-fns";
 import parse from "parse-duration";
 import { startTransition, useCallback, useEffect, useState, type ReactNode } from "react";
@@ -105,7 +105,7 @@ const timePeriods = [
   {
     label: "30 days",
     value: "30d",
-  }
+  },
 ];
 
 const timeUnits = [
@@ -214,6 +214,44 @@ export const timeFilters = ({
   };
 };
 
+export function timeFilterFromTo(props: {
+  period?: string;
+  from?: string | number;
+  to?: string | number;
+  defaultPeriod: string;
+}): { from: Date; to: Date } {
+  const time = timeFilters(props);
+
+  const periodMs = time.period ? parse(time.period) : undefined;
+
+  if (periodMs) {
+    return {
+      from: new Date(Date.now() - periodMs),
+      to: new Date(),
+    };
+  }
+
+  if (time.from && time.to) {
+    return {
+      from: time.from,
+      to: time.to,
+    };
+  }
+
+  if (time.from) {
+    return {
+      from: time.from,
+      to: new Date(),
+    };
+  }
+
+  const defaultPeriodMs = parse(props.defaultPeriod) ?? 24 * 60 * 60 * 1_000;
+  return {
+    from: new Date(Date.now() - defaultPeriodMs),
+    to: time.to ?? new Date(),
+  };
+}
+
 export function timeFilterRenderValues({
   from,
   to,
@@ -257,7 +295,12 @@ export function timeFilterRenderValues({
     case "range":
       {
         //If the day is the same, only show the time for the `to` date
-        const isSameDay = from && to && from.getDate() === to.getDate() && from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
+        const isSameDay =
+          from &&
+          to &&
+          from.getDate() === to.getDate() &&
+          from.getMonth() === to.getMonth() &&
+          from.getFullYear() === to.getFullYear();
 
         valueLabel = (
           <span>
@@ -279,8 +322,8 @@ export function timeFilterRenderValues({
     rangeType === "range" || rangeType === "period"
       ? labelName
       : rangeType === "from"
-        ? `${labelName} after`
-        : `${labelName} before`;
+      ? `${labelName} after`
+      : `${labelName} before`;
 
   return { label, valueLabel, rangeType };
 }
@@ -305,6 +348,8 @@ export interface TimeFilterProps {
   onValueChange?: (values: TimeFilterApplyValues) => void;
   /** When set an upgrade message will be shown if you select a period further back than this number of days */
   maxPeriodDays?: number;
+  /** Optional className override for the value text in the filter pill */
+  valueClassName?: string;
 }
 
 export function TimeFilter({
@@ -317,6 +362,7 @@ export function TimeFilter({
   applyShortcut,
   onValueChange,
   maxPeriodDays,
+  valueClassName,
 }: TimeFilterProps = {}) {
   const { value } = useSearchParams();
   const periodValue = period ?? value("period");
@@ -343,6 +389,7 @@ export function TimeFilter({
                 value={constrained.valueLabel}
                 removable={false}
                 variant="secondary/small"
+                valueClassName={valueClassName}
               />
             </Ariakit.Select>
           }
@@ -443,7 +490,8 @@ export function TimeDropdown({
     if (!maxPeriodDays) return false;
 
     if (activeSection === "duration") {
-      const periodToCheck = selectedPeriod === "custom" ? `${customValue}${customUnit}` : selectedPeriod;
+      const periodToCheck =
+        selectedPeriod === "custom" ? `${customValue}${customUnit}` : selectedPeriod;
       if (!periodToCheck) return false;
       return periodToDays(periodToCheck) > maxPeriodDays;
     } else {
@@ -456,7 +504,9 @@ export function TimeDropdown({
     setValidationError(null);
 
     if (exceedsMaxPeriod) {
-      setValidationError(`Your plan allows a maximum of ${maxPeriodDays} days. Upgrade for longer retention.`);
+      setValidationError(
+        `Your plan allows a maximum of ${maxPeriodDays} days. Upgrade for longer retention.`
+      );
       return;
     }
 
@@ -472,7 +522,11 @@ export function TimeDropdown({
         periodToApply = `${customValue}${customUnit}`;
       }
 
-      const values: TimeFilterApplyValues = { period: periodToApply, from: undefined, to: undefined };
+      const values: TimeFilterApplyValues = {
+        period: periodToApply,
+        from: undefined,
+        to: undefined,
+      };
 
       if (onValueChange) {
         // Controlled mode - just call the handler
@@ -538,7 +592,7 @@ export function TimeDropdown({
     onApply,
     onValueChange,
     exceedsMaxPeriod,
-    maxPeriodDays
+    maxPeriodDays,
   ]);
 
   return (
@@ -579,9 +633,9 @@ export function TimeDropdown({
                       ? "border-indigo-500 "
                       : "border-charcoal-650 hover:border-charcoal-600",
                     validationError &&
-                    activeSection === "duration" &&
-                    selectedPeriod === "custom" &&
-                    "border-error"
+                      activeSection === "duration" &&
+                      selectedPeriod === "custom" &&
+                      "border-error"
                   )}
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -800,7 +854,14 @@ export function TimeDropdown({
           {exceedsMaxPeriod && organization && (
             <Callout
               variant="pricing"
-              cta={<LinkButton variant="primary/small" to={organizationBillingPath({ slug: organization.slug })}>Upgrade</LinkButton>}
+              cta={
+                <LinkButton
+                  variant="primary/small"
+                  to={organizationBillingPath({ slug: organization.slug })}
+                >
+                  Upgrade
+                </LinkButton>
+              }
               className="items-center"
             >
               {simplur`Your plan allows a maximum of ${maxPeriodDays} day[|s].`}
@@ -810,7 +871,7 @@ export function TimeDropdown({
           {/* Action buttons */}
           <div className="flex justify-between gap-1 border-t border-grid-bright px-0 pt-3">
             <Button
-              variant="tertiary/small"
+              variant="secondary/small"
               onClick={(e) => {
                 e.preventDefault();
                 setFromValue(from);
@@ -824,11 +885,15 @@ export function TimeDropdown({
             </Button>
             <Button
               variant="primary/small"
-              shortcut={applyShortcut ? applyShortcut : {
-                modifiers: ["mod"],
-                key: "Enter",
-                enabledOnInputElements: true,
-              }}
+              shortcut={
+                applyShortcut
+                  ? applyShortcut
+                  : {
+                      modifiers: ["mod"],
+                      key: "Enter",
+                      enabledOnInputElements: true,
+                    }
+              }
               onClick={(e) => {
                 e.preventDefault();
                 applySelection();

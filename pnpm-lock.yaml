@@ -498,8 +498,8 @@ importers:
         specifier: workspace:*
         version: link:../../internal-packages/otlp-importer
       '@trigger.dev/platform':
-        specifier: 1.0.22
-        version: 1.0.22
+        specifier: 1.0.23
+        version: 1.0.23
       '@trigger.dev/redis-worker':
         specifier: workspace:*
         version: link:../../packages/redis-worker
@@ -692,12 +692,18 @@ importers:
       react-dom:
         specifier: ^18.2.0
         version: 18.2.0(react@18.2.0)
+      react-grid-layout:
+        specifier: ^2.2.2
+        version: 2.2.2(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       react-hotkeys-hook:
         specifier: ^4.4.1
         version: 4.4.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       react-popper:
         specifier: ^2.3.0
         version: 2.3.0(@popperjs/core@2.11.8)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
+      react-resizable:
+        specifier: ^3.1.3
+        version: 3.1.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       react-resizable-panels:
         specifier: ^2.0.9
         version: 2.0.9(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
@@ -10488,8 +10494,8 @@ packages:
       react: ^18.2.0
       react-dom: 18.2.0
 
-  '@trigger.dev/platform@1.0.22':
-    resolution: {integrity: sha512-tvPf40wqEDcQCZsHt/9A+WoQ08z+uObSWQ+oahqCgp3dSgKOUH8NdzZ/2ISSRiCkN2jURixNiUyDJmgsZipExg==}
+  '@trigger.dev/platform@1.0.23':
+    resolution: {integrity: sha512-/fHMOKHdqRv6t70h0weUorOeVOkX+8WGWwPlzdq+uGDqkf8ZrcwBDuBSyoG9KkyvIsA8Tw64zVbWK94CbVlznw==}
 
   '@types/acorn@4.0.6':
     resolution: {integrity: sha512-veQTnWP+1D/xbxVrPC3zHnCZRjSrKfhbMUlEA43iMZLu7EsnTtkJklIuwrCPbOi8YkvDQAiW05VQQFvvz9oieQ==}
@@ -13803,6 +13809,9 @@ packages:
 
   fast-deep-equal@3.1.3:
     resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
+
+  fast-equals@4.0.3:
+    resolution: {integrity: sha512-G3BSX9cfKttjr+2o1O22tYMLq0DPluZnYtq1rXumE1SpL/F/SLIfHx08WYQoWSIpeMYf8sRbJ8++71+v6Pnxfg==}
 
   fast-equals@5.0.1:
     resolution: {integrity: sha512-WF1Wi8PwwSY7/6Kx0vKXtw8RwuSGoM1bvDaJbu7MxDlR1vovZjIAKrnzyrThgAjm6JDTu0fVgWXDlMGspodfoQ==}
@@ -17616,6 +17625,12 @@ packages:
     peerDependencies:
       react: ^19.1.0
 
+  react-draggable@4.5.0:
+    resolution: {integrity: sha512-VC+HBLEZ0XJxnOxVAZsdRi8rD04Iz3SiiKOoYzamjylUcju/hP9np/aZdLHf/7WOD268WMoNJMvYfB5yAK45cw==}
+    peerDependencies:
+      react: '>= 16.3.0'
+      react-dom: '>= 16.3.0'
+
   react-email@2.1.2:
     resolution: {integrity: sha512-HBHhpzEE5es9YUoo7VSj6qy1omjwndxf3/Sb44UJm/uJ2AjmqALo2yryux0CjW9QAVfitc9rxHkLvIb9H87QQw==}
     engines: {node: '>=18.0.0'}
@@ -17623,6 +17638,12 @@ packages:
 
   react-fast-compare@3.2.2:
     resolution: {integrity: sha512-nsO+KSNgo1SbJqJEYRE9ERzo7YtYbou/OqjSQKxV7jcKox7+usiUVZOAC+XnDOABXggQTno0Y1CpVnuWEc1boQ==}
+
+  react-grid-layout@2.2.2:
+    resolution: {integrity: sha512-yNo9pxQWoxHWRAwHGSVT4DEGELYPyQ7+q9lFclb5jcqeFzva63/2F72CryS/jiTIr/SBIlTaDdyjqH+ODg8oBw==}
+    peerDependencies:
+      react: '>= 16.3.0'
+      react-dom: '>= 16.3.0'
 
   react-hotkeys-hook@4.4.1:
     resolution: {integrity: sha512-sClBMBioFEgFGYLTWWRKvhxcCx1DRznd+wkFHwQZspnRBkHTgruKIHptlK/U/2DPX8BhHoRGzpMVWUXMmdZlmw==}
@@ -17681,6 +17702,12 @@ packages:
     peerDependencies:
       react: ^16.14.0 || ^17.0.0 || ^18.0.0
       react-dom: ^16.14.0 || ^17.0.0 || ^18.0.0
+
+  react-resizable@3.1.3:
+    resolution: {integrity: sha512-liJBNayhX7qA4tBJiBD321FDhJxgGTJ07uzH5zSORXoE8h7PyEZ8mLqmosST7ppf6C4zUsbd2gzDMmBCfFp9Lw==}
+    peerDependencies:
+      react: '>= 16.3'
+      react-dom: '>= 16.3'
 
   react-router-dom@6.17.0:
     resolution: {integrity: sha512-qWHkkbXQX+6li0COUUPKAUkxjNNqPJuiBd27dVwQGDNsuFBdMbrS6UZ0CLYc4CsbdLYTckn4oB4tGDuPZpPhaQ==}
@@ -30641,7 +30668,7 @@ snapshots:
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
 
-  '@trigger.dev/platform@1.0.22':
+  '@trigger.dev/platform@1.0.23':
     dependencies:
       zod: 3.23.8
 
@@ -34676,6 +34703,8 @@ snapshots:
   fast-decode-uri-component@1.0.1: {}
 
   fast-deep-equal@3.1.3: {}
+
+  fast-equals@4.0.3: {}
 
   fast-equals@5.0.1: {}
 
@@ -39128,6 +39157,13 @@ snapshots:
       react: 19.1.0
       scheduler: 0.26.0
 
+  react-draggable@4.5.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
+    dependencies:
+      clsx: 2.1.1
+      prop-types: 15.8.1
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
+
   react-email@2.1.2(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(eslint@8.31.0):
     dependencies:
       '@babel/parser': 7.24.1
@@ -39188,6 +39224,17 @@ snapshots:
       - webpack-cli
 
   react-fast-compare@3.2.2: {}
+
+  react-grid-layout@2.2.2(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
+    dependencies:
+      clsx: 2.1.1
+      fast-equals: 4.0.3
+      prop-types: 15.8.1
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
+      react-draggable: 4.5.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
+      react-resizable: 3.1.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
+      resize-observer-polyfill: 1.5.1
 
   react-hotkeys-hook@4.4.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
     dependencies:
@@ -39306,6 +39353,13 @@ snapshots:
     dependencies:
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
+
+  react-resizable@3.1.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
+    dependencies:
+      prop-types: 15.8.1
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
+      react-draggable: 4.5.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
 
   react-router-dom@6.17.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
     dependencies:

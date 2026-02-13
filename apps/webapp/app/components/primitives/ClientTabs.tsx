@@ -190,7 +190,8 @@ const ClientTabsContent = React.forwardRef<
     ref={ref}
     className={cn(
       "ring-offset-background focus-visible:ring-ring mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
-      className
+      className,
+      "data-[state=inactive]:hidden"
     )}
     {...props}
   />

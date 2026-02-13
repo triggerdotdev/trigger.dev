@@ -1,0 +1,177 @@
+import { DialogClose } from "@radix-ui/react-dialog";
+import { useFetcher, useNavigate } from "@remix-run/react";
+import { IconChartHistogram } from "@tabler/icons-react";
+import { useEffect, useState } from "react";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import {
+  useCustomDashboards,
+  useOrganization,
+  useWidgetLimitPerDashboard,
+} from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { cn } from "~/utils/cn";
+import { v3CustomDashboardPath } from "~/utils/pathBuilder";
+import { Button } from "../primitives/Buttons";
+import { Dialog, DialogContent, DialogHeader } from "../primitives/Dialog";
+import { FormButtons } from "../primitives/FormButtons";
+import { Paragraph } from "../primitives/Paragraph";
+import type { QueryWidgetConfig } from "./QueryWidget";
+
+export type SaveToDashboardDialogProps = {
+  title: string;
+  query: string;
+  config: QueryWidgetConfig;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+export function SaveToDashboardDialog({
+  title,
+  query,
+  config,
+  isOpen,
+  onOpenChange,
+}: SaveToDashboardDialogProps) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const customDashboards = useCustomDashboards();
+  const widgetLimit = useWidgetLimitPerDashboard();
+  const fetcher = useFetcher<{ success: boolean }>();
+  const navigate = useNavigate();
+
+  // Find the first dashboard that isn't at the widget limit
+  const firstAvailableDashboard = customDashboards.find((d) => d.widgetCount < widgetLimit);
+
+  const [selectedDashboardId, setSelectedDashboardId] = useState<string | null>(
+    firstAvailableDashboard?.friendlyId ?? customDashboards[0]?.friendlyId ?? null
+  );
+
+  // Build the form action URL
+  const formAction = selectedDashboardId
+    ? `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${selectedDashboardId}/widgets`
+    : "";
+
+  const isLoading = fetcher.state === "submitting";
+
+  // Check if selected dashboard is at widget limit
+  const selectedDashboard = customDashboards.find((d) => d.friendlyId === selectedDashboardId);
+  const isSelectedAtLimit = selectedDashboard
+    ? selectedDashboard.widgetCount >= widgetLimit
+    : false;
+
+  // Navigate to the dashboard when the fetcher completes successfully
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.success && selectedDashboardId) {
+      onOpenChange(false);
+      navigate(
+        v3CustomDashboardPath(
+          { slug: organization.slug },
+          { slug: project.slug },
+          { slug: environment.slug },
+          { friendlyId: selectedDashboardId }
+        )
+      );
+    }
+  }, [fetcher.state, fetcher.data, selectedDashboardId, onOpenChange, navigate, organization.slug, project.slug, environment.slug]);
+
+  // Update selection if dashboards change
+  useEffect(() => {
+    if (customDashboards.length > 0 && !selectedDashboardId) {
+      const available = customDashboards.find((d) => d.widgetCount < widgetLimit);
+      setSelectedDashboardId(available?.friendlyId ?? customDashboards[0].friendlyId);
+    }
+  }, [customDashboards, selectedDashboardId, widgetLimit]);
+
+  if (customDashboards.length === 0) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>Add to dashboard</DialogHeader>
+          <div className="!mt-1 space-y-4">
+            <Paragraph variant="small" className="text-text-dimmed">
+              You don't have any custom dashboards yet. Create one first from the sidebar menu.
+            </Paragraph>
+            <FormButtons
+              className="justify-end"
+              cancelButton={
+                <DialogClose asChild>
+                  <Button variant="secondary/medium">Close</Button>
+                </DialogClose>
+              }
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>Add to dashboard</DialogHeader>
+        <fetcher.Form method="post" action={formAction} className="space-y-4">
+          <input type="hidden" name="action" value="add" />
+          <input type="hidden" name="title" value={title} />
+          <input type="hidden" name="query" value={query} />
+          <input type="hidden" name="config" value={JSON.stringify(config)} />
+
+          <div className="!mt-1 space-y-2">
+            <Paragraph variant="small" className="text-text-dimmed">
+              Select a dashboard to add this chart to:
+            </Paragraph>
+            <div className="max-h-64 space-y-1 overflow-y-auto">
+              {customDashboards.map((dashboard) => {
+                const isAtLimit = dashboard.widgetCount >= widgetLimit;
+                return (
+                  <button
+                    key={dashboard.friendlyId}
+                    type="button"
+                    onClick={() => !isAtLimit && setSelectedDashboardId(dashboard.friendlyId)}
+                    disabled={isAtLimit}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition",
+                      isAtLimit
+                        ? "cursor-not-allowed opacity-50"
+                        : selectedDashboardId === dashboard.friendlyId
+                        ? "bg-charcoal-700 text-text-bright"
+                        : "text-text-dimmed hover:bg-charcoal-750 hover:text-text-bright"
+                    )}
+                  >
+                    <IconChartHistogram className="size-4 shrink-0 text-text-dimmed" />
+                    <span className="flex-1 truncate">{dashboard.title}</span>
+                    <span
+                      className={cn(
+                        "shrink-0 text-xs",
+                        isAtLimit ? "text-error" : "text-text-dimmed"
+                      )}
+                    >
+                      {dashboard.widgetCount}/{widgetLimit}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <FormButtons
+            confirmButton={
+              <Button
+                type="submit"
+                variant="primary/medium"
+                disabled={isLoading || !selectedDashboardId || isSelectedAtLimit}
+              >
+                {isLoading ? "Saving..." : "Save"}
+              </Button>
+            }
+            cancelButton={
+              <DialogClose asChild>
+                <Button variant="secondary/medium">Cancel</Button>
+              </DialogClose>
+            }
+          />
+        </fetcher.Form>
+      </DialogContent>
+    </Dialog>
+  );
+}

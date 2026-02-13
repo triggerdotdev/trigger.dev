@@ -20,11 +20,11 @@ import {
   ServerStackIcon,
   Squares2X2Icon,
   TableCellsIcon,
-  UsersIcon
+  UsersIcon,
 } from "@heroicons/react/20/solid";
 import { Link, useFetcher, useNavigation } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
@@ -40,9 +40,8 @@ import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
-import { useHasAdminAccess } from "~/hooks/useUser";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { ShortcutKey } from "../primitives/ShortcutKey";
+import { useHasAdminAccess } from "~/hooks/useUser";
 import { type UserWithDashboardPreferences } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
@@ -65,6 +64,7 @@ import {
   v3ApiKeysPath,
   v3BatchesPath,
   v3BillingPath,
+  v3BuiltInDashboardPath,
   v3BulkActionsPath,
   v3DeploymentsPath,
   v3EnvironmentPath,
@@ -88,23 +88,39 @@ import { ImpersonationBanner } from "../ImpersonationBanner";
 import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
 import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
-import {
-  Popover,
-  PopoverContent,
-  PopoverMenuItem,
-  PopoverTrigger
-} from "../primitives/Popover";
+import { Popover, PopoverContent, PopoverMenuItem, PopoverTrigger } from "../primitives/Popover";
+import { ShortcutKey } from "../primitives/ShortcutKey";
 import { TextLink } from "../primitives/TextLink";
-import { SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import {
+  SimpleTooltip,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../primitives/Tooltip";
 import { ShortcutsAutoOpen } from "../Shortcuts";
 import { UserProfilePhoto } from "../UserProfilePhoto";
+import { CreateDashboardButton } from "./DashboardDialogs";
+import { DashboardList } from "./DashboardList";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
+import { type SideMenuSectionId } from "./sideMenuTypes";
 
-type SideMenuUser = Pick<UserWithDashboardPreferences, "email" | "admin" | "dashboardPreferences"> & {
+/** Get the collapsed state for a specific side menu section from user preferences */
+function getSectionCollapsed(
+  sideMenu: { collapsedSections?: Record<string, boolean> } | undefined,
+  sectionId: SideMenuSectionId
+): boolean {
+  return sideMenu?.collapsedSections?.[sectionId] ?? false;
+}
+
+type SideMenuUser = Pick<
+  UserWithDashboardPreferences,
+  "email" | "admin" | "dashboardPreferences"
+> & {
   isImpersonating: boolean;
 };
 export type SideMenuProject = Pick<
@@ -138,7 +154,8 @@ export function SideMenu({
   const preferencesFetcher = useFetcher();
   const pendingPreferencesRef = useRef<{
     isCollapsed?: boolean;
-    manageSectionCollapsed?: boolean;
+    sectionId?: SideMenuSectionId;
+    sectionCollapsed?: boolean;
   }>({});
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentPlan = useCurrentPlan();
@@ -149,7 +166,11 @@ export function SideMenu({
   const featureFlags = useFeatureFlags();
 
   const persistSideMenuPreferences = useCallback(
-    (data: { isCollapsed?: boolean; manageSectionCollapsed?: boolean }) => {
+    (data: {
+      isCollapsed?: boolean;
+      sectionId?: SideMenuSectionId;
+      sectionCollapsed?: boolean;
+    }) => {
       if (user.isImpersonating) return;
 
       // Merge with any pending changes
@@ -170,8 +191,9 @@ export function SideMenu({
         if (pending.isCollapsed !== undefined) {
           formData.append("isCollapsed", String(pending.isCollapsed));
         }
-        if (pending.manageSectionCollapsed !== undefined) {
-          formData.append("manageSectionCollapsed", String(pending.manageSectionCollapsed));
+        if (pending.sectionId !== undefined && pending.sectionCollapsed !== undefined) {
+          formData.append("sectionId", pending.sectionId);
+          formData.append("sectionCollapsed", String(pending.sectionCollapsed));
         }
         preferencesFetcher.submit(formData, {
           method: "POST",
@@ -191,13 +213,18 @@ export function SideMenu({
       }
       if (user.isImpersonating) return;
       const pending = pendingPreferencesRef.current;
-      if (pending.isCollapsed !== undefined || pending.manageSectionCollapsed !== undefined) {
+      const hasPendingChanges =
+        pending.isCollapsed !== undefined ||
+        (pending.sectionId !== undefined && pending.sectionCollapsed !== undefined);
+
+      if (hasPendingChanges) {
         const formData = new FormData();
         if (pending.isCollapsed !== undefined) {
           formData.append("isCollapsed", String(pending.isCollapsed));
         }
-        if (pending.manageSectionCollapsed !== undefined) {
-          formData.append("manageSectionCollapsed", String(pending.manageSectionCollapsed));
+        if (pending.sectionId !== undefined && pending.sectionCollapsed !== undefined) {
+          formData.append("sectionId", pending.sectionId);
+          formData.append("sectionCollapsed", String(pending.sectionCollapsed));
         }
         preferencesFetcher.submit(formData, {
           method: "POST",
@@ -214,9 +241,10 @@ export function SideMenu({
     persistSideMenuPreferences({ isCollapsed: newIsCollapsed });
   };
 
-  const handleManageSectionToggle = useCallback(
-    (collapsed: boolean) => {
-      persistSideMenuPreferences({ manageSectionCollapsed: collapsed });
+  /** Generic handler for any collapsible section - just pass the section ID */
+  const handleSectionToggle = useCallback(
+    (sectionId: SideMenuSectionId) => (collapsed: boolean) => {
+      persistSideMenuPreferences({ sectionId, sectionCollapsed: collapsed });
     },
     [persistSideMenuPreferences]
   );
@@ -255,294 +283,340 @@ export function SideMenu({
             showHeaderDivider || isCollapsed ? "border-grid-bright" : "border-transparent"
           )}
         >
-        <div className={cn("min-w-0", !isCollapsed && "flex-1")}>
-          <ProjectSelector
-            organizations={organizations}
-            organization={organization}
-            project={project}
-            user={user}
-            isCollapsed={isCollapsed}
-          />
+          <div className={cn("min-w-0", !isCollapsed && "flex-1")}>
+            <ProjectSelector
+              organizations={organizations}
+              organization={organization}
+              project={project}
+              user={user}
+              isCollapsed={isCollapsed}
+            />
+          </div>
+          {isAdmin && !user.isImpersonating ? (
+            <CollapsibleElement isCollapsed={isCollapsed}>
+              <TooltipProvider disableHoverableContent={true}>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <LinkButton
+                      variant="minimal/medium"
+                      to={adminPath()}
+                      TrailingIcon={UsersIcon}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className={"text-xs"}>
+                    Admin dashboard
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </CollapsibleElement>
+          ) : isAdmin && user.isImpersonating ? (
+            <CollapsibleElement isCollapsed={isCollapsed}>
+              <ImpersonationBanner />
+            </CollapsibleElement>
+          ) : null}
         </div>
-        {isAdmin && !user.isImpersonating ? (
-          <CollapsibleElement isCollapsed={isCollapsed}>
-            <TooltipProvider disableHoverableContent={true}>
-              <Tooltip>
-                <TooltipTrigger>
-                  <LinkButton variant="minimal/medium" to={adminPath()} TrailingIcon={UsersIcon} />
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className={"text-xs"}>
-                  Admin dashboard
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </CollapsibleElement>
-        ) : isAdmin && user.isImpersonating ? (
-          <CollapsibleElement isCollapsed={isCollapsed}>
-            <ImpersonationBanner />
-          </CollapsibleElement>
-        ) : null}
-      </div>
-      <div
-        className={cn(
-          "min-h-0 overflow-y-auto pt-2",
-          isCollapsed
-            ? "scrollbar-none"
-            : "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-        )}
-        ref={borderRef}
-      >
-        <div className="mb-6 flex w-full flex-col gap-4 overflow-hidden px-1">
-          <div className="w-full space-y-1">
-            <SideMenuHeader title={"Environment"} isCollapsed={isCollapsed} collapsedTitle="Env" />
-            <div className="flex items-center">
-              <EnvironmentSelector
-                organization={organization}
-                project={project}
-                environment={environment}
-                className="w-full"
+        <div
+          className={cn(
+            "min-h-0 overflow-y-auto pt-2",
+            isCollapsed
+              ? "scrollbar-none"
+              : "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          )}
+          ref={borderRef}
+        >
+          <div className="mb-6 flex w-full flex-col gap-4 overflow-hidden px-1">
+            <div className="w-full space-y-1">
+              <SideMenuHeader
+                title={"Environment"}
                 isCollapsed={isCollapsed}
+                collapsedTitle="Env"
               />
-              {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
-                <CollapsibleElement isCollapsed={isCollapsed}>
-                  <Dialog>
-                    <TooltipProvider disableHoverableContent={true}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="inline-flex">
-                            <DialogTrigger asChild>
-                              <Button
-                                variant="minimal/small"
-                                className="aspect-square h-7 p-1"
-                                LeadingIcon={<ConnectionIcon isConnected={isConnected} />}
-                              />
-                            </DialogTrigger>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className={"text-xs"}>
-                          {isConnected === undefined
-                            ? "Checking connection..."
-                            : isConnected
-                            ? "Your dev server is connected"
-                            : "Your dev server is not connected"}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <DevPresencePanel isConnected={isConnected} />
-                  </Dialog>
-                </CollapsibleElement>
-              )}
+              <div className="flex items-center">
+                <EnvironmentSelector
+                  organization={organization}
+                  project={project}
+                  environment={environment}
+                  className="w-full"
+                  isCollapsed={isCollapsed}
+                />
+                {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
+                  <CollapsibleElement isCollapsed={isCollapsed}>
+                    <Dialog>
+                      <TooltipProvider disableHoverableContent={true}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="inline-flex">
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="minimal/small"
+                                  className="aspect-square h-7 p-1"
+                                  LeadingIcon={<ConnectionIcon isConnected={isConnected} />}
+                                />
+                              </DialogTrigger>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className={"text-xs"}>
+                            {isConnected === undefined
+                              ? "Checking connection..."
+                              : isConnected
+                              ? "Your dev server is connected"
+                              : "Your dev server is not connected"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <DevPresencePanel isConnected={isConnected} />
+                    </Dialog>
+                  </CollapsibleElement>
+                )}
+              </div>
             </div>
-          </div>
 
-          <div className="w-full">
-            <SideMenuItem
-              name="Tasks"
-              icon={TaskIconSmall}
-              activeIconColor="text-tasks"
-              inactiveIconColor="text-tasks"
-              to={v3EnvironmentPath(organization, project, environment)}
-              data-action="tasks"
-              isCollapsed={isCollapsed}
-            />
-            <SideMenuItem
-              name="Runs"
-              icon={RunsIconExtraSmall}
-              activeIconColor="text-runs"
-              inactiveIconColor="text-runs"
-              to={v3RunsPath(organization, project, environment)}
-              isCollapsed={isCollapsed}
-            />
-            <SideMenuItem
-              name="Batches"
-              icon={Squares2X2Icon}
-              activeIconColor="text-batches"
-              inactiveIconColor="text-batches"
-              to={v3BatchesPath(organization, project, environment)}
-              data-action="batches"
-              isCollapsed={isCollapsed}
-            />
-            <SideMenuItem
-              name="Schedules"
-              icon={ClockIcon}
-              activeIconColor="text-schedules"
-              inactiveIconColor="text-schedules"
-              to={v3SchedulesPath(organization, project, environment)}
-              data-action="schedules"
-              isCollapsed={isCollapsed}
-            />
-            <SideMenuItem
-              name="Queues"
-              icon={RectangleStackIcon}
-              activeIconColor="text-queues"
-              inactiveIconColor="text-queues"
-              to={v3QueuesPath(organization, project, environment)}
-              data-action="queues"
-              isCollapsed={isCollapsed}
-            />
-            <SideMenuItem
-              name="Waitpoint tokens"
-              icon={WaitpointTokenIcon}
-              activeIconColor="text-sky-500"
-              inactiveIconColor="text-sky-500"
-              to={v3WaitpointTokensPath(organization, project, environment)}
-              isCollapsed={isCollapsed}
-            />
-            <SideMenuItem
-              name="Deployments"
-              icon={ServerStackIcon}
-              activeIconColor="text-deployments"
-              inactiveIconColor="text-deployments"
-              to={v3DeploymentsPath(organization, project, environment)}
-              data-action="deployments"
-              isCollapsed={isCollapsed}
-            />
-            {(user.admin || user.isImpersonating || featureFlags.hasLogsPageAccess) && (
+            <div className="w-full">
               <SideMenuItem
-                name="Logs"
-                icon={LogsIcon}
-                activeIconColor="text-logs"
-                inactiveIconColor="text-logs"
-                to={v3LogsPath(organization, project, environment)}
-                data-action="logs"
-                badge={<AlphaBadge />}
+                name="Tasks"
+                icon={TaskIconSmall}
+                activeIconColor="text-tasks"
+                inactiveIconColor="text-tasks"
+                to={v3EnvironmentPath(organization, project, environment)}
+                data-action="tasks"
                 isCollapsed={isCollapsed}
               />
-            )}
-            <SideMenuItem
-              name="Test"
-              icon={BeakerIcon}
-              activeIconColor="text-tests"
-              inactiveIconColor="text-tests"
-              to={v3TestPath(organization, project, environment)}
-              data-action="test"
-              isCollapsed={isCollapsed}
-            />
+              <SideMenuItem
+                name="Runs"
+                icon={RunsIconExtraSmall}
+                activeIconColor="text-runs"
+                inactiveIconColor="text-runs"
+                to={v3RunsPath(organization, project, environment)}
+                isCollapsed={isCollapsed}
+              />
+              <SideMenuItem
+                name="Batches"
+                icon={Squares2X2Icon}
+                activeIconColor="text-batches"
+                inactiveIconColor="text-batches"
+                to={v3BatchesPath(organization, project, environment)}
+                data-action="batches"
+                isCollapsed={isCollapsed}
+              />
+              <SideMenuItem
+                name="Schedules"
+                icon={ClockIcon}
+                activeIconColor="text-schedules"
+                inactiveIconColor="text-schedules"
+                to={v3SchedulesPath(organization, project, environment)}
+                data-action="schedules"
+                isCollapsed={isCollapsed}
+              />
+              <SideMenuItem
+                name="Queues"
+                icon={RectangleStackIcon}
+                activeIconColor="text-queues"
+                inactiveIconColor="text-queues"
+                to={v3QueuesPath(organization, project, environment)}
+                data-action="queues"
+                isCollapsed={isCollapsed}
+              />
+              <SideMenuItem
+                name="Waitpoint tokens"
+                icon={WaitpointTokenIcon}
+                activeIconColor="text-sky-500"
+                inactiveIconColor="text-sky-500"
+                to={v3WaitpointTokensPath(organization, project, environment)}
+                isCollapsed={isCollapsed}
+              />
+              <SideMenuItem
+                name="Deployments"
+                icon={ServerStackIcon}
+                activeIconColor="text-deployments"
+                inactiveIconColor="text-deployments"
+                to={v3DeploymentsPath(organization, project, environment)}
+                data-action="deployments"
+                isCollapsed={isCollapsed}
+              />
+              {(user.admin || user.isImpersonating || featureFlags.hasLogsPageAccess) && (
+                <SideMenuItem
+                  name="Logs"
+                  icon={LogsIcon}
+                  activeIconColor="text-logs"
+                  inactiveIconColor="text-logs"
+                  to={v3LogsPath(organization, project, environment)}
+                  data-action="logs"
+                  badge={<AlphaBadge />}
+                  isCollapsed={isCollapsed}
+                />
+              )}
+              <SideMenuItem
+                name="Test"
+                icon={BeakerIcon}
+                activeIconColor="text-tests"
+                inactiveIconColor="text-tests"
+                to={v3TestPath(organization, project, environment)}
+                data-action="test"
+                isCollapsed={isCollapsed}
+              />
+            </div>
+
             {(user.admin || user.isImpersonating || featureFlags.hasQueryAccess) && (
-              <SideMenuItem
-                name="Query"
-                icon={TableCellsIcon}
-                activeIconColor="text-purple-500"
-                inactiveIconColor="text-purple-500"
-                to={queryPath(organization, project, environment)}
-                data-action="query"
-                badge={<AlphaBadge />}
-                isCollapsed={isCollapsed}
-              />
+              <SideMenuSection
+                title="Insights"
+                isSideMenuCollapsed={isCollapsed}
+                itemSpacingClassName="space-y-0"
+                initialCollapsed={getSectionCollapsed(
+                  user.dashboardPreferences.sideMenu,
+                  "metrics"
+                )}
+                onCollapseToggle={handleSectionToggle("metrics")}
+              >
+                <SideMenuItem
+                  name="Query"
+                  icon={TableCellsIcon}
+                  activeIconColor="text-query"
+                  inactiveIconColor="text-query"
+                  to={queryPath(organization, project, environment)}
+                  data-action="query"
+                  isCollapsed={isCollapsed}
+                />
+                <SideMenuItem
+                  name="Metrics"
+                  icon={ChartBarIcon}
+                  activeIconColor="text-metrics"
+                  inactiveIconColor="text-metrics"
+                  to={v3BuiltInDashboardPath(organization, project, environment, "overview")}
+                  data-action="metrics-overview"
+                  isCollapsed={isCollapsed}
+                  action={
+                    <CreateDashboardButton
+                      organization={organization}
+                      project={project}
+                      environment={environment}
+                      isCollapsed={isCollapsed}
+                    />
+                  }
+                />
+                <DashboardList
+                  organization={organization}
+                  project={project}
+                  environment={environment}
+                  isCollapsed={isCollapsed}
+                  user={user}
+                />
+              </SideMenuSection>
             )}
-          </div>
 
-          <SideMenuSection
-            title="Manage"
-            isSideMenuCollapsed={isCollapsed}
-            itemSpacingClassName="space-y-0"
-            initialCollapsed={user.dashboardPreferences.sideMenu?.manageSectionCollapsed ?? false}
-            onCollapseToggle={handleManageSectionToggle}
-          >
-            <SideMenuItem
-              name="Bulk actions"
-              icon={ListCheckedIcon}
-              activeIconColor="text-text-bright"
-              inactiveIconColor="text-text-dimmed"
-              to={v3BulkActionsPath(organization, project, environment)}
-              data-action="bulk actions"
-              isCollapsed={isCollapsed}
-            />
-            <SideMenuItem
-              name="API keys"
-              icon={KeyIcon}
-              activeIconColor="text-text-bright"
-              inactiveIconColor="text-text-dimmed"
-              to={v3ApiKeysPath(organization, project, environment)}
-              data-action="api keys"
-              isCollapsed={isCollapsed}
-            />
-            <SideMenuItem
-              name="Environment variables"
-              icon={IdentificationIcon}
-              activeIconColor="text-text-bright"
-              inactiveIconColor="text-text-dimmed"
-              to={v3EnvironmentVariablesPath(organization, project, environment)}
-              data-action="environment variables"
-              isCollapsed={isCollapsed}
-            />
-            <SideMenuItem
-              name="Alerts"
-              icon={BellAlertIcon}
-              activeIconColor="text-text-bright"
-              inactiveIconColor="text-text-dimmed"
-              to={v3ProjectAlertsPath(organization, project, environment)}
-              data-action="alerts"
-              isCollapsed={isCollapsed}
-            />
-            <SideMenuItem
-              name="Preview branches"
-              icon={BranchEnvironmentIconSmall}
-              activeIconColor="text-text-bright"
-              inactiveIconColor="text-text-dimmed"
-              to={branchesPath(organization, project, environment)}
-              data-action="preview-branches"
-              isCollapsed={isCollapsed}
-            />
-            {isManagedCloud && (
+            <SideMenuSection
+              title="Manage"
+              isSideMenuCollapsed={isCollapsed}
+              itemSpacingClassName="space-y-0"
+              initialCollapsed={getSectionCollapsed(user.dashboardPreferences.sideMenu, "manage")}
+              onCollapseToggle={handleSectionToggle("manage")}
+            >
               <SideMenuItem
-                name="Concurrency"
-                icon={ConcurrencyIcon}
+                name="Bulk actions"
+                icon={ListCheckedIcon}
                 activeIconColor="text-text-bright"
                 inactiveIconColor="text-text-dimmed"
-                to={concurrencyPath(organization, project, environment)}
-                data-action="concurrency"
+                to={v3BulkActionsPath(organization, project, environment)}
+                data-action="bulk actions"
                 isCollapsed={isCollapsed}
               />
-            )}
-            <SideMenuItem
-              name="Regions"
-              icon={GlobeAmericasIcon}
-              activeIconColor="text-text-bright"
-              inactiveIconColor="text-text-dimmed"
-              to={regionsPath(organization, project, environment)}
-              data-action="regions"
-              isCollapsed={isCollapsed}
-            />
-            <SideMenuItem
-              name="Limits"
-              icon={AdjustmentsHorizontalIcon}
-              activeIconColor="text-text-bright"
-              inactiveIconColor="text-text-dimmed"
-              to={limitsPath(organization, project, environment)}
-              data-action="limits"
-              isCollapsed={isCollapsed}
-            />
-            <SideMenuItem
-              name="Project settings"
-              icon={Cog8ToothIcon}
-              activeIconColor="text-text-bright"
-              inactiveIconColor="text-text-dimmed"
-              to={v3ProjectSettingsPath(organization, project, environment)}
-              data-action="project-settings"
-              isCollapsed={isCollapsed}
-            />
-          </SideMenuSection>
-        </div>
-      </div>
-      <div>
-        <IncidentStatusPanel isCollapsed={isCollapsed} />
-        <motion.div
-          layout
-          transition={{ duration: 0.2, ease: "easeInOut" }}
-          className={cn("flex flex-col gap-1 border-t border-grid-bright p-1", isCollapsed && "items-center")}
-        >
-          <HelpAndAI isCollapsed={isCollapsed} />
-          {isFreeUser && (
-            <CollapsibleHeight isCollapsed={isCollapsed}>
-              <FreePlanUsage
-                to={v3BillingPath(organization)}
-                percentage={currentPlan.v3Usage.usagePercentage}
+              <SideMenuItem
+                name="API keys"
+                icon={KeyIcon}
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
+                to={v3ApiKeysPath(organization, project, environment)}
+                data-action="api keys"
+                isCollapsed={isCollapsed}
               />
-            </CollapsibleHeight>
-          )}
-        </motion.div>
-      </div>
+              <SideMenuItem
+                name="Environment variables"
+                icon={IdentificationIcon}
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
+                to={v3EnvironmentVariablesPath(organization, project, environment)}
+                data-action="environment variables"
+                isCollapsed={isCollapsed}
+              />
+              <SideMenuItem
+                name="Alerts"
+                icon={BellAlertIcon}
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
+                to={v3ProjectAlertsPath(organization, project, environment)}
+                data-action="alerts"
+                isCollapsed={isCollapsed}
+              />
+              <SideMenuItem
+                name="Preview branches"
+                icon={BranchEnvironmentIconSmall}
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
+                to={branchesPath(organization, project, environment)}
+                data-action="preview-branches"
+                isCollapsed={isCollapsed}
+              />
+              {isManagedCloud && (
+                <SideMenuItem
+                  name="Concurrency"
+                  icon={ConcurrencyIcon}
+                  activeIconColor="text-text-bright"
+                  inactiveIconColor="text-text-dimmed"
+                  to={concurrencyPath(organization, project, environment)}
+                  data-action="concurrency"
+                  isCollapsed={isCollapsed}
+                />
+              )}
+              <SideMenuItem
+                name="Regions"
+                icon={GlobeAmericasIcon}
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
+                to={regionsPath(organization, project, environment)}
+                data-action="regions"
+                isCollapsed={isCollapsed}
+              />
+              <SideMenuItem
+                name="Limits"
+                icon={AdjustmentsHorizontalIcon}
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
+                to={limitsPath(organization, project, environment)}
+                data-action="limits"
+                isCollapsed={isCollapsed}
+              />
+              <SideMenuItem
+                name="Project settings"
+                icon={Cog8ToothIcon}
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
+                to={v3ProjectSettingsPath(organization, project, environment)}
+                data-action="project-settings"
+                isCollapsed={isCollapsed}
+              />
+            </SideMenuSection>
+          </div>
+        </div>
+        <div>
+          <IncidentStatusPanel isCollapsed={isCollapsed} />
+          <motion.div
+            layout
+            transition={{ duration: 0.2, ease: "easeInOut" }}
+            className={cn(
+              "flex flex-col gap-1 border-t border-grid-bright p-1",
+              isCollapsed && "items-center"
+            )}
+          >
+            <HelpAndAI isCollapsed={isCollapsed} />
+            {isFreeUser && (
+              <CollapsibleHeight isCollapsed={isCollapsed}>
+                <FreePlanUsage
+                  to={v3BillingPath(organization)}
+                  percentage={currentPlan.v3Usage.usagePercentage}
+                />
+              </CollapsibleHeight>
+            )}
+          </motion.div>
+        </div>
       </div>
     </div>
   );
@@ -890,7 +964,12 @@ function CollapsibleHeight({
 function HelpAndAI({ isCollapsed }: { isCollapsed: boolean }) {
   return (
     <LayoutGroup>
-      <div className={cn("flex w-full", isCollapsed ? "flex-col-reverse gap-1" : "items-center justify-between")}>
+      <div
+        className={cn(
+          "flex w-full",
+          isCollapsed ? "flex-col-reverse gap-1" : "items-center justify-between"
+        )}
+      >
         <ShortcutsAutoOpen />
         <HelpAndFeedback isCollapsed={isCollapsed} />
         <AskAI isCollapsed={isCollapsed} />
@@ -909,7 +988,7 @@ function AnimatedChevron({
   // When hovering and expanded: left chevron (pointing left to collapse)
   // When hovering and collapsed: right chevron (pointing right to expand)
   // When not hovering: straight vertical line
-  
+
   const getRotation = () => {
     if (!isHovering) return { top: 0, bottom: 0 };
     if (isCollapsed) {
@@ -922,7 +1001,7 @@ function AnimatedChevron({
   };
 
   const { top, bottom } = getRotation();
-  
+
   // Calculate horizontal offset to keep chevron centered when rotated
   // Left chevron: translate left (-1.5px)
   // Right chevron: translate right (+1.5px)
@@ -938,7 +1017,7 @@ function AnimatedChevron({
       viewBox="0 0 4 30"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className="pointer-events-none relative z-10 overflow-visible text-charcoal-600 group-hover:text-text-bright transition-colors"
+      className="pointer-events-none relative z-10 overflow-visible text-charcoal-600 transition-colors group-hover:text-text-bright"
       initial={false}
       animate={{
         x: getTranslateX(),
@@ -981,22 +1060,18 @@ function AnimatedChevron({
   );
 }
 
-function CollapseToggle({
-  isCollapsed,
-  onToggle,
-}: {
-  isCollapsed: boolean;
-  onToggle: () => void;
-}) {
+function CollapseToggle({ isCollapsed, onToggle }: { isCollapsed: boolean; onToggle: () => void }) {
   const [isHovering, setIsHovering] = useState(false);
 
   return (
     <div className="absolute -right-3 top-1/2 z-10 -translate-y-1/2">
       {/* Vertical line to mask the side menu border */}
-      <div className={cn(
-        "pointer-events-none absolute left-1/2 top-1/2 h-10 w-px -translate-y-1/2 transition-colors duration-200",
-        isHovering ? "bg-charcoal-750" : "bg-background-bright"
-      )} />
+      <div
+        className={cn(
+          "pointer-events-none absolute left-1/2 top-1/2 h-10 w-px -translate-y-1/2 transition-colors duration-200",
+          isHovering ? "bg-charcoal-750" : "bg-background-bright"
+        )}
+      />
       <TooltipProvider disableHoverableContent>
         <Tooltip>
           <TooltipTrigger asChild>

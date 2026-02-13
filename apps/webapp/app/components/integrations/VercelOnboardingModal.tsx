@@ -47,6 +47,7 @@ import { type VercelOnboardingData } from "~/presenters/v3/VercelSettingsPresent
 import { vercelAppInstallPath, v3ProjectSettingsPath, githubAppInstallPath, vercelResourcePath } from "~/utils/pathBuilder";
 import type { loader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import { useEffect, useState, useCallback, useRef } from "react";
+import { usePostHogTracking } from "~/hooks/usePostHog";
 
 function safeRedirectUrl(url: string): string | null {
   try {
@@ -114,6 +115,7 @@ export function VercelOnboardingModal({
   nextUrl?: string;
   onDataReload?: (vercelStagingEnvironment?: string) => void;
 }) {
+  const { capture, startSessionRecording } = usePostHogTracking();
   const navigation = useNavigation();
   const fetcher = useTypedFetcher<typeof loader>();
   const envMappingFetcher = useFetcher();
@@ -171,6 +173,33 @@ export function VercelOnboardingModal({
     }
     prevIsOpenRef.current = isOpen;
   }, [isOpen, state, computeInitialState]);
+
+  const trackOnboarding = useCallback(
+    (eventName: string, extraProperties?: Record<string, unknown>) => {
+      capture(eventName, {
+        origin: fromMarketplaceContext ? "marketplace" : "dashboard",
+        step: state,
+        organization_slug: organizationSlug,
+        project_slug: projectSlug,
+        ...extraProperties,
+      });
+    },
+    [capture, fromMarketplaceContext, state, organizationSlug, projectSlug]
+  );
+
+  const hasTrackedStartRef = useRef(false);
+  const hasTrackedCompletionRef = useRef(false);
+  useEffect(() => {
+    if (isOpen && state === "project-selection" && !hasTrackedStartRef.current) {
+      hasTrackedStartRef.current = true;
+      startSessionRecording();
+      trackOnboarding("vercel onboarding started");
+    }
+    if (!isOpen) {
+      hasTrackedStartRef.current = false;
+      hasTrackedCompletionRef.current = false;
+    }
+  }, [isOpen, state, trackOnboarding, startSessionRecording]);
 
   const [selectedVercelProject, setSelectedVercelProject] = useState<{
     id: string;
@@ -337,6 +366,9 @@ export function VercelOnboardingModal({
 
   useEffect(() => {
     if (state === "project-selection" && fetcher.data && "success" in fetcher.data && fetcher.data.success && fetcher.state === "idle") {
+      trackOnboarding("vercel onboarding project selected", {
+        vercel_project_name: selectedVercelProject?.name,
+      });
       setState("loading-env-mapping");
       if (onDataReload) {
         onDataReload();
@@ -344,7 +376,7 @@ export function VercelOnboardingModal({
     } else if (fetcher.data && "error" in fetcher.data && typeof fetcher.data.error === "string") {
       setProjectSelectionError(fetcher.data.error);
     }
-  }, [state, fetcher.data, fetcher.state, onDataReload]);
+  }, [state, fetcher.data, fetcher.state, onDataReload, trackOnboarding, selectedVercelProject?.name]);
 
   // For marketplace origin, skip env-mapping step
   useEffect(() => {
@@ -449,14 +481,23 @@ export function VercelOnboardingModal({
       method: "post",
       action: actionUrl,
     });
-  }, [actionUrl, fetcher, onClose, nextUrl, fromMarketplaceContext]);
+  }, [actionUrl, fetcher, onClose, fromMarketplaceContext]);
 
   const handleSkipEnvMapping = useCallback(() => {
+    trackOnboarding("vercel onboarding env mapping completed", {
+      skipped: true,
+      staging_environment: null,
+    });
     setVercelStagingEnvironment(null);
     setState("loading-env-vars");
-  }, []);
+  }, [trackOnboarding]);
 
   const handleUpdateEnvMapping = useCallback(() => {
+    trackOnboarding("vercel onboarding env mapping completed", {
+      skipped: false,
+      staging_environment: vercelStagingEnvironment?.displayName ?? null,
+    });
+
     if (!vercelStagingEnvironment) {
       setState("loading-env-vars");
       return;
@@ -471,9 +512,11 @@ export function VercelOnboardingModal({
       action: actionUrl,
     });
 
-  }, [vercelStagingEnvironment, envMappingFetcher, actionUrl]);
+  }, [vercelStagingEnvironment, envMappingFetcher, actionUrl, trackOnboarding]);
 
   const handleBuildSettingsNext = useCallback(() => {
+    trackOnboarding("vercel onboarding build settings completed");
+
     if (nextUrl && fromMarketplaceContext && isGitHubConnectedForOnboarding) {
       setIsRedirecting(true);
     }
@@ -501,7 +544,7 @@ export function VercelOnboardingModal({
     if (!isGitHubConnectedForOnboarding) {
       setState("github-connection");
     }
-  }, [vercelStagingEnvironment, pullEnvVarsBeforeBuild, atomicBuilds, discoverEnvVars, syncEnvVarsMapping, nextUrl, fromMarketplaceContext, isGitHubConnectedForOnboarding, completeOnboardingFetcher, actionUrl]);
+  }, [vercelStagingEnvironment, pullEnvVarsBeforeBuild, atomicBuilds, discoverEnvVars, syncEnvVarsMapping, nextUrl, fromMarketplaceContext, isGitHubConnectedForOnboarding, completeOnboardingFetcher, actionUrl, trackOnboarding]);
 
   const handleFinishOnboarding = useCallback((e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -530,10 +573,14 @@ export function VercelOnboardingModal({
   }, [completeOnboardingFetcher.data, completeOnboardingFetcher.state, state]);
 
   useEffect(() => {
-    if (state === "completed") {
+    if (state === "completed" && !hasTrackedCompletionRef.current) {
+      hasTrackedCompletionRef.current = true;
+      trackOnboarding("vercel onboarding completed", {
+        github_connected: isGitHubConnectedForOnboarding,
+      });
       onClose();
     }
-  }, [state, onClose]);
+  }, [state, onClose, trackOnboarding, isGitHubConnectedForOnboarding]);
 
   useEffect(() => {
     if (state === "installing") {
@@ -565,6 +612,12 @@ export function VercelOnboardingModal({
     }
   }, [state, customEnvironments, vercelStagingEnvironment]);
 
+  useEffect(() => {
+    if (state === "project-selection" && availableProjects.length > 0 && !selectedVercelProject) {
+      setSelectedVercelProject(availableProjects[0]);
+    }
+  }, [state, availableProjects, selectedVercelProject]);
+
   if (!isOpen || onboardingData?.authInvalid) {
     return null;
   }
@@ -578,7 +631,14 @@ export function VercelOnboardingModal({
 
   if (isLoadingState) {
     return (
-      <Dialog open={isOpen} onOpenChange={(open) => !open && !fromMarketplaceContext && onClose()}>
+      <Dialog open={isOpen} onOpenChange={(open) => {
+        if (!open && !fromMarketplaceContext) {
+          if (state as string !== "completed") {
+            trackOnboarding("vercel onboarding abandoned");
+          }
+          onClose();
+        }
+      }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <div className="flex items-center gap-2">
@@ -601,7 +661,14 @@ export function VercelOnboardingModal({
   const showGitHubConnection = state === "github-connection";
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && !fromMarketplaceContext && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open) => {
+      if (!open && !fromMarketplaceContext) {
+        if (state !== "completed") {
+          trackOnboarding("vercel onboarding abandoned");
+        }
+        onClose();
+      }
+    }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <div className="flex items-center gap-2">
@@ -625,6 +692,7 @@ export function VercelOnboardingModal({
                 </Callout>
               ) : (
                 <Select
+                  disabled={availableProjects.length === 1}
                   value={selectedVercelProject?.id || ""}
                   setValue={(value) => {
                     if (!Array.isArray(value)) {
@@ -634,6 +702,7 @@ export function VercelOnboardingModal({
                     }
                   }}
                   items={availableProjects}
+                  filter={availableProjects.length > 5 ? { keys: ["name"] } : undefined}
                   variant="tertiary/medium"
                   placeholder="Select a Vercel project"
                   dropdownIcon
@@ -894,6 +963,10 @@ export function VercelOnboardingModal({
                   <Button
                     variant="primary/medium"
                     onClick={() => {
+                      trackOnboarding("vercel onboarding env vars configured", {
+                        env_vars_enabled: enabledEnvVars.length,
+                        env_vars_total: syncableEnvVars.length,
+                      });
                       if (fromMarketplaceContext) {
                         handleBuildSettingsNext();
                       } else {
