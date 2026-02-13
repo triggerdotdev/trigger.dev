@@ -147,8 +147,11 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
     if (needsUpdate) {
       onChangeRef.current({ ...currentConfig, ...updates });
     }
-    // Only re-run when the actual column structure changes, not on every config change
-  }, [columnsKey, columns, dateTimeColumns, categoricalColumns, numericColumns]);
+    // Only re-run when the actual column structure changes, not on every config change.
+    // columnsKey (a string) is stable when columns match, so this won't re-fire
+    // unnecessarily when the same query is re-run with identical columns.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columnsKey]);
 
   const updateConfig = useCallback(
     (updates: Partial<ChartConfiguration>) => {

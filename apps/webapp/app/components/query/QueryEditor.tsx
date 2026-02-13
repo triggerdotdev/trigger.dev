@@ -506,18 +506,39 @@ export function QueryEditor({
 
   const isLoading = fetcher.state === "submitting" || fetcher.state === "loading";
 
-  // Create a stable key from columns to detect schema changes
-  const columnsKey = results?.columns
-    ? results.columns.map((c) => `${c.name}:${c.type}`).join(",")
+  // Stable string key of result column names (types excluded — they can vary between runs)
+  const columnNamesKey = results?.columns
+    ? results.columns.map((c) => c.name).join(",")
     : "";
 
-  // Reset chart config only when column schema actually changes
-  // This allows re-running queries with different WHERE clauses without losing config
+  // Use a ref so the effect can read chartConfig without re-firing on every config tweak
+  const chartConfigRef = useRef(chartConfig);
+  chartConfigRef.current = chartConfig;
+
+  // Reset chart config only when a column referenced by the current config is no
+  // longer present in the results. This means:
+  // - Re-running the same query preserves all settings
+  // - Adding new columns preserves settings (existing config columns still exist)
+  // - Removing/renaming a column used in the config triggers a reset
   useEffect(() => {
-    if (columnsKey && !initialChartConfig) {
+    if (!columnNamesKey || initialChartConfig) return;
+
+    const config = chartConfigRef.current;
+    const configColumns = [
+      config.xAxisColumn,
+      ...config.yAxisColumns,
+      config.groupByColumn,
+      config.sortByColumn,
+    ].filter((col): col is string => col != null);
+
+    // Nothing configured yet — ChartConfigPanel will auto-select defaults
+    if (configColumns.length === 0) return;
+
+    const availableColumns = new Set(columnNamesKey.split(","));
+    if (configColumns.some((col) => !availableColumns.has(col))) {
       setChartConfig(defaultChartConfig);
     }
-  }, [columnsKey, initialChartConfig]);
+  }, [columnNamesKey, initialChartConfig]);
 
   const handleChartConfigChange = useCallback((config: ChartConfiguration) => {
     setChartConfig(config);

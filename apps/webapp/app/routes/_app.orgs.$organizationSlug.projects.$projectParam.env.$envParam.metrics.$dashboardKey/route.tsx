@@ -226,7 +226,7 @@ export function MetricDashboard({
                     title={widget.title}
                     query={widget.query}
                     scope={scope}
-                    period={period ?? null}
+                    period={period ?? defaultPeriod}
                     from={from ?? null}
                     to={to ?? null}
                     taskIdentifiers={tasks.length > 0 ? tasks : undefined}
