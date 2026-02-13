@@ -1212,7 +1212,10 @@ const EnvironmentSchema = z
 
     // Query page concurrency limits
     QUERY_DEFAULT_ORG_CONCURRENCY_LIMIT: z.coerce.number().int().default(3),
-    QUERY_GLOBAL_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
+    QUERY_GLOBAL_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+
+    // Metric widget concurrency limits
+    METRIC_WIDGET_DEFAULT_ORG_CONCURRENCY_LIMIT: z.coerce.number().int().default(30),
 
     EVENTS_CLICKHOUSE_URL: z
       .string()

@@ -12,6 +12,7 @@ import {
 } from "~/components/metrics/QueryWidget";
 import { useElementVisibility } from "~/hooks/useElementVisibility";
 import { useInterval } from "~/hooks/useInterval";
+import { env } from "~/env.server";
 
 const Scope = z.union([z.literal("environment"), z.literal("organization"), z.literal("project")]);
 
@@ -107,7 +108,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     taskIdentifiers,
     queues,
     // Set higher concurrency if many widgets are on screen at once
-    customOrgConcurrencyLimit: 15,
+    customOrgConcurrencyLimit: env.METRIC_WIDGET_DEFAULT_ORG_CONCURRENCY_LIMIT,
   });
 
   if (!queryResult.success) {

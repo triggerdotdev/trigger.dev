@@ -186,6 +186,7 @@ export function ChartLineRenderer({
       width={width}
       height={height}
       margin={{
+        top: 5,
         left: 12,
         right: 12,
       }}
@@ -217,7 +218,7 @@ export function ChartLineRenderer({
           type={lineType}
           stroke={config[key]?.color}
           strokeWidth={1}
-          dot={false}
+          dot={{ r: 1.5, fill: config[key]?.color, strokeWidth: 0 }}
           activeDot={{ r: 4 }}
           isAnimationActive={false}
         />
