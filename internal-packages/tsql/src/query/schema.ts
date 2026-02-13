@@ -2,6 +2,7 @@
 // Defines allowed tables, columns, and tenant isolation configuration
 
 import { QueryError } from "./errors";
+import type { BucketThreshold } from "./time_buckets";
 
 /**
  * ClickHouse data types supported by TSQL
@@ -354,6 +355,13 @@ export interface TableSchema {
    * ```
    */
   timeConstraint?: string;
+  /**
+   * Custom time bucket thresholds for this table.
+   * When set, timeBucket() uses these instead of the global defaults.
+   * Useful when the table's time granularity differs from the standard (e.g., metrics
+   * pre-aggregated into 10-second buckets shouldn't go below 10-second intervals).
+   */
+  timeBucketThresholds?: BucketThreshold[];
 }
 
 /**
