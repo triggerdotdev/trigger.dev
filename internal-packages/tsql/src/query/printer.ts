@@ -1559,9 +1559,14 @@ export class ClickHousePrinter {
       joinStrings.push(`AS ${this.printIdentifier(node.alias)}`);
     }
 
-    // Add FINAL
-    if (node.table_final) {
-      joinStrings.push("FINAL");
+    // Always add FINAL for direct table references to ensure deduplicated results
+    // from ReplacingMergeTree tables in ClickHouse
+    if (node.table) {
+      const tableExpr = node.table;
+      const isDirectTable = (tableExpr as Field).expression_type === "field";
+      if (isDirectTable) {
+        joinStrings.push("FINAL");
+      }
     }
 
     // Add SAMPLE
