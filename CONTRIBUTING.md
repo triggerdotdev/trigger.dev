@@ -6,6 +6,8 @@ Please take some time to read this guide to understand contributing best practic
 
 Thank you for helping us make Trigger.dev even better! 🤩
 
+> **Important:** We only accept PRs that address a single issue. Please do not submit PRs containing multiple unrelated fixes or features. If you have multiple contributions, open a separate PR for each one.
+
 ## Getting vouched (required before opening a PR)
 
 We use [vouch](https://github.com/mitchellh/vouch) to manage contributor trust. **PRs from unvouched users are automatically closed.**
