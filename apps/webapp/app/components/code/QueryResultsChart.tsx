@@ -3,7 +3,8 @@ import { memo, useMemo } from "react";
 import type { ChartConfig } from "~/components/primitives/charts/Chart";
 import { Chart } from "~/components/primitives/charts/ChartCompound";
 import { Paragraph } from "../primitives/Paragraph";
-import { AggregationType, ChartConfiguration } from "../metrics/QueryWidget";
+import type { AggregationType, ChartConfiguration } from "../metrics/QueryWidget";
+import { aggregateValues } from "../primitives/charts/aggregation";
 import { getRunStatusHexColor } from "~/components/runs/v3/TaskRunStatus";
 import { getSeriesColor } from "./chartColors";
 
@@ -672,25 +673,6 @@ function toNumber(value: unknown): number {
 }
 
 /**
- * Aggregate an array of numbers using the specified aggregation function
- */
-function aggregateValues(values: number[], aggregation: AggregationType): number {
-  if (values.length === 0) return 0;
-  switch (aggregation) {
-    case "sum":
-      return values.reduce((a, b) => a + b, 0);
-    case "avg":
-      return values.reduce((a, b) => a + b, 0) / values.length;
-    case "count":
-      return values.length;
-    case "min":
-      return Math.min(...values);
-    case "max":
-      return Math.max(...values);
-  }
-}
-
-/**
  * Sort data array by a specified column
  */
 function sortData(
@@ -1032,6 +1014,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         labelFormatter={legendLabelFormatter}
         showLegend={showLegend}
         maxLegendItems={fullLegend ? Infinity : 5}
+        legendAggregation={config.aggregation}
         minHeight="300px"
         fillContainer
         onViewAllLegendItems={onViewAllLegendItems}
@@ -1058,6 +1041,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
       labelFormatter={legendLabelFormatter}
       showLegend={showLegend}
       maxLegendItems={fullLegend ? Infinity : 5}
+      legendAggregation={config.aggregation}
       minHeight="300px"
       fillContainer
       onViewAllLegendItems={onViewAllLegendItems}

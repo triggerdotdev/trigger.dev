@@ -1,8 +1,18 @@
 import React, { useMemo } from "react";
+import type { AggregationType } from "~/components/metrics/QueryWidget";
 import { useChartContext } from "./ChartContext";
 import { useSeriesTotal } from "./ChartRoot";
+import { aggregateValues } from "./aggregation";
 import { cn } from "~/utils/cn";
 import { AnimatedNumber } from "../AnimatedNumber";
+
+const aggregationLabels: Record<AggregationType, string> = {
+  sum: "Sum",
+  avg: "Average",
+  count: "Count",
+  min: "Min",
+  max: "Max",
+};
 
 export type ChartLegendCompoundProps = {
   /** Maximum number of legend items to show before collapsing */
@@ -11,8 +21,10 @@ export type ChartLegendCompoundProps = {
   hidden?: boolean;
   /** Additional className */
   className?: string;
-  /** Label for the total row */
+  /** Label for the total row (derived from aggregation when not provided) */
   totalLabel?: string;
+  /** Aggregation method – controls the header label and how totals are computed */
+  aggregation?: AggregationType;
   /** Callback when "View all" button is clicked */
   onViewAllLegendItems?: () => void;
   /** When true, constrains legend to max 50% height with scrolling */
@@ -35,45 +47,59 @@ export function ChartLegendCompound({
   maxItems = Infinity,
   hidden = false,
   className,
-  totalLabel = "Total",
+  totalLabel,
+  aggregation,
   onViewAllLegendItems,
   scrollable = false,
 }: ChartLegendCompoundProps) {
   const { config, dataKey, dataKeys, highlight, labelFormatter } = useChartContext();
-  const totals = useSeriesTotal();
+  const totals = useSeriesTotal(aggregation);
 
-  // Calculate grand total (sum of all series totals)
+  // Derive the effective label from the aggregation type when no explicit label is provided
+  const effectiveTotalLabel = totalLabel ?? (aggregation ? aggregationLabels[aggregation] : "Total");
+
+  // Calculate grand total by aggregating across all per-series values
   const grandTotal = useMemo(() => {
-    return dataKeys.reduce((sum, key) => sum + (totals[key] || 0), 0);
-  }, [totals, dataKeys]);
+    const values = dataKeys.map((key) => totals[key] || 0);
+    if (!aggregation) {
+      // Default: sum
+      return values.reduce((a, b) => a + b, 0);
+    }
+    return aggregateValues(values, aggregation);
+  }, [totals, dataKeys, aggregation]);
 
   // Calculate current total based on hover state
   const currentTotal = useMemo(() => {
     if (!highlight.activePayload?.length) return grandTotal;
 
-    // Sum all values from the hovered data point
-    return highlight.activePayload.reduce((sum, item) => {
-      if (item.value !== undefined && dataKeys.includes(item.dataKey as string)) {
-        return sum + (Number(item.value) || 0);
-      }
-      return sum;
-    }, 0);
-  }, [highlight.activePayload, grandTotal, dataKeys]);
+    // Collect all series values from the hovered data point
+    const values = highlight.activePayload
+      .filter((item) => item.value !== undefined && dataKeys.includes(item.dataKey as string))
+      .map((item) => Number(item.value) || 0);
 
-  // Get the label for the total row - x-axis value when hovering, totalLabel otherwise
+    if (values.length === 0) return 0;
+
+    if (!aggregation) {
+      // Default: sum
+      return values.reduce((a, b) => a + b, 0);
+    }
+    return aggregateValues(values, aggregation);
+  }, [highlight.activePayload, grandTotal, dataKeys, aggregation]);
+
+  // Get the label for the total row - x-axis value when hovering, effectiveTotalLabel otherwise
   const currentTotalLabel = useMemo(() => {
-    if (!highlight.activePayload?.length) return totalLabel;
+    if (!highlight.activePayload?.length) return effectiveTotalLabel;
 
     // Get the x-axis label from the payload's original data
     const firstPayloadItem = highlight.activePayload[0];
     const xAxisValue = firstPayloadItem?.payload?.[dataKey];
 
-    if (xAxisValue === undefined) return totalLabel;
+    if (xAxisValue === undefined) return effectiveTotalLabel;
 
     // Apply the formatter if provided, otherwise just stringify the value
     const stringValue = String(xAxisValue);
     return labelFormatter ? labelFormatter(stringValue) : stringValue;
-  }, [highlight.activePayload, dataKey, totalLabel, labelFormatter]);
+  }, [highlight.activePayload, dataKey, effectiveTotalLabel, labelFormatter]);
 
   // Get current data for the legend based on hover state
   const currentData = useMemo(() => {
