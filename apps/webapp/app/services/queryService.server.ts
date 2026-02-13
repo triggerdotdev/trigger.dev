@@ -147,7 +147,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
   if (!acquireResult.success) {
     const errorMessage =
       acquireResult.reason === "key_limit"
-        ? `You've exceeded your query concurrency of ${orgLimit} for this organization. Please try again later.`
+        ? `You've exceeded your query concurrency of ${orgLimit} for this project. Please try again later.`
         : "We're experiencing a lot of queries at the moment. Please try again later.";
     return { success: false, error: new QueryError(errorMessage, { query: options.query }) };
   }
