@@ -51,9 +51,7 @@ export interface BuildImageOptions {
   buildEnvVars?: Record<string, string | undefined>;
   onLog?: (log: string) => void;
 
-  // Optional deployment spinner
-  deploymentSpinner?: any; // Replace 'any' with the actual type if known
-}
+
 
 export async function buildImage(options: BuildImageOptions): Promise<BuildImageResults> {
   const {

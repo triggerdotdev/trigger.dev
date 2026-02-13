@@ -1,3 +1,4 @@
+import { describe, it, expect } from "vitest";
 import { flattenAttributes, unflattenAttributes } from "../src/v3/utils/flattenAttributes.js";
 
 describe("flattenAttributes", () => {
