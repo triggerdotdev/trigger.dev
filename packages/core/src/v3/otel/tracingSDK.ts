@@ -28,6 +28,7 @@ import {
   SimpleLogRecordProcessor,
 } from "@opentelemetry/sdk-logs";
 import {
+  AggregationType,
   MeterProvider,
   PeriodicExportingMetricReader,
   type MetricReader,
@@ -82,6 +83,8 @@ export type TracingSDKConfig = {
   diagLogLevel?: TracingDiagnosticLogLevel;
   resource?: Resource;
   hostMetrics?: boolean;
+  /** Metric instrument name patterns to drop (supports wildcards, e.g. "system.cpu.*") */
+  droppedMetrics?: string[];
 };
 
 const idGenerator = new RandomIdGenerator();
@@ -300,6 +303,10 @@ export class TracingSDK {
     const meterProvider = new MeterProvider({
       resource: commonResources,
       readers: metricReaders,
+      views: (config.droppedMetrics ?? []).map((pattern) => ({
+        instrumentName: pattern,
+        aggregation: { type: AggregationType.DROP },
+      })),
     });
 
     this._meterProvider = meterProvider;

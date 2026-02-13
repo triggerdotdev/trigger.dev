@@ -1,5 +1,5 @@
 import { Attributes, Context, trace, Tracer } from "@opentelemetry/api";
-import { ExportResult } from "@opentelemetry/core";
+import { ExportResult, ExportResultCode } from "@opentelemetry/core";
 import { LogRecordProcessor, SdkLogRecord } from "@opentelemetry/sdk-logs";
 import type {
   AggregationOption,
@@ -130,7 +130,8 @@ export class TaskContextMetricExporter implements PushMetricExporter {
 
   export(metrics: ResourceMetrics, resultCallback: (result: ExportResult) => void): void {
     if (!taskContext.ctx) {
-      this._innerExporter.export(metrics, resultCallback);
+      // No active run — drop metrics (between-run noise)
+      resultCallback({ code: ExportResultCode.SUCCESS });
       return;
     }
 

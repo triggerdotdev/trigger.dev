@@ -213,6 +213,8 @@ async function doBootstrap() {
       forceFlushTimeoutMillis: 30_000,
       resource: config.telemetry?.resource,
       hostMetrics: true,
+      // Drop per-CPU per-state system.cpu metrics in dev to reduce noise
+      droppedMetrics: ["system.cpu.*"],
     });
 
     const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);
@@ -622,8 +624,11 @@ const zodIpc = new ZodIpcConnection({
       }
       await flushAll(timeoutInMs);
     },
-    FLUSH: async ({ timeoutInMs }) => {
+    FLUSH: async ({ timeoutInMs, disableContext }) => {
       await flushAll(timeoutInMs);
+      if (disableContext) {
+        taskContext.disable();
+      }
     },
     RESOLVE_WAITPOINT: async ({ waitpoint }) => {
       _sharedWorkerRuntime?.resolveWaitpoints([waitpoint]);

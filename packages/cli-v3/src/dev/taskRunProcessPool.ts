@@ -2,6 +2,7 @@ import {
   MachinePresetResources,
   ServerBackgroundWorker,
   WorkerManifest,
+  generateFriendlyId,
 } from "@trigger.dev/core/v3";
 import { TaskRunProcess } from "../executions/taskRunProcess.js";
 import { logger } from "../utilities/logger.js";
@@ -106,6 +107,7 @@ export class TaskRunProcessPool {
       env: {
         ...this.options.env,
         ...env,
+        TRIGGER_MACHINE_ID: generateFriendlyId("machine"),
       },
       serverWorker,
       machineResources,
