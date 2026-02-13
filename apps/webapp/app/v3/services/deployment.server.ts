@@ -73,10 +73,7 @@ export class DeploymentService extends BaseService {
     const progressToInstalling = (
       deployment: Pick<WorkerDeployment, "id"> & { buildServerMetadata?: BuildServerMetadata }
     ) => {
-      const existingBuildServerMetadata = deployment.buildServerMetadata as
-        | BuildServerMetadata
-        | null
-        | undefined;
+      const existingBuildServerMetadata = deployment.buildServerMetadata;
 
       return fromPromise(
         this._prisma.workerDeployment.updateMany({

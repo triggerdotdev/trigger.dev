@@ -9,7 +9,6 @@ import {
 } from "./common.js";
 import { BackgroundWorkerMetadata } from "./resources.js";
 import { DequeuedMessage, MachineResources } from "./runEngine.js";
-import { fa } from "zod/v4/locales";
 
 export const RunEngineVersion = z.union([z.literal("V1"), z.literal("V2")]);
 

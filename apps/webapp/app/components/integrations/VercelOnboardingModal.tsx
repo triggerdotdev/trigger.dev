@@ -188,6 +188,7 @@ export function VercelOnboardingModal({
   );
 
   const hasTrackedStartRef = useRef(false);
+  const hasTrackedCompletionRef = useRef(false);
   useEffect(() => {
     if (isOpen && state === "project-selection" && !hasTrackedStartRef.current) {
       hasTrackedStartRef.current = true;
@@ -196,6 +197,7 @@ export function VercelOnboardingModal({
     }
     if (!isOpen) {
       hasTrackedStartRef.current = false;
+      hasTrackedCompletionRef.current = false;
     }
   }, [isOpen, state, trackOnboarding, startSessionRecording]);
 
@@ -467,7 +469,6 @@ export function VercelOnboardingModal({
   }, [selectedVercelProject, fetcher, actionUrl]);
 
   const handleSkipOnboarding = useCallback(() => {
-    trackOnboarding("vercel onboarding abandoned");
     onClose();
 
     if (fromMarketplaceContext) {
@@ -480,7 +481,7 @@ export function VercelOnboardingModal({
       method: "post",
       action: actionUrl,
     });
-  }, [actionUrl, fetcher, onClose, nextUrl, fromMarketplaceContext, trackOnboarding]);
+  }, [actionUrl, fetcher, onClose, fromMarketplaceContext]);
 
   const handleSkipEnvMapping = useCallback(() => {
     trackOnboarding("vercel onboarding env mapping completed", {
@@ -572,7 +573,8 @@ export function VercelOnboardingModal({
   }, [completeOnboardingFetcher.data, completeOnboardingFetcher.state, state]);
 
   useEffect(() => {
-    if (state === "completed") {
+    if (state === "completed" && !hasTrackedCompletionRef.current) {
+      hasTrackedCompletionRef.current = true;
       trackOnboarding("vercel onboarding completed", {
         github_connected: isGitHubConnectedForOnboarding,
       });
