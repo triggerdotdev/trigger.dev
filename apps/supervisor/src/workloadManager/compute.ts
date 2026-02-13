@@ -109,6 +109,8 @@ export class ComputeWorkloadManager implements WorkloadManager {
           body: JSON.stringify({
             image: imageRef,
             env: envVars,
+            cpu: opts.machine.cpu,
+            memory_gb: opts.machine.memory,
             metadata: {
               runId: opts.runFriendlyId,
               envId: opts.envId,
