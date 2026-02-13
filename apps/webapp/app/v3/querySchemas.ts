@@ -1,4 +1,4 @@
-import { column, type TableSchema } from "@internal/tsql";
+import { column, type BucketThreshold, type TableSchema } from "@internal/tsql";
 import { z } from "zod";
 import { autoFormatSQL } from "~/components/code/TSQLEditor";
 import { runFriendlyStatus, runStatusTitleFromStatus } from "~/components/runs/v3/TaskRunStatus";
@@ -598,6 +598,18 @@ export const metricsSchema: TableSchema = {
       expression: "attributes.trigger.worker_version",
     },
   },
+  timeBucketThresholds: [
+    // Metrics are pre-aggregated into 10-second buckets, so 10s is the most granular interval.
+    // All thresholds are shifted coarser compared to the runs table defaults.
+    { maxRangeSeconds: 3 * 60 * 60, interval: { value: 10, unit: "SECOND" } },
+    { maxRangeSeconds: 12 * 60 * 60, interval: { value: 1, unit: "MINUTE" } },
+    { maxRangeSeconds: 2 * 24 * 60 * 60, interval: { value: 5, unit: "MINUTE" } },
+    { maxRangeSeconds: 7 * 24 * 60 * 60, interval: { value: 15, unit: "MINUTE" } },
+    { maxRangeSeconds: 30 * 24 * 60 * 60, interval: { value: 1, unit: "HOUR" } },
+    { maxRangeSeconds: 90 * 24 * 60 * 60, interval: { value: 6, unit: "HOUR" } },
+    { maxRangeSeconds: 180 * 24 * 60 * 60, interval: { value: 1, unit: "DAY" } },
+    { maxRangeSeconds: 365 * 24 * 60 * 60, interval: { value: 1, unit: "WEEK" } },
+  ] satisfies BucketThreshold[],
 };
 
 /**

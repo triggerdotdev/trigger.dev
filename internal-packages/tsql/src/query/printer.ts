@@ -2978,8 +2978,12 @@ export class ClickHousePrinter {
       );
     }
 
-    // Calculate the appropriate interval
-    const interval = calculateTimeBucketInterval(timeRange.from, timeRange.to);
+    // Calculate the appropriate interval (use table-specific thresholds if defined)
+    const interval = calculateTimeBucketInterval(
+      timeRange.from,
+      timeRange.to,
+      tableSchema.timeBucketThresholds
+    );
 
     // Emit toStartOfInterval(column, INTERVAL N UNIT)
     return `toStartOfInterval(${escapeClickHouseIdentifier(clickhouseColumnName)}, INTERVAL ${interval.value} ${interval.unit})`;

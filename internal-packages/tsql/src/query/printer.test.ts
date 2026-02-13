@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { parseTSQLSelect, parseTSQLExpr, compileTSQL } from "../index.js";
 import { ClickHousePrinter, printToClickHouse, type PrintResult } from "./printer.js";
 import { createPrinterContext, PrinterContext } from "./printer_context.js";
-import { createSchemaRegistry, column, type TableSchema, type SchemaRegistry } from "./schema.js";
+import {
+  createSchemaRegistry,
+  column,
+  type TableSchema,
+  type SchemaRegistry,
+} from "./schema.js";
+import type { BucketThreshold } from "./time_buckets.js";
 import { QueryError, SyntaxError } from "./errors.js";
 
 /**
@@ -3568,6 +3574,75 @@ describe("timeBucket()", () => {
       expect(sql).toContain("count()");
       // Tenant isolation should still be applied
       expect(Object.values(params)).toContain("org_test123");
+    });
+  });
+
+  describe("per-table timeBucketThresholds", () => {
+    const customThresholds: BucketThreshold[] = [
+      // 10-second minimum granularity (e.g., for pre-aggregated metrics)
+      { maxRangeSeconds: 10 * 60, interval: { value: 10, unit: "SECOND" } },
+      { maxRangeSeconds: 30 * 60, interval: { value: 30, unit: "SECOND" } },
+      { maxRangeSeconds: 2 * 60 * 60, interval: { value: 1, unit: "MINUTE" } },
+    ];
+
+    const schemaWithCustomThresholds: TableSchema = {
+      ...timeBucketSchema,
+      name: "metrics",
+      timeBucketThresholds: customThresholds,
+    };
+
+    it("should use custom thresholds when defined on the table schema", () => {
+      // 3-minute range: global default would give 5 SECOND, custom gives 10 SECOND
+      const threeMinuteRange = {
+        from: new Date("2024-01-01T00:00:00Z"),
+        to: new Date("2024-01-01T00:03:00Z"),
+      };
+
+      const schema = createSchemaRegistry([schemaWithCustomThresholds]);
+      const ctx = createPrinterContext({
+        schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test123" },
+          project_id: { op: "eq", value: "proj_test456" },
+          environment_id: { op: "eq", value: "env_test789" },
+        },
+        timeRange: threeMinuteRange,
+      });
+
+      const ast = parseTSQLSelect(
+        "SELECT timeBucket(), count() FROM metrics GROUP BY timeBucket"
+      );
+      const { sql } = printToClickHouse(ast, ctx);
+
+      // Custom thresholds: under 10 min → 10 SECOND (not the global 5 SECOND)
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 10 SECOND)");
+    });
+
+    it("should fall back to global defaults when no custom thresholds are defined", () => {
+      // 3-minute range with standard schema (no custom thresholds)
+      const threeMinuteRange = {
+        from: new Date("2024-01-01T00:00:00Z"),
+        to: new Date("2024-01-01T00:03:00Z"),
+      };
+
+      const schema = createSchemaRegistry([timeBucketSchema]);
+      const ctx = createPrinterContext({
+        schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test123" },
+          project_id: { op: "eq", value: "proj_test456" },
+          environment_id: { op: "eq", value: "env_test789" },
+        },
+        timeRange: threeMinuteRange,
+      });
+
+      const ast = parseTSQLSelect(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket"
+      );
+      const { sql } = printToClickHouse(ast, ctx);
+
+      // Global default: under 5 min → 5 SECOND
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 5 SECOND)");
     });
   });
 });
