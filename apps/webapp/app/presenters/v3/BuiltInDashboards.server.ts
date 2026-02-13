@@ -29,13 +29,13 @@ const overviewDashboard: BuiltInDashboard = {
     widgets: {
       "9lDDdebQ": {
         title: "Total runs",
-        query: "SELECT\r\n  count() AS total_runs\r\nFROM\r\n  runs\r\nLIMIT\r\n  100",
+        query: "SELECT\r\n  count() AS total_runs\r\nFROM\r\n  runs",
         display: { type: "bignumber", column: "total_runs", aggregation: "sum", abbreviate: false },
       },
       VhAgNlB0: {
         title: "Success %",
         query:
-          "SELECT\r\n  round(countIf (status = 'Completed') * 100.0 / countIf (is_finished = 1), 2) AS success_percentage\r\nFROM\r\n  runs\r\nLIMIT\r\n  100",
+          "SELECT\r\n  round(countIf (status = 'Completed') * 100.0 / countIf (is_finished = 1), 2) AS success_percentage\r\nFROM\r\n  runs",
         display: {
           type: "bignumber",
           column: "success_percentage",
@@ -47,14 +47,14 @@ const overviewDashboard: BuiltInDashboard = {
       iI5EnhJW: {
         title: "Failed runs",
         query:
-          "SELECT\r\n  count() AS total_runs\r\nFROM\r\n  runs\r\nWHERE status IN ('Failed', 'System failure', 'Crashed')\r\nLIMIT\r\n  100",
+          "SELECT\r\n  count() AS total_runs\r\nFROM\r\n  runs\r\nWHERE status IN ('Failed', 'System failure', 'Crashed')",
         display: { type: "bignumber", column: "total_runs", aggregation: "sum", abbreviate: false },
       },
       HtSgJEmp: { title: "Failed runs", query: "", display: { type: "title" } },
       "rRbzv-Aq": {
         title: "Runs by status",
         query:
-          "SELECT\r\n  timeBucket (),\r\n  status,\r\n  count() AS run_count\r\nFROM\r\n  runs\r\nGROUP BY\r\n  timeBucket,\r\n  status\r\nORDER BY\r\n  timeBucket\r\nLIMIT\r\n  100",
+          "SELECT\r\n  timeBucket (),\r\n  status,\r\n  count() AS run_count\r\nFROM\r\n  runs\r\nGROUP BY\r\n  timeBucket,\r\n  status\r\nORDER BY\r\n  timeBucket",
         display: {
           type: "chart",
           chartType: "bar",
@@ -70,20 +70,20 @@ const overviewDashboard: BuiltInDashboard = {
       j3yFSxLM: {
         title: "Top failing tasks",
         query:
-          "SELECT\r\n  task_identifier AS task,\r\n  count() AS runs,\r\n  countIf (status IN ('Failed', 'Crashed', 'System failure')) AS failures,\r\n  concat(round((countIf (status IN ('Failed', 'Crashed', 'System failure')) / count()) * 100, 2), '%') AS failure_rate,\r\n  avg(attempt_count - 1) AS avg_retries\r\nFROM\r\n  runs\r\nGROUP BY\r\n  task_identifier\r\nORDER BY\r\n  (countIf (status IN ('Failed', 'Crashed', 'System failure')) / count()) DESC\r\nLIMIT\r\n  100;",
+          "SELECT\r\n  task_identifier AS task,\r\n  count() AS runs,\r\n  countIf (status IN ('Failed', 'Crashed', 'System failure')) AS failures,\r\n  concat(round((countIf (status IN ('Failed', 'Crashed', 'System failure')) / count()) * 100, 2), '%') AS failure_rate,\r\n  avg(attempt_count - 1) AS avg_retries\r\nFROM\r\n  runs\r\nGROUP BY\r\n  task_identifier\r\nORDER BY\r\n  (countIf (status IN ('Failed', 'Crashed', 'System failure')) / count()) DESC;",
         display: { type: "table", prettyFormatting: true, sorting: [] },
       },
       IKB8cENo: {
         title: "Top failing tags",
         query:
-          "SELECT\r\n  arrayJoin(tags) AS tag,\r\n  count() AS runs,\r\n  countIf (status IN ('Failed', 'Crashed', 'System failure')) AS failures,\r\n  concat(round((countIf (status IN ('Failed', 'Crashed', 'System failure')) / count()) * 100, 2), '%') AS failure_rate,\r\n  avg(attempt_count - 1) AS avg_retries\r\nFROM\r\n  runs\r\nGROUP BY\r\n  tag\r\nORDER BY\r\n  (countIf (status IN ('Failed', 'Crashed', 'System failure')) / count()) DESC\r\nLIMIT\r\n  100;",
+          "SELECT\r\n  arrayJoin(tags) AS tag,\r\n  count() AS runs,\r\n  countIf (status IN ('Failed', 'Crashed', 'System failure')) AS failures,\r\n  concat(round((countIf (status IN ('Failed', 'Crashed', 'System failure')) / count()) * 100, 2), '%') AS failure_rate,\r\n  avg(attempt_count - 1) AS avg_retries\r\nFROM\r\n  runs\r\nGROUP BY\r\n  tag\r\nORDER BY\r\n  (countIf (status IN ('Failed', 'Crashed', 'System failure')) / count()) DESC;",
         display: { type: "table", prettyFormatting: true, sorting: [] },
       },
       "-fHz3CyQ": { title: "Usage and cost", query: "", display: { type: "title" } },
       hnKsN482: {
         title: "Cost by task",
         query:
-          "SELECT\r\n  timeBucket() as time_period,\r\n  task_identifier,\r\n  sum(total_cost) AS total_cost\r\nFROM\r\n  runs\r\nGROUP BY\r\n  time_period,\r\n  task_identifier\r\nORDER BY\r\n  time_period\r\nLIMIT\r\n  100",
+          "SELECT\r\n  timeBucket() as time_period,\r\n  task_identifier,\r\n  sum(total_cost) AS total_cost\r\nFROM\r\n  runs\r\nGROUP BY\r\n  time_period,\r\n  task_identifier\r\nORDER BY\r\n  time_period",
         display: {
           type: "chart",
           chartType: "line",
@@ -99,7 +99,7 @@ const overviewDashboard: BuiltInDashboard = {
       if6dds8T: {
         title: "Failed runs by task",
         query:
-          "SELECT\r\n  timeBucket () as time_period,\r\n  task_identifier,\r\n  count() AS run_count\r\nFROM\r\n  runs\r\nWHERE status IN ('Failed', 'Crashed', 'System failure')\r\nGROUP BY\r\n  time_period,\r\n  task_identifier\r\nORDER BY\r\n  time_period\r\nLIMIT\r\n  100",
+          "SELECT\r\n  timeBucket () as time_period,\r\n  task_identifier,\r\n  count() AS run_count\r\nFROM\r\n  runs\r\nWHERE status IN ('Failed', 'Crashed', 'System failure')\r\nGROUP BY\r\n  time_period,\r\n  task_identifier\r\nORDER BY\r\n  time_period",
         display: {
           type: "chart",
           chartType: "bar",
@@ -132,13 +132,13 @@ const overviewDashboard: BuiltInDashboard = {
       Kh0w0fjy: {
         title: "Top errors",
         query:
-          "SELECT\r\n  concat(error.name, '(\"', error.message, '\")') AS error,\r\n  count() AS count\r\nFROM\r\n  runs\r\nWHERE\r\n  runs.error != NULL\r\n  AND runs.error.name != NULL\r\nGROUP BY\r\n  error\r\nORDER BY\r\n  count DESC\r\nLIMIT\r\n  100",
+          "SELECT\r\n  concat(error.name, '(\"', error.message, '\")') AS error,\r\n  count() AS count\r\nFROM\r\n  runs\r\nWHERE\r\n  runs.error != NULL\r\n  AND runs.error.name != NULL\r\nGROUP BY\r\n  error\r\nORDER BY\r\n  count DESC",
         display: { type: "table", prettyFormatting: true, sorting: [] },
       },
       zybRTAdz: {
         title: "Top errors over time",
         query:
-          "SELECT\r\n  timeBucket(),\r\n  concat(error.name, '(\"', error.message, '\")') AS error,\r\n  count() AS count\r\nFROM\r\n  runs\r\nWHERE\r\n  runs.error != NULL\r\n  AND runs.error.name != NULL\r\nGROUP BY\r\n  timeBucket,\r\n  error\r\nORDER BY\r\n  count DESC\r\nLIMIT\r\n  100",
+          "SELECT\r\n  timeBucket(),\r\n  concat(error.name, '(\"', error.message, '\")') AS error,\r\n  count() AS count\r\nFROM\r\n  runs\r\nWHERE\r\n  runs.error != NULL\r\n  AND runs.error.name != NULL\r\nGROUP BY\r\n  timeBucket,\r\n  error\r\nORDER BY\r\n  count DESC",
         display: {
           type: "chart",
           chartType: "bar",
@@ -155,7 +155,7 @@ const overviewDashboard: BuiltInDashboard = {
       ff2nVxxt: {
         title: "Cost by machine",
         query:
-          "SELECT\r\n  timeBucket() as time_period,\r\n  machine,\r\n  sum(total_cost) AS total_cost\r\nFROM\r\n  runs\r\nWHERE machine != ''\r\nGROUP BY\r\n  time_period,\r\n  machine\r\nORDER BY\r\n  time_period\r\nLIMIT\r\n  100",
+          "SELECT\r\n  timeBucket() as time_period,\r\n  machine,\r\n  sum(total_cost) AS total_cost\r\nFROM\r\n  runs\r\nWHERE machine != ''\r\nGROUP BY\r\n  time_period,\r\n  machine\r\nORDER BY\r\n  time_period",
         display: {
           type: "chart",
           chartType: "line",
@@ -206,7 +206,7 @@ const overviewDashboard: BuiltInDashboard = {
       xyQl3FAd: {
         title: "Queued",
         query:
-          "SELECT\r\n  count() AS queued\r\nFROM\r\n  runs\r\nWHERE status IN ('Dequeued', 'Queued')\r\nLIMIT\r\n  100",
+          "SELECT\r\n  count() AS queued\r\nFROM\r\n  runs\r\nWHERE status IN ('Dequeued', 'Queued')",
         display: { type: "bignumber", column: "queued", aggregation: "sum", abbreviate: false },
       },
     },
