@@ -13,7 +13,23 @@ CREATE TABLE IF NOT EXISTS trigger_dev.metrics_v1
   max_value           Float64 DEFAULT 0,
   min_value           Float64 DEFAULT 0,
   last_value          Float64 DEFAULT 0,
-  attributes          JSON(max_dynamic_paths=64)
+  attributes          JSON(
+    `trigger.run_id` String,
+    `trigger.task_slug` String,
+    `trigger.attempt_number` Int64,
+    `trigger.environment_type` LowCardinality(String),
+    `trigger.machine_id` String,
+    `trigger.machine_name` LowCardinality(String),
+    `trigger.worker_id` String,
+    `trigger.worker_version` String,
+    `system.cpu.logical_number` String,
+    `system.cpu.state` LowCardinality(String),
+    `system.memory.state` LowCardinality(String),
+    `system.device` String,
+    `process.cpu.state` LowCardinality(String),
+    `network.io.direction` LowCardinality(String),
+    max_dynamic_paths=8
+  )
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(bucket_start)
