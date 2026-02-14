@@ -50,7 +50,10 @@ const { action, loader } = createActionApiRoute(
         query,
       });
 
-      return json({ error: message }, { status: 400 });
+      return json(
+        { error: message },
+        { status: queryResult.error instanceof QueryError ? 400 : 500 }
+      );
     }
 
     const { result, periodClipped, maxQueryPeriod } = queryResult;
