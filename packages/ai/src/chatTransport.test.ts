@@ -7,6 +7,10 @@ import {
   TriggerChatTransport,
 } from "./chatTransport.js";
 import type { UIMessage, UIMessageChunk } from "ai";
+import type {
+  TriggerChatRunState,
+  TriggerChatRunStore,
+} from "./types.js";
 
 type TestServer = {
   url: string;
@@ -459,6 +463,69 @@ describe("TriggerChatTransport", function () {
     });
   });
 
+  it("supports async run store implementations", async function () {
+    const runStore = new AsyncTrackedRunStore();
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_async",
+        });
+        res.end(JSON.stringify({ id: "run_async" }));
+        return;
+      }
+
+      if (req.method === "GET" && req.url === "/realtime/v1/streams/run_async/chat-stream") {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "async_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "async_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      runStore,
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-async",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+
+    await waitForCondition(function () {
+      return runStore.deleteCalls.includes("chat-async");
+    });
+
+    expect(runStore.setCalls).toContain("chat-async");
+    expect(runStore.getCalls).toContain("chat-async");
+    await expect(runStore.get("chat-async")).resolves.toBeUndefined();
+  });
+
   it("reconnects active streams using tracked lastEventId", async function () {
     let reconnectLastEventId: string | undefined;
     let firstStreamResponse: ServerResponse<IncomingMessage> | undefined;
@@ -660,4 +727,35 @@ class TrackedRunStore extends InMemoryTriggerChatRunStore {
     this.deleteCalls.push(chatId);
     super.delete(chatId);
   }
+}
+
+class AsyncTrackedRunStore implements TriggerChatRunStore {
+  private readonly runs = new Map<string, TriggerChatRunState>();
+  public readonly getCalls: string[] = [];
+  public readonly setCalls: string[] = [];
+  public readonly deleteCalls: string[] = [];
+
+  public async get(chatId: string): Promise<TriggerChatRunState | undefined> {
+    this.getCalls.push(chatId);
+    await sleep(1);
+    return this.runs.get(chatId);
+  }
+
+  public async set(state: TriggerChatRunState): Promise<void> {
+    this.setCalls.push(state.chatId);
+    await sleep(1);
+    this.runs.set(state.chatId, state);
+  }
+
+  public async delete(chatId: string): Promise<void> {
+    this.deleteCalls.push(chatId);
+    await sleep(1);
+    this.runs.delete(chatId);
+  }
+}
+
+async function sleep(timeoutInMs: number) {
+  await new Promise<void>(function (resolve) {
+    setTimeout(resolve, timeoutInMs);
+  });
 }
