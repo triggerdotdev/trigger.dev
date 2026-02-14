@@ -146,7 +146,7 @@ const ClientTabsTrigger = React.forwardRef<
         <span
           className={cn(
             "text-sm transition duration-200",
-            isActive ? "text-text-bright" : "text-text-dimmed hover:text-text-bright"
+            isActive ? "text-text-bright" : "text-text-dimmed group-hover:text-text-bright"
           )}
         >
           {children}
