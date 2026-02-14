@@ -1,6 +1,6 @@
 import { ChevronDownIcon, ChevronUpDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
-import { IconFilter2, IconFilter2X } from "@tabler/icons-react";
+import { IconFilter2, IconFilter2X, IconTable } from "@tabler/icons-react";
 import { rankItem } from "@tanstack/match-sorter-utils";
 import {
   flexRender,
@@ -19,7 +19,7 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
-import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
+import { AlertCircle, ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 import { forwardRef, memo, useEffect, useMemo, useRef, useState } from "react";
 import { EnvironmentLabel, EnvironmentSlug } from "~/components/environments/EnvironmentLabel";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
@@ -37,7 +37,9 @@ import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { v3ProjectPath, v3RunPathFromFriendlyId } from "~/utils/pathBuilder";
+import { ChartBlankState } from "../primitives/charts/ChartBlankState";
 import { Paragraph } from "../primitives/Paragraph";
+
 import { TextLink } from "../primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "../primitives/Tooltip";
 import { QueueName } from "../runs/v3/QueueName";
@@ -412,7 +414,7 @@ function CellValueWrapper({
 
   return (
     <span
-      className="flex-1"
+      className="flex flex-1 items-center"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -718,15 +720,16 @@ function CopyableCell({
   return (
     <div
       className={cn(
-        "relative flex w-full items-center overflow-hidden px-2 py-1.5",
+        "relative flex h-full w-full items-center overflow-hidden px-2",
         "bg-background-bright group-hover/row:bg-charcoal-750",
         "font-mono text-xs text-text-dimmed group-hover/row:text-text-bright",
+        "[&_a:focus-visible]:underline [&_a:focus-visible]:underline-offset-[3px] [&_a:focus-visible]:outline-none",
         alignment === "right" && "justify-end"
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <span className="flex h-4 items-center truncate">{children}</span>
+      <span className="flex items-center truncate">{children}</span>
       {isHovered && (
         <span
           onClick={(e) => {
@@ -847,7 +850,7 @@ function HeaderCellContent({
           }}
           onMouseEnter={() => setIsFilterHovered(true)}
           onMouseLeave={() => setIsFilterHovered(false)}
-          className="flex-shrink-0 rounded text-text-dimmed transition-colors hover:text-text-bright"
+          className="flex-shrink-0 rounded text-text-dimmed transition-colors focus-custom hover:text-text-bright"
           title="Toggle column filters"
         >
           {showFilters ? <IconFilter2X className="size-4" /> : <IconFilter2 className="size-4" />}
@@ -903,11 +906,14 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   columns,
   prettyFormatting = true,
   sorting: defaultSorting = [],
+  showHeaderOnEmpty = false,
 }: {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
   prettyFormatting?: boolean;
   sorting?: SortingState;
+  /** When true, show column headers + "No results" on empty data. When false, show a blank state icon. */
+  showHeaderOnEmpty?: boolean;
 }) {
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
@@ -977,6 +983,10 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
 
   // Empty state
   if (rows.length === 0) {
+    if (!showHeaderOnEmpty) {
+      return <ChartBlankState icon={IconTable} message="No data to display" />;
+    }
+
     return (
       <div
         className="h-full min-h-0 w-full overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
@@ -984,7 +994,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
       >
         <table style={{ display: "grid" }}>
           <thead
-            className="border-t border-grid-bright bg-background-bright"
+            className="border-t border-grid-bright bg-background-bright after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright"
             style={{
               display: "grid",
               position: "sticky",
@@ -1005,63 +1015,24 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                         width: header.getSize(),
                       }}
                     >
-                      <HeaderCellContent
-                        alignment={meta?.alignment ?? "left"}
-                        tooltip={meta?.outputColumn.description}
-                        onFilterClick={() => {
-                          if (!showFilters) {
-                            setFocusFilterColumn(header.id);
-                          } else {
-                            setColumnFilters([]);
-                          }
-                          setShowFilters(!showFilters);
-                        }}
-                        showFilters={showFilters}
-                        hasActiveFilter={!!header.column.getFilterValue()}
-                        sortDirection={header.column.getIsSorted()}
-                        onSortClick={header.column.getToggleSortingHandler()}
-                        canSort={header.column.getCanSort()}
-                      >
+                      <HeaderCellContent alignment={meta?.alignment ?? "left"}>
                         {flexRender(header.column.columnDef.header, header.getContext())}
                       </HeaderCellContent>
-                      {/* Column resizer */}
-                      <div
-                        onDoubleClick={() => header.column.resetSize()}
-                        onMouseDown={header.getResizeHandler()}
-                        onTouchStart={header.getResizeHandler()}
-                        className={cn(
-                          "absolute right-0 top-0 h-full w-0.5 cursor-col-resize touch-none select-none",
-                          "opacity-0 group-hover/header:opacity-100",
-                          "bg-charcoal-600 hover:bg-indigo-500",
-                          header.column.getIsResizing() && "bg-indigo-500 opacity-100"
-                        )}
-                      />
                     </th>
                   );
                 })}
               </tr>
             ))}
-            {/* Filter row - shown when filters are toggled */}
-            {showFilters && (
-              <tr style={{ display: "flex", width: "100%" }}>
-                {table.getHeaderGroups()[0]?.headers.map((header) => (
-                  <FilterCell
-                    key={`filter-${header.id}`}
-                    column={header.column}
-                    width={header.getSize()}
-                    shouldFocus={focusFilterColumn === header.id}
-                    onFocused={() => setFocusFilterColumn(null)}
-                  />
-                ))}
-              </tr>
-            )}
           </thead>
-          <tbody className="border-b border-grid-bright" style={{ display: "grid" }}>
-            <tr style={{ display: "flex" }}>
-              <td>
-                <Paragraph variant="extra-small" className="p-4 text-text-dimmed">
-                  No results
-                </Paragraph>
+          <tbody style={{ display: "grid" }}>
+            <tr style={{ display: "flex", width: "100%" }}>
+              <td className="w-full px-3 py-6" colSpan={columns.length}>
+                <div className="flex items-center justify-center gap-1.5">
+                  <AlertCircle className="size-5 text-text-dimmed/50" />
+                  <Paragraph variant="small" className="text-text-dimmed">
+                    This query returned no results
+                  </Paragraph>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -1171,6 +1142,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                   position: "absolute",
                   transform: `translateY(${virtualRow.start}px)`,
                   width: "100%",
+                  height: `${virtualRow.size}px`,
                 }}
               >
                 {row.getVisibleCells().map((cell) => {

@@ -507,9 +507,7 @@ export function QueryEditor({
   const isLoading = fetcher.state === "submitting" || fetcher.state === "loading";
 
   // Stable string key of result column names (types excluded — they can vary between runs)
-  const columnNamesKey = results?.columns
-    ? results.columns.map((c) => c.name).join(",")
-    : "";
+  const columnNamesKey = results?.columns ? results.columns.map((c) => c.name).join(",") : "";
 
   // Use a ref so the effect can read chartConfig without re-firing on every config tweak
   const chartConfigRef = useRef(chartConfig);
@@ -773,7 +771,7 @@ export function QueryEditor({
                       </div>
                     ) : results?.rows && results?.columns ? (
                       <div
-                        className={`grid h-full max-h-full overflow-hidden bg-charcoal-900 ${
+                        className={`grid h-full max-h-full overflow-hidden bg-background-bright ${
                           hasQueryResultsCallouts(results.hiddenColumns, results.periodClipped)
                             ? "grid-rows-[auto_1fr]"
                             : "grid-rows-[1fr]"
@@ -784,8 +782,10 @@ export function QueryEditor({
                           periodClipped={results.periodClipped}
                           organizationSlug={organization.slug}
                         />
-                        <div className="overflow-hidden p-2">
+                        <div className="overflow-hidden">
                           <QueryWidget
+                            className="border-0"
+                            showTableHeaderOnEmpty
                             title={
                               <QueryTitle
                                 isTitleLoading={isTitleLoading}
@@ -829,7 +829,7 @@ export function QueryEditor({
                   </ClientTabsContent>
                   <ClientTabsContent
                     value="graph"
-                    className={`m-0 grid h-full max-h-full min-h-0 overflow-hidden bg-charcoal-900 ${
+                    className={`m-0 grid h-full max-h-full min-h-0 overflow-hidden bg-background-bright ${
                       results?.rows &&
                       results.rows.length > 0 &&
                       hasQueryResultsCallouts(results.hiddenColumns, results.periodClipped)
@@ -878,7 +878,7 @@ export function QueryEditor({
                   </ClientTabsContent>
                   <ClientTabsContent
                     value="bignumber"
-                    className={`m-0 grid h-full max-h-full min-h-0 overflow-hidden bg-charcoal-900 ${
+                    className={`m-0 grid h-full max-h-full min-h-0 overflow-hidden bg-background-bright ${
                       results?.rows &&
                       results.rows.length > 0 &&
                       hasQueryResultsCallouts(results.hiddenColumns, results.periodClipped)
@@ -1219,8 +1219,9 @@ function ResultsChart({
     <>
       <ResizablePanelGroup className="overflow-hidden">
         <ResizablePanel id="chart-results">
-          <div className="h-full overflow-hidden bg-charcoal-900 p-2">
+          <div className="h-full overflow-hidden bg-background-bright">
             <QueryWidget
+              className="border-0"
               title={
                 <QueryTitle
                   isTitleLoading={isTitleLoading}
@@ -1297,8 +1298,9 @@ function ResultsBigNumber({
     <>
       <ResizablePanelGroup className="overflow-hidden">
         <ResizablePanel id="bignumber-results">
-          <div className="h-full overflow-hidden bg-charcoal-900 p-2">
+          <div className="h-full overflow-hidden bg-background-bright">
             <QueryWidget
+              className="border-0"
               title={
                 <QueryTitle
                   isTitleLoading={isTitleLoading}
@@ -1367,7 +1369,7 @@ function BigNumberConfigPanel({
     <div className="flex h-full flex-col gap-2 overflow-y-auto p-2">
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <Paragraph variant="extra-small" className="text-text-dimmed">
+          <Paragraph variant="extra-small" className="text-text-bright">
             Column
           </Paragraph>
           <Select
@@ -1389,7 +1391,7 @@ function BigNumberConfigPanel({
           </Select>
         </div>
         <div className="flex flex-col gap-1">
-          <Paragraph variant="extra-small" className="text-text-dimmed">
+          <Paragraph variant="extra-small" className="text-text-bright">
             Sort order
           </Paragraph>
           <Select
@@ -1417,7 +1419,7 @@ function BigNumberConfigPanel({
           </Select>
         </div>
         <div className="flex flex-col gap-1">
-          <Paragraph variant="extra-small" className="text-text-dimmed">
+          <Paragraph variant="extra-small" className="text-text-bright">
             Aggregation
           </Paragraph>
           <Select
@@ -1451,7 +1453,7 @@ function BigNumberConfigPanel({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <Paragraph variant="extra-small" className="text-text-dimmed">
+          <Paragraph variant="extra-small" className="text-text-bright">
             Prefix
           </Paragraph>
           <Input
@@ -1462,7 +1464,7 @@ function BigNumberConfigPanel({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <Paragraph variant="extra-small" className="text-text-dimmed">
+          <Paragraph variant="extra-small" className="text-text-bright">
             Suffix
           </Paragraph>
           <Input

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback } from "react";
 import {
   Bar,
   BarChart,
@@ -11,20 +11,13 @@ import {
   type XAxisProps,
   type YAxisProps,
 } from "recharts";
-import {
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-  type ChartState,
-} from "~/components/primitives/charts/Chart";
-import { cn } from "~/utils/cn";
-import { ChartBarLoading, ChartBarInvalid, ChartBarNoData } from "./ChartLoading";
+import { ChartTooltip, ChartTooltipContent } from "~/components/primitives/charts/Chart";
 import { useChartContext } from "./ChartContext";
-import { ChartRoot, useHasNoData } from "./ChartRoot";
+import { ChartBarInvalid, ChartBarLoading, ChartBarNoData } from "./ChartLoading";
+import { useHasNoData } from "./ChartRoot";
 // Legend is now rendered by ChartRoot outside the chart container
 import { ZoomTooltip, useZoomHandlers } from "./ChartZoom";
 import { getBarOpacity } from "./hooks/useHighlightState";
-import type { ZoomRange } from "./hooks/useZoomSelection";
 
 //TODO: fix the first and last bars in a stack not having rounded corners
 
