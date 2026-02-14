@@ -33,7 +33,7 @@
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit",
-    "test": "vitest",
+    "test": "vitest --exclude \"**/.tshy-build/**\"",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "check-exports": "attw --pack ."
   },

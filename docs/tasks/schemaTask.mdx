@@ -80,6 +80,9 @@ await myTask.trigger({ name: "Alice", age: 30, dob: "2020-01-01" }); // this is 
 
 The `ai.tool` function allows you to create an AI tool from an existing `schemaTask` to use with the Vercel [AI SDK](https://vercel.com/docs/ai-sdk):
 
+> `@trigger.dev/ai` is the recommended import path. For backwards compatibility,
+> `@trigger.dev/sdk/ai` continues to work.
+
 ```ts
 import { ai } from "@trigger.dev/ai";
 import { schemaTask } from "@trigger.dev/sdk";

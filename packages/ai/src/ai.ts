@@ -89,13 +89,7 @@ function toolFromTask<
 }
 
 function getToolOptionsFromMetadata(): ToolCallExecutionOptions | undefined {
-  let tool: unknown;
-  try {
-    tool = runMetadata.getKey(METADATA_KEY);
-  } catch {
-    return undefined;
-  }
-
+  const tool = runMetadata.getKey(METADATA_KEY);
   if (!tool) {
     return undefined;
   }

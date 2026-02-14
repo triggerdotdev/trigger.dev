@@ -3,8 +3,8 @@ import { z } from "zod";
 import { ai } from "./ai.js";
 import type { TaskWithSchema } from "@trigger.dev/core/v3";
 
-describe("ai helper", function () {
-  it("creates a tool from a schema task and executes through triggerAndWait", async function () {
+describe("@trigger.dev/sdk/ai compatibility", function () {
+  it("creates a tool from a schema task and executes triggerAndWait", async function () {
     let receivedInput: unknown = undefined;
 
     const fakeTask = {
@@ -54,7 +54,7 @@ describe("ai helper", function () {
     });
   });
 
-  it("throws when creating a tool from a task without schema", function () {
+  it("throws when converting tasks without schema", function () {
     const fakeTask = {
       id: "no-schema",
       description: "No schema task",
@@ -73,7 +73,7 @@ describe("ai helper", function () {
     }).toThrowError("task has no schema");
   });
 
-  it("throws for current tool options outside task execution context", function () {
+  it("preserves currentToolOptions behavior outside task execution", function () {
     expect(function () {
       ai.currentToolOptions();
     }).toThrowError("Method not implemented.");
