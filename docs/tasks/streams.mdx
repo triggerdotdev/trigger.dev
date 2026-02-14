@@ -517,6 +517,95 @@ const { parts, error } = useRealtimeStream(streamDef, runId, {
 });
 ```
 
+## AI SDK `useChat` transport with Trigger.dev tasks
+
+If you want to use AI SDK UI's `useChat()` on the frontend and run the backend as a Trigger.dev task,
+use the `@trigger.dev/ai` transport.
+
+### Install
+
+```bash
+npm add @trigger.dev/ai @ai-sdk/react ai
+```
+
+### Define a typed stream
+
+```ts
+// app/streams.ts
+import { streams } from "@trigger.dev/sdk";
+import { UIMessageChunk } from "ai";
+
+export const aiStream = streams.define<UIMessageChunk>({
+  id: "ai",
+});
+```
+
+### Create a task that accepts rich chat transport payload
+
+```ts
+// trigger/chat-task.ts
+import { openai } from "@ai-sdk/openai";
+import type { TriggerChatTransportPayload } from "@trigger.dev/ai";
+import { task } from "@trigger.dev/sdk";
+import { convertToModelMessages, streamText, UIMessage } from "ai";
+import { aiStream } from "@/app/streams";
+
+type ChatPayload = TriggerChatTransportPayload<UIMessage>;
+
+export const aiChatTask = task({
+  id: "ai-chat",
+  run: async (payload: ChatPayload) => {
+    const result = streamText({
+      model: openai("gpt-4o"),
+      messages: convertToModelMessages(payload.messages),
+    });
+
+    const { waitUntilComplete } = aiStream.pipe(result.toUIMessageStream());
+    await waitUntilComplete();
+  },
+});
+```
+
+### Use `useChat()` with Trigger chat transport
+
+```tsx
+"use client";
+
+import { useChat } from "@ai-sdk/react";
+import { TriggerChatTransport } from "@trigger.dev/ai";
+import { aiStream } from "@/app/streams";
+
+export function Chat({ triggerToken }: { triggerToken: string }) {
+  const chat = useChat({
+    transport: new TriggerChatTransport({
+      task: "ai-chat",
+      stream: aiStream,
+      accessToken: triggerToken,
+      timeoutInSeconds: 120,
+    }),
+  });
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        chat.sendMessage({ text: "Hello!" });
+      }}
+    >
+      <button type="submit">Send</button>
+    </form>
+  );
+}
+```
+
+The default payload sent to your task is a rich, typed object that includes:
+
+- `chatId`
+- `trigger` (`"submit-message"` or `"regenerate-message"`)
+- `messageId`
+- `messages`
+- `request` (`headers`, `body`, and `metadata`)
+
 ## Complete Example: AI Streaming
 
 ### Define the stream

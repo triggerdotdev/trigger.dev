@@ -1,7 +1,15 @@
+import { AISdkChat } from "@/components/ai-sdk-chat";
 import { TriggerButton } from "@/components/trigger-button";
-import { AIChatButton } from "@/components/ai-chat-button";
+import { auth } from "@trigger.dev/sdk";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const triggerToken = await auth.createTriggerPublicToken("ai-chat", {
+    multipleUse: true,
+    expirationTime: "1h",
+  });
+
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
@@ -13,10 +21,8 @@ export default function Home() {
 
         <div className="mt-8 pt-8 border-t border-gray-300 w-full">
           <h2 className="text-xl font-semibold mb-4">AI Chat Stream (AI SDK v5)</h2>
-          <p className="text-sm text-gray-600 mb-4">
-            Test AI SDK v5&apos;s streamText with toUIMessageStream()
-          </p>
-          <AIChatButton />
+          <p className="text-sm text-gray-600 mb-4">Test useChat with Trigger.dev task transport</p>
+          <AISdkChat triggerToken={triggerToken} />
         </div>
 
         <div className="flex flex-col gap-4">

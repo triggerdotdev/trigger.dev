@@ -81,7 +81,7 @@ await myTask.trigger({ name: "Alice", age: 30, dob: "2020-01-01" }); // this is 
 The `ai.tool` function allows you to create an AI tool from an existing `schemaTask` to use with the Vercel [AI SDK](https://vercel.com/docs/ai-sdk):
 
 ```ts
-import { ai } from "@trigger.dev/sdk/ai";
+import { ai } from "@trigger.dev/ai";
 import { schemaTask } from "@trigger.dev/sdk";
 import { z } from "zod";
 import { generateText } from "ai";
@@ -118,7 +118,7 @@ You can also pass the `experimental_toToolResultContent` option to the `ai.tool`
 ```ts
 import { openai } from "@ai-sdk/openai";
 import { Sandbox } from "@e2b/code-interpreter";
-import { ai } from "@trigger.dev/sdk/ai";
+import { ai } from "@trigger.dev/ai";
 import { schemaTask } from "@trigger.dev/sdk";
 import { generateObject } from "ai";
 import { z } from "zod";
@@ -183,7 +183,7 @@ export const chartTool = ai.tool(chartTask, {
 You can access the current tool execution options inside the task run function using the `ai.currentToolOptions()` function:
 
 ```ts
-import { ai } from "@trigger.dev/sdk/ai";
+import { ai } from "@trigger.dev/ai";
 import { schemaTask } from "@trigger.dev/sdk";
 import { z } from "zod";
 

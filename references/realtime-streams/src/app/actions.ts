@@ -44,9 +44,15 @@ export async function triggerStreamTask(
 }
 
 export async function triggerAIChatTask(messages: UIMessage[]) {
+  const chatId = `chat_${Date.now()}`;
+
   // Trigger the AI chat task
   const handle = await tasks.trigger<typeof aiChatTask>("ai-chat", {
+    chatId,
+    trigger: "submit-message",
+    messageId: undefined,
     messages,
+    request: {},
   });
 
   console.log("Triggered AI chat run:", handle.id);
