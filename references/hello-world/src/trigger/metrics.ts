@@ -1,6 +1,21 @@
-import { batch, logger, task } from "@trigger.dev/sdk";
+import { batch, logger, otel, task } from "@trigger.dev/sdk";
 import { createHash } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
+
+// Custom metrics — instruments are created once at module level
+const meter = otel.metrics.getMeter("hello-world");
+const itemsProcessedCounter = meter.createCounter("items.processed", {
+  description: "Total number of items processed",
+  unit: "items",
+});
+const itemDurationHistogram = meter.createHistogram("item.duration", {
+  description: "Time spent processing each item",
+  unit: "ms",
+});
+const queueDepthGauge = meter.createUpDownCounter("queue.depth", {
+  description: "Current simulated queue depth",
+  unit: "items",
+});
 
 /**
  * Tight computational loop that produces sustained high CPU utilization.
@@ -241,5 +256,71 @@ export const concurrentLoad = task({
     });
 
     return { childRunIds: results.runs.map((r) => r.id) };
+  },
+});
+
+/**
+ * Demonstrates custom OTEL metrics: counter, histogram, and up-down counter.
+ * Simulates processing a queue of items with varying processing times.
+ */
+export const customMetrics = task({
+  id: "custom-metrics",
+  run: async (
+    {
+      itemCount = 20,
+      minProcessingMs = 50,
+      maxProcessingMs = 500,
+      batchSize = 5,
+    }: {
+      itemCount?: number;
+      minProcessingMs?: number;
+      maxProcessingMs?: number;
+      batchSize?: number;
+    },
+    { ctx }
+  ) => {
+    logger.info("Starting custom metrics demo", { itemCount, batchSize });
+
+    // Simulate items arriving in the queue
+    queueDepthGauge.add(itemCount);
+
+    let totalProcessed = 0;
+
+    for (let i = 0; i < itemCount; i += batchSize) {
+      const currentBatch = Math.min(batchSize, itemCount - i);
+
+      for (let j = 0; j < currentBatch; j++) {
+        const processingTime =
+          minProcessingMs + Math.random() * (maxProcessingMs - minProcessingMs);
+
+        // Simulate work
+        const start = performance.now();
+        let data = Buffer.from(`item-${i + j}`);
+        const deadline = Date.now() + processingTime;
+        while (Date.now() < deadline) {
+          data = createHash("sha256").update(data).digest();
+        }
+        const elapsed = performance.now() - start;
+
+        // Record metrics
+        itemsProcessedCounter.add(1, { "item.type": j % 2 === 0 ? "even" : "odd" });
+        itemDurationHistogram.record(elapsed, { "item.type": j % 2 === 0 ? "even" : "odd" });
+        queueDepthGauge.add(-1);
+
+        totalProcessed++;
+      }
+
+      logger.info(`Processed batch`, {
+        batchNumber: Math.floor(i / batchSize) + 1,
+        totalProcessed,
+        remaining: itemCount - totalProcessed,
+      });
+
+      // Brief pause between batches
+      await setTimeout(1000);
+    }
+
+    logger.info("Custom metrics demo complete", { totalProcessed });
+    return { totalProcessed };
   },
 });

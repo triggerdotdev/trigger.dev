@@ -59,5 +59,3 @@ export * as queues from "./queues.js";
 export type { ImportEnvironmentVariablesParams } from "./envvars.js";
 
 export { configure, auth } from "./auth.js";
-
-export { metrics } from "@opentelemetry/api";
