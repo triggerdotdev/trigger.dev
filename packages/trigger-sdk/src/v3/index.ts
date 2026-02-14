@@ -17,6 +17,7 @@ export * from "./otel.js";
 export * from "./schemas.js";
 export * from "./heartbeats.js";
 export * from "./streams.js";
+export * from "./query.js";
 export type { Context };
 
 import type { Context } from "./shared.js";
