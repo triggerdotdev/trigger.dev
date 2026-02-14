@@ -262,7 +262,7 @@ export class SharedQueueConsumer {
 
     console.log("✅ Started the SharedQueueConsumer");
 
-    this.#doWork().finally(() => {});
+    this.#doWork().finally(() => { });
   }
 
   #endCurrentSpan() {
@@ -417,7 +417,7 @@ export class SharedQueueConsumer {
           span.end();
 
           setTimeout(() => {
-            this.#doWork().finally(() => {});
+            this.#doWork().finally(() => { });
           }, nextInterval);
         }
       });
@@ -620,8 +620,8 @@ export class SharedQueueConsumer {
       return existingTaskRun.lockedById
         ? await getWorkerDeploymentFromWorkerTask(existingTaskRun.lockedById)
         : existingTaskRun.lockedToVersionId
-        ? await getWorkerDeploymentFromWorker(existingTaskRun.lockedToVersionId)
-        : await findCurrentWorkerDeployment({
+          ? await getWorkerDeploymentFromWorker(existingTaskRun.lockedToVersionId)
+          : await findCurrentWorkerDeployment({
             environmentId: existingTaskRun.runtimeEnvironmentId,
             type: "V1",
           });
@@ -1650,6 +1650,12 @@ export const AttemptForExecutionGetPayload = {
         maxDurationInSeconds: true,
         tags: true,
         taskEventStore: true,
+        batch: {
+          select: {
+            id: true,
+            friendlyId: true,
+          },
+        },
       },
     },
     queue: {
@@ -1754,7 +1760,11 @@ class SharedQueueTasks {
         slug: attempt.runtimeEnvironment.project.slug,
         name: attempt.runtimeEnvironment.project.name,
       },
-      batch: undefined, // TODO: Removing this for now until we can do it more efficiently
+      batch: attempt.taskRun.batch
+        ? {
+          id: attempt.taskRun.batch.friendlyId,
+        }
+        : undefined,
       worker: {
         id: attempt.backgroundWorkerId,
         contentHash: attempt.backgroundWorker.contentHash,
@@ -1900,9 +1910,9 @@ class SharedQueueTasks {
 
   async getResumePayload(attemptId: string): Promise<
     | {
-        execution: V3ProdTaskRunExecution;
-        completion: TaskRunExecutionResult;
-      }
+      execution: V3ProdTaskRunExecution;
+      completion: TaskRunExecutionResult;
+    }
     | undefined
   > {
     const attempt = await prisma.taskRunAttempt.findFirst({
