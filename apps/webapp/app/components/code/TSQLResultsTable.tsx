@@ -721,6 +721,7 @@ function CopyableCell({
         "relative flex w-full items-center overflow-hidden px-2 py-1.5",
         "bg-background-bright group-hover/row:bg-charcoal-750",
         "font-mono text-xs text-text-dimmed group-hover/row:text-text-bright",
+        "[&_a:focus-visible]:underline [&_a:focus-visible]:underline-offset-[3px] [&_a:focus-visible]:outline-none",
         alignment === "right" && "justify-end"
       )}
       onMouseEnter={() => setIsHovered(true)}
@@ -847,7 +848,7 @@ function HeaderCellContent({
           }}
           onMouseEnter={() => setIsFilterHovered(true)}
           onMouseLeave={() => setIsFilterHovered(false)}
-          className="flex-shrink-0 rounded text-text-dimmed transition-colors hover:text-text-bright"
+          className="flex-shrink-0 rounded text-text-dimmed transition-colors hover:text-text-bright focus-custom"
           title="Toggle column filters"
         >
           {showFilters ? <IconFilter2X className="size-4" /> : <IconFilter2 className="size-4" />}

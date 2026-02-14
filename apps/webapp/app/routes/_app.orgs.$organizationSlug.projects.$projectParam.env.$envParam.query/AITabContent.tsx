@@ -55,7 +55,7 @@ export function AITabContent({
                   key: (prev?.key ?? 0) + 1,
                 }));
               }}
-              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-charcoal-600 px-4 py-2 transition-colors hover:border-solid hover:border-indigo-500"
+              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-charcoal-600 px-4 py-2 transition-colors hover:border-solid hover:border-indigo-500 focus-custom focus-visible:!rounded-full"
             >
               <SparkleListIcon className="size-4 shrink-0 text-text-dimmed transition group-hover:text-indigo-500" />
               <Paragraph variant="small" className="text-left transition group-hover:text-text-bright">
