@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 4.3.4
+
+### Patch Changes
+
+- Fix runner getting stuck indefinitely when `execute()` is called on a dead child process. ([#2978](https://github.com/triggerdotdev/trigger.dev/pull/2978))
+- Add optional `timeoutInSeconds` parameter to the `wait_for_run_to_complete` MCP tool. Defaults to 60 seconds. If the run doesn't complete within the timeout, the current state of the run is returned instead of waiting indefinitely. ([#3035](https://github.com/triggerdotdev/trigger.dev/pull/3035))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.4`
+  - `@trigger.dev/build@4.3.4`
+  - `@trigger.dev/schema-to-json@4.3.4`
+
 ## 4.3.3
 
 ### Patch Changes
