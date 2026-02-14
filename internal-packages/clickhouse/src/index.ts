@@ -58,7 +58,7 @@ export {
   type FieldMappings,
   type WhereClauseCondition,
 } from "./client/tsql.js";
-export type { OutputColumnMetadata } from "@internal/tsql";
+export type { ColumnFormatType, OutputColumnMetadata } from "@internal/tsql";
 
 // Errors
 export { QueryError } from "./client/errors.js";

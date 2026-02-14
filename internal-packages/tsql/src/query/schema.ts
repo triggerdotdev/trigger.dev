@@ -271,6 +271,33 @@ export interface ColumnSchema {
 export type FieldMappings = Record<string, Record<string, string>>;
 
 /**
+ * Display format types for column values.
+ *
+ * These tell the UI how to render values without changing the underlying data type.
+ * Includes both existing custom render types and new format hint types.
+ */
+export type ColumnFormatType =
+  // Existing custom render types
+  | "runId"
+  | "runStatus"
+  | "duration"
+  | "durationSeconds"
+  | "costInDollars"
+  | "cost"
+  | "machine"
+  | "environment"
+  | "environmentType"
+  | "project"
+  | "queue"
+  | "tags"
+  | "number"
+  // Format hint types (used by prettyFormat())
+  | "bytes"
+  | "decimalBytes"
+  | "quantity"
+  | "percent";
+
+/**
  * Metadata for a column in query results.
  *
  * This is returned by the TSQL compiler to describe each column in the SELECT clause,
@@ -291,6 +318,16 @@ export interface OutputColumnMetadata {
    * Only present for columns or virtual columns defined in the table schema.
    */
   description?: string;
+  /**
+   * Display format hint — tells the UI how to render numeric values.
+   *
+   * Set by `prettyFormat(expr, 'formatType')` in TSQL queries.
+   * The underlying value remains numeric (for charts), but the UI uses this
+   * hint for axis labels, table cells, and tooltips.
+   *
+   * Also auto-populated from `customRenderType` when not explicitly set.
+   */
+  format?: ColumnFormatType;
 }
 
 /**

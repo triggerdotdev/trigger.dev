@@ -1,10 +1,11 @@
-import type { OutputColumnMetadata } from "@internal/tsql";
+import type { ColumnFormatType, OutputColumnMetadata } from "@internal/tsql";
 import { Hash } from "lucide-react";
 import { useMemo } from "react";
 import type {
   BigNumberAggregationType,
   BigNumberConfiguration,
 } from "~/components/metrics/QueryWidget";
+import { createValueFormatter } from "~/utils/columnFormat";
 import { AnimatedNumber } from "../AnimatedNumber";
 import { ChartBlankState } from "./ChartBlankState";
 import { Spinner } from "../Spinner";
@@ -130,6 +131,15 @@ export function BigNumberCard({ rows, columns, config, isLoading = false }: BigN
     return aggregateValues(values, aggregation);
   }, [rows, column, aggregation, sortDirection]);
 
+  // Look up column format for format-aware display
+  const columnValueFormatter = useMemo(() => {
+    const columnMeta = columns.find((c) => c.name === column);
+    const formatType = (columnMeta?.format ?? columnMeta?.customRenderType) as
+      | ColumnFormatType
+      | undefined;
+    return createValueFormatter(formatType);
+  }, [columns, column]);
+
   if (isLoading) {
     return (
       <div className="grid h-full place-items-center [container-type:size]">
@@ -142,6 +152,21 @@ export function BigNumberCard({ rows, columns, config, isLoading = false }: BigN
     return <ChartBlankState icon={Hash} message="No data to display" />;
   }
 
+  // Use format-aware formatter when available
+  if (columnValueFormatter) {
+    return (
+      <div className="h-full w-full [container-type:size]">
+        <div className="grid h-full w-full place-items-center">
+          <div className="flex items-baseline gap-[0.15em] whitespace-nowrap text-[clamp(24px,12cqw,96px)] font-normal tabular-nums leading-none text-text-bright">
+            {prefix && <span>{prefix}</span>}
+            <span>{columnValueFormatter(result)}</span>
+            {suffix && <span className="text-[0.4em] text-text-dimmed">{suffix}</span>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const { displayValue, unitSuffix, decimalPlaces } = abbreviate
     ? abbreviateValue(result)
     : { displayValue: result, unitSuffix: undefined, decimalPlaces: getDecimalPlaces(result) };
@@ -149,7 +174,7 @@ export function BigNumberCard({ rows, columns, config, isLoading = false }: BigN
   return (
     <div className="h-full w-full [container-type:size]">
       <div className="grid h-full w-full place-items-center">
-        <div className="flex items-baseline gap-[0.15em] whitespace-nowrap font-normal tabular-nums leading-none text-text-bright text-[clamp(24px,12cqw,96px)]">
+        <div className="flex items-baseline gap-[0.15em] whitespace-nowrap text-[clamp(24px,12cqw,96px)] font-normal tabular-nums leading-none text-text-bright">
           {prefix && <span>{prefix}</span>}
           <AnimatedNumber value={displayValue} decimalPlaces={decimalPlaces} />
           {(unitSuffix || suffix) && (

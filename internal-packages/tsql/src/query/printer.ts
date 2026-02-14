@@ -59,6 +59,7 @@ import {
   ClickHouseType,
   hasFieldMapping,
   getInternalValueFromMappingCaseInsensitive,
+  type ColumnFormatType,
 } from "./schema";
 
 /**
@@ -739,6 +740,14 @@ export class ClickHousePrinter {
         metadata.description = sourceColumn.description;
       }
 
+      // Set format hint from prettyFormat() or auto-populate from customRenderType
+      const sourceWithFormat = sourceColumn as (Partial<ColumnSchema> & { format?: ColumnFormatType }) | null;
+      if (sourceWithFormat?.format) {
+        metadata.format = sourceWithFormat.format;
+      } else if (sourceColumn?.customRenderType) {
+        metadata.format = sourceColumn.customRenderType as ColumnFormatType;
+      }
+
       this.outputColumns.push(metadata);
     }
 
@@ -930,6 +939,53 @@ export class ClickHousePrinter {
         sourceColumn: columnInfo.column,
         inferredType: columnInfo.column?.type ?? null,
       };
+    }
+
+    // Handle prettyFormat(expr, 'formatType') — metadata-only wrapper
+    if ((col as Call).expression_type === "call") {
+      const call = col as Call;
+      if (call.name.toLowerCase() === "prettyformat") {
+        if (call.args.length !== 2) {
+          throw new QueryError(
+            "prettyFormat() requires exactly 2 arguments: prettyFormat(expression, 'formatType')"
+          );
+        }
+        const formatArg = call.args[1];
+        if (
+          (formatArg as Constant).expression_type !== "constant" ||
+          typeof (formatArg as Constant).value !== "string"
+        ) {
+          throw new QueryError(
+            "prettyFormat() second argument must be a string literal format type"
+          );
+        }
+        const formatType = (formatArg as Constant).value as string;
+        const validFormats = [
+          "bytes",
+          "decimalBytes",
+          "quantity",
+          "percent",
+          "duration",
+          "durationSeconds",
+          "costInDollars",
+          "cost",
+        ];
+        if (!validFormats.includes(formatType)) {
+          throw new QueryError(
+            `Unknown format type '${formatType}'. Valid types: ${validFormats.join(", ")}`
+          );
+        }
+        const innerAnalysis = this.analyzeSelectColumn(call.args[0]);
+        return {
+          outputName: innerAnalysis.outputName,
+          sourceColumn: {
+            ...(innerAnalysis.sourceColumn ?? {}),
+            type: innerAnalysis.sourceColumn?.type ?? innerAnalysis.inferredType ?? undefined,
+            format: formatType as ColumnFormatType,
+          } as Partial<ColumnSchema> & { format?: ColumnFormatType },
+          inferredType: innerAnalysis.inferredType,
+        };
+      }
     }
 
     // Handle Call (function/aggregation) - infer type from function
@@ -2801,6 +2857,14 @@ export class ClickHousePrinter {
 
   private visitCall(node: Call): string {
     const name = node.name;
+
+    // Handle prettyFormat() — strip wrapper, only emit the inner expression
+    if (name.toLowerCase() === "prettyformat") {
+      if (node.args.length !== 2) {
+        throw new QueryError("prettyFormat() requires exactly 2 arguments");
+      }
+      return this.visit(node.args[0]);
+    }
 
     // Handle timeBucket() - special TSQL function for automatic time bucketing
     if (name.toLowerCase() === "timebucket") {

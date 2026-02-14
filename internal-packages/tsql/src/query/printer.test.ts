@@ -2341,16 +2341,19 @@ describe("Basic column metadata", () => {
         name: "status",
         type: "LowCardinality(String)",
         customRenderType: "runStatus",
+        format: "runStatus",
       });
       expect(columns[1]).toEqual({
         name: "usage_duration_ms",
         type: "UInt32",
         customRenderType: "duration",
+        format: "duration",
       });
       expect(columns[2]).toEqual({
         name: "cost_in_cents",
         type: "Float64",
         customRenderType: "cost",
+        format: "cost",
       });
     });
 
@@ -2691,6 +2694,133 @@ describe("Basic column metadata", () => {
       expect(columns[0].name).toBe("count");
       expect(columns[1].name).toBe("sum");
       expect(columns[2].name).toBe("avg");
+    });
+  });
+
+  describe("prettyFormat()", () => {
+    it("should strip prettyFormat from SQL and attach format to column metadata", () => {
+      const ctx = createMetadataTestContext();
+      const { sql, columns } = printQuery(
+        "SELECT prettyFormat(usage_duration_ms, 'bytes') AS memory FROM runs",
+        ctx
+      );
+
+      // SQL should not contain prettyFormat
+      expect(sql).not.toContain("prettyFormat");
+      expect(sql).toContain("usage_duration_ms");
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("memory");
+      expect(columns[0].format).toBe("bytes");
+    });
+
+    it("should work with aggregation wrapping", () => {
+      const ctx = createMetadataTestContext();
+      const { sql, columns } = printQuery(
+        "SELECT prettyFormat(avg(usage_duration_ms), 'bytes') AS avg_memory FROM runs",
+        ctx
+      );
+
+      expect(sql).not.toContain("prettyFormat");
+      expect(sql).toContain("avg(usage_duration_ms)");
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("avg_memory");
+      expect(columns[0].format).toBe("bytes");
+      expect(columns[0].type).toBe("Float64");
+    });
+
+    it("should work without explicit alias", () => {
+      const ctx = createMetadataTestContext();
+      const { sql, columns } = printQuery(
+        "SELECT prettyFormat(usage_duration_ms, 'percent') FROM runs",
+        ctx
+      );
+
+      expect(sql).not.toContain("prettyFormat");
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("usage_duration_ms");
+      expect(columns[0].format).toBe("percent");
+    });
+
+    it("should throw for invalid format type", () => {
+      const ctx = createMetadataTestContext();
+      expect(() => {
+        printQuery(
+          "SELECT prettyFormat(usage_duration_ms, 'invalid') FROM runs",
+          ctx
+        );
+      }).toThrow(QueryError);
+      expect(() => {
+        printQuery(
+          "SELECT prettyFormat(usage_duration_ms, 'invalid') FROM runs",
+          ctx
+        );
+      }).toThrow(/Unknown format type/);
+    });
+
+    it("should throw for wrong argument count", () => {
+      const ctx = createMetadataTestContext();
+      expect(() => {
+        printQuery("SELECT prettyFormat(usage_duration_ms) FROM runs", ctx);
+      }).toThrow(QueryError);
+      expect(() => {
+        printQuery("SELECT prettyFormat(usage_duration_ms) FROM runs", ctx);
+      }).toThrow(/requires exactly 2 arguments/);
+    });
+
+    it("should throw when second argument is not a string literal", () => {
+      const ctx = createMetadataTestContext();
+      expect(() => {
+        printQuery(
+          "SELECT prettyFormat(usage_duration_ms, 123) FROM runs",
+          ctx
+        );
+      }).toThrow(QueryError);
+      expect(() => {
+        printQuery(
+          "SELECT prettyFormat(usage_duration_ms, 123) FROM runs",
+          ctx
+        );
+      }).toThrow(/must be a string literal/);
+    });
+
+    it("should override schema-level customRenderType", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT prettyFormat(usage_duration_ms, 'bytes') AS mem FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(1);
+      // prettyFormat's format should take precedence
+      expect(columns[0].format).toBe("bytes");
+      // customRenderType from schema should NOT be set since prettyFormat overrides
+      // The source column had customRenderType: "duration" but prettyFormat replaces it
+    });
+
+    it("should auto-populate format from customRenderType when not explicitly set", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT usage_duration_ms, cost_in_cents FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(2);
+      // customRenderType should auto-populate format
+      expect(columns[0].customRenderType).toBe("duration");
+      expect(columns[0].format).toBe("duration");
+      expect(columns[1].customRenderType).toBe("cost");
+      expect(columns[1].format).toBe("cost");
+    });
+
+    it("should not set format when column has no customRenderType", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery("SELECT run_id FROM runs", ctx);
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].format).toBeUndefined();
+      expect(columns[0].customRenderType).toBeUndefined();
     });
   });
 });
