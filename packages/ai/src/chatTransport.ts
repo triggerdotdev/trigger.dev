@@ -2,6 +2,8 @@ import {
   ApiClient,
   ApiRequestOptions,
   makeIdempotencyKey,
+  SSEStreamPart,
+  SSEStreamSubscription,
   stringifyIO,
   TriggerOptions,
 } from "@trigger.dev/core/v3";
@@ -205,7 +207,7 @@ export class TriggerChatTransport<
     runState: TriggerChatRunState,
     abortSignal: AbortSignal | undefined,
     lastEventId?: string
-  ): Promise<ReadableStream<UIMessageChunk>> {
+  ): Promise<ReadableStream<SSEStreamPart<InferUIMessageChunk<UI_MESSAGE>>>> {
     const streamClient = new ApiClient(
       this.baseURL,
       runState.publicAccessToken,
@@ -213,39 +215,53 @@ export class TriggerChatTransport<
       this.requestOptions
     );
 
-    const stream = await streamClient.fetchStream<InferUIMessageChunk<UI_MESSAGE>>(
-      runState.runId,
-      runState.streamKey,
+    const subscription = new SSEStreamSubscription(
+      this.createStreamUrl(runState.runId, runState.streamKey),
       {
+        headers: streamClient.getHeaders(),
         signal: abortSignal,
         timeoutInSeconds: this.timeoutInSeconds,
         lastEventId,
       }
     );
 
-    return stream as unknown as ReadableStream<UIMessageChunk>;
+    return (await subscription.subscribe()) as ReadableStream<
+      SSEStreamPart<InferUIMessageChunk<UI_MESSAGE>>
+    >;
   }
 
-  private createTrackedStream(chatId: string, stream: ReadableStream<UIMessageChunk>) {
+  private createTrackedStream(
+    chatId: string,
+    stream: ReadableStream<SSEStreamPart<InferUIMessageChunk<UI_MESSAGE>>>
+  ) {
     const teeStreams = stream.tee();
     const trackingStream = teeStreams[0];
     const consumerStream = teeStreams[1];
 
     this.consumeTrackingStream(chatId, trackingStream);
 
-    return consumerStream;
+    return consumerStream.pipeThrough(
+      new TransformStream<SSEStreamPart<InferUIMessageChunk<UI_MESSAGE>>, UIMessageChunk>({
+        transform(part, controller) {
+          controller.enqueue(part.chunk as UIMessageChunk);
+        },
+      })
+    );
   }
 
-  private async consumeTrackingStream(chatId: string, stream: ReadableStream<UIMessageChunk>) {
+  private async consumeTrackingStream(
+    chatId: string,
+    stream: ReadableStream<SSEStreamPart<InferUIMessageChunk<UI_MESSAGE>>>
+  ) {
     try {
-      for await (const _chunk of stream) {
+      for await (const part of stream) {
         const runState = await this.runStore.get(chatId);
 
         if (!runState) {
           return;
         }
 
-        runState.lastEventId = incrementLastEventId(runState.lastEventId);
+        runState.lastEventId = part.id;
         await this.runStore.set(runState);
       }
 
@@ -273,6 +289,14 @@ export class TriggerChatTransport<
     const handle = await this.triggerClient.triggerTask(this.task, requestBody as never);
 
     return handle as TriggerTaskResponse;
+  }
+
+  private createStreamUrl(runId: string, streamKey: string): string {
+    const normalizedBaseUrl = this.baseURL.replace(/\/$/, "");
+    const encodedRunId = encodeURIComponent(runId);
+    const encodedStreamKey = encodeURIComponent(streamKey);
+
+    return `${normalizedBaseUrl}/realtime/v1/streams/${encodedRunId}/${encodedStreamKey}`;
   }
 }
 
@@ -424,19 +448,6 @@ async function createTriggerTaskOptions(
     machine: triggerOptions?.machine,
     debounce: triggerOptions?.debounce,
   };
-}
-
-function incrementLastEventId(lastEventId: string | undefined): string {
-  if (!lastEventId) {
-    return "0";
-  }
-
-  const numberValue = Number.parseInt(lastEventId, 10);
-  if (Number.isNaN(numberValue)) {
-    return "0";
-  }
-
-  return String(numberValue + 1);
 }
 
 export type { TriggerChatTaskContext };

@@ -419,7 +419,7 @@ describe("TriggerChatTransport", function () {
         }
 
         const state = runStore.get("chat-2");
-        return Boolean(state && state.lastEventId === "0");
+        return Boolean(state && state.lastEventId === "1-0");
       });
 
       const reconnectStream = await transport.reconnectToStream({
@@ -429,7 +429,7 @@ describe("TriggerChatTransport", function () {
       expect(reconnectStream).not.toBeNull();
 
       const reconnectChunks = await readChunks(reconnectStream!);
-      expect(reconnectLastEventId).toBe("0");
+      expect(reconnectLastEventId).toBe("1-0");
       expect(reconnectChunks).toHaveLength(2);
       expect(reconnectChunks[0]).toMatchObject({
         chunk: { type: "text-delta", id: "msg_2", delta: "world" },
