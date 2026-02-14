@@ -192,6 +192,7 @@ async function doBootstrap() {
       metricReaders: config.telemetry?.metricReaders ?? [],
       resource: config.telemetry?.resource,
       hostMetrics: true,
+      nodejsRuntimeMetrics: true,
     });
 
     const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);

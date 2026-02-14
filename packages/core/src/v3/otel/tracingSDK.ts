@@ -63,6 +63,7 @@ import {
 import { traceContext } from "../trace-context-api.js";
 import { getEnvVar } from "../utils/getEnv.js";
 import { machineId } from "./machineId.js";
+import { startNodejsRuntimeMetrics } from "./nodejsRuntimeMetrics.js";
 
 export type TracingDiagnosticLogLevel =
   | "none"
@@ -84,6 +85,8 @@ export type TracingSDKConfig = {
   diagLogLevel?: TracingDiagnosticLogLevel;
   resource?: Resource;
   hostMetrics?: boolean;
+  /** Enable Node.js runtime metrics (event loop utilization, heap usage, etc.) */
+  nodejsRuntimeMetrics?: boolean;
   /** Metric instrument name patterns to drop (supports wildcards, e.g. "system.cpu.*") */
   droppedMetrics?: string[];
 };
@@ -324,6 +327,10 @@ export class TracingSDK {
     if (config.hostMetrics) {
       const hostMetrics = new HostMetrics({ meterProvider });
       hostMetrics.start();
+    }
+
+    if (config.nodejsRuntimeMetrics) {
+      startNodejsRuntimeMetrics(meterProvider);
     }
 
     this.getLogger = loggerProvider.getLogger.bind(loggerProvider);

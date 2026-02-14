@@ -213,6 +213,7 @@ async function doBootstrap() {
       forceFlushTimeoutMillis: 30_000,
       resource: config.telemetry?.resource,
       hostMetrics: true,
+      nodejsRuntimeMetrics: true,
       // Drop all system metrics from dev metrics export
       droppedMetrics: ["system.*"],
     });
