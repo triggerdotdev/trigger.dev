@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ai } from "./ai.js";
+import { ai as packageAi } from "@trigger.dev/ai";
 import type { TaskWithSchema } from "@trigger.dev/core/v3";
 
 describe("@trigger.dev/sdk/ai compatibility", function () {
@@ -78,4 +79,64 @@ describe("@trigger.dev/sdk/ai compatibility", function () {
       ai.currentToolOptions();
     }).toThrowError("Method not implemented.");
   });
+
+  it("matches behavior with @trigger.dev/ai tool helper", async function () {
+    const fakeTask = createSchemaTask();
+
+    const sdkTool = ai.tool(fakeTask);
+    const packageTool = packageAi.tool(fakeTask);
+
+    const sdkResult = await sdkTool.execute?.(
+      {
+        name: "Lin",
+      },
+      undefined as never
+    );
+
+    const packageResult = await packageTool.execute?.(
+      {
+        name: "Lin",
+      },
+      undefined as never
+    );
+
+    expect(sdkResult).toEqual(packageResult);
+    expect(sdkResult).toEqual({
+      greeting: "Hello Lin",
+    });
+  });
 });
+
+function createSchemaTask() {
+  const fakeTask = {
+    id: "fake-task",
+    description: "A fake task",
+    schema: z.object({
+      name: z.string(),
+    }),
+    triggerAndWait: function triggerAndWait(payload: { name: string }) {
+      const resultPromise = Promise.resolve({
+        ok: true,
+        id: "run_123",
+        taskIdentifier: "fake-task",
+        output: {
+          greeting: `Hello ${payload.name}`,
+        },
+      });
+
+      return Object.assign(resultPromise, {
+        unwrap: async function unwrap() {
+          return {
+            greeting: `Hello ${payload.name}`,
+          };
+        },
+      });
+    },
+  } as unknown as TaskWithSchema<
+    "fake-task",
+    z.ZodObject<{ name: z.ZodString }>,
+    { greeting: string }
+  >;
+
+  return fakeTask;
+}

@@ -64,6 +64,7 @@
     "ws": "^8.11.0"
   },
   "devDependencies": {
+    "@trigger.dev/ai": "workspace:*",
     "@arethetypeswrong/cli": "^0.15.4",
     "@types/debug": "^4.1.7",
     "@types/slug": "^5.0.3",
