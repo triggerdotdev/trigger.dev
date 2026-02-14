@@ -1,7 +1,6 @@
 import { ChevronDownIcon, ChevronUpDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { IconFilter2, IconFilter2X, IconTable } from "@tabler/icons-react";
-import { ChartBlankState } from "../primitives/charts/ChartBlankState";
 import { rankItem } from "@tanstack/match-sorter-utils";
 import {
   flexRender,
@@ -20,7 +19,7 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
-import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
+import { AlertCircle, ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 import { forwardRef, memo, useEffect, useMemo, useRef, useState } from "react";
 import { EnvironmentLabel, EnvironmentSlug } from "~/components/environments/EnvironmentLabel";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
@@ -38,6 +37,8 @@ import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { v3ProjectPath, v3RunPathFromFriendlyId } from "~/utils/pathBuilder";
+import { ChartBlankState } from "../primitives/charts/ChartBlankState";
+import { Paragraph } from "../primitives/Paragraph";
 
 import { TextLink } from "../primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "../primitives/Tooltip";
@@ -905,11 +906,14 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   columns,
   prettyFormatting = true,
   sorting: defaultSorting = [],
+  showHeaderOnEmpty = false,
 }: {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
   prettyFormatting?: boolean;
   sorting?: SortingState;
+  /** When true, show column headers + "No results" on empty data. When false, show a blank state icon. */
+  showHeaderOnEmpty?: boolean;
 }) {
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
@@ -979,7 +983,62 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
 
   // Empty state
   if (rows.length === 0) {
-    return <ChartBlankState icon={IconTable} message="No data to display" />;
+    if (!showHeaderOnEmpty) {
+      return <ChartBlankState icon={IconTable} message="No data to display" />;
+    }
+
+    return (
+      <div
+        className="h-full min-h-0 w-full overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        style={{ position: "relative" }}
+      >
+        <table style={{ display: "grid" }}>
+          <thead
+            className="border-t border-grid-bright bg-background-bright after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright"
+            style={{
+              display: "grid",
+              position: "sticky",
+              top: 0,
+              zIndex: 1,
+            }}
+          >
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id} style={{ display: "flex", width: "100%" }}>
+                {headerGroup.headers.map((header) => {
+                  const meta = header.column.columnDef.meta as ColumnMeta | undefined;
+                  return (
+                    <th
+                      key={header.id}
+                      className="group/header relative"
+                      style={{
+                        display: "flex",
+                        width: header.getSize(),
+                      }}
+                    >
+                      <HeaderCellContent alignment={meta?.alignment ?? "left"}>
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </HeaderCellContent>
+                    </th>
+                  );
+                })}
+              </tr>
+            ))}
+          </thead>
+          <tbody style={{ display: "grid" }}>
+            <tr style={{ display: "flex", width: "100%" }}>
+              <td className="w-full px-3 py-6" colSpan={columns.length}>
+                <div className="flex items-center justify-center gap-1.5">
+                  <AlertCircle className="size-5 text-text-dimmed/50" />
+                  <Paragraph variant="small" className="text-text-dimmed">
+                    This query returned no results
+                  </Paragraph>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
   }
 
   return (

@@ -154,6 +154,8 @@ export type QueryWidgetProps = {
   onDelete?: () => void;
   /** Callback when duplicate is clicked. Receives the current data. */
   onDuplicate?: (data: QueryWidgetData) => void;
+  /** When true, show table column headers even when there are no rows */
+  showTableHeaderOnEmpty?: boolean;
 };
 
 export function QueryWidget({
@@ -403,6 +405,7 @@ type QueryWidgetBodyProps = {
   isFullscreen: boolean;
   setIsFullscreen: (open: boolean) => void;
   isLoading: boolean;
+  showTableHeaderOnEmpty?: boolean;
 };
 
 function QueryWidgetBody({
@@ -413,6 +416,7 @@ function QueryWidgetBody({
   isFullscreen,
   setIsFullscreen,
   isLoading,
+  showTableHeaderOnEmpty,
 }: QueryWidgetBodyProps) {
   const type = config.type;
 
@@ -431,6 +435,7 @@ function QueryWidgetBody({
             columns={data.columns}
             prettyFormatting={config.prettyFormatting}
             sorting={config.sorting}
+            showHeaderOnEmpty={showTableHeaderOnEmpty}
           />
           <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
             <DialogContent
@@ -444,6 +449,7 @@ function QueryWidgetBody({
                   columns={data.columns}
                   prettyFormatting={config.prettyFormatting}
                   sorting={config.sorting}
+                  showHeaderOnEmpty={showTableHeaderOnEmpty}
                 />
               </div>
             </DialogContent>

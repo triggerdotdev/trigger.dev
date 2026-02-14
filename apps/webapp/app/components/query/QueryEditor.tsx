@@ -785,6 +785,7 @@ export function QueryEditor({
                         <div className="overflow-hidden">
                           <QueryWidget
                             className="border-0"
+                            showTableHeaderOnEmpty
                             title={
                               <QueryTitle
                                 isTitleLoading={isTitleLoading}
