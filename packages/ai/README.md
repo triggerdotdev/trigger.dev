@@ -59,6 +59,58 @@ import { UIMessage } from "ai";
 type Payload = TriggerChatTransportPayload<UIMessage>;
 ```
 
+## Custom payload mapping
+
+If your task expects a custom payload shape, provide `payloadMapper`:
+
+```ts
+import { TriggerChatTransport } from "@trigger.dev/ai";
+import type { UIMessage } from "ai";
+
+const transport = new TriggerChatTransport<
+  UIMessage,
+  { prompt: string; tenantId: string | undefined }
+>({
+  task: "ai-chat-custom",
+  accessToken: "pk_...",
+  payloadMapper: function payloadMapper(request) {
+    const firstPart = request.messages[0]?.parts[0];
+
+    return {
+      prompt: firstPart && firstPart.type === "text" ? firstPart.text : "",
+      tenantId:
+        typeof request.request.body === "object" && request.request.body
+          ? (request.request.body as Record<string, string>).tenantId
+          : undefined,
+    };
+  },
+});
+```
+
+## Optional persistent run state
+
+`TriggerChatTransport` supports custom run stores (including async implementations) to persist reconnect state:
+
+```ts
+import type { TriggerChatRunState, TriggerChatRunStore } from "@trigger.dev/ai";
+
+class MemoryStore implements TriggerChatRunStore {
+  private runs = new Map<string, TriggerChatRunState>();
+
+  async get(chatId: string) {
+    return this.runs.get(chatId);
+  }
+
+  async set(state: TriggerChatRunState) {
+    this.runs.set(state.chatId, state);
+  }
+
+  async delete(chatId: string) {
+    this.runs.delete(chatId);
+  }
+}
+```
+
 ## `ai.tool(...)` example
 
 ```ts
