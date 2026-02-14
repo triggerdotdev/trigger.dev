@@ -500,6 +500,43 @@ export function TimeDropdown({
     }
   })();
 
+  const applyPeriod = useCallback(
+    (periodToApply: string) => {
+      setValidationError(null);
+
+      if (maxPeriodDays && periodToDays(periodToApply) > maxPeriodDays) {
+        setValidationError(
+          `Your plan allows a maximum of ${maxPeriodDays} days. Upgrade for longer retention.`
+        );
+        return;
+      }
+
+      const values: TimeFilterApplyValues = {
+        period: periodToApply,
+        from: undefined,
+        to: undefined,
+      };
+
+      if (onValueChange) {
+        onValueChange(values);
+      } else {
+        replace({
+          period: periodToApply,
+          cursor: undefined,
+          direction: undefined,
+          from: undefined,
+          to: undefined,
+        });
+      }
+
+      setFromValue(undefined);
+      setToValue(undefined);
+      setOpen(false);
+      onApply?.(values);
+    },
+    [maxPeriodDays, onValueChange, replace, onApply]
+  );
+
   const applySelection = useCallback(() => {
     setValidationError(null);
 
@@ -517,35 +554,9 @@ export function TimeDropdown({
         return;
       }
 
-      let periodToApply = selectedPeriod;
-      if (selectedPeriod === "custom") {
-        periodToApply = `${customValue}${customUnit}`;
-      }
-
-      const values: TimeFilterApplyValues = {
-        period: periodToApply,
-        from: undefined,
-        to: undefined,
-      };
-
-      if (onValueChange) {
-        // Controlled mode - just call the handler
-        onValueChange(values);
-      } else {
-        // URL mode - navigate
-        replace({
-          period: periodToApply,
-          cursor: undefined,
-          direction: undefined,
-          from: undefined,
-          to: undefined,
-        });
-      }
-
-      setFromValue(undefined);
-      setToValue(undefined);
-      setOpen(false);
-      onApply?.(values);
+      const periodToApply =
+        selectedPeriod === "custom" ? `${customValue}${customUnit}` : selectedPeriod;
+      applyPeriod(periodToApply);
     } else {
       // Validate date range
       if (!fromValue && !toValue) {
@@ -593,6 +604,7 @@ export function TimeDropdown({
     onValueChange,
     exceedsMaxPeriod,
     maxPeriodDays,
+    applyPeriod,
   ]);
 
   return (
@@ -703,7 +715,7 @@ export function TimeDropdown({
                           setCustomValue(parsed.value.toString());
                           setCustomUnit(parsed.unit);
                         }
-                        setValidationError(null);
+                        applyPeriod(p.value);
                       }}
                       fullWidth
                       type="button"
