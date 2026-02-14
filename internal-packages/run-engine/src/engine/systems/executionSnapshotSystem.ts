@@ -60,23 +60,20 @@ function enhanceExecutionSnapshotWithWaitpoints(
   waitpoints: Waitpoint[],
   completedWaitpointOrder: string[]
 ): EnhancedExecutionSnapshot {
+  const waitpointIndexMap = new Map<string, number[]>();
+  for (let i = 0; i < completedWaitpointOrder.length; i++) {
+    const id = completedWaitpointOrder[i];
+    const existing = waitpointIndexMap.get(id) ?? [];
+    existing.push(i);
+    waitpointIndexMap.set(id, existing);
+  }
+
   return {
     ...snapshot,
     friendlyId: SnapshotId.toFriendlyId(snapshot.id),
     runFriendlyId: RunId.toFriendlyId(snapshot.runId),
     completedWaitpoints: waitpoints.flatMap((w) => {
-      // Get all indexes of the waitpoint in the completedWaitpointOrder
-      // We do this because the same run can be in a batch multiple times (i.e. same idempotencyKey)
-      let indexes: (number | undefined)[] = [];
-      for (let i = 0; i < completedWaitpointOrder.length; i++) {
-        if (completedWaitpointOrder[i] === w.id) {
-          indexes.push(i);
-        }
-      }
-
-      if (indexes.length === 0) {
-        indexes.push(undefined);
-      }
+      const indexes = waitpointIndexMap.get(w.id) ?? [undefined];
 
       return indexes.map((index) => {
         return {
@@ -89,22 +86,22 @@ function enhanceExecutionSnapshotWithWaitpoints(
             w.userProvidedIdempotencyKey && !w.inactiveIdempotencyKey ? w.idempotencyKey : undefined,
           completedByTaskRun: w.completedByTaskRunId
             ? {
-                id: w.completedByTaskRunId,
-                friendlyId: RunId.toFriendlyId(w.completedByTaskRunId),
-                batch: snapshot.batchId
-                  ? {
-                      id: snapshot.batchId,
-                      friendlyId: BatchId.toFriendlyId(snapshot.batchId),
-                    }
-                  : undefined,
-              }
+              id: w.completedByTaskRunId,
+              friendlyId: RunId.toFriendlyId(w.completedByTaskRunId),
+              batch: snapshot.batchId
+                ? {
+                  id: snapshot.batchId,
+                  friendlyId: BatchId.toFriendlyId(snapshot.batchId),
+                }
+                : undefined,
+            }
             : undefined,
           completedAfter: w.completedAfter ?? undefined,
           completedByBatch: w.completedByBatchId
             ? {
-                id: w.completedByBatchId,
-                friendlyId: BatchId.toFriendlyId(w.completedByBatchId),
-              }
+              id: w.completedByBatchId,
+              friendlyId: BatchId.toFriendlyId(w.completedByBatchId),
+            }
             : undefined,
           output: w.output ?? undefined,
           outputType: w.outputType,
@@ -233,19 +230,19 @@ export function executionDataFromSnapshot(snapshot: EnhancedExecutionSnapshot): 
     },
     batch: snapshot.batchId
       ? {
-          id: snapshot.batchId,
-          friendlyId: BatchId.toFriendlyId(snapshot.batchId),
-        }
+        id: snapshot.batchId,
+        friendlyId: BatchId.toFriendlyId(snapshot.batchId),
+      }
       : undefined,
     checkpoint: snapshot.checkpoint
       ? {
-          id: snapshot.checkpoint.id,
-          friendlyId: snapshot.checkpoint.friendlyId,
-          type: snapshot.checkpoint.type,
-          location: snapshot.checkpoint.location,
-          imageRef: snapshot.checkpoint.imageRef,
-          reason: snapshot.checkpoint.reason ?? undefined,
-        }
+        id: snapshot.checkpoint.id,
+        friendlyId: snapshot.checkpoint.friendlyId,
+        type: snapshot.checkpoint.type,
+        location: snapshot.checkpoint.location,
+        imageRef: snapshot.checkpoint.imageRef,
+        reason: snapshot.checkpoint.reason ?? undefined,
+      }
       : undefined,
     completedWaitpoints: snapshot.completedWaitpoints,
   };
