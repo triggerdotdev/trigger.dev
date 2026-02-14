@@ -3,6 +3,7 @@ import { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   InMemoryTriggerChatRunStore,
+  createTriggerChatTransport,
   TriggerChatTransport,
 } from "./chatTransport.js";
 import type { UIMessage, UIMessageChunk } from "ai";
@@ -277,6 +278,64 @@ describe("TriggerChatTransport", function () {
     expect(options.priority).toBe(50);
     expect(typeof options.idempotencyKey).toBe("string");
     expect((options.idempotencyKey as string).length).toBe(64);
+  });
+
+  it("supports creating transport with factory function", async function () {
+    let observedRunId: string | undefined;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_factory",
+        });
+        res.end(JSON.stringify({ id: "run_factory" }));
+        return;
+      }
+
+      if (req.method === "GET" && req.url === "/realtime/v1/streams/run_factory/chat-stream") {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "factory_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "factory_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = createTriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      onTriggeredRun: function onTriggeredRun(state) {
+        observedRunId = state.runId;
+      },
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-factory",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(observedRunId).toBe("run_factory");
   });
 
   it("reconnects active streams using tracked lastEventId", async function () {
