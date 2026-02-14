@@ -301,13 +301,15 @@ export class TracingSDK {
     const bufferingExporter = new BufferingMetricExporter(rawMetricExporter, exportIntervalMs);
     const metricExporter = new TaskContextMetricExporter(bufferingExporter);
 
+    const exportTimeoutMillis = parseInt(
+      getEnvVar("TRIGGER_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+    );
+
     const metricReaders: MetricReader[] = [
       new PeriodicExportingMetricReader({
         exporter: metricExporter,
-        exportIntervalMillis: collectionIntervalMs,
-        exportTimeoutMillis: parseInt(
-          getEnvVar("TRIGGER_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS") ?? "30000"
-        ),
+        exportIntervalMillis: Math.max(collectionIntervalMs, exportTimeoutMillis),
+        exportTimeoutMillis,
       }),
       ...(config.metricReaders ?? []),
     ];
