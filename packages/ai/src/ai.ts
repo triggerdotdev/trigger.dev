@@ -69,7 +69,7 @@ function toolFromTask<
   const toolDefinition = dynamicTool({
     description: task.description,
     inputSchema: convertTaskSchemaToToolParameters(task),
-    execute: async (input, options) => {
+    execute: async function execute(input, options) {
       const serializedOptions = options ? JSON.parse(JSON.stringify(options)) : undefined;
 
       return await task
