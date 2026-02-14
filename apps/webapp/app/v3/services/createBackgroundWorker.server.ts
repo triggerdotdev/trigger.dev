@@ -274,14 +274,14 @@ async function createWorkerTask(
         description: task.description,
         filePath: task.filePath,
         exportName: task.exportName,
-        retryConfig: task.retry,
-        queueConfig: task.queue,
+        retryConfig: task.retry ?? null,
+        queueConfig: task.queue ?? null,
         machineConfig: task.machine ?? null,
         triggerSource: task.triggerSource === "schedule" ? "SCHEDULED" : "STANDARD",
         fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
         maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
         queueId: queue.id,
-        payloadSchema: task.payloadSchema as any,
+        payloadSchema: (task.payloadSchema as any) ?? null,
       },
     });
   } catch (error) {
