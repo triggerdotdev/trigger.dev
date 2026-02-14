@@ -1368,7 +1368,7 @@ function BigNumberConfigPanel({
     <div className="flex h-full flex-col gap-2 overflow-y-auto p-2">
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <Paragraph variant="extra-small" className="text-text-dimmed">
+          <Paragraph variant="extra-small" className="text-text-bright">
             Column
           </Paragraph>
           <Select
@@ -1390,7 +1390,7 @@ function BigNumberConfigPanel({
           </Select>
         </div>
         <div className="flex flex-col gap-1">
-          <Paragraph variant="extra-small" className="text-text-dimmed">
+          <Paragraph variant="extra-small" className="text-text-bright">
             Sort order
           </Paragraph>
           <Select
@@ -1418,7 +1418,7 @@ function BigNumberConfigPanel({
           </Select>
         </div>
         <div className="flex flex-col gap-1">
-          <Paragraph variant="extra-small" className="text-text-dimmed">
+          <Paragraph variant="extra-small" className="text-text-bright">
             Aggregation
           </Paragraph>
           <Select
@@ -1452,7 +1452,7 @@ function BigNumberConfigPanel({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <Paragraph variant="extra-small" className="text-text-dimmed">
+          <Paragraph variant="extra-small" className="text-text-bright">
             Prefix
           </Paragraph>
           <Input
@@ -1463,7 +1463,7 @@ function BigNumberConfigPanel({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <Paragraph variant="extra-small" className="text-text-dimmed">
+          <Paragraph variant="extra-small" className="text-text-bright">
             Suffix
           </Paragraph>
           <Input
