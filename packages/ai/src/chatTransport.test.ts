@@ -338,6 +338,67 @@ describe("TriggerChatTransport", function () {
     expect(observedRunId).toBe("run_factory");
   });
 
+  it("cleans run store state when stream completes", async function () {
+    const trackedRunStore = new TrackedRunStore();
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_cleanup",
+        });
+        res.end(JSON.stringify({ id: "run_cleanup" }));
+        return;
+      }
+
+      if (req.method === "GET" && req.url === "/realtime/v1/streams/run_cleanup/chat-stream") {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "cleanup_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "cleanup_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      runStore: trackedRunStore,
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-cleanup",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+
+    await waitForCondition(function () {
+      return trackedRunStore.deleteCalls.includes("chat-cleanup");
+    });
+
+    expect(trackedRunStore.get("chat-cleanup")).toBeUndefined();
+  });
+
   it("reconnects active streams using tracked lastEventId", async function () {
     let reconnectLastEventId: string | undefined;
     let firstStreamResponse: ServerResponse<IncomingMessage> | undefined;
@@ -527,4 +588,13 @@ async function waitForCondition(condition: () => boolean, timeoutInMs = 5000) {
   }
 
   throw new Error(`Condition was not met within ${timeoutInMs}ms`);
+}
+
+class TrackedRunStore extends InMemoryTriggerChatRunStore {
+  public readonly deleteCalls: string[] = [];
+
+  public delete(chatId: string): void {
+    this.deleteCalls.push(chatId);
+    super.delete(chatId);
+  }
 }

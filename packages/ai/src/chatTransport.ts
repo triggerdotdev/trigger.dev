@@ -269,12 +269,14 @@ export class TriggerChatTransport<
       if (runState) {
         runState.isActive = false;
         await this.runStore.set(runState);
+        await this.runStore.delete(chatId);
       }
     } catch {
       const runState = await this.runStore.get(chatId);
       if (runState) {
         runState.isActive = false;
         await this.runStore.set(runState);
+        await this.runStore.delete(chatId);
       }
     }
   }
