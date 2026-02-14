@@ -6,11 +6,12 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import { IconBraces, IconChartHistogram, IconFileTypeCsv } from "@tabler/icons-react";
 import { assertNever } from "assert-never";
 import { Maximize2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { Card } from "~/components/primitives/charts/Card";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { QueryResultsChart } from "../code/QueryResultsChart";
@@ -180,32 +181,15 @@ export function QueryWidget({
   const hasEditActions = onEdit || onRename || onDelete || onDuplicate;
   const hasData = props.data.rows.length > 0;
 
-  // "v" to fullscreen the hovered widget
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (isRenameDialogOpen || isMenuOpen) return;
-      if (e.key !== "v" || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-
-      // Ignore when typing in inputs/textareas/contenteditable
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.tagName === "SELECT" ||
-        target.isContentEditable
-      ) {
-        return;
-      }
-
-      // When not fullscreen, require hover to activate
-      if (!isFullscreen && !containerRef.current?.matches(":hover")) return;
-
-      e.preventDefault();
+  // "v" to toggle fullscreen on hovered widget
+  useShortcutKeys({
+    shortcut: { key: "v" },
+    action: useCallback(() => {
+      const isHovered = containerRef.current?.matches(":hover");
+      if (!isFullscreen && !isHovered) return;
       setIsFullscreen((prev) => !prev);
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isFullscreen, isRenameDialogOpen, isMenuOpen]);
+    }, [isFullscreen]),
+  });
 
   const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
