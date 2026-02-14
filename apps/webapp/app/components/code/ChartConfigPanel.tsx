@@ -1,4 +1,5 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
+import { IconSortAscending, IconSortDescending } from "@tabler/icons-react";
 import { BarChart, CheckIcon, LineChart, Plus, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
@@ -6,6 +7,7 @@ import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
 import { Select, SelectItem } from "../primitives/Select";
 import { Switch } from "../primitives/Switch";
+import SegmentedControl from "../primitives/SegmentedControl";
 import { Button } from "../primitives/Buttons";
 import {
   type AggregationType,
@@ -234,54 +236,38 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
   }
 
   return (
-    <div className={cn("flex flex-col gap-2 p-2", className)}>
+    <div className={cn("flex flex-col gap-3 p-2", className)}>
       {/* Chart Type */}
       <div className="flex flex-col gap-3">
         <ConfigField label="Type">
-          <div className="flex items-center">
-            <Button
-              type="button"
-              variant="tertiary/small"
-              className={cn(
-                "rounded-r-none border-b pl-1 pr-2",
-                config.chartType === "bar" ? "border-indigo-500" : "border-transparent"
-              )}
-              iconSpacing="gap-x-1"
-              onClick={() => updateConfig({ chartType: "bar" })}
-              LeadingIcon={BarChart}
-              leadingIconClassName={
-                config.chartType === "bar" ? "text-indigo-500" : "text-text-dimmed"
-              }
-            >
-              <span className={config.chartType === "bar" ? "text-indigo-500" : "text-text-dimmed"}>
-                Bar
-              </span>
-            </Button>
-            <Button
-              type="button"
-              variant="tertiary/small"
-              className={cn(
-                "rounded-l-none border-b pl-1 pr-2",
-                config.chartType === "line" ? "border-indigo-500" : "border-transparent"
-              )}
-              iconSpacing="gap-x-1"
-              onClick={() => updateConfig({ chartType: "line" })}
-              LeadingIcon={LineChart}
-              leadingIconClassName={
-                config.chartType === "line" ? "text-indigo-500" : "text-text-dimmed"
-              }
-            >
-              <span
-                className={config.chartType === "line" ? "text-indigo-500" : "text-text-dimmed"}
-              >
-                Line
-              </span>
-            </Button>
-          </div>
+          <SegmentedControl
+            name="chartType"
+            value={config.chartType}
+            variant="secondary/small"
+            options={[
+              {
+                label: (
+                  <span className="flex items-center gap-1">
+                    <BarChart className="size-3" /> Bar
+                  </span>
+                ),
+                value: "bar",
+              },
+              {
+                label: (
+                  <span className="flex items-center gap-1">
+                    <LineChart className="size-3" /> Line
+                  </span>
+                ),
+                value: "line",
+              },
+            ]}
+            onChange={(value) => updateConfig({ chartType: value as "bar" | "line" })}
+          />
         </ConfigField>
       </div>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3">
         {/* X-Axis */}
         <ConfigField label="X-Axis">
           <Select
@@ -529,9 +515,29 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
         {/* Sort Direction (only when sorting) */}
         {config.sortByColumn && (
           <ConfigField label="Sort direction">
-            <SortDirectionToggle
-              direction={config.sortDirection}
-              onChange={(direction) => updateConfig({ sortDirection: direction })}
+            <SegmentedControl
+              name="sortDirection"
+              value={config.sortDirection}
+              variant="secondary/small"
+              options={[
+                {
+                  label: (
+                    <span className="flex items-center gap-1">
+                      <IconSortAscending className="size-3" /> Asc
+                    </span>
+                  ),
+                  value: "asc",
+                },
+                {
+                  label: (
+                    <span className="flex items-center gap-1">
+                      <IconSortDescending className="size-3" /> Desc
+                    </span>
+                  ),
+                  value: "desc",
+                },
+              ]}
+              onChange={(value) => updateConfig({ sortDirection: value as SortDirection })}
             />
           </ConfigField>
         )}
@@ -543,47 +549,8 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
 function ConfigField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      {label && <span className="text-xs text-text-dimmed">{label}</span>}
+      {label && <span className="text-xs text-text-bright">{label}</span>}
       {children}
-    </div>
-  );
-}
-
-function SortDirectionToggle({
-  direction,
-  onChange,
-}: {
-  direction: SortDirection;
-  onChange: (direction: SortDirection) => void;
-}) {
-  return (
-    <div className="flex gap-1">
-      <button
-        type="button"
-        onClick={() => onChange("asc")}
-        className={cn(
-          "rounded px-2 py-1 text-xs transition-colors",
-          direction === "asc"
-            ? "bg-charcoal-700 text-text-bright"
-            : "text-text-dimmed hover:bg-charcoal-800 hover:text-text-bright"
-        )}
-        title="Ascending"
-      >
-        Asc
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange("desc")}
-        className={cn(
-          "rounded px-2 py-1 text-xs transition-colors",
-          direction === "desc"
-            ? "bg-charcoal-700 text-text-bright"
-            : "text-text-dimmed hover:bg-charcoal-800 hover:text-text-bright"
-        )}
-        title="Descending"
-      >
-        Desc
-      </button>
     </div>
   );
 }

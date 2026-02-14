@@ -1,6 +1,6 @@
 import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher, useNavigate } from "@remix-run/react";
-import { IconChartHistogram } from "@tabler/icons-react";
+import { IconCheck } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import {
@@ -138,7 +138,11 @@ export function SaveToDashboardDialog({
                         : "text-text-dimmed hover:bg-charcoal-750 hover:text-text-bright"
                     )}
                   >
-                    <IconChartHistogram className="size-4 shrink-0 text-text-dimmed" />
+                    {selectedDashboardId === dashboard.friendlyId ? (
+                      <IconCheck className="size-4 shrink-0 text-green-500" />
+                    ) : (
+                      <span className="size-4 shrink-0" />
+                    )}
                     <span className="flex-1 truncate">{dashboard.title}</span>
                     <span
                       className={cn(

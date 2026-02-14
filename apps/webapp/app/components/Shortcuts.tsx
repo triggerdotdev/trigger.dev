@@ -194,6 +194,12 @@ function ShortcutContent() {
             </Shortcut>
           </div>
           <div className="space-y-3">
+            <Header3>Metrics page</Header3>
+            <Shortcut name="Toggle fullscreen chart">
+              <ShortcutKey shortcut={{ key: "v" }} variant="medium/bright" />
+            </Shortcut>
+          </div>
+          <div className="space-y-3">
             <Header3>Schedules page</Header3>
             <Shortcut name="New schedule">
               <ShortcutKey shortcut={{ key: "n" }} variant="medium/bright" />

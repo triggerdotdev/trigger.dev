@@ -167,7 +167,7 @@ export function ChartLegendCompound({
 
   return (
     <div
-      className={cn("flex flex-col pt-4 text-sm", scrollable && "max-h-[50%] min-h-0", className)}
+      className={cn("flex flex-col px-2 pb-2 pt-4 text-sm", scrollable && "max-h-[50%] min-h-0", className)}
     >
       {/* Total row */}
       <div

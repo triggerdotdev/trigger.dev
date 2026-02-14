@@ -6,10 +6,12 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import { IconBraces, IconChartHistogram, IconFileTypeCsv } from "@tabler/icons-react";
 import { assertNever } from "assert-never";
 import { Maximize2 } from "lucide-react";
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { Card } from "~/components/primitives/charts/Card";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { QueryResultsChart } from "../code/QueryResultsChart";
@@ -142,6 +144,8 @@ export type QueryWidgetProps = {
   accessory?: ReactNode;
   isResizing?: boolean;
   isDraggable?: boolean;
+  /** Additional className applied to the Card wrapper */
+  className?: string;
   /** Callback when edit is clicked. Receives the current data. */
   onEdit?: (data: QueryWidgetData) => void;
   /** Callback when rename is clicked. Receives the new title. */
@@ -161,6 +165,7 @@ export function QueryWidget({
   error,
   isResizing,
   isDraggable,
+  className,
   onEdit,
   onRename,
   onDelete,
@@ -171,9 +176,20 @@ export function QueryWidget({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState(titleString ?? "");
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const hasEditActions = onEdit || onRename || onDelete || onDuplicate;
   const hasData = props.data.rows.length > 0;
+
+  // "v" to toggle fullscreen on hovered widget
+  useShortcutKeys({
+    shortcut: { key: "v" },
+    action: useCallback(() => {
+      const isHovered = containerRef.current?.matches(":hover");
+      if (!isFullscreen && !isHovered) return;
+      setIsFullscreen((prev) => !prev);
+    }, [isFullscreen]),
+  });
 
   const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
@@ -194,8 +210,8 @@ export function QueryWidget({
   }, [props.data, copyToClipboard]);
 
   return (
-    <div className="group h-full">
-      <Card className="h-full overflow-hidden px-0 pb-0">
+    <div ref={containerRef} className="group h-full">
+      <Card className={cn("h-full overflow-hidden px-0 pb-0", className)}>
         <Card.Header draggable={isDraggable}>
           <div className="flex items-center gap-1.5">{title}</div>
           <Card.Accessory>
@@ -211,10 +227,14 @@ export function QueryWidget({
                   />
                 </span>
               }
-              content="Maximize"
+              content={
+                <span className="flex items-center gap-1">
+                  Maximize
+                  <ShortcutKey shortcut={{ key: "v" }} variant="small/bright" />
+                </span>
+              }
               asChild
             />
-            {accessory}
             <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
               <PopoverVerticalEllipseTrigger
                 isOpen={isMenuOpen}
@@ -307,6 +327,7 @@ export function QueryWidget({
                 </div>
               </PopoverContent>
             </Popover>
+            {accessory}
           </Card.Accessory>
         </Card.Header>
         <LoadingBarDivider isLoading={isLoading ?? false} className="bg-transparent" />

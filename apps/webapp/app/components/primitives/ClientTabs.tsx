@@ -51,6 +51,7 @@ const ClientTabs = React.forwardRef<
     <ClientTabsContext.Provider value={contextValue}>
       <TabsPrimitive.Root
         ref={ref}
+        activationMode="manual"
         onValueChange={handleValueChange}
         {...controlledProps}
         {...props}
@@ -96,6 +97,7 @@ const ClientTabsTrigger = React.forwardRef<
     return (
       <TabsPrimitive.Trigger
         ref={ref}
+        tabIndex={0}
         className={cn(
           "group relative flex h-full grow items-center justify-center focus-custom disabled:pointer-events-none disabled:opacity-50",
           "flex-1 basis-0",
@@ -134,6 +136,7 @@ const ClientTabsTrigger = React.forwardRef<
     return (
       <TabsPrimitive.Trigger
         ref={ref}
+        tabIndex={0}
         className={cn(
           "group flex flex-col items-center pt-1 focus-custom disabled:pointer-events-none disabled:opacity-50",
           className
@@ -143,7 +146,7 @@ const ClientTabsTrigger = React.forwardRef<
         <span
           className={cn(
             "text-sm transition duration-200",
-            isActive ? "text-text-bright" : "text-text-dimmed hover:text-text-bright"
+            isActive ? "text-text-bright" : "text-text-dimmed group-hover:text-text-bright"
           )}
         >
           {children}
@@ -170,8 +173,9 @@ const ClientTabsTrigger = React.forwardRef<
   return (
     <TabsPrimitive.Trigger
       ref={ref}
+      tabIndex={0}
       className={cn(
-        "ring-offset-background focus-visible:ring-ring inline-flex items-center justify-center whitespace-nowrap border-r border-charcoal-700 px-2 text-sm transition-all first:pl-0 last:border-none data-[state=active]:text-indigo-500 data-[state=inactive]:text-text-dimmed data-[state=inactive]:hover:text-text-bright focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex items-center justify-center whitespace-nowrap border-r border-charcoal-700 px-2 text-sm transition-all first:pl-0 last:border-none focus-custom data-[state=active]:text-indigo-500 data-[state=inactive]:text-text-dimmed data-[state=inactive]:hover:text-text-bright disabled:pointer-events-none disabled:opacity-50",
         className
       )}
       {...props}
@@ -188,8 +192,9 @@ const ClientTabsContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.Content
     ref={ref}
+    tabIndex={-1}
     className={cn(
-      "ring-offset-background focus-visible:ring-ring mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+      "mt-1 outline-none",
       className,
       "data-[state=inactive]:hidden"
     )}
