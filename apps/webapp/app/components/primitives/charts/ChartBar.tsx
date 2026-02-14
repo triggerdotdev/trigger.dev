@@ -48,6 +48,8 @@ export type ChartBarRendererProps = {
   referenceLine?: ReferenceLineProps;
   /** Custom tooltip label formatter */
   tooltipLabelFormatter?: (label: string, payload: any[]) => string;
+  /** Optional formatter for numeric tooltip values (e.g. bytes, duration) */
+  tooltipValueFormatter?: (value: number) => string;
   /** Width injected by ResponsiveContainer */
   width?: number;
   /** Height injected by ResponsiveContainer */
@@ -72,6 +74,7 @@ export function ChartBarRenderer({
   yAxisProps: yAxisPropsProp,
   referenceLine,
   tooltipLabelFormatter,
+  tooltipValueFormatter,
   width,
   height,
 }: ChartBarRendererProps) {
@@ -170,7 +173,7 @@ export function ChartBarRenderer({
           showLegend ? (
             () => null
           ) : tooltipLabelFormatter ? (
-            <ChartTooltipContent />
+            <ChartTooltipContent valueFormatter={tooltipValueFormatter} />
           ) : (
             <ZoomTooltip
               isSelecting={zoom?.isSelecting}

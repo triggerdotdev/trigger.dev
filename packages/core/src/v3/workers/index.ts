@@ -14,6 +14,7 @@ export { StandardResourceCatalog } from "../resource-catalog/standardResourceCat
 export {
   TaskContextSpanProcessor,
   TaskContextLogProcessor,
+  TaskContextMetricExporter,
 } from "../taskContext/otelProcessors.js";
 export * from "../usage-api.js";
 export { DevUsageManager } from "../usage/devUsageManager.js";

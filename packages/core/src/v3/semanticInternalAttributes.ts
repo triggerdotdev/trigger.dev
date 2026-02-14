@@ -19,6 +19,7 @@ export const SemanticInternalAttributes = {
   TASK_EXPORT_NAME: "ctx.task.exportName",
   QUEUE_NAME: "ctx.queue.name",
   QUEUE_ID: "ctx.queue.id",
+  MACHINE_ID: "ctx.machine.id",
   MACHINE_PRESET_NAME: "ctx.machine.name",
   MACHINE_PRESET_CPU: "ctx.machine.cpu",
   MACHINE_PRESET_MEMORY: "ctx.machine.memory",
@@ -65,4 +66,5 @@ export const SemanticInternalAttributes = {
   WARM_START: "warm_start",
   ATTEMPT_EXECUTION_COUNT: "$trigger.executionCount",
   TASK_EVENT_STORE: "$trigger.taskEventStore",
+  RUN_TAGS: "ctx.run.tags",
 };

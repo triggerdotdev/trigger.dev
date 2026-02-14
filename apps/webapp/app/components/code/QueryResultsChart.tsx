@@ -1,5 +1,8 @@
-import type { OutputColumnMetadata } from "@internal/clickhouse";
+import type { ColumnFormatType, OutputColumnMetadata } from "@internal/clickhouse";
+import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { memo, useMemo } from "react";
+import { createValueFormatter } from "~/utils/columnFormat";
+import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import type { ChartConfig } from "~/components/primitives/charts/Chart";
 import { Chart } from "~/components/primitives/charts/ChartCompound";
 import { Paragraph } from "../primitives/Paragraph";
@@ -797,8 +800,24 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     };
   }, [isDateBased, timeGranularity]);
 
-  // Create dynamic Y-axis formatter based on data range
-  const yAxisFormatter = useMemo(() => createYAxisFormatter(data, series), [data, series]);
+  // Resolve the Y-axis column format for formatting
+  const yAxisFormat = useMemo(() => {
+    if (yAxisColumns.length === 0) return undefined;
+    const col = columns.find((c) => c.name === yAxisColumns[0]);
+    return (col?.format ?? col?.customRenderType) as ColumnFormatType | undefined;
+  }, [yAxisColumns, columns]);
+
+  // Create dynamic Y-axis formatter based on data range and format
+  const yAxisFormatter = useMemo(
+    () => createYAxisFormatter(data, series, yAxisFormat),
+    [data, series, yAxisFormat]
+  );
+
+  // Create value formatter for tooltips and legend based on column format
+  const tooltipValueFormatter = useMemo(
+    () => createValueFormatter(yAxisFormat),
+    [yAxisFormat]
+  );
 
   // Check if the group-by column has a runStatus customRenderType
   const groupByIsRunStatus = useMemo(() => {
@@ -1016,6 +1035,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         showLegend={showLegend}
         maxLegendItems={fullLegend ? Infinity : 5}
         legendAggregation={config.aggregation}
+        legendValueFormatter={tooltipValueFormatter}
         minHeight="300px"
         fillContainer
         onViewAllLegendItems={onViewAllLegendItems}
@@ -1027,6 +1047,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
           yAxisProps={yAxisProps}
           stackId={stacked ? "stack" : undefined}
           tooltipLabelFormatter={tooltipLabelFormatter}
+          tooltipValueFormatter={tooltipValueFormatter}
         />
       </Chart.Root>
     );
@@ -1043,6 +1064,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
       showLegend={showLegend}
       maxLegendItems={fullLegend ? Infinity : 5}
       legendAggregation={config.aggregation}
+      legendValueFormatter={tooltipValueFormatter}
       minHeight="300px"
       fillContainer
       onViewAllLegendItems={onViewAllLegendItems}
@@ -1054,6 +1076,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         yAxisProps={yAxisProps}
         stacked={stacked && sortedSeries.length > 1}
         tooltipLabelFormatter={tooltipLabelFormatter}
+        tooltipValueFormatter={tooltipValueFormatter}
         lineType="linear"
       />
     </Chart.Root>
@@ -1061,9 +1084,13 @@ export const QueryResultsChart = memo(function QueryResultsChart({
 });
 
 /**
- * Creates a Y-axis value formatter based on the data range
+ * Creates a Y-axis value formatter based on the data range and optional format hint
  */
-function createYAxisFormatter(data: Record<string, unknown>[], series: string[]) {
+function createYAxisFormatter(
+  data: Record<string, unknown>[],
+  series: string[],
+  format?: ColumnFormatType
+) {
   // Find min and max values across all series
   let minVal = Infinity;
   let maxVal = -Infinity;
@@ -1080,6 +1107,46 @@ function createYAxisFormatter(data: Record<string, unknown>[], series: string[])
 
   const range = maxVal - minVal;
 
+  // Format-aware formatters
+  if (format === "bytes" || format === "decimalBytes") {
+    const divisor = format === "bytes" ? 1024 : 1000;
+    const units =
+      format === "bytes"
+        ? ["B", "KiB", "MiB", "GiB", "TiB"]
+        : ["B", "KB", "MB", "GB", "TB"];
+    return (value: number): string => {
+      if (value === 0) return "0 B";
+      // Use consistent unit for all ticks based on max value
+      const i = Math.min(
+        Math.floor(Math.log(Math.abs(maxVal || 1)) / Math.log(divisor)),
+        units.length - 1
+      );
+      const scaled = value / Math.pow(divisor, i);
+      return `${scaled.toFixed(scaled < 10 ? 1 : 0)} ${units[i]}`;
+    };
+  }
+
+  if (format === "percent") {
+    return (value: number): string => `${value.toFixed(range < 1 ? 2 : 1)}%`;
+  }
+
+  if (format === "duration") {
+    return (value: number): string => formatDurationMilliseconds(value, { style: "short" });
+  }
+
+  if (format === "durationSeconds") {
+    return (value: number): string =>
+      formatDurationMilliseconds(value * 1000, { style: "short" });
+  }
+
+  if (format === "costInDollars" || format === "cost") {
+    return (value: number): string => {
+      const dollars = format === "cost" ? value / 100 : value;
+      return formatCurrencyAccurate(dollars);
+    };
+  }
+
+  // Default formatter
   return (value: number): string => {
     // Use abbreviations for large numbers
     if (Math.abs(value) >= 1_000_000) {

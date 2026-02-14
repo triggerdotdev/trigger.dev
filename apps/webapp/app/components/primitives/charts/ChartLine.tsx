@@ -51,6 +51,8 @@ export type ChartLineRendererProps = {
   stacked?: boolean;
   /** Custom tooltip label formatter */
   tooltipLabelFormatter?: (label: string, payload: any[]) => string;
+  /** Optional formatter for numeric tooltip values (e.g. bytes, duration) */
+  tooltipValueFormatter?: (value: number) => string;
   /** Width injected by ResponsiveContainer */
   width?: number;
   /** Height injected by ResponsiveContainer */
@@ -75,6 +77,7 @@ export function ChartLineRenderer({
   yAxisProps: yAxisPropsProp,
   stacked = false,
   tooltipLabelFormatter,
+  tooltipValueFormatter,
   width,
   height,
 }: ChartLineRendererProps) {
@@ -158,7 +161,13 @@ export function ChartLineRenderer({
         {/* When legend is shown below, render tooltip with cursor only (no content popup) */}
         <ChartTooltip
           cursor={{ stroke: "rgba(255, 255, 255, 0.1)", strokeWidth: 1 }}
-          content={showLegend ? () => null : <ChartTooltipContent indicator="line" />}
+          content={
+            showLegend ? (
+              () => null
+            ) : (
+              <ChartTooltipContent indicator="line" valueFormatter={tooltipValueFormatter} />
+            )
+          }
           labelFormatter={tooltipLabelFormatter}
         />
         {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
@@ -207,7 +216,13 @@ export function ChartLineRenderer({
       {/* When legend is shown below, render tooltip with cursor only (no content popup) */}
       <ChartTooltip
         cursor={{ stroke: "rgba(255, 255, 255, 0.1)", strokeWidth: 1 }}
-        content={showLegend ? () => null : <ChartTooltipContent />}
+        content={
+          showLegend ? (
+            () => null
+          ) : (
+            <ChartTooltipContent valueFormatter={tooltipValueFormatter} />
+          )
+        }
         labelFormatter={tooltipLabelFormatter}
       />
       {/* Note: Legend is now rendered by ChartRoot outside the chart container */}

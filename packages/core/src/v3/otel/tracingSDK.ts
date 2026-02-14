@@ -4,11 +4,14 @@ import {
   TraceFlags,
   TracerProvider,
   diag,
+  metrics,
 } from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
 import { TraceState } from "@opentelemetry/core";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { HostMetrics } from "@opentelemetry/host-metrics";
 import { registerInstrumentations, type Instrumentation } from "@opentelemetry/instrumentation";
 import {
   detectResources,
@@ -24,6 +27,12 @@ import {
   ReadableLogRecord,
   SimpleLogRecordProcessor,
 } from "@opentelemetry/sdk-logs";
+import {
+  AggregationType,
+  MeterProvider,
+  PeriodicExportingMetricReader,
+  type MetricReader,
+} from "@opentelemetry/sdk-metrics";
 import { RandomIdGenerator, SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
   BatchSpanProcessor,
@@ -32,7 +41,6 @@ import {
   SimpleSpanProcessor,
   SpanExporter,
 } from "@opentelemetry/sdk-trace-node";
-import { SemanticResourceAttributes, SEMATTRS_HTTP_URL } from "@opentelemetry/semantic-conventions";
 import { VERSION } from "../../version.js";
 import {
   OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT,
@@ -47,11 +55,15 @@ import {
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { taskContext } from "../task-context-api.js";
 import {
+  BufferingMetricExporter,
   TaskContextLogProcessor,
+  TaskContextMetricExporter,
   TaskContextSpanProcessor,
 } from "../taskContext/otelProcessors.js";
 import { traceContext } from "../trace-context-api.js";
 import { getEnvVar } from "../utils/getEnv.js";
+import { machineId } from "./machineId.js";
+import { startNodejsRuntimeMetrics } from "./nodejsRuntimeMetrics.js";
 
 export type TracingDiagnosticLogLevel =
   | "none"
@@ -64,12 +76,19 @@ export type TracingDiagnosticLogLevel =
 
 export type TracingSDKConfig = {
   url: string;
+  metricsUrl?: string;
   forceFlushTimeoutMillis?: number;
   instrumentations?: Instrumentation[];
   exporters?: SpanExporter[];
   logExporters?: LogRecordExporter[];
+  metricReaders?: MetricReader[];
   diagLogLevel?: TracingDiagnosticLogLevel;
   resource?: Resource;
+  hostMetrics?: boolean;
+  /** Enable Node.js runtime metrics (event loop utilization, heap usage, etc.) */
+  nodejsRuntimeMetrics?: boolean;
+  /** Metric instrument name patterns to drop (supports wildcards, e.g. "system.cpu.*") */
+  droppedMetrics?: string[];
 };
 
 const idGenerator = new RandomIdGenerator();
@@ -78,6 +97,7 @@ export class TracingSDK {
   private readonly _logProvider: LoggerProvider;
   private readonly _spanExporter: SpanExporter;
   private readonly _traceProvider: NodeTracerProvider;
+  private readonly _meterProvider: MeterProvider;
 
   public readonly getLogger: LoggerProvider["getLogger"];
   public readonly getTracer: TracerProvider["getTracer"];
@@ -99,13 +119,13 @@ export class TracingSDK {
     })
       .merge(
         resourceFromAttributes({
-          [SemanticResourceAttributes.CLOUD_PROVIDER]: "trigger.dev",
-          [SemanticResourceAttributes.SERVICE_NAME]:
-            getEnvVar("TRIGGER_OTEL_SERVICE_NAME") ?? "trigger.dev",
+          "cloud.provider": "trigger.dev",
+          "service.name": getEnvVar("TRIGGER_OTEL_SERVICE_NAME") ?? "trigger.dev",
           [SemanticInternalAttributes.TRIGGER]: true,
           [SemanticInternalAttributes.CLI_VERSION]: VERSION,
           [SemanticInternalAttributes.SDK_VERSION]: VERSION,
           [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
+          [SemanticInternalAttributes.MACHINE_ID]: machineId,
         })
       )
       .merge(resourceFromAttributes(envResourceAttributes))
@@ -259,16 +279,80 @@ export class TracingSDK {
 
     logs.setGlobalLoggerProvider(loggerProvider);
 
+    // Metrics setup
+    const metricsUrl =
+      config.metricsUrl ??
+      getEnvVar("TRIGGER_OTEL_METRICS_ENDPOINT") ??
+      `${config.url}/v1/metrics`;
+
+    const rawMetricExporter = new OTLPMetricExporter({
+      url: metricsUrl,
+      timeoutMillis: config.forceFlushTimeoutMillis,
+    });
+
+    const collectionIntervalMs = parseInt(
+      getEnvVar("TRIGGER_OTEL_METRICS_COLLECTION_INTERVAL_MILLIS") ?? "10000"
+    );
+    const exportIntervalMs = parseInt(
+      getEnvVar("TRIGGER_OTEL_METRICS_EXPORT_INTERVAL_MILLIS") ?? "30000"
+    );
+
+    // Chain: PeriodicReader(10s) → TaskContextMetricExporter → BufferingMetricExporter(30s) → OTLP
+    const bufferingExporter = new BufferingMetricExporter(rawMetricExporter, exportIntervalMs);
+    const metricExporter = new TaskContextMetricExporter(bufferingExporter);
+
+    const exportTimeoutMillis = parseInt(
+      getEnvVar("TRIGGER_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+    );
+
+    const metricReaders: MetricReader[] = [
+      new PeriodicExportingMetricReader({
+        exporter: metricExporter,
+        exportIntervalMillis: Math.max(collectionIntervalMs, exportTimeoutMillis),
+        exportTimeoutMillis,
+      }),
+      ...(config.metricReaders ?? []),
+    ];
+
+    const meterProvider = new MeterProvider({
+      resource: commonResources,
+      readers: metricReaders,
+      views: (config.droppedMetrics ?? []).map((pattern) => ({
+        instrumentName: pattern,
+        aggregation: { type: AggregationType.DROP },
+      })),
+    });
+
+    this._meterProvider = meterProvider;
+    metrics.setGlobalMeterProvider(meterProvider);
+
+    if (config.hostMetrics) {
+      const hostMetrics = new HostMetrics({ meterProvider });
+      hostMetrics.start();
+    }
+
+    if (config.nodejsRuntimeMetrics) {
+      startNodejsRuntimeMetrics(meterProvider);
+    }
+
     this.getLogger = loggerProvider.getLogger.bind(loggerProvider);
     this.getTracer = traceProvider.getTracer.bind(traceProvider);
   }
 
   public async flush() {
-    await Promise.all([this._traceProvider.forceFlush(), this._logProvider.forceFlush()]);
+    await Promise.all([
+      this._traceProvider.forceFlush(),
+      this._logProvider.forceFlush(),
+      this._meterProvider.forceFlush(),
+    ]);
   }
 
   public async shutdown() {
-    await Promise.all([this._traceProvider.shutdown(), this._logProvider.shutdown()]);
+    await Promise.all([
+      this._traceProvider.shutdown(),
+      this._logProvider.shutdown(),
+      this._meterProvider.shutdown(),
+    ]);
   }
 }
 
@@ -465,7 +549,7 @@ function isSpanInternalOnly(span: ReadableSpan): boolean {
     return true;
   }
 
-  const httpUrl = span.attributes[SEMATTRS_HTTP_URL] ?? span.attributes["url.full"];
+  const httpUrl = span.attributes["http.url"] ?? span.attributes["url.full"];
 
   const url = safeParseUrl(httpUrl);
 
