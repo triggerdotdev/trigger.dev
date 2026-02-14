@@ -718,7 +718,7 @@ function CopyableCell({
   return (
     <div
       className={cn(
-        "relative flex w-full items-center overflow-hidden px-2 py-1.5",
+        "relative flex h-full w-full items-center overflow-hidden px-2",
         "bg-background-bright group-hover/row:bg-charcoal-750",
         "font-mono text-xs text-text-dimmed group-hover/row:text-text-bright",
         "[&_a:focus-visible]:underline [&_a:focus-visible]:underline-offset-[3px] [&_a:focus-visible]:outline-none",
@@ -727,7 +727,7 @@ function CopyableCell({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <span className="flex h-4 items-center truncate">{children}</span>
+      <span className="flex items-center truncate">{children}</span>
       {isHovered && (
         <span
           onClick={(e) => {
@@ -1172,6 +1172,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                   position: "absolute",
                   transform: `translateY(${virtualRow.start}px)`,
                   width: "100%",
+                  height: `${virtualRow.size}px`,
                 }}
               >
                 {row.getVisibleCells().map((cell) => {
