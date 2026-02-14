@@ -1,4 +1,5 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
+import { IconSortAscending, IconSortDescending } from "@tabler/icons-react";
 import { BarChart, CheckIcon, LineChart, Plus, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
@@ -514,9 +515,29 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
         {/* Sort Direction (only when sorting) */}
         {config.sortByColumn && (
           <ConfigField label="Sort direction">
-            <SortDirectionToggle
-              direction={config.sortDirection}
-              onChange={(direction) => updateConfig({ sortDirection: direction })}
+            <SegmentedControl
+              name="sortDirection"
+              value={config.sortDirection}
+              variant="secondary/small"
+              options={[
+                {
+                  label: (
+                    <span className="flex items-center gap-1">
+                      <IconSortAscending className="size-3" /> Asc
+                    </span>
+                  ),
+                  value: "asc",
+                },
+                {
+                  label: (
+                    <span className="flex items-center gap-1">
+                      <IconSortDescending className="size-3" /> Desc
+                    </span>
+                  ),
+                  value: "desc",
+                },
+              ]}
+              onChange={(value) => updateConfig({ sortDirection: value as SortDirection })}
             />
           </ConfigField>
         )}
@@ -530,45 +551,6 @@ function ConfigField({ label, children }: { label: string; children: React.React
     <div className="flex flex-col gap-1">
       {label && <span className="text-xs text-text-bright">{label}</span>}
       {children}
-    </div>
-  );
-}
-
-function SortDirectionToggle({
-  direction,
-  onChange,
-}: {
-  direction: SortDirection;
-  onChange: (direction: SortDirection) => void;
-}) {
-  return (
-    <div className="flex gap-1">
-      <button
-        type="button"
-        onClick={() => onChange("asc")}
-        className={cn(
-          "rounded px-2 py-1 text-xs transition-colors",
-          direction === "asc"
-            ? "bg-charcoal-700 text-text-bright"
-            : "text-text-dimmed hover:bg-charcoal-800 hover:text-text-bright"
-        )}
-        title="Ascending"
-      >
-        Asc
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange("desc")}
-        className={cn(
-          "rounded px-2 py-1 text-xs transition-colors",
-          direction === "desc"
-            ? "bg-charcoal-700 text-text-bright"
-            : "text-text-dimmed hover:bg-charcoal-800 hover:text-text-bright"
-        )}
-        title="Descending"
-      >
-        Desc
-      </button>
     </div>
   );
 }
