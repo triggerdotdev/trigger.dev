@@ -8,6 +8,7 @@ import type {
   MetricData,
   PushMetricExporter,
   ResourceMetrics,
+  ScopeMetrics,
 } from "@opentelemetry/sdk-metrics";
 import { Span, SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
@@ -130,29 +131,44 @@ export class TaskContextMetricExporter implements PushMetricExporter {
 
   export(metrics: ResourceMetrics, resultCallback: (result: ExportResult) => void): void {
     if (!taskContext.ctx) {
-      // No active run — drop metrics (between-run noise)
+      // No context at all — drop metrics
       resultCallback({ code: ExportResultCode.SUCCESS });
       return;
     }
 
     const ctx = taskContext.ctx;
-    const contextAttrs: Attributes = {
-      [SemanticInternalAttributes.RUN_ID]: ctx.run.id,
-      [SemanticInternalAttributes.TASK_SLUG]: ctx.task.id,
-      [SemanticInternalAttributes.ATTEMPT_NUMBER]: ctx.attempt.number,
-      [SemanticInternalAttributes.ENVIRONMENT_ID]: ctx.environment.id,
-      [SemanticInternalAttributes.ORGANIZATION_ID]: ctx.organization.id,
-      [SemanticInternalAttributes.PROJECT_ID]: ctx.project.id,
-      [SemanticInternalAttributes.MACHINE_PRESET_NAME]: ctx.machine?.name,
-      [SemanticInternalAttributes.ENVIRONMENT_TYPE]: ctx.environment.type,
-    };
+
+    let contextAttrs: Attributes;
+
+    if (taskContext.isRunDisabled) {
+      // Between runs: keep environment/project/org/machine attrs, strip run-specific ones
+      contextAttrs = {
+        [SemanticInternalAttributes.ENVIRONMENT_ID]: ctx.environment.id,
+        [SemanticInternalAttributes.ENVIRONMENT_TYPE]: ctx.environment.type,
+        [SemanticInternalAttributes.ORGANIZATION_ID]: ctx.organization.id,
+        [SemanticInternalAttributes.PROJECT_ID]: ctx.project.id,
+        [SemanticInternalAttributes.MACHINE_PRESET_NAME]: ctx.machine?.name,
+      };
+    } else {
+      // During a run: full context attrs
+      contextAttrs = {
+        [SemanticInternalAttributes.RUN_ID]: ctx.run.id,
+        [SemanticInternalAttributes.TASK_SLUG]: ctx.task.id,
+        [SemanticInternalAttributes.ATTEMPT_NUMBER]: ctx.attempt.number,
+        [SemanticInternalAttributes.ENVIRONMENT_ID]: ctx.environment.id,
+        [SemanticInternalAttributes.ORGANIZATION_ID]: ctx.organization.id,
+        [SemanticInternalAttributes.PROJECT_ID]: ctx.project.id,
+        [SemanticInternalAttributes.MACHINE_PRESET_NAME]: ctx.machine?.name,
+        [SemanticInternalAttributes.ENVIRONMENT_TYPE]: ctx.environment.type,
+      };
+    }
 
     if (taskContext.worker) {
       contextAttrs[SemanticInternalAttributes.WORKER_ID] = taskContext.worker.id;
       contextAttrs[SemanticInternalAttributes.WORKER_VERSION] = taskContext.worker.version;
     }
 
-    if (ctx.run.tags?.length) {
+    if (!taskContext.isRunDisabled && ctx.run.tags?.length) {
       contextAttrs[SemanticInternalAttributes.RUN_TAGS] = ctx.run.tags;
     }
 
@@ -182,5 +198,110 @@ export class TaskContextMetricExporter implements PushMetricExporter {
 
   shutdown(): Promise<void> {
     return this._innerExporter.shutdown();
+  }
+}
+
+export class BufferingMetricExporter implements PushMetricExporter {
+  selectAggregationTemporality?: (instrumentType: InstrumentType) => AggregationTemporality;
+  selectAggregation?: (instrumentType: InstrumentType) => AggregationOption;
+
+  private _buffer: ResourceMetrics[] = [];
+  private _lastFlushTime = Date.now();
+
+  constructor(
+    private _innerExporter: PushMetricExporter,
+    private _flushIntervalMs: number
+  ) {
+    if (_innerExporter.selectAggregationTemporality) {
+      this.selectAggregationTemporality =
+        _innerExporter.selectAggregationTemporality.bind(_innerExporter);
+    }
+    if (_innerExporter.selectAggregation) {
+      this.selectAggregation = _innerExporter.selectAggregation.bind(_innerExporter);
+    }
+  }
+
+  export(metrics: ResourceMetrics, resultCallback: (result: ExportResult) => void): void {
+    this._buffer.push(metrics);
+
+    const now = Date.now();
+    if (now - this._lastFlushTime >= this._flushIntervalMs) {
+      this._lastFlushTime = now;
+      const merged = this._mergeBuffer();
+      this._innerExporter.export(merged, resultCallback);
+    } else {
+      resultCallback({ code: ExportResultCode.SUCCESS });
+    }
+  }
+
+  forceFlush(): Promise<void> {
+    if (this._buffer.length > 0) {
+      this._lastFlushTime = Date.now();
+      const merged = this._mergeBuffer();
+      return new Promise<void>((resolve, reject) => {
+        this._innerExporter.export(merged, (result) => {
+          if (result.code === ExportResultCode.SUCCESS) {
+            resolve();
+          } else {
+            reject(result.error ?? new Error("Export failed"));
+          }
+        });
+      }).then(() => this._innerExporter.forceFlush());
+    }
+    return this._innerExporter.forceFlush();
+  }
+
+  shutdown(): Promise<void> {
+    return this.forceFlush().then(() => this._innerExporter.shutdown());
+  }
+
+  private _mergeBuffer(): ResourceMetrics {
+    const batch = this._buffer;
+    this._buffer = [];
+
+    if (batch.length === 1) {
+      return batch[0]!;
+    }
+
+    const base = batch[0]!;
+
+    // Merge all scopeMetrics by scope name, then metrics by descriptor name
+    const scopeMap = new Map<string, { scope: ScopeMetrics["scope"]; metricsMap: Map<string, MetricData> }>();
+
+    for (const rm of batch) {
+      for (const sm of rm.scopeMetrics) {
+        const scopeKey = sm.scope.name;
+        let scopeEntry = scopeMap.get(scopeKey);
+        if (!scopeEntry) {
+          scopeEntry = { scope: sm.scope, metricsMap: new Map() };
+          scopeMap.set(scopeKey, scopeEntry);
+        }
+
+        for (const metric of sm.metrics) {
+          const metricKey = metric.descriptor.name;
+          const existing = scopeEntry.metricsMap.get(metricKey);
+          if (existing) {
+            // Append data points from this collection to the existing metric
+            scopeEntry.metricsMap.set(metricKey, {
+              ...existing,
+              dataPoints: [...existing.dataPoints, ...metric.dataPoints],
+            } as MetricData);
+          } else {
+            scopeEntry.metricsMap.set(metricKey, {
+              ...metric,
+              dataPoints: [...metric.dataPoints],
+            } as MetricData);
+          }
+        }
+      }
+    }
+
+    return {
+      resource: base.resource,
+      scopeMetrics: Array.from(scopeMap.values()).map(({ scope, metricsMap }) => ({
+        scope,
+        metrics: Array.from(metricsMap.values()),
+      })),
+    };
   }
 }

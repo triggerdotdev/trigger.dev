@@ -24,6 +24,8 @@ export class TaskRunProcessPool {
   private readonly maxExecutionsPerProcess: number;
   private readonly executionCountsPerProcess: Map<number, number> = new Map();
   private readonly deprecatedVersions: Set<string> = new Set();
+  private readonly idleTimers: Map<TaskRunProcess, NodeJS.Timeout> = new Map();
+  private static readonly IDLE_TIMEOUT_MS = 30_000;
 
   constructor(options: TaskRunProcessPoolOptions) {
     this.options = options;
@@ -39,6 +41,7 @@ export class TaskRunProcessPool {
     const versionProcesses = this.availableProcessesByVersion.get(version) || [];
 
     const processesToKill = versionProcesses.filter((process) => !process.isExecuting());
+    processesToKill.forEach((process) => this.clearIdleTimer(process));
     Promise.all(processesToKill.map((process) => this.killProcess(process))).then(() => {
       this.availableProcessesByVersion.delete(version);
     });
@@ -72,6 +75,7 @@ export class TaskRunProcessPool {
           version,
           availableProcesses.filter((p) => p !== reusableProcess)
         );
+        this.clearIdleTimer(reusableProcess);
 
         if (!this.busyProcessesByVersion.has(version)) {
           this.busyProcessesByVersion.set(version, new Set());
@@ -156,6 +160,7 @@ export class TaskRunProcessPool {
           this.availableProcessesByVersion.set(version, []);
         }
         this.availableProcessesByVersion.get(version)!.push(process);
+        this.startIdleTimer(process, version);
       } catch (error) {
         logger.debug("[TaskRunProcessPool] Failed to cleanup process for reuse, killing it", {
           error,
@@ -215,7 +220,42 @@ export class TaskRunProcessPool {
     return process.isHealthy;
   }
 
+  private startIdleTimer(process: TaskRunProcess, version: string): void {
+    this.clearIdleTimer(process);
+
+    const timer = setTimeout(() => {
+      // Synchronously remove from available pool before async kill to prevent race with getProcess()
+      const available = this.availableProcessesByVersion.get(version);
+      if (available) {
+        const index = available.indexOf(process);
+        if (index !== -1) {
+          available.splice(index, 1);
+        }
+      }
+      this.idleTimers.delete(process);
+
+      logger.debug("[TaskRunProcessPool] Idle timeout reached, killing process", {
+        pid: process.pid,
+        version,
+      });
+
+      this.killProcess(process);
+    }, TaskRunProcessPool.IDLE_TIMEOUT_MS);
+
+    this.idleTimers.set(process, timer);
+  }
+
+  private clearIdleTimer(process: TaskRunProcess): void {
+    const timer = this.idleTimers.get(process);
+    if (timer) {
+      clearTimeout(timer);
+      this.idleTimers.delete(process);
+    }
+  }
+
   private async killProcess(process: TaskRunProcess): Promise<void> {
+    this.clearIdleTimer(process);
+
     if (!process.isHealthy) {
       logger.debug("[TaskRunProcessPool] Process is not healthy, skipping cleanup", {
         processId: process.pid,
@@ -246,6 +286,12 @@ export class TaskRunProcessPool {
       busyCount: totalBusy,
       versions: Array.from(this.availableProcessesByVersion.keys()),
     });
+
+    // Clear all idle timers
+    for (const timer of this.idleTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.idleTimers.clear();
 
     // Kill all available processes across all versions
     const allAvailableProcesses = Array.from(this.availableProcessesByVersion.values()).flat();

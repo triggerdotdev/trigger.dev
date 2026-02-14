@@ -55,6 +55,7 @@ import {
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { taskContext } from "../task-context-api.js";
 import {
+  BufferingMetricExporter,
   TaskContextLogProcessor,
   TaskContextMetricExporter,
   TaskContextSpanProcessor,
@@ -285,14 +286,22 @@ export class TracingSDK {
       url: metricsUrl,
       timeoutMillis: config.forceFlushTimeoutMillis,
     });
-    const metricExporter = new TaskContextMetricExporter(rawMetricExporter);
+
+    const collectionIntervalMs = parseInt(
+      getEnvVar("TRIGGER_OTEL_METRICS_COLLECTION_INTERVAL_MILLIS") ?? "10000"
+    );
+    const exportIntervalMs = parseInt(
+      getEnvVar("TRIGGER_OTEL_METRICS_EXPORT_INTERVAL_MILLIS") ?? "30000"
+    );
+
+    // Chain: PeriodicReader(10s) → TaskContextMetricExporter → BufferingMetricExporter(30s) → OTLP
+    const bufferingExporter = new BufferingMetricExporter(rawMetricExporter, exportIntervalMs);
+    const metricExporter = new TaskContextMetricExporter(bufferingExporter);
 
     const metricReaders: MetricReader[] = [
       new PeriodicExportingMetricReader({
         exporter: metricExporter,
-        exportIntervalMillis: parseInt(
-          getEnvVar("TRIGGER_OTEL_METRICS_EXPORT_INTERVAL_MILLIS") ?? "60000"
-        ),
+        exportIntervalMillis: collectionIntervalMs,
         exportTimeoutMillis: parseInt(
           getEnvVar("TRIGGER_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS") ?? "30000"
         ),
