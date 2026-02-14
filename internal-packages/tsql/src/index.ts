@@ -109,6 +109,7 @@ export {
   type ClickHouseType,
   type ColumnSchema,
   type FieldMappings,
+  type ColumnFormatType,
   type OutputColumnMetadata,
   type RequiredFilter,
   type SchemaRegistry,

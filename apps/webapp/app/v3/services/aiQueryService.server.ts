@@ -455,10 +455,16 @@ Only use explicit \`toStartOfHour\`/\`toStartOfDay\` etc. if the user specifical
 - Filter by task: WHERE task_identifier = 'my-task'
 - Available metric names: process.cpu.utilization, process.cpu.time, process.memory.usage, system.memory.usage, system.memory.utilization, system.network.io, system.network.dropped, system.network.errors
 - Use max_value or last_value for gauges (CPU utilization, memory usage), sum_value for counters (CPU time, network IO)
+- Use prettyFormat(expr, 'bytes') to tell the UI to format values as bytes (e.g., "1.50 GiB") — keeps values numeric for charts
+- Use prettyFormat(expr, 'percent') for percentage values
+- prettyFormat does NOT change the SQL — it only adds a display hint
+- Available format types: bytes, decimalBytes, percent, quantity, duration, durationSeconds, costInDollars
+- For memory metrics, always use prettyFormat with 'bytes'
+- For CPU utilization, consider prettyFormat with 'percent'
 
 \`\`\`sql
 -- CPU utilization over time for a task
-SELECT timeBucket(), task_identifier, avg(max_value) AS avg_cpu
+SELECT timeBucket(), task_identifier, prettyFormat(avg(max_value), 'percent') AS avg_cpu
 FROM metrics
 WHERE metric_name = 'process.cpu.utilization'
 GROUP BY timeBucket, task_identifier
@@ -468,11 +474,11 @@ LIMIT 1000
 
 \`\`\`sql
 -- Peak memory usage per run
-SELECT run_id, task_identifier, max(max_value) AS peak_memory_bytes
+SELECT run_id, task_identifier, prettyFormat(max(max_value), 'bytes') AS peak_memory
 FROM metrics
 WHERE metric_name = 'process.memory.usage'
 GROUP BY run_id, task_identifier
-ORDER BY peak_memory_bytes DESC
+ORDER BY peak_memory DESC
 LIMIT 100
 \`\`\`
 
@@ -584,6 +590,8 @@ LIMIT 1000
 - Filter by metric: WHERE metric_name = 'process.cpu.utilization'
 - Available metric names: process.cpu.utilization, process.cpu.time, process.memory.usage, system.memory.usage, system.memory.utilization, system.network.io, system.network.dropped, system.network.errors
 - Use max_value or last_value for gauges (CPU utilization, memory usage), sum_value for counters (CPU time, network IO)
+- Use prettyFormat(expr, 'bytes') for memory metrics, prettyFormat(expr, 'percent') for CPU utilization
+- prettyFormat does NOT change the SQL — it only adds a display hint for the UI
 
 ## Important Rules
 
