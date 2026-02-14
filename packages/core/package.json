@@ -200,7 +200,7 @@
     "zod": "3.25.76",
     "zod-error": "1.5.0",
     "zod-validation-error": "^1.5.0",
-    "@standard-schema/spec" : "^1.1.0"
+    "@standard-schema/spec": "^1.1.0"
   },
   "devDependencies": {
     "@ai-sdk/provider-utils": "^1.0.22",

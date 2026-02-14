@@ -127,7 +127,7 @@ export type SchemaParseFn<TType> = (value: unknown) => Promise<TType> | TType;
 export type AnySchemaParseFn = SchemaParseFn<any>;
 
 export function getSchemaParseFn<TType>(procedureParser: Schema): SchemaParseFn<TType> {
-const parser = procedureParser as any;                                                                                                                                                                                                                                                        
+  const parser = procedureParser as any;                                                                                                                                                                                                                                                        
 
   if (typeof parser === "function" && typeof parser.assert === "function") {
     // ParserArkTypeEsque - arktype schemas shouldn't be called as a function because they return a union type instead of throwing

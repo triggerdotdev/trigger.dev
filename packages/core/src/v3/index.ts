@@ -79,6 +79,7 @@ export {
   type SchemaParseFn,
   isSchemaZodEsque,
   isSchemaValibotEsque,
+  isSchemaStandardSchemaV1,
   isSchemaArkTypeEsque,
 } from "./types/schemas.js";
 
