@@ -399,6 +399,66 @@ describe("TriggerChatTransport", function () {
     expect(trackedRunStore.get("chat-cleanup")).toBeUndefined();
   });
 
+  it("returns null from reconnect after stream completion cleanup", async function () {
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_done",
+        });
+        res.end(JSON.stringify({ id: "run_done" }));
+        return;
+      }
+
+      if (req.method === "GET" && req.url === "/realtime/v1/streams/run_done/chat-stream") {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "done_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "done_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-done",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+
+    await waitForCondition(async function () {
+      const reconnect = await transport.reconnectToStream({
+        chatId: "chat-done",
+      });
+
+      return reconnect === null;
+    });
+  });
+
   it("reconnects active streams using tracked lastEventId", async function () {
     let reconnectLastEventId: string | undefined;
     let firstStreamResponse: ServerResponse<IncomingMessage> | undefined;
@@ -574,11 +634,14 @@ async function readChunks(stream: ReadableStream<UIMessageChunk>) {
   return parts;
 }
 
-async function waitForCondition(condition: () => boolean, timeoutInMs = 5000) {
+async function waitForCondition(
+  condition: () => boolean | Promise<boolean>,
+  timeoutInMs = 5000
+) {
   const start = Date.now();
 
   while (Date.now() - start < timeoutInMs) {
-    if (condition()) {
+    if (await condition()) {
       return;
     }
 
