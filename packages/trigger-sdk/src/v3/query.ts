@@ -1,10 +1,13 @@
 import type {
   ApiRequestOptions,
+  Prettify,
   QueryExecuteResponseBody,
   QueryExecuteCSVResponseBody,
 } from "@trigger.dev/core/v3";
 import { apiClientManager, mergeRequestOptions } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
+
+export type { QueryTable, RunsTableRow, RunFriendlyStatus } from "@trigger.dev/core/v3";
 
 export type QueryScope = "environment" | "project" | "organization";
 export type QueryFormat = "json" | "csv";
@@ -21,7 +24,7 @@ export type QueryOptions = {
    *
    * @default "environment"
    */
-  scope?: "environment" | "project" | "organization";
+  scope?: QueryScope;
 
   /**
    * Time period to query (e.g., "7d", "30d", "1h")
@@ -67,7 +70,7 @@ function execute<TRow extends Record<string, any> = Record<string, any>>(
   tsql: string,
   options?: Omit<QueryOptions, "format"> | (QueryOptions & { format?: "json" }),
   requestOptions?: ApiRequestOptions
-): Promise<{ format: "json"; results: Array<TRow> }>;
+): Promise<{ format: "json"; results: Array<Prettify<TRow>> }>;
 
 /**
  * Execute a TSQL query against your Trigger.dev data

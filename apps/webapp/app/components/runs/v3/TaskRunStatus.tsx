@@ -12,6 +12,7 @@ import {
   XCircleIcon,
 } from "@heroicons/react/20/solid";
 import type { TaskRunStatus } from "@trigger.dev/database";
+import { runFriendlyStatus, type RunFriendlyStatus } from "@trigger.dev/core/v3";
 import assertNever from "assert-never";
 import { HourglassIcon } from "lucide-react";
 import { TimedOutIcon } from "~/assets/icons/TimedOutIcon";
@@ -248,26 +249,9 @@ export function runStatusFromFriendlyTitle(friendly: RunFriendlyStatus): TaskRun
   return result[0] as TaskRunStatus;
 }
 
-export const runFriendlyStatus = [
-  "Delayed",
-  "Queued",
-  "Pending version",
-  "Dequeued",
-  "Executing",
-  "Waiting",
-  "Reattempting",
-  "Paused",
-  "Canceled",
-  "Interrupted",
-  "Completed",
-  "Failed",
-  "System failure",
-  "Crashed",
-  "Expired",
-  "Timed out",
-] as const;
-
-export type RunFriendlyStatus = (typeof runFriendlyStatus)[number];
+// runFriendlyStatus and RunFriendlyStatus are imported from @trigger.dev/core/v3
+// and re-exported here for backward compatibility.
+export { runFriendlyStatus, type RunFriendlyStatus } from "@trigger.dev/core/v3";
 
 /**
  * Check if a value is a valid TaskRunStatus
