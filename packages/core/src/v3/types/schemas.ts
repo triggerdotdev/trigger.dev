@@ -1,3 +1,5 @@
+import { StandardSchemaV1 } from "@standard-schema/spec";
+
 export type SchemaZodEsque<TInput, TParsedInput> = {
   _input: TInput;
   _output: TParsedInput;
@@ -41,6 +43,12 @@ export function isSchemaArkTypeEsque<TInput, TParsedInput>(
   return typeof schema === "object" && "_inferIn" in schema && "_infer" in schema;
 }
 
+export function isSchemaStandardSchemaV1<TInput, TParsedInput>(
+  schema: Schema
+): schema is StandardSchemaV1<TInput, TParsedInput> {
+  return typeof schema === "object" && "~standard" in schema && schema["~standard"].version === 1;
+}
+
 export type SchemaMyZodEsque<TInput> = {
   parse: (input: any) => TInput;
 };
@@ -64,12 +72,14 @@ export type SchemaWithoutInput<TInput> =
   | SchemaMyZodEsque<TInput>
   | SchemaScaleEsque<TInput>
   | SchemaSuperstructEsque<TInput>
-  | SchemaYupEsque<TInput>;
+  | SchemaYupEsque<TInput>
+  | StandardSchemaV1<TInput>;
 
 export type SchemaWithInputOutput<TInput, TParsedInput> =
   | SchemaZodEsque<TInput, TParsedInput>
   | SchemaValibotEsque<TInput, TParsedInput>
-  | SchemaArkTypeEsque<TInput, TParsedInput>;
+  | SchemaArkTypeEsque<TInput, TParsedInput>
+  | StandardSchemaV1<TInput, TParsedInput>;
 
 export type Schema = SchemaWithInputOutput<any, any> | SchemaWithoutInput<any>;
 
@@ -98,11 +108,26 @@ export type inferSchemaOut<
   TDefault = unknown,
 > = TSchema extends Schema ? inferSchema<TSchema>["out"] : TDefault;
 
+function issueToString(issue: StandardSchemaV1.Issue) :  string {
+    return `{ message : ${issue.message} , path : ${issue.path}}`
+}
+
+class StandardSchemaV1ValidateError extends Error { 
+    constructor(result : StandardSchemaV1.FailureResult){
+       let message = `StandardSchemaV1 Validate Error [`
+       result.issues.forEach((issue) => {
+        message += ` ${issueToString(issue)}`
+       })
+       message += ' ]'
+       super(message)
+    }
+}
+
 export type SchemaParseFn<TType> = (value: unknown) => Promise<TType> | TType;
 export type AnySchemaParseFn = SchemaParseFn<any>;
 
 export function getSchemaParseFn<TType>(procedureParser: Schema): SchemaParseFn<TType> {
-  const parser = procedureParser as any;
+const parser = procedureParser as any;                                                                                                                                                                                                                                                        
 
   if (typeof parser === "function" && typeof parser.assert === "function") {
     // ParserArkTypeEsque - arktype schemas shouldn't be called as a function because they return a union type instead of throwing
@@ -144,5 +169,16 @@ export function getSchemaParseFn<TType>(procedureParser: Schema): SchemaParseFn<
     };
   }
 
+  if (parser["~standard"] && typeof parser["~standard"].validate === "function") {
+    return (value) => {
+      let response = parser["~standard"].validate(value);
+      if ("value" in response) {
+        return response["value"] as TType;
+      }
+      //FailureResult type
+      throw new StandardSchemaV1ValidateError(response);
+    };
+  }
+                                                                                                                                                                                                                                                        
   throw new Error("Could not find a validator fn");
 }
