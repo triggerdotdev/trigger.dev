@@ -6,9 +6,10 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import { IconBraces, IconChartHistogram, IconFileTypeCsv } from "@tabler/icons-react";
 import { assertNever } from "assert-never";
 import { Maximize2 } from "lucide-react";
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { Card } from "~/components/primitives/charts/Card";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { cn } from "~/utils/cn";
 import { rowsToCSV, rowsToJSON } from "~/utils/dataExport";
@@ -174,9 +175,37 @@ export function QueryWidget({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState(titleString ?? "");
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const hasEditActions = onEdit || onRename || onDelete || onDuplicate;
   const hasData = props.data.rows.length > 0;
+
+  // "v" to fullscreen the hovered widget
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isRenameDialogOpen || isMenuOpen) return;
+      if (e.key !== "v" || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+
+      // Ignore when typing in inputs/textareas/contenteditable
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      // When not fullscreen, require hover to activate
+      if (!isFullscreen && !containerRef.current?.matches(":hover")) return;
+
+      e.preventDefault();
+      setIsFullscreen((prev) => !prev);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isFullscreen, isRenameDialogOpen, isMenuOpen]);
 
   const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
@@ -197,7 +226,7 @@ export function QueryWidget({
   }, [props.data, copyToClipboard]);
 
   return (
-    <div className="group h-full">
+    <div ref={containerRef} className="group h-full">
       <Card className={cn("h-full overflow-hidden px-0 pb-0", className)}>
         <Card.Header draggable={isDraggable}>
           <div className="flex items-center gap-1.5">{title}</div>
@@ -214,7 +243,12 @@ export function QueryWidget({
                   />
                 </span>
               }
-              content="Maximize"
+              content={
+                <span className="flex items-center gap-1">
+                  Maximize
+                  <ShortcutKey shortcut={{ key: "v" }} variant="small/bright" />
+                </span>
+              }
               asChild
             />
             <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
