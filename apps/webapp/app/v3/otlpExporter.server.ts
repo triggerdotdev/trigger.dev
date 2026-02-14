@@ -489,8 +489,8 @@ function convertMetricsToClickhouseRows(
       // Process gauge data points
       if (metric.gauge) {
         for (const dp of metric.gauge.dataPoints) {
-          const value =
-            dp.asDouble !== 0 ? dp.asDouble : dp.asInt !== BigInt(0) ? Number(dp.asInt) : 0;
+          const value: number =
+            (dp.asDouble ?? 0) !== 0 ? dp.asDouble! : dp.asInt !== BigInt(0) ? Number(dp.asInt) : 0;
           const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
 
           rows.push({
@@ -514,8 +514,8 @@ function convertMetricsToClickhouseRows(
       // Process sum data points
       if (metric.sum) {
         for (const dp of metric.sum.dataPoints) {
-          const value =
-            dp.asDouble !== 0 ? dp.asDouble : dp.asInt !== BigInt(0) ? Number(dp.asInt) : 0;
+          const value: number =
+            (dp.asDouble ?? 0) !== 0 ? dp.asDouble! : dp.asInt !== BigInt(0) ? Number(dp.asInt) : 0;
           const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
 
           rows.push({
