@@ -61,7 +61,7 @@ function toolFromTask<
   const toolDefinition = dynamicTool({
     description: task.description,
     inputSchema: convertTaskSchemaToToolParameters(task),
-    execute: async (input, options) => {
+    execute: async function execute(input, options) {
       const serializedOptions = options ? JSON.parse(JSON.stringify(options)) : undefined;
 
       return await task
@@ -112,6 +112,10 @@ function convertTaskSchemaToToolParameters(
   );
 }
 
+/**
+ * @deprecated Use `ai` from `@trigger.dev/ai` for new code.
+ * `@trigger.dev/sdk/ai` is kept for backwards compatibility.
+ */
 export const ai = {
   tool: toolFromTask,
   currentToolOptions: getToolOptionsFromMetadata,
