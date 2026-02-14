@@ -1429,8 +1429,6 @@ export class ApiClient {
       format: options?.format ?? "json",
     };
 
-    const format = options?.format ?? "json";
-    // For JSON, use zodfetch
     return zodfetch(
       QueryExecuteResponseBody,
       `${this.baseUrl}/api/v1/query`,
