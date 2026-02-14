@@ -133,8 +133,6 @@ function execute<TRow extends Record<string, any> = Record<string, any>>(
 ): Promise<{ format: "json"; results: Array<TRow> } | { format: "csv"; results: string }> {
   const apiClient = apiClientManager.clientOrThrow();
 
-  const format = options?.format ?? "json";
-
   const $requestOptions = mergeRequestOptions(
     {
       tracer,

@@ -2,7 +2,7 @@ import { logger, query, task } from "@trigger.dev/sdk";
 
 // Type definition for a run row
 type RunRow = {
-  id: string;
+  run_id: string;
   status: string;
   triggered_at: string;
   total_duration: number;
@@ -37,7 +37,7 @@ export const simpleQueryTask = task({
     // Now we have full type safety on the rows!
     typedResult.results.forEach((row, index) => {
       logger.info(`Run ${index + 1}`, {
-        id: row.id, // TypeScript knows this is a string
+        run_id: row.run_id, // TypeScript knows this is a string
         status: row.status, // TypeScript knows this is a string
         total_duration: row.total_duration, // TypeScript knows this is a number
       });
