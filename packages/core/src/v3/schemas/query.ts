@@ -25,7 +25,7 @@ export const QueryExecuteJSONResponseBody = z.object({
   results: z.array(z.record(z.any())),
 });
 
-export type QueryExecuteJSONResponseBody = z.infer<typeof QueryExecuteResponseBody>;
+export type QueryExecuteJSONResponseBody = z.infer<typeof QueryExecuteJSONResponseBody>;
 
 /**
  * Response body type for CSV format queries
