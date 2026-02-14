@@ -136,6 +136,9 @@ mode: "wide"
 | `RUN_ENGINE_RATE_LIMIT_REQUEST_LOGS_ENABLED`     | No       | 0                     | Run engine rate limit request logs.                                                                       |
 | `RUN_ENGINE_RATE_LIMIT_REJECTION_LOGS_ENABLED`   | No       | 1                     | Run engine rate limit rejection logs.                                                                     |
 | `RUN_ENGINE_RATE_LIMIT_LIMITER_LOGS_ENABLED`     | No       | 0                     | Run engine rate limit limiter logs.                                                                       |
+| `RUN_ENGINE_DEFAULT_MAX_TTL`                     | No       | —                     | Maximum TTL for all runs (e.g. "14d"). Runs without a TTL use this as default; runs with a larger TTL are clamped. |
+| `MAXIMUM_DEV_QUEUE_SIZE`                         | No       | —                     | Maximum queued runs per queue in development environments.                                                |
+| `MAXIMUM_DEPLOYED_QUEUE_SIZE`                    | No       | —                     | Maximum queued runs per queue in deployed (staging/prod) environments.                                   |
 | **Misc**                                         |          |                       |                                                                                                           |
 | `TRIGGER_TELEMETRY_DISABLED`                     | No       | —                     | Disable telemetry.                                                                                        |
 | `NODE_MAX_OLD_SPACE_SIZE`                        | No       | 8192                  | Maximum memory allocation for Node.js heap in MiB (e.g. "4096" for 4GB).                                  |
