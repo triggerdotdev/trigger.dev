@@ -1,12 +1,13 @@
 import type { OutputColumnMetadata } from "@internal/tsql";
+import { Hash } from "lucide-react";
 import { useMemo } from "react";
 import type {
   BigNumberAggregationType,
   BigNumberConfiguration,
 } from "~/components/metrics/QueryWidget";
 import { AnimatedNumber } from "../AnimatedNumber";
+import { ChartBlankState } from "./ChartBlankState";
 import { Spinner } from "../Spinner";
-import { Paragraph } from "../Paragraph";
 
 interface BigNumberCardProps {
   rows: Record<string, unknown>[];
@@ -138,13 +139,7 @@ export function BigNumberCard({ rows, columns, config, isLoading = false }: BigN
   }
 
   if (result === null) {
-    return (
-      <div className="grid h-full place-items-center [container-type:size]">
-        <Paragraph variant="small" className="text-text-dimmed">
-          No data to display
-        </Paragraph>
-      </div>
-    );
+    return <ChartBlankState icon={Hash} message="No data to display" />;
   }
 
   const { displayValue, unitSuffix, decimalPlaces } = abbreviate

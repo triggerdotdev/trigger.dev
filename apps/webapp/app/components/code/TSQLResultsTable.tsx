@@ -1,6 +1,7 @@
 import { ChevronDownIcon, ChevronUpDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
-import { IconFilter2, IconFilter2X } from "@tabler/icons-react";
+import { IconFilter2, IconFilter2X, IconTable } from "@tabler/icons-react";
+import { ChartBlankState } from "../primitives/charts/ChartBlankState";
 import { rankItem } from "@tanstack/match-sorter-utils";
 import {
   flexRender,
@@ -37,7 +38,7 @@ import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { v3ProjectPath, v3RunPathFromFriendlyId } from "~/utils/pathBuilder";
-import { Paragraph } from "../primitives/Paragraph";
+
 import { TextLink } from "../primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "../primitives/Tooltip";
 import { QueueName } from "../runs/v3/QueueName";
@@ -848,7 +849,7 @@ function HeaderCellContent({
           }}
           onMouseEnter={() => setIsFilterHovered(true)}
           onMouseLeave={() => setIsFilterHovered(false)}
-          className="flex-shrink-0 rounded text-text-dimmed transition-colors hover:text-text-bright focus-custom"
+          className="flex-shrink-0 rounded text-text-dimmed transition-colors focus-custom hover:text-text-bright"
           title="Toggle column filters"
         >
           {showFilters ? <IconFilter2X className="size-4" /> : <IconFilter2 className="size-4" />}
@@ -978,97 +979,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
 
   // Empty state
   if (rows.length === 0) {
-    return (
-      <div
-        className="h-full min-h-0 w-full overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-        style={{ position: "relative" }}
-      >
-        <table style={{ display: "grid" }}>
-          <thead
-            className="border-t border-grid-bright bg-background-bright"
-            style={{
-              display: "grid",
-              position: "sticky",
-              top: 0,
-              zIndex: 1,
-            }}
-          >
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} style={{ display: "flex", width: "100%" }}>
-                {headerGroup.headers.map((header) => {
-                  const meta = header.column.columnDef.meta as ColumnMeta | undefined;
-                  return (
-                    <th
-                      key={header.id}
-                      className="group/header relative"
-                      style={{
-                        display: "flex",
-                        width: header.getSize(),
-                      }}
-                    >
-                      <HeaderCellContent
-                        alignment={meta?.alignment ?? "left"}
-                        tooltip={meta?.outputColumn.description}
-                        onFilterClick={() => {
-                          if (!showFilters) {
-                            setFocusFilterColumn(header.id);
-                          } else {
-                            setColumnFilters([]);
-                          }
-                          setShowFilters(!showFilters);
-                        }}
-                        showFilters={showFilters}
-                        hasActiveFilter={!!header.column.getFilterValue()}
-                        sortDirection={header.column.getIsSorted()}
-                        onSortClick={header.column.getToggleSortingHandler()}
-                        canSort={header.column.getCanSort()}
-                      >
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                      </HeaderCellContent>
-                      {/* Column resizer */}
-                      <div
-                        onDoubleClick={() => header.column.resetSize()}
-                        onMouseDown={header.getResizeHandler()}
-                        onTouchStart={header.getResizeHandler()}
-                        className={cn(
-                          "absolute right-0 top-0 h-full w-0.5 cursor-col-resize touch-none select-none",
-                          "opacity-0 group-hover/header:opacity-100",
-                          "bg-charcoal-600 hover:bg-indigo-500",
-                          header.column.getIsResizing() && "bg-indigo-500 opacity-100"
-                        )}
-                      />
-                    </th>
-                  );
-                })}
-              </tr>
-            ))}
-            {/* Filter row - shown when filters are toggled */}
-            {showFilters && (
-              <tr style={{ display: "flex", width: "100%" }}>
-                {table.getHeaderGroups()[0]?.headers.map((header) => (
-                  <FilterCell
-                    key={`filter-${header.id}`}
-                    column={header.column}
-                    width={header.getSize()}
-                    shouldFocus={focusFilterColumn === header.id}
-                    onFocused={() => setFocusFilterColumn(null)}
-                  />
-                ))}
-              </tr>
-            )}
-          </thead>
-          <tbody className="border-b border-grid-bright" style={{ display: "grid" }}>
-            <tr style={{ display: "flex" }}>
-              <td>
-                <Paragraph variant="extra-small" className="p-4 text-text-dimmed">
-                  No results
-                </Paragraph>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    );
+    return <ChartBlankState icon={IconTable} message="No data to display" />;
   }
 
   return (

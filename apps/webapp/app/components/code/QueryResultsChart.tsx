@@ -1,8 +1,9 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
+import { BarChart3, LineChart } from "lucide-react";
 import { memo, useMemo } from "react";
 import type { ChartConfig } from "~/components/primitives/charts/Chart";
 import { Chart } from "~/components/primitives/charts/ChartCompound";
-import { Paragraph } from "../primitives/Paragraph";
+import { ChartBlankState } from "../primitives/charts/ChartBlankState";
 import type { AggregationType, ChartConfiguration } from "../metrics/QueryWidget";
 import { aggregateValues } from "../primitives/charts/aggregation";
 import { getRunStatusHexColor } from "~/components/runs/v3/TaskRunStatus";
@@ -947,20 +948,22 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   }, [isDateBased, xAxisTickFormatter, xAxisAngle]);
 
   // Validation — all hooks must be above this point
+  const chartIcon = chartType === "bar" ? BarChart3 : LineChart;
+
   if (!xAxisColumn) {
-    return <EmptyState message="Select an X-axis column to display the chart" />;
+    return <ChartBlankState icon={chartIcon} message="Select an X-axis column to display the chart" />;
   }
 
   if (yAxisColumns.length === 0) {
-    return <EmptyState message="Select a Y-axis column to display the chart" />;
+    return <ChartBlankState icon={chartIcon} message="Select a Y-axis column to display the chart" />;
   }
 
   if (rows.length === 0) {
-    return <EmptyState message="No data to display" />;
+    return <ChartBlankState icon={chartIcon} message="No data to display" />;
   }
 
   if (data.length === 0) {
-    return <EmptyState message="Unable to transform data for chart" />;
+    return <ChartBlankState icon={chartIcon} message="Unable to transform data for chart" />;
   }
 
   // Base x-axis props shared by all chart types
@@ -1113,12 +1116,3 @@ function createYAxisFormatter(data: Record<string, unknown>[], series: string[])
   };
 }
 
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex h-full min-h-[300px] items-center justify-center">
-      <Paragraph variant="small" className="text-text-dimmed">
-        {message}
-      </Paragraph>
-    </div>
-  );
-}
