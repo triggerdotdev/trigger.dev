@@ -93,6 +93,32 @@ export function MyComponent({
 }
 ```
 
+When you only need run status (for example, a progress bar or completion badge), you can omit large fields like `payload` and `output` by passing `skipColumns`. This reduces the data sent over the wire and avoids issues such as "Large HTTP Payload" warnings in tools like Sentry.
+
+```tsx
+import { useRealtimeRun } from "@trigger.dev/react-hooks";
+
+export function RunStatusBadge({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  const { run, error } = useRealtimeRun(runId, {
+    accessToken: publicAccessToken,
+    skipColumns: ["payload", "output"],
+  });
+
+  if (error) return <span>Error</span>;
+  if (!run) return <span>Loading…</span>;
+
+  return <span>Status: {run.status}</span>;
+}
+```
+
+You can skip any of: `payload`, `output`, `metadata`, `startedAt`, `delayUntil`, `queuedAt`, `expiredAt`, `completedAt`, `number`, `isTest`, `usageDurationMs`, `costInCents`, `baseCostInCents`, `ttl`, `payloadType`, `outputType`, `runTags`, `error`. The `useRealtimeRunsWithTag` hook also accepts a `skipColumns` option in the same way.
+
 See our [run object reference](/realtime/run-object) for the complete schema and [How it Works documentation](/realtime/how-it-works) for more technical details.
 
 ### useRealtimeRunsWithTag
