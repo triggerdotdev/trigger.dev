@@ -475,6 +475,80 @@ describe("TriggerChatTransport", function () {
     expect((options.idempotencyKey as string).length).toBe(64);
   });
 
+  it("supports static trigger options objects", async function () {
+    let receivedTriggerBody: Record<string, unknown> | undefined;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        readJsonBody(req).then(function (body) {
+          receivedTriggerBody = body;
+          res.writeHead(200, {
+            "content-type": "application/json",
+            "x-trigger-jwt": "pk_run_static_opts",
+          });
+          res.end(JSON.stringify({ id: "run_static_opts" }));
+        });
+        return;
+      }
+
+      if (req.method === "GET" && req.url === "/realtime/v1/streams/run_static_opts/chat-stream") {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "static_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "static_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      triggerOptions: {
+        queue: "static-queue",
+        concurrencyKey: "chat-static",
+        idempotencyKey: "static-idempotency",
+        metadata: {
+          mode: "static",
+        },
+        maxAttempts: 2,
+      },
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-static-options",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+
+    const options = (receivedTriggerBody?.options ?? {}) as Record<string, unknown>;
+    expect(options.queue).toEqual({ name: "static-queue" });
+    expect(options.concurrencyKey).toBe("chat-static");
+    expect(options.metadata).toEqual({ mode: "static" });
+    expect(options.maxAttempts).toBe(2);
+    expect(typeof options.idempotencyKey).toBe("string");
+    expect((options.idempotencyKey as string).length).toBe(64);
+  });
+
   it("supports creating transport with factory function", async function () {
     let observedRunId: string | undefined;
 
