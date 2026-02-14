@@ -29,6 +29,64 @@ afterEach(async function () {
 });
 
 describe("TriggerChatTransport", function () {
+  it("uses default stream key when stream option is omitted", async function () {
+    let observedStreamPath: string | undefined;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_default_stream",
+        });
+        res.end(JSON.stringify({ id: "run_default_stream" }));
+        return;
+      }
+
+      if (req.method === "GET") {
+        observedStreamPath = req.url ?? "";
+      }
+
+      if (req.method === "GET" && req.url === "/realtime/v1/streams/run_default_stream/default") {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "default_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "default_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-default-stream",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(observedStreamPath).toBe("/realtime/v1/streams/run_default_stream/default");
+  });
+
   it("triggers task and streams chunks with rich default payload", async function () {
     let receivedTriggerBody: Record<string, unknown> | undefined;
 
