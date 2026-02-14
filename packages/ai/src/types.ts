@@ -48,16 +48,18 @@ export type TriggerChatTaskContext<
   streamKey: string;
 };
 
+type MaybePromise<T> = T | Promise<T>;
+
 export type TriggerChatPayloadMapper<
   UI_MESSAGE extends UIMessage = UIMessage,
   PAYLOAD = TriggerChatTransportPayload<UI_MESSAGE>,
-> = (request: TriggerChatTransportRequest<UI_MESSAGE>) => PAYLOAD;
+> = (request: TriggerChatTransportRequest<UI_MESSAGE>) => MaybePromise<PAYLOAD>;
 
 export type TriggerChatTriggerOptionsResolver<
   UI_MESSAGE extends UIMessage = UIMessage,
 > = (
   request: TriggerChatTransportRequest<UI_MESSAGE>
-) => TriggerOptions | undefined;
+) => MaybePromise<TriggerOptions | undefined>;
 
 export type TriggerChatStream<
   UI_MESSAGE extends UIMessage = UIMessage,

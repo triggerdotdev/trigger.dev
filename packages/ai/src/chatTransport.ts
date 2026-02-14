@@ -160,7 +160,7 @@ export class TriggerChatTransport<
     } & ChatRequestOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
     const transportRequest = createTransportRequest<UI_MESSAGE>(options);
-    const payload = this.payloadMapper(transportRequest);
+    const payload = await this.payloadMapper(transportRequest);
     const triggerOptions = await resolveTriggerOptions<UI_MESSAGE>(
       this.triggerOptions,
       transportRequest
@@ -430,7 +430,7 @@ async function resolveTriggerOptions<UI_MESSAGE extends UIMessage>(
   }
 
   if (typeof options === "function") {
-    return options(request);
+    return await options(request);
   }
 
   return options;

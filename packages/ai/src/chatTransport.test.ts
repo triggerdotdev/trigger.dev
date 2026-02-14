@@ -323,7 +323,9 @@ describe("TriggerChatTransport", function () {
       stream: "chat-stream",
       accessToken: "pk_trigger",
       baseURL: server.url,
-      payloadMapper: function payloadMapper(request) {
+      payloadMapper: async function payloadMapper(request) {
+        await sleep(1);
+
         const firstMessage = request.messages[0];
         const firstPart = firstMessage?.parts[0];
         const prompt =
@@ -337,7 +339,9 @@ describe("TriggerChatTransport", function () {
           sourceHeader: request.request.headers?.["x-source"],
         };
       },
-      triggerOptions: function triggerOptions(request) {
+      triggerOptions: async function triggerOptions(request) {
+        await sleep(1);
+
         receivedResolverChatId = request.chatId;
         receivedResolverHeader = request.request.headers?.["x-source"];
 

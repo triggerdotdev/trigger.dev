@@ -61,7 +61,7 @@ type Payload = TriggerChatTransportPayload<UIMessage>;
 
 ## Custom payload mapping
 
-If your task expects a custom payload shape, provide `payloadMapper`:
+If your task expects a custom payload shape, provide `payloadMapper` (sync or async):
 
 ```ts
 import { TriggerChatTransport } from "@trigger.dev/ai";
@@ -73,7 +73,9 @@ const transport = new TriggerChatTransport<
 >({
   task: "ai-chat-custom",
   accessToken: "pk_...",
-  payloadMapper: function payloadMapper(request) {
+  payloadMapper: async function payloadMapper(request) {
+    await Promise.resolve();
+
     const firstPart = request.messages[0]?.parts[0];
 
     return {
@@ -86,6 +88,9 @@ const transport = new TriggerChatTransport<
   },
 });
 ```
+
+`triggerOptions` can also be a function (sync or async), which gives you access to
+`chatId`, messages, and request context to compute queueing/idempotency options.
 
 ## Optional persistent run state
 

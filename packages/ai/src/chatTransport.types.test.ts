@@ -63,6 +63,29 @@ it("types mapper input with rich request context", function () {
   expectTypeOf(options.payloadMapper).toBeFunction();
 });
 
+it("accepts async payload mappers and trigger option resolvers", function () {
+  const options: TriggerChatTransportOptions<
+    UIMessage,
+    { prompt: string; chatId: string }
+  > = {
+    task: "ai-chat",
+    accessToken: "pk_test",
+    payloadMapper: async function payloadMapper(request) {
+      return {
+        prompt: request.chatId,
+        chatId: request.chatId,
+      };
+    },
+    triggerOptions: async function triggerOptions(request) {
+      return {
+        queue: `queue-${request.chatId}`,
+      };
+    },
+  };
+
+  expectTypeOf(options).toBeObject();
+});
+
 it("accepts typed stream definition objects", function () {
   const typedStream = {
     id: "chat-stream",
