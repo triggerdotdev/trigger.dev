@@ -606,6 +606,34 @@ The default payload sent to your task is a rich, typed object that includes:
 - `messages`
 - `request` (`headers`, `body`, and `metadata`)
 
+### Advanced transport options
+
+`TriggerChatTransport` also supports:
+
+- `payloadMapper` (sync or async) for custom task payload shapes
+- `triggerOptions` as an object or resolver function (sync or async)
+- `runStore` for custom reconnect-state persistence (including async stores)
+
+```ts
+import type { TriggerChatRunState, TriggerChatRunStore } from "@trigger.dev/ai";
+
+class MemoryRunStore implements TriggerChatRunStore {
+  private runs = new Map<string, TriggerChatRunState>();
+
+  async get(chatId: string) {
+    return this.runs.get(chatId);
+  }
+
+  async set(state: TriggerChatRunState) {
+    this.runs.set(state.chatId, state);
+  }
+
+  async delete(chatId: string) {
+    this.runs.delete(chatId);
+  }
+}
+```
+
 ## Complete Example: AI Streaming
 
 ### Define the stream
