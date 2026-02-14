@@ -146,6 +146,139 @@ describe("TriggerChatTransport", function () {
     expect(stream).toBeNull();
   });
 
+  it("supports custom payload mapping and trigger options resolver", async function () {
+    let receivedTriggerBody: Record<string, unknown> | undefined;
+    let receivedResolverChatId: string | undefined;
+    let receivedResolverHeader: string | undefined;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        readJsonBody(req).then(function (body) {
+          receivedTriggerBody = body;
+          res.writeHead(200, {
+            "content-type": "application/json",
+            "x-trigger-jwt": "pk_run_789",
+          });
+          res.end(JSON.stringify({ id: "run_789" }));
+        });
+        return;
+      }
+
+      if (req.method === "GET" && req.url === "/realtime/v1/streams/run_789/chat-stream") {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "mapped_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "mapped_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport<
+      UIMessage,
+      {
+        prompt: string;
+        chatId: string;
+        sourceHeader: string | undefined;
+      }
+    >({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      payloadMapper: function payloadMapper(request) {
+        const firstMessage = request.messages[0];
+        const firstPart = firstMessage?.parts[0];
+        const prompt =
+          firstPart && firstPart.type === "text"
+            ? firstPart.text
+            : "";
+
+        return {
+          prompt,
+          chatId: request.chatId,
+          sourceHeader: request.request.headers?.["x-source"],
+        };
+      },
+      triggerOptions: function triggerOptions(request) {
+        receivedResolverChatId = request.chatId;
+        receivedResolverHeader = request.request.headers?.["x-source"];
+
+        return {
+          queue: "chat-queue",
+          concurrencyKey: `chat-${request.chatId}`,
+          idempotencyKey: `idem-${request.chatId}`,
+          ttl: "30m",
+          tags: ["chat", "mapped"],
+          metadata: {
+            requester: request.request.headers?.["x-source"] ?? "unknown",
+          },
+          priority: 50,
+        };
+      },
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-mapped",
+      messageId: undefined,
+      messages: [
+        {
+          id: "mapped-user",
+          role: "user",
+          parts: [{ type: "text", text: "Map me" }],
+        } satisfies UIMessage,
+      ],
+      abortSignal: undefined,
+      headers: {
+        "x-source": "sdk-test",
+      },
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]).toMatchObject({
+      chunk: { type: "text-start", id: "mapped_1" },
+    });
+    expect(chunks[1]).toMatchObject({
+      chunk: { type: "text-end", id: "mapped_1" },
+    });
+
+    expect(receivedResolverChatId).toBe("chat-mapped");
+    expect(receivedResolverHeader).toBe("sdk-test");
+
+    expect(receivedTriggerBody).toBeDefined();
+    const payloadString = receivedTriggerBody?.payload as string;
+    const payload = (JSON.parse(payloadString) as { json: Record<string, unknown> }).json;
+    expect(payload).toEqual({
+      prompt: "Map me",
+      chatId: "chat-mapped",
+      sourceHeader: "sdk-test",
+    });
+
+    const options = (receivedTriggerBody?.options ?? {}) as Record<string, unknown>;
+    expect(options.queue).toEqual({ name: "chat-queue" });
+    expect(options.concurrencyKey).toBe("chat-chat-mapped");
+    expect(options.ttl).toBe("30m");
+    expect(options.tags).toEqual(["chat", "mapped"]);
+    expect(options.metadata).toEqual({ requester: "sdk-test" });
+    expect(options.priority).toBe(50);
+    expect(typeof options.idempotencyKey).toBe("string");
+    expect((options.idempotencyKey as string).length).toBe(64);
+  });
+
   it("reconnects active streams using tracked lastEventId", async function () {
     let reconnectLastEventId: string | undefined;
     let firstStreamResponse: ServerResponse<IncomingMessage> | undefined;
