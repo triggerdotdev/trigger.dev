@@ -412,7 +412,7 @@ function CellValueWrapper({
 
   return (
     <span
-      className="flex-1"
+      className="flex flex-1 items-center"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
