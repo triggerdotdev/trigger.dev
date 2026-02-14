@@ -6,6 +6,7 @@ import {
   createTriggerChatTransport,
   TriggerChatTransport,
 } from "./chatTransport.js";
+import type { TriggerChatStream } from "./types.js";
 import type { UIMessage, UIMessageChunk } from "ai";
 import type {
   TriggerChatRunState,
@@ -147,6 +148,72 @@ describe("TriggerChatTransport", function () {
     const chunks = await readChunks(stream);
     expect(chunks).toHaveLength(2);
     expect(observedStreamPath).toBe("/realtime/v1/streams/run_encoded_stream/chat%2Fspecial%20stream");
+  });
+
+  it("uses defined stream object id when provided", async function () {
+    let observedStreamPath: string | undefined;
+
+    const streamDefinition = {
+      id: "typed-stream-id",
+      pipe: async function pipe() {
+        throw new Error("not used in this test");
+      },
+    } as unknown as TriggerChatStream<UIMessage>;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_stream_object",
+        });
+        res.end(JSON.stringify({ id: "run_stream_object" }));
+        return;
+      }
+
+      if (req.method === "GET") {
+        observedStreamPath = req.url ?? "";
+      }
+
+      if (req.method === "GET" && req.url === "/realtime/v1/streams/run_stream_object/typed-stream-id") {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "typed_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "typed_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      stream: streamDefinition,
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-typed-stream",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(observedStreamPath).toBe("/realtime/v1/streams/run_stream_object/typed-stream-id");
   });
 
   it("triggers task and streams chunks with rich default payload", async function () {
