@@ -142,6 +142,8 @@ export type QueryWidgetProps = {
   accessory?: ReactNode;
   isResizing?: boolean;
   isDraggable?: boolean;
+  /** Additional className applied to the Card wrapper */
+  className?: string;
   /** Callback when edit is clicked. Receives the current data. */
   onEdit?: (data: QueryWidgetData) => void;
   /** Callback when rename is clicked. Receives the new title. */
@@ -161,6 +163,7 @@ export function QueryWidget({
   error,
   isResizing,
   isDraggable,
+  className,
   onEdit,
   onRename,
   onDelete,
@@ -195,7 +198,7 @@ export function QueryWidget({
 
   return (
     <div className="group h-full">
-      <Card className="h-full overflow-hidden px-0 pb-0">
+      <Card className={cn("h-full overflow-hidden px-0 pb-0", className)}>
         <Card.Header draggable={isDraggable}>
           <div className="flex items-center gap-1.5">{title}</div>
           <Card.Accessory>
