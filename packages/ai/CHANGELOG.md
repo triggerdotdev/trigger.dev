@@ -11,3 +11,5 @@
 - Added support for async payload mappers, async trigger option resolvers, and async `onTriggeredRun` callbacks.
 - Added support for tuple-style header input normalization and typing.
 - Added reconnect lifecycle handling that cleans run state after completion/error and gracefully returns `null` when reconnect cannot be resumed.
+- Added explicit helper option types for chat send/reconnect request inputs.
+- Added optional `onError` callback support for observing non-fatal transport issues.
