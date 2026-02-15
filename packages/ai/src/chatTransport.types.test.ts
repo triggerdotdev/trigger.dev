@@ -112,6 +112,7 @@ function createTypedOnErrorCallback(): TriggerChatOnError {
       | "payloadMapper"
       | "triggerOptions"
       | "triggerTask"
+      | "streamSubscribe"
       | "onTriggeredRun"
       | "consumeTrackingStream"
       | "reconnect"

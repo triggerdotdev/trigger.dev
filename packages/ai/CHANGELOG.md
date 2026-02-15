@@ -13,5 +13,5 @@
 - Added reconnect lifecycle handling that cleans run state after completion/error and gracefully returns `null` when reconnect cannot be resumed.
 - Added explicit helper option types for chat send/reconnect request inputs.
 - Added optional `onError` callback support for observing non-fatal transport issues.
-- Added phase-aware `onError` reporting across send, reconnect, and stream-consumption paths.
+- Added phase-aware `onError` reporting across send, stream-subscribe, reconnect, and stream-consumption paths.
 - Added normalization of non-Error throw values into Error instances before `onError` reporting.

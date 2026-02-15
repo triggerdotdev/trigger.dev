@@ -231,7 +231,21 @@ export class TriggerChatTransport<
       }
     }
 
-    const stream = await this.fetchRunStream(runState, options.abortSignal);
+    let stream: ReadableStream<SSEStreamPart<InferUIMessageChunk<UI_MESSAGE>>>;
+    try {
+      stream = await this.fetchRunStream(runState, options.abortSignal);
+    } catch (error) {
+      runState.isActive = false;
+      await this.runStore.set(runState);
+      await this.runStore.delete(runState.chatId);
+      await this.reportError({
+        phase: "streamSubscribe",
+        chatId: runState.chatId,
+        runId: runState.runId,
+        error: normalizeError(error),
+      });
+      throw error;
+    }
 
     return this.createTrackedStream(runState.chatId, stream);
   }

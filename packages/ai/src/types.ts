@@ -74,6 +74,7 @@ export type TriggerChatTransportErrorPhase =
   | "payloadMapper"
   | "triggerOptions"
   | "triggerTask"
+  | "streamSubscribe"
   | "onTriggeredRun"
   | "consumeTrackingStream"
   | "reconnect";

@@ -135,7 +135,7 @@ You can optionally provide `onError` to observe non-fatal transport errors
 
 The callback receives:
 
-- `phase`: `"payloadMapper" | "triggerOptions" | "triggerTask" | "onTriggeredRun" | "consumeTrackingStream" | "reconnect"`
+- `phase`: `"payloadMapper" | "triggerOptions" | "triggerTask" | "streamSubscribe" | "onTriggeredRun" | "consumeTrackingStream" | "reconnect"`
 - `chatId`
 - `runId` (may be `undefined` before a run is created)
 - `error`
