@@ -1094,6 +1094,17 @@ describe("TriggerChatTransport", function () {
     }).not.toThrow();
   });
 
+  it("accepts BOM-wrapped uppercase HTTP baseURL values", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\uFEFFHTTP://api.trigger.dev/custom-prefix/\uFEFF",
+        stream: "chat-stream",
+      });
+    }).not.toThrow();
+  });
+
   it("accepts percent-encoded whitespace in baseURL paths", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -3795,6 +3806,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "\uFEFFhttps://api.trigger.dev/custom-prefix/\uFEFF",
+        stream: "chat-stream",
+      });
+    }).not.toThrow();
+  });
+
+  it("accepts BOM-wrapped uppercase HTTP baseURL values from factory", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\uFEFFHTTP://api.trigger.dev/custom-prefix/\uFEFF",
         stream: "chat-stream",
       });
     }).not.toThrow();
