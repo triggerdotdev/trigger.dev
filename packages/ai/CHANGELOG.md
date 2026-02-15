@@ -22,3 +22,4 @@
 - Added consistent baseURL normalization for trigger and stream endpoints (including path prefixes and trailing slashes).
 - Added surrounding-whitespace trimming for `baseURL` before endpoint normalization.
 - Added explicit validation that `baseURL` is non-empty after normalization.
+- Added explicit validation that `baseURL` is a valid absolute URL.

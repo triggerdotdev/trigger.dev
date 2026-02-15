@@ -466,6 +466,12 @@ function normalizeBaseUrl(baseURL: string) {
     throw new Error("baseURL must not be empty");
   }
 
+  try {
+    new URL(normalizedBaseUrl);
+  } catch {
+    throw new Error("baseURL must be a valid absolute URL");
+  }
+
   return normalizedBaseUrl;
 }
 
