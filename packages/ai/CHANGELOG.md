@@ -26,7 +26,7 @@
 - Added explicit validation that `baseURL` uses `http` or `https`.
 - Added explicit validation that `baseURL` excludes query parameters and hash fragments.
 - Added explicit validation that `baseURL` excludes username/password credentials.
-- Added explicit validation that `baseURL` excludes internal whitespace/invisible separator characters.
+- Added explicit validation that `baseURL` excludes internal whitespace/invisible separator characters (including zero-width/BOM characters).
 - Documented that `HTTP://` and `HTTPS://` are accepted (case-insensitive protocol matching).
 - Added deterministic validation ordering for multi-issue baseURL values
   (internal whitespace → protocol → query/hash → credentials).

@@ -764,6 +764,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must not contain internal whitespace characters");
   });
 
+  it("throws when baseURL contains internal BOM characters", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://api.trigger.dev/\uFEFFinternal",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
+  });
+
   it("throws when baseURL is a relative path", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -1001,6 +1012,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "\u00A0https://api.trigger.dev/custom-prefix/\u00A0",
+        stream: "chat-stream",
+      });
+    }).not.toThrow();
+  });
+
+  it("accepts BOM-wrapped baseURL values", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\uFEFFhttps://api.trigger.dev/custom-prefix/\uFEFF",
         stream: "chat-stream",
       });
     }).not.toThrow();
@@ -3393,6 +3415,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must not contain internal whitespace characters");
   });
 
+  it("throws from factory when baseURL contains internal BOM characters", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://api.trigger.dev/\uFEFFinternal",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
+  });
+
   it("throws from factory when baseURL protocol is not http or https", function () {
     expect(function () {
       createTriggerChatTransport({
@@ -3619,6 +3652,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "\u00A0https://api.trigger.dev/custom-prefix/\u00A0",
+        stream: "chat-stream",
+      });
+    }).not.toThrow();
+  });
+
+  it("accepts BOM-wrapped baseURL values from factory", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\uFEFFhttps://api.trigger.dev/custom-prefix/\uFEFF",
         stream: "chat-stream",
       });
     }).not.toThrow();
