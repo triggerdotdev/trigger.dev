@@ -29,5 +29,5 @@
 - Added explicit validation that `baseURL` excludes internal whitespace characters.
 - Documented that `HTTP://` and `HTTPS://` are accepted (case-insensitive protocol matching).
 - Added deterministic validation ordering for multi-issue baseURL values
-  (protocol → query/hash → credentials).
+  (internal whitespace → protocol → query/hash → credentials).
 - Documented explicit default `baseURL` value (`https://api.trigger.dev`) when omitted.

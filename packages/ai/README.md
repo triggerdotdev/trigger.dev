@@ -190,12 +190,13 @@ Validation errors use these exact messages:
 - `baseURL must not include username or password credentials`
 
 When multiple issues are present, validation order is deterministic:
-protocol → query/hash → credentials.
+internal whitespace → protocol → query/hash → credentials.
 
 Examples of ordering:
 
 - `ftp://example.com?x=1` → `baseURL must use http or https protocol`
 - `https://user:pass@example.com?x=1` → `baseURL must not include query parameters or hash fragments`
+- `ftp://user:pass@example.com/in valid?x=1` → `baseURL must not contain internal whitespace characters`
 
 ## `ai.tool(...)` example
 
