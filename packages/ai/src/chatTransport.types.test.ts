@@ -108,9 +108,16 @@ it("exposes strongly typed onError callback payloads", function () {
 
 function createTypedOnErrorCallback(): TriggerChatOnError {
   async function onError(error: TriggerChatTransportError) {
-    expectTypeOf(error.phase).toEqualTypeOf<"onTriggeredRun" | "consumeTrackingStream" | "reconnect">();
+    expectTypeOf(error.phase).toEqualTypeOf<
+      | "payloadMapper"
+      | "triggerOptions"
+      | "triggerTask"
+      | "onTriggeredRun"
+      | "consumeTrackingStream"
+      | "reconnect"
+    >();
     expectTypeOf(error.chatId).toEqualTypeOf<string>();
-    expectTypeOf(error.runId).toEqualTypeOf<string>();
+    expectTypeOf(error.runId).toEqualTypeOf<string | undefined>();
     expectTypeOf(error.error).toEqualTypeOf<Error>();
   }
 
@@ -196,7 +203,7 @@ it("accepts custom onError callbacks via options typing", function () {
     accessToken: "pk_test",
     onError: function onError(error) {
       expectTypeOf(error.chatId).toEqualTypeOf<string>();
-      expectTypeOf(error.runId).toEqualTypeOf<string>();
+      expectTypeOf(error.runId).toEqualTypeOf<string | undefined>();
     },
   });
 

@@ -161,12 +161,47 @@ export class TriggerChatTransport<
     options: TriggerChatSendMessagesOptions<UI_MESSAGE>
   ): Promise<ReadableStream<UIMessageChunk>> {
     const transportRequest = createTransportRequest<UI_MESSAGE>(options);
-    const payload = await this.payloadMapper(transportRequest);
-    const triggerOptions = await resolveTriggerOptions<UI_MESSAGE>(
-      this.triggerOptions,
-      transportRequest
-    );
-    const run = await this.triggerTask(payload, triggerOptions);
+    let payload: PAYLOAD;
+    try {
+      payload = await this.payloadMapper(transportRequest);
+    } catch (error) {
+      await this.reportError({
+        phase: "payloadMapper",
+        chatId: options.chatId,
+        runId: undefined,
+        error: normalizeError(error),
+      });
+      throw error;
+    }
+
+    let triggerOptions: TriggerOptions | undefined;
+    try {
+      triggerOptions = await resolveTriggerOptions<UI_MESSAGE>(
+        this.triggerOptions,
+        transportRequest
+      );
+    } catch (error) {
+      await this.reportError({
+        phase: "triggerOptions",
+        chatId: options.chatId,
+        runId: undefined,
+        error: normalizeError(error),
+      });
+      throw error;
+    }
+
+    let run: TriggerTaskResponse;
+    try {
+      run = await this.triggerTask(payload, triggerOptions);
+    } catch (error) {
+      await this.reportError({
+        phase: "triggerTask",
+        chatId: options.chatId,
+        runId: undefined,
+        error: normalizeError(error),
+      });
+      throw error;
+    }
 
     const runState: TriggerChatRunState = {
       chatId: options.chatId,
@@ -339,9 +374,15 @@ export class TriggerChatTransport<
 
   private async reportError(
     event: {
-      phase: "onTriggeredRun" | "consumeTrackingStream" | "reconnect";
+      phase:
+        | "payloadMapper"
+        | "triggerOptions"
+        | "triggerTask"
+        | "onTriggeredRun"
+        | "consumeTrackingStream"
+        | "reconnect";
       chatId: string;
-      runId: string;
+      runId: string | undefined;
       error: Error;
     }
   ) {

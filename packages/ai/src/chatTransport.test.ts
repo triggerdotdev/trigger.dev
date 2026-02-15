@@ -732,6 +732,7 @@ describe("TriggerChatTransport", function () {
 
   it("surfaces payload mapper errors and does not trigger runs", async function () {
     let triggerCalls = 0;
+    const errors: TriggerChatTransportError[] = [];
 
     const server = await startServer(function (req, res) {
       if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
@@ -755,6 +756,9 @@ describe("TriggerChatTransport", function () {
       payloadMapper: async function payloadMapper() {
         throw new Error("mapper failed");
       },
+      onError: function onError(error) {
+        errors.push(error);
+      },
     });
 
     await expect(
@@ -768,10 +772,18 @@ describe("TriggerChatTransport", function () {
     ).rejects.toThrowError("mapper failed");
 
     expect(triggerCalls).toBe(0);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "payloadMapper",
+      chatId: "chat-mapper-failure",
+      runId: undefined,
+    });
+    expect(errors[0]?.error.message).toBe("mapper failed");
   });
 
   it("surfaces trigger options resolver errors and does not trigger runs", async function () {
     let triggerCalls = 0;
+    const errors: TriggerChatTransportError[] = [];
 
     const server = await startServer(function (req, res) {
       if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
@@ -792,6 +804,9 @@ describe("TriggerChatTransport", function () {
       triggerOptions: async function triggerOptions() {
         throw new Error("trigger options failed");
       },
+      onError: function onError(error) {
+        errors.push(error);
+      },
     });
 
     await expect(
@@ -805,6 +820,59 @@ describe("TriggerChatTransport", function () {
     ).rejects.toThrowError("trigger options failed");
 
     expect(triggerCalls).toBe(0);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "triggerOptions",
+      chatId: "chat-trigger-failure",
+      runId: undefined,
+    });
+    expect(errors[0]?.error.message).toBe("trigger options failed");
+  });
+
+  it("reports trigger task request failures through onError", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const server = await startServer(function (_req, res) {
+      res.writeHead(500, {
+        "content-type": "application/json",
+      });
+      res.end(JSON.stringify({ error: "task trigger failed" }));
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      requestOptions: {
+        retry: {
+          maxAttempts: 1,
+          minTimeoutInMs: 1,
+          maxTimeoutInMs: 1,
+          factor: 1,
+          randomize: false,
+        },
+      },
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    await expect(
+      transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-trigger-request-failure",
+        messageId: undefined,
+        messages: [],
+        abortSignal: undefined,
+      })
+    ).rejects.toThrowError("task trigger failed");
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "triggerTask",
+      chatId: "chat-trigger-request-failure",
+      runId: undefined,
+    });
   });
 
   it("supports creating transport with factory function", async function () {

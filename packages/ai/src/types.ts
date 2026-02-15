@@ -71,6 +71,9 @@ export type TriggerChatOnTriggeredRun = (
 ) => MaybePromise<void>;
 
 export type TriggerChatTransportErrorPhase =
+  | "payloadMapper"
+  | "triggerOptions"
+  | "triggerTask"
   | "onTriggeredRun"
   | "consumeTrackingStream"
   | "reconnect";
@@ -78,7 +81,7 @@ export type TriggerChatTransportErrorPhase =
 export type TriggerChatTransportError = {
   phase: TriggerChatTransportErrorPhase;
   chatId: string;
-  runId: string;
+  runId: string | undefined;
   error: Error;
 };
 
