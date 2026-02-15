@@ -479,6 +479,218 @@ describe("TriggerChatTransport", () => {
     });
   });
 
+  describe("abort signal", () => {
+    it("should close the stream gracefully when aborted", async () => {
+      let streamResolve: (() => void) | undefined;
+      const streamWait = new Promise<void>((resolve) => {
+        streamResolve = resolve;
+      });
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/trigger")) {
+          return new Response(
+            JSON.stringify({ id: "run_abort" }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "x-trigger-jwt": "token",
+              },
+            }
+          );
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          // Create a slow stream that waits before sending data
+          const stream = new ReadableStream<Uint8Array>({
+            async start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(
+                encoder.encode(`id: 0\ndata: ${JSON.stringify({ type: "text-start", id: "p1" })}\n\n`)
+              );
+              // Wait for the test to signal it's done
+              await streamWait;
+              controller.close();
+            },
+          });
+
+          return new Response(stream, {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const abortController = new AbortController();
+
+      const transport = new TriggerChatTransport({
+        taskId: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-abort",
+        messageId: undefined,
+        messages: [createUserMessage("test")],
+        abortSignal: abortController.signal,
+      });
+
+      // Read the first chunk
+      const reader = stream.getReader();
+      const first = await reader.read();
+      expect(first.done).toBe(false);
+
+      // Abort and clean up
+      abortController.abort();
+      streamResolve?.();
+
+      // The stream should close — reading should return done
+      const next = await reader.read();
+      expect(next.done).toBe(true);
+    });
+  });
+
+  describe("multiple sessions", () => {
+    it("should track multiple chat sessions independently", async () => {
+      let callCount = 0;
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/trigger")) {
+          callCount++;
+          return new Response(
+            JSON.stringify({ id: `run_multi_${callCount}` }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "x-trigger-jwt": `token_${callCount}`,
+              },
+            }
+          );
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          return new Response(createSSEStream(""), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        taskId: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      // Start two independent chat sessions
+      await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "session-a",
+        messageId: undefined,
+        messages: [createUserMessage("Hello A")],
+        abortSignal: undefined,
+      });
+
+      await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "session-b",
+        messageId: undefined,
+        messages: [createUserMessage("Hello B")],
+        abortSignal: undefined,
+      });
+
+      // Both sessions should be independently reconnectable
+      const streamA = await transport.reconnectToStream({ chatId: "session-a" });
+      const streamB = await transport.reconnectToStream({ chatId: "session-b" });
+      const streamC = await transport.reconnectToStream({ chatId: "nonexistent" });
+
+      expect(streamA).toBeInstanceOf(ReadableStream);
+      expect(streamB).toBeInstanceOf(ReadableStream);
+      expect(streamC).toBeNull();
+    });
+  });
+
+  describe("body merging", () => {
+    it("should merge ChatRequestOptions.body into the task payload", async () => {
+      const fetchSpy = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/trigger")) {
+          return new Response(
+            JSON.stringify({ id: "run_body" }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "x-trigger-jwt": "token",
+              },
+            }
+          );
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          return new Response(createSSEStream(""), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      global.fetch = fetchSpy;
+
+      const transport = new TriggerChatTransport({
+        taskId: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-body",
+        messageId: undefined,
+        messages: [createUserMessage("test")],
+        abortSignal: undefined,
+        body: { systemPrompt: "You are helpful", temperature: 0.7 },
+      });
+
+      const triggerCall = fetchSpy.mock.calls.find((call: any[]) =>
+        (typeof call[0] === "string" ? call[0] : call[0].toString()).includes("/trigger")
+      );
+
+      const triggerBody = JSON.parse(triggerCall![1]?.body as string);
+      const payload = JSON.parse(triggerBody.payload);
+
+      // body properties should be merged into the payload
+      expect(payload.systemPrompt).toBe("You are helpful");
+      expect(payload.temperature).toBe(0.7);
+      // Standard fields should still be present
+      expect(payload.chatId).toBe("chat-body");
+      expect(payload.trigger).toBe("submit-message");
+    });
+  });
+
   describe("message types", () => {
     it("should handle regenerate-message trigger", async () => {
       const fetchSpy = vi.fn().mockImplementation(async (url: string | URL) => {
