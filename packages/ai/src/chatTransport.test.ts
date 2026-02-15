@@ -763,6 +763,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must use http or https protocol");
   });
 
+  it("prioritizes protocol validation over query/hash/credential validation", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "ftp://user:pass@example.com/base?query=1#fragment",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must use http or https protocol");
+  });
+
   it("prioritizes query/hash validation over credential validation", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -3234,6 +3245,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "ftp://example.com/base?query=1",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must use http or https protocol");
+  });
+
+  it("prioritizes protocol validation over query/hash/credential validation in factory", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "ftp://user:pass@example.com/base?query=1#fragment",
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must use http or https protocol");
