@@ -777,6 +777,45 @@ describe("TriggerChatTransport", function () {
     expect(stream).toBeNull();
   });
 
+  it("returns null on repeated inactive cleanup failures without onError callback", async function () {
+    const runStore = new AlwaysFailCleanupDeleteRunStore();
+    runStore.set({
+      chatId: "chat-inactive-delete-always-no-onerror",
+      runId: "run_inactive_delete_always_no_onerror",
+      publicAccessToken: "pk_inactive_delete_always_no_onerror",
+      streamKey: "chat-stream",
+      lastEventId: "10-0",
+      isActive: false,
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      runStore,
+    });
+
+    let fetchCalls = 0;
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      fetchCalls += 1;
+      throw new Error("unexpected reconnect fetch");
+    };
+
+    const firstReconnect = await transport.reconnectToStream({
+      chatId: "chat-inactive-delete-always-no-onerror",
+    });
+    const secondReconnect = await transport.reconnectToStream({
+      chatId: "chat-inactive-delete-always-no-onerror",
+    });
+
+    expect(firstReconnect).toBeNull();
+    expect(secondReconnect).toBeNull();
+    expect(fetchCalls).toBe(0);
+    expect(runStore.get("chat-inactive-delete-always-no-onerror")).toMatchObject({
+      isActive: false,
+    });
+  });
+
   it("returns null when inactive reconnect string cleanup delete fails without onError callback", async function () {
     const runStore = new FailingCleanupDeleteValueRunStore("cleanup delete string failure");
     runStore.set({
