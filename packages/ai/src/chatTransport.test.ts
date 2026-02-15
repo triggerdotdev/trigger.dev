@@ -675,6 +675,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must not include query parameters or hash fragments");
   });
 
+  it("accepts https baseURL values without throwing", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://api.trigger.dev/custom-prefix",
+        stream: "chat-stream",
+      });
+    }).not.toThrow();
+  });
+
   it("accepts uppercase http protocol in baseURL", async function () {
     let observedTriggerPath: string | undefined;
     let observedStreamPath: string | undefined;
@@ -2912,6 +2923,17 @@ describe("TriggerChatTransport", function () {
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must not include query parameters or hash fragments");
+  });
+
+  it("accepts https baseURL values from factory without throwing", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://api.trigger.dev/custom-prefix",
+        stream: "chat-stream",
+      });
+    }).not.toThrow();
   });
 
   it("continues streaming when onTriggeredRun callback throws", async function () {
