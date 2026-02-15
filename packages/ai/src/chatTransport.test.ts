@@ -273,6 +273,74 @@ describe("TriggerChatTransport", function () {
     expect(observedStreamPath).toBe("/realtime/v1/streams/run_trailing_baseurl/chat-stream");
   });
 
+  it("supports baseURL path prefixes for trigger and stream routes", async function () {
+    let observedTriggerPath: string | undefined;
+    let observedStreamPath: string | undefined;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST") {
+        observedTriggerPath = req.url ?? "";
+      }
+
+      if (req.method === "GET") {
+        observedStreamPath = req.url ?? "";
+      }
+
+      if (req.method === "POST" && req.url === "/custom-base/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_path_prefix",
+        });
+        res.end(JSON.stringify({ id: "run_path_prefix" }));
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        req.url === "/custom-base/realtime/v1/streams/run_path_prefix/chat-stream"
+      ) {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "path_prefix_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "path_prefix_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      accessToken: "pk_trigger",
+      baseURL: `${server.url}/custom-base`,
+      stream: "chat-stream",
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-path-prefix",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(observedTriggerPath).toBe("/custom-base/api/v1/tasks/chat-task/trigger");
+    expect(observedStreamPath).toBe("/custom-base/realtime/v1/streams/run_path_prefix/chat-stream");
+  });
+
   it("uses defined stream object id when provided", async function () {
     let observedStreamPath: string | undefined;
 
