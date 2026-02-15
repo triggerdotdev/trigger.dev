@@ -133,6 +133,13 @@ the chat stream is consumed. Callback failures are ignored so chat streaming can
 You can optionally provide `onError` to observe non-fatal transport errors
 (for example callback failures or reconnect setup issues).
 
+The callback receives:
+
+- `phase`: `"onTriggeredRun" | "consumeTrackingStream" | "reconnect"`
+- `chatId`
+- `runId`
+- `error`
+
 ## Reconnect semantics
 
 - `reconnectToStream({ chatId })` resumes only while a stream is still active.
