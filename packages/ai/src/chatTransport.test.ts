@@ -1249,6 +1249,55 @@ describe("TriggerChatTransport", function () {
     expect(runStore.get("chat-stream-subscribe-onerror-failure")).toBeUndefined();
   });
 
+  it("cleans up async run-store state when stream subscription fails", async function () {
+    const runStore = new AsyncTrackedRunStore();
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_stream_subscribe_async_failure",
+        });
+        res.end(JSON.stringify({ id: "run_stream_subscribe_async_failure" }));
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      runStore,
+    });
+
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      throw new Error("stream subscribe async failure");
+    };
+
+    await expect(
+      transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-stream-subscribe-async-failure",
+        messageId: undefined,
+        messages: [],
+        abortSignal: undefined,
+      })
+    ).rejects.toThrowError("stream subscribe async failure");
+
+    expect(runStore.setCalls).toEqual([
+      "chat-stream-subscribe-async-failure",
+      "chat-stream-subscribe-async-failure",
+    ]);
+    expect(runStore.deleteCalls).toEqual(["chat-stream-subscribe-async-failure"]);
+    await expect(
+      runStore.get("chat-stream-subscribe-async-failure")
+    ).resolves.toBeUndefined();
+  });
+
   it("supports creating transport with factory function", async function () {
     let observedRunId: string | undefined;
     let callbackCompleted = false;
