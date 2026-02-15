@@ -18,3 +18,4 @@
 - Added best-effort run-store cleanup so cleanup failures do not mask root transport errors.
 - Improved best-effort run-store cleanup to attempt both inactive-state writes and deletes even if one step fails.
 - Added reconnect cleanup error reporting for stale inactive state while still returning `null`.
+- Added retry semantics for stale inactive reconnect cleanup on subsequent reconnect attempts.

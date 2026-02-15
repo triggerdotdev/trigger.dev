@@ -150,6 +150,7 @@ both cleanup steps (`set` inactive state and `delete`) even if one of them fails
 - Once a stream completes or errors, its run state is cleaned up and reconnect returns `null`.
 - If reconnect finds stale inactive state and run-store cleanup fails, `onError` receives a
   `"reconnect"` phase event and reconnect still returns `null`.
+- If inactive-state cleanup fails, later reconnect calls retry that cleanup until it succeeds.
 - Provide a custom `runStore` if you need state shared across processes/instances.
 
 ## `ai.tool(...)` example
