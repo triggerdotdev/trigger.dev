@@ -90,10 +90,6 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? DEFAULT_STREAM_TIMEOUT_SECONDS;
   }
 
-  private getApiClient(): ApiClient {
-    return new ApiClient(this.baseURL, this.resolveAccessToken());
-  }
-
   /**
    * Sends messages to a Trigger.dev task and returns a streaming response.
    *
@@ -125,8 +121,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     const currentToken = this.resolveAccessToken();
 
-    // Trigger the task
-    const apiClient = this.getApiClient();
+    // Trigger the task — use the already-resolved token directly
+    const apiClient = new ApiClient(this.baseURL, currentToken);
     const triggerResponse = await apiClient.triggerTask(this.taskId, {
       payload: JSON.stringify(payload),
       options: {
