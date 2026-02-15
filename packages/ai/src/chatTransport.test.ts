@@ -1307,6 +1307,58 @@ describe("TriggerChatTransport", function () {
     }
   );
 
+  it("preserves stream subscribe failures when cleanup run-store set throws", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new FailingCleanupSetRunStore(2);
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_stream_subscribe_cleanup_set_failure",
+        });
+        res.end(JSON.stringify({ id: "run_stream_subscribe_cleanup_set_failure" }));
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      throw new Error("stream subscribe root cause");
+    };
+
+    await expect(
+      transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-stream-subscribe-cleanup-set-failure",
+        messageId: undefined,
+        messages: [],
+        abortSignal: undefined,
+      })
+    ).rejects.toThrowError("stream subscribe root cause");
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "streamSubscribe",
+      chatId: "chat-stream-subscribe-cleanup-set-failure",
+      runId: "run_stream_subscribe_cleanup_set_failure",
+    });
+    expect(errors[0]?.error.message).toBe("stream subscribe root cause");
+  });
+
   it("cleans up async run-store state when stream subscription fails", async function () {
     const runStore = new AsyncTrackedRunStore();
 
@@ -1900,6 +1952,46 @@ describe("TriggerChatTransport", function () {
     expect(runStore.get("chat-reconnect-error")).toBeUndefined();
   });
 
+  it("preserves reconnect failures when cleanup run-store set throws", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new FailingCleanupSetRunStore(2);
+    runStore.set({
+      chatId: "chat-reconnect-cleanup-set-failure",
+      runId: "run_reconnect_cleanup_set_failure",
+      publicAccessToken: "pk_reconnect_cleanup_set_failure",
+      streamKey: "chat-stream",
+      lastEventId: "100-0",
+      isActive: true,
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      throw new Error("reconnect root cause");
+    };
+
+    const stream = await transport.reconnectToStream({
+      chatId: "chat-reconnect-cleanup-set-failure",
+    });
+
+    expect(stream).toBeNull();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "reconnect",
+      chatId: "chat-reconnect-cleanup-set-failure",
+      runId: "run_reconnect_cleanup_set_failure",
+    });
+    expect(errors[0]?.error.message).toBe("reconnect root cause");
+  });
+
   it("normalizes non-Error reconnect failures before reporting onError", async function () {
     const errors: TriggerChatTransportError[] = [];
     const runStore = new InMemoryTriggerChatRunStore();
@@ -2374,6 +2466,23 @@ class TrackedRunStore extends InMemoryTriggerChatRunStore {
   public delete(chatId: string): void {
     this.deleteCalls.push(chatId);
     super.delete(chatId);
+  }
+}
+
+class FailingCleanupSetRunStore extends InMemoryTriggerChatRunStore {
+  private setCalls = 0;
+
+  constructor(private readonly failOnSetCall: number) {
+    super();
+  }
+
+  public set(state: TriggerChatRunState): void {
+    this.setCalls += 1;
+    if (this.setCalls === this.failOnSetCall) {
+      throw new Error("cleanup set failed");
+    }
+
+    super.set(state);
   }
 }
 

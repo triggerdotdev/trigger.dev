@@ -235,7 +235,7 @@ export class TriggerChatTransport<
     try {
       stream = await this.fetchRunStream(runState, options.abortSignal);
     } catch (error) {
-      await this.markRunInactiveAndDelete(runState);
+      await this.tryMarkRunInactiveAndDelete(runState);
       await this.reportError({
         phase: "streamSubscribe",
         chatId: runState.chatId,
@@ -266,7 +266,7 @@ export class TriggerChatTransport<
     try {
       stream = await this.fetchRunStream(runState, undefined, runState.lastEventId);
     } catch (error) {
-      await this.markRunInactiveAndDelete(runState);
+      await this.tryMarkRunInactiveAndDelete(runState);
       await this.reportError({
         phase: "reconnect",
         chatId: runState.chatId,
@@ -345,12 +345,12 @@ export class TriggerChatTransport<
 
       const runState = await this.runStore.get(chatId);
       if (runState) {
-        await this.markRunInactiveAndDelete(runState);
+        await this.tryMarkRunInactiveAndDelete(runState);
       }
     } catch (error) {
       const runState = await this.runStore.get(chatId);
       if (runState) {
-        await this.markRunInactiveAndDelete(runState);
+        await this.tryMarkRunInactiveAndDelete(runState);
         await this.reportError({
           phase: "consumeTrackingStream",
           chatId: runState.chatId,
@@ -387,6 +387,14 @@ export class TriggerChatTransport<
       isActive: false,
     });
     await this.runStore.delete(runState.chatId);
+  }
+
+  private async tryMarkRunInactiveAndDelete(runState: TriggerChatRunState) {
+    try {
+      await this.markRunInactiveAndDelete(runState);
+    } catch {
+      // Best effort cleanup only; never mask the original transport failure.
+    }
   }
 
   private async reportError(event: TriggerChatTransportError) {
