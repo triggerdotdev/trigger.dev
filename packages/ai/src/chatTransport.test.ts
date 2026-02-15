@@ -1442,6 +1442,66 @@ describe("TriggerChatTransport", function () {
     expect(errors[0]?.error.message).toBe("callback failed");
   });
 
+  it("does not call onError during successful trigger and stream flows", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_no_error_callback",
+        });
+        res.end(JSON.stringify({ id: "run_no_error_callback" }));
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        req.url === "/realtime/v1/streams/run_no_error_callback/chat-stream"
+      ) {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "no_error_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "no_error_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-no-error-callback",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(errors).toHaveLength(0);
+  });
+
   it("normalizes non-Error onTriggeredRun failures before reporting onError", async function () {
     const errors: TriggerChatTransportError[] = [];
 
