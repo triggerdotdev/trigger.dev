@@ -582,6 +582,49 @@ describe("TriggerChatTransport", function () {
     expect(errors[0]?.error.message).toBe("cleanup delete failed");
   });
 
+  it("does not attempt reconnect stream fetch for inactive run cleanup failures", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new FailingCleanupDeleteRunStore(1);
+    runStore.set({
+      chatId: "chat-inactive-no-fetch",
+      runId: "run_inactive_no_fetch",
+      publicAccessToken: "pk_inactive_no_fetch",
+      streamKey: "chat-stream",
+      lastEventId: "10-0",
+      isActive: false,
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    let fetchAttempted = false;
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      fetchAttempted = true;
+      throw new Error("unexpected reconnect fetch");
+    };
+
+    const stream = await transport.reconnectToStream({
+      chatId: "chat-inactive-no-fetch",
+    });
+
+    expect(stream).toBeNull();
+    expect(fetchAttempted).toBe(false);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "reconnect",
+      chatId: "chat-inactive-no-fetch",
+      runId: "run_inactive_no_fetch",
+    });
+    expect(errors[0]?.error.message).toBe("cleanup delete failed");
+  });
+
   it("retries inactive reconnect cleanup on subsequent reconnect attempts", async function () {
     const errors: TriggerChatTransportError[] = [];
     const runStore = new FailingCleanupDeleteRunStore(1);
