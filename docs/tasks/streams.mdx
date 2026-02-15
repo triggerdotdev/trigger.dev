@@ -648,6 +648,8 @@ class MemoryRunStore implements TriggerChatRunStore {
 
 `reconnectToStream()` only resumes active streams. When a stream completes or errors,
 the transport clears stored run state and future reconnect attempts return `null`.
+If stale inactive reconnect state cannot be cleaned up, reconnect still returns `null` and
+the failure is surfaced through `onError` with phase `reconnect`.
 
 For richer TypeScript ergonomics in app code, `@trigger.dev/ai` also exports:
 
