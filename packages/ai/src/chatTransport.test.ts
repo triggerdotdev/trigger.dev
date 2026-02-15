@@ -152,6 +152,68 @@ describe("TriggerChatTransport", function () {
     expect(observedStreamPath).toBe("/realtime/v1/streams/run_encoded_stream/chat%2Fspecial%20stream");
   });
 
+  it("encodes run IDs in stream URL paths", async function () {
+    let observedStreamPath: string | undefined;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_encoded_run_id",
+        });
+        res.end(JSON.stringify({ id: "run/with space" }));
+        return;
+      }
+
+      if (req.method === "GET") {
+        observedStreamPath = req.url ?? "";
+      }
+
+      if (
+        req.method === "GET" &&
+        req.url === "/realtime/v1/streams/run%2Fwith%20space/chat-stream"
+      ) {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "encoded_run_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "encoded_run_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      stream: "chat-stream",
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-encoded-run-id",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(observedStreamPath).toBe("/realtime/v1/streams/run%2Fwith%20space/chat-stream");
+  });
+
   it("uses defined stream object id when provided", async function () {
     let observedStreamPath: string | undefined;
 
