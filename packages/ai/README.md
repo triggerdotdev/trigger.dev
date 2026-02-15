@@ -195,6 +195,7 @@ Examples:
 - ❌ `\u1680///\u1680` (empty after trimming wrapper whitespace)
 - ❌ `\u2007///\u2007` (empty after trimming wrapper whitespace)
 - ❌ `\u205F///\u205F` (empty after trimming wrapper whitespace)
+- ❌ `\u180E///\u180E` (rejected as internal invisible-separator whitespace)
 - ❌ `\u3000///\u3000` (empty after trimming wrapper whitespace)
 - ❌ `\n\thttps://api.trigger.dev/base/?query=1\t\n` (query is still rejected after trimming wrappers)
 - ❌ `\n\thttps://api.trigger.dev/base/#fragment\t\n` (hash is still rejected after trimming wrappers)

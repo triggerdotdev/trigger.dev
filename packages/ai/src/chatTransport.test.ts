@@ -808,6 +808,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must not be empty");
   });
 
+  it("throws internal-whitespace validation for mongolian-vowel-separator wrapper slashes", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\u180E///\u180E",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
+  });
+
   it("uses default baseURL when omitted", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -3932,6 +3943,17 @@ describe("TriggerChatTransport", function () {
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must not be empty");
+  });
+
+  it("throws internal-whitespace validation from factory for mongolian-vowel-separator wrapper slashes", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\u180E///\u180E",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
   });
 
   it("uses default baseURL in factory when omitted", function () {
