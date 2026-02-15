@@ -11,5 +11,6 @@ Add a new `@trigger.dev/ai` package with:
 - strict `baseURL` normalization/validation (trimming, path-safe slash handling, absolute `http(s)` URLs only, no query/hash/credentials)
 - rejection of internal whitespace characters in normalized `baseURL` values
 - rejection of internal invisible separator characters (e.g. zero-width/BOM characters) in normalized `baseURL` values
+- rejection of invisible separator wrappers around otherwise valid `baseURL` values (for example `\u200B...` and `\u2060...`)
 - deterministic baseURL validation error ordering for multi-issue inputs (internal whitespace → protocol → query/hash → credentials)
 - explicit default `baseURL` behavior (`https://api.trigger.dev`) and case-insensitive `HTTP(S)` protocol acceptance
