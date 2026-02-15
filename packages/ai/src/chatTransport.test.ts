@@ -495,11 +495,15 @@ describe("TriggerChatTransport", function () {
   });
 
   it("returns null on reconnect when no active run exists", async function () {
+    const errors: TriggerChatTransportError[] = [];
     const transport = new TriggerChatTransport({
       task: "chat-task",
       stream: "chat-stream",
       accessToken: "pk_trigger",
       baseURL: "https://api.trigger.dev",
+      onError: function onError(error) {
+        errors.push(error);
+      },
     });
 
     const stream = await transport.reconnectToStream({
@@ -507,9 +511,11 @@ describe("TriggerChatTransport", function () {
     });
 
     expect(stream).toBeNull();
+    expect(errors).toHaveLength(0);
   });
 
   it("removes inactive run entries during reconnect attempts", async function () {
+    const errors: TriggerChatTransportError[] = [];
     const runStore = new TrackedRunStore();
     runStore.set({
       chatId: "chat-inactive",
@@ -525,6 +531,9 @@ describe("TriggerChatTransport", function () {
       stream: "chat-stream",
       accessToken: "pk_trigger",
       runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
     });
 
     const stream = await transport.reconnectToStream({
@@ -532,6 +541,7 @@ describe("TriggerChatTransport", function () {
     });
 
     expect(stream).toBeNull();
+    expect(errors).toHaveLength(0);
     expect(runStore.deleteCalls).toContain("chat-inactive");
     expect(runStore.get("chat-inactive")).toBeUndefined();
   });
