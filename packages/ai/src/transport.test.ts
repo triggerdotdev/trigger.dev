@@ -77,6 +77,19 @@ describe("TriggerChatTransport", () => {
 
       expect(transport).toBeInstanceOf(TriggerChatTransport);
     });
+
+    it("should accept a function for accessToken", () => {
+      let tokenCallCount = 0;
+      const transport = new TriggerChatTransport({
+        taskId: "my-chat-task",
+        accessToken: () => {
+          tokenCallCount++;
+          return `dynamic-token-${tokenCallCount}`;
+        },
+      });
+
+      expect(transport).toBeInstanceOf(TriggerChatTransport);
+    });
   });
 
   describe("sendMessages", () => {
@@ -624,6 +637,78 @@ describe("TriggerChatTransport", () => {
       expect(streamA).toBeInstanceOf(ReadableStream);
       expect(streamB).toBeInstanceOf(ReadableStream);
       expect(streamC).toBeNull();
+    });
+  });
+
+  describe("dynamic accessToken", () => {
+    it("should call the accessToken function for each sendMessages call", async () => {
+      let tokenCallCount = 0;
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/trigger")) {
+          return new Response(
+            JSON.stringify({ id: `run_dyn_${tokenCallCount}` }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "x-trigger-jwt": "stream-token",
+              },
+            }
+          );
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          const chunks: UIMessageChunk[] = [
+            { type: "text-start", id: "p1" },
+            { type: "text-end", id: "p1" },
+          ];
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        taskId: "my-task",
+        accessToken: () => {
+          tokenCallCount++;
+          return `dynamic-token-${tokenCallCount}`;
+        },
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      // First call — the token function should be invoked
+      await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-dyn-1",
+        messageId: undefined,
+        messages: [createUserMessage("first")],
+        abortSignal: undefined,
+      });
+
+      const firstCount = tokenCallCount;
+      expect(firstCount).toBeGreaterThanOrEqual(1);
+
+      // Second call — the token function should be invoked again
+      await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-dyn-2",
+        messageId: undefined,
+        messages: [createUserMessage("second")],
+        abortSignal: undefined,
+      });
+
+      // Token function was called at least once more
+      expect(tokenCallCount).toBeGreaterThan(firstCount);
     });
   });
 

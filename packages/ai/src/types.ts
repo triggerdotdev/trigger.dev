@@ -11,13 +11,21 @@ export type TriggerChatTransportOptions = {
   taskId: string;
 
   /**
-   * A public access token or trigger token for authenticating with the Trigger.dev API.
-   * This is used both to trigger the task and to subscribe to the realtime stream.
+   * An access token for authenticating with the Trigger.dev API.
    *
-   * You can generate one using `auth.createTriggerPublicToken()` or
-   * `auth.createPublicToken()` from the `@trigger.dev/sdk`.
+   * This must be a token with permission to trigger the task. You can use:
+   * - A **trigger public token** created via `auth.createTriggerPublicToken(taskId)` (recommended for frontend use)
+   * - A **secret API key** (for server-side use only — never expose in the browser)
+   *
+   * The token returned from triggering the task (`publicAccessToken`) is automatically
+   * used for subscribing to the realtime stream.
+   *
+   * Can also be a function that returns a token string, useful for dynamic token refresh:
+   * ```ts
+   * accessToken: () => getLatestToken()
+   * ```
    */
-  accessToken: string;
+  accessToken: string | (() => string);
 
   /**
    * Base URL for the Trigger.dev API.

@@ -66,12 +66,11 @@ const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
  */
 export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly taskId: string;
-  private readonly accessToken: string;
+  private readonly resolveAccessToken: () => string;
   private readonly baseURL: string;
   private readonly streamKey: string;
   private readonly extraHeaders: Record<string, string>;
   private readonly streamTimeoutSeconds: number;
-  private readonly apiClient: ApiClient;
 
   /**
    * Tracks active chat sessions for reconnection support.
@@ -81,12 +80,18 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
   constructor(options: TriggerChatTransportOptions) {
     this.taskId = options.taskId;
-    this.accessToken = options.accessToken;
+    this.resolveAccessToken =
+      typeof options.accessToken === "function"
+        ? options.accessToken
+        : () => options.accessToken as string;
     this.baseURL = options.baseURL ?? DEFAULT_BASE_URL;
     this.streamKey = options.streamKey ?? DEFAULT_STREAM_KEY;
     this.extraHeaders = options.headers ?? {};
     this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? DEFAULT_STREAM_TIMEOUT_SECONDS;
-    this.apiClient = new ApiClient(this.baseURL, this.accessToken);
+  }
+
+  private getApiClient(): ApiClient {
+    return new ApiClient(this.baseURL, this.resolveAccessToken());
   }
 
   /**
@@ -118,8 +123,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       ...(body ?? {}),
     };
 
+    const currentToken = this.resolveAccessToken();
+
     // Trigger the task
-    const triggerResponse = await this.apiClient.triggerTask(this.taskId, {
+    const apiClient = this.getApiClient();
+    const triggerResponse = await apiClient.triggerTask(this.taskId, {
       payload: JSON.stringify(payload),
       options: {
         payloadType: "application/json",
@@ -135,11 +143,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // Store session state for reconnection
     this.sessions.set(chatId, {
       runId,
-      publicAccessToken: publicAccessToken ?? this.accessToken,
+      publicAccessToken: publicAccessToken ?? currentToken,
     });
 
     // Subscribe to the realtime stream for this run
-    return this.subscribeToStream(runId, publicAccessToken ?? this.accessToken, abortSignal);
+    return this.subscribeToStream(runId, publicAccessToken ?? currentToken, abortSignal);
   };
 
   /**
