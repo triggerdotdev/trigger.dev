@@ -20,3 +20,4 @@
 - Added reconnect cleanup error reporting for stale inactive state while still returning `null`.
 - Added retry semantics for stale inactive reconnect cleanup on subsequent reconnect attempts.
 - Added consistent baseURL normalization for trigger and stream endpoints (including path prefixes and trailing slashes).
+- Added surrounding-whitespace trimming for `baseURL` before endpoint normalization.

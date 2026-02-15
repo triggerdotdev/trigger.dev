@@ -460,7 +460,7 @@ function resolvePayloadMapper<
 }
 
 function normalizeBaseUrl(baseURL: string) {
-  return baseURL.replace(/\/+$/, "");
+  return baseURL.trim().replace(/\/+$/, "");
 }
 
 function createTransportRequest<UI_MESSAGE extends UIMessage>(
