@@ -13,7 +13,7 @@ export type QueryScope = "environment" | "project" | "organization";
 export type QueryFormat = "json" | "csv";
 
 /**
- * Options for executing a TSQL query
+ * Options for executing a TRQL query
  */
 export type QueryOptions = {
   /**
@@ -55,49 +55,52 @@ export type QueryOptions = {
 };
 
 /**
- * Execute a TSQL query and export as CSV
+ * Execute a TRQL query and get the results as a CSV string.
+ *
+ * @param {string} query - The TRQL query string to execute
+ * @param {QueryOptions & { format: "csv" }} options - Query options with `format: "csv"`
+ * @param {ApiRequestOptions} [requestOptions] - Optional API request configuration
+ * @returns A promise resolving to `{ format: "csv", results: string }` where `results` is the raw CSV text
+ *
+ * @example
+ * ```typescript
+ * const csvResult = await query.execute(
+ *   "SELECT run_id, status, triggered_at FROM runs",
+ *   { format: "csv", period: "7d" }
+ * );
+ * const lines = csvResult.results.split('\n');
+ * ```
  */
 function execute(
-  tsql: string,
+  query: string,
   options: QueryOptions & { format: "csv" },
   requestOptions?: ApiRequestOptions
 ): Promise<{ format: "csv"; results: string }>;
 
 /**
- * Execute a TSQL query and return typed JSON rows
- */
-function execute<TRow extends Record<string, any> = Record<string, any>>(
-  tsql: string,
-  options?: Omit<QueryOptions, "format"> | (QueryOptions & { format?: "json" }),
-  requestOptions?: ApiRequestOptions
-): Promise<{ format: "json"; results: Array<Prettify<TRow>> }>;
-
-/**
- * Execute a TSQL query against your Trigger.dev data
+ * Execute a TRQL query and return typed JSON rows.
  *
- * @template TRow - The shape of each row in the result set (provide for type safety)
- * @param {string} tsql - The TSQL query string to execute
+ * @template TRow - The shape of each row in the result set. Use {@link QueryTable} for type-safe column access (e.g. `QueryTable<"runs", "status" | "run_id">`)
+ * @param {string} query - The TRQL query string to execute
  * @param {QueryOptions} [options] - Optional query configuration
  * @param {ApiRequestOptions} [requestOptions] - Optional API request configuration
- * @returns A promise that resolves with the query results
+ * @returns A promise resolving to `{ format: "json", results: Array<TRow> }`
  *
  * @example
  * ```typescript
  * // Basic query with defaults (environment scope, json format)
  * const result = await query.execute("SELECT run_id, status FROM runs LIMIT 10");
- * console.log(result.format); // "json"
  * console.log(result.results); // Array<Record<string, any>>
  *
- * // Type-safe query with row type
- * type RunRow = { id: string; status: string; duration: number };
- * const typedResult = await query.execute<RunRow>(
+ * // Type-safe query using QueryTable with specific columns
+ * const typedResult = await query.execute<QueryTable<"runs", "run_id" | "status" | "triggered_at">>(
  *   "SELECT run_id, status, triggered_at FROM runs LIMIT 10"
  * );
  * typedResult.results.forEach(row => {
- *   console.log(row.id, row.status); // Fully typed!
+ *   console.log(row.run_id, row.status); // Fully typed!
  * });
  *
- * // Inline type for aggregation query
+ * // Inline type for aggregation queries
  * const stats = await query.execute<{ status: string; count: number }>(
  *   "SELECT status, COUNT(*) as count FROM runs GROUP BY status"
  * );
@@ -105,32 +108,23 @@ function execute<TRow extends Record<string, any> = Record<string, any>>(
  *   console.log(row.status, row.count); // Fully type-safe
  * });
  *
- * // Query with custom period
- * const lastMonth = await query.execute(
+ * // Query with a custom time period
+ * const recent = await query.execute(
  *   "SELECT COUNT(*) as count FROM runs",
  *   { period: "3d" }
  * );
- * console.log(lastMonth.results[0].count); // Type-safe access
- *
- * // Export as CSV - automatically narrowed!
- * const csvResult = await query.execute(
- *   "SELECT * FROM runs",
- *   { format: "csv", period: "1d" }
- * );
- * console.log(csvResult.format); // "csv"
- * const lines = csvResult.results.split('\n'); // ✓ results is string
- *
- * // Discriminated union - can check format at runtime
- * const dynamicResult = await query.execute("SELECT * FROM runs");
- * if (dynamicResult.format === "json") {
- *   dynamicResult.results.forEach(row => console.log(row)); // ✓ Typed as array
- * } else {
- *   console.log(dynamicResult.results.length); // ✓ Typed as string
- * }
+ * console.log(recent.results[0].count);
  * ```
  */
 function execute<TRow extends Record<string, any> = Record<string, any>>(
-  tsql: string,
+  query: string,
+  options?: Omit<QueryOptions, "format"> | (QueryOptions & { format?: "json" }),
+  requestOptions?: ApiRequestOptions
+): Promise<{ format: "json"; results: Array<Prettify<TRow>> }>;
+
+// Implementation
+function execute<TRow extends Record<string, any> = Record<string, any>>(
+  query: string,
   options?: QueryOptions,
   requestOptions?: ApiRequestOptions
 ): Promise<{ format: "json"; results: Array<TRow> } | { format: "csv"; results: string }> {
@@ -144,7 +138,7 @@ function execute<TRow extends Record<string, any> = Record<string, any>>(
       attributes: {
         scope: options?.scope ?? "environment",
         format: options?.format ?? "json",
-        query: tsql,
+        query,
         period: options?.period,
         from: options?.from,
         to: options?.to,
@@ -153,7 +147,7 @@ function execute<TRow extends Record<string, any> = Record<string, any>>(
     requestOptions
   );
 
-  return apiClient.executeQuery(tsql, options, $requestOptions).then((response) => {
+  return apiClient.executeQuery(query, options, $requestOptions).then((response) => {
     return response;
   }) as Promise<{ format: "json"; results: Array<TRow> } | { format: "csv"; results: string }>;
 }
