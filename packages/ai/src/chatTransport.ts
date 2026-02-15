@@ -258,7 +258,16 @@ export class TriggerChatTransport<
     }
 
     if (!runState.isActive) {
-      await this.runStore.delete(options.chatId);
+      try {
+        await this.runStore.delete(options.chatId);
+      } catch (error) {
+        await this.reportError({
+          phase: "reconnect",
+          chatId: runState.chatId,
+          runId: runState.runId,
+          error: normalizeError(error),
+        });
+      }
       return null;
     }
 
