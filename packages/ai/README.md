@@ -184,6 +184,7 @@ Examples:
 - ❌ `https://api.trigger.dev/\ninternal` (internal whitespace characters)
 - ❌ `https://api.trigger.dev/\tinternal` (internal tab characters)
 - ❌ `https://api.trigger.dev/\vinternal` (internal vertical-tab characters)
+- ❌ `https://api.trigger.dev/\finternal` (internal form-feed characters)
 - ❌ `https://api.trigger.dev/\rinternal` (internal carriage-return characters)
 - ❌ `https://api.trigger.dev/\u200Binternal` (internal zero-width-space characters)
 - ❌ `https://api.trigger.dev/\uFEFFinternal` (internal BOM characters)
