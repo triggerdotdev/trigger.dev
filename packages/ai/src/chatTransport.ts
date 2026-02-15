@@ -473,22 +473,32 @@ function normalizeBaseUrl(baseURL: string) {
     throw new Error("baseURL must be a valid absolute URL");
   }
 
+  assertValidBaseUrlProtocol(parsedBaseUrl);
+  assertBaseUrlHasNoQueryOrHash(parsedBaseUrl);
+  assertBaseUrlHasNoCredentials(parsedBaseUrl);
+
+  return normalizedBaseUrl;
+}
+
+function assertValidBaseUrlProtocol(parsedBaseUrl: URL) {
   if (
     parsedBaseUrl.protocol !== "http:" &&
     parsedBaseUrl.protocol !== "https:"
   ) {
     throw new Error("baseURL must use http or https protocol");
   }
+}
 
+function assertBaseUrlHasNoQueryOrHash(parsedBaseUrl: URL) {
   if (parsedBaseUrl.search.length > 0 || parsedBaseUrl.hash.length > 0) {
     throw new Error("baseURL must not include query parameters or hash fragments");
   }
+}
 
+function assertBaseUrlHasNoCredentials(parsedBaseUrl: URL) {
   if (parsedBaseUrl.username.length > 0 || parsedBaseUrl.password.length > 0) {
     throw new Error("baseURL must not include username or password credentials");
   }
-
-  return normalizedBaseUrl;
 }
 
 function createTransportRequest<UI_MESSAGE extends UIMessage>(
