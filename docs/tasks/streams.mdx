@@ -613,6 +613,7 @@ The default payload sent to your task is a rich, typed object that includes:
 - `payloadMapper` (sync or async) for custom task payload shapes
 - `triggerOptions` as an object or resolver function (sync or async)
 - `runStore` for custom reconnect-state persistence (including async stores)
+- `onTriggeredRun` callback (sync or async) to persist or observe run IDs
 
 ```ts
 import type { TriggerChatRunState, TriggerChatRunStore } from "@trigger.dev/ai";
