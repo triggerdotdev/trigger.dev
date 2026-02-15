@@ -178,11 +178,13 @@ Examples:
 - ❌ `https://user:pass@api.trigger.dev` (credentials)
 - ❌ `ftp://api.trigger.dev` (non-http protocol)
 - ❌ `ws://api.trigger.dev` / `wss://api.trigger.dev` (websocket protocols are rejected)
+- ❌ `https://api.trigger.dev/\ninternal` (internal whitespace characters)
 
 Validation errors use these exact messages:
 
 - `baseURL must not be empty`
 - `baseURL must be a valid absolute URL`
+- `baseURL must not contain internal whitespace characters`
 - `baseURL must use http or https protocol`
 - `baseURL must not include query parameters or hash fragments`
 - `baseURL must not include username or password credentials`

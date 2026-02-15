@@ -451,6 +451,7 @@ export function createTriggerChatTransport<
 const BASE_URL_VALIDATION_ERRORS = {
   empty: "baseURL must not be empty",
   invalidAbsoluteUrl: "baseURL must be a valid absolute URL",
+  containsWhitespace: "baseURL must not contain internal whitespace characters",
   invalidProtocol: "baseURL must use http or https protocol",
   queryOrHash: "baseURL must not include query parameters or hash fragments",
   credentials: "baseURL must not include username or password credentials",
@@ -474,6 +475,8 @@ function normalizeBaseUrl(baseURL: string) {
     throw new Error(BASE_URL_VALIDATION_ERRORS.empty);
   }
 
+  assertBaseUrlHasNoInternalWhitespace(normalizedBaseUrl);
+
   let parsedBaseUrl: URL;
   try {
     parsedBaseUrl = new URL(normalizedBaseUrl);
@@ -486,6 +489,12 @@ function normalizeBaseUrl(baseURL: string) {
   assertBaseUrlHasNoCredentials(parsedBaseUrl);
 
   return normalizedBaseUrl;
+}
+
+function assertBaseUrlHasNoInternalWhitespace(baseUrl: string) {
+  if (/\s/.test(baseUrl)) {
+    throw new Error(BASE_URL_VALIDATION_ERRORS.containsWhitespace);
+  }
 }
 
 function assertValidBaseUrlProtocol(parsedBaseUrl: URL) {
