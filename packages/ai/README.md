@@ -173,6 +173,7 @@ Examples:
 - ✅ `https://api.trigger.dev`
 - ✅ `https://api.trigger.dev/custom-prefix`
 - ✅ `  https://api.trigger.dev/custom-prefix///   ` (trimmed + normalized)
+- ✅ `\n\thttps://api.trigger.dev/custom-prefix/\t\n` (newline/tab wrappers trimmed)
 - ✅ `https://api.trigger.dev/custom%20prefix` (percent-encoded whitespace)
 - ✅ `https://api.trigger.dev/custom%3Fprefix%23segment` (percent-encoded `?` / `#`)
 - ✅ `\u00A0https://api.trigger.dev/custom-prefix/\u00A0` (non-breaking-space wrapper trimmed)
