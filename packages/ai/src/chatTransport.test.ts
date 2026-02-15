@@ -3200,6 +3200,17 @@ describe("TriggerChatTransport", function () {
     }).not.toThrow();
   });
 
+  it("accepts uppercase http protocol from factory without throwing", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "HTTP://api.trigger.dev/custom-prefix",
+        stream: "chat-stream",
+      });
+    }).not.toThrow();
+  });
+
   it("continues streaming when onTriggeredRun callback throws", async function () {
     let callbackCalled = false;
     const errors: TriggerChatTransportError[] = [];
