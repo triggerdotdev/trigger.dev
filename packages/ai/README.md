@@ -189,6 +189,11 @@ Validation errors use these exact messages:
 When multiple issues are present, validation order is deterministic:
 protocol → query/hash → credentials.
 
+Examples of ordering:
+
+- `ftp://example.com?x=1` → `baseURL must use http or https protocol`
+- `https://user:pass@example.com?x=1` → `baseURL must not include query parameters or hash fragments`
+
 ## `ai.tool(...)` example
 
 ```ts
