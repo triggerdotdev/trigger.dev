@@ -62,6 +62,12 @@ type TriggerTaskRequestBody = {
   options?: TriggerTaskRequestOptions;
 };
 
+type TriggerChatRequestOptionsWithTupleHeaders = Omit<ChatRequestOptions, "headers"> & {
+  headers?:
+    | ChatRequestOptions["headers"]
+    | Array<[string, string]>;
+};
+
 type TriggerChatTransportCommonOptions<
   UI_MESSAGE extends UIMessage = UIMessage,
 > = {
@@ -158,7 +164,7 @@ export class TriggerChatTransport<
       messageId: string | undefined;
       messages: UI_MESSAGE[];
       abortSignal: AbortSignal | undefined;
-    } & ChatRequestOptions
+    } & TriggerChatRequestOptionsWithTupleHeaders
   ): Promise<ReadableStream<UIMessageChunk>> {
     const transportRequest = createTransportRequest<UI_MESSAGE>(options);
     const payload = await this.payloadMapper(transportRequest);
@@ -342,7 +348,7 @@ function createTransportRequest<UI_MESSAGE extends UIMessage>(
     messageId: string | undefined;
     messages: UI_MESSAGE[];
     abortSignal: AbortSignal | undefined;
-  } & ChatRequestOptions
+  } & TriggerChatRequestOptionsWithTupleHeaders
 ): TriggerChatTransportRequest<UI_MESSAGE> {
   return {
     chatId: options.chatId,

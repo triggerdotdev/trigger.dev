@@ -374,7 +374,7 @@ describe("TriggerChatTransport", function () {
       messageId: undefined,
       messages: [],
       abortSignal: undefined,
-      headers: [["x-tuple-header", "tuple-value"]] as unknown as Record<string, string>,
+      headers: [["x-tuple-header", "tuple-value"]],
     });
 
     const chunks = await readChunks(stream);

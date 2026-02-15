@@ -122,3 +122,15 @@ it("accepts typed stream definition objects", function () {
 
   expectTypeOf(transport).toBeObject();
 });
+
+it("accepts tuple-style headers in sendMessages options", function () {
+  const transport = new TriggerChatTransport({
+    task: "ai-chat",
+    accessToken: "pk_test",
+  });
+
+  type SendMessagesParams = Parameters<typeof transport.sendMessages>[0];
+  const tupleHeaders: SendMessagesParams["headers"] = [["x-header", "x-value"]];
+  expectTypeOf(transport.sendMessages).toBeFunction();
+  void tupleHeaders;
+});
