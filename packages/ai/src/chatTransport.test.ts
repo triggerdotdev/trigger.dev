@@ -625,6 +625,59 @@ describe("TriggerChatTransport", function () {
     expect(errors[0]?.error.message).toBe("cleanup delete failed");
   });
 
+  it("retries inactive cleanup and reports each persistent delete failure", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new AlwaysFailCleanupDeleteRunStore();
+    runStore.set({
+      chatId: "chat-inactive-delete-always-fails",
+      runId: "run_inactive_delete_always_fails",
+      publicAccessToken: "pk_inactive_delete_always_fails",
+      streamKey: "chat-stream",
+      lastEventId: "10-0",
+      isActive: false,
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    let fetchCalls = 0;
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      fetchCalls += 1;
+      throw new Error("unexpected reconnect fetch");
+    };
+
+    const firstReconnect = await transport.reconnectToStream({
+      chatId: "chat-inactive-delete-always-fails",
+    });
+    const secondReconnect = await transport.reconnectToStream({
+      chatId: "chat-inactive-delete-always-fails",
+    });
+
+    expect(firstReconnect).toBeNull();
+    expect(secondReconnect).toBeNull();
+    expect(fetchCalls).toBe(0);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toMatchObject({
+      phase: "reconnect",
+      chatId: "chat-inactive-delete-always-fails",
+      runId: "run_inactive_delete_always_fails",
+    });
+    expect(errors[1]).toMatchObject({
+      phase: "reconnect",
+      chatId: "chat-inactive-delete-always-fails",
+      runId: "run_inactive_delete_always_fails",
+    });
+    expect(errors[0]?.error.message).toBe("cleanup delete always fails");
+    expect(errors[1]?.error.message).toBe("cleanup delete always fails");
+  });
+
   it("retries inactive reconnect cleanup on subsequent reconnect attempts", async function () {
     const errors: TriggerChatTransportError[] = [];
     const runStore = new FailingCleanupDeleteRunStore(1);
@@ -3799,6 +3852,12 @@ class FailingCleanupDeleteValueRunStore extends InMemoryTriggerChatRunStore {
     }
 
     super.delete(chatId);
+  }
+}
+
+class AlwaysFailCleanupDeleteRunStore extends InMemoryTriggerChatRunStore {
+  public delete(_chatId: string): void {
+    throw new Error("cleanup delete always fails");
   }
 }
 
