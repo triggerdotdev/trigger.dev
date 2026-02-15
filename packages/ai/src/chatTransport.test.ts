@@ -2734,6 +2734,17 @@ describe("TriggerChatTransport", function () {
     });
   });
 
+  it("throws from factory when baseURL is empty after trimming", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "   ///   ",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not be empty");
+  });
+
   it("continues streaming when onTriggeredRun callback throws", async function () {
     let callbackCalled = false;
     const errors: TriggerChatTransportError[] = [];
