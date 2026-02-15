@@ -190,6 +190,19 @@ it("accepts custom run store implementations via options typing", function () {
   expectTypeOf(transport).toBeObject();
 });
 
+it("accepts custom onError callbacks via options typing", function () {
+  const transport = new TriggerChatTransport({
+    task: "ai-chat",
+    accessToken: "pk_test",
+    onError: function onError(error) {
+      expectTypeOf(error.chatId).toEqualTypeOf<string>();
+      expectTypeOf(error.runId).toEqualTypeOf<string>();
+    },
+  });
+
+  expectTypeOf(transport).toBeObject();
+});
+
 it("exports typed header normalization helper", function () {
   const normalizedHeaders = normalizeTriggerChatHeaders({
     "x-header": "value",
