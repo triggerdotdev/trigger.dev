@@ -663,6 +663,7 @@ describe("TriggerChatTransport", function () {
     expect(firstReconnect).toBeNull();
     expect(secondReconnect).toBeNull();
     expect(fetchCalls).toBe(0);
+    expect(runStore.deleteCallCount).toBe(2);
     expect(errors).toHaveLength(2);
     expect(errors[0]).toMatchObject({
       phase: "reconnect",
@@ -811,6 +812,7 @@ describe("TriggerChatTransport", function () {
     expect(firstReconnect).toBeNull();
     expect(secondReconnect).toBeNull();
     expect(fetchCalls).toBe(0);
+    expect(runStore.deleteCallCount).toBe(2);
     expect(runStore.get("chat-inactive-delete-always-no-onerror")).toMatchObject({
       isActive: false,
     });
@@ -869,6 +871,7 @@ describe("TriggerChatTransport", function () {
 
     expect(firstReconnect).toBeNull();
     expect(errors).toHaveLength(1);
+    expect(runStore.deleteCallCount).toBe(1);
     expect(errors[0]).toMatchObject({
       phase: "reconnect",
       chatId: "chat-inactive-delete-string-retry",
@@ -884,6 +887,7 @@ describe("TriggerChatTransport", function () {
 
     expect(secondReconnect).toBeNull();
     expect(errors).toHaveLength(1);
+    expect(runStore.deleteCallCount).toBe(2);
     expect(runStore.get("chat-inactive-delete-string-retry")).toBeUndefined();
   });
 
@@ -3934,15 +3938,15 @@ class FailingCleanupDeleteRunStore extends InMemoryTriggerChatRunStore {
 }
 
 class FailingCleanupDeleteValueRunStore extends InMemoryTriggerChatRunStore {
-  private deleteCalls = 0;
+  public deleteCallCount = 0;
 
   constructor(private readonly thrownValue: unknown) {
     super();
   }
 
   public delete(chatId: string): void {
-    this.deleteCalls += 1;
-    if (this.deleteCalls === 1) {
+    this.deleteCallCount += 1;
+    if (this.deleteCallCount === 1) {
       throw this.thrownValue;
     }
 
@@ -3951,7 +3955,10 @@ class FailingCleanupDeleteValueRunStore extends InMemoryTriggerChatRunStore {
 }
 
 class AlwaysFailCleanupDeleteRunStore extends InMemoryTriggerChatRunStore {
+  public deleteCallCount = 0;
+
   public delete(_chatId: string): void {
+    this.deleteCallCount += 1;
     throw new Error("cleanup delete always fails");
   }
 }
