@@ -619,7 +619,7 @@ The default payload sent to your task is a rich, typed object that includes:
 
 `onError` receives phase-aware details (`payloadMapper`, `triggerOptions`, `triggerTask`,
 `onTriggeredRun`, `consumeTrackingStream`, `reconnect`) plus `chatId`, optional `runId`,
-and the underlying `error`.
+and the underlying `error` (non-Error throws are normalized to `Error` instances).
 
 ```ts
 import type { TriggerChatRunState, TriggerChatRunStore } from "@trigger.dev/ai";
