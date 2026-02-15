@@ -192,6 +192,8 @@ Examples:
 - ❌ `ftp://api.trigger.dev` (non-http protocol)
 - ❌ `ws://api.trigger.dev` / `wss://api.trigger.dev` (websocket protocols are rejected)
 - ❌ `\u1680///\u1680` (empty after trimming wrapper whitespace)
+- ❌ `\u2007///\u2007` (empty after trimming wrapper whitespace)
+- ❌ `\u205F///\u205F` (empty after trimming wrapper whitespace)
 - ❌ `\u3000///\u3000` (empty after trimming wrapper whitespace)
 - ❌ `https://api.trigger.dev/\ninternal` (internal whitespace characters)
 - ❌ `https://api.trigger.dev/in valid` (internal space characters)
