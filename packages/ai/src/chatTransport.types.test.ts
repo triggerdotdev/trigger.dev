@@ -4,6 +4,7 @@ import {
   createTriggerChatTransport,
   TriggerChatTransport,
   InMemoryTriggerChatRunStore,
+  normalizeTriggerChatHeaders,
   TriggerChatTransportOptions,
   type TriggerChatOnError,
   type TriggerChatTransportError,
@@ -187,4 +188,12 @@ it("accepts custom run store implementations via options typing", function () {
   });
 
   expectTypeOf(transport).toBeObject();
+});
+
+it("exports typed header normalization helper", function () {
+  const normalizedHeaders = normalizeTriggerChatHeaders({
+    "x-header": "value",
+  });
+
+  expectTypeOf(normalizedHeaders).toEqualTypeOf<Record<string, string> | undefined>();
 });

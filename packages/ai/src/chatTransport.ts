@@ -459,6 +459,18 @@ function normalizeHeaders(
   return result;
 }
 
+/**
+ * Converts supported header input shapes into a normalized plain object.
+ *
+ * @deprecated This helper is primarily exposed for advanced integrations and tests.
+ * Most users should rely on `TriggerChatTransport` internals to normalize request headers.
+ */
+export function normalizeTriggerChatHeaders(
+  headers: TriggerChatHeadersInput | undefined
+): Record<string, string> | undefined {
+  return normalizeHeaders(headers);
+}
+
 function isHeadersInstance(headers: unknown): headers is Headers {
   if (typeof Headers === "undefined") {
     return false;

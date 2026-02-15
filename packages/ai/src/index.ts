@@ -2,6 +2,7 @@ export { ai, type ToolCallExecutionOptions, type ToolOptions } from "./ai.js";
 export {
   createTriggerChatTransport,
   InMemoryTriggerChatRunStore,
+  normalizeTriggerChatHeaders,
   TriggerChatTransport,
   type TriggerChatTransportOptions,
 } from "./chatTransport.js";

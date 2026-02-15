@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   InMemoryTriggerChatRunStore,
   createTriggerChatTransport,
+  normalizeTriggerChatHeaders,
   TriggerChatTransport,
 } from "./chatTransport.js";
 import type { TriggerChatStream } from "./types.js";
@@ -459,6 +460,20 @@ describe("TriggerChatTransport", function () {
         "x-tuple-header": "tuple-value",
       },
       metadata: null,
+    });
+  });
+
+  it("normalizes header helper input values consistently", function () {
+    expect(normalizeTriggerChatHeaders(undefined)).toBeUndefined();
+    expect(
+      normalizeTriggerChatHeaders([["x-array", "array-value"]])
+    ).toEqual({
+      "x-array": "array-value",
+    });
+    expect(
+      normalizeTriggerChatHeaders(new Headers([["x-headers", "headers-value"]]))
+    ).toEqual({
+      "x-headers": "headers-value",
     });
   });
 

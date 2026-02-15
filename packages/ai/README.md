@@ -61,6 +61,7 @@ Typed request option helper aliases are exported:
 - `TriggerChatReconnectOptions`
 - `TriggerChatHeadersInput`
 - `TriggerChatTransportError` / `TriggerChatOnError`
+- `normalizeTriggerChatHeaders(...)`
 
 ```ts
 import type { TriggerChatTransportPayload } from "@trigger.dev/ai";
