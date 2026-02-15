@@ -3,6 +3,7 @@ import type { InferUIMessageChunk, UIMessage } from "ai";
 import {
   createTriggerChatTransport,
   TriggerChatTransport,
+  InMemoryTriggerChatRunStore,
   TriggerChatTransportOptions,
   type TriggerChatOnError,
   type TriggerChatTransportError,
@@ -175,4 +176,15 @@ it("accepts tuple-style headers in sendMessages options", function () {
   expectTypeOf(reconnectOptions).toBeObject();
   expectTypeOf(transport.sendMessages).toBeFunction();
   void tupleHeaders;
+});
+
+it("accepts custom run store implementations via options typing", function () {
+  const runStore = new InMemoryTriggerChatRunStore();
+  const transport = new TriggerChatTransport({
+    task: "ai-chat",
+    accessToken: "pk_test",
+    runStore,
+  });
+
+  expectTypeOf(transport).toBeObject();
 });
