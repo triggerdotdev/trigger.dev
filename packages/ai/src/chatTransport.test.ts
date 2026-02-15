@@ -677,6 +677,71 @@ describe("TriggerChatTransport", function () {
     expect(observedStreamPath).toBe("/trimmed-prefix/realtime/v1/streams/run_trimmed_prefix/chat-stream");
   });
 
+  it("preserves baseURL path prefixes after trimming unicode wrapper whitespace", async function () {
+    let observedTriggerPath: string | undefined;
+    let observedStreamPath: string | undefined;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST") {
+        observedTriggerPath = req.url ?? "";
+      }
+
+      if (req.method === "GET") {
+        observedStreamPath = req.url ?? "";
+      }
+
+      if (req.method === "POST" && req.url === "/unicode-prefix/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_unicode_prefix",
+        });
+        res.end(JSON.stringify({ id: "run_unicode_prefix" }));
+        return;
+      }
+
+      if (req.method === "GET" && req.url === "/unicode-prefix/realtime/v1/streams/run_unicode_prefix/chat-stream") {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "unicode_prefix_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "unicode_prefix_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      accessToken: "pk_trigger",
+      baseURL: `\u3000${server.url}/unicode-prefix///\u3000`,
+      stream: "chat-stream",
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-unicode-prefix-baseurl",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(observedTriggerPath).toBe("/unicode-prefix/api/v1/tasks/chat-task/trigger");
+    expect(observedStreamPath).toBe("/unicode-prefix/realtime/v1/streams/run_unicode_prefix/chat-stream");
+  });
+
   it("throws when baseURL is empty after trimming", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -3700,6 +3765,74 @@ describe("TriggerChatTransport", function () {
       lastEventId: undefined,
       isActive: true,
     });
+  });
+
+  it("supports creating transport with factory function and unicode-wrapped baseURL path prefixes", async function () {
+    let observedTriggerPath: string | undefined;
+    let observedStreamPath: string | undefined;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST") {
+        observedTriggerPath = req.url ?? "";
+      }
+
+      if (req.method === "GET") {
+        observedStreamPath = req.url ?? "";
+      }
+
+      if (req.method === "POST" && req.url === "/factory-unicode-prefix/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_factory_unicode_prefix",
+        });
+        res.end(JSON.stringify({ id: "run_factory_unicode_prefix" }));
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        req.url === "/factory-unicode-prefix/realtime/v1/streams/run_factory_unicode_prefix/chat-stream"
+      ) {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "factory_unicode_prefix_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "factory_unicode_prefix_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = createTriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: `\u3000${server.url}/factory-unicode-prefix///\u3000`,
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-factory-unicode-prefix",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(observedTriggerPath).toBe("/factory-unicode-prefix/api/v1/tasks/chat-task/trigger");
+    expect(observedStreamPath).toBe("/factory-unicode-prefix/realtime/v1/streams/run_factory_unicode_prefix/chat-stream");
   });
 
   it("throws from factory when baseURL is empty after trimming", function () {
