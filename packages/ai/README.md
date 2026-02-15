@@ -241,6 +241,7 @@ Examples of ordering:
 - `https://user:pass@example.com?x=1` → `baseURL must not include query parameters or hash fragments`
 - `ftp://user:pass@example.com/in valid?x=1` → `baseURL must not contain internal whitespace characters`
 - `ftp://user:pass@example.com/\u2060invalid?x=1#fragment` → `baseURL must not contain internal whitespace characters`
+- `ftp://user:pass@example.com/\u180Einvalid?x=1#fragment` → `baseURL must not contain internal whitespace characters`
 
 ## `ai.tool(...)` example
 
