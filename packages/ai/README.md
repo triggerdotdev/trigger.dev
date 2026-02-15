@@ -179,6 +179,7 @@ Examples:
 - ❌ `ftp://api.trigger.dev` (non-http protocol)
 - ❌ `ws://api.trigger.dev` / `wss://api.trigger.dev` (websocket protocols are rejected)
 - ❌ `https://api.trigger.dev/\ninternal` (internal whitespace characters)
+- ❌ `https://api.trigger.dev/\tinternal` (internal tab characters)
 
 Validation errors use these exact messages:
 
