@@ -131,8 +131,8 @@ export class TaskContextMetricExporter implements PushMetricExporter {
 
   export(metrics: ResourceMetrics, resultCallback: (result: ExportResult) => void): void {
     if (!taskContext.ctx) {
-      // No context at all — drop metrics
-      resultCallback({ code: ExportResultCode.SUCCESS });
+      // No task context yet — pass through without adding context attributes
+      this._innerExporter.export(metrics, resultCallback);
       return;
     }
 

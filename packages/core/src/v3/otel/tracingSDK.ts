@@ -308,8 +308,8 @@ export class TracingSDK {
     const metricReaders: MetricReader[] = [
       new PeriodicExportingMetricReader({
         exporter: metricExporter,
-        exportIntervalMillis: Math.max(collectionIntervalMs, exportTimeoutMillis),
-        exportTimeoutMillis,
+        exportIntervalMillis: collectionIntervalMs,
+        exportTimeoutMillis: Math.min(exportTimeoutMillis, collectionIntervalMs),
       }),
       ...(config.metricReaders ?? []),
     ];

@@ -21,6 +21,7 @@ import {
 import type { MetricsV1Input } from "@internal/clickhouse";
 import { logger } from "~/services/logger.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
 import { ClickhouseEventRepository } from "./eventRepository/clickhouseEventRepository.server";
 import {
   clickhouseEventRepository,
@@ -47,6 +48,7 @@ class OTLPExporter {
     private readonly _eventRepository: EventRepository,
     private readonly _clickhouseEventRepository: ClickhouseEventRepository,
     private readonly _clickhouseEventRepositoryV2: ClickhouseEventRepository,
+    private readonly _metricsFlushScheduler: DynamicFlushScheduler<MetricsV1Input>,
     private readonly _verbose: boolean,
     private readonly _spanAttributeValueLengthLimit: number
   ) {
@@ -87,7 +89,7 @@ class OTLPExporter {
       span.setAttribute("metric_row_count", rows.length);
 
       if (rows.length > 0) {
-        await clickhouseClient.metrics.insert(rows);
+        this._metricsFlushScheduler.addToBatch(rows);
       }
 
       return ExportMetricsServiceResponse.create();
@@ -490,7 +492,7 @@ function convertMetricsToClickhouseRows(
       if (metric.gauge) {
         for (const dp of metric.gauge.dataPoints) {
           const value: number =
-            (dp.asDouble ?? 0) !== 0 ? dp.asDouble! : dp.asInt !== BigInt(0) ? Number(dp.asInt) : 0;
+            dp.asDouble !== undefined ? dp.asDouble : dp.asInt !== undefined ? Number(dp.asInt) : 0;
           const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
 
           rows.push({
@@ -515,7 +517,7 @@ function convertMetricsToClickhouseRows(
       if (metric.sum) {
         for (const dp of metric.sum.dataPoints) {
           const value: number =
-            (dp.asDouble ?? 0) !== 0 ? dp.asDouble! : dp.asInt !== BigInt(0) ? Number(dp.asInt) : 0;
+            dp.asDouble !== undefined ? dp.asDouble : dp.asInt !== undefined ? Number(dp.asInt) : 0;
           const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
 
           rows.push({
@@ -1133,10 +1135,22 @@ function hasUnpairedSurrogateAtEnd(str: string): boolean {
 export const otlpExporter = singleton("otlpExporter", initializeOTLPExporter);
 
 function initializeOTLPExporter() {
+  const metricsFlushScheduler = new DynamicFlushScheduler<MetricsV1Input>({
+    batchSize: env.METRICS_CLICKHOUSE_BATCH_SIZE,
+    flushInterval: env.METRICS_CLICKHOUSE_FLUSH_INTERVAL_MS,
+    callback: async (_flushId, batch) => {
+      await clickhouseClient.metrics.insert(batch);
+    },
+    minConcurrency: 1,
+    maxConcurrency: env.METRICS_CLICKHOUSE_MAX_CONCURRENCY,
+    loadSheddingEnabled: false,
+  });
+
   return new OTLPExporter(
     eventRepository,
     clickhouseEventRepository,
     clickhouseEventRepositoryV2,
+    metricsFlushScheduler,
     process.env.OTLP_EXPORTER_VERBOSE === "1",
     process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
       ? parseInt(process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT, 10)

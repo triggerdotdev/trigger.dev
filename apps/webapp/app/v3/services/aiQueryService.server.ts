@@ -453,13 +453,13 @@ Only use explicit \`toStartOfHour\`/\`toStartOfDay\` etc. if the user specifical
 - Filter by metric name: WHERE metric_name = 'process.cpu.utilization'
 - Filter by run: WHERE run_id = 'run_abc123'
 - Filter by task: WHERE task_identifier = 'my-task'
-- Available metric names: process.cpu.utilization, process.cpu.time, process.memory.usage, system.memory.usage, system.memory.utilization, system.network.io, system.network.dropped, system.network.errors
+- Available metric names: process.cpu.utilization, process.cpu.time, process.memory.usage, system.memory.usage, system.memory.utilization, system.network.io, system.network.dropped, system.network.errors, nodejs.event_loop.utilization, nodejs.event_loop.delay.p50, nodejs.event_loop.delay.p99, nodejs.event_loop.delay.max, nodejs.heap.used, nodejs.heap.total
 - Use max_value or last_value for gauges (CPU utilization, memory usage), sum_value for counters (CPU time, network IO)
 - Use prettyFormat(expr, 'bytes') to tell the UI to format values as bytes (e.g., "1.50 GiB") — keeps values numeric for charts
 - Use prettyFormat(expr, 'percent') for percentage values
 - prettyFormat does NOT change the SQL — it only adds a display hint
 - Available format types: bytes, decimalBytes, percent, quantity, duration, durationSeconds, costInDollars
-- For memory metrics, always use prettyFormat with 'bytes'
+- For memory metrics (including nodejs.heap.*), always use prettyFormat with 'bytes'
 - For CPU utilization, consider prettyFormat with 'percent'
 
 \`\`\`sql
@@ -588,9 +588,9 @@ LIMIT 1000
 
 ### Common Metrics Patterns
 - Filter by metric: WHERE metric_name = 'process.cpu.utilization'
-- Available metric names: process.cpu.utilization, process.cpu.time, process.memory.usage, system.memory.usage, system.memory.utilization, system.network.io, system.network.dropped, system.network.errors
+- Available metric names: process.cpu.utilization, process.cpu.time, process.memory.usage, system.memory.usage, system.memory.utilization, system.network.io, system.network.dropped, system.network.errors, nodejs.event_loop.utilization, nodejs.event_loop.delay.p50, nodejs.event_loop.delay.p99, nodejs.event_loop.delay.max, nodejs.heap.used, nodejs.heap.total
 - Use max_value or last_value for gauges (CPU utilization, memory usage), sum_value for counters (CPU time, network IO)
-- Use prettyFormat(expr, 'bytes') for memory metrics, prettyFormat(expr, 'percent') for CPU utilization
+- Use prettyFormat(expr, 'bytes') for memory metrics (including nodejs.heap.*), prettyFormat(expr, 'percent') for CPU utilization
 - prettyFormat does NOT change the SQL — it only adds a display hint for the UI
 
 ## Important Rules

@@ -557,7 +557,7 @@ export const metricsSchema: TableSchema = {
     },
     attempt_number: {
       name: "attempt_number",
-      ...column("String", {
+      ...column("UInt64", {
         description: "The attempt number for this metric",
         example: "1",
       }),

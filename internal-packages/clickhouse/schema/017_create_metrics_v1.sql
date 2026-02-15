@@ -3,16 +3,16 @@ CREATE TABLE IF NOT EXISTS trigger_dev.metrics_v1
 (
   organization_id     LowCardinality(String),
   project_id          LowCardinality(String),
-  environment_id      String,
+  environment_id      String CODEC(ZSTD(1)),
   metric_name         LowCardinality(String),
   metric_type         LowCardinality(String),
-  metric_subject      String,
-  bucket_start        DateTime,
-  count               UInt64 DEFAULT 0,
-  sum_value           Float64 DEFAULT 0,
-  max_value           Float64 DEFAULT 0,
-  min_value           Float64 DEFAULT 0,
-  last_value          Float64 DEFAULT 0,
+  metric_subject      String CODEC(ZSTD(1)),
+  bucket_start        DateTime CODEC(Delta(4), ZSTD(1)),
+  count               UInt64 DEFAULT 0 CODEC(ZSTD(1)),
+  sum_value           Float64 DEFAULT 0 CODEC(ZSTD(1)),
+  max_value           Float64 DEFAULT 0 CODEC(ZSTD(1)),
+  min_value           Float64 DEFAULT 0 CODEC(ZSTD(1)),
+  last_value          Float64 DEFAULT 0 CODEC(ZSTD(1)),
   attributes          JSON(
     `trigger.run_id` String,
     `trigger.task_slug` String,
@@ -29,12 +29,15 @@ CREATE TABLE IF NOT EXISTS trigger_dev.metrics_v1
     `process.cpu.state` LowCardinality(String),
     `network.io.direction` LowCardinality(String),
     max_dynamic_paths=8
-  )
+  ),
+  INDEX idx_run_id attributes.trigger.run_id TYPE bloom_filter(0.001) GRANULARITY 1,
+  INDEX idx_task_slug attributes.trigger.task_slug TYPE bloom_filter(0.001) GRANULARITY 1
 )
 ENGINE = MergeTree()
-PARTITION BY toYYYYMM(bucket_start)
+PARTITION BY toDate(bucket_start)
 ORDER BY (organization_id, project_id, environment_id, metric_name, metric_subject, bucket_start)
-TTL bucket_start + INTERVAL 30 DAY;
+TTL bucket_start + INTERVAL 60 DAY
+SETTINGS ttl_only_drop_parts = 1;
 
 -- +goose Down
 DROP TABLE IF EXISTS trigger_dev.metrics_v1;
