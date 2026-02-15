@@ -1,0 +1,268 @@
+---
+title: "AI Chat with useChat"
+sidebarTitle: "AI Chat (useChat)"
+description: "Run AI SDK chat completions as durable Trigger.dev tasks with built-in realtime streaming."
+---
+
+## Overview
+
+The `@trigger.dev/sdk` provides a custom [ChatTransport](https://sdk.vercel.ai/docs/ai-sdk-ui/transport) for the Vercel AI SDK's `useChat` hook. This lets you run chat completions as **durable Trigger.dev tasks** instead of fragile API routes — with automatic retries, observability, and realtime streaming built in.
+
+**How it works:**
+1. The frontend sends messages via `useChat` → `TriggerChatTransport`
+2. The transport triggers a Trigger.dev task with the conversation as payload
+3. The task streams `UIMessageChunk` events back via Trigger.dev's realtime streams
+4. The AI SDK's `useChat` processes the stream natively — text, tool calls, reasoning, etc.
+
+No custom API routes needed. Your chat backend is a Trigger.dev task.
+
+<Note>
+  Requires `@trigger.dev/sdk` version **4.4.0 or later** and the `ai` package **v5.0.0 or later**.
+</Note>
+
+## Quick start
+
+### 1. Define a chat task
+
+Use `chatTask` from `@trigger.dev/sdk/ai` to define a task that handles chat messages. The payload is automatically typed as `ChatTaskPayload`.
+
+If you return a `StreamTextResult` from `run`, it's **automatically piped** to the frontend.
+
+```ts trigger/chat.ts
+import { chatTask } from "@trigger.dev/sdk/ai";
+import { streamText, convertToModelMessages } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+export const myChat = chatTask({
+  id: "my-chat",
+  run: async ({ messages }) => {
+    // messages is UIMessage[] from the frontend
+    return streamText({
+      model: openai("gpt-4o"),
+      messages: convertToModelMessages(messages),
+    });
+    // Returning a StreamTextResult auto-pipes it to the frontend
+  },
+});
+```
+
+### 2. Generate an access token
+
+On your server (e.g. a Next.js API route or server action), create a trigger public token:
+
+```ts app/actions.ts
+"use server";
+
+import { auth } from "@trigger.dev/sdk";
+
+export async function getChatToken() {
+  return await auth.createTriggerPublicToken("my-chat");
+}
+```
+
+### 3. Use in the frontend
+
+Import `TriggerChatTransport` from `@trigger.dev/sdk/chat` (browser-safe — no server dependencies).
+
+```tsx app/components/chat.tsx
+"use client";
+
+import { useChat } from "@ai-sdk/react";
+import { TriggerChatTransport } from "@trigger.dev/sdk/chat";
+
+export function Chat({ accessToken }: { accessToken: string }) {
+  const { messages, sendMessage, status, error } = useChat({
+    transport: new TriggerChatTransport({
+      task: "my-chat",
+      accessToken,
+    }),
+  });
+
+  return (
+    <div>
+      {messages.map((m) => (
+        <div key={m.id}>
+          <strong>{m.role}:</strong>
+          {m.parts.map((part, i) =>
+            part.type === "text" ? <span key={i}>{part.text}</span> : null
+          )}
+        </div>
+      ))}
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const input = e.currentTarget.querySelector("input");
+          if (input?.value) {
+            sendMessage({ text: input.value });
+            input.value = "";
+          }
+        }}
+      >
+        <input placeholder="Type a message..." />
+        <button type="submit" disabled={status === "streaming"}>
+          Send
+        </button>
+      </form>
+    </div>
+  );
+}
+```
+
+## Backend patterns
+
+### Simple: return a StreamTextResult
+
+The easiest approach — return the `streamText` result from `run` and it's automatically piped to the frontend:
+
+```ts
+import { chatTask } from "@trigger.dev/sdk/ai";
+import { streamText, convertToModelMessages } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+export const simpleChat = chatTask({
+  id: "simple-chat",
+  run: async ({ messages }) => {
+    return streamText({
+      model: openai("gpt-4o"),
+      system: "You are a helpful assistant.",
+      messages: convertToModelMessages(messages),
+    });
+  },
+});
+```
+
+### Complex: use pipeChat() from anywhere
+
+For complex agent flows where `streamText` is called deep inside your code, use `pipeChat()`. It works from **anywhere inside a task** — even nested function calls.
+
+```ts trigger/agent-chat.ts
+import { chatTask, pipeChat } from "@trigger.dev/sdk/ai";
+import { streamText, convertToModelMessages } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+export const agentChat = chatTask({
+  id: "agent-chat",
+  run: async ({ messages }) => {
+    // Don't return anything — pipeChat is called inside
+    await runAgentLoop(convertToModelMessages(messages));
+  },
+});
+
+// This could be deep inside your agent library
+async function runAgentLoop(messages: CoreMessage[]) {
+  // ... agent logic, tool calls, etc.
+
+  const result = streamText({
+    model: openai("gpt-4o"),
+    messages,
+  });
+
+  // Pipe from anywhere — no need to return it
+  await pipeChat(result);
+}
+```
+
+### Manual: use task() with pipeChat()
+
+If you need full control over task options, use the standard `task()` with `ChatTaskPayload` and `pipeChat()`:
+
+```ts
+import { task } from "@trigger.dev/sdk";
+import { pipeChat, type ChatTaskPayload } from "@trigger.dev/sdk/ai";
+import { streamText, convertToModelMessages } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+export const manualChat = task({
+  id: "manual-chat",
+  retry: { maxAttempts: 3 },
+  queue: { concurrencyLimit: 10 },
+  run: async (payload: ChatTaskPayload) => {
+    const result = streamText({
+      model: openai("gpt-4o"),
+      messages: convertToModelMessages(payload.messages),
+    });
+
+    await pipeChat(result);
+  },
+});
+```
+
+## Frontend options
+
+### TriggerChatTransport options
+
+```ts
+new TriggerChatTransport({
+  // Required
+  task: "my-chat",           // Task ID to trigger
+  accessToken: token,         // Trigger public token or secret key
+
+  // Optional
+  baseURL: "https://...",     // Custom API URL (self-hosted)
+  streamKey: "chat",          // Custom stream key (default: "chat")
+  headers: { ... },           // Extra headers for API requests
+  streamTimeoutSeconds: 120,  // Stream timeout (default: 120s)
+});
+```
+
+### Dynamic access tokens
+
+For token refresh patterns, pass a function:
+
+```ts
+new TriggerChatTransport({
+  task: "my-chat",
+  accessToken: () => getLatestToken(), // Called on each sendMessage
+});
+```
+
+### Passing extra data
+
+Use the `body` option on `sendMessage` to pass additional data to the task:
+
+```ts
+sendMessage({
+  text: "Hello",
+}, {
+  body: {
+    systemPrompt: "You are a pirate.",
+    temperature: 0.9,
+  },
+});
+```
+
+The `body` fields are merged into the `ChatTaskPayload` and available in your task's `run` function.
+
+## ChatTaskPayload
+
+The payload sent to the task has this shape:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `messages` | `UIMessage[]` | The conversation history |
+| `chatId` | `string` | Unique chat session ID |
+| `trigger` | `"submit-message" \| "regenerate-message"` | What triggered the request |
+| `messageId` | `string \| undefined` | Message ID to regenerate (if applicable) |
+| `metadata` | `unknown` | Custom metadata from the frontend |
+
+Plus any extra fields from the `body` option.
+
+## Self-hosting
+
+If you're self-hosting Trigger.dev, pass the `baseURL` option:
+
+```ts
+new TriggerChatTransport({
+  task: "my-chat",
+  accessToken,
+  baseURL: "https://your-trigger-instance.com",
+});
+```
+
+## Related
+
+- [Realtime Streams](/tasks/streams) — How streams work under the hood
+- [Using the Vercel AI SDK](/guides/examples/vercel-ai-sdk) — Basic AI SDK usage with Trigger.dev
+- [Realtime React Hooks](/realtime/react-hooks/overview) — Lower-level realtime hooks
+- [Authentication](/realtime/auth) — Public access tokens and trigger tokens
