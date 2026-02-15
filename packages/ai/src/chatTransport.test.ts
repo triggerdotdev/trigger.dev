@@ -464,7 +464,16 @@ describe("TriggerChatTransport", function () {
   });
 
   it("normalizes header helper input values consistently", function () {
+    const originalHeaders = {
+      "x-object": "object-value",
+    };
+    const normalizedObjectHeaders = normalizeTriggerChatHeaders(originalHeaders);
+    originalHeaders["x-object"] = "changed";
+
     expect(normalizeTriggerChatHeaders(undefined)).toBeUndefined();
+    expect(normalizedObjectHeaders).toEqual({
+      "x-object": "object-value",
+    });
     expect(
       normalizeTriggerChatHeaders([["x-array", "array-value"]])
     ).toEqual({
