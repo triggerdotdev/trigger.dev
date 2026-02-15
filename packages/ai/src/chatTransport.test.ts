@@ -883,6 +883,40 @@ describe("TriggerChatTransport", function () {
     expect(errors[0]?.error.message).toBe("trigger options failed");
   });
 
+  it("normalizes non-Error trigger options failures before reporting onError", async function () {
+    const errors: TriggerChatTransportError[] = [];
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      triggerOptions: async function triggerOptions() {
+        throw "string trigger options failure";
+      },
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    await expect(
+      transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-trigger-string-failure",
+        messageId: undefined,
+        messages: [],
+        abortSignal: undefined,
+      })
+    ).rejects.toBe("string trigger options failure");
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "triggerOptions",
+      chatId: "chat-trigger-string-failure",
+      runId: undefined,
+    });
+    expect(errors[0]?.error.message).toBe("string trigger options failure");
+  });
+
   it("reports trigger task request failures through onError", async function () {
     const errors: TriggerChatTransportError[] = [];
     const server = await startServer(function (_req, res) {
