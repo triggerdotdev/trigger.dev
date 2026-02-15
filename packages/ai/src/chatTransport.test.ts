@@ -1301,6 +1301,47 @@ describe("TriggerChatTransport", function () {
     expect(runStore.get("chat-reconnect-error")).toBeUndefined();
   });
 
+  it("normalizes non-Error reconnect failures before reporting onError", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new InMemoryTriggerChatRunStore();
+    runStore.set({
+      chatId: "chat-reconnect-string-failure",
+      runId: "run_reconnect_string_failure",
+      publicAccessToken: "pk_reconnect_string_failure",
+      streamKey: "chat-stream",
+      lastEventId: "100-0",
+      isActive: true,
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      throw "reconnect string failure";
+    };
+
+    const stream = await transport.reconnectToStream({
+      chatId: "chat-reconnect-string-failure",
+    });
+
+    expect(stream).toBeNull();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "reconnect",
+      chatId: "chat-reconnect-string-failure",
+      runId: "run_reconnect_string_failure",
+    });
+    expect(errors[0]?.error.message).toBe("reconnect string failure");
+    expect(runStore.get("chat-reconnect-string-failure")).toBeUndefined();
+  });
+
   it("cleans run store state when stream completes", async function () {
     const trackedRunStore = new TrackedRunStore();
 
