@@ -1406,6 +1406,117 @@ describe("TriggerChatTransport", function () {
     expect(runStore.get("chat-tracking-error")).toBeUndefined();
   });
 
+  it("normalizes non-Error consumeTrackingStream failures before reporting onError", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new TrackedRunStore();
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_tracking_string_error",
+        });
+        res.end(JSON.stringify({ id: "run_tracking_string_error" }));
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      return new ReadableStream({
+        start(controller) {
+          controller.error("tracking string failure");
+        },
+      });
+    };
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-tracking-string-error",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    await expect(readChunks(stream)).rejects.toBe("tracking string failure");
+
+    await waitForCondition(function () {
+      return errors.length === 1;
+    });
+
+    expect(errors[0]).toMatchObject({
+      phase: "consumeTrackingStream",
+      chatId: "chat-tracking-string-error",
+      runId: "run_tracking_string_error",
+    });
+    expect(errors[0]?.error.message).toBe("tracking string failure");
+    expect(runStore.get("chat-tracking-string-error")).toBeUndefined();
+  });
+
+  it("ignores onError callback failures during consumeTrackingStream errors", async function () {
+    const runStore = new TrackedRunStore();
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_tracking_onerror_failure",
+        });
+        res.end(JSON.stringify({ id: "run_tracking_onerror_failure" }));
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      runStore,
+      onError: async function onError() {
+        throw new Error("onError failed");
+      },
+    });
+
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      return new ReadableStream({
+        start(controller) {
+          controller.error(new Error("tracking failed root cause"));
+        },
+      });
+    };
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-tracking-onerror-failure",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    await expect(readChunks(stream)).rejects.toThrowError("tracking failed root cause");
+
+    await waitForCondition(function () {
+      return runStore.get("chat-tracking-onerror-failure") === undefined;
+    });
+  });
+
   it("reports reconnect failures through onError", async function () {
     const errors: TriggerChatTransportError[] = [];
     const runStore = new InMemoryTriggerChatRunStore();
