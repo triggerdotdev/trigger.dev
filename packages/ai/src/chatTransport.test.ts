@@ -544,6 +544,74 @@ describe("TriggerChatTransport", function () {
     expect(observedStreamPath).toBe("/realtime/v1/streams/run_trimmed_baseurl/chat-stream");
   });
 
+  it("trims newline and tab whitespace around baseURL values", async function () {
+    let observedTriggerPath: string | undefined;
+    let observedStreamPath: string | undefined;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST") {
+        observedTriggerPath = req.url ?? "";
+      }
+
+      if (req.method === "GET") {
+        observedStreamPath = req.url ?? "";
+      }
+
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_trimmed_newline_tab_baseurl",
+        });
+        res.end(JSON.stringify({ id: "run_trimmed_newline_tab_baseurl" }));
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        req.url === "/realtime/v1/streams/run_trimmed_newline_tab_baseurl/chat-stream"
+      ) {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "trimmed_newline_tab_baseurl_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "trimmed_newline_tab_baseurl_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      accessToken: "pk_trigger",
+      baseURL: `\n\t${server.url}/\t\n`,
+      stream: "chat-stream",
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-trimmed-newline-tab-baseurl",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(observedTriggerPath).toBe("/api/v1/tasks/chat-task/trigger");
+    expect(observedStreamPath).toBe("/realtime/v1/streams/run_trimmed_newline_tab_baseurl/chat-stream");
+  });
+
   it("preserves baseURL path prefixes after trimming surrounding whitespace", async function () {
     let observedTriggerPath: string | undefined;
     let observedStreamPath: string | undefined;
