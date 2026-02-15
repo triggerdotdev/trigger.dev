@@ -24,7 +24,8 @@
       "./package.json": "./package.json",
       ".": "./src/v3/index.ts",
       "./v3": "./src/v3/index.ts",
-      "./ai": "./src/v3/ai.ts"
+      "./ai": "./src/v3/ai.ts",
+      "./chat": "./src/v3/chat.ts"
     },
     "sourceDialects": [
       "@triggerdotdev/source"
@@ -37,6 +38,9 @@
       ],
       "ai": [
         "dist/commonjs/v3/ai.d.ts"
+      ],
+      "chat": [
+        "dist/commonjs/v3/chat.d.ts"
       ]
     }
   },
@@ -122,6 +126,17 @@
       "require": {
         "types": "./dist/commonjs/v3/ai.d.ts",
         "default": "./dist/commonjs/v3/ai.js"
+      }
+    },
+    "./chat": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/chat.ts",
+        "types": "./dist/esm/v3/chat.d.ts",
+        "default": "./dist/esm/v3/chat.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/chat.d.ts",
+        "default": "./dist/commonjs/v3/chat.js"
       }
     }
   },
