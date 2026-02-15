@@ -622,6 +622,9 @@ The default payload sent to your task is a rich, typed object that includes:
 optional `runId`, and the underlying `error` (non-Error throws are normalized to `Error`
 instances).
 
+Run-store cleanup is handled as best effort, and cleanup failures won't mask the original
+transport failure that triggered `onError`.
+
 ```ts
 import type { TriggerChatRunState, TriggerChatRunStore } from "@trigger.dev/ai";
 

@@ -140,6 +140,9 @@ The callback receives:
 - `runId` (may be `undefined` before a run is created)
 - `error`
 
+Cleanup operations against custom `runStore` implementations are best-effort. If store cleanup
+fails, the original transport error is still preserved and surfaced.
+
 ## Reconnect semantics
 
 - `reconnectToStream({ chatId })` resumes only while a stream is still active.
