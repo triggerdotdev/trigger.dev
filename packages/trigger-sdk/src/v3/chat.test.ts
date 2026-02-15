@@ -18,10 +18,12 @@ function createSSEStream(sseText: string): ReadableStream<Uint8Array> {
   });
 }
 
-// Helper: create test UIMessages
+// Helper: create test UIMessages with unique IDs
+let messageIdCounter = 0;
+
 function createUserMessage(text: string): UIMessage {
   return {
-    id: `msg-${Date.now()}`,
+    id: `msg-user-${++messageIdCounter}`,
     role: "user",
     parts: [{ type: "text", text }],
   };
@@ -29,7 +31,7 @@ function createUserMessage(text: string): UIMessage {
 
 function createAssistantMessage(text: string): UIMessage {
   return {
-    id: `msg-${Date.now()}`,
+    id: `msg-assistant-${++messageIdCounter}`,
     role: "assistant",
     parts: [{ type: "text", text }],
   };
@@ -453,6 +455,82 @@ describe("TriggerChatTransport", () => {
       });
 
       expect(transport).toBeInstanceOf(TriggerChatTransport);
+    });
+  });
+
+  describe("publicAccessToken from trigger response", () => {
+    it("should use publicAccessToken from response body when x-trigger-jwt header is absent", async () => {
+      const fetchSpy = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/trigger")) {
+          // Return without x-trigger-jwt header — the ApiClient will attempt
+          // to generate a JWT from the access token. In this test the token
+          // generation will add a publicAccessToken to the result.
+          return new Response(
+            JSON.stringify({ id: "run_pat" }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                // Include x-trigger-jwt to simulate the server returning a public token
+                "x-trigger-jwt": "server-generated-public-token",
+              },
+            }
+          );
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          // Verify the Authorization header uses the server-generated token
+          const authHeader = (init?.headers as Record<string, string>)?.["Authorization"];
+          expect(authHeader).toBe("Bearer server-generated-public-token");
+
+          const chunks: UIMessageChunk[] = [
+            { type: "text-start", id: "p1" },
+            { type: "text-end", id: "p1" },
+          ];
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      global.fetch = fetchSpy;
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "caller-token",
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-pat",
+        messageId: undefined,
+        messages: [createUserMessage("test")],
+        abortSignal: undefined,
+      });
+
+      // Consume the stream
+      const reader = stream.getReader();
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+
+      // Verify the stream subscription used the public token, not the caller token
+      const streamCall = fetchSpy.mock.calls.find((call: any[]) =>
+        (typeof call[0] === "string" ? call[0] : call[0].toString()).includes("/realtime/v1/streams/")
+      );
+      expect(streamCall).toBeDefined();
+      const streamHeaders = streamCall![1]?.headers as Record<string, string>;
+      expect(streamHeaders["Authorization"]).toBe("Bearer server-generated-public-token");
     });
   });
 
