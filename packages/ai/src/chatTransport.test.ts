@@ -1078,6 +1078,9 @@ describe("TriggerChatTransport", function () {
 
     expect(runStore.setCalls).toContain("chat-async");
     expect(runStore.getCalls).toContain("chat-async");
+    expect(runStore.getCalls.length).toBeGreaterThan(0);
+    expect(runStore.setCalls.length).toBeGreaterThan(0);
+    expect(runStore.deleteCalls.length).toBeGreaterThan(0);
     await expect(runStore.get("chat-async")).resolves.toBeUndefined();
   });
 
