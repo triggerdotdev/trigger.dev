@@ -2936,6 +2936,50 @@ describe("TriggerChatTransport", function () {
     expect(runStore.get("chat-reconnect-cleanup-delete-failure")).toBeUndefined();
   });
 
+  it("returns null when active reconnect cleanup delete fails without onError callback", async function () {
+    const runStore = new FailingCleanupDeleteRunStore(1);
+    let fetchCalls = 0;
+    runStore.set({
+      chatId: "chat-reconnect-cleanup-delete-no-onerror",
+      runId: "run_reconnect_cleanup_delete_no_onerror",
+      publicAccessToken: "pk_reconnect_cleanup_delete_no_onerror",
+      streamKey: "chat-stream",
+      lastEventId: "100-0",
+      isActive: true,
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      runStore,
+    });
+
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      fetchCalls += 1;
+      throw new Error("reconnect root cause");
+    };
+
+    const firstReconnect = await transport.reconnectToStream({
+      chatId: "chat-reconnect-cleanup-delete-no-onerror",
+    });
+
+    expect(firstReconnect).toBeNull();
+    expect(fetchCalls).toBe(1);
+    expect(runStore.get("chat-reconnect-cleanup-delete-no-onerror")).toMatchObject({
+      isActive: false,
+      lastEventId: "100-0",
+    });
+
+    const secondReconnect = await transport.reconnectToStream({
+      chatId: "chat-reconnect-cleanup-delete-no-onerror",
+    });
+
+    expect(secondReconnect).toBeNull();
+    expect(fetchCalls).toBe(1);
+    expect(runStore.get("chat-reconnect-cleanup-delete-no-onerror")).toBeUndefined();
+  });
+
   it("preserves reconnect root failure when cleanup delete throws a non-Error value", async function () {
     const errors: TriggerChatTransportError[] = [];
     const runStore = new FailingCleanupDeleteValueRunStore("cleanup delete string failure");
