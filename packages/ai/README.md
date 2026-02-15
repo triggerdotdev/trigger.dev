@@ -60,6 +60,7 @@ Typed request option helper aliases are exported:
 - `TriggerChatSendMessagesOptions`
 - `TriggerChatReconnectOptions`
 - `TriggerChatHeadersInput`
+- `TriggerChatTransportError` / `TriggerChatOnError`
 
 ```ts
 import type { TriggerChatTransportPayload } from "@trigger.dev/ai";
@@ -127,6 +128,9 @@ class MemoryStore implements TriggerChatRunStore {
 
 `onTriggeredRun` can also be async, which is useful for persisting run IDs before
 the chat stream is consumed. Callback failures are ignored so chat streaming can continue.
+
+You can optionally provide `onError` to observe non-fatal transport errors
+(for example callback failures or reconnect setup issues).
 
 ## Reconnect semantics
 

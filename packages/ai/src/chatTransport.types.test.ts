@@ -4,6 +4,7 @@ import {
   createTriggerChatTransport,
   TriggerChatTransport,
   TriggerChatTransportOptions,
+  type TriggerChatTransportError,
   type TriggerChatHeadersInput,
   type TriggerChatReconnectOptions,
   type TriggerChatSendMessagesOptions,
@@ -86,6 +87,9 @@ it("accepts async payload mappers and trigger option resolvers", function () {
       };
     },
     onTriggeredRun: async function onTriggeredRun(_state) {
+      return;
+    },
+    onError: async function onError(_error: TriggerChatTransportError) {
       return;
     },
   };

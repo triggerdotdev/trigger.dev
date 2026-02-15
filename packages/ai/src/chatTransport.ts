@@ -15,6 +15,7 @@ import type {
 } from "ai";
 import type {
   TriggerChatHeadersInput,
+  TriggerChatOnError,
   TriggerChatReconnectOptions,
   TriggerChatSendMessagesOptions,
   TriggerChatOnTriggeredRun,
@@ -79,6 +80,7 @@ type TriggerChatTransportCommonOptions<
     | TriggerChatTriggerOptionsResolver<UI_MESSAGE>;
   runStore?: TriggerChatRunStore;
   onTriggeredRun?: TriggerChatOnTriggeredRun;
+  onError?: TriggerChatOnError;
 };
 
 type TriggerChatTransportMapperRequirement<
@@ -133,6 +135,7 @@ export class TriggerChatTransport<
   private readonly previewBranch: string | undefined;
   private readonly requestOptions: ApiRequestOptions | undefined;
   private readonly onTriggeredRun: TriggerChatOnTriggeredRun | undefined;
+  private readonly onError: TriggerChatOnError | undefined;
 
   constructor(options: TriggerChatTransportOptions<UI_MESSAGE, PAYLOAD>) {
     this.task = options.task;
@@ -151,6 +154,7 @@ export class TriggerChatTransport<
       this.requestOptions
     );
     this.onTriggeredRun = options.onTriggeredRun;
+    this.onError = options.onError;
   }
 
   public async sendMessages(
@@ -180,7 +184,13 @@ export class TriggerChatTransport<
         await this.onTriggeredRun({
           ...runState,
         });
-      } catch {
+      } catch (error) {
+        await this.reportError({
+          phase: "onTriggeredRun",
+          chatId: runState.chatId,
+          runId: runState.runId,
+          error: normalizeError(error),
+        });
         // Ignore callback errors so chat streaming can continue.
       }
     }
@@ -207,10 +217,16 @@ export class TriggerChatTransport<
     let stream: ReadableStream<SSEStreamPart<InferUIMessageChunk<UI_MESSAGE>>>;
     try {
       stream = await this.fetchRunStream(runState, undefined, runState.lastEventId);
-    } catch {
+    } catch (error) {
       runState.isActive = false;
       await this.runStore.set(runState);
       await this.runStore.delete(options.chatId);
+      await this.reportError({
+        phase: "reconnect",
+        chatId: runState.chatId,
+        runId: runState.runId,
+        error: normalizeError(error),
+      });
       return null;
     }
 
@@ -291,6 +307,12 @@ export class TriggerChatTransport<
         runState.isActive = false;
         await this.runStore.set(runState);
         await this.runStore.delete(chatId);
+        await this.reportError({
+          phase: "consumeTrackingStream",
+          chatId: runState.chatId,
+          runId: runState.runId,
+          error: new Error("Stream tracking failed"),
+        });
       }
     }
   }
@@ -313,6 +335,25 @@ export class TriggerChatTransport<
     const encodedStreamKey = encodeURIComponent(streamKey);
 
     return `${normalizedBaseUrl}/realtime/v1/streams/${encodedRunId}/${encodedStreamKey}`;
+  }
+
+  private async reportError(
+    event: {
+      phase: "onTriggeredRun" | "consumeTrackingStream" | "reconnect";
+      chatId: string;
+      runId: string;
+      error: Error;
+    }
+  ) {
+    if (!this.onError) {
+      return;
+    }
+
+    try {
+      await this.onError(event);
+    } catch {
+      // Never let error callbacks interfere with transport behavior.
+    }
   }
 }
 
@@ -469,3 +510,11 @@ async function createTriggerTaskOptions(
 }
 
 export type { TriggerChatTaskContext };
+
+function normalizeError(error: unknown): Error {
+  if (error instanceof Error) {
+    return error;
+  }
+
+  return new Error(String(error));
+}

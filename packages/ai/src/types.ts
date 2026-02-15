@@ -70,6 +70,22 @@ export type TriggerChatOnTriggeredRun = (
   state: TriggerChatRunState
 ) => MaybePromise<void>;
 
+export type TriggerChatTransportErrorPhase =
+  | "onTriggeredRun"
+  | "consumeTrackingStream"
+  | "reconnect";
+
+export type TriggerChatTransportError = {
+  phase: TriggerChatTransportErrorPhase;
+  chatId: string;
+  runId: string;
+  error: Error;
+};
+
+export type TriggerChatOnError = (
+  error: TriggerChatTransportError
+) => MaybePromise<void>;
+
 export type TriggerChatStream<
   UI_MESSAGE extends UIMessage = UIMessage,
 > =

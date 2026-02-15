@@ -9,6 +9,7 @@ import {
 import type { TriggerChatStream } from "./types.js";
 import type { UIMessage, UIMessageChunk } from "ai";
 import type {
+  TriggerChatTransportError,
   TriggerChatRunState,
   TriggerChatRunStore,
 } from "./types.js";
@@ -864,6 +865,7 @@ describe("TriggerChatTransport", function () {
 
   it("continues streaming when onTriggeredRun callback throws", async function () {
     let callbackCalled = false;
+    const errors: TriggerChatTransportError[] = [];
 
     const server = await startServer(function (req, res) {
       if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
@@ -909,6 +911,9 @@ describe("TriggerChatTransport", function () {
         callbackCalled = true;
         throw new Error("callback failed");
       },
+      onError: function onError(error) {
+        errors.push(error);
+      },
     });
 
     const stream = await transport.sendMessages({
@@ -921,6 +926,71 @@ describe("TriggerChatTransport", function () {
 
     const chunks = await readChunks(stream);
     expect(callbackCalled).toBe(true);
+    expect(chunks).toHaveLength(2);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "onTriggeredRun",
+      chatId: "chat-callback-error",
+      runId: "run_callback_error",
+    });
+    expect(errors[0]?.error.message).toBe("callback failed");
+  });
+
+  it("ignores failures from onError callback", async function () {
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_onerror_fail",
+        });
+        res.end(JSON.stringify({ id: "run_onerror_fail" }));
+        return;
+      }
+
+      if (req.method === "GET" && req.url === "/realtime/v1/streams/run_onerror_fail/chat-stream") {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "onerror_fail_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "onerror_fail_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      onTriggeredRun: async function onTriggeredRun() {
+        throw new Error("callback failed");
+      },
+      onError: async function onError() {
+        throw new Error("onError failed");
+      },
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-onerror-fail",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
     expect(chunks).toHaveLength(2);
   });
 
