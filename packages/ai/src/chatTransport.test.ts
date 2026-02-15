@@ -2349,6 +2349,8 @@ describe("TriggerChatTransport", function () {
       runId: "run_tracking_cleanup_set_failure",
     });
     expect(errors[0]?.error.message).toBe("tracking failed root cause");
+    expect(runStore.deleteCalls).toContain("chat-tracking-cleanup-set-failure");
+    expect(runStore.get("chat-tracking-cleanup-set-failure")).toBeUndefined();
   });
 
   it("preserves consumeTrackingStream failures when cleanup run-store delete throws", async function () {
@@ -2605,6 +2607,8 @@ describe("TriggerChatTransport", function () {
       runId: "run_reconnect_cleanup_set_failure",
     });
     expect(errors[0]?.error.message).toBe("reconnect root cause");
+    expect(runStore.deleteCalls).toContain("chat-reconnect-cleanup-set-failure");
+    expect(runStore.get("chat-reconnect-cleanup-set-failure")).toBeUndefined();
   });
 
   it("preserves reconnect failures when cleanup run-store delete throws", async function () {
