@@ -1,44 +1,62 @@
 import { logger, query, task } from "@trigger.dev/sdk";
 import type { QueryTable } from "@trigger.dev/sdk";
 
-// Simple query example - just the query string, all defaults
+// Simple query example - tests different from/to formats
 export const simpleQueryTask = task({
   id: "simple-query",
   run: async () => {
     logger.info("Running simple query example");
 
-    // Simplest usage - uses environment scope, json format, default period
-    const result = await query.execute("SELECT * FROM runs LIMIT 10");
-
-    logger.info("Query results (untyped)", {
-      format: result.format,
-      rowCount: result.results.length,
-      firstRow: result.results[0],
+    // 1. Default: no from/to, uses default period
+    const defaultResult = await query.execute("SELECT * FROM runs LIMIT 5");
+    logger.info("Default (no from/to)", {
+      rowCount: defaultResult.results.length,
+      firstRow: defaultResult.results[0],
     });
 
-    // Type-safe query using QueryTable with specific columns
-    const typedResult = await query.execute<
-      QueryTable<"runs", "run_id" | "status" | "triggered_at" | "total_duration">
-    >("SELECT run_id, status, triggered_at, total_duration FROM runs LIMIT 10");
-
-    logger.info("Query results (typed)", {
-      format: typedResult.format,
-      rowCount: typedResult.results.length,
-      firstRow: typedResult.results[0],
+    // 2. Using Date objects for from/to
+    const withDates = await query.execute<
+      QueryTable<"runs", "run_id" | "status" | "triggered_at">
+    >("SELECT run_id, status, triggered_at FROM runs LIMIT 5", {
+      from: new Date("2025-01-01T00:00:00Z"),
+      to: new Date(),
+    });
+    logger.info("With Date objects", {
+      rowCount: withDates.results.length,
+      firstRow: withDates.results[0],
     });
 
-    // Full type safety on the rows - status is narrowly typed!
-    typedResult.results.forEach((row, index) => {
-      logger.info(`Run ${index + 1}`, {
-        run_id: row.run_id, // string
-        status: row.status, // RunFriendlyStatus ("Completed" | "Failed" | ...)
-        total_duration: row.total_duration, // number | null
-      });
+    // 3. Using Unix timestamps in milliseconds (Date.now() returns ms)
+    const now = Date.now();
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+    const withTimestamps = await query.execute<
+      QueryTable<"runs", "run_id" | "status" | "triggered_at">
+    >("SELECT run_id, status, triggered_at FROM runs LIMIT 5", {
+      from: sevenDaysAgo,
+      to: now,
+    });
+    logger.info("With Unix timestamps (ms)", {
+      rowCount: withTimestamps.results.length,
+      firstRow: withTimestamps.results[0],
+    });
+
+    // 4. Mixing Date and number
+    const mixed = await query.execute<
+      QueryTable<"runs", "run_id" | "status" | "triggered_at">
+    >("SELECT run_id, status, triggered_at FROM runs LIMIT 5", {
+      from: new Date("2025-01-01"),
+      to: Date.now(),
+    });
+    logger.info("Mixed Date + timestamp", {
+      rowCount: mixed.results.length,
+      firstRow: mixed.results[0],
     });
 
     return {
-      totalRows: typedResult.results.length,
-      rows: typedResult.results,
+      defaultRows: defaultResult.results.length,
+      dateRows: withDates.results.length,
+      timestampRows: withTimestamps.results.length,
+      mixedRows: mixed.results.length,
     };
   },
 });
@@ -136,8 +154,8 @@ export const orgQueryTask = task({
       LIMIT 50`,
       {
         scope: "organization", // Query across all projects
-        from: "2025-02-01T00:00:00Z", // Custom date range
-        to: "2025-02-11T23:59:59Z",
+        from: new Date("2025-02-01T00:00:00Z"), // Custom date range
+        to: new Date("2025-02-11T23:59:59Z"),
       }
     );
 

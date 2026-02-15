@@ -33,16 +33,16 @@ export type QueryOptions = {
   period?: string;
 
   /**
-   * Start of time range (ISO 8601 timestamp)
-   * Must be used with `to`
+   * Start of time range as a Date object or Unix timestamp in milliseconds.
+   * Must be used with `to`.
    */
-  from?: string;
+  from?: Date | number;
 
   /**
-   * End of time range (ISO 8601 timestamp)
-   * Must be used with `from`
+   * End of time range as a Date object or Unix timestamp in milliseconds.
+   * Must be used with `from`.
    */
-  to?: string;
+  to?: Date | number;
 
   /**
    * Response format
@@ -130,6 +130,9 @@ function execute<TRow extends Record<string, any> = Record<string, any>>(
 ): Promise<{ format: "json"; results: Array<TRow> } | { format: "csv"; results: string }> {
   const apiClient = apiClientManager.clientOrThrow();
 
+  const from = dateToISOString(options?.from);
+  const to = dateToISOString(options?.to);
+
   const $requestOptions = mergeRequestOptions(
     {
       tracer,
@@ -140,16 +143,40 @@ function execute<TRow extends Record<string, any> = Record<string, any>>(
         format: options?.format ?? "json",
         query,
         period: options?.period,
-        from: options?.from,
-        to: options?.to,
+        from,
+        to,
       },
     },
     requestOptions
   );
 
-  return apiClient.executeQuery(query, options, $requestOptions).then((response) => {
-    return response;
-  }) as Promise<{ format: "json"; results: Array<TRow> } | { format: "csv"; results: string }>;
+  return apiClient
+    .executeQuery(
+      query,
+      {
+        scope: options?.scope,
+        period: options?.period,
+        from,
+        to,
+        format: options?.format,
+      },
+      $requestOptions
+    )
+    .then((response) => {
+      return response;
+    }) as Promise<{ format: "json"; results: Array<TRow> } | { format: "csv"; results: string }>;
+}
+
+function dateToISOString(date: Date | number | undefined): string | undefined {
+  if (date === undefined) {
+    return undefined;
+  }
+
+  if (date instanceof Date) {
+    return date.toISOString();
+  }
+
+  return new Date(date).toISOString();
 }
 
 export const query = {
