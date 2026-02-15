@@ -457,6 +457,8 @@ const BASE_URL_VALIDATION_ERRORS = {
   credentials: "baseURL must not include username or password credentials",
 } as const;
 
+const INTERNAL_WHITESPACE_REGEX = /\s/;
+
 function resolvePayloadMapper<
   UI_MESSAGE extends UIMessage,
   PAYLOAD,
@@ -492,7 +494,7 @@ function normalizeBaseUrl(baseURL: string) {
 }
 
 function assertBaseUrlHasNoInternalWhitespace(baseUrl: string) {
-  if (/\s/.test(baseUrl)) {
+  if (INTERNAL_WHITESPACE_REGEX.test(baseUrl)) {
     throw new Error(BASE_URL_VALIDATION_ERRORS.containsWhitespace);
   }
 }
