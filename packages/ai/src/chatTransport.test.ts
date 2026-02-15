@@ -2787,6 +2787,7 @@ describe("TriggerChatTransport", function () {
   it("preserves reconnect failures when cleanup run-store delete throws", async function () {
     const errors: TriggerChatTransportError[] = [];
     const runStore = new FailingCleanupDeleteRunStore(1);
+    let fetchCalls = 0;
     runStore.set({
       chatId: "chat-reconnect-cleanup-delete-failure",
       runId: "run_reconnect_cleanup_delete_failure",
@@ -2807,6 +2808,7 @@ describe("TriggerChatTransport", function () {
     });
 
     (transport as any).fetchRunStream = async function fetchRunStream() {
+      fetchCalls += 1;
       throw new Error("reconnect root cause");
     };
 
@@ -2822,6 +2824,20 @@ describe("TriggerChatTransport", function () {
       runId: "run_reconnect_cleanup_delete_failure",
     });
     expect(errors[0]?.error.message).toBe("reconnect root cause");
+    expect(fetchCalls).toBe(1);
+    expect(runStore.get("chat-reconnect-cleanup-delete-failure")).toMatchObject({
+      isActive: false,
+      lastEventId: "100-0",
+    });
+
+    const secondReconnect = await transport.reconnectToStream({
+      chatId: "chat-reconnect-cleanup-delete-failure",
+    });
+
+    expect(secondReconnect).toBeNull();
+    expect(fetchCalls).toBe(1);
+    expect(errors).toHaveLength(1);
+    expect(runStore.get("chat-reconnect-cleanup-delete-failure")).toBeUndefined();
   });
 
   it("attempts both reconnect cleanup steps when set and delete both throw", async function () {
