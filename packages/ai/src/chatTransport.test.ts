@@ -831,6 +831,44 @@ describe("TriggerChatTransport", function () {
     expect(errors[0]?.error.message).toBe("cleanup delete string failure");
   });
 
+  it("normalizes object inactive reconnect cleanup delete failures through onError", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new FailingCleanupDeleteValueRunStore({
+      reason: "cleanup delete object failure",
+    });
+    runStore.set({
+      chatId: "chat-inactive-delete-object-failure",
+      runId: "run_inactive_delete_object_failure",
+      publicAccessToken: "pk_inactive_delete_object_failure",
+      streamKey: "chat-stream",
+      lastEventId: "10-0",
+      isActive: false,
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    const stream = await transport.reconnectToStream({
+      chatId: "chat-inactive-delete-object-failure",
+    });
+
+    expect(stream).toBeNull();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "reconnect",
+      chatId: "chat-inactive-delete-object-failure",
+      runId: "run_inactive_delete_object_failure",
+    });
+    expect(errors[0]?.error.message).toBe("[object Object]");
+  });
+
   it("returns null when inactive reconnect string cleanup delete and onError both fail", async function () {
     const runStore = new FailingCleanupDeleteValueRunStore("cleanup delete string failure");
     runStore.set({
