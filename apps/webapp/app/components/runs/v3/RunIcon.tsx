@@ -48,8 +48,6 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     ) {
       return <TablerIcon name={spanNameIcon.iconName} className={className} />;
     }
-
-    <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
   }
 
   if (!name) return <Squares2X2Icon className={cn(className, "text-text-dimmed")} />;
