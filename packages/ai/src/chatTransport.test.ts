@@ -642,6 +642,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must be a valid absolute URL");
   });
 
+  it("throws when baseURL protocol is not http or https", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "ftp://example.com",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must use http or https protocol");
+  });
+
   it("combines path prefixes with run and stream URL encoding", async function () {
     let observedTriggerPath: string | undefined;
     let observedStreamPath: string | undefined;
@@ -2776,6 +2787,17 @@ describe("TriggerChatTransport", function () {
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must be a valid absolute URL");
+  });
+
+  it("throws from factory when baseURL protocol is not http or https", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "ftp://example.com",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must use http or https protocol");
   });
 
   it("continues streaming when onTriggeredRun callback throws", async function () {

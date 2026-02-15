@@ -466,10 +466,18 @@ function normalizeBaseUrl(baseURL: string) {
     throw new Error("baseURL must not be empty");
   }
 
+  let parsedBaseUrl: URL;
   try {
-    new URL(normalizedBaseUrl);
+    parsedBaseUrl = new URL(normalizedBaseUrl);
   } catch {
     throw new Error("baseURL must be a valid absolute URL");
+  }
+
+  if (
+    parsedBaseUrl.protocol !== "http:" &&
+    parsedBaseUrl.protocol !== "https:"
+  ) {
+    throw new Error("baseURL must use http or https protocol");
   }
 
   return normalizedBaseUrl;

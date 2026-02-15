@@ -23,3 +23,4 @@
 - Added surrounding-whitespace trimming for `baseURL` before endpoint normalization.
 - Added explicit validation that `baseURL` is non-empty after normalization.
 - Added explicit validation that `baseURL` is a valid absolute URL.
+- Added explicit validation that `baseURL` uses `http` or `https`.

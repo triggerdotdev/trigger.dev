@@ -162,6 +162,7 @@ both cleanup steps (`set` inactive state and `delete`) even if one of them fails
 - Surrounding whitespace is trimmed before normalization.
 - `baseURL` must not be empty after trimming/normalization.
 - `baseURL` must be a valid absolute URL.
+- `baseURL` must use the `http` or `https` protocol.
 
 ## `ai.tool(...)` example
 
