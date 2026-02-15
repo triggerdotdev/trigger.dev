@@ -8,7 +8,7 @@ export type TriggerChatTransportOptions = {
    * The Trigger.dev task ID to trigger for chat completions.
    * This task will receive the chat messages as its payload.
    */
-  taskId: string;
+  task: string;
 
   /**
    * An access token for authenticating with the Trigger.dev API.
@@ -36,8 +36,8 @@ export type TriggerChatTransportOptions = {
 
   /**
    * The stream key where the task pipes UIMessageChunk data.
-   * Your task must pipe the AI SDK stream to this same key using
-   * `streams.pipe(streamKey, result.toUIMessageStream())`.
+   * When using `chatTask()` or `pipeChat()`, this is handled automatically.
+   * Only set this if you're using a custom stream key.
    *
    * @default "chat"
    */
@@ -59,15 +59,16 @@ export type TriggerChatTransportOptions = {
 };
 
 /**
- * The payload shape that TriggerChatTransport sends to the triggered task.
+ * The payload shape that the transport sends to the triggered task.
  *
- * Use this type to type your task's `run` function payload:
+ * When using `chatTask()`, the payload is automatically typed — you don't need
+ * to import this type. When using `task()` directly, use this type to annotate
+ * your payload:
  *
  * @example
  * ```ts
- * import { task, streams } from "@trigger.dev/sdk";
- * import { streamText, convertToModelMessages } from "ai";
- * import type { ChatTaskPayload } from "@trigger.dev/ai";
+ * import { task } from "@trigger.dev/sdk";
+ * import { pipeChat, type ChatTaskPayload } from "@trigger.dev/ai";
  *
  * export const myChatTask = task({
  *   id: "my-chat-task",
@@ -76,9 +77,7 @@ export type TriggerChatTransportOptions = {
  *       model: openai("gpt-4o"),
  *       messages: convertToModelMessages(payload.messages),
  *     });
- *
- *     const { waitUntilComplete } = streams.pipe("chat", result.toUIMessageStream());
- *     await waitUntilComplete();
+ *     await pipeChat(result);
  *   },
  * });
  * ```
@@ -110,6 +109,7 @@ export type ChatTaskPayload<TMessage extends UIMessage = UIMessage> = {
 
 /**
  * Internal state for tracking active chat sessions, used for stream reconnection.
+ * @internal
  */
 export type ChatSessionState = {
   runId: string;
