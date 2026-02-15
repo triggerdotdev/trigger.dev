@@ -389,10 +389,22 @@ function resolveStreamKey<UI_MESSAGE extends UIMessage>(
 }
 
 function normalizeHeaders(
-  headers: Record<string, string> | Headers | undefined
+  headers:
+    | Record<string, string>
+    | Headers
+    | Array<[string, string]>
+    | undefined
 ): Record<string, string> | undefined {
   if (!headers) {
     return undefined;
+  }
+
+  if (Array.isArray(headers)) {
+    const result: Record<string, string> = {};
+    for (const [key, value] of headers) {
+      result[key] = value;
+    }
+    return result;
   }
 
   if (isHeadersInstance(headers)) {

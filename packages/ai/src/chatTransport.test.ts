@@ -323,6 +323,74 @@ describe("TriggerChatTransport", function () {
     });
   });
 
+  it("normalizes tuple header arrays into request headers", async function () {
+    let receivedTriggerBody: Record<string, unknown> | undefined;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        readJsonBody(req).then(function (body) {
+          receivedTriggerBody = body;
+          res.writeHead(200, {
+            "content-type": "application/json",
+            "x-trigger-jwt": "pk_run_tuple_headers",
+          });
+          res.end(JSON.stringify({ id: "run_tuple_headers" }));
+        });
+        return;
+      }
+
+      if (req.method === "GET" && req.url === "/realtime/v1/streams/run_tuple_headers/chat-stream") {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "tuple_headers_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "tuple_headers_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-tuple-headers",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+      headers: [["x-tuple-header", "tuple-value"]] as unknown as Record<string, string>,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+
+    const payloadString = receivedTriggerBody?.payload as string;
+    const payload = (JSON.parse(payloadString) as { json: Record<string, unknown> }).json;
+    expect(payload.request).toEqual({
+      body: null,
+      headers: {
+        "x-tuple-header": "tuple-value",
+      },
+      metadata: null,
+    });
+  });
+
   it("returns null on reconnect when no active run exists", async function () {
     const transport = new TriggerChatTransport({
       task: "chat-task",
