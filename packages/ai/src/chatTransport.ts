@@ -24,6 +24,7 @@ import type {
   TriggerChatRunStore,
   TriggerChatStream,
   TriggerChatTaskContext,
+  TriggerChatTransportError,
   TriggerChatTransportPayload,
   TriggerChatTransportRequest,
   TriggerChatTriggerOptionsResolver,
@@ -372,20 +373,7 @@ export class TriggerChatTransport<
     return `${normalizedBaseUrl}/realtime/v1/streams/${encodedRunId}/${encodedStreamKey}`;
   }
 
-  private async reportError(
-    event: {
-      phase:
-        | "payloadMapper"
-        | "triggerOptions"
-        | "triggerTask"
-        | "onTriggeredRun"
-        | "consumeTrackingStream"
-        | "reconnect";
-      chatId: string;
-      runId: string | undefined;
-      error: Error;
-    }
-  ) {
+  private async reportError(event: TriggerChatTransportError) {
     if (!this.onError) {
       return;
     }
