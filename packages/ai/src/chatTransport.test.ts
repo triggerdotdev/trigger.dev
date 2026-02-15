@@ -1413,6 +1413,59 @@ describe("TriggerChatTransport", function () {
     expect(errors[0]?.error.message).toBe("stream subscribe root cause");
   });
 
+  it("attempts both cleanup steps when set and delete both throw", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new FailingCleanupSetAndDeleteRunStore();
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_stream_subscribe_cleanup_both_failure",
+        });
+        res.end(JSON.stringify({ id: "run_stream_subscribe_cleanup_both_failure" }));
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      throw new Error("stream subscribe root cause");
+    };
+
+    await expect(
+      transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-stream-subscribe-cleanup-both-failure",
+        messageId: undefined,
+        messages: [],
+        abortSignal: undefined,
+      })
+    ).rejects.toThrowError("stream subscribe root cause");
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "streamSubscribe",
+      chatId: "chat-stream-subscribe-cleanup-both-failure",
+      runId: "run_stream_subscribe_cleanup_both_failure",
+    });
+    expect(runStore.setCalls).toContain("chat-stream-subscribe-cleanup-both-failure");
+    expect(runStore.deleteCalls).toContain("chat-stream-subscribe-cleanup-both-failure");
+  });
+
   it(
     "preserves stream subscribe root failures when cleanup and onError callbacks both fail",
     async function () {
@@ -2985,6 +3038,31 @@ class FailingCleanupDeleteRunStore extends InMemoryTriggerChatRunStore {
     }
 
     super.delete(chatId);
+  }
+}
+
+class FailingCleanupSetAndDeleteRunStore extends InMemoryTriggerChatRunStore {
+  private setCallCount = 0;
+  public readonly setCalls: string[] = [];
+  public readonly deleteCalls: string[] = [];
+
+  constructor(private readonly failOnSetCall: number = 2) {
+    super();
+  }
+
+  public set(state: TriggerChatRunState): void {
+    this.setCallCount += 1;
+    this.setCalls.push(state.chatId);
+    if (this.setCallCount === this.failOnSetCall) {
+      throw new Error("cleanup set failed");
+    }
+
+    super.set(state);
+  }
+
+  public delete(chatId: string): void {
+    this.deleteCalls.push(chatId);
+    throw new Error("cleanup delete failed");
   }
 }
 
