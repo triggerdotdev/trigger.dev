@@ -34,6 +34,9 @@
   across internal-whitespace rejection, wrapper trimming acceptance, and empty-after-trim validation.
 - Expanded invisible-separator coverage to reject `\u180E` (mongolian vowel separator) in both
   internal and wrapper `baseURL` positions.
+- Expanded unicode space coverage to include `\u200A` (hair space), `\u2009` (thin space),
+  `\u2008` (punctuation space), `\u2006` (six-per-em space), and `\u2003` (em space)
+  across wrapper-trimming acceptance and internal-whitespace rejection scenarios.
 - Documented that `HTTP://` and `HTTPS://` are accepted (case-insensitive protocol matching).
 - Added deterministic validation ordering for multi-issue baseURL values
   (internal whitespace → protocol → query/hash → credentials).

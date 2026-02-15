@@ -18,5 +18,7 @@ Add a new `@trigger.dev/ai` package with:
   mathematical space (`\u205F`) for both wrapper trimming and internal-whitespace rejection
 - expanded invisible-separator rejection coverage to include mongolian vowel separator (`\u180E`)
   in both wrapper and internal `baseURL` positions
+- expanded unicode spacing coverage to include hair space (`\u200A`), thin space (`\u2009`),
+  punctuation space (`\u2008`), six-per-em space (`\u2006`), and em space (`\u2003`)
 - deterministic baseURL validation error ordering for multi-issue inputs (internal whitespace → protocol → query/hash → credentials)
 - explicit default `baseURL` behavior (`https://api.trigger.dev`) and case-insensitive `HTTP(S)` protocol acceptance
