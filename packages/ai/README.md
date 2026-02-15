@@ -195,6 +195,7 @@ Examples:
 - ❌ `\u2007///\u2007` (empty after trimming wrapper whitespace)
 - ❌ `\u205F///\u205F` (empty after trimming wrapper whitespace)
 - ❌ `\u3000///\u3000` (empty after trimming wrapper whitespace)
+- ❌ `\n\thttps://api.trigger.dev/base/?query=1\t\n` (query is still rejected after trimming wrappers)
 - ❌ `https://api.trigger.dev/\ninternal` (internal whitespace characters)
 - ❌ `https://api.trigger.dev/in valid` (internal space characters)
 - ❌ `https://api.trigger.dev/\tinternal` (internal tab characters)

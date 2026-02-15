@@ -1105,6 +1105,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must not include query parameters or hash fragments");
   });
 
+  it("throws when newline-and-tab wrapped baseURL includes query parameters", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\n\thttps://example.com/base/?query=1\t\n",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not include query parameters or hash fragments");
+  });
+
   it("throws query/hash validation after trimming wrapper whitespace", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -1133,6 +1144,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "  https://example.com/base/#fragment  ",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not include query parameters or hash fragments");
+  });
+
+  it("throws when newline-and-tab wrapped baseURL includes hash fragments", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\n\thttps://example.com/base/#fragment\t\n",
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must not include query parameters or hash fragments");
@@ -1221,6 +1243,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "  https://user:pass@example.com/base/  ",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not include username or password credentials");
+  });
+
+  it("throws when newline-and-tab wrapped baseURL includes username or password credentials", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\n\thttps://user:pass@example.com/base/\t\n",
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must not include username or password credentials");
@@ -4064,6 +4097,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must not include query parameters or hash fragments");
   });
 
+  it("throws from factory when newline-and-tab wrapped baseURL includes query parameters", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\n\thttps://example.com/base/?query=1\t\n",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not include query parameters or hash fragments");
+  });
+
   it("throws query/hash validation after trimming wrapper whitespace in factory", function () {
     expect(function () {
       createTriggerChatTransport({
@@ -4092,6 +4136,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "  https://example.com/base/#fragment  ",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not include query parameters or hash fragments");
+  });
+
+  it("throws from factory when newline-and-tab wrapped baseURL includes hash fragments", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\n\thttps://example.com/base/#fragment\t\n",
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must not include query parameters or hash fragments");
@@ -4180,6 +4235,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "  https://user:pass@example.com/base/  ",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not include username or password credentials");
+  });
+
+  it("throws from factory when newline-and-tab wrapped baseURL includes username or password credentials", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\n\thttps://user:pass@example.com/base/\t\n",
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must not include username or password credentials");
