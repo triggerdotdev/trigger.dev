@@ -963,6 +963,41 @@ describe("TriggerChatTransport", function () {
     });
   });
 
+  it("normalizes non-Error trigger task failures before reporting onError", async function () {
+    const errors: TriggerChatTransportError[] = [];
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    (transport as any).triggerTask = async function triggerTask() {
+      throw "string trigger task failure";
+    };
+
+    await expect(
+      transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-trigger-task-string-failure",
+        messageId: undefined,
+        messages: [],
+        abortSignal: undefined,
+      })
+    ).rejects.toBe("string trigger task failure");
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "triggerTask",
+      chatId: "chat-trigger-task-string-failure",
+      runId: undefined,
+    });
+    expect(errors[0]?.error.message).toBe("string trigger task failure");
+  });
+
   it("supports creating transport with factory function", async function () {
     let observedRunId: string | undefined;
     let callbackCompleted = false;
