@@ -1411,6 +1411,52 @@ describe("TriggerChatTransport", function () {
     expect(errors[0]?.error.message).toBe("stream subscribe root cause");
   });
 
+  it(
+    "preserves stream subscribe root failures when cleanup and onError callbacks both fail",
+    async function () {
+      const runStore = new FailingCleanupSetRunStore(2);
+
+      const server = await startServer(function (req, res) {
+        if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+          res.writeHead(200, {
+            "content-type": "application/json",
+            "x-trigger-jwt": "pk_stream_subscribe_cleanup_and_onerror_failure",
+          });
+          res.end(JSON.stringify({ id: "run_stream_subscribe_cleanup_and_onerror_failure" }));
+          return;
+        }
+
+        res.writeHead(404);
+        res.end();
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "chat-task",
+        stream: "chat-stream",
+        accessToken: "pk_trigger",
+        baseURL: server.url,
+        runStore,
+        onError: async function onError() {
+          throw new Error("onError failed");
+        },
+      });
+
+      (transport as any).fetchRunStream = async function fetchRunStream() {
+        throw new Error("stream subscribe root cause");
+      };
+
+      await expect(
+        transport.sendMessages({
+          trigger: "submit-message",
+          chatId: "chat-stream-subscribe-cleanup-and-onerror-failure",
+          messageId: undefined,
+          messages: [],
+          abortSignal: undefined,
+        })
+      ).rejects.toThrowError("stream subscribe root cause");
+    }
+  );
+
   it("cleans up async run-store state when stream subscription fails", async function () {
     const runStore = new AsyncTrackedRunStore();
 
@@ -2251,6 +2297,41 @@ describe("TriggerChatTransport", function () {
     });
     expect(errors[0]?.error.message).toBe("reconnect root cause");
   });
+
+  it(
+    "preserves reconnect root failures when cleanup and onError callbacks both fail",
+    async function () {
+      const runStore = new FailingCleanupDeleteRunStore(1);
+      runStore.set({
+        chatId: "chat-reconnect-cleanup-and-onerror-failure",
+        runId: "run_reconnect_cleanup_and_onerror_failure",
+        publicAccessToken: "pk_reconnect_cleanup_and_onerror_failure",
+        streamKey: "chat-stream",
+        lastEventId: "100-0",
+        isActive: true,
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "chat-task",
+        stream: "chat-stream",
+        accessToken: "pk_trigger",
+        runStore,
+        onError: async function onError() {
+          throw new Error("onError failed");
+        },
+      });
+
+      (transport as any).fetchRunStream = async function fetchRunStream() {
+        throw new Error("reconnect root cause");
+      };
+
+      const stream = await transport.reconnectToStream({
+        chatId: "chat-reconnect-cleanup-and-onerror-failure",
+      });
+
+      expect(stream).toBeNull();
+    }
+  );
 
   it("normalizes non-Error reconnect failures before reporting onError", async function () {
     const errors: TriggerChatTransportError[] = [];
