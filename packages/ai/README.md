@@ -182,6 +182,7 @@ Examples:
 - ❌ `ws://api.trigger.dev` / `wss://api.trigger.dev` (websocket protocols are rejected)
 - ❌ `https://api.trigger.dev/\ninternal` (internal whitespace characters)
 - ❌ `https://api.trigger.dev/\tinternal` (internal tab characters)
+- ❌ `https://api.trigger.dev/\rinternal` (internal carriage-return characters)
 
 Validation errors use these exact messages:
 

@@ -742,6 +742,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must not contain internal whitespace characters");
   });
 
+  it("throws when baseURL contains internal carriage-return characters", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://api.trigger.dev/\rinternal",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
+  });
+
   it("throws when baseURL is a relative path", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -3322,6 +3333,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "https://api.trigger.dev/\tinternal",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
+  });
+
+  it("throws from factory when baseURL contains internal carriage-return characters", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://api.trigger.dev/\rinternal",
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must not contain internal whitespace characters");
