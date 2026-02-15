@@ -9,8 +9,8 @@
     "dev:trigger": "trigger dev"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^2.0.0",
-    "@ai-sdk/react": "^2.0.0",
+    "@ai-sdk/openai": "^3.0.0",
+    "@ai-sdk/react": "^3.0.0",
     "@trigger.dev/sdk": "workspace:*",
     "ai": "^6.0.0",
     "next": "15.3.3",
