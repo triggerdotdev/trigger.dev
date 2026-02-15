@@ -944,6 +944,30 @@ describe("TriggerChatTransport", function () {
     expect(errors[0]?.error.message).toBe("string trigger options failure");
   });
 
+  it("keeps original trigger options failure when onError callback also fails", async function () {
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      triggerOptions: async function triggerOptions() {
+        throw new Error("trigger options failed root");
+      },
+      onError: async function onError() {
+        throw new Error("onError failed");
+      },
+    });
+
+    await expect(
+      transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-trigger-options-onerror-failure",
+        messageId: undefined,
+        messages: [],
+        abortSignal: undefined,
+      })
+    ).rejects.toThrowError("trigger options failed root");
+  });
+
   it("reports trigger task request failures through onError", async function () {
     const errors: TriggerChatTransportError[] = [];
     const server = await startServer(function (_req, res) {
@@ -1023,6 +1047,31 @@ describe("TriggerChatTransport", function () {
       runId: undefined,
     });
     expect(errors[0]?.error.message).toBe("string trigger task failure");
+  });
+
+  it("keeps original trigger task failure when onError callback also fails", async function () {
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      onError: async function onError() {
+        throw new Error("onError failed");
+      },
+    });
+
+    (transport as any).triggerTask = async function triggerTask() {
+      throw new Error("trigger task failed root");
+    };
+
+    await expect(
+      transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-trigger-task-onerror-failure",
+        messageId: undefined,
+        messages: [],
+        abortSignal: undefined,
+      })
+    ).rejects.toThrowError("trigger task failed root");
   });
 
   it("supports creating transport with factory function", async function () {
