@@ -155,6 +155,11 @@ both cleanup steps (`set` inactive state and `delete`) even if one of them fails
   without surfacing callback events.
 - Provide a custom `runStore` if you need state shared across processes/instances.
 
+## Base URL behavior
+
+- `baseURL` supports optional path prefixes (for example reverse-proxy mounts).
+- Trailing slashes are normalized automatically before trigger/stream requests.
+
 ## `ai.tool(...)` example
 
 ```ts

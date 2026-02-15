@@ -653,6 +653,9 @@ the failure is surfaced through `onError` with phase `reconnect`.
 Subsequent reconnect calls will retry stale inactive-state cleanup until it succeeds.
 If `onError` is omitted, reconnect still returns `null` and continues without callback reporting.
 
+`baseURL` supports optional path prefixes and trailing slashes; both trigger and stream URLs
+are normalized consistently.
+
 For richer TypeScript ergonomics in app code, `@trigger.dev/ai` also exports:
 
 - `TriggerChatHeadersInput`

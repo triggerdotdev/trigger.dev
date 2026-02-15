@@ -19,3 +19,4 @@
 - Improved best-effort run-store cleanup to attempt both inactive-state writes and deletes even if one step fails.
 - Added reconnect cleanup error reporting for stale inactive state while still returning `null`.
 - Added retry semantics for stale inactive reconnect cleanup on subsequent reconnect attempts.
+- Added consistent baseURL normalization for trigger and stream endpoints (including path prefixes and trailing slashes).
