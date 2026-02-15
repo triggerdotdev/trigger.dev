@@ -476,6 +476,33 @@ describe("TriggerChatTransport", function () {
     expect(stream).toBeNull();
   });
 
+  it("removes inactive run entries during reconnect attempts", async function () {
+    const runStore = new TrackedRunStore();
+    runStore.set({
+      chatId: "chat-inactive",
+      runId: "run_inactive",
+      publicAccessToken: "pk_inactive",
+      streamKey: "chat-stream",
+      lastEventId: "10-0",
+      isActive: false,
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      runStore,
+    });
+
+    const stream = await transport.reconnectToStream({
+      chatId: "chat-inactive",
+    });
+
+    expect(stream).toBeNull();
+    expect(runStore.deleteCalls).toContain("chat-inactive");
+    expect(runStore.get("chat-inactive")).toBeUndefined();
+  });
+
   it("supports custom payload mapping and trigger options resolver", async function () {
     let receivedTriggerBody: Record<string, unknown> | undefined;
     let receivedResolverChatId: string | undefined;

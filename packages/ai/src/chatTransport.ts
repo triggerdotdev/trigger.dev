@@ -195,7 +195,12 @@ export class TriggerChatTransport<
   ): Promise<ReadableStream<UIMessageChunk> | null> {
     const runState = await this.runStore.get(options.chatId);
 
-    if (!runState || !runState.isActive) {
+    if (!runState) {
+      return null;
+    }
+
+    if (!runState.isActive) {
+      await this.runStore.delete(options.chatId);
       return null;
     }
 
