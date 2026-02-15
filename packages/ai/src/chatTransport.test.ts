@@ -216,6 +216,76 @@ describe("TriggerChatTransport", function () {
     expect(observedStreamPath).toBe("/realtime/v1/streams/run_stream_object/typed-stream-id");
   });
 
+  it("forwards preview branch and timeout headers to trigger and stream requests", async function () {
+    let triggerBranchHeader: string | undefined;
+    let streamBranchHeader: string | undefined;
+    let streamTimeoutHeader: string | undefined;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        const branchHeader = req.headers["x-trigger-branch"];
+        triggerBranchHeader = Array.isArray(branchHeader) ? branchHeader[0] : branchHeader;
+
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_headers",
+        });
+        res.end(JSON.stringify({ id: "run_headers" }));
+        return;
+      }
+
+      if (req.method === "GET" && req.url === "/realtime/v1/streams/run_headers/chat-stream") {
+        const branchHeader = req.headers["x-trigger-branch"];
+        const timeoutHeader = req.headers["timeout-seconds"];
+
+        streamBranchHeader = Array.isArray(branchHeader) ? branchHeader[0] : branchHeader;
+        streamTimeoutHeader = Array.isArray(timeoutHeader) ? timeoutHeader[0] : timeoutHeader;
+
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "headers_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "headers_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      previewBranch: "feature-preview",
+      timeoutInSeconds: 123,
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-headers",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(triggerBranchHeader).toBe("feature-preview");
+    expect(streamBranchHeader).toBe("feature-preview");
+    expect(streamTimeoutHeader).toBe("123");
+  });
+
   it("triggers task and streams chunks with rich default payload", async function () {
     let receivedTriggerBody: Record<string, unknown> | undefined;
 
