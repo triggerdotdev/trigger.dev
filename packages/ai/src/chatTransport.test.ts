@@ -549,6 +549,83 @@ describe("TriggerChatTransport", function () {
     expect((options.idempotencyKey as string).length).toBe(64);
   });
 
+  it("surfaces payload mapper errors and does not trigger runs", async function () {
+    let triggerCalls = 0;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        triggerCalls++;
+      }
+
+      res.writeHead(500, {
+        "content-type": "application/json",
+      });
+      res.end(JSON.stringify({ error: "unexpected" }));
+    });
+
+    const transport = new TriggerChatTransport<
+      UIMessage,
+      { prompt: string }
+    >({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      payloadMapper: async function payloadMapper() {
+        throw new Error("mapper failed");
+      },
+    });
+
+    await expect(
+      transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-mapper-failure",
+        messageId: undefined,
+        messages: [],
+        abortSignal: undefined,
+      })
+    ).rejects.toThrowError("mapper failed");
+
+    expect(triggerCalls).toBe(0);
+  });
+
+  it("surfaces trigger options resolver errors and does not trigger runs", async function () {
+    let triggerCalls = 0;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        triggerCalls++;
+      }
+
+      res.writeHead(500, {
+        "content-type": "application/json",
+      });
+      res.end(JSON.stringify({ error: "unexpected" }));
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      triggerOptions: async function triggerOptions() {
+        throw new Error("trigger options failed");
+      },
+    });
+
+    await expect(
+      transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-trigger-failure",
+        messageId: undefined,
+        messages: [],
+        abortSignal: undefined,
+      })
+    ).rejects.toThrowError("trigger options failed");
+
+    expect(triggerCalls).toBe(0);
+  });
+
   it("supports creating transport with factory function", async function () {
     let observedRunId: string | undefined;
 
