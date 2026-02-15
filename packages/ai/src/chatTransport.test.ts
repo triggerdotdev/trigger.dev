@@ -664,6 +664,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must not include query parameters or hash fragments");
   });
 
+  it("throws when trimmed baseURL includes query parameters", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "  https://example.com/base/?query=1  ",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not include query parameters or hash fragments");
+  });
+
   it("throws when baseURL includes hash fragments", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -2920,6 +2931,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "https://example.com/base?query=1",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not include query parameters or hash fragments");
+  });
+
+  it("throws from factory when trimmed baseURL includes query parameters", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "  https://example.com/base/?query=1  ",
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must not include query parameters or hash fragments");
