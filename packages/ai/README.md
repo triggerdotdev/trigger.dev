@@ -173,6 +173,7 @@ Examples:
 - ✅ `https://api.trigger.dev`
 - ✅ `https://api.trigger.dev/custom-prefix`
 - ✅ `  https://api.trigger.dev/custom-prefix///   ` (trimmed + normalized)
+- ✅ `https://api.trigger.dev/custom%20prefix` (percent-encoded whitespace)
 - ❌ `https://api.trigger.dev?foo=bar` (query string)
 - ❌ `https://api.trigger.dev#fragment` (hash fragment)
 - ❌ `https://user:pass@api.trigger.dev` (credentials)
