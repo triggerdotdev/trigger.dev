@@ -382,11 +382,28 @@ export class TriggerChatTransport<
   }
 
   private async markRunInactiveAndDelete(runState: TriggerChatRunState) {
-    await this.runStore.set({
-      ...runState,
-      isActive: false,
-    });
-    await this.runStore.delete(runState.chatId);
+    let cleanupError: Error | undefined;
+
+    try {
+      await this.runStore.set({
+        ...runState,
+        isActive: false,
+      });
+    } catch (error) {
+      cleanupError = normalizeError(error);
+    }
+
+    try {
+      await this.runStore.delete(runState.chatId);
+    } catch (error) {
+      if (!cleanupError) {
+        cleanupError = normalizeError(error);
+      }
+    }
+
+    if (cleanupError) {
+      throw cleanupError;
+    }
   }
 
   private async tryMarkRunInactiveAndDelete(runState: TriggerChatRunState) {

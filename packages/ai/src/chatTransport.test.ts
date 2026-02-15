@@ -1357,6 +1357,8 @@ describe("TriggerChatTransport", function () {
       runId: "run_stream_subscribe_cleanup_set_failure",
     });
     expect(errors[0]?.error.message).toBe("stream subscribe root cause");
+    expect(runStore.deleteCalls).toContain("chat-stream-subscribe-cleanup-set-failure");
+    expect(runStore.get("chat-stream-subscribe-cleanup-set-failure")).toBeUndefined();
   });
 
   it("preserves stream subscribe failures when cleanup run-store delete throws", async function () {
@@ -2599,9 +2601,9 @@ describe("TriggerChatTransport", function () {
     expect(errors).toHaveLength(0);
 
     await waitForCondition(function () {
-      const state = runStore.get("chat-cleanup-set-failure");
-      return Boolean(state && state.isActive === true && state.lastEventId === "2-0");
+      return runStore.get("chat-cleanup-set-failure") === undefined;
     });
+    expect(runStore.deleteCalls).toContain("chat-cleanup-set-failure");
   });
 
   it("returns null from reconnect after stream completion cleanup", async function () {
@@ -2948,6 +2950,7 @@ class TrackedRunStore extends InMemoryTriggerChatRunStore {
 
 class FailingCleanupSetRunStore extends InMemoryTriggerChatRunStore {
   private setCalls = 0;
+  public readonly deleteCalls: string[] = [];
 
   constructor(private readonly failOnSetCall: number) {
     super();
@@ -2960,6 +2963,11 @@ class FailingCleanupSetRunStore extends InMemoryTriggerChatRunStore {
     }
 
     super.set(state);
+  }
+
+  public delete(chatId: string): void {
+    this.deleteCalls.push(chatId);
+    super.delete(chatId);
   }
 }
 
