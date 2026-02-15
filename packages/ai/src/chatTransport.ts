@@ -337,8 +337,10 @@ export class TriggerChatTransport<
           return;
         }
 
-        runState.lastEventId = part.id;
-        await this.runStore.set(runState);
+        await this.runStore.set({
+          ...runState,
+          lastEventId: part.id,
+        });
       }
 
       const runState = await this.runStore.get(chatId);
@@ -380,8 +382,10 @@ export class TriggerChatTransport<
   }
 
   private async markRunInactiveAndDelete(runState: TriggerChatRunState) {
-    runState.isActive = false;
-    await this.runStore.set(runState);
+    await this.runStore.set({
+      ...runState,
+      isActive: false,
+    });
     await this.runStore.delete(runState.chatId);
   }
 
