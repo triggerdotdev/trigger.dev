@@ -8,13 +8,15 @@ import {
   TriggerOptions,
 } from "@trigger.dev/core/v3";
 import type {
-  ChatRequestOptions,
   ChatTransport,
   InferUIMessageChunk,
   UIMessage,
   UIMessageChunk,
 } from "ai";
 import type {
+  TriggerChatHeadersInput,
+  TriggerChatReconnectOptions,
+  TriggerChatSendMessagesOptions,
   TriggerChatOnTriggeredRun,
   TriggerChatPayloadMapper,
   TriggerChatRunState,
@@ -60,12 +62,6 @@ type TriggerTaskRequestOptions = {
 type TriggerTaskRequestBody = {
   payload?: string;
   options?: TriggerTaskRequestOptions;
-};
-
-type TriggerChatRequestOptionsWithTupleHeaders = Omit<ChatRequestOptions, "headers"> & {
-  headers?:
-    | ChatRequestOptions["headers"]
-    | Array<[string, string]>;
 };
 
 type TriggerChatTransportCommonOptions<
@@ -158,13 +154,7 @@ export class TriggerChatTransport<
   }
 
   public async sendMessages(
-    options: {
-      trigger: "submit-message" | "regenerate-message";
-      chatId: string;
-      messageId: string | undefined;
-      messages: UI_MESSAGE[];
-      abortSignal: AbortSignal | undefined;
-    } & TriggerChatRequestOptionsWithTupleHeaders
+    options: TriggerChatSendMessagesOptions<UI_MESSAGE>
   ): Promise<ReadableStream<UIMessageChunk>> {
     const transportRequest = createTransportRequest<UI_MESSAGE>(options);
     const payload = await this.payloadMapper(transportRequest);
@@ -199,9 +189,7 @@ export class TriggerChatTransport<
   }
 
   public async reconnectToStream(
-    options: {
-      chatId: string;
-    } & ChatRequestOptions
+    options: TriggerChatReconnectOptions
   ): Promise<ReadableStream<UIMessageChunk> | null> {
     const runState = await this.runStore.get(options.chatId);
 
@@ -342,13 +330,7 @@ function resolvePayloadMapper<
 }
 
 function createTransportRequest<UI_MESSAGE extends UIMessage>(
-  options: {
-    trigger: "submit-message" | "regenerate-message";
-    chatId: string;
-    messageId: string | undefined;
-    messages: UI_MESSAGE[];
-    abortSignal: AbortSignal | undefined;
-  } & TriggerChatRequestOptionsWithTupleHeaders
+  options: TriggerChatSendMessagesOptions<UI_MESSAGE>
 ): TriggerChatTransportRequest<UI_MESSAGE> {
   return {
     chatId: options.chatId,
@@ -395,11 +377,7 @@ function resolveStreamKey<UI_MESSAGE extends UIMessage>(
 }
 
 function normalizeHeaders(
-  headers:
-    | Record<string, string>
-    | Headers
-    | Array<[string, string]>
-    | undefined
+  headers: TriggerChatHeadersInput | undefined
 ): Record<string, string> | undefined {
   if (!headers) {
     return undefined;

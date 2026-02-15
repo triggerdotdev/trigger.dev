@@ -12,6 +12,11 @@ export type TriggerChatTransportTrigger =
   | "submit-message"
   | "regenerate-message";
 
+export type TriggerChatHeadersInput =
+  | Record<string, string>
+  | Headers
+  | Array<[string, string]>;
+
 export type TriggerChatTransportRequest<
   UI_MESSAGE extends UIMessage = UIMessage,
 > = {
@@ -85,3 +90,21 @@ export interface TriggerChatRunStore {
   set(state: TriggerChatRunState): Promise<void> | void;
   delete(chatId: string): Promise<void> | void;
 }
+
+export type TriggerChatSendMessagesOptions<
+  UI_MESSAGE extends UIMessage = UIMessage,
+> = {
+  trigger: TriggerChatTransportTrigger;
+  chatId: string;
+  messageId: string | undefined;
+  messages: UI_MESSAGE[];
+  abortSignal: AbortSignal | undefined;
+} & Omit<ChatRequestOptions, "headers"> & {
+    headers?: TriggerChatHeadersInput;
+  };
+
+export type TriggerChatReconnectOptions = {
+  chatId: string;
+} & Omit<ChatRequestOptions, "headers"> & {
+    headers?: TriggerChatHeadersInput;
+  };

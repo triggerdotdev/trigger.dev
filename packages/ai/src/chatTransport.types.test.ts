@@ -4,6 +4,9 @@ import {
   createTriggerChatTransport,
   TriggerChatTransport,
   TriggerChatTransportOptions,
+  type TriggerChatHeadersInput,
+  type TriggerChatReconnectOptions,
+  type TriggerChatSendMessagesOptions,
   type TriggerChatTransportPayload,
   type TriggerChatTransportRequest,
   type TriggerChatRunState,
@@ -129,8 +132,25 @@ it("accepts tuple-style headers in sendMessages options", function () {
     accessToken: "pk_test",
   });
 
+  const headersInput: TriggerChatHeadersInput = [["x-header", "x-value"]];
+
+  const sendOptions: TriggerChatSendMessagesOptions<UIMessage> = {
+    trigger: "submit-message",
+    chatId: "chat_123",
+    messageId: undefined,
+    messages: [],
+    abortSignal: undefined,
+    headers: headersInput,
+  };
+
+  const reconnectOptions: TriggerChatReconnectOptions = {
+    chatId: "chat_123",
+    headers: headersInput,
+  };
+
   type SendMessagesParams = Parameters<typeof transport.sendMessages>[0];
-  const tupleHeaders: SendMessagesParams["headers"] = [["x-header", "x-value"]];
+  const tupleHeaders: SendMessagesParams["headers"] = sendOptions.headers;
+  expectTypeOf(reconnectOptions).toBeObject();
   expectTypeOf(transport.sendMessages).toBeFunction();
   void tupleHeaders;
 });

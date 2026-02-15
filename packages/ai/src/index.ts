@@ -6,10 +6,13 @@ export {
   type TriggerChatTransportOptions,
 } from "./chatTransport.js";
 export type {
+  TriggerChatHeadersInput,
   TriggerChatPayloadMapper,
   TriggerChatOnTriggeredRun,
+  TriggerChatReconnectOptions,
   TriggerChatRunState,
   TriggerChatRunStore,
+  TriggerChatSendMessagesOptions,
   TriggerChatStream,
   TriggerChatTaskContext,
   TriggerChatTransportPayload,

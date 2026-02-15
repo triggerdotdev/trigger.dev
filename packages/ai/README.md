@@ -7,6 +7,7 @@ AI SDK integrations for Trigger.dev.
 - `TriggerChatTransport` for wiring AI SDK `useChat()` to Trigger.dev tasks + Realtime Streams v2
 - `createTriggerChatTransport(...)` factory helper
 - `ai.tool(...)` and `ai.currentToolOptions()` helpers for tool-calling flows
+- helper types such as `TriggerChatSendMessagesOptions`, `TriggerChatReconnectOptions`, and `TriggerChatHeadersInput`
 
 ## Install
 
