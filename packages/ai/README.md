@@ -204,10 +204,13 @@ Validation errors use these exact messages:
 
 - `baseURL must not be empty`
 - `baseURL must be a valid absolute URL`
-- `baseURL must not contain internal whitespace characters (including invisible separators)`
+- `baseURL must not contain internal whitespace characters`
 - `baseURL must use http or https protocol`
 - `baseURL must not include query parameters or hash fragments`
 - `baseURL must not include username or password credentials`
+
+The internal-whitespace error also applies to invisible separator characters
+like `\u200B`, `\u200C`, `\u200D`, `\u2060`, and `\uFEFF`.
 
 When multiple issues are present, validation order is deterministic:
 internal whitespace → protocol → query/hash → credentials.
