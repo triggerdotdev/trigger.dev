@@ -841,6 +841,28 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must not contain internal whitespace characters");
   });
 
+  it("throws when baseURL contains internal figure-space characters", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://api.trigger.dev/\u2007internal",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
+  });
+
+  it("throws when baseURL contains internal medium-mathematical-space characters", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://api.trigger.dev/\u205Finternal",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
+  });
+
   it("throws when baseURL contains internal line-separator characters", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -3740,6 +3762,28 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "https://api.trigger.dev/\u3000internal",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
+  });
+
+  it("throws from factory when baseURL contains internal figure-space characters", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://api.trigger.dev/\u2007internal",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
+  });
+
+  it("throws from factory when baseURL contains internal medium-mathematical-space characters", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://api.trigger.dev/\u205Finternal",
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must not contain internal whitespace characters");
