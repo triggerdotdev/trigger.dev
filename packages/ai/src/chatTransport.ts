@@ -301,7 +301,7 @@ export class TriggerChatTransport<
         await this.runStore.set(runState);
         await this.runStore.delete(chatId);
       }
-    } catch {
+    } catch (error) {
       const runState = await this.runStore.get(chatId);
       if (runState) {
         runState.isActive = false;
@@ -311,7 +311,7 @@ export class TriggerChatTransport<
           phase: "consumeTrackingStream",
           chatId: runState.chatId,
           runId: runState.runId,
-          error: new Error("Stream tracking failed"),
+          error: normalizeError(error),
         });
       }
     }

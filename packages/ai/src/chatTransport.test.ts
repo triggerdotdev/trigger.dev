@@ -994,6 +994,107 @@ describe("TriggerChatTransport", function () {
     expect(chunks).toHaveLength(2);
   });
 
+  it("reports consumeTrackingStream failures through onError", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new TrackedRunStore();
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_tracking_error",
+        });
+        res.end(JSON.stringify({ id: "run_tracking_error" }));
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      return new ReadableStream({
+        start(controller) {
+          controller.error(new Error("tracking failed root cause"));
+        },
+      });
+    };
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-tracking-error",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    await expect(readChunks(stream)).rejects.toThrowError("tracking failed root cause");
+
+    await waitForCondition(function () {
+      return errors.length === 1;
+    });
+
+    expect(errors[0]).toMatchObject({
+      phase: "consumeTrackingStream",
+      chatId: "chat-tracking-error",
+      runId: "run_tracking_error",
+    });
+    expect(errors[0]?.error.message).toBe("tracking failed root cause");
+    expect(runStore.get("chat-tracking-error")).toBeUndefined();
+  });
+
+  it("reports reconnect failures through onError", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new InMemoryTriggerChatRunStore();
+    runStore.set({
+      chatId: "chat-reconnect-error",
+      runId: "run_reconnect_error",
+      publicAccessToken: "pk_reconnect_error",
+      streamKey: "chat-stream",
+      lastEventId: "100-0",
+      isActive: true,
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      throw new Error("reconnect root cause");
+    };
+
+    const stream = await transport.reconnectToStream({
+      chatId: "chat-reconnect-error",
+    });
+
+    expect(stream).toBeNull();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "reconnect",
+      chatId: "chat-reconnect-error",
+      runId: "run_reconnect_error",
+    });
+    expect(errors[0]?.error.message).toBe("reconnect root cause");
+    expect(runStore.get("chat-reconnect-error")).toBeUndefined();
+  });
+
   it("cleans run store state when stream completes", async function () {
     const trackedRunStore = new TrackedRunStore();
 
