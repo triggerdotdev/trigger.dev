@@ -582,6 +582,52 @@ describe("TriggerChatTransport", function () {
     expect(errors[0]?.error.message).toBe("cleanup delete failed");
   });
 
+  it("retries inactive reconnect cleanup on subsequent reconnect attempts", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new FailingCleanupDeleteRunStore(1);
+    runStore.set({
+      chatId: "chat-inactive-delete-retry",
+      runId: "run_inactive_delete_retry",
+      publicAccessToken: "pk_inactive_delete_retry",
+      streamKey: "chat-stream",
+      lastEventId: "10-0",
+      isActive: false,
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    const firstReconnect = await transport.reconnectToStream({
+      chatId: "chat-inactive-delete-retry",
+    });
+
+    expect(firstReconnect).toBeNull();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "reconnect",
+      chatId: "chat-inactive-delete-retry",
+      runId: "run_inactive_delete_retry",
+    });
+    expect(runStore.get("chat-inactive-delete-retry")).toMatchObject({
+      isActive: false,
+    });
+
+    const secondReconnect = await transport.reconnectToStream({
+      chatId: "chat-inactive-delete-retry",
+    });
+
+    expect(secondReconnect).toBeNull();
+    expect(errors).toHaveLength(1);
+    expect(runStore.get("chat-inactive-delete-retry")).toBeUndefined();
+  });
+
   it("returns null when inactive reconnect cleanup delete and onError both fail", async function () {
     const runStore = new FailingCleanupDeleteRunStore(1);
     runStore.set({
