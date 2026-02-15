@@ -190,6 +190,7 @@ Examples:
 - ❌ `https://api.trigger.dev/\u200Binternal` (internal zero-width-space characters)
 - ❌ `https://api.trigger.dev/\u202Finternal` (internal narrow no-break space characters)
 - ❌ `https://api.trigger.dev/\u2028internal` (internal line-separator characters)
+- ❌ `https://api.trigger.dev/\u2029internal` (internal paragraph-separator characters)
 - ❌ `https://api.trigger.dev/\uFEFFinternal` (internal BOM characters)
 
 Validation errors use these exact messages:
