@@ -19,8 +19,15 @@ const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
  * 2. Subscribes to the task's realtime stream to receive `UIMessageChunk` data
  * 3. Returns a `ReadableStream<UIMessageChunk>` that the AI SDK processes natively
  *
+ * The task receives a `ChatTaskPayload` containing the conversation messages,
+ * chat session ID, trigger type, and any custom metadata. Your task should use
+ * the AI SDK's `streamText` (or similar) to generate a response, then pipe
+ * the resulting `UIMessageStream` to the `"chat"` realtime stream key
+ * (or a custom key matching the `streamKey` option).
+ *
  * @example
  * ```tsx
+ * // Frontend — use with AI SDK's useChat hook
  * import { useChat } from "@ai-sdk/react";
  * import { TriggerChatTransport } from "@trigger.dev/ai";
  *
@@ -36,12 +43,12 @@ const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
  * }
  * ```
  *
- * On the backend, the task should pipe UIMessageChunks to the `"chat"` stream:
- *
  * @example
  * ```ts
+ * // Backend — Trigger.dev task that handles chat
  * import { task, streams } from "@trigger.dev/sdk";
  * import { streamText, convertToModelMessages } from "ai";
+ * import type { ChatTaskPayload } from "@trigger.dev/ai";
  *
  * export const myChatTask = task({
  *   id: "my-chat-task",
@@ -63,6 +70,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly baseURL: string;
   private readonly streamKey: string;
   private readonly extraHeaders: Record<string, string>;
+  private readonly streamTimeoutSeconds: number;
+  private readonly apiClient: ApiClient;
 
   /**
    * Tracks active chat sessions for reconnection support.
@@ -76,6 +85,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.baseURL = options.baseURL ?? DEFAULT_BASE_URL;
     this.streamKey = options.streamKey ?? DEFAULT_STREAM_KEY;
     this.extraHeaders = options.headers ?? {};
+    this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? DEFAULT_STREAM_TIMEOUT_SECONDS;
+    this.apiClient = new ApiClient(this.baseURL, this.accessToken);
   }
 
   /**
@@ -95,9 +106,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       abortSignal: AbortSignal | undefined;
     } & ChatRequestOptions
   ): Promise<ReadableStream<UIMessageChunk>> => {
-    const { trigger, chatId, messageId, messages, abortSignal, headers, body, metadata } = options;
+    const { trigger, chatId, messageId, messages, abortSignal, body, metadata } = options;
 
-    // Build the payload for the task
+    // Build the payload for the task — this becomes the ChatTaskPayload
     const payload = {
       messages,
       chatId,
@@ -107,11 +118,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       ...(body ?? {}),
     };
 
-    // Create API client for triggering
-    const apiClient = new ApiClient(this.baseURL, this.accessToken);
-
     // Trigger the task
-    const triggerResponse = await apiClient.triggerTask(this.taskId, {
+    const triggerResponse = await this.apiClient.triggerTask(this.taskId, {
       payload: JSON.stringify(payload),
       options: {
         payloadType: "application/json",
@@ -119,9 +127,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     });
 
     const runId = triggerResponse.id;
-    const publicAccessToken = "publicAccessToken" in triggerResponse
-      ? (triggerResponse as { publicAccessToken?: string }).publicAccessToken
-      : undefined;
+    const publicAccessToken =
+      "publicAccessToken" in triggerResponse
+        ? (triggerResponse as { publicAccessToken?: string }).publicAccessToken
+        : undefined;
 
     // Store session state for reconnection
     this.sessions.set(chatId, {
@@ -143,9 +152,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       chatId: string;
     } & ChatRequestOptions
   ): Promise<ReadableStream<UIMessageChunk> | null> => {
-    const { chatId } = options;
-
-    const session = this.sessions.get(chatId);
+    const session = this.sessions.get(options.chatId);
     if (!session) {
       return null;
     }
@@ -162,34 +169,24 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     accessToken: string,
     abortSignal: AbortSignal | undefined
   ): ReadableStream<UIMessageChunk> {
-    const streamKey = this.streamKey;
-    const baseURL = this.baseURL;
-    const extraHeaders = this.extraHeaders;
-
-    // Build the authorization header
     const headers: Record<string, string> = {
       Authorization: `Bearer ${accessToken}`,
-      ...extraHeaders,
+      ...this.extraHeaders,
     };
 
     const subscription = new SSEStreamSubscription(
-      `${baseURL}/realtime/v1/streams/${runId}/${streamKey}`,
+      `${this.baseURL}/realtime/v1/streams/${runId}/${this.streamKey}`,
       {
         headers,
         signal: abortSignal,
-        timeoutInSeconds: DEFAULT_STREAM_TIMEOUT_SECONDS,
+        timeoutInSeconds: this.streamTimeoutSeconds,
       }
     );
-
-    // We need to convert the SSEStreamPart stream to a UIMessageChunk stream
-    // SSEStreamPart has { id, chunk, timestamp } where chunk is the deserialized UIMessageChunk
-    let sseStreamPromise: Promise<ReadableStream<SSEStreamPart>> | null = null;
 
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {
         try {
-          sseStreamPromise = subscription.subscribe();
-          const sseStream = await sseStreamPromise;
+          const sseStream = await subscription.subscribe();
           const reader = sseStream.getReader();
 
           try {
@@ -216,7 +213,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             throw readError;
           }
         } catch (error) {
-          // Don't error the stream for abort errors
+          // Don't error the stream for abort errors — just close gracefully
           if (error instanceof Error && error.name === "AbortError") {
             controller.close();
             return;
@@ -224,9 +221,6 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
           controller.error(error);
         }
-      },
-      cancel: () => {
-        // Cancellation is handled by the abort signal
       },
     });
   }

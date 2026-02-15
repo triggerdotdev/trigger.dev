@@ -39,6 +39,15 @@ export type TriggerChatTransportOptions = {
    * Additional headers to include in API requests to Trigger.dev.
    */
   headers?: Record<string, string>;
+
+  /**
+   * The number of seconds to wait for the realtime stream to produce data
+   * before timing out. If no data arrives within this period, the stream
+   * will be closed.
+   *
+   * @default 120
+   */
+  streamTimeoutSeconds?: number;
 };
 
 /**
