@@ -119,6 +119,12 @@ class MemoryStore implements TriggerChatRunStore {
 `onTriggeredRun` can also be async, which is useful for persisting run IDs before
 the chat stream is consumed. Callback failures are ignored so chat streaming can continue.
 
+## Reconnect semantics
+
+- `reconnectToStream({ chatId })` resumes only while a stream is still active.
+- Once a stream completes or errors, its run state is cleaned up and reconnect returns `null`.
+- Provide a custom `runStore` if you need state shared across processes/instances.
+
 ## `ai.tool(...)` example
 
 ```ts

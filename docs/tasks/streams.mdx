@@ -635,6 +635,9 @@ class MemoryRunStore implements TriggerChatRunStore {
 }
 ```
 
+`reconnectToStream()` only resumes active streams. When a stream completes or errors,
+the transport clears stored run state and future reconnect attempts return `null`.
+
 ## Complete Example: AI Streaming
 
 ### Define the stream
