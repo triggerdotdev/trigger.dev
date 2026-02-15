@@ -30,6 +30,8 @@
 - Clarified that invisible separator characters are rejected even when wrapped around an otherwise valid `baseURL`.
 - Added explicit test/docs coverage for additional unicode-trimmable wrappers (`\u1680`, `\u3000`) and
   confirmed empty-after-trim values still throw `baseURL must not be empty`.
+- Expanded unicode whitespace coverage with `\u2007` (figure space) and `\u205F` (medium mathematical space)
+  across internal-whitespace rejection, wrapper trimming acceptance, and empty-after-trim validation.
 - Documented that `HTTP://` and `HTTPS://` are accepted (case-insensitive protocol matching).
 - Added deterministic validation ordering for multi-issue baseURL values
   (internal whitespace → protocol → query/hash → credentials).
