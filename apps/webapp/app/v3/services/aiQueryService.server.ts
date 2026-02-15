@@ -55,7 +55,7 @@ export class AIQueryService {
 
   constructor(
     private readonly tableSchema: TableSchema[],
-    private readonly model: LanguageModelV1 = openai("codex-mini-latest")
+    private readonly model: LanguageModelV1 = openai("gpt-4.1-mini")
   ) {}
 
   /**

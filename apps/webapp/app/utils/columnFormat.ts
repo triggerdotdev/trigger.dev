@@ -9,7 +9,7 @@ export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
   const units = ["B", "KiB", "MiB", "GiB", "TiB"];
   const i = Math.min(
-    Math.floor(Math.log(Math.abs(bytes)) / Math.log(1024)),
+    Math.max(0, Math.floor(Math.log(Math.abs(bytes)) / Math.log(1024))),
     units.length - 1
   );
   return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 2)} ${units[i]}`;
@@ -22,7 +22,7 @@ export function formatDecimalBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.min(
-    Math.floor(Math.log(Math.abs(bytes)) / Math.log(1000)),
+    Math.max(0, Math.floor(Math.log(Math.abs(bytes)) / Math.log(1000))),
     units.length - 1
   );
   return `${(bytes / Math.pow(1000, i)).toFixed(i === 0 ? 0 : 2)} ${units[i]}`;
