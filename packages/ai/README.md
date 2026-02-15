@@ -188,6 +188,7 @@ Examples:
 - ❌ `https://api.trigger.dev/\finternal` (internal form-feed characters)
 - ❌ `https://api.trigger.dev/\rinternal` (internal carriage-return characters)
 - ❌ `https://api.trigger.dev/\u200Binternal` (internal zero-width-space characters)
+- ❌ `https://api.trigger.dev/\u200Cinternal` (internal zero-width-non-joiner characters)
 - ❌ `https://api.trigger.dev/\u202Finternal` (internal narrow no-break space characters)
 - ❌ `https://api.trigger.dev/\u2028internal` (internal line-separator characters)
 - ❌ `https://api.trigger.dev/\u2029internal` (internal paragraph-separator characters)
