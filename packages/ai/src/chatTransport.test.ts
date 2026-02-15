@@ -798,6 +798,43 @@ describe("TriggerChatTransport", function () {
     expect(errors[0]?.error.message).toBe("mapper failed");
   });
 
+  it("normalizes non-Error mapper failures before reporting onError", async function () {
+    const errors: TriggerChatTransportError[] = [];
+
+    const transport = new TriggerChatTransport<
+      UIMessage,
+      { prompt: string }
+    >({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      payloadMapper: async function payloadMapper() {
+        throw "string mapper failure";
+      },
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    await expect(
+      transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-mapper-string-failure",
+        messageId: undefined,
+        messages: [],
+        abortSignal: undefined,
+      })
+    ).rejects.toBe("string mapper failure");
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "payloadMapper",
+      chatId: "chat-mapper-string-failure",
+      runId: undefined,
+    });
+    expect(errors[0]?.error.message).toBe("string mapper failure");
+  });
+
   it("surfaces trigger options resolver errors and does not trigger runs", async function () {
     let triggerCalls = 0;
     const errors: TriggerChatTransportError[] = [];
