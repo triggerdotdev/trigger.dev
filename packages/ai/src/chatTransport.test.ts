@@ -653,6 +653,28 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must use http or https protocol");
   });
 
+  it("throws when baseURL includes query parameters", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://example.com/base?query=1",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not include query parameters or hash fragments");
+  });
+
+  it("throws when baseURL includes hash fragments", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://example.com/base#fragment",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not include query parameters or hash fragments");
+  });
+
   it("accepts uppercase http protocol in baseURL", async function () {
     let observedTriggerPath: string | undefined;
     let observedStreamPath: string | undefined;
@@ -2868,6 +2890,28 @@ describe("TriggerChatTransport", function () {
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must use http or https protocol");
+  });
+
+  it("throws from factory when baseURL includes query parameters", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://example.com/base?query=1",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not include query parameters or hash fragments");
+  });
+
+  it("throws from factory when baseURL includes hash fragments", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://example.com/base#fragment",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not include query parameters or hash fragments");
   });
 
   it("continues streaming when onTriggeredRun callback throws", async function () {

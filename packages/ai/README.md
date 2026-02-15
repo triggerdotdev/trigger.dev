@@ -163,6 +163,7 @@ both cleanup steps (`set` inactive state and `delete`) even if one of them fails
 - `baseURL` must not be empty after trimming/normalization.
 - `baseURL` must be a valid absolute URL.
 - `baseURL` must use the `http` or `https` protocol.
+- `baseURL` must not include query parameters or hash fragments.
 
 ## `ai.tool(...)` example
 

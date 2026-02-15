@@ -480,6 +480,10 @@ function normalizeBaseUrl(baseURL: string) {
     throw new Error("baseURL must use http or https protocol");
   }
 
+  if (parsedBaseUrl.search.length > 0 || parsedBaseUrl.hash.length > 0) {
+    throw new Error("baseURL must not include query parameters or hash fragments");
+  }
+
   return normalizedBaseUrl;
 }
 
