@@ -273,10 +273,15 @@ describe("TriggerChatTransport", function () {
     expect(observedStreamPath).toBe("/realtime/v1/streams/run_trailing_baseurl/chat-stream");
   });
 
-  it("normalizes repeated trailing slashes in baseURL for stream URLs", async function () {
+  it("normalizes repeated trailing slashes in baseURL for trigger and stream URLs", async function () {
+    let observedTriggerPath: string | undefined;
     let observedStreamPath: string | undefined;
 
     const server = await startServer(function (req, res) {
+      if (req.method === "POST") {
+        observedTriggerPath = req.url ?? "";
+      }
+
       if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
         res.writeHead(200, {
           "content-type": "application/json",
@@ -332,6 +337,7 @@ describe("TriggerChatTransport", function () {
 
     const chunks = await readChunks(stream);
     expect(chunks).toHaveLength(2);
+    expect(observedTriggerPath).toBe("/api/v1/tasks/chat-task/trigger");
     expect(observedStreamPath).toBe("/realtime/v1/streams/run_multi_trailing_baseurl/chat-stream");
   });
 
