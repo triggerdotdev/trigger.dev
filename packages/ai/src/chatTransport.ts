@@ -448,6 +448,14 @@ export function createTriggerChatTransport<
   return new TriggerChatTransport<UI_MESSAGE, PAYLOAD>(options);
 }
 
+const BASE_URL_VALIDATION_ERRORS = {
+  empty: "baseURL must not be empty",
+  invalidAbsoluteUrl: "baseURL must be a valid absolute URL",
+  invalidProtocol: "baseURL must use http or https protocol",
+  queryOrHash: "baseURL must not include query parameters or hash fragments",
+  credentials: "baseURL must not include username or password credentials",
+} as const;
+
 function resolvePayloadMapper<
   UI_MESSAGE extends UIMessage,
   PAYLOAD,
@@ -463,14 +471,14 @@ function normalizeBaseUrl(baseURL: string) {
   const normalizedBaseUrl = baseURL.trim().replace(/\/+$/, "");
 
   if (normalizedBaseUrl.length === 0) {
-    throw new Error("baseURL must not be empty");
+    throw new Error(BASE_URL_VALIDATION_ERRORS.empty);
   }
 
   let parsedBaseUrl: URL;
   try {
     parsedBaseUrl = new URL(normalizedBaseUrl);
   } catch {
-    throw new Error("baseURL must be a valid absolute URL");
+    throw new Error(BASE_URL_VALIDATION_ERRORS.invalidAbsoluteUrl);
   }
 
   assertValidBaseUrlProtocol(parsedBaseUrl);
@@ -485,19 +493,19 @@ function assertValidBaseUrlProtocol(parsedBaseUrl: URL) {
     parsedBaseUrl.protocol !== "http:" &&
     parsedBaseUrl.protocol !== "https:"
   ) {
-    throw new Error("baseURL must use http or https protocol");
+    throw new Error(BASE_URL_VALIDATION_ERRORS.invalidProtocol);
   }
 }
 
 function assertBaseUrlHasNoQueryOrHash(parsedBaseUrl: URL) {
   if (parsedBaseUrl.search.length > 0 || parsedBaseUrl.hash.length > 0) {
-    throw new Error("baseURL must not include query parameters or hash fragments");
+    throw new Error(BASE_URL_VALIDATION_ERRORS.queryOrHash);
   }
 }
 
 function assertBaseUrlHasNoCredentials(parsedBaseUrl: URL) {
   if (parsedBaseUrl.username.length > 0 || parsedBaseUrl.password.length > 0) {
-    throw new Error("baseURL must not include username or password credentials");
+    throw new Error(BASE_URL_VALIDATION_ERRORS.credentials);
   }
 }
 
