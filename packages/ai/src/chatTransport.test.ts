@@ -1061,6 +1061,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must use http or https protocol");
   });
 
+  it("throws when newline-and-tab wrapped baseURL protocol is ws", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\n\tws://example.com\t\n",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must use http or https protocol");
+  });
+
   it("throws when baseURL protocol is wss", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -1078,6 +1089,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "  wss://example.com  ",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must use http or https protocol");
+  });
+
+  it("throws when newline-and-tab wrapped baseURL protocol is wss", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\n\twss://example.com\t\n",
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must use http or https protocol");
@@ -4053,6 +4075,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must use http or https protocol");
   });
 
+  it("throws from factory when newline-and-tab wrapped baseURL protocol is ws", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\n\tws://example.com\t\n",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must use http or https protocol");
+  });
+
   it("throws from factory when baseURL protocol is wss", function () {
     expect(function () {
       createTriggerChatTransport({
@@ -4070,6 +4103,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "  wss://example.com  ",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must use http or https protocol");
+  });
+
+  it("throws from factory when newline-and-tab wrapped baseURL protocol is wss", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\n\twss://example.com\t\n",
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must use http or https protocol");
