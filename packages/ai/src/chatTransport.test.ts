@@ -2893,6 +2893,62 @@ describe("TriggerChatTransport", function () {
     expect(runStore.get("chat-reconnect-cleanup-delete-failure")).toBeUndefined();
   });
 
+  it("preserves reconnect root failure when cleanup delete throws a non-Error value", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new FailingCleanupDeleteValueRunStore("cleanup delete string failure");
+    let fetchCalls = 0;
+    runStore.set({
+      chatId: "chat-reconnect-cleanup-delete-string-failure",
+      runId: "run_reconnect_cleanup_delete_string_failure",
+      publicAccessToken: "pk_reconnect_cleanup_delete_string_failure",
+      streamKey: "chat-stream",
+      lastEventId: "100-0",
+      isActive: true,
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      fetchCalls += 1;
+      throw new Error("reconnect root cause");
+    };
+
+    const firstReconnect = await transport.reconnectToStream({
+      chatId: "chat-reconnect-cleanup-delete-string-failure",
+    });
+
+    expect(firstReconnect).toBeNull();
+    expect(fetchCalls).toBe(1);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "reconnect",
+      chatId: "chat-reconnect-cleanup-delete-string-failure",
+      runId: "run_reconnect_cleanup_delete_string_failure",
+    });
+    expect(errors[0]?.error.message).toBe("reconnect root cause");
+    expect(runStore.get("chat-reconnect-cleanup-delete-string-failure")).toMatchObject({
+      isActive: false,
+      lastEventId: "100-0",
+    });
+
+    const secondReconnect = await transport.reconnectToStream({
+      chatId: "chat-reconnect-cleanup-delete-string-failure",
+    });
+
+    expect(secondReconnect).toBeNull();
+    expect(fetchCalls).toBe(1);
+    expect(errors).toHaveLength(1);
+    expect(runStore.get("chat-reconnect-cleanup-delete-string-failure")).toBeUndefined();
+  });
+
   it("attempts both reconnect cleanup steps when set and delete both throw", async function () {
     const errors: TriggerChatTransportError[] = [];
     const runStore = new FailingCleanupSetAndDeleteRunStore();
