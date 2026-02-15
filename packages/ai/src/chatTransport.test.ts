@@ -2494,6 +2494,43 @@ describe("TriggerChatTransport", function () {
     }
   );
 
+  it(
+    "preserves reconnect root failures when cleanup set/delete and onError callbacks all fail",
+    async function () {
+      const runStore = new FailingCleanupSetAndDeleteRunStore();
+      runStore.set({
+        chatId: "chat-reconnect-cleanup-all-failure",
+        runId: "run_reconnect_cleanup_all_failure",
+        publicAccessToken: "pk_reconnect_cleanup_all_failure",
+        streamKey: "chat-stream",
+        lastEventId: "100-0",
+        isActive: true,
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "chat-task",
+        stream: "chat-stream",
+        accessToken: "pk_trigger",
+        runStore,
+        onError: async function onError() {
+          throw new Error("onError failed");
+        },
+      });
+
+      (transport as any).fetchRunStream = async function fetchRunStream() {
+        throw new Error("reconnect root cause");
+      };
+
+      const stream = await transport.reconnectToStream({
+        chatId: "chat-reconnect-cleanup-all-failure",
+      });
+
+      expect(stream).toBeNull();
+      expect(runStore.setCalls).toContain("chat-reconnect-cleanup-all-failure");
+      expect(runStore.deleteCalls).toContain("chat-reconnect-cleanup-all-failure");
+    }
+  );
+
   it("normalizes non-Error reconnect failures before reporting onError", async function () {
     const errors: TriggerChatTransportError[] = [];
     const runStore = new InMemoryTriggerChatRunStore();
