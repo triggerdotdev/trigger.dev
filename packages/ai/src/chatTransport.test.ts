@@ -2117,6 +2117,7 @@ describe("TriggerChatTransport", function () {
     let reconnectLastEventId: string | undefined;
     let firstStreamResponse: ServerResponse<IncomingMessage> | undefined;
     let firstStreamChunkSent = false;
+    const errors: TriggerChatTransportError[] = [];
     const runStore = new InMemoryTriggerChatRunStore();
 
     const server = await startServer(function (req, res) {
@@ -2177,6 +2178,9 @@ describe("TriggerChatTransport", function () {
       accessToken: "pk_trigger",
       baseURL: server.url,
       runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
     });
 
     try {
@@ -2212,6 +2216,7 @@ describe("TriggerChatTransport", function () {
       expect(reconnectChunks[1]).toMatchObject({
         chunk: { type: "text-end", id: "msg_2" },
       });
+      expect(errors).toHaveLength(0);
     } finally {
       if (firstStreamResponse) {
         firstStreamResponse.end();
