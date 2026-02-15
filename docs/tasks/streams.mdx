@@ -656,7 +656,8 @@ If `onError` is omitted, reconnect still returns `null` and continues without ca
 `baseURL` supports optional path prefixes and trailing slashes; both trigger and stream URLs
 are normalized consistently, surrounding whitespace is trimmed before normalization, and
 the resulting value must not be empty. The value must also be a valid absolute URL using
-the `http` or `https` protocol, without query parameters or hash fragments.
+the `http` or `https` protocol, without query parameters, hash fragments, or embedded
+username/password credentials.
 
 For richer TypeScript ergonomics in app code, `@trigger.dev/ai` also exports:
 

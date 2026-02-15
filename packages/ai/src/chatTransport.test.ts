@@ -675,6 +675,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must not include query parameters or hash fragments");
   });
 
+  it("throws when baseURL includes username or password credentials", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://user:pass@example.com/base",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not include username or password credentials");
+  });
+
   it("accepts https baseURL values without throwing", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -2923,6 +2934,17 @@ describe("TriggerChatTransport", function () {
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must not include query parameters or hash fragments");
+  });
+
+  it("throws from factory when baseURL includes username or password credentials", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://user:pass@example.com/base",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not include username or password credentials");
   });
 
   it("accepts https baseURL values from factory without throwing", function () {

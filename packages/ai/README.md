@@ -164,6 +164,7 @@ both cleanup steps (`set` inactive state and `delete`) even if one of them fails
 - `baseURL` must be a valid absolute URL.
 - `baseURL` must use the `http` or `https` protocol.
 - `baseURL` must not include query parameters or hash fragments.
+- `baseURL` must not include username/password URL credentials.
 
 ## `ai.tool(...)` example
 

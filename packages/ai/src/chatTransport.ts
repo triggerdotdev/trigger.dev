@@ -484,6 +484,10 @@ function normalizeBaseUrl(baseURL: string) {
     throw new Error("baseURL must not include query parameters or hash fragments");
   }
 
+  if (parsedBaseUrl.username.length > 0 || parsedBaseUrl.password.length > 0) {
+    throw new Error("baseURL must not include username or password credentials");
+  }
+
   return normalizedBaseUrl;
 }
 
