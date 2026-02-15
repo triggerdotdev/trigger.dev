@@ -480,6 +480,14 @@ describe("TriggerChatTransport", function () {
       "x-array": "array-value",
     });
     expect(
+      normalizeTriggerChatHeaders([
+        ["x-dup", "first"],
+        ["x-dup", "second"],
+      ])
+    ).toEqual({
+      "x-dup": "second",
+    });
+    expect(
       normalizeTriggerChatHeaders(new Headers([["x-headers", "headers-value"]]))
     ).toEqual({
       "x-headers": "headers-value",
