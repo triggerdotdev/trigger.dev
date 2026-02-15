@@ -910,6 +910,78 @@ describe("TriggerChatTransport", function () {
     expect(observedStreamPath).toBe("/realtime/v1/streams/run_uppercase_protocol/chat-stream");
   });
 
+  it("supports whitespace-wrapped uppercase http protocol with path prefix", async function () {
+    let observedTriggerPath: string | undefined;
+    let observedStreamPath: string | undefined;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST") {
+        observedTriggerPath = req.url ?? "";
+      }
+
+      if (req.method === "GET") {
+        observedStreamPath = req.url ?? "";
+      }
+
+      if (req.method === "POST" && req.url === "/uppercase-http-prefix/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_uppercase_http_prefix",
+        });
+        res.end(JSON.stringify({ id: "run_uppercase_http_prefix" }));
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        req.url === "/uppercase-http-prefix/realtime/v1/streams/run_uppercase_http_prefix/chat-stream"
+      ) {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "uppercase_http_prefix_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "uppercase_http_prefix_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const uppercaseHttpBaseUrl = server.url.replace(/^http:\/\//, "HTTP://");
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      accessToken: "pk_trigger",
+      baseURL: `  ${uppercaseHttpBaseUrl}/uppercase-http-prefix///   `,
+      stream: "chat-stream",
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-uppercase-http-prefix",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(observedTriggerPath).toBe("/uppercase-http-prefix/api/v1/tasks/chat-task/trigger");
+    expect(observedStreamPath).toBe(
+      "/uppercase-http-prefix/realtime/v1/streams/run_uppercase_http_prefix/chat-stream"
+    );
+  });
+
   it("combines path prefixes with run and stream URL encoding", async function () {
     let observedTriggerPath: string | undefined;
     let observedStreamPath: string | undefined;
