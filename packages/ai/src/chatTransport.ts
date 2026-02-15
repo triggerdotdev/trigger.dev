@@ -177,7 +177,9 @@ export class TriggerChatTransport<
 
     if (this.onTriggeredRun) {
       try {
-        await this.onTriggeredRun(runState);
+        await this.onTriggeredRun({
+          ...runState,
+        });
       } catch {
         // Ignore callback errors so chat streaming can continue.
       }

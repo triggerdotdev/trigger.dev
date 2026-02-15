@@ -809,7 +809,7 @@ describe("TriggerChatTransport", function () {
       onTriggeredRun: async function onTriggeredRun(state) {
         await sleep(1);
         observedRunId = state.runId;
-        observedState = { ...state };
+        observedState = state;
         callbackCompleted = true;
       },
     });
