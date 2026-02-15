@@ -628,6 +628,7 @@ describe("TriggerChatTransport", function () {
 
   it("supports creating transport with factory function", async function () {
     let observedRunId: string | undefined;
+    let callbackCompleted = false;
 
     const server = await startServer(function (req, res) {
       if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
@@ -666,8 +667,10 @@ describe("TriggerChatTransport", function () {
       stream: "chat-stream",
       accessToken: "pk_trigger",
       baseURL: server.url,
-      onTriggeredRun: function onTriggeredRun(state) {
+      onTriggeredRun: async function onTriggeredRun(state) {
+        await sleep(1);
         observedRunId = state.runId;
+        callbackCompleted = true;
       },
     });
 
@@ -682,6 +685,7 @@ describe("TriggerChatTransport", function () {
     const chunks = await readChunks(stream);
     expect(chunks).toHaveLength(2);
     expect(observedRunId).toBe("run_factory");
+    expect(callbackCompleted).toBe(true);
   });
 
   it("cleans run store state when stream completes", async function () {

@@ -81,6 +81,9 @@ it("accepts async payload mappers and trigger option resolvers", function () {
         queue: `queue-${request.chatId}`,
       };
     },
+    onTriggeredRun: async function onTriggeredRun(_state) {
+      return;
+    },
   };
 
   expectTypeOf(options).toBeObject();

@@ -61,6 +61,10 @@ export type TriggerChatTriggerOptionsResolver<
   request: TriggerChatTransportRequest<UI_MESSAGE>
 ) => MaybePromise<TriggerOptions | undefined>;
 
+export type TriggerChatOnTriggeredRun = (
+  state: TriggerChatRunState
+) => MaybePromise<void>;
+
 export type TriggerChatStream<
   UI_MESSAGE extends UIMessage = UIMessage,
 > =

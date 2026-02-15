@@ -15,6 +15,7 @@ import type {
   UIMessageChunk,
 } from "ai";
 import type {
+  TriggerChatOnTriggeredRun,
   TriggerChatPayloadMapper,
   TriggerChatRunState,
   TriggerChatRunStore,
@@ -75,7 +76,7 @@ type TriggerChatTransportCommonOptions<
     | TriggerOptions
     | TriggerChatTriggerOptionsResolver<UI_MESSAGE>;
   runStore?: TriggerChatRunStore;
-  onTriggeredRun?: (state: TriggerChatRunState) => void;
+  onTriggeredRun?: TriggerChatOnTriggeredRun;
 };
 
 type TriggerChatTransportMapperRequirement<
@@ -129,7 +130,7 @@ export class TriggerChatTransport<
   private readonly baseURL: string;
   private readonly previewBranch: string | undefined;
   private readonly requestOptions: ApiRequestOptions | undefined;
-  private readonly onTriggeredRun: ((state: TriggerChatRunState) => void) | undefined;
+  private readonly onTriggeredRun: TriggerChatOnTriggeredRun | undefined;
 
   constructor(options: TriggerChatTransportOptions<UI_MESSAGE, PAYLOAD>) {
     this.task = options.task;
@@ -179,7 +180,7 @@ export class TriggerChatTransport<
     await this.runStore.set(runState);
 
     if (this.onTriggeredRun) {
-      this.onTriggeredRun(runState);
+      await this.onTriggeredRun(runState);
     }
 
     const stream = await this.fetchRunStream(runState, options.abortSignal);

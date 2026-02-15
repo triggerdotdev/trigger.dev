@@ -7,6 +7,7 @@ export {
 } from "./chatTransport.js";
 export type {
   TriggerChatPayloadMapper,
+  TriggerChatOnTriggeredRun,
   TriggerChatRunState,
   TriggerChatRunStore,
   TriggerChatStream,
