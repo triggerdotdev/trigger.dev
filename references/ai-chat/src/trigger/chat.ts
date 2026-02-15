@@ -8,7 +8,7 @@ export const chat = chatTask({
     return streamText({
       model: openai("gpt-4o-mini"),
       system: "You are a helpful assistant. Be concise and friendly.",
-      messages: convertToModelMessages(messages),
+      messages: await convertToModelMessages(messages),
     });
   },
 });
