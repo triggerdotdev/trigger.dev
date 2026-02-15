@@ -1259,6 +1259,54 @@ describe("TriggerChatTransport", function () {
     expect(runStore.get("chat-stream-subscribe-onerror-failure")).toBeUndefined();
   });
 
+  it(
+    "keeps original non-Error stream subscription failure when onError callback also fails",
+    async function () {
+      const runStore = new InMemoryTriggerChatRunStore();
+
+      const server = await startServer(function (req, res) {
+        if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+          res.writeHead(200, {
+            "content-type": "application/json",
+            "x-trigger-jwt": "pk_stream_subscribe_string_onerror_failure",
+          });
+          res.end(JSON.stringify({ id: "run_stream_subscribe_string_onerror_failure" }));
+          return;
+        }
+
+        res.writeHead(404);
+        res.end();
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "chat-task",
+        stream: "chat-stream",
+        accessToken: "pk_trigger",
+        baseURL: server.url,
+        runStore,
+        onError: async function onError() {
+          throw new Error("onError failed");
+        },
+      });
+
+      (transport as any).fetchRunStream = async function fetchRunStream() {
+        throw "stream subscribe string root";
+      };
+
+      await expect(
+        transport.sendMessages({
+          trigger: "submit-message",
+          chatId: "chat-stream-subscribe-string-onerror-failure",
+          messageId: undefined,
+          messages: [],
+          abortSignal: undefined,
+        })
+      ).rejects.toBe("stream subscribe string root");
+
+      expect(runStore.get("chat-stream-subscribe-string-onerror-failure")).toBeUndefined();
+    }
+  );
+
   it("cleans up async run-store state when stream subscription fails", async function () {
     const runStore = new AsyncTrackedRunStore();
 
