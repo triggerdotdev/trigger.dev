@@ -258,16 +258,7 @@ export class TriggerChatTransport<
     }
 
     if (!runState.isActive) {
-      try {
-        await this.runStore.delete(options.chatId);
-      } catch (error) {
-        await this.reportError({
-          phase: "reconnect",
-          chatId: runState.chatId,
-          runId: runState.runId,
-          error: normalizeError(error),
-        });
-      }
+      await this.cleanupInactiveReconnectState(runState);
       return null;
     }
 
@@ -420,6 +411,19 @@ export class TriggerChatTransport<
       await this.markRunInactiveAndDelete(runState);
     } catch {
       // Best effort cleanup only; never mask the original transport failure.
+    }
+  }
+
+  private async cleanupInactiveReconnectState(runState: TriggerChatRunState) {
+    try {
+      await this.runStore.delete(runState.chatId);
+    } catch (error) {
+      await this.reportError({
+        phase: "reconnect",
+        chatId: runState.chatId,
+        runId: runState.runId,
+        error: normalizeError(error),
+      });
     }
   }
 
