@@ -403,6 +403,76 @@ describe("TriggerChatTransport", function () {
     expect(observedStreamPath).toBe("/custom-base/realtime/v1/streams/run_path_prefix/chat-stream");
   });
 
+  it("supports trailing slashes on baseURL path prefixes", async function () {
+    let observedTriggerPath: string | undefined;
+    let observedStreamPath: string | undefined;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST") {
+        observedTriggerPath = req.url ?? "";
+      }
+
+      if (req.method === "GET") {
+        observedStreamPath = req.url ?? "";
+      }
+
+      if (req.method === "POST" && req.url === "/custom-prefix/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_path_prefix_trailing",
+        });
+        res.end(JSON.stringify({ id: "run_path_prefix_trailing" }));
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        req.url === "/custom-prefix/realtime/v1/streams/run_path_prefix_trailing/chat-stream"
+      ) {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "path_prefix_trailing_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "path_prefix_trailing_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      accessToken: "pk_trigger",
+      baseURL: `${server.url}/custom-prefix///`,
+      stream: "chat-stream",
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-path-prefix-trailing",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(observedTriggerPath).toBe("/custom-prefix/api/v1/tasks/chat-task/trigger");
+    expect(observedStreamPath).toBe(
+      "/custom-prefix/realtime/v1/streams/run_path_prefix_trailing/chat-stream"
+    );
+  });
+
   it("uses defined stream object id when provided", async function () {
     let observedStreamPath: string | undefined;
 
