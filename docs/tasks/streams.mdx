@@ -682,6 +682,8 @@ Examples:
 - ❌ `https://user:pass@api.trigger.dev`
 - ❌ `ftp://api.trigger.dev`
 - ❌ `ws://api.trigger.dev` / `wss://api.trigger.dev`
+- ❌ `\u1680///\u1680` (empty after trimming wrapper whitespace)
+- ❌ `\u3000///\u3000` (empty after trimming wrapper whitespace)
 - ❌ `https://api.trigger.dev/\ninternal`
 - ❌ `https://api.trigger.dev/in valid`
 - ❌ `https://api.trigger.dev/\tinternal`

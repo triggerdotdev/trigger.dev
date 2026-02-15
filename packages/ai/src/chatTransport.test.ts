@@ -699,6 +699,28 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must not be empty");
   });
 
+  it("throws when baseURL is empty after trimming ogham-space-mark wrappers", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\u1680///\u1680",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not be empty");
+  });
+
+  it("throws when baseURL is empty after trimming ideographic-space wrappers", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\u3000///\u3000",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not be empty");
+  });
+
   it("uses default baseURL when omitted", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -3576,6 +3598,28 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "\u00A0///\u00A0",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not be empty");
+  });
+
+  it("throws from factory when baseURL is empty after trimming ogham-space-mark wrappers", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\u1680///\u1680",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not be empty");
+  });
+
+  it("throws from factory when baseURL is empty after trimming ideographic-space wrappers", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\u3000///\u3000",
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must not be empty");
