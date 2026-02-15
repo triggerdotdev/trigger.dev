@@ -1076,7 +1076,7 @@ describe("TriggerChatTransport", function () {
 
   it("reports stream subscription failures through onError", async function () {
     const errors: TriggerChatTransportError[] = [];
-    const runStore = new InMemoryTriggerChatRunStore();
+    const runStore = new TrackedRunStore();
 
     const server = await startServer(function (req, res) {
       if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
@@ -1124,12 +1124,24 @@ describe("TriggerChatTransport", function () {
       runId: "run_stream_subscribe_error",
     });
     expect(errors[0]?.error.message).toBe("stream subscribe failed root");
+    expect(runStore.setSnapshots).toHaveLength(2);
+    expect(runStore.setSnapshots[0]).toMatchObject({
+      chatId: "chat-stream-subscribe-error",
+      runId: "run_stream_subscribe_error",
+      isActive: true,
+    });
+    expect(runStore.setSnapshots[1]).toMatchObject({
+      chatId: "chat-stream-subscribe-error",
+      runId: "run_stream_subscribe_error",
+      isActive: false,
+    });
+    expect(runStore.deleteCalls).toEqual(["chat-stream-subscribe-error"]);
     expect(runStore.get("chat-stream-subscribe-error")).toBeUndefined();
   });
 
   it("normalizes non-Error stream subscription failures before reporting onError", async function () {
     const errors: TriggerChatTransportError[] = [];
-    const runStore = new InMemoryTriggerChatRunStore();
+    const runStore = new TrackedRunStore();
 
     const server = await startServer(function (req, res) {
       if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
@@ -1177,6 +1189,18 @@ describe("TriggerChatTransport", function () {
       runId: "run_stream_subscribe_string_error",
     });
     expect(errors[0]?.error.message).toBe("stream subscribe string failure");
+    expect(runStore.setSnapshots).toHaveLength(2);
+    expect(runStore.setSnapshots[0]).toMatchObject({
+      chatId: "chat-stream-subscribe-string-error",
+      runId: "run_stream_subscribe_string_error",
+      isActive: true,
+    });
+    expect(runStore.setSnapshots[1]).toMatchObject({
+      chatId: "chat-stream-subscribe-string-error",
+      runId: "run_stream_subscribe_string_error",
+      isActive: false,
+    });
+    expect(runStore.deleteCalls).toEqual(["chat-stream-subscribe-string-error"]);
     expect(runStore.get("chat-stream-subscribe-string-error")).toBeUndefined();
   });
 
@@ -2165,7 +2189,15 @@ async function waitForCondition(
 }
 
 class TrackedRunStore extends InMemoryTriggerChatRunStore {
+  public readonly setSnapshots: TriggerChatRunState[] = [];
   public readonly deleteCalls: string[] = [];
+
+  public set(state: TriggerChatRunState): void {
+    this.setSnapshots.push({
+      ...state,
+    });
+    super.set(state);
+  }
 
   public delete(chatId: string): void {
     this.deleteCalls.push(chatId);
