@@ -730,6 +730,17 @@ describe("TriggerChatTransport", function () {
     }).not.toThrow();
   });
 
+  it("accepts uppercase https protocol in baseURL", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "HTTPS://api.trigger.dev/custom-prefix",
+        stream: "chat-stream",
+      });
+    }).not.toThrow();
+  });
+
   it("accepts uppercase http protocol in baseURL", async function () {
     let observedTriggerPath: string | undefined;
     let observedStreamPath: string | undefined;
@@ -3019,6 +3030,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "https://api.trigger.dev/custom-prefix",
+        stream: "chat-stream",
+      });
+    }).not.toThrow();
+  });
+
+  it("accepts uppercase https protocol from factory without throwing", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "HTTPS://api.trigger.dev/custom-prefix",
         stream: "chat-stream",
       });
     }).not.toThrow();
