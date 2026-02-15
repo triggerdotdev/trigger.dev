@@ -697,6 +697,7 @@ describe("TriggerChatTransport", function () {
   it("supports creating transport with factory function", async function () {
     let observedRunId: string | undefined;
     let callbackCompleted = false;
+    let observedState: TriggerChatRunState | undefined;
 
     const server = await startServer(function (req, res) {
       if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
@@ -738,6 +739,7 @@ describe("TriggerChatTransport", function () {
       onTriggeredRun: async function onTriggeredRun(state) {
         await sleep(1);
         observedRunId = state.runId;
+        observedState = { ...state };
         callbackCompleted = true;
       },
     });
@@ -754,6 +756,13 @@ describe("TriggerChatTransport", function () {
     expect(chunks).toHaveLength(2);
     expect(observedRunId).toBe("run_factory");
     expect(callbackCompleted).toBe(true);
+    expect(observedState).toMatchObject({
+      chatId: "chat-factory",
+      runId: "run_factory",
+      streamKey: "chat-stream",
+      lastEventId: undefined,
+      isActive: true,
+    });
   });
 
   it("continues streaming when onTriggeredRun callback throws", async function () {
