@@ -1,41 +1,42 @@
 ---
-"@trigger.dev/ai": minor
+"@trigger.dev/sdk": minor
 ---
 
-New package: `@trigger.dev/ai` — AI SDK integration for Trigger.dev
+Add AI SDK chat transport integration via two new subpath exports:
 
-Provides `TriggerChatTransport`, a custom `ChatTransport` implementation for the Vercel AI SDK that bridges `useChat` with Trigger.dev's durable task execution and realtime streams.
+**`@trigger.dev/sdk/chat`** (frontend, browser-safe):
+- `TriggerChatTransport` — custom `ChatTransport` for the AI SDK's `useChat` hook that runs chat completions as durable Trigger.dev tasks
+- `createChatTransport()` — factory function
 
-**Frontend usage:**
 ```tsx
 import { useChat } from "@ai-sdk/react";
-import { TriggerChatTransport } from "@trigger.dev/ai";
+import { TriggerChatTransport } from "@trigger.dev/sdk/chat";
 
 const { messages, sendMessage } = useChat({
   transport: new TriggerChatTransport({
-    accessToken: publicAccessToken,
-    taskId: "my-chat-task",
+    task: "my-chat-task",
+    accessToken,
   }),
 });
 ```
 
-**Backend task:**
-```ts
-import { task, streams } from "@trigger.dev/sdk";
-import { streamText, convertToModelMessages } from "ai";
-import type { ChatTaskPayload } from "@trigger.dev/ai";
+**`@trigger.dev/sdk/ai`** (backend, extends existing `ai.tool`/`ai.currentToolOptions`):
+- `chatTask()` — pre-typed task wrapper with auto-pipe support
+- `pipeChat()` — pipe a `StreamTextResult` or stream to the frontend
+- `CHAT_STREAM_KEY` — the default stream key constant
+- `ChatTaskPayload` type
 
-export const myChatTask = task({
+```ts
+import { chatTask } from "@trigger.dev/sdk/ai";
+import { streamText, convertToModelMessages } from "ai";
+
+export const myChatTask = chatTask({
   id: "my-chat-task",
-  run: async (payload: ChatTaskPayload) => {
-    const result = streamText({
+  run: async ({ messages }) => {
+    return streamText({
       model: openai("gpt-4o"),
-      messages: convertToModelMessages(payload.messages),
+      messages: convertToModelMessages(messages),
     });
-    const { waitUntilComplete } = streams.pipe("chat", result.toUIMessageStream());
-    await waitUntilComplete();
   },
 });
 ```
-
-Also exports `createChatTransport()` factory function and `ChatTaskPayload` type for task-side typing.
