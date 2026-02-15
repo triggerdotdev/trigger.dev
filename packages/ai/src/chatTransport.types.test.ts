@@ -1,6 +1,7 @@
 import { expectTypeOf, it } from "vitest";
 import type { InferUIMessageChunk, UIMessage } from "ai";
 import {
+  createTriggerChatTransport,
   TriggerChatTransport,
   TriggerChatTransportOptions,
   type TriggerChatTransportPayload,
@@ -87,6 +88,22 @@ it("accepts async payload mappers and trigger option resolvers", function () {
   };
 
   expectTypeOf(options).toBeObject();
+});
+
+it("infers custom payload output from mapper in factory helper", function () {
+  const transport = createTriggerChatTransport({
+    task: "ai-chat",
+    accessToken: "pk_test",
+    payloadMapper: function payloadMapper(request) {
+      return {
+        prompt: request.chatId,
+      };
+    },
+  });
+
+  expectTypeOf(transport).toEqualTypeOf<
+    TriggerChatTransport<UIMessage, { prompt: string }>
+  >();
 });
 
 it("accepts typed stream definition objects", function () {
