@@ -178,6 +178,8 @@ Examples:
 - ✅ `https://api.trigger.dev/custom%3Fprefix%23segment` (percent-encoded `?` / `#`)
 - ✅ `\u00A0https://api.trigger.dev/custom-prefix/\u00A0` (non-breaking-space wrapper trimmed)
 - ✅ `\u1680https://api.trigger.dev/custom-prefix/\u1680` (ogham-space-mark wrapper trimmed)
+- ✅ `\u2007https://api.trigger.dev/custom-prefix/\u2007` (figure-space wrapper trimmed)
+- ✅ `\u205Fhttps://api.trigger.dev/custom-prefix/\u205F` (medium-mathematical-space wrapper trimmed)
 - ✅ `\u3000https://api.trigger.dev/custom-prefix/\u3000` (ideographic-space wrapper trimmed)
 - ✅ `\uFEFFhttps://api.trigger.dev/custom-prefix/\uFEFF` (BOM wrapper trimmed)
 - ❌ `\u2060https://api.trigger.dev/custom-prefix/\u2060` (word-joiner wrappers are rejected)

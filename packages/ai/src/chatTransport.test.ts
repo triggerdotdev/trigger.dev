@@ -1270,6 +1270,28 @@ describe("TriggerChatTransport", function () {
     }).not.toThrow();
   });
 
+  it("accepts figure-space wrapped baseURL values", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\u2007https://api.trigger.dev/custom-prefix/\u2007",
+        stream: "chat-stream",
+      });
+    }).not.toThrow();
+  });
+
+  it("accepts medium-mathematical-space wrapped baseURL values", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\u205Fhttps://api.trigger.dev/custom-prefix/\u205F",
+        stream: "chat-stream",
+      });
+    }).not.toThrow();
+  });
+
   it("accepts ideographic-space wrapped baseURL values", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -4180,6 +4202,28 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "\u1680https://api.trigger.dev/custom-prefix/\u1680",
+        stream: "chat-stream",
+      });
+    }).not.toThrow();
+  });
+
+  it("accepts figure-space wrapped baseURL values from factory", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\u2007https://api.trigger.dev/custom-prefix/\u2007",
+        stream: "chat-stream",
+      });
+    }).not.toThrow();
+  });
+
+  it("accepts medium-mathematical-space wrapped baseURL values from factory", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\u205Fhttps://api.trigger.dev/custom-prefix/\u205F",
         stream: "chat-stream",
       });
     }).not.toThrow();
