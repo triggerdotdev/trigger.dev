@@ -610,6 +610,70 @@ describe("TriggerChatTransport", function () {
     expect(stream).toBeNull();
   });
 
+  it("normalizes non-Error inactive reconnect cleanup delete failures through onError", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new FailingCleanupDeleteValueRunStore("cleanup delete string failure");
+    runStore.set({
+      chatId: "chat-inactive-delete-string-failure",
+      runId: "run_inactive_delete_string_failure",
+      publicAccessToken: "pk_inactive_delete_string_failure",
+      streamKey: "chat-stream",
+      lastEventId: "10-0",
+      isActive: false,
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    const stream = await transport.reconnectToStream({
+      chatId: "chat-inactive-delete-string-failure",
+    });
+
+    expect(stream).toBeNull();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "reconnect",
+      chatId: "chat-inactive-delete-string-failure",
+      runId: "run_inactive_delete_string_failure",
+    });
+    expect(errors[0]?.error.message).toBe("cleanup delete string failure");
+  });
+
+  it("returns null when inactive reconnect string cleanup delete and onError both fail", async function () {
+    const runStore = new FailingCleanupDeleteValueRunStore("cleanup delete string failure");
+    runStore.set({
+      chatId: "chat-inactive-delete-string-onerror-failure",
+      runId: "run_inactive_delete_string_onerror_failure",
+      publicAccessToken: "pk_inactive_delete_string_onerror_failure",
+      streamKey: "chat-stream",
+      lastEventId: "10-0",
+      isActive: false,
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      runStore,
+      onError: async function onError() {
+        throw new Error("onError failed");
+      },
+    });
+
+    const stream = await transport.reconnectToStream({
+      chatId: "chat-inactive-delete-string-onerror-failure",
+    });
+
+    expect(stream).toBeNull();
+  });
+
   it("supports custom payload mapping and trigger options resolver", async function () {
     let receivedTriggerBody: Record<string, unknown> | undefined;
     let receivedResolverChatId: string | undefined;
@@ -3315,6 +3379,21 @@ class FailingCleanupDeleteRunStore extends InMemoryTriggerChatRunStore {
     }
 
     super.delete(chatId);
+  }
+}
+
+class FailingCleanupDeleteValueRunStore extends InMemoryTriggerChatRunStore {
+  private deleteCalls = 0;
+
+  constructor(private readonly thrownValue: unknown) {
+    super();
+  }
+
+  public delete(_chatId: string): void {
+    this.deleteCalls += 1;
+    if (this.deleteCalls === 1) {
+      throw this.thrownValue;
+    }
   }
 }
 
