@@ -2989,6 +2989,31 @@ describe("TriggerChatTransport", function () {
       return trackedRunStore.deleteCalls.includes("chat-cleanup");
     });
 
+    expect(trackedRunStore.setSnapshots).toHaveLength(4);
+    expect(trackedRunStore.setSnapshots[0]).toMatchObject({
+      chatId: "chat-cleanup",
+      runId: "run_cleanup",
+      isActive: true,
+      lastEventId: undefined,
+    });
+    expect(trackedRunStore.setSnapshots[1]).toMatchObject({
+      chatId: "chat-cleanup",
+      runId: "run_cleanup",
+      isActive: true,
+      lastEventId: "1-0",
+    });
+    expect(trackedRunStore.setSnapshots[2]).toMatchObject({
+      chatId: "chat-cleanup",
+      runId: "run_cleanup",
+      isActive: true,
+      lastEventId: "2-0",
+    });
+    expect(trackedRunStore.setSnapshots[3]).toMatchObject({
+      chatId: "chat-cleanup",
+      runId: "run_cleanup",
+      isActive: false,
+      lastEventId: "2-0",
+    });
     expect(trackedRunStore.get("chat-cleanup")).toBeUndefined();
   });
 
