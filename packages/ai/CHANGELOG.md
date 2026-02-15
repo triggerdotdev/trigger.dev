@@ -16,3 +16,4 @@
 - Added phase-aware `onError` reporting across send, stream-subscribe, reconnect, and stream-consumption paths.
 - Added normalization of non-Error throw values into Error instances before `onError` reporting.
 - Added best-effort run-store cleanup so cleanup failures do not mask root transport errors.
+- Improved best-effort run-store cleanup to attempt both inactive-state writes and deletes even if one step fails.

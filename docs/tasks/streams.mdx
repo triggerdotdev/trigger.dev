@@ -623,7 +623,8 @@ optional `runId`, and the underlying `error` (non-Error throws are normalized to
 instances).
 
 Run-store cleanup is handled as best effort, and cleanup failures won't mask the original
-transport failure that triggered `onError`.
+transport failure that triggered `onError`. Cleanup still attempts both persistence steps
+(`set` inactive state and `delete`) even when one step fails.
 
 ```ts
 import type { TriggerChatRunState, TriggerChatRunStore } from "@trigger.dev/ai";

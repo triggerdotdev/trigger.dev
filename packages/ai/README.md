@@ -141,7 +141,8 @@ The callback receives:
 - `error`
 
 Cleanup operations against custom `runStore` implementations are best-effort. If store cleanup
-fails, the original transport error is still preserved and surfaced.
+fails, the original transport error is still preserved and surfaced. The transport also attempts
+both cleanup steps (`set` inactive state and `delete`) even if one of them fails.
 
 ## Reconnect semantics
 
