@@ -55,6 +55,12 @@ Use `TriggerChatTransportPayload<UIMessage>` in your task for the default rich p
 
 Incoming `request.headers` can be supplied as a plain object, `Headers`, or tuple arrays.
 
+Typed request option helper aliases are exported:
+
+- `TriggerChatSendMessagesOptions`
+- `TriggerChatReconnectOptions`
+- `TriggerChatHeadersInput`
+
 ```ts
 import type { TriggerChatTransportPayload } from "@trigger.dev/ai";
 import { UIMessage } from "ai";
