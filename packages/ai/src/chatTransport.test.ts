@@ -2353,6 +2353,48 @@ describe("TriggerChatTransport", function () {
     expect(errors[0]?.error.message).toBe("reconnect root cause");
   });
 
+  it("attempts both reconnect cleanup steps when set and delete both throw", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new FailingCleanupSetAndDeleteRunStore();
+    runStore.set({
+      chatId: "chat-reconnect-cleanup-both-failure",
+      runId: "run_reconnect_cleanup_both_failure",
+      publicAccessToken: "pk_reconnect_cleanup_both_failure",
+      streamKey: "chat-stream",
+      lastEventId: "100-0",
+      isActive: true,
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      throw new Error("reconnect root cause");
+    };
+
+    const stream = await transport.reconnectToStream({
+      chatId: "chat-reconnect-cleanup-both-failure",
+    });
+
+    expect(stream).toBeNull();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "reconnect",
+      chatId: "chat-reconnect-cleanup-both-failure",
+      runId: "run_reconnect_cleanup_both_failure",
+    });
+    expect(errors[0]?.error.message).toBe("reconnect root cause");
+    expect(runStore.setCalls).toContain("chat-reconnect-cleanup-both-failure");
+    expect(runStore.deleteCalls).toContain("chat-reconnect-cleanup-both-failure");
+  });
+
   it(
     "preserves reconnect root failures when cleanup and onError callbacks both fail",
     async function () {
