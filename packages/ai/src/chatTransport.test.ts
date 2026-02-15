@@ -1123,7 +1123,61 @@ describe("TriggerChatTransport", function () {
       chatId: "chat-stream-subscribe-error",
       runId: "run_stream_subscribe_error",
     });
+    expect(errors[0]?.error.message).toBe("stream subscribe failed root");
     expect(runStore.get("chat-stream-subscribe-error")).toBeUndefined();
+  });
+
+  it("normalizes non-Error stream subscription failures before reporting onError", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new InMemoryTriggerChatRunStore();
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_stream_subscribe_string_error",
+        });
+        res.end(JSON.stringify({ id: "run_stream_subscribe_string_error" }));
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      throw "stream subscribe string failure";
+    };
+
+    await expect(
+      transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-stream-subscribe-string-error",
+        messageId: undefined,
+        messages: [],
+        abortSignal: undefined,
+      })
+    ).rejects.toBe("stream subscribe string failure");
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "streamSubscribe",
+      chatId: "chat-stream-subscribe-string-error",
+      runId: "run_stream_subscribe_string_error",
+    });
+    expect(errors[0]?.error.message).toBe("stream subscribe string failure");
+    expect(runStore.get("chat-stream-subscribe-string-error")).toBeUndefined();
   });
 
   it("keeps original stream subscription failure when onError callback also fails", async function () {
