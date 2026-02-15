@@ -620,6 +620,16 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must not be empty");
   });
 
+  it("uses default baseURL when omitted", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        stream: "chat-stream",
+      });
+    }).not.toThrow();
+  });
+
   it("throws when baseURL is not a valid absolute URL", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -3116,6 +3126,16 @@ describe("TriggerChatTransport", function () {
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must not be empty");
+  });
+
+  it("uses default baseURL in factory when omitted", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        stream: "chat-stream",
+      });
+    }).not.toThrow();
   });
 
   it("throws from factory when baseURL is not a valid absolute URL", function () {
