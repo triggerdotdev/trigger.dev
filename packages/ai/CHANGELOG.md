@@ -26,3 +26,4 @@
 - Added explicit validation that `baseURL` uses `http` or `https`.
 - Added explicit validation that `baseURL` excludes query parameters and hash fragments.
 - Added explicit validation that `baseURL` excludes username/password credentials.
+- Documented that `HTTP://` and `HTTPS://` are accepted (case-insensitive protocol matching).
