@@ -175,6 +175,7 @@ Examples:
 - ❌ `https://api.trigger.dev#fragment` (hash fragment)
 - ❌ `https://user:pass@api.trigger.dev` (credentials)
 - ❌ `ftp://api.trigger.dev` (non-http protocol)
+- ❌ `ws://api.trigger.dev` / `wss://api.trigger.dev` (websocket protocols are rejected)
 
 ## `ai.tool(...)` example
 
