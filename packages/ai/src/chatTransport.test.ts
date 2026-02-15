@@ -479,6 +479,77 @@ describe("TriggerChatTransport", function () {
     );
   });
 
+  it("combines path prefixes with run and stream URL encoding", async function () {
+    let observedTriggerPath: string | undefined;
+    let observedStreamPath: string | undefined;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST") {
+        observedTriggerPath = req.url ?? "";
+      }
+
+      if (req.method === "GET") {
+        observedStreamPath = req.url ?? "";
+      }
+
+      if (req.method === "POST" && req.url === "/prefixed/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_prefixed_encoded",
+        });
+        res.end(JSON.stringify({ id: "run/with space" }));
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        req.url ===
+          "/prefixed/realtime/v1/streams/run%2Fwith%20space/chat%2Fspecial%20stream"
+      ) {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "prefixed_encoded_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "prefixed_encoded_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      accessToken: "pk_trigger",
+      baseURL: `${server.url}/prefixed///`,
+      stream: "chat/special stream",
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-prefixed-encoded",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(observedTriggerPath).toBe("/prefixed/api/v1/tasks/chat-task/trigger");
+    expect(observedStreamPath).toBe(
+      "/prefixed/realtime/v1/streams/run%2Fwith%20space/chat%2Fspecial%20stream"
+    );
+  });
+
   it("uses defined stream object id when provided", async function () {
     let observedStreamPath: string | undefined;
 
