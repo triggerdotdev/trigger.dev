@@ -273,6 +273,68 @@ describe("TriggerChatTransport", function () {
     expect(observedStreamPath).toBe("/realtime/v1/streams/run_trailing_baseurl/chat-stream");
   });
 
+  it("normalizes repeated trailing slashes in baseURL for stream URLs", async function () {
+    let observedStreamPath: string | undefined;
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_multi_trailing_baseurl",
+        });
+        res.end(JSON.stringify({ id: "run_multi_trailing_baseurl" }));
+        return;
+      }
+
+      if (req.method === "GET") {
+        observedStreamPath = req.url ?? "";
+      }
+
+      if (
+        req.method === "GET" &&
+        req.url === "/realtime/v1/streams/run_multi_trailing_baseurl/chat-stream"
+      ) {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "multi_trailing_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "multi_trailing_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      accessToken: "pk_trigger",
+      baseURL: `${server.url}///`,
+      stream: "chat-stream",
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-multi-trailing-baseurl",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(observedStreamPath).toBe("/realtime/v1/streams/run_multi_trailing_baseurl/chat-stream");
+  });
+
   it("supports baseURL path prefixes for trigger and stream routes", async function () {
     let observedTriggerPath: string | undefined;
     let observedStreamPath: string | undefined;

@@ -145,7 +145,7 @@ export class TriggerChatTransport<
     this.payloadMapper = resolvePayloadMapper<UI_MESSAGE, PAYLOAD>(options.payloadMapper);
     this.triggerOptions = options.triggerOptions;
     this.runStore = options.runStore ?? new InMemoryTriggerChatRunStore();
-    this.baseURL = options.baseURL ?? "https://api.trigger.dev";
+    this.baseURL = normalizeBaseUrl(options.baseURL ?? "https://api.trigger.dev");
     this.previewBranch = options.previewBranch;
     this.requestOptions = options.requestOptions;
     this.triggerClient = new ApiClient(
@@ -374,11 +374,10 @@ export class TriggerChatTransport<
   }
 
   private createStreamUrl(runId: string, streamKey: string): string {
-    const normalizedBaseUrl = this.baseURL.replace(/\/$/, "");
     const encodedRunId = encodeURIComponent(runId);
     const encodedStreamKey = encodeURIComponent(streamKey);
 
-    return `${normalizedBaseUrl}/realtime/v1/streams/${encodedRunId}/${encodedStreamKey}`;
+    return `${this.baseURL}/realtime/v1/streams/${encodedRunId}/${encodedStreamKey}`;
   }
 
   private async markRunInactiveAndDelete(runState: TriggerChatRunState) {
@@ -458,6 +457,10 @@ function resolvePayloadMapper<
   }
 
   return createDefaultPayload as TriggerChatPayloadMapper<UI_MESSAGE, PAYLOAD>;
+}
+
+function normalizeBaseUrl(baseURL: string) {
+  return baseURL.replace(/\/+$/, "");
 }
 
 function createTransportRequest<UI_MESSAGE extends UIMessage>(
