@@ -457,7 +457,7 @@ const BASE_URL_VALIDATION_ERRORS = {
   credentials: "baseURL must not include username or password credentials",
 } as const;
 
-const INTERNAL_WHITESPACE_REGEX = /\s/;
+const INTERNAL_WHITESPACE_REGEX = /[\s\u200B\u200C\u200D\u2060\uFEFF]/u;
 
 function resolvePayloadMapper<
   UI_MESSAGE extends UIMessage,

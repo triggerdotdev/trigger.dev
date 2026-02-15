@@ -10,5 +10,6 @@ Add a new `@trigger.dev/ai` package with:
 - reconnect-aware stream handling on top of Trigger.dev Realtime Streams v2
 - strict `baseURL` normalization/validation (trimming, path-safe slash handling, absolute `http(s)` URLs only, no query/hash/credentials)
 - rejection of internal whitespace characters in normalized `baseURL` values
+- rejection of internal invisible separator characters (e.g. zero-width spaces) in normalized `baseURL` values
 - deterministic baseURL validation error ordering for multi-issue inputs (internal whitespace → protocol → query/hash → credentials)
 - explicit default `baseURL` behavior (`https://api.trigger.dev`) and case-insensitive `HTTP(S)` protocol acceptance

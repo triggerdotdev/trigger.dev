@@ -183,6 +183,7 @@ Examples:
 - ❌ `https://api.trigger.dev/\ninternal` (internal whitespace characters)
 - ❌ `https://api.trigger.dev/\tinternal` (internal tab characters)
 - ❌ `https://api.trigger.dev/\rinternal` (internal carriage-return characters)
+- ❌ `https://api.trigger.dev/\u200Binternal` (internal zero-width-space characters)
 
 Validation errors use these exact messages:
 
