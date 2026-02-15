@@ -252,7 +252,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 return;
               }
 
-              controller.enqueue(value.chunk as UIMessageChunk);
+              // Guard against heartbeat or malformed SSE events
+              if (value.chunk != null && typeof value.chunk === "object") {
+                controller.enqueue(value.chunk as UIMessageChunk);
+              }
             }
           } catch (readError) {
             reader.releaseLock();
