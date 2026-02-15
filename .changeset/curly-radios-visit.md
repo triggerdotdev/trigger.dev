@@ -16,5 +16,7 @@ Add a new `@trigger.dev/ai` package with:
   values that normalize to empty after trimming
 - expanded unicode whitespace handling coverage to include figure space (`\u2007`) and medium
   mathematical space (`\u205F`) for both wrapper trimming and internal-whitespace rejection
+- expanded invisible-separator rejection coverage to include mongolian vowel separator (`\u180E`)
+  in both wrapper and internal `baseURL` positions
 - deterministic baseURL validation error ordering for multi-issue inputs (internal whitespace → protocol → query/hash → credentials)
 - explicit default `baseURL` behavior (`https://api.trigger.dev`) and case-insensitive `HTTP(S)` protocol acceptance

@@ -459,7 +459,7 @@ const BASE_URL_VALIDATION_ERRORS = {
 
 // Includes standard whitespace plus common invisible separator/control marks
 // that can make URLs look valid while behaving unexpectedly.
-const INTERNAL_WHITESPACE_REGEX = /[\s\u200B\u200C\u200D\u2060\uFEFF]/u;
+const INTERNAL_WHITESPACE_REGEX = /[\s\u180E\u200B\u200C\u200D\u2060\uFEFF]/u;
 
 function resolvePayloadMapper<
   UI_MESSAGE extends UIMessage,

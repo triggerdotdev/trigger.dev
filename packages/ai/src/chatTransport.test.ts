@@ -950,6 +950,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must not contain internal whitespace characters");
   });
 
+  it("throws when baseURL contains internal mongolian-vowel-separator characters", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://api.trigger.dev/\u180Einternal",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
+  });
+
   it("throws when baseURL contains internal line-separator characters", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -1022,6 +1033,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "\u200Dhttps://api.trigger.dev/custom-prefix/\u200D",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
+  });
+
+  it("throws when baseURL is wrapped with mongolian-vowel-separator characters", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\u180Ehttps://api.trigger.dev/custom-prefix/\u180E",
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must not contain internal whitespace characters");
@@ -4043,6 +4065,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must not contain internal whitespace characters");
   });
 
+  it("throws from factory when baseURL contains internal mongolian-vowel-separator characters", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "https://api.trigger.dev/\u180Einternal",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
+  });
+
   it("throws from factory when baseURL contains internal line-separator characters", function () {
     expect(function () {
       createTriggerChatTransport({
@@ -4115,6 +4148,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "\u200Dhttps://api.trigger.dev/custom-prefix/\u200D",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
+  });
+
+  it("throws from factory when baseURL is wrapped with mongolian-vowel-separator characters", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "\u180Ehttps://api.trigger.dev/custom-prefix/\u180E",
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must not contain internal whitespace characters");

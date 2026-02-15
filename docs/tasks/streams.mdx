@@ -679,6 +679,7 @@ Examples:
 - ❌ `\u200Bhttps://api.trigger.dev/custom-prefix/\u200B` (zero-width-space wrappers are rejected)
 - ❌ `\u200Chttps://api.trigger.dev/custom-prefix/\u200C` (zero-width-non-joiner wrappers are rejected)
 - ❌ `\u200Dhttps://api.trigger.dev/custom-prefix/\u200D` (zero-width-joiner wrappers are rejected)
+- ❌ `\u180Ehttps://api.trigger.dev/custom-prefix/\u180E` (mongolian-vowel-separator wrappers are rejected)
 - ❌ `https://api.trigger.dev?foo=bar`
 - ❌ `https://api.trigger.dev#fragment`
 - ❌ `https://user:pass@api.trigger.dev`
@@ -705,6 +706,7 @@ Examples:
 - ❌ `https://api.trigger.dev/\u2007internal`
 - ❌ `https://api.trigger.dev/\u202Finternal`
 - ❌ `https://api.trigger.dev/\u205Finternal`
+- ❌ `https://api.trigger.dev/\u180Einternal`
 - ❌ `https://api.trigger.dev/\u3000internal`
 - ❌ `https://api.trigger.dev/\u2028internal`
 - ❌ `https://api.trigger.dev/\u2029internal`

@@ -32,6 +32,8 @@
   confirmed empty-after-trim values still throw `baseURL must not be empty`.
 - Expanded unicode whitespace coverage with `\u2007` (figure space) and `\u205F` (medium mathematical space)
   across internal-whitespace rejection, wrapper trimming acceptance, and empty-after-trim validation.
+- Expanded invisible-separator coverage to reject `\u180E` (mongolian vowel separator) in both
+  internal and wrapper `baseURL` positions.
 - Documented that `HTTP://` and `HTTPS://` are accepted (case-insensitive protocol matching).
 - Added deterministic validation ordering for multi-issue baseURL values
   (internal whitespace → protocol → query/hash → credentials).
