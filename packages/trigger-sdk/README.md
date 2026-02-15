@@ -49,6 +49,16 @@ There are two ways to get started:
 
 For more information on our SDK, refer to our [docs](https://trigger.dev/docs/introduction).
 
+## AI integrations
+
+For AI SDK transport and tool helpers, prefer the dedicated package:
+
+```ts
+import { TriggerChatTransport, ai } from "@trigger.dev/ai";
+```
+
+`@trigger.dev/sdk/ai` remains available for backwards compatibility.
+
 ## Support
 
 If you have any questions, please reach out to us on [Discord](https://trigger.dev/discord) and we'll be happy to help.
