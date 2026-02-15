@@ -180,7 +180,11 @@ export class TriggerChatTransport<
     await this.runStore.set(runState);
 
     if (this.onTriggeredRun) {
-      await this.onTriggeredRun(runState);
+      try {
+        await this.onTriggeredRun(runState);
+      } catch {
+        // Ignore callback errors so chat streaming can continue.
+      }
     }
 
     const stream = await this.fetchRunStream(runState, options.abortSignal);

@@ -117,7 +117,7 @@ class MemoryStore implements TriggerChatRunStore {
 ```
 
 `onTriggeredRun` can also be async, which is useful for persisting run IDs before
-the chat stream is consumed.
+the chat stream is consumed. Callback failures are ignored so chat streaming can continue.
 
 ## `ai.tool(...)` example
 
