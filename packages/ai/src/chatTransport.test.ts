@@ -1142,6 +1142,76 @@ describe("TriggerChatTransport", function () {
     expect(errors[0]?.error.message).toBe("callback failed");
   });
 
+  it("normalizes non-Error onTriggeredRun failures before reporting onError", async function () {
+    const errors: TriggerChatTransportError[] = [];
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_callback_string",
+        });
+        res.end(JSON.stringify({ id: "run_callback_string" }));
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        req.url === "/realtime/v1/streams/run_callback_string/chat-stream"
+      ) {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "callback_string_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "callback_string_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      onTriggeredRun: async function onTriggeredRun() {
+        throw "callback string failure";
+      },
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-callback-string",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "onTriggeredRun",
+      chatId: "chat-callback-string",
+      runId: "run_callback_string",
+    });
+    expect(errors[0]?.error.message).toBe("callback string failure");
+  });
+
   it("ignores failures from onError callback", async function () {
     const server = await startServer(function (req, res) {
       if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
