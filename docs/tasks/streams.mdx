@@ -710,6 +710,7 @@ Examples of ordering:
 - `ftp://example.com?x=1` → `baseURL must use http or https protocol`
 - `https://user:pass@example.com?x=1` → `baseURL must not include query parameters or hash fragments`
 - `ftp://user:pass@example.com/in valid?x=1` → `baseURL must not contain internal whitespace characters`
+- `ftp://user:pass@example.com/\u2060invalid?x=1#fragment` → `baseURL must not contain internal whitespace characters`
 
 For richer TypeScript ergonomics in app code, `@trigger.dev/ai` also exports:
 

@@ -1094,6 +1094,17 @@ describe("TriggerChatTransport", function () {
     }).toThrowError("baseURL must not contain internal whitespace characters");
   });
 
+  it("prioritizes invisible-separator validation over protocol/query/hash/credential validation", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "ftp://user:pass@example.com/\u2060invalid?query=1#fragment",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
+  });
+
   it("prioritizes query/hash validation over credential validation", function () {
     expect(function () {
       new TriggerChatTransport({
@@ -3894,6 +3905,17 @@ describe("TriggerChatTransport", function () {
         task: "chat-task",
         accessToken: "pk_trigger",
         baseURL: "ftp://user:pass@example.com/in valid?query=1#fragment",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not contain internal whitespace characters");
+  });
+
+  it("prioritizes invisible-separator validation over protocol/query/hash/credential validation in factory", function () {
+    expect(function () {
+      createTriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "ftp://user:pass@example.com/\u2060invalid?query=1#fragment",
         stream: "chat-stream",
       });
     }).toThrowError("baseURL must not contain internal whitespace characters");
