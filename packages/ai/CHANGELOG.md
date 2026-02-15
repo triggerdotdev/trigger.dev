@@ -27,3 +27,5 @@
 - Added explicit validation that `baseURL` excludes query parameters and hash fragments.
 - Added explicit validation that `baseURL` excludes username/password credentials.
 - Documented that `HTTP://` and `HTTPS://` are accepted (case-insensitive protocol matching).
+- Added deterministic validation ordering for multi-issue baseURL values
+  (protocol → query/hash → credentials).

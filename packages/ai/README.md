@@ -186,6 +186,9 @@ Validation errors use these exact messages:
 - `baseURL must not include query parameters or hash fragments`
 - `baseURL must not include username or password credentials`
 
+When multiple issues are present, validation order is deterministic:
+protocol → query/hash → credentials.
+
 ## `ai.tool(...)` example
 
 ```ts
