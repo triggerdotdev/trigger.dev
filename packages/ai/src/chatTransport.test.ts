@@ -3102,6 +3102,89 @@ describe("TriggerChatTransport", function () {
     expect(runStore.deleteCalls).toContain("chat-cleanup-set-delete-failure");
   });
 
+  it("returns null on reconnect after completion when cleanup set and delete both fail", async function () {
+    const errors: TriggerChatTransportError[] = [];
+    const runStore = new FailingCleanupSetAndDeleteRunStore(4);
+
+    const server = await startServer(function (req, res) {
+      if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-trigger-jwt": "pk_run_done_cleanup_both_failure",
+        });
+        res.end(JSON.stringify({ id: "run_done_cleanup_both_failure" }));
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        req.url === "/realtime/v1/streams/run_done_cleanup_both_failure/chat-stream"
+      ) {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+        });
+        writeSSE(
+          res,
+          "1-0",
+          JSON.stringify({ type: "text-start", id: "done_cleanup_both_failure_1" })
+        );
+        writeSSE(
+          res,
+          "2-0",
+          JSON.stringify({ type: "text-end", id: "done_cleanup_both_failure_1" })
+        );
+        res.end();
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      baseURL: server.url,
+      runStore,
+      onError: function onError(error) {
+        errors.push(error);
+      },
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat-done-cleanup-both-failure",
+      messageId: undefined,
+      messages: [],
+      abortSignal: undefined,
+    });
+
+    const chunks = await readChunks(stream);
+    expect(chunks).toHaveLength(2);
+
+    await waitForCondition(function () {
+      return runStore.deleteCalls.includes("chat-done-cleanup-both-failure");
+    });
+
+    (transport as any).fetchRunStream = async function fetchRunStream() {
+      throw new Error("reconnect root cause");
+    };
+
+    const reconnect = await transport.reconnectToStream({
+      chatId: "chat-done-cleanup-both-failure",
+    });
+
+    expect(reconnect).toBeNull();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      phase: "reconnect",
+      chatId: "chat-done-cleanup-both-failure",
+      runId: "run_done_cleanup_both_failure",
+    });
+    expect(errors[0]?.error.message).toBe("reconnect root cause");
+  });
+
   it("returns null from reconnect after stream completion cleanup", async function () {
     const server = await startServer(function (req, res) {
       if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
