@@ -151,6 +151,8 @@ both cleanup steps (`set` inactive state and `delete`) even if one of them fails
 - If reconnect finds stale inactive state and run-store cleanup fails, `onError` receives a
   `"reconnect"` phase event and reconnect still returns `null`.
 - If inactive-state cleanup fails, later reconnect calls retry that cleanup until it succeeds.
+- If `onError` is not provided, reconnect still returns `null` and continues operating
+  without surfacing callback events.
 - Provide a custom `runStore` if you need state shared across processes/instances.
 
 ## `ai.tool(...)` example

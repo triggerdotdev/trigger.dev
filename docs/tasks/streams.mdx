@@ -651,6 +651,7 @@ the transport clears stored run state and future reconnect attempts return `null
 If stale inactive reconnect state cannot be cleaned up, reconnect still returns `null` and
 the failure is surfaced through `onError` with phase `reconnect`.
 Subsequent reconnect calls will retry stale inactive-state cleanup until it succeeds.
+If `onError` is omitted, reconnect still returns `null` and continues without callback reporting.
 
 For richer TypeScript ergonomics in app code, `@trigger.dev/ai` also exports:
 
