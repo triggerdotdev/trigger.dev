@@ -1963,6 +1963,56 @@ describe("TriggerChatTransport", function () {
     });
   });
 
+  it(
+    "preserves consumeTrackingStream root failures when cleanup and onError callbacks both fail",
+    async function () {
+      const runStore = new FailingCleanupSetRunStore(2);
+
+      const server = await startServer(function (req, res) {
+        if (req.method === "POST" && req.url === "/api/v1/tasks/chat-task/trigger") {
+          res.writeHead(200, {
+            "content-type": "application/json",
+            "x-trigger-jwt": "pk_run_tracking_cleanup_and_onerror_failure",
+          });
+          res.end(JSON.stringify({ id: "run_tracking_cleanup_and_onerror_failure" }));
+          return;
+        }
+
+        res.writeHead(404);
+        res.end();
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "chat-task",
+        stream: "chat-stream",
+        accessToken: "pk_trigger",
+        baseURL: server.url,
+        runStore,
+        onError: async function onError() {
+          throw new Error("onError failed");
+        },
+      });
+
+      (transport as any).fetchRunStream = async function fetchRunStream() {
+        return new ReadableStream({
+          start(controller) {
+            controller.error(new Error("tracking failed root cause"));
+          },
+        });
+      };
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-tracking-cleanup-and-onerror-failure",
+        messageId: undefined,
+        messages: [],
+        abortSignal: undefined,
+      });
+
+      await expect(readChunks(stream)).rejects.toThrowError("tracking failed root cause");
+    }
+  );
+
   it("preserves consumeTrackingStream failures when cleanup run-store set throws", async function () {
     const errors: TriggerChatTransportError[] = [];
     const runStore = new FailingCleanupSetRunStore(2);
