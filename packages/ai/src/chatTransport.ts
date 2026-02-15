@@ -460,7 +460,13 @@ function resolvePayloadMapper<
 }
 
 function normalizeBaseUrl(baseURL: string) {
-  return baseURL.trim().replace(/\/+$/, "");
+  const normalizedBaseUrl = baseURL.trim().replace(/\/+$/, "");
+
+  if (normalizedBaseUrl.length === 0) {
+    throw new Error("baseURL must not be empty");
+  }
+
+  return normalizedBaseUrl;
 }
 
 function createTransportRequest<UI_MESSAGE extends UIMessage>(

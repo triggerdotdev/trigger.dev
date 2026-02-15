@@ -160,6 +160,7 @@ both cleanup steps (`set` inactive state and `delete`) even if one of them fails
 - `baseURL` supports optional path prefixes (for example reverse-proxy mounts).
 - Trailing slashes are normalized automatically before trigger/stream requests.
 - Surrounding whitespace is trimmed before normalization.
+- `baseURL` must not be empty after trimming/normalization.
 
 ## `ai.tool(...)` example
 

@@ -609,6 +609,17 @@ describe("TriggerChatTransport", function () {
     expect(observedStreamPath).toBe("/trimmed-prefix/realtime/v1/streams/run_trimmed_prefix/chat-stream");
   });
 
+  it("throws when baseURL is empty after trimming", function () {
+    expect(function () {
+      new TriggerChatTransport({
+        task: "chat-task",
+        accessToken: "pk_trigger",
+        baseURL: "   ///   ",
+        stream: "chat-stream",
+      });
+    }).toThrowError("baseURL must not be empty");
+  });
+
   it("combines path prefixes with run and stream URL encoding", async function () {
     let observedTriggerPath: string | undefined;
     let observedStreamPath: string | undefined;

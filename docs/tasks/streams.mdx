@@ -654,7 +654,8 @@ Subsequent reconnect calls will retry stale inactive-state cleanup until it succ
 If `onError` is omitted, reconnect still returns `null` and continues without callback reporting.
 
 `baseURL` supports optional path prefixes and trailing slashes; both trigger and stream URLs
-are normalized consistently, and surrounding whitespace is trimmed before normalization.
+are normalized consistently, surrounding whitespace is trimmed before normalization, and
+the resulting value must not be empty.
 
 For richer TypeScript ergonomics in app code, `@trigger.dev/ai` also exports:
 
