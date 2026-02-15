@@ -635,6 +635,31 @@ describe("TriggerChatTransport", function () {
     expect(stream).toBeNull();
   });
 
+  it("returns null when inactive reconnect string cleanup delete fails without onError callback", async function () {
+    const runStore = new FailingCleanupDeleteValueRunStore("cleanup delete string failure");
+    runStore.set({
+      chatId: "chat-inactive-delete-string-no-onerror",
+      runId: "run_inactive_delete_string_no_onerror",
+      publicAccessToken: "pk_inactive_delete_string_no_onerror",
+      streamKey: "chat-stream",
+      lastEventId: "10-0",
+      isActive: false,
+    });
+
+    const transport = new TriggerChatTransport({
+      task: "chat-task",
+      stream: "chat-stream",
+      accessToken: "pk_trigger",
+      runStore,
+    });
+
+    const stream = await transport.reconnectToStream({
+      chatId: "chat-inactive-delete-string-no-onerror",
+    });
+
+    expect(stream).toBeNull();
+  });
+
   it("normalizes non-Error inactive reconnect cleanup delete failures through onError", async function () {
     const errors: TriggerChatTransportError[] = [];
     const runStore = new FailingCleanupDeleteValueRunStore("cleanup delete string failure");
