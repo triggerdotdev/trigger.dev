@@ -166,6 +166,16 @@ both cleanup steps (`set` inactive state and `delete`) even if one of them fails
 - `baseURL` must not include query parameters or hash fragments.
 - `baseURL` must not include username/password URL credentials.
 
+Examples:
+
+- ✅ `https://api.trigger.dev`
+- ✅ `https://api.trigger.dev/custom-prefix`
+- ✅ `  https://api.trigger.dev/custom-prefix///   ` (trimmed + normalized)
+- ❌ `https://api.trigger.dev?foo=bar` (query string)
+- ❌ `https://api.trigger.dev#fragment` (hash fragment)
+- ❌ `https://user:pass@api.trigger.dev` (credentials)
+- ❌ `ftp://api.trigger.dev` (non-http protocol)
+
 ## `ai.tool(...)` example
 
 ```ts

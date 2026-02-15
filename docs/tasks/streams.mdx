@@ -659,6 +659,16 @@ the resulting value must not be empty. The value must also be a valid absolute U
 the `http` or `https` protocol, without query parameters, hash fragments, or embedded
 username/password credentials.
 
+Examples:
+
+- ✅ `https://api.trigger.dev`
+- ✅ `https://api.trigger.dev/custom-prefix`
+- ✅ `  https://api.trigger.dev/custom-prefix///   ` (trimmed + normalized)
+- ❌ `https://api.trigger.dev?foo=bar`
+- ❌ `https://api.trigger.dev#fragment`
+- ❌ `https://user:pass@api.trigger.dev`
+- ❌ `ftp://api.trigger.dev`
+
 For richer TypeScript ergonomics in app code, `@trigger.dev/ai` also exports:
 
 - `TriggerChatHeadersInput`
