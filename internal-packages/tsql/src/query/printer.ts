@@ -1615,13 +1615,20 @@ export class ClickHousePrinter {
       joinStrings.push(`AS ${this.printIdentifier(node.alias)}`);
     }
 
-    // Always add FINAL for direct table references to ensure deduplicated results
-    // from ReplacingMergeTree tables in ClickHouse
+    // Add FINAL for direct table references to ReplacingMergeTree tables
+    // to ensure deduplicated results. Only applied when the table schema
+    // opts in via `useFinal: true` (not needed for plain MergeTree tables).
     if (node.table) {
       const tableExpr = node.table;
-      const isDirectTable = (tableExpr as Field).expression_type === "field";
-      if (isDirectTable) {
-        joinStrings.push("FINAL");
+      if ((tableExpr as Field).expression_type === "field") {
+        const field = tableExpr as Field;
+        const tableName = field.chain[0];
+        if (typeof tableName === "string") {
+          const tableSchema = this.lookupTable(tableName);
+          if (tableSchema.useFinal) {
+            joinStrings.push("FINAL");
+          }
+        }
       }
     }
 

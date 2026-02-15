@@ -399,6 +399,12 @@ export interface TableSchema {
    * pre-aggregated into 10-second buckets shouldn't go below 10-second intervals).
    */
   timeBucketThresholds?: BucketThreshold[];
+  /**
+   * Whether to add the FINAL keyword when querying this table.
+   * This should be set to `true` for ReplacingMergeTree tables where deduplication
+   * is needed to get correct results. Not needed for plain MergeTree tables.
+   */
+  useFinal?: boolean;
 }
 
 /**
