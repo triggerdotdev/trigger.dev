@@ -28,6 +28,8 @@
 - Added explicit validation that `baseURL` excludes username/password credentials.
 - Added explicit validation that `baseURL` excludes internal whitespace/invisible separator characters (including zero-width/BOM characters).
 - Clarified that invisible separator characters are rejected even when wrapped around an otherwise valid `baseURL`.
+- Added explicit test/docs coverage for additional unicode-trimmable wrappers (`\u1680`, `\u3000`) and
+  confirmed empty-after-trim values still throw `baseURL must not be empty`.
 - Documented that `HTTP://` and `HTTPS://` are accepted (case-insensitive protocol matching).
 - Added deterministic validation ordering for multi-issue baseURL values
   (internal whitespace → protocol → query/hash → credentials).
