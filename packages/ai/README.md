@@ -188,6 +188,7 @@ Examples:
 - ❌ `https://api.trigger.dev/\finternal` (internal form-feed characters)
 - ❌ `https://api.trigger.dev/\rinternal` (internal carriage-return characters)
 - ❌ `https://api.trigger.dev/\u200Binternal` (internal zero-width-space characters)
+- ❌ `https://api.trigger.dev/\u202Finternal` (internal narrow no-break space characters)
 - ❌ `https://api.trigger.dev/\uFEFFinternal` (internal BOM characters)
 
 Validation errors use these exact messages:
