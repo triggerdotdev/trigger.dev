@@ -4,6 +4,7 @@ import {
   createTriggerChatTransport,
   TriggerChatTransport,
   TriggerChatTransportOptions,
+  type TriggerChatOnError,
   type TriggerChatTransportError,
   type TriggerChatHeadersInput,
   type TriggerChatReconnectOptions,
@@ -96,6 +97,23 @@ it("accepts async payload mappers and trigger option resolvers", function () {
 
   expectTypeOf(options).toBeObject();
 });
+
+it("exposes strongly typed onError callback payloads", function () {
+  const onError = createTypedOnErrorCallback();
+
+  expectTypeOf(onError).toBeFunction();
+});
+
+function createTypedOnErrorCallback(): TriggerChatOnError {
+  async function onError(error: TriggerChatTransportError) {
+    expectTypeOf(error.phase).toEqualTypeOf<"onTriggeredRun" | "consumeTrackingStream" | "reconnect">();
+    expectTypeOf(error.chatId).toEqualTypeOf<string>();
+    expectTypeOf(error.runId).toEqualTypeOf<string>();
+    expectTypeOf(error.error).toEqualTypeOf<Error>();
+  }
+
+  return onError;
+}
 
 it("infers custom payload output from mapper in factory helper", function () {
   const transport = createTriggerChatTransport({
