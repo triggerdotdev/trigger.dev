@@ -653,7 +653,8 @@ the failure is surfaced through `onError` with phase `reconnect`.
 Subsequent reconnect calls will retry stale inactive-state cleanup until it succeeds.
 If `onError` is omitted, reconnect still returns `null` and continues without callback reporting.
 
-`baseURL` supports optional path prefixes and trailing slashes; both trigger and stream URLs
+`baseURL` defaults to `https://api.trigger.dev` when omitted.
+It supports optional path prefixes and trailing slashes; both trigger and stream URLs
 are normalized consistently, surrounding whitespace is trimmed before normalization, and
 the resulting value must not be empty. The value must also be a valid absolute URL using
 the `http` or `https` protocol, without query parameters, hash fragments, or embedded

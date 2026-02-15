@@ -157,6 +157,7 @@ both cleanup steps (`set` inactive state and `delete`) even if one of them fails
 
 ## Base URL behavior
 
+- `baseURL` defaults to `https://api.trigger.dev` when omitted.
 - `baseURL` supports optional path prefixes (for example reverse-proxy mounts).
 - Trailing slashes are normalized automatically before trigger/stream requests.
 - Surrounding whitespace is trimmed before normalization.

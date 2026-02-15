@@ -29,3 +29,4 @@
 - Documented that `HTTP://` and `HTTPS://` are accepted (case-insensitive protocol matching).
 - Added deterministic validation ordering for multi-issue baseURL values
   (protocol → query/hash → credentials).
+- Documented explicit default `baseURL` value (`https://api.trigger.dev`) when omitted.
