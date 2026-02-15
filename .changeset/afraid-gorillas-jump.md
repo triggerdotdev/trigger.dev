@@ -1,5 +1,5 @@
 ---
-"@trigger.dev/sdk": patch
+"@trigger.dev/sdk": minor
 ---
 
 Added `query.execute()` which lets you query your Trigger.dev data using TRQL (Trigger Query Language) and returns results as typed JSON rows or CSV. It supports configurable scope (environment, project, or organization), time filtering via `period` or `from`/`to` ranges, and a `format` option for JSON or CSV output.
