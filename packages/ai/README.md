@@ -176,6 +176,7 @@ Examples:
 - ✅ `https://api.trigger.dev/custom%20prefix` (percent-encoded whitespace)
 - ✅ `https://api.trigger.dev/custom%3Fprefix%23segment` (percent-encoded `?` / `#`)
 - ✅ `\uFEFFhttps://api.trigger.dev/custom-prefix/\uFEFF` (BOM wrapper trimmed)
+- ❌ `\u2060https://api.trigger.dev/custom-prefix/\u2060` (word-joiner wrappers are rejected)
 - ❌ `https://api.trigger.dev?foo=bar` (query string)
 - ❌ `https://api.trigger.dev#fragment` (hash fragment)
 - ❌ `https://user:pass@api.trigger.dev` (credentials)
