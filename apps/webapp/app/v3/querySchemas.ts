@@ -503,6 +503,7 @@ export const metricsSchema: TableSchema = {
       ...column("UInt64", {
         description: "Number of data points in this bucket",
         example: "6",
+        coreColumn: true,
       }),
     },
     sum_value: {
@@ -510,6 +511,7 @@ export const metricsSchema: TableSchema = {
       ...column("Float64", {
         description: "Sum of values in this bucket",
         example: "0.45",
+        coreColumn: true,
       }),
     },
     max_value: {
@@ -525,6 +527,7 @@ export const metricsSchema: TableSchema = {
       ...column("Float64", {
         description: "Minimum value in this bucket",
         example: "0.12",
+        coreColumn: true,
       }),
     },
     last_value: {
@@ -543,6 +546,7 @@ export const metricsSchema: TableSchema = {
         description: "The run ID associated with this metric",
         customRenderType: "runId",
         example: "run_cm1a2b3c4d5e6f7g8h9i",
+        coreColumn: true,
       }),
       expression: "attributes.trigger.run_id",
     },
@@ -586,7 +590,8 @@ export const metricsSchema: TableSchema = {
       name: "worker_id",
       ...column("String", {
         description: "The worker ID that produced this metric",
-        example: "worker-abc123",
+        customRenderType: "deploymentId",
+        example: "deployment_cm1a2b3c4d5e",
       }),
       expression: "attributes.trigger.worker_id",
     },

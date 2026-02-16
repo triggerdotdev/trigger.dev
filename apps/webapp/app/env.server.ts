@@ -384,6 +384,7 @@ const EnvironmentSchema = z
     DEV_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
     DEV_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
     DEV_OTEL_METRICS_EXPORT_INTERVAL_MILLIS: z.string().optional(),
+    DEV_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS: z.string().optional(),
     DEV_OTEL_METRICS_COLLECTION_INTERVAL_MILLIS: z.string().optional(),
 
     PROD_OTEL_BATCH_PROCESSING_ENABLED: z.string().default("0"),
@@ -396,6 +397,7 @@ const EnvironmentSchema = z
     PROD_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
     PROD_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
     PROD_OTEL_METRICS_EXPORT_INTERVAL_MILLIS: z.string().optional(),
+    PROD_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS: z.string().optional(),
     PROD_OTEL_METRICS_COLLECTION_INTERVAL_MILLIS: z.string().optional(),
 
     TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT: z.string().default("1024"),

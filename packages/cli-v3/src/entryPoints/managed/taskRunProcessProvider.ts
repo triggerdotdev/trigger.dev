@@ -251,7 +251,7 @@ export class TaskRunProcessProvider {
       workerManifest: this.workerManifest,
       env: processEnv,
       serverWorker: {
-        id: "managed",
+        id: this.env.TRIGGER_DEPLOYMENT_ID,
         contentHash: this.env.TRIGGER_CONTENT_HASH,
         version: this.env.TRIGGER_DEPLOYMENT_VERSION,
         engine: "V2",

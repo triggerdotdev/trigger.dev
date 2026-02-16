@@ -300,6 +300,8 @@ function getDisplayLength(value: unknown, column: OutputColumnMetadata): number 
         return typeof value === "string" ? Math.min(value.length, 20) : 12;
       case "queue":
         return typeof value === "string" ? Math.min(value.length, 25) : 15;
+      case "deploymentId":
+        return typeof value === "string" ? Math.min(value.length, 25) : 20;
     }
   }
 
@@ -641,6 +643,19 @@ function CellValue({
         if (typeof value === "string") {
           const type = value.startsWith("task/") ? "task" : "custom";
           return <QueueName type={type} name={value.replace("task/", "")} />;
+        }
+        return <span>{String(value)}</span>;
+      }
+      case "deploymentId": {
+        if (typeof value === "string" && value.startsWith("deployment_")) {
+          return (
+            <SimpleTooltip
+              content="Jump to deployment"
+              disableHoverableContent
+              hidden={!hovered}
+              button={<TextLink to={`/deployments/${value}`}>{value}</TextLink>}
+            />
+          );
         }
         return <span>{String(value)}</span>;
       }

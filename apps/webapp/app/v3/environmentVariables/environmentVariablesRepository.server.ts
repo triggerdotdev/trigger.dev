@@ -964,16 +964,17 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
   }
 
   if (env.DEV_OTEL_METRICS_EXPORT_INTERVAL_MILLIS) {
-    result.push(
-      {
-        key: "TRIGGER_OTEL_METRICS_EXPORT_INTERVAL_MILLIS",
-        value: env.DEV_OTEL_METRICS_EXPORT_INTERVAL_MILLIS,
-      },
-      {
-        key: "TRIGGER_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS",
-        value: env.DEV_OTEL_METRICS_EXPORT_INTERVAL_MILLIS,
-      }
-    );
+    result.push({
+      key: "TRIGGER_OTEL_METRICS_EXPORT_INTERVAL_MILLIS",
+      value: env.DEV_OTEL_METRICS_EXPORT_INTERVAL_MILLIS,
+    });
+  }
+
+  if (env.DEV_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS) {
+    result.push({
+      key: "TRIGGER_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS",
+      value: env.DEV_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS,
+    });
   }
 
   if (env.DEV_OTEL_METRICS_COLLECTION_INTERVAL_MILLIS) {
@@ -1115,16 +1116,17 @@ async function resolveBuiltInProdVariables(
   }
 
   if (env.PROD_OTEL_METRICS_EXPORT_INTERVAL_MILLIS) {
-    result.push(
-      {
-        key: "TRIGGER_OTEL_METRICS_EXPORT_INTERVAL_MILLIS",
-        value: env.PROD_OTEL_METRICS_EXPORT_INTERVAL_MILLIS,
-      },
-      {
-        key: "TRIGGER_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS",
-        value: env.PROD_OTEL_METRICS_EXPORT_INTERVAL_MILLIS,
-      }
-    );
+    result.push({
+      key: "TRIGGER_OTEL_METRICS_EXPORT_INTERVAL_MILLIS",
+      value: env.PROD_OTEL_METRICS_EXPORT_INTERVAL_MILLIS,
+    });
+  }
+
+  if (env.PROD_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS) {
+    result.push({
+      key: "TRIGGER_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS",
+      value: env.PROD_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS,
+    });
   }
 
   if (env.PROD_OTEL_METRICS_COLLECTION_INTERVAL_MILLIS) {
