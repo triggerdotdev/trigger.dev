@@ -331,6 +331,7 @@ function convertLogsToCreateableEvents(
           projectId: logProperties.projectId ?? resourceProperties.projectId ?? "unknown",
           runId: logProperties.runId ?? resourceProperties.runId ?? "unknown",
           taskSlug: logProperties.taskSlug ?? resourceProperties.taskSlug ?? "unknown",
+          machineId: logProperties.machineId ?? resourceProperties.machineId,
           attemptNumber:
             extractNumberAttribute(
               log.attributes ?? [],
@@ -437,6 +438,7 @@ function convertSpansToCreateableEvents(
           projectId: spanProperties.projectId ?? resourceProperties.projectId ?? "unknown",
           runId: spanProperties.runId ?? resourceProperties.runId ?? "unknown",
           taskSlug: spanProperties.taskSlug ?? resourceProperties.taskSlug ?? "unknown",
+          machineId: spanProperties.machineId ?? resourceProperties.machineId,
           attemptNumber:
             extractNumberAttribute(
               span.attributes ?? [],
@@ -672,6 +674,7 @@ function extractEventProperties(attributes: KeyValue[], prefix?: string) {
       SemanticInternalAttributes.ATTEMPT_NUMBER,
     ]),
     taskSlug: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.TASK_SLUG]),
+    machineId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.MACHINE_ID]),
   };
 }
 
