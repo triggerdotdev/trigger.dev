@@ -11,7 +11,7 @@ import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { uiComponent } from "@team-plain/typescript-sdk";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import {
-  AddOnPricing,
+  type AddOnPricing,
   type FreePlanDefinition,
   type Limits,
   type PaidPlanDefinition,
@@ -224,6 +224,18 @@ const pricingDefinitions = {
   additionalBranches: {
     title: "Additional branches",
     content: "Then $10/month per branch",
+  },
+  metricDashboards: {
+    title: "Custom dashboards",
+    content: "Custom metric dashboards for monitoring and visualizing your task data.",
+  },
+  additionalDashboards: {
+    title: "Additional dashboards",
+    content: "Then $10/month per dashboard",
+  },
+  queryPeriod: {
+    title: "Query period",
+    content: "The maximum number of days a query can look back when analyzing your task data.",
   },
 };
 
@@ -534,8 +546,10 @@ export function TierFree({
             <TeamMembers limits={plan.limits} />
             <Environments limits={plan.limits} />
             <Branches limits={plan.limits} />
+            <MetricDashboards limits={plan.limits} />
             <Schedules limits={plan.limits} />
             <LogRetention limits={plan.limits} />
+            <QueryPeriod limits={plan.limits} />
             <SupportLevel limits={plan.limits} />
             <Alerts limits={plan.limits} />
             <RealtimeConcurrency limits={plan.limits} />
@@ -651,8 +665,10 @@ export function TierHobby({
         <TeamMembers limits={plan.limits} />
         <Environments limits={plan.limits} />
         <Branches limits={plan.limits} />
+        <MetricDashboards limits={plan.limits} />
         <Schedules limits={plan.limits} />
         <LogRetention limits={plan.limits} />
+        <QueryPeriod limits={plan.limits} />
         <SupportLevel limits={plan.limits} />
         <Alerts limits={plan.limits} />
         <RealtimeConcurrency limits={plan.limits} />
@@ -774,8 +790,12 @@ export function TierPro({
         <TeamMembers limits={plan.limits}>{pricingDefinitions.additionalSeats.content}</TeamMembers>
         <Environments limits={plan.limits} />
         <Branches limits={plan.limits}>{pricingDefinitions.additionalBranches.content}</Branches>
+        <MetricDashboards limits={plan.limits}>
+          {pricingDefinitions.additionalDashboards.content}
+        </MetricDashboards>
         <Schedules limits={plan.limits}>{pricingDefinitions.additionalSchedules.content}</Schedules>
         <LogRetention limits={plan.limits} />
+        <QueryPeriod limits={plan.limits} />
         <SupportLevel limits={plan.limits} />
         <Alerts limits={plan.limits} />
         <RealtimeConcurrency limits={plan.limits}>
@@ -1135,6 +1155,53 @@ function RealtimeConcurrency({ limits, children }: { limits: Limits; children?: 
         </div>
         {children && <span className="text-xs text-text-dimmed">{children}</span>}
       </div>
+    </FeatureItem>
+  );
+}
+
+function MetricDashboards({ limits, children }: { limits: Limits; children?: React.ReactNode }) {
+  if (limits.metricDashboards.number === 0) {
+    return (
+      <FeatureItem>
+        <DefinitionTip
+          title={pricingDefinitions.metricDashboards.title}
+          content={pricingDefinitions.metricDashboards.content}
+        >
+          Custom dashboards
+        </DefinitionTip>
+      </FeatureItem>
+    );
+  }
+
+  return (
+    <FeatureItem checked>
+      <div className="flex flex-col gap-y-0.5">
+        <div className="flex items-center gap-1">
+          {limits.metricDashboards.number}
+          {limits.metricDashboards.canExceed ? "+" : ""}{" "}
+          <DefinitionTip
+            title={pricingDefinitions.metricDashboards.title}
+            content={pricingDefinitions.metricDashboards.content}
+          >
+            custom {limits.metricDashboards.number === 1 ? "dashboard" : "dashboards"}
+          </DefinitionTip>
+        </div>
+        {children && <span className="text-xs text-text-dimmed">{children}</span>}
+      </div>
+    </FeatureItem>
+  );
+}
+
+function QueryPeriod({ limits }: { limits: Limits }) {
+  return (
+    <FeatureItem checked>
+      {limits.queryPeriodDays.number} {limits.queryPeriodDays.number === 1 ? "day" : "days"}{" "}
+      <DefinitionTip
+        title={pricingDefinitions.queryPeriod.title}
+        content={pricingDefinitions.queryPeriod.content}
+      >
+        query period
+      </DefinitionTip>
     </FeatureItem>
   );
 }

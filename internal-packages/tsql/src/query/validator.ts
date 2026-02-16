@@ -230,8 +230,8 @@ function validateSelectQuery(node: SelectQuery, context: ValidationContext): voi
   if (node.select) {
     for (const expr of node.select) {
       if ((expr as Alias).expression_type === "alias") {
-        // Explicit alias: SELECT ... AS name
-        context.selectAliases.add((expr as Alias).alias);
+        // Explicit alias: SELECT ... AS name (stored lowercase for case-insensitive lookup)
+        context.selectAliases.add((expr as Alias).alias.toLowerCase());
       } else {
         // Check for implicit aliases from expressions without AS
         const implicitName = getImplicitName(expr);
@@ -439,7 +439,8 @@ function validateField(field: Field, context: ValidationContext): void {
   const columnName = firstPart;
 
   // Check if it's a SELECT alias (e.g., from "count(*) as count")
-  if (context.selectAliases.has(columnName)) {
+  // Case-insensitive: aliases are stored lowercase
+  if (context.selectAliases.has(columnName.toLowerCase())) {
     return;
   }
 

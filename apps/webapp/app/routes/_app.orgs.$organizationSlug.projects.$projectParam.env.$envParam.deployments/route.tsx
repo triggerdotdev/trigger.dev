@@ -19,6 +19,7 @@ import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PromoteIcon } from "~/assets/icons/PromoteIcon";
+import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import { GitMetadata } from "~/components/GitMetadata";
@@ -55,6 +56,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import {
   DeploymentStatus,
   deploymentStatusDescription,
@@ -160,6 +162,7 @@ export default function Page() {
     connectedGithubRepository,
     environmentGitHubBranch,
     autoReloadPollIntervalMs,
+    hasVercelIntegration,
   } = useTypedLoaderData<typeof loader>();
   const hasDeployments = totalPages > 0;
 
@@ -234,6 +237,7 @@ export default function Page() {
                       <TableHeaderCell>Deployed at</TableHeaderCell>
                       <TableHeaderCell>Deployed by</TableHeaderCell>
                       <TableHeaderCell>Git</TableHeaderCell>
+                      {hasVercelIntegration && <TableHeaderCell>Linked</TableHeaderCell>}
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
@@ -307,6 +311,28 @@ export default function Page() {
                                 <GitMetadata git={deployment.git} />
                               </div>
                             </TableCell>
+                            {hasVercelIntegration && (
+                              <TableCell isSelected={isSelected}>
+                                {deployment.vercelDeploymentUrl ? (
+                                  <SimpleTooltip
+                                    button={
+                                      <a
+                                        href={deployment.vercelDeploymentUrl}
+                                        target="_blank"
+                                        rel="noreferrer noopener"
+                                        className="flex items-center text-text-dimmed transition-colors hover:text-text-bright"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <VercelLogo className="size-3.5" />
+                                      </a>
+                                    }
+                                    content="View on Vercel"
+                                  />
+                                ) : (
+                                  "–"
+                                )}
+                              </TableCell>
+                            )}
                             <DeploymentActionsCell
                               deployment={deployment}
                               path={path}
@@ -317,7 +343,7 @@ export default function Page() {
                         );
                       })
                     ) : (
-                      <TableBlankRow colSpan={8}>
+                      <TableBlankRow colSpan={hasVercelIntegration ? 9 : 8}>
                         <Paragraph className="flex items-center justify-center">
                           No deploys match your filters
                         </Paragraph>

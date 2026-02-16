@@ -231,11 +231,12 @@ export function getSpanDetailsQueryBuilderV2(
   });
 }
 
+
 // ============================================================================
-// Logs List Query Builders (for aggregated logs page)
+// Search Table Query Builders (for logs page, using task_events_search_v1)
 // ============================================================================
 
-export const LogsListResult = z.object({
+export const LogsSearchListResult = z.object({
   environment_id: z.string(),
   organization_id: z.string(),
   project_id: z.string(),
@@ -250,14 +251,18 @@ export const LogsListResult = z.object({
   status: z.string(),
   duration: z.number().or(z.string()),
   attributes_text: z.string(),
+  triggered_timestamp: z.string(),
 });
 
-export type LogsListResult = z.output<typeof LogsListResult>;
+export type LogsSearchListResult = z.output<typeof LogsSearchListResult>;
 
-export function getLogsListQueryBuilderV2(ch: ClickhouseReader, settings?: ClickHouseSettings) {
-  return ch.queryBuilderFast<LogsListResult>({
-    name: "getLogsList",
-    table: "trigger_dev.task_events_v2",
+export function getLogsSearchListQueryBuilder(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilderFast<LogsSearchListResult>({
+    name: "getLogsSearchList",
+    table: "trigger_dev.task_events_search_v1",
     columns: [
       "environment_id",
       "organization_id",
@@ -272,7 +277,8 @@ export function getLogsListQueryBuilderV2(ch: ClickhouseReader, settings?: Click
       "kind",
       "status",
       "duration",
-      "attributes_text"
+      "attributes_text",
+      "triggered_timestamp",
     ],
     settings,
   });

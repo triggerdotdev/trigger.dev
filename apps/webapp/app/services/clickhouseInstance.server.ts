@@ -16,7 +16,8 @@ function initializeClickhouseClient() {
   const logsQuerySettings = {
     list: {
       max_memory_usage: env.CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE.toString(),
-      max_bytes_before_external_sort: env.CLICKHOUSE_LOGS_LIST_MAX_BYTES_BEFORE_EXTERNAL_SORT.toString(),
+      max_bytes_before_external_sort:
+        env.CLICKHOUSE_LOGS_LIST_MAX_BYTES_BEFORE_EXTERNAL_SORT.toString(),
       max_threads: env.CLICKHOUSE_LOGS_LIST_MAX_THREADS,
       ...(env.CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ && {
         max_rows_to_read: env.CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ.toString(),
@@ -50,4 +51,31 @@ function initializeClickhouseClient() {
   });
 
   return clickhouse;
+}
+
+export const queryClickhouseClient = singleton(
+  "queryClickhouseClient",
+  initializeQueryClickhouseClient
+);
+
+function initializeQueryClickhouseClient() {
+  if (!env.QUERY_CLICKHOUSE_URL) {
+    throw new Error("QUERY_CLICKHOUSE_URL is not set");
+  }
+
+  const url = new URL(env.QUERY_CLICKHOUSE_URL);
+
+  return new ClickHouse({
+    url: url.toString(),
+    name: "query-clickhouse",
+    keepAlive: {
+      enabled: env.CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.CLICKHOUSE_LOG_LEVEL,
+    compression: {
+      request: true,
+    },
+    maxOpenConnections: env.CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+  });
 }

@@ -159,6 +159,9 @@ const runs = colors.indigo[500];
 const batches = colors.pink[500];
 const schedules = colors.yellow[500];
 const queues = colors.purple[500];
+const query = colors.blue[500];
+const metrics = colors.green[500];
+const customDashboards = charcoal[400];
 const deployments = colors.green[500];
 const concurrency = colors.amber[500];
 const limits = colors.purple[500];
@@ -240,6 +243,7 @@ module.exports = {
         schedules,
         concurrency,
         queues,
+        query,
         regions,
         limits,
         deployments,
@@ -252,6 +256,8 @@ module.exports = {
         orgSettings,
         docs,
         bulkActions,
+        metrics,
+        customDashboards,
       },
       focusStyles: {
         outline: "1px solid",

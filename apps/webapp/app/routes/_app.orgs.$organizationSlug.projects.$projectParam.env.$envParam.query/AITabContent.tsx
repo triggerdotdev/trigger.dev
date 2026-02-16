@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
 import { AIQueryInput } from "~/components/code/AIQueryInput";
 import { Header3 } from "~/components/primitives/Headers";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import type { AITimeFilter } from "./types";
 
 export function AITabContent({
@@ -41,8 +43,8 @@ export function AITabContent({
       />
 
       <div className="pt-4">
-        <Header3 className="mb-2 text-text-bright">Example prompts</Header3>
-        <div className="space-y-2">
+        <Header3 className="mb-3 text-text-bright">Example prompts</Header3>
+        <div className="flex flex-wrap gap-2">
           {examplePrompts.map((example) => (
             <button
               key={example}
@@ -53,9 +55,12 @@ export function AITabContent({
                   key: (prev?.key ?? 0) + 1,
                 }));
               }}
-              className="block w-full rounded-md border border-grid-dimmed bg-charcoal-800 px-3 py-2 text-left text-sm text-text-dimmed transition-colors hover:border-grid-bright hover:bg-charcoal-750 hover:text-text-bright"
+              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-charcoal-600 px-4 py-2 transition-colors hover:border-solid hover:border-indigo-500 focus-custom focus-visible:!rounded-full"
             >
-              {example}
+              <SparkleListIcon className="size-4 shrink-0 text-text-dimmed transition group-hover:text-indigo-500" />
+              <Paragraph variant="small" className="text-left transition group-hover:text-text-bright">
+                {example}
+              </Paragraph>
             </button>
           ))}
         </div>
@@ -63,4 +68,3 @@ export function AITabContent({
     </div>
   );
 }
-
