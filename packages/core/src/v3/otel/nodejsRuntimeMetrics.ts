@@ -1,5 +1,17 @@
 import { type MeterProvider } from "@opentelemetry/sdk-metrics";
+import type { ObservableGauge } from "@opentelemetry/api";
 import { performance, monitorEventLoopDelay } from "node:perf_hooks";
+
+function tryMonitorEventLoopDelay() {
+  try {
+    const eld = monitorEventLoopDelay({ resolution: 20 });
+    eld.enable();
+    return eld;
+  } catch {
+    // monitorEventLoopDelay is not implemented in Bun
+    return undefined;
+  }
+}
 
 export function startNodejsRuntimeMetrics(meterProvider: MeterProvider) {
   const meter = meterProvider.getMeter("nodejs-runtime", "1.0.0");
@@ -12,18 +24,25 @@ export function startNodejsRuntimeMetrics(meterProvider: MeterProvider) {
     unit: "1",
   });
 
-  // Event loop delay histogram (from perf_hooks)
-  const eld = monitorEventLoopDelay({ resolution: 20 });
-  eld.enable();
+  // Event loop delay histogram (from perf_hooks) — not available in Bun
+  const eld = tryMonitorEventLoopDelay();
 
-  const eldP95 = meter.createObservableGauge("nodejs.event_loop.delay.p95", {
-    description: "p95 event loop delay",
-    unit: "s",
-  });
-  const eldMax = meter.createObservableGauge("nodejs.event_loop.delay.max", {
-    description: "Max event loop delay",
-    unit: "s",
-  });
+  const observables: ObservableGauge[] = [eluGauge];
+
+  let eldP95: ObservableGauge | undefined;
+  let eldMax: ObservableGauge | undefined;
+
+  if (eld) {
+    eldP95 = meter.createObservableGauge("nodejs.event_loop.delay.p95", {
+      description: "p95 event loop delay",
+      unit: "s",
+    });
+    eldMax = meter.createObservableGauge("nodejs.event_loop.delay.max", {
+      description: "Max event loop delay",
+      unit: "s",
+    });
+    observables.push(eldP95, eldMax);
+  }
 
   // Heap metrics
   const heapUsed = meter.createObservableGauge("nodejs.heap.used", {
@@ -34,6 +53,7 @@ export function startNodejsRuntimeMetrics(meterProvider: MeterProvider) {
     description: "V8 heap total allocated",
     unit: "By",
   });
+  observables.push(heapUsed, heapTotal);
 
   // Single batch callback for all metrics
   meter.addBatchObservableCallback(
@@ -45,15 +65,17 @@ export function startNodejsRuntimeMetrics(meterProvider: MeterProvider) {
       obs.observe(eluGauge, diff.utilization);
 
       // Event loop delay (nanoseconds -> seconds)
-      obs.observe(eldP95, eld.percentile(95) / 1e9);
-      obs.observe(eldMax, eld.max / 1e9);
-      eld.reset();
+      if (eld && eldP95 && eldMax) {
+        obs.observe(eldP95, eld.percentile(95) / 1e9);
+        obs.observe(eldMax, eld.max / 1e9);
+        eld.reset();
+      }
 
       // Heap
       const mem = process.memoryUsage();
       obs.observe(heapUsed, mem.heapUsed);
       obs.observe(heapTotal, mem.heapTotal);
     },
-    [eluGauge, eldP95, eldMax, heapUsed, heapTotal]
+    observables
   );
 }
