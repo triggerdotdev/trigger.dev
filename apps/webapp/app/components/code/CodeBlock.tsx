@@ -2,7 +2,7 @@ import { ArrowsPointingOutIcon } from "@heroicons/react/20/solid";
 import { Clipboard, ClipboardCheck } from "lucide-react";
 import type { Language, PrismTheme } from "prism-react-renderer";
 import { Highlight, Prism } from "prism-react-renderer";
-import { forwardRef, ReactNode, useCallback, useEffect, useState } from "react";
+import { forwardRef, ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { TextWrapIcon } from "~/assets/icons/TextWrapIcon";
 import { cn } from "~/utils/cn";
 import { highlightSearchText } from "~/utils/logUtils";
@@ -217,6 +217,8 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isWrapped, setIsWrapped] = useState(false);
 
+    const restoreRef = useRef<(() => void) | null>(null);
+
     const handleCodeMouseDown = useCallback((e: React.MouseEvent) => {
       if (e.button !== 0) return;
       const el = e.currentTarget as HTMLElement;
@@ -226,8 +228,14 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
         document.documentElement.style.userSelect = "";
         el.style.userSelect = "";
         document.removeEventListener("mouseup", restore);
+        restoreRef.current = null;
       };
+      restoreRef.current = restore;
       document.addEventListener("mouseup", restore);
+    }, []);
+
+    useEffect(() => {
+      return () => restoreRef.current?.();
     }, []);
 
     const onCopied = useCallback(
@@ -405,28 +413,30 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
               </Button>
             </DialogHeader>
 
-            {shouldHighlight ? (
-              <HighlightCode
-                theme={theme}
-                code={code}
-                language={language}
-                showLineNumbers={showLineNumbers}
-                highlightLines={highlightLines}
-                maxLineWidth={maxLineWidth}
-                className="min-h-full"
-                preClassName="text-sm"
-                isWrapped={isWrapped}
-              />
-            ) : (
-              <div
-                dir="ltr"
-                className="overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-              >
-                <pre className="relative mr-2 p-2 font-mono text-base leading-relaxed" dir="ltr">
-                  {highlightSearchText(code, searchTerm)}
-                </pre>
-              </div>
-            )}
+            <div onMouseDown={handleCodeMouseDown}>
+              {shouldHighlight ? (
+                <HighlightCode
+                  theme={theme}
+                  code={code}
+                  language={language}
+                  showLineNumbers={showLineNumbers}
+                  highlightLines={highlightLines}
+                  maxLineWidth={maxLineWidth}
+                  className="min-h-full"
+                  preClassName="text-sm"
+                  isWrapped={isWrapped}
+                />
+              ) : (
+                <div
+                  dir="ltr"
+                  className="overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                >
+                  <pre className="relative mr-2 p-2 font-mono text-base leading-relaxed" dir="ltr">
+                    {highlightSearchText(code, searchTerm)}
+                  </pre>
+                </div>
+              )}
+            </div>
           </DialogContent>
         </Dialog>
       </>
