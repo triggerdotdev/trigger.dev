@@ -67,9 +67,10 @@ export function darkTheme(): Extension {
       },
 
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: cursor },
-      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
-        backgroundColor: selection,
-      },
+      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
+        {
+          backgroundColor: selection,
+        },
 
       ".cm-panels": { backgroundColor: darkBackground, color: ivory },
       ".cm-panels.cm-panels-top": { borderBottom: "2px solid black" },
@@ -87,8 +88,8 @@ export function darkTheme(): Extension {
       ".cm-selectionMatch": { backgroundColor: "#aafe661a" },
 
       "&.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket": {
-        backgroundColor: "#bad0f847",
-        outline: "1px solid #515a6b",
+        backgroundColor: "rgba(18, 19, 23, 0.9)",
+        outline: "1px solid rgba(81, 90, 107, 0.5)",
       },
 
       ".cm-gutters": {
@@ -166,14 +167,20 @@ export function darkTheme(): Extension {
         backgroundColor: scrollbarBg,
       },
     },
-    { dark: true }
+    { dark: true },
   );
 
   /// The highlighting style for code in the JSON Hero theme.
   const jsonHeroHighlightStyle = HighlightStyle.define([
     { tag: tags.keyword, color: violet },
     {
-      tag: [tags.name, tags.deleted, tags.character, tags.propertyName, tags.macroName],
+      tag: [
+        tags.name,
+        tags.deleted,
+        tags.character,
+        tags.propertyName,
+        tags.macroName,
+      ],
       color: lilac,
     },
     { tag: [tags.function(tags.variableName), tags.labelName], color: malibu },
