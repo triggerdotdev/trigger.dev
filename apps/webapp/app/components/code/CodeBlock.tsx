@@ -228,10 +228,12 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
         document.documentElement.style.userSelect = "";
         el.style.userSelect = "";
         document.removeEventListener("mouseup", restore);
+        window.removeEventListener("blur", restore);
         restoreRef.current = null;
       };
       restoreRef.current = restore;
-      document.addEventListener("mouseup", restore);
+      document.addEventListener("mouseup", restore, { once: true });
+      window.addEventListener("blur", restore, { once: true });
     }, []);
 
     useEffect(() => {
@@ -413,7 +415,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
               </Button>
             </DialogHeader>
 
-            <div onMouseDown={handleCodeMouseDown}>
+            <div onMouseDown={handleCodeMouseDown} className="overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
               {shouldHighlight ? (
                 <HighlightCode
                   theme={theme}
