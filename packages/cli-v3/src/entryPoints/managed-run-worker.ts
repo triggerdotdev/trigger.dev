@@ -193,6 +193,8 @@ async function doBootstrap() {
       resource: config.telemetry?.resource,
       hostMetrics: true,
       nodejsRuntimeMetrics: true,
+      filesystemMetrics: true,
+      diskIoMetrics: true,
     });
 
     const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);

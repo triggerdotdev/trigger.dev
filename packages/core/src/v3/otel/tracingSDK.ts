@@ -63,6 +63,8 @@ import {
 import { traceContext } from "../trace-context-api.js";
 import { getEnvVar } from "../utils/getEnv.js";
 import { machineId } from "./machineId.js";
+import { startDiskIoMetrics } from "./diskIoMetrics.js";
+import { startFilesystemMetrics } from "./filesystemMetrics.js";
 import { startNodejsRuntimeMetrics } from "./nodejsRuntimeMetrics.js";
 
 export type TracingDiagnosticLogLevel =
@@ -89,6 +91,10 @@ export type TracingSDKConfig = {
   hostMetricGroups?: string[];
   /** Enable Node.js runtime metrics (event loop utilization, heap usage, etc.) */
   nodejsRuntimeMetrics?: boolean;
+  /** Enable filesystem metrics (Linux only, reads /proc/mounts + fs.statfs) */
+  filesystemMetrics?: boolean;
+  /** Enable disk I/O metrics (Linux only, reads /proc/diskstats) */
+  diskIoMetrics?: boolean;
   /** Metric instrument name patterns to drop (supports wildcards, e.g. "system.cpu.*") */
   droppedMetrics?: string[];
 };
@@ -338,6 +344,14 @@ export class TracingSDK {
 
     if (config.nodejsRuntimeMetrics) {
       startNodejsRuntimeMetrics(meterProvider);
+    }
+
+    if (config.filesystemMetrics) {
+      startFilesystemMetrics(meterProvider);
+    }
+
+    if (config.diskIoMetrics) {
+      startDiskIoMetrics(meterProvider);
     }
 
     this.getLogger = loggerProvider.getLogger.bind(loggerProvider);

@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS trigger_dev.metrics_v1
     `system.cpu.state` LowCardinality(String),
     `system.memory.state` LowCardinality(String),
     `system.device` String,
+    `system.filesystem.type` LowCardinality(String),
+    `system.filesystem.mountpoint` String,
+    `system.filesystem.mode` LowCardinality(String),
+    `system.filesystem.state` LowCardinality(String),
+    `disk.io.direction` LowCardinality(String),
     `process.cpu.state` LowCardinality(String),
     `network.io.direction` LowCardinality(String),
     max_dynamic_paths=8
