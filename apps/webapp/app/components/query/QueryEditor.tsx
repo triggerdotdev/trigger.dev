@@ -1009,7 +1009,7 @@ function QueryTitle({
   if (isTitleLoading)
     return (
       <span className="flex items-center gap-2 text-text-dimmed">
-        <Spinner className="size-3" /> Generating title…
+        <Spinner className="size-4" /> Generating title…
       </span>
     );
 
