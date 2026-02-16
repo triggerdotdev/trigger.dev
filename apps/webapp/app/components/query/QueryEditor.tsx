@@ -354,9 +354,22 @@ const QueryEditorForm = forwardRef<
             variant="primary/small"
             disabled={isLoading || !query.trim()}
             shortcut={{ modifiers: ["mod"], key: "enter", enabledOnInputElements: true }}
-            LeadingIcon={isLoading ? <Spinner className="size-4" color="white" /> : undefined}
+            className={
+              isLoading
+                ? "relative !text-transparent [&_*]:!border-transparent [&_*]:!text-transparent"
+                : undefined
+            }
           >
-            {isLoading ? "Querying..." : "Query"}
+            {isLoading ? (
+              <>
+                Query
+                <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <Spinner className="size-4 opacity-50" color="white" />
+                </span>
+              </>
+            ) : (
+              "Query"
+            )}
           </Button>
         </div>
       </fetcher.Form>
