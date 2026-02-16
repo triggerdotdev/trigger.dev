@@ -110,9 +110,9 @@ export class DeploymentService extends BaseService {
       const createRemoteBuildIfNeeded = deployment.buildServerMetadata?.isNativeBuild
         ? okAsync(undefined)
         : fromPromise(createRemoteImageBuild(authenticatedEnv.project), (error) => ({
-          type: "failed_to_create_remote_build" as const,
-          cause: error,
-        }));
+            type: "failed_to_create_remote_build" as const,
+            cause: error,
+          }));
 
       const existingBuildServerMetadata = deployment.buildServerMetadata as
         | BuildServerMetadata
@@ -134,7 +134,7 @@ export class DeploymentService extends BaseService {
                       },
                     }
                   : {}),
-                externalBuildData,
+                ...(externalBuildData ? { externalBuildData } : {}),
                 status: "BUILDING",
                 installedAt: new Date(),
               },
@@ -496,14 +496,16 @@ export class DeploymentService extends BaseService {
         type: "other" as const,
         cause: error,
       })
-    ).andThen((deployment) => {
-      if (!deployment) {
-        return errAsync({ type: "deployment_not_found" as const });
-      }
-      return okAsync(deployment);
-    }).map((deployment) => ({
-      ...deployment,
-      buildServerMetadata: BuildServerMetadata.safeParse(deployment.buildServerMetadata).data,
-    }));
+    )
+      .andThen((deployment) => {
+        if (!deployment) {
+          return errAsync({ type: "deployment_not_found" as const });
+        }
+        return okAsync(deployment);
+      })
+      .map((deployment) => ({
+        ...deployment,
+        buildServerMetadata: BuildServerMetadata.safeParse(deployment.buildServerMetadata).data,
+      }));
   }
 }
