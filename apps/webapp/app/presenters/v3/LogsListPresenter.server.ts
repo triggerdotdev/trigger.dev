@@ -236,6 +236,11 @@ export class LogsListPresenter extends BasePresenter {
 
     const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder();
 
+    // This should be removed once we clear the old inserts, 30 DAYS, the materialized view excludes events without trace_id)
+    queryBuilder.where("trace_id != ''", {
+      environmentId,
+    });
+
     queryBuilder.where("environment_id = {environmentId: String}", {
       environmentId,
     });
