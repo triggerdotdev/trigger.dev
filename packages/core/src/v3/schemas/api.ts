@@ -602,7 +602,7 @@ const InitializeDeploymentRequestBodyBase = z.object({
   runtime: z.string().optional(),
   initialStatus: z.enum(["PENDING", "BUILDING"]).optional(),
   triggeredVia: DeploymentTriggeredVia.optional(),
-  buildId: z.string().optional()
+  buildId: z.string().optional(),
 });
 type BaseOutput = z.output<typeof InitializeDeploymentRequestBodyBase>;
 
@@ -624,6 +624,7 @@ type NonNativeBuildOutput = BaseOutput & {
 
 const InitializeDeploymentRequestBodyFull = InitializeDeploymentRequestBodyBase.extend({
   isNativeBuild: z.boolean().default(false),
+  isLocal: z.boolean().optional(),
   skipPromotion: z.boolean().optional(),
   artifactKey: z.string().optional(),
   configFilePath: z.string().optional(),
