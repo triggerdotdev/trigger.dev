@@ -96,7 +96,7 @@ export class InitializeDeploymentService extends BaseService {
       // For the `PENDING` initial status, defer the creation of the Depot build until the deployment is started to avoid token expiration issues.
       // For local and native builds we don't need to generate the Depot tokens. We still need to create an empty object sadly due to a bug in older CLI versions.
       const generateExternalBuildToken =
-        payload.initialStatus === "PENDING" || payload.isNativeBuild || payload.isLocal;
+        payload.initialStatus === "PENDING" || payload.isNativeBuild || payload.isLocalBuild;
 
       const externalBuildData = generateExternalBuildToken
         ? ({

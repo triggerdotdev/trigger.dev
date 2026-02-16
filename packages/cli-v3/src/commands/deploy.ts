@@ -424,7 +424,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       gitMeta,
       type: features.run_engine_v2 ? "MANAGED" : "V1",
       runtime: buildManifest.runtime,
-      isLocal: options.localBuild,
+      isLocalBuild: options.localBuild,
       isNativeBuild: false,
       triggeredVia: getTriggeredVia(),
     },
