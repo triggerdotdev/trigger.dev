@@ -197,9 +197,12 @@ export function configureDeployCommand(program: Command) {
       )
       // Local build options
       .addOption(
-        new CommandOption("--force-local-build", "Deprecated alias for --local-build").implies({
-          localBuild: true,
-        })
+        new CommandOption("--force-local-build", "Deprecated alias for --local-build")
+          .implies({
+            localBuild: true,
+          })
+          .conflicts("nativeBuildServer")
+          .hideHelp()
       )
       .addOption(
         new CommandOption("--local-build", "Build the deployment image locally").conflicts(
