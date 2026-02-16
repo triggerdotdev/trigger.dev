@@ -1,4 +1,8 @@
-import { BuildServerMetadata, type InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
+import {
+  BuildServerMetadata,
+  type InitializeDeploymentRequestBody,
+  type ExternalBuildData,
+} from "@trigger.dev/core/v3";
 import { customAlphabet } from "nanoid";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
