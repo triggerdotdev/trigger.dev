@@ -1121,7 +1121,7 @@ function createYAxisFormatter(
       if (value === 0) return "0 B";
       // Use consistent unit for all ticks based on max value
       const i = Math.min(
-        Math.floor(Math.log(Math.abs(maxVal || 1)) / Math.log(divisor)),
+        Math.max(0, Math.floor(Math.log(Math.abs(maxVal || 1)) / Math.log(divisor))),
         units.length - 1
       );
       const scaled = value / Math.pow(divisor, i);
