@@ -85,6 +85,8 @@ export type TracingSDKConfig = {
   diagLogLevel?: TracingDiagnosticLogLevel;
   resource?: Resource;
   hostMetrics?: boolean;
+  /** Limit host metrics collection to specific groups (e.g. ["process.cpu", "process.memory"]) */
+  hostMetricGroups?: string[];
   /** Enable Node.js runtime metrics (event loop utilization, heap usage, etc.) */
   nodejsRuntimeMetrics?: boolean;
   /** Metric instrument name patterns to drop (supports wildcards, e.g. "system.cpu.*") */
@@ -327,7 +329,10 @@ export class TracingSDK {
     metrics.setGlobalMeterProvider(meterProvider);
 
     if (config.hostMetrics) {
-      const hostMetrics = new HostMetrics({ meterProvider });
+      const hostMetrics = new HostMetrics({
+        meterProvider,
+        metricGroups: config.hostMetricGroups,
+      });
       hostMetrics.start();
     }
 

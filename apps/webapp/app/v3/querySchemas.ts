@@ -498,44 +498,21 @@ export const metricsSchema: TableSchema = {
         coreColumn: true,
       }),
     },
-    count: {
-      name: "count",
-      ...column("UInt64", {
-        description: "Number of data points in this bucket",
-        example: "6",
+    value: {
+      name: "value",
+      ...column("Float64", {
+        description: "The metric value",
+        example: "0.75",
         coreColumn: true,
       }),
     },
-    sum_value: {
-      name: "sum_value",
-      ...column("Float64", {
-        description: "Sum of values in this bucket",
-        example: "0.45",
-        coreColumn: true,
-      }),
-    },
-    max_value: {
-      name: "max_value",
-      ...column("Float64", {
-        description: "Maximum value in this bucket",
-        example: "0.85",
-        coreColumn: true,
-      }),
-    },
-    min_value: {
-      name: "min_value",
-      ...column("Float64", {
-        description: "Minimum value in this bucket",
-        example: "0.12",
-        coreColumn: true,
-      }),
-    },
-    last_value: {
-      name: "last_value",
-      ...column("Float64", {
-        description: "Last recorded value in this bucket",
-        example: "0.42",
-        coreColumn: true,
+
+    // Attributes (JSON column for user-defined and system attributes)
+    attributes: {
+      name: "attributes",
+      ...column("JSON", {
+        description: "JSON attributes attached to the metric data point.",
+        example: '{"region": "us-east-1"}',
       }),
     },
 

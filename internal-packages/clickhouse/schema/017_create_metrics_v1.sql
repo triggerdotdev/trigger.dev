@@ -8,11 +8,7 @@ CREATE TABLE IF NOT EXISTS trigger_dev.metrics_v1
   metric_type         LowCardinality(String),
   metric_subject      String CODEC(ZSTD(1)),
   bucket_start        DateTime CODEC(Delta(4), ZSTD(1)),
-  count               UInt64 DEFAULT 0 CODEC(ZSTD(1)),
-  sum_value           Float64 DEFAULT 0 CODEC(ZSTD(1)),
-  max_value           Float64 DEFAULT 0 CODEC(ZSTD(1)),
-  min_value           Float64 DEFAULT 0 CODEC(ZSTD(1)),
-  last_value          Float64 DEFAULT 0 CODEC(ZSTD(1)),
+  value               Float64 DEFAULT 0 CODEC(ZSTD(1)),
   attributes          JSON(
     `trigger.run_id` String,
     `trigger.task_slug` String,

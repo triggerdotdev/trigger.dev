@@ -16,12 +16,8 @@ export function startNodejsRuntimeMetrics(meterProvider: MeterProvider) {
   const eld = monitorEventLoopDelay({ resolution: 20 });
   eld.enable();
 
-  const eldP50 = meter.createObservableGauge("nodejs.event_loop.delay.p50", {
-    description: "Median event loop delay",
-    unit: "s",
-  });
-  const eldP99 = meter.createObservableGauge("nodejs.event_loop.delay.p99", {
-    description: "p99 event loop delay",
+  const eldP95 = meter.createObservableGauge("nodejs.event_loop.delay.p95", {
+    description: "p95 event loop delay",
     unit: "s",
   });
   const eldMax = meter.createObservableGauge("nodejs.event_loop.delay.max", {
@@ -49,8 +45,7 @@ export function startNodejsRuntimeMetrics(meterProvider: MeterProvider) {
       obs.observe(eluGauge, diff.utilization);
 
       // Event loop delay (nanoseconds -> seconds)
-      obs.observe(eldP50, eld.percentile(50) / 1e9);
-      obs.observe(eldP99, eld.percentile(99) / 1e9);
+      obs.observe(eldP95, eld.percentile(95) / 1e9);
       obs.observe(eldMax, eld.max / 1e9);
       eld.reset();
 
@@ -59,6 +54,6 @@ export function startNodejsRuntimeMetrics(meterProvider: MeterProvider) {
       obs.observe(heapUsed, mem.heapUsed);
       obs.observe(heapTotal, mem.heapTotal);
     },
-    [eluGauge, eldP50, eldP99, eldMax, heapUsed, heapTotal]
+    [eluGauge, eldP95, eldMax, heapUsed, heapTotal]
   );
 }

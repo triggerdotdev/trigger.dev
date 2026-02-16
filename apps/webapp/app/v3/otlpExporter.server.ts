@@ -505,11 +505,7 @@ function convertMetricsToClickhouseRows(
             metric_type: "gauge",
             metric_subject: resolved.machineId ?? "unknown",
             bucket_start: floorToTenSecondBucket(dp.timeUnixNano),
-            count: 0,
-            sum_value: 0,
-            max_value: value,
-            min_value: value,
-            last_value: value,
+            value,
             attributes: resolved.attributes,
           });
         }
@@ -530,11 +526,7 @@ function convertMetricsToClickhouseRows(
             metric_type: "sum",
             metric_subject: resolved.machineId ?? "unknown",
             bucket_start: floorToTenSecondBucket(dp.timeUnixNano),
-            count: 1,
-            sum_value: value,
-            max_value: value,
-            min_value: value,
-            last_value: value,
+            value,
             attributes: resolved.attributes,
           });
         }
@@ -546,8 +538,6 @@ function convertMetricsToClickhouseRows(
           const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
           const count = Number(dp.count);
           const sum = dp.sum ?? 0;
-          const max = dp.max ?? 0;
-          const min = dp.min ?? 0;
 
           rows.push({
             organization_id: organizationId,
@@ -557,11 +547,7 @@ function convertMetricsToClickhouseRows(
             metric_type: "histogram",
             metric_subject: resolved.machineId ?? "unknown",
             bucket_start: floorToTenSecondBucket(dp.timeUnixNano),
-            count,
-            sum_value: sum,
-            max_value: max,
-            min_value: min,
-            last_value: count > 0 ? sum / count : 0,
+            value: count > 0 ? sum / count : 0,
             attributes: resolved.attributes,
           });
         }

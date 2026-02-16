@@ -9,11 +9,7 @@ export const MetricsV1Input = z.object({
   metric_type: z.string(),
   metric_subject: z.string(),
   bucket_start: z.string(),
-  count: z.number(),
-  sum_value: z.number(),
-  max_value: z.number(),
-  min_value: z.number(),
-  last_value: z.number(),
+  value: z.number(),
   attributes: z.unknown(),
 });
 
