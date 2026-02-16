@@ -30,6 +30,9 @@ import {
   ListScheduleOptions,
   QueueItem,
   QueueTypeName,
+  QueryExecuteRequestBody,
+  QueryExecuteResponseBody,
+  QueryExecuteCSVResponseBody,
   ReplayRunResponse,
   RescheduleRunRequestBody,
   ResetIdempotencyKeyResponse,
@@ -1401,6 +1404,38 @@ export class ApiClient {
       {
         method: "GET",
         headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async executeQuery(
+    query: string,
+    options?: {
+      scope?: "environment" | "project" | "organization";
+      period?: string;
+      from?: string;
+      to?: string;
+      format?: "json" | "csv";
+    },
+    requestOptions?: ZodFetchOptions
+  ): Promise<QueryExecuteResponseBody> {
+    const body = {
+      query,
+      scope: options?.scope ?? "environment",
+      period: options?.period,
+      from: options?.from,
+      to: options?.to,
+      format: options?.format ?? "json",
+    };
+
+    return zodfetch(
+      QueryExecuteResponseBody,
+      `${this.baseUrl}/api/v1/query`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
