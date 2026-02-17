@@ -7,11 +7,12 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
-import { getLevelColor, highlightSearchText } from "~/utils/logUtils";
+import { highlightSearchText } from "~/utils/logUtils";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { DateTimeAccurate } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Spinner } from "../primitives/Spinner";
+import { LogLevel } from "./LogLevel";
 import { TruncatedCopyableValue } from "../primitives/TruncatedCopyableValue";
 import { LogLevelTooltipInfo } from "~/components/LogLevelTooltipInfo";
 import {
@@ -169,14 +170,7 @@ export function LogsTable({
                     <span className="font-mono text-xs">{log.taskIdentifier}</span>
                   </TableCell>
                   <TableCell onClick={handleRowClick} hasAction>
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded border px-1 py-0.5 text-xxs font-medium uppercase tracking-wider",
-                        getLevelColor(log.level)
-                      )}
-                    >
-                      {log.level}
-                    </span>
+                    <LogLevel level={log.level} />
                   </TableCell>
                   <TableCell className="max-w-0 truncate" onClick={handleRowClick} hasAction>
                     <span className="block truncate font-mono text-xs" title={log.message}>
