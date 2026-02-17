@@ -399,8 +399,10 @@ export class WaitpointSystem {
     return await this.$.runLock.lock("blockRunWithWaitpoint", [runId], async () => {
       let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
-      //block the run with the waitpoints, returning how many waitpoints are pending
-      const insert = await prisma.$queryRaw<{ pending_count: BigInt }[]>`
+      // Insert the blocking connections and the historical run connections.
+      // We use a CTE to do both inserts atomically. Data-modifying CTEs are
+      // always executed regardless of whether they're referenced in the outer query.
+      await prisma.$queryRaw`
         WITH inserted AS (
           INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt", "spanIdToComplete", "batchId", "batchIndex")
           SELECT
@@ -425,12 +427,21 @@ export class WaitpointSystem {
           WHERE w.id IN (${Prisma.join($waitpoints)})
           ON CONFLICT DO NOTHING
         )
-        SELECT COUNT(*) as pending_count
-        FROM inserted i
-        JOIN "Waitpoint" w ON w.id = i."waitpointId"
-        WHERE w.status = 'PENDING';`;
+        SELECT COUNT(*) FROM inserted`;
 
-      const isRunBlocked = Number(insert.at(0)?.pending_count ?? 0) > 0;
+      // Check if the run is actually blocked using a separate query.
+      // This MUST be a separate statement from the CTE above because in READ COMMITTED
+      // isolation, each statement gets its own snapshot. The CTE's snapshot is taken when
+      // it starts, so if a concurrent completeWaitpoint commits during the CTE, the CTE
+      // won't see it. This fresh query gets a new snapshot that reflects the latest commits.
+      const pendingCheck = await prisma.$queryRaw<{ pending_count: BigInt }[]>`
+        SELECT COUNT(*) as pending_count
+        FROM "Waitpoint"
+        WHERE id IN (${Prisma.join($waitpoints)})
+        AND status = 'PENDING'
+      `;
+
+      const isRunBlocked = Number(pendingCheck.at(0)?.pending_count ?? 0) > 0;
 
       let newStatus: TaskRunExecutionStatus = "SUSPENDED";
       if (
