@@ -541,7 +541,7 @@ export const parentTask = task({
       { id: "child-task-2", payload: { bar: 42 } }, // 👈 The payload is typed correctly based on the task `id`
     ]);
 
-    for (const result of results) {
+    for (const result of results.runs) {
       if (result.ok) {
         // 👇 Narrow the type of the result based on the taskIdentifier
         switch (result.taskIdentifier) {
