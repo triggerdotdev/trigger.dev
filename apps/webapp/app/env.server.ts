@@ -1180,7 +1180,7 @@ const EnvironmentSchema = z
     CLICKHOUSE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
     CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
 
-    // Logs List Query Settings (for paginated log views)
+    // Logs Query Settings
     CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE: z.coerce.number().int().default(1_000_000_000),
     CLICKHOUSE_LOGS_LIST_MAX_BYTES_BEFORE_EXTERNAL_SORT: z.coerce
       .number()
@@ -1189,11 +1189,6 @@ const EnvironmentSchema = z
     CLICKHOUSE_LOGS_LIST_MAX_THREADS: z.coerce.number().int().default(2),
     CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ: z.coerce.number().int().default(10_000_000),
     CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME: z.coerce.number().int().default(120),
-
-    // Logs Detail Query Settings (for single log views)
-    CLICKHOUSE_LOGS_DETAIL_MAX_MEMORY_USAGE: z.coerce.number().int().default(64_000_000),
-    CLICKHOUSE_LOGS_DETAIL_MAX_THREADS: z.coerce.number().int().default(2),
-    CLICKHOUSE_LOGS_DETAIL_MAX_EXECUTION_TIME: z.coerce.number().int().default(60),
 
     // Query feature flag
     QUERY_FEATURE_ENABLED: z.string().default("1"),
