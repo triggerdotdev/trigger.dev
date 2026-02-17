@@ -24,6 +24,7 @@ import { cn } from "~/utils/cn";
 import { getLevelColor } from "~/utils/logUtils";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { LogLevel } from "./LogLevel";
+import { ExitIcon } from "~/assets/icons/ExitIcon";
 type LogDetailViewProps = {
   logId: string;
   // If we have the log entry from the list, we can display it immediately
@@ -113,11 +114,16 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
   if (!log) {
     return (
       <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between border-b border-grid-dimmed p-4">
+        <div className="flex items-center justify-between border-b border-grid-dimmed py-2 pl-3 pr-2">
           <Header2>Log Details</Header2>
-          <Button variant="minimal/small" onClick={onClose} shortcut={{ key: "esc" }}>
-            <XMarkIcon className="size-5" />
-          </Button>
+          <Button
+            onClick={onClose}
+            variant="minimal/small"
+            TrailingIcon={ExitIcon}
+            shortcut={{ key: "esc" }}
+            shortcutPosition="before-trailing-icon"
+            className="pl-1"
+          />
         </div>
         <div className="flex flex-1 items-center justify-center">
           <Paragraph className="text-text-dimmed">{error ?? "Log not found"}</Paragraph>
@@ -129,11 +135,16 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between overflow-hidden border-b border-grid-dimmed px-3 py-2">
+      <div className="flex items-center justify-between overflow-hidden border-b border-grid-dimmed py-2 pl-3 pr-2">
         <Header2 className="truncate">{getDisplayMessage(log)}</Header2>
-        <Button variant="minimal/small" onClick={onClose} shortcut={{ key: "esc" }}>
-          <XMarkIcon className="size-5" />
-        </Button>
+        <Button
+          onClick={onClose}
+          variant="minimal/small"
+          TrailingIcon={ExitIcon}
+          shortcut={{ key: "esc" }}
+          shortcutPosition="before-trailing-icon"
+          className="pl-1"
+        />
       </div>
       <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <DetailsTab log={log} runPath={runPath} runStatus={runStatus} searchTerm={searchTerm} />
