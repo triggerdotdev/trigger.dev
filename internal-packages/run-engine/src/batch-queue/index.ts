@@ -153,9 +153,7 @@ export class BatchQueue {
       visibilityTimeoutMs: 60_000, // 1 minute for batch item processing
       startConsumers: false, // We control when to start
       cooloff: {
-        enabled: true,
-        threshold: 5,
-        periodMs: 5_000,
+        enabled: false,
       },
       // Worker queue configuration - FairQueue routes all messages to our single worker queue
       workerQueue: {

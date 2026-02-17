@@ -284,7 +284,8 @@ export class VisibilityManager {
     queueKey: string,
     queueItemsKey: string,
     masterQueueKey: string,
-    score?: number
+    score?: number,
+    updatedData?: string
   ): Promise<void> {
     const shardId = this.#getShardForQueue(queueId);
     const inflightKey = this.keys.inflightKey(shardId);
@@ -293,7 +294,7 @@ export class VisibilityManager {
     const messageScore = score ?? Date.now();
 
     // Use Lua script to atomically:
-    // 1. Get message data from in-flight
+    // 1. Get message data from in-flight (or use updatedData if provided)
     // 2. Remove from in-flight
     // 3. Add back to queue
     // 4. Update master queue to ensure queue is picked up
@@ -306,7 +307,8 @@ export class VisibilityManager {
       member,
       messageId,
       messageScore.toString(),
-      queueId
+      queueId,
+      updatedData ?? ""
     );
 
     this.logger.debug("Message released", {
@@ -434,7 +436,8 @@ export class VisibilityManager {
           member,
           messageId,
           score.toString(),
-          queueId
+          queueId,
+          ""
         );
 
         // Track reclaimed message for concurrency release
@@ -680,12 +683,19 @@ local member = ARGV[1]
 local messageId = ARGV[2]
 local score = tonumber(ARGV[3])
 local queueId = ARGV[4]
+local updatedData = ARGV[5]
 
 -- Get message data from in-flight
 local payload = redis.call('HGET', inflightDataKey, messageId)
 if not payload then
   -- Message not in in-flight or already released
   return 0
+end
+
+-- Use updatedData if provided (e.g. incremented attempt count for retries),
+-- otherwise use the original in-flight data
+if updatedData and updatedData ~= "" then
+  payload = updatedData
 end
 
 -- Remove from in-flight
@@ -816,7 +826,8 @@ declare module "@internal/redis" {
       member: string,
       messageId: string,
       score: string,
-      queueId: string
+      queueId: string,
+      updatedData: string
     ): Promise<number>;
 
     releaseMessageBatch(

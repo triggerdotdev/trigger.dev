@@ -559,7 +559,7 @@ const EnvironmentSchema = z
     BATCH_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(100),
     BATCH_RATE_LIMIT_MAX: z.coerce.number().int().default(1200),
     BATCH_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),
-    BATCH_CONCURRENCY_LIMIT_DEFAULT: z.coerce.number().int().default(1),
+    BATCH_CONCURRENCY_LIMIT_DEFAULT: z.coerce.number().int().default(5),
 
     REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
     REALTIME_STREAM_MAX_LENGTH: z.coerce.number().int().default(1000),
