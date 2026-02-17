@@ -433,18 +433,7 @@ export function SideMenu({
                 data-action="deployments"
                 isCollapsed={isCollapsed}
               />
-              {(user.admin || user.isImpersonating || featureFlags.hasLogsPageAccess) && (
-                <SideMenuItem
-                  name="Logs"
-                  icon={LogsIcon}
-                  activeIconColor="text-logs"
-                  inactiveIconColor="text-logs"
-                  to={v3LogsPath(organization, project, environment)}
-                  data-action="logs"
-                  badge={<AlphaBadge />}
-                  isCollapsed={isCollapsed}
-                />
-              )}
+
               <SideMenuItem
                 name="Test"
                 icon={BeakerIcon}
@@ -467,6 +456,18 @@ export function SideMenu({
                 )}
                 onCollapseToggle={handleSectionToggle("metrics")}
               >
+                {(user.admin || user.isImpersonating || featureFlags.hasLogsPageAccess) && (
+                  <SideMenuItem
+                    name="Logs"
+                    icon={LogsIcon}
+                    activeIconColor="text-logs"
+                    inactiveIconColor="text-logs"
+                    to={v3LogsPath(organization, project, environment)}
+                    data-action="logs"
+                    badge={<AlphaBadge />}
+                    isCollapsed={isCollapsed}
+                  />
+                )}
                 <SideMenuItem
                   name="Query"
                   icon={TableCellsIcon}
