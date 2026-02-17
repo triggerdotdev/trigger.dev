@@ -5,26 +5,11 @@ description: "Create custom dashboards with real-time metrics powered by TRQL qu
 
 ## Overview
 
-Metrics allow you to build custom dashboards that visualize your run data in real-time. Each metric is powered by a TRQL query and can be displayed as charts, tables, or single values. Metrics automatically refresh to show the latest data.
+In the Trigger.dev dashboard we have built-in dashboards and you can create your own.
 
-## What are Metrics?
+Metrics dashboards are powered by [TRQL queries](/insights/query) with widgets that can be displayed as charts, tables, or single values. They automatically refresh to show the latest data.
 
-Metrics are reusable query widgets that:
-
-- Execute TRQL queries against your run data
-- Display results as charts, tables, or single values
-- Auto-refresh at configurable intervals
-- Support filtering by time range, tasks, queues, and tags
-- Can be organized into custom dashboards
-
-## Creating Metrics in the Dashboard
-
-1. Navigate to the Metrics page in your environment
-2. Click "Add Metric" or "Add Widget"
-3. Write your TRQL query
-4. Choose a visualization type
-5. Configure refresh interval and filters
-6. Save and position on your dashboard
+![The built-in Metrics dashboard](/images/metrics-built-in.png)
 
 ### Visualization types
 
@@ -34,205 +19,25 @@ Metrics are reusable query widgets that:
 - **Table** - Show detailed data in rows
 - **Single value** - Display a single metric (count, sum, average, etc.)
 
-## Query widget configuration
+You can also add Titles to your dashboard.
 
-Each metric widget is configured with:
+## Filtering and time ranges
 
-```typescript
-type QueryWidgetConfig = {
-  // Visualization type
-  type: "line" | "bar" | "area" | "table" | "value";
+All widgets on a dashboard use the time range filter applied to the dashboard.
 
-  // For charts: which column to use for X-axis
-  xAxis?: string;
+You can also filter the data by:
 
-  // For charts: which columns to plot as series
-  series?: string[];
+- Scope: Environment, Project, Organization
+- Tasks
+- Queues
 
-  // For value widgets: which column to display
-  valueColumn?: string;
+## Creating custom metrics dashboards
 
-  // Optional: format for displayed values
-  format?: {
-    type: "number" | "currency" | "duration" | "percentage";
-    decimals?: number;
-  };
-};
-```
-
-## Using metrics programmatically
-
-While metrics are typically created in the dashboard, you can also fetch metric data programmatically using the Query API.
-
-### Example: Fetch metric data via SDK
-
-```typescript
-import { query } from "@trigger.dev/sdk";
-
-// Get run count by status (for a pie/bar chart)
-const statusMetric = await query.execute(
-  `SELECT
-    status,
-    count() AS count
-  FROM runs
-  GROUP BY status`,
-  { period: "7d" }
-);
-
-// Get runs over time (for a line chart)
-const trendsMetric = await query.execute(
-  `SELECT
-    timeBucket() AS time,
-    count() AS runs
-  FROM runs
-  GROUP BY time
-  ORDER BY time ASC`,
-  { period: "30d" }
-);
-
-// Get average duration by task (for a table)
-const performanceMetric = await query.execute(
-  `SELECT
-    task_identifier,
-    count() AS run_count,
-    avg(usage_duration) AS avg_duration_ms,
-    median(usage_duration) AS median_duration_ms
-  FROM runs
-  GROUP BY task_identifier
-  ORDER BY run_count DESC`,
-  { period: "7d" }
-);
-```
-
-## Common metric examples
-
-### Success rate over time
-
-```sql
-SELECT
-  timeBucket() AS time,
-  countIf(status = 'Completed') AS completed,
-  countIf(status = 'Failed') AS failed,
-  round(completed / (completed + failed) * 100, 2) AS success_rate
-FROM runs
-WHERE status IN ('Completed', 'Failed')
-GROUP BY time
-ORDER BY time ASC
-```
-
-**Visualization:** Line chart with `time` as X-axis and `success_rate` as series
-
-### Task execution breakdown
-
-```sql
-SELECT
-  task_identifier AS task,
-  count() AS runs,
-  countIf(status = 'Completed') AS completed,
-  countIf(status = 'Failed') AS failed,
-  round(avg(usage_duration) / 1000, 2) AS avg_duration_sec
-FROM runs
-GROUP BY task
-ORDER BY runs DESC
-```
-
-**Visualization:** Table showing all columns
-
-### Total runs today
-
-```sql
-SELECT count() AS total
-FROM runs
-WHERE created_at >= toStartOfDay(now())
-```
-
-**Visualization:** Single value widget showing `total`
-
-### Cost analysis by task
-
-```sql
-SELECT
-  task_identifier,
-  sum(compute_cost) AS total_cost,
-  avg(compute_cost) AS avg_cost,
-  count() AS runs
-FROM runs
-WHERE compute_cost > 0
-GROUP BY task_identifier
-ORDER BY total_cost DESC
-LIMIT 10
-```
-
-**Visualization:** Bar chart with `task_identifier` as X-axis and `total_cost` as series
-
-### Queue depth over time
-
-```sql
-SELECT
-  timeBucket() AS time,
-  queue,
-  countIf(status = 'Queued') AS queued_runs
-FROM runs
-WHERE status = 'Queued'
-GROUP BY time, queue
-ORDER BY time ASC
-```
-
-**Visualization:** Area chart with multiple series (one per queue)
-
-### Failed runs requiring attention
-
-```sql
-SELECT
-  task_identifier,
-  run_id,
-  error,
-  attempt,
-  created_at
-FROM runs
-WHERE status = 'Failed'
-  AND created_at > now() - INTERVAL 1 HOUR
-ORDER BY created_at DESC
-LIMIT 20
-```
-
-**Visualization:** Table showing recent failures
-
-## Dashboard organization
-
-### Time filters
-
-All widgets on a dashboard share common time filters:
-
-- **Period shortcuts** - "Last hour", "Last 24 hours", "Last 7 days", "Last 30 days"
-- **Custom range** - Select specific start and end dates
-- **Live mode** - Continuously update with real-time data
-
-### Additional filters
-
-Dashboards support global filters that apply to all widgets:
-
-- **Tasks** - Filter to specific task identifiers
-- **Queues** - Filter to specific queues
-- **Tags** - Filter to runs with specific tags
-- **Status** - Filter by run status
-
-These filters are automatically injected into your TRQL queries.
-
-## Refresh intervals
-
-Configure how often each widget refreshes:
-
-- **30 seconds** - For monitoring critical metrics
-- **1 minute** - For general monitoring
-- **5 minutes** - For less time-sensitive data
-- **Manual only** - Disable auto-refresh
-
-Widgets use smart loading:
-
-- Only fetch when visible on screen
-- Pause updates when tab is not active
-- Debounce rapid filter changes
+1. In the sidebar click the + icon next to "Metrics".
+2. Name your custom dashboard.
+3. From the top-right you can "Add chart" or "Add title".
+4. For charts you write [TRQL queries](/insights/query) and choose a visualization type.
+5. You can resize and reposition widgets on your dashboards.
 
 ## Performance considerations
 
@@ -241,106 +46,20 @@ Widgets use smart loading:
 1. **Use time bucketing** - `timeBucket()` automatically groups by appropriate intervals
 2. **Limit result size** - Add `LIMIT` clauses, especially for table widgets
 3. **Use approximate functions** - `uniq()` instead of `uniqExact()` for faster approximate counts
-4. **Index-friendly filters** - Filter on `created_at`, `status`, `task_identifier` for best performance
-5. **Avoid expensive operations** - Be cautious with `DISTINCT`, complex `JOIN`s, or nested subqueries
-
-### Good metric query
-
-```sql
--- Fast: Uses indexes and time bucketing
-SELECT
-  timeBucket() AS time,
-  count() AS runs
-FROM runs
-WHERE created_at > now() - INTERVAL 7 DAY
-GROUP BY time
-ORDER BY time ASC
-```
-
-### Problematic metric query
-
-```sql
--- Slow: No time filter, expensive DISTINCT, no LIMIT
-SELECT DISTINCT
-  task_identifier,
-  run_id,
-  (SELECT count() FROM runs r2 WHERE r2.task_identifier = runs.task_identifier) AS task_total
-FROM runs
-```
-
-## Sharing dashboards
-
-Dashboards are scoped to:
-
-- **Environment** - Each environment has its own dashboards
-- **Project** - Share dashboard templates across environments (coming soon)
-- **Organization** - Organization-wide dashboard templates (coming soon)
 
 ## Exporting metric data
 
 Export data from any metric widget:
 
 1. Click the widget menu (three dots)
-2. Select "Export"
-3. Choose format: JSON or CSV
-4. Data exports include current filter state
-
-Or export programmatically via the SDK:
-
-```typescript
-import { query } from "@trigger.dev/sdk";
-
-const result = await query.execute("SELECT status, count() FROM runs GROUP BY status", {
-  period: "7d",
-  format: "csv", // Export as CSV
-});
-
-// Save to file
-await fs.writeFile("metrics.csv", result.results);
-```
-
-## Metric templates
-
-Common metric templates to get started:
-
-### System health dashboard
-
-- Total runs today (single value)
-- Success rate over time (line chart)
-- Error rate by task (bar chart)
-- Recent failures (table)
-- Average duration by task (table)
-
-### Cost monitoring dashboard
-
-- Total compute cost today (single value)
-- Cost over time (area chart)
-- Cost per task (bar chart)
-- Most expensive runs (table)
-
-### Performance dashboard
-
-- P50, P95, P99 latencies (single values)
-- Duration distribution (histogram/bar chart)
-- Duration over time by task (line chart)
-- Slowest runs (table)
-
-### Queue monitoring dashboard
-
-- Queued runs by queue (single values)
-- Queue depth over time (area chart)
-- Processing rate (line chart)
-- Oldest queued run age (single value)
+2. Select "Copy JSON" or "Copy CSV"
 
 ## Best practices
 
 1. **Start simple** - Begin with basic metrics and iterate based on insights
 2. **Use meaningful names** - Give widgets clear, descriptive titles
 3. **Group related metrics** - Organize dashboards by theme (performance, costs, errors)
-4. **Set appropriate refresh rates** - Balance freshness with query cost
-5. **Test queries first** - Use the Query page to develop and test before adding to dashboards
-6. **Include context** - Add time ranges and filters to metric titles for clarity
-7. **Monitor query performance** - Check execution times and adjust queries that are too slow
+4. **Test queries first** - Use the Query page to develop and test before adding to dashboards
 
 ## Troubleshooting
 
@@ -348,7 +67,7 @@ Common metric templates to get started:
 
 - Check that your query returns results in the Query page
 - Verify time filters include the period with data
-- Ensure task/queue/tag filters match existing runs
+- Ensure task/queue filters match existing runs
 
 ### Widget is slow to load
 
@@ -364,12 +83,14 @@ Common metric templates to get started:
 - Ensure `timeBucket()` is used for time-series charts
 - Review that series columns exist in query results
 
-## Rate limits
+## Limits
 
-Metric widgets share the same rate limits as Query API:
+Metrics is powered by Query so have [the same limits](/insights/query#limits) as Query.
 
-- Concurrent queries per organization
-- Query execution time limits
-- Auto-refresh respects rate limits (pauses if limit reached)
+There is a separate concurrency limits for metric widgets.
+
+| Limit                     | Details        |
+| :------------------------ | :------------- |
+| Concurrent widget queries | 30 per project |
 
 See [Limits](/limits) for details.
