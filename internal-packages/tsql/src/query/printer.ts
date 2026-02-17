@@ -2940,6 +2940,9 @@ export class ClickHousePrinter {
    * Valid ClickHouse interval unit keywords used by date functions like dateAdd, dateDiff, etc.
    */
   private static readonly INTERVAL_UNITS = new Set([
+    "nanosecond",
+    "microsecond",
+    "millisecond",
     "second",
     "minute",
     "hour",

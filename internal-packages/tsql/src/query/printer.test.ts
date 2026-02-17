@@ -1312,6 +1312,31 @@ describe("ClickHousePrinter", () => {
 
       expect(sql).toContain("dateAdd(day, 7, created_at)");
     });
+
+    it("should output dateDiff with sub-second units as bare keywords", () => {
+      const { sql } = printQuery(
+        "SELECT dateDiff('millisecond', started_at, completed_at) AS dur FROM task_runs"
+      );
+
+      expect(sql).toContain("dateDiff(millisecond,");
+      expect(sql).not.toContain("'millisecond'");
+    });
+
+    it("should output dateDiff with microsecond as bare keyword", () => {
+      const { sql } = printQuery(
+        "SELECT dateDiff('microsecond', started_at, completed_at) AS dur FROM task_runs"
+      );
+
+      expect(sql).toContain("dateDiff(microsecond,");
+    });
+
+    it("should output dateDiff with nanosecond as bare keyword", () => {
+      const { sql } = printQuery(
+        "SELECT dateDiff('nanosecond', started_at, completed_at) AS dur FROM task_runs"
+      );
+
+      expect(sql).toContain("dateDiff(nanosecond,");
+    });
   });
 
   describe("Tenant isolation", () => {
