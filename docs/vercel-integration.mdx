@@ -1,8 +1,141 @@
 ---
 title: "Vercel integration"
-description: "When you deploy to Vercel, automatically deploy your associated tasks."
+description: "Automatically deploy your tasks whenever you deploy to Vercel."
 ---
 
-import ComingSoon from "/snippets/coming-soon-in-review.mdx"
+## How it works
 
-<ComingSoon />
+The Vercel integration connects your Vercel project to your Trigger.dev project so that every Vercel deployment automatically triggers a Trigger.dev deployment. It also syncs environment variables from Vercel into Trigger.dev and supports atomic deployments to keep your app and tasks in sync.
+
+This eliminates the need to manually run the `trigger.dev deploy` command or maintain custom CI/CD workflows for Vercel-based projects.
+
+<Note>
+  The Vercel integration requires the [GitHub integration](/github-integration) to be connected as well, since Trigger.dev builds your tasks from your GitHub repository.
+</Note>
+
+## Installation
+
+You can connect Vercel from two entry points:
+
+### From the Trigger.dev dashboard
+
+<Steps>
+
+<Step title="Connect Vercel">
+  Go to your project's **Settings** page and click **Connect Vercel**. This will redirect you to Vercel to authorize the Trigger.dev app.
+</Step>
+
+<Step title="Select a Vercel project">
+  Choose which Vercel project to connect to your Trigger.dev project.
+</Step>
+
+<Step title="Map environments">
+  If your Vercel project has custom environments, choose which one maps to your Trigger.dev staging environment.
+</Step>
+
+<Step title="Sync environment variables">
+  Review the environment variables that will be pulled from Vercel into Trigger.dev. You can deselect any variables you don't want to sync.
+</Step>
+
+<Step title="Configure build settings">
+  Optionally adjust [build settings](#build-settings) for atomic deployments, env var pulling, and new env var discovery.
+</Step>
+
+<Step title="Connect GitHub">
+  If your GitHub repository isn't already connected, you'll be prompted to connect it.
+</Step>
+
+</Steps>
+
+### From the Vercel Marketplace
+
+<Steps>
+
+<Step title="Install the integration">
+  Find Trigger.dev on the Vercel Marketplace and install it. This will redirect you to Trigger.dev to complete setup.
+</Step>
+
+<Step title="Select your Trigger.dev organization and project">
+  Choose which Trigger.dev organization and project to connect. If you're new to Trigger.dev, you'll be guided through creating an organization and project.
+</Step>
+
+<Step title="Connect GitHub">
+  If your GitHub repository isn't already connected, you'll be prompted to connect it.
+</Step>
+
+</Steps>
+
+<Note>
+  When installing from the Vercel Marketplace, default build settings are applied automatically. You can adjust them later in your project settings.
+</Note>
+
+## Environment variable sync
+
+The integration syncs environment variables in both directions:
+
+**Vercel → Trigger.dev**: Environment variables from your Vercel project are pulled into Trigger.dev. This happens during the initial setup and optionally before each build. Variables are synced per-environment (production, staging, preview).
+
+**Trigger.dev → Vercel**: Trigger.dev syncs API keys (like `TRIGGER_SECRET_KEY`) to your Vercel project so your app can communicate with Trigger.dev.
+
+The following variables are excluded from the Vercel → Trigger.dev sync:
+- `TRIGGER_SECRET_KEY`, `TRIGGER_VERSION`, `TRIGGER_PREVIEW_BRANCH` (managed by Trigger.dev)
+- Sensitive/secret-type variables (Vercel API limitation)
+
+You can control sync behavior per-variable from your project's Vercel settings. Deselecting a variable prevents its value from being updated during future syncs.
+
+<Tip>
+  For dynamic environment variables (e.g., from NeonDB branching), use the `syncEnvVars` build extension instead. Learn more about [environment variables](/deploy-environment-variables).
+</Tip>
+
+## Atomic deployments
+
+Atomic deployments ensure your Vercel app and Trigger.dev tasks are deployed in sync. When enabled, Trigger.dev gates your Vercel deployment until the task build completes, then triggers a Vercel redeployment with the correct `TRIGGER_VERSION` set. This guarantees your app always uses the matching version of your tasks.
+
+Atomic deployments are enabled for the production environment by default.
+
+<Note>
+  When atomic deployments are enabled, the integration automatically disables `Auto-assign Custom Production Domains` on your Vercel project. This is required so that Vercel doesn't promote a deployment before the Trigger.dev build is ready.
+</Note>
+
+Previously, setting up atomic deployments with Vercel required custom GitHub Actions workflows. The Vercel integration automates this entirely. For more details on how atomic deployments work, see [Atomic deploys](/deployment/atomic-deployment).
+
+## Environment mapping
+
+The integration maps Vercel environments to Trigger.dev environments:
+
+| Vercel environment | Trigger.dev environment |
+| --- | --- |
+| Production | Production |
+| Custom environment | Staging (you choose which one) |
+| Preview | Preview |
+| Development | Development |
+
+If your Vercel project has a custom environment, you can select which one maps to your Trigger.dev staging environment during setup or in your project settings.
+
+<Note>
+  Preview deployments require the preview environment to be enabled on your project. Learn more about [preview branches](/deployment/preview-branches).
+</Note>
+
+## Build settings
+
+You can configure the following settings per-environment from your project's Vercel settings:
+
+- **Atomic deployments**: Controls whether Trigger.dev and Vercel deployments are synchronized. Enabled for production by default.
+- **Pull env vars before build**: When enabled, Trigger.dev pulls the latest environment variables from Vercel before each build. Enabled for production, staging, and preview by default.
+- **Discover new env vars**: When enabled, new environment variables found in Vercel that don't yet exist in Trigger.dev are created automatically during builds. Only available for environments that also have env var pulling enabled. Enabled for production, staging, and preview by default.
+
+## Disconnecting
+
+You can disconnect the Vercel integration from either side:
+
+- **From Trigger.dev**: Go to your project **Settings** and disconnect Vercel.
+- **From Vercel**: Uninstall the Trigger.dev integration from your Vercel dashboard. This is automatically detected and the connection is removed on the Trigger.dev side.
+
+Disconnecting stops automatic deployments, environment variable syncing, and deployment checks. Your existing deployments and environment variables are not affected.
+
+## Related
+
+- [GitHub integration](/github-integration)
+- [Atomic deploys](/deployment/atomic-deployment)
+- [Environment variables](/deploy-environment-variables)
+- [Preview branches](/deployment/preview-branches)
