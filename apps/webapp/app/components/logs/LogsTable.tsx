@@ -2,7 +2,7 @@ import { ArrowPathIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/20/so
 import { Link } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -182,11 +182,13 @@ export function LogsTable({
                   <TableCellMenu
                     className="pl-32"
                     hiddenButtons={
-                      <Link to={runPath} target="_blank" rel="noopener noreferrer">
-                        <Button variant="minimal/small" TrailingIcon={ArrowTopRightOnSquareIcon}>
-                          View run
-                        </Button>
-                      </Link>
+                      <LinkButton
+                        to={runPath}
+                        variant="minimal/small"
+                        TrailingIcon={ArrowTopRightOnSquareIcon}
+                      >
+                        View run
+                      </LinkButton>
                     }
                   />
                 </TableRow>
