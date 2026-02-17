@@ -498,8 +498,9 @@ export const metricsSchema: TableSchema = {
         coreColumn: true,
       }),
     },
-    value: {
-      name: "value",
+    metric_value: {
+      name: "metric_value",
+      clickhouseName: "value",
       ...column("Float64", {
         description: "The metric value",
         example: "0.75",

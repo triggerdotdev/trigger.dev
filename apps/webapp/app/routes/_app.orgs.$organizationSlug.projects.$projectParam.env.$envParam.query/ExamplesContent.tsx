@@ -81,7 +81,7 @@ LIMIT 100`,
     description: "Track process CPU utilization bucketed over time.",
     query: `SELECT
   timeBucket(),
-  avg(value) AS avg_cpu
+  avg(metric_value) AS avg_cpu
 FROM metrics
 WHERE metric_name = 'process.cpu.utilization'
 GROUP BY timeBucket
@@ -95,7 +95,7 @@ LIMIT 1000`,
     description: "Average memory usage per task identifier over the last 7 days.",
     query: `SELECT
   task_identifier,
-  avg(value) AS avg_memory
+  avg(metric_value) AS avg_memory
 FROM metrics
 WHERE metric_name = 'system.memory.usage'
   AND bucket_start > now() - INTERVAL 7 DAY
