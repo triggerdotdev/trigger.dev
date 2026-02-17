@@ -90,10 +90,7 @@ const defaultTaskRun = {
 /**
  * Helper: execute a TSQL query and assert no errors.
  */
-async function assertQueryExecutes(
-  client: ClickhouseClient,
-  tsqlQuery: string
-): Promise<void> {
+async function assertQueryExecutes(client: ClickhouseClient, tsqlQuery: string): Promise<void> {
   const [error] = await executeTSQL(client, {
     name: "func-test",
     query: tsqlQuery,
@@ -127,10 +124,7 @@ async function setupClient(clickhouseContainer: { getConnectionUrl(): string }) 
  * Helper: run all test cases in a single ClickHouse container.
  * Each case is a [name, tsqlQuery] tuple.
  */
-async function runCases(
-  client: ClickhouseClient,
-  cases: [string, string][]
-): Promise<void> {
+async function runCases(client: ClickhouseClient, cases: [string, string][]): Promise<void> {
   const failures: string[] = [];
 
   for (const [name, query] of cases) {
@@ -258,9 +252,15 @@ describe("TSQL Function Smoke Tests", () => {
       ["replaceRegexpOne", "SELECT replaceRegexpOne(status, '[A-Z]+', 'X') AS r FROM task_runs"],
       ["replaceRegexpAll", "SELECT replaceRegexpAll(status, '[A-Z]', 'x') AS r FROM task_runs"],
       ["position", "SELECT position(status, 'COM') AS r FROM task_runs"],
-      ["positionCaseInsensitive", "SELECT positionCaseInsensitive(status, 'com') AS r FROM task_runs"],
+      [
+        "positionCaseInsensitive",
+        "SELECT positionCaseInsensitive(status, 'com') AS r FROM task_runs",
+      ],
       ["positionUTF8", "SELECT positionUTF8(status, 'COM') AS r FROM task_runs"],
-      ["positionCaseInsensitiveUTF8", "SELECT positionCaseInsensitiveUTF8(status, 'com') AS r FROM task_runs"],
+      [
+        "positionCaseInsensitiveUTF8",
+        "SELECT positionCaseInsensitiveUTF8(status, 'com') AS r FROM task_runs",
+      ],
       ["locate", "SELECT locate(status, 'COM') AS r FROM task_runs"],
       ["match", "SELECT match(status, 'COMPLETED.*') AS r FROM task_runs"],
       ["like", "SELECT like(status, '%COMPLETED%') AS r FROM task_runs"],
@@ -334,9 +334,7 @@ describe("TSQL Function Smoke Tests", () => {
   clickhouseTest("Type conversion functions", async ({ clickhouseContainer }) => {
     const client = await setupClient(clickhouseContainer);
     await runCases(client, [
-      // toString: Skipped - TSQL_COMPARISON_MAPPING uses `in` operator which matches
-      // Object.prototype.toString, causing it to be treated as a comparison function.
-      // ["toString", "SELECT toString(usage_duration_ms) AS r FROM task_runs"],
+      ["toString", "SELECT toString(usage_duration_ms) AS r FROM task_runs"],
       ["toFixedString", "SELECT toFixedString(status, 30) AS r FROM task_runs"],
       ["toUInt8", "SELECT toUInt8(is_test) AS r FROM task_runs"],
       ["toUInt16", "SELECT toUInt16(usage_duration_ms) AS r FROM task_runs"],
@@ -366,7 +364,10 @@ describe("TSQL Function Smoke Tests", () => {
       ["toDateTimeOrNull", "SELECT toDateTimeOrNull('2024-01-01 00:00:00') AS r FROM task_runs"],
       ["toDateTimeOrZero", "SELECT toDateTimeOrZero('invalid') AS r FROM task_runs"],
       ["toDateTime64", "SELECT toDateTime64(created_at, 3) AS r FROM task_runs"],
-      ["toDateTime64OrNull", "SELECT toDateTime64OrNull('2024-01-01 00:00:00.000', 3) AS r FROM task_runs"],
+      [
+        "toDateTime64OrNull",
+        "SELECT toDateTime64OrNull('2024-01-01 00:00:00.000', 3) AS r FROM task_runs",
+      ],
       ["toDateTime64OrZero", "SELECT toDateTime64OrZero('invalid', 3) AS r FROM task_runs"],
       ["toTypeName", "SELECT toTypeName(status) AS r FROM task_runs"],
     ]);
@@ -403,7 +404,10 @@ describe("TSQL Function Smoke Tests", () => {
       ["toStartOfFiveMinutes", "SELECT toStartOfFiveMinutes(created_at) AS r FROM task_runs"],
       ["toStartOfTenMinutes", "SELECT toStartOfTenMinutes(created_at) AS r FROM task_runs"],
       ["toStartOfFifteenMinutes", "SELECT toStartOfFifteenMinutes(created_at) AS r FROM task_runs"],
-      ["toStartOfInterval", "SELECT toStartOfInterval(created_at, INTERVAL 1 hour) AS r FROM task_runs"],
+      [
+        "toStartOfInterval",
+        "SELECT toStartOfInterval(created_at, INTERVAL 1 hour) AS r FROM task_runs",
+      ],
       ["toTime", "SELECT toTime(created_at) AS r FROM task_runs"],
       ["toISOYear", "SELECT toISOYear(created_at) AS r FROM task_runs"],
       ["toISOWeek", "SELECT toISOWeek(created_at) AS r FROM task_runs"],
@@ -412,14 +416,29 @@ describe("TSQL Function Smoke Tests", () => {
       ["dateAdd (string unit)", "SELECT dateAdd('day', 7, created_at) AS r FROM task_runs"],
       ["dateAdd (keyword unit)", "SELECT dateAdd(day, 7, created_at) AS r FROM task_runs"],
       ["dateSub (string unit)", "SELECT dateSub('hour', 1, created_at) AS r FROM task_runs"],
-      ["dateDiff (string unit)", "SELECT dateDiff('minute', created_at, updated_at) AS r FROM task_runs"],
-      ["dateDiff (millisecond)", "SELECT dateDiff('millisecond', created_at, updated_at) AS r FROM task_runs"],
-      ["dateDiff (microsecond)", "SELECT dateDiff('microsecond', created_at, updated_at) AS r FROM task_runs"],
-      ["dateDiff (nanosecond)", "SELECT dateDiff('nanosecond', created_at, updated_at) AS r FROM task_runs"],
+      [
+        "dateDiff (string unit)",
+        "SELECT dateDiff('minute', created_at, updated_at) AS r FROM task_runs",
+      ],
+      [
+        "dateDiff (millisecond)",
+        "SELECT dateDiff('millisecond', created_at, updated_at) AS r FROM task_runs",
+      ],
+      [
+        "dateDiff (microsecond)",
+        "SELECT dateDiff('microsecond', created_at, updated_at) AS r FROM task_runs",
+      ],
+      [
+        "dateDiff (nanosecond)",
+        "SELECT dateDiff('nanosecond', created_at, updated_at) AS r FROM task_runs",
+      ],
       ["dateTrunc (string unit)", "SELECT dateTrunc('month', created_at) AS r FROM task_runs"],
       ["date_add (string unit)", "SELECT date_add('day', 7, created_at) AS r FROM task_runs"],
       ["date_sub (string unit)", "SELECT date_sub('hour', 1, created_at) AS r FROM task_runs"],
-      ["date_diff (string unit)", "SELECT date_diff('minute', created_at, updated_at) AS r FROM task_runs"],
+      [
+        "date_diff (string unit)",
+        "SELECT date_diff('minute', created_at, updated_at) AS r FROM task_runs",
+      ],
       ["date_trunc (string unit)", "SELECT date_trunc('month', created_at) AS r FROM task_runs"],
       ["addSeconds", "SELECT addSeconds(created_at, 10) AS r FROM task_runs"],
       ["addMinutes", "SELECT addMinutes(created_at, 10) AS r FROM task_runs"],
@@ -440,12 +459,30 @@ describe("TSQL Function Smoke Tests", () => {
       ["toTimeZone", "SELECT toTimeZone(created_at, 'America/New_York') AS r FROM task_runs"],
       ["formatDateTime", "SELECT formatDateTime(created_at, '%Y-%m-%d') AS r FROM task_runs"],
       ["parseDateTime", "SELECT parseDateTime('2024-01-15', '%Y-%m-%d') AS r FROM task_runs"],
-      ["parseDateTimeBestEffort", "SELECT parseDateTimeBestEffort('2024-01-15 10:30:00') AS r FROM task_runs"],
-      ["parseDateTimeBestEffortOrNull", "SELECT parseDateTimeBestEffortOrNull('invalid') AS r FROM task_runs"],
-      ["parseDateTimeBestEffortOrZero", "SELECT parseDateTimeBestEffortOrZero('invalid') AS r FROM task_runs"],
-      ["parseDateTime64BestEffort", "SELECT parseDateTime64BestEffort('2024-01-15 10:30:00.123') AS r FROM task_runs"],
-      ["parseDateTime64BestEffortOrNull", "SELECT parseDateTime64BestEffortOrNull('invalid') AS r FROM task_runs"],
-      ["parseDateTime64BestEffortOrZero", "SELECT parseDateTime64BestEffortOrZero('invalid') AS r FROM task_runs"],
+      [
+        "parseDateTimeBestEffort",
+        "SELECT parseDateTimeBestEffort('2024-01-15 10:30:00') AS r FROM task_runs",
+      ],
+      [
+        "parseDateTimeBestEffortOrNull",
+        "SELECT parseDateTimeBestEffortOrNull('invalid') AS r FROM task_runs",
+      ],
+      [
+        "parseDateTimeBestEffortOrZero",
+        "SELECT parseDateTimeBestEffortOrZero('invalid') AS r FROM task_runs",
+      ],
+      [
+        "parseDateTime64BestEffort",
+        "SELECT parseDateTime64BestEffort('2024-01-15 10:30:00.123') AS r FROM task_runs",
+      ],
+      [
+        "parseDateTime64BestEffortOrNull",
+        "SELECT parseDateTime64BestEffortOrNull('invalid') AS r FROM task_runs",
+      ],
+      [
+        "parseDateTime64BestEffortOrZero",
+        "SELECT parseDateTime64BestEffortOrZero('invalid') AS r FROM task_runs",
+      ],
     ]);
   });
 
@@ -509,7 +546,10 @@ describe("TSQL Function Smoke Tests", () => {
       ["arraySum", "SELECT arraySum(array(1, 2, 3)) AS r FROM task_runs"],
       ["arrayAvg", "SELECT arrayAvg(array(1, 2, 3)) AS r FROM task_runs"],
       ["arrayCumSum", "SELECT arrayCumSum(array(1, 2, 3)) AS r FROM task_runs"],
-      ["arrayCumSumNonNegative", "SELECT arrayCumSumNonNegative(array(1, -2, 3)) AS r FROM task_runs"],
+      [
+        "arrayCumSumNonNegative",
+        "SELECT arrayCumSumNonNegative(array(1, -2, 3)) AS r FROM task_runs",
+      ],
       ["arrayProduct", "SELECT arrayProduct(array(1, 2, 3)) AS r FROM task_runs"],
       ["arrayJoin", "SELECT arrayJoin(array(1, 2, 3)) AS r FROM task_runs"],
     ]);
@@ -529,7 +569,10 @@ describe("TSQL Function Smoke Tests", () => {
       ["JSONExtractBool", `SELECT JSONExtractBool('{"a": true}', 'a') AS r FROM task_runs`],
       ["JSONExtractString", `SELECT JSONExtractString('{"a": "hello"}', 'a') AS r FROM task_runs`],
       ["JSONExtractRaw", `SELECT JSONExtractRaw('{"a": [1,2]}', 'a') AS r FROM task_runs`],
-      ["JSONExtractArrayRaw", `SELECT JSONExtractArrayRaw('{"a": [1,2]}', 'a') AS r FROM task_runs`],
+      [
+        "JSONExtractArrayRaw",
+        `SELECT JSONExtractArrayRaw('{"a": [1,2]}', 'a') AS r FROM task_runs`,
+      ],
       ["JSONExtractKeys", `SELECT JSONExtractKeys('{"a": 1, "b": 2}') AS r FROM task_runs`],
       ["toJSONString", "SELECT toJSONString(map('a', 1)) AS r FROM task_runs"],
     ]);
@@ -598,9 +641,18 @@ describe("TSQL Function Smoke Tests", () => {
       ["domain", `SELECT domain('${url}') AS r FROM task_runs`],
       ["domainWithoutWWW", `SELECT domainWithoutWWW('${url}') AS r FROM task_runs`],
       ["topLevelDomain", `SELECT topLevelDomain('${url}') AS r FROM task_runs`],
-      ["firstSignificantSubdomain", `SELECT firstSignificantSubdomain('${url}') AS r FROM task_runs`],
-      ["cutToFirstSignificantSubdomain", `SELECT cutToFirstSignificantSubdomain('${url}') AS r FROM task_runs`],
-      ["cutToFirstSignificantSubdomainWithWWW", `SELECT cutToFirstSignificantSubdomainWithWWW('${url}') AS r FROM task_runs`],
+      [
+        "firstSignificantSubdomain",
+        `SELECT firstSignificantSubdomain('${url}') AS r FROM task_runs`,
+      ],
+      [
+        "cutToFirstSignificantSubdomain",
+        `SELECT cutToFirstSignificantSubdomain('${url}') AS r FROM task_runs`,
+      ],
+      [
+        "cutToFirstSignificantSubdomainWithWWW",
+        `SELECT cutToFirstSignificantSubdomainWithWWW('${url}') AS r FROM task_runs`,
+      ],
       ["port", `SELECT port('${url}') AS r FROM task_runs`],
       ["path", `SELECT path('${url}') AS r FROM task_runs`],
       ["pathFull", `SELECT pathFull('${url}') AS r FROM task_runs`],
@@ -619,8 +671,14 @@ describe("TSQL Function Smoke Tests", () => {
     const client = await setupClient(clickhouseContainer);
     await runCases(client, [
       ["generateUUIDv4", "SELECT generateUUIDv4() AS r FROM task_runs"],
-      ["UUIDStringToNum", "SELECT UUIDStringToNum('00000000-0000-0000-0000-000000000000') AS r FROM task_runs"],
-      ["UUIDNumToString", "SELECT UUIDNumToString(UUIDStringToNum('00000000-0000-0000-0000-000000000000')) AS r FROM task_runs"],
+      [
+        "UUIDStringToNum",
+        "SELECT UUIDStringToNum('00000000-0000-0000-0000-000000000000') AS r FROM task_runs",
+      ],
+      [
+        "UUIDNumToString",
+        "SELECT UUIDNumToString(UUIDStringToNum('00000000-0000-0000-0000-000000000000')) AS r FROM task_runs",
+      ],
       ["toUUID", "SELECT toUUID('00000000-0000-0000-0000-000000000000') AS r FROM task_runs"],
       ["toUUIDOrNull", "SELECT toUUIDOrNull('not-a-uuid') AS r FROM task_runs"],
       ["toUUIDOrZero", "SELECT toUUIDOrZero('not-a-uuid') AS r FROM task_runs"],
@@ -643,7 +701,10 @@ describe("TSQL Function Smoke Tests", () => {
         "transform",
         "SELECT transform(status, array('PENDING', 'COMPLETED_SUCCESSFULLY'), array('P', 'C'), 'X') AS r FROM task_runs",
       ],
-      ["formatReadableDecimalSize", "SELECT formatReadableDecimalSize(1000000) AS r FROM task_runs"],
+      [
+        "formatReadableDecimalSize",
+        "SELECT formatReadableDecimalSize(1000000) AS r FROM task_runs",
+      ],
       ["formatReadableSize", "SELECT formatReadableSize(1000000) AS r FROM task_runs"],
       ["formatReadableQuantity", "SELECT formatReadableQuantity(1000000) AS r FROM task_runs"],
       ["formatReadableTimeDelta", "SELECT formatReadableTimeDelta(3661) AS r FROM task_runs"],
@@ -691,7 +752,10 @@ describe("TSQL Function Smoke Tests", () => {
       ["quantile", "SELECT quantile(0.95)(usage_duration_ms) AS r FROM task_runs"],
       ["quantiles", "SELECT quantiles(0.5, 0.9, 0.99)(usage_duration_ms) AS r FROM task_runs"],
       ["topK", "SELECT topK(3)(status) AS r FROM task_runs"],
-      ["simpleLinearRegression", "SELECT simpleLinearRegression(usage_duration_ms, cost_in_cents) AS r FROM task_runs"],
+      [
+        "simpleLinearRegression",
+        "SELECT simpleLinearRegression(usage_duration_ms, cost_in_cents) AS r FROM task_runs",
+      ],
       ["groupArraySample", "SELECT groupArraySample(2)(status) AS r FROM task_runs"],
     ]);
   });
@@ -702,7 +766,10 @@ describe("TSQL Function Smoke Tests", () => {
     const client = await setupClient(clickhouseContainer);
     await runCases(client, [
       ["countIf", "SELECT countIf(usage_duration_ms > 1000) AS r FROM task_runs"],
-      ["countDistinctIf", "SELECT countDistinctIf(status, usage_duration_ms > 0) AS r FROM task_runs"],
+      [
+        "countDistinctIf",
+        "SELECT countDistinctIf(status, usage_duration_ms > 0) AS r FROM task_runs",
+      ],
       ["minIf", "SELECT minIf(usage_duration_ms, is_test = 0) AS r FROM task_runs"],
       ["maxIf", "SELECT maxIf(usage_duration_ms, is_test = 0) AS r FROM task_runs"],
       ["sumIf", "SELECT sumIf(usage_duration_ms, is_test = 0) AS r FROM task_runs"],
@@ -711,7 +778,10 @@ describe("TSQL Function Smoke Tests", () => {
       ["anyLastIf", "SELECT anyLastIf(status, usage_duration_ms > 0) AS r FROM task_runs"],
       ["anyHeavyIf", "SELECT anyHeavyIf(status, usage_duration_ms > 0) AS r FROM task_runs"],
       ["groupArrayIf", "SELECT groupArrayIf(status, usage_duration_ms > 0) AS r FROM task_runs"],
-      ["groupUniqArrayIf", "SELECT groupUniqArrayIf(status, usage_duration_ms > 0) AS r FROM task_runs"],
+      [
+        "groupUniqArrayIf",
+        "SELECT groupUniqArrayIf(status, usage_duration_ms > 0) AS r FROM task_runs",
+      ],
       ["uniqIf", "SELECT uniqIf(status, usage_duration_ms > 0) AS r FROM task_runs"],
       ["uniqExactIf", "SELECT uniqExactIf(status, usage_duration_ms > 0) AS r FROM task_runs"],
       ["medianIf", "SELECT medianIf(usage_duration_ms, is_test = 0) AS r FROM task_runs"],
@@ -726,16 +796,40 @@ describe("TSQL Function Smoke Tests", () => {
   clickhouseTest("Search functions", async ({ clickhouseContainer }) => {
     const client = await setupClient(clickhouseContainer);
     await runCases(client, [
-      ["multiMatchAny", "SELECT multiMatchAny(status, array('COMPLETED.*', 'PENDING')) AS r FROM task_runs"],
-      ["multiMatchAnyIndex", "SELECT multiMatchAnyIndex(status, array('COMPLETED.*', 'PENDING')) AS r FROM task_runs"],
-      ["multiMatchAllIndices", "SELECT multiMatchAllIndices(status, array('COMPLETED.*', 'PEND.*')) AS r FROM task_runs"],
-      ["multiSearchFirstPosition", "SELECT multiSearchFirstPosition(status, array('COMP', 'PEND')) AS r FROM task_runs"],
-      ["multiSearchFirstIndex", "SELECT multiSearchFirstIndex(status, array('COMP', 'PEND')) AS r FROM task_runs"],
-      ["multiSearchAny", "SELECT multiSearchAny(status, array('COMP', 'PEND')) AS r FROM task_runs"],
+      [
+        "multiMatchAny",
+        "SELECT multiMatchAny(status, array('COMPLETED.*', 'PENDING')) AS r FROM task_runs",
+      ],
+      [
+        "multiMatchAnyIndex",
+        "SELECT multiMatchAnyIndex(status, array('COMPLETED.*', 'PENDING')) AS r FROM task_runs",
+      ],
+      [
+        "multiMatchAllIndices",
+        "SELECT multiMatchAllIndices(status, array('COMPLETED.*', 'PEND.*')) AS r FROM task_runs",
+      ],
+      [
+        "multiSearchFirstPosition",
+        "SELECT multiSearchFirstPosition(status, array('COMP', 'PEND')) AS r FROM task_runs",
+      ],
+      [
+        "multiSearchFirstIndex",
+        "SELECT multiSearchFirstIndex(status, array('COMP', 'PEND')) AS r FROM task_runs",
+      ],
+      [
+        "multiSearchAny",
+        "SELECT multiSearchAny(status, array('COMP', 'PEND')) AS r FROM task_runs",
+      ],
       ["extract", "SELECT extract(status, '[A-Z]+') AS r FROM task_runs"],
       ["extractAll", "SELECT extractAll(status, '[A-Z]+') AS r FROM task_runs"],
-      ["extractAllGroupsHorizontal", "SELECT extractAllGroupsHorizontal(status, '([A-Z]+)') AS r FROM task_runs"],
-      ["extractAllGroupsVertical", "SELECT extractAllGroupsVertical(status, '([A-Z]+)') AS r FROM task_runs"],
+      [
+        "extractAllGroupsHorizontal",
+        "SELECT extractAllGroupsHorizontal(status, '([A-Z]+)') AS r FROM task_runs",
+      ],
+      [
+        "extractAllGroupsVertical",
+        "SELECT extractAllGroupsVertical(status, '([A-Z]+)') AS r FROM task_runs",
+      ],
     ]);
   });
 });

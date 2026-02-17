@@ -2879,7 +2879,7 @@ export class ClickHousePrinter {
     }
 
     // Check if this is a comparison function
-    if (name in TSQL_COMPARISON_MAPPING) {
+    if (Object.prototype.hasOwnProperty.call(TSQL_COMPARISON_MAPPING, name)) {
       const op = TSQL_COMPARISON_MAPPING[name];
       if (node.args.length !== 2) {
         throw new QueryError(`Comparison '${name}' requires exactly two arguments`);
