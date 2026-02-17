@@ -366,6 +366,22 @@ export class WaitpointSystem {
 
   /**
    * Prevents a run from continuing until the waitpoint is completed.
+   *
+   * This method uses two separate SQL statements intentionally:
+   *
+   * 1. A CTE that INSERTs TaskRunWaitpoint rows (blocking connections) and
+   *    _WaitpointRunConnections rows (historical connections).
+   *
+   * 2. A separate SELECT that checks if any of the requested waitpoints are still PENDING.
+   *
+   * These MUST be separate statements because of PostgreSQL MVCC in READ COMMITTED isolation:
+   * each statement gets its own snapshot. If a concurrent `completeWaitpoint` commits between
+   * the CTE starting and finishing, the CTE's snapshot won't see the COMPLETED status. By using
+   * a separate SELECT, we get a fresh snapshot that reflects the latest committed state.
+   *
+   * The pending check queries ALL requested waitpoint IDs (not just the ones actually inserted
+   * by the CTE). This is intentional: if a TaskRunWaitpoint row already existed (ON CONFLICT
+   * DO NOTHING skipped the insert), a still-PENDING waitpoint should still count as blocking.
    */
   async blockRunWithWaitpoint({
     runId,
