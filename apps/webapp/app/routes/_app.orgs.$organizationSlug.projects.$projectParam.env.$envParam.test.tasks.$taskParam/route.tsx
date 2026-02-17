@@ -1185,14 +1185,20 @@ function ScheduledTaskForm({
               <Label htmlFor={region.id} variant="small">
                 Region
               </Label>
+              {/* Our Select primitive uses Ariakit under the hood, which treats
+                  value={undefined} as uncontrolled, keeping stale internal state when
+                  switching environments. The key forces a remount so it reinitializes
+                  with the correct defaultValue. */}
               <Select
+                key={`region-${environment.id}`}
                 {...conform.select(region)}
                 variant="tertiary/small"
+                placeholder={isDev ? "–" : undefined}
                 dropdownIcon
                 items={regionItems}
-                defaultValue={defaultRegion?.name}
-                value={regionValue}
-                setValue={(e) => {
+                defaultValue={isDev ? undefined : defaultRegion?.name}
+                value={isDev ? undefined : regionValue}
+                setValue={isDev ? undefined : (e) => {
                   if (Array.isArray(e)) return;
                   setRegionValue(e);
                 }}
