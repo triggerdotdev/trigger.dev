@@ -35,12 +35,15 @@ export function LogsSearchInput() {
     }
   }, [text, replace, del]);
 
-  const handleClear = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setText("");
-    del(["search", "cursor", "direction"]);
-  }, []);
+  const handleClear = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setText("");
+      del(["search", "cursor", "direction"]);
+    },
+    [del]
+  );
 
   return (
     <div className="flex items-center gap-1">
