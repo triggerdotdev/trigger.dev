@@ -6,7 +6,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { LogsListPresenter, type LogLevel, LogsListOptionsSchema } from "~/presenters/v3/LogsListPresenter.server";
 import { $replica } from "~/db.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { logsClickhouseClient } from "~/services/clickhouseInstance.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 
 // Valid log levels for filtering
@@ -69,7 +69,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     retentionLimitDays,
   }) as any; // Validated by LogsListOptionsSchema at runtime
 
-  const presenter = new LogsListPresenter($replica, clickhouseClient);
+  const presenter = new LogsListPresenter($replica, logsClickhouseClient);
   const result = await presenter.call(project.organizationId, environment.id, options);
 
   return json({

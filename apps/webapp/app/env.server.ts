@@ -1198,6 +1198,12 @@ const EnvironmentSchema = z
     // Query feature flag
     QUERY_FEATURE_ENABLED: z.string().default("1"),
 
+    // Logs page ClickHouse URL (for logs queries)
+    LOGS_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+
     // Query page ClickHouse limits (for TSQL queries)
     QUERY_CLICKHOUSE_URL: z
       .string()
