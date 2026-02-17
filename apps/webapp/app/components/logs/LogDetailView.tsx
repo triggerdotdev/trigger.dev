@@ -1,43 +1,29 @@
-import { XMarkIcon, ArrowTopRightOnSquareIcon, CheckIcon } from "@heroicons/react/20/solid";
-import { Link } from "@remix-run/react";
-import {
-  type MachinePresetName,
-  formatDurationMilliseconds,
-} from "@trigger.dev/core/v3";
+import { XMarkIcon } from "@heroicons/react/20/solid";
+import type { TaskRunStatus } from "@trigger.dev/database";
 import { useEffect, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
-import { cn } from "~/utils/cn";
-import { Button } from "~/components/primitives/Buttons";
-import { DateTimeAccurate } from "~/components/primitives/DateTime";
-import { Header2, Header3 } from "~/components/primitives/Headers";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import { Spinner } from "~/components/primitives/Spinner";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
-import * as Property from "~/components/primitives/PropertyTable";
-import { TextLink } from "~/components/primitives/TextLink";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
-import { SimpleTooltip, InfoIconTooltip } from "~/components/primitives/Tooltip";
+import { DateTimeAccurate } from "~/components/primitives/DateTime";
+import { Header2 } from "~/components/primitives/Headers";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import * as Property from "~/components/primitives/PropertyTable";
+import { Spinner } from "~/components/primitives/Spinner";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
+import {
+  TaskRunStatusCombo,
+  descriptionForTaskRunStatus,
+} from "~/components/runs/v3/TaskRunStatus";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
-import { getLevelColor } from "~/utils/logUtils";
-import { v3RunSpanPath, v3RunsPath, v3DeploymentVersionPath } from "~/utils/pathBuilder";
 import type { loader as logDetailLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.logs.$logId";
-import { TaskRunStatusCombo, descriptionForTaskRunStatus } from "~/components/runs/v3/TaskRunStatus";
-import { MachineLabelCombo } from "~/components/MachineLabelCombo";
-import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
-import { RunTag } from "~/components/runs/v3/RunTag";
-import { formatCurrencyAccurate } from "~/utils/numberFormatter";
-import type { TaskRunStatus } from "@trigger.dev/database";
-import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
-import type { RunContext } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.logs.$logId.run";
-
-type RunContextData = {
-  run: RunContext | null;
-};
-
-
+import { cn } from "~/utils/cn";
+import { getLevelColor } from "~/utils/logUtils";
+import { v3RunSpanPath } from "~/utils/pathBuilder";
+import { LogLevel } from "./LogLevel";
 type LogDetailViewProps = {
   logId: string;
   // If we have the log entry from the list, we can display it immediately
@@ -46,13 +32,26 @@ type LogDetailViewProps = {
   searchTerm?: string;
 };
 
-type TabType = "details" | "run";
-
 type LogAttributes = Record<string, unknown> & {
   error?: {
     message?: string;
   };
 };
+
+function getDisplayMessage(log: {
+  message: string;
+  level: string;
+  attributes?: LogAttributes;
+}): string {
+  let message = log.message ?? "";
+  if (log.level === "ERROR") {
+    const maybeErrorMessage = log.attributes?.error?.message;
+    if (typeof maybeErrorMessage === "string" && maybeErrorMessage.length > 0) {
+      message = maybeErrorMessage;
+    }
+  }
+  return message;
+}
 
 function formatStringJSON(str: string): string {
   return str
@@ -60,13 +59,11 @@ function formatStringJSON(str: string): string {
     .replace(/\\t/g, "\t"); // Converts literal "\t" to tab
 }
 
-
 export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDetailViewProps) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const fetcher = useTypedFetcher<typeof logDetailLoader>();
-  const [activeTab, setActiveTab] = useState<TabType>("details");
   const [error, setError] = useState<string | null>(null);
 
   // Fetch full log details when logId changes
@@ -75,7 +72,9 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
 
     setError(null);
     fetcher.load(
-      `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/logs/${encodeURIComponent(logId)}`
+      `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
+        environment.slug
+      }/logs/${encodeURIComponent(logId)}`
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organization.slug, project.slug, environment.slug, logId]);
@@ -93,6 +92,7 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
 
   const isLoading = fetcher.state === "loading";
   const log = fetcher.data ?? initialLog;
+  const runStatus = fetcher.data?.runStatus;
 
   const runPath = v3RunSpanPath(
     organization,
@@ -101,27 +101,6 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
     { friendlyId: log?.runId ?? "" },
     { spanId: log?.spanId ?? "" }
   );
-
-  // Handle keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target && (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.tagName === "SELECT" ||
-        target.contentEditable === "true"
-      )) {
-        return;
-      }
-
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, log, runPath, isLoading]);
 
   if (isLoading && !log) {
     return (
@@ -136,7 +115,7 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between border-b border-grid-dimmed p-4">
           <Header2>Log Details</Header2>
-          <Button variant="minimal/small" onClick={onClose}>
+          <Button variant="minimal/small" onClick={onClose} shortcut={{ key: "esc" }}>
             <XMarkIcon className="size-5" />
           </Button>
         </div>
@@ -148,103 +127,107 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-grid-dimmed px-2 py-2">
-        <span
-          className={cn(
-            "inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium uppercase tracking-wider",
-            getLevelColor(log.level)
-          )}
-        >
-          {log.level}
-        </span>
+      <div className="flex items-center justify-between overflow-hidden border-b border-grid-dimmed px-3 py-2">
+        <Header2 className="truncate">{getDisplayMessage(log)}</Header2>
         <Button variant="minimal/small" onClick={onClose} shortcut={{ key: "esc" }}>
           <XMarkIcon className="size-5" />
         </Button>
       </div>
-
-      {/* Tabs */}
-      <div className="flex items-center justify-between border-b border-grid-dimmed px-4">
-        <TabContainer>
-          <TabButton
-            isActive={activeTab === "details"}
-            layoutId="log-detail-tabs"
-            onClick={() => setActiveTab("details")}
-            shortcut={{ key: "d" }}
-          >
-            Details
-          </TabButton>
-          <TabButton
-            isActive={activeTab === "run"}
-            layoutId="log-detail-tabs"
-            onClick={() => setActiveTab("run")}
-            shortcut={{ key: "r" }}
-          >
-            Run
-          </TabButton>
-        </TabContainer>
-        <Link to={runPath} target="_blank" rel="noopener noreferrer">
-          <Button variant="minimal/small" LeadingIcon={ArrowTopRightOnSquareIcon} shortcut={{ key: "v" }}>
-            View full run
-          </Button>
-        </Link>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {activeTab === "details" && (
-          <DetailsTab log={log} runPath={runPath} searchTerm={searchTerm} />
-        )}
-        {activeTab === "run" && (
-          <RunTab log={log} runPath={runPath} />
-        )}
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <DetailsTab log={log} runPath={runPath} runStatus={runStatus} searchTerm={searchTerm} />
       </div>
     </div>
   );
 }
 
-function DetailsTab({ log, runPath, searchTerm }: { log: LogEntry; runPath: string; searchTerm?: string }) {
-  const logWithExtras = log as LogEntry & {
+function DetailsTab({
+  log,
+  runPath,
+  runStatus,
+  searchTerm,
+}: {
+  log: LogEntry & {
     attributes?: LogAttributes;
   };
-
-
+  runPath: string;
+  runStatus?: TaskRunStatus;
+  searchTerm?: string;
+}) {
   let beautifiedAttributes: string | null = null;
 
-  if (logWithExtras.attributes) {
-    beautifiedAttributes = JSON.stringify(logWithExtras.attributes, null, 2);
+  if (log.attributes) {
+    beautifiedAttributes = JSON.stringify(log.attributes, null, 2);
     beautifiedAttributes = formatStringJSON(beautifiedAttributes);
   }
 
   const showAttributes = beautifiedAttributes && beautifiedAttributes !== "{}";
 
-  // Determine message to show
-  let message = log.message ?? "";
-  if (log.level === "ERROR") {
-    const maybeErrorMessage = logWithExtras.attributes?.error?.message;
-    if (typeof maybeErrorMessage === "string" && maybeErrorMessage.length > 0) {
-      message = maybeErrorMessage;
-    }
-  }
+  const message = getDisplayMessage(log);
 
   return (
     <>
-      {/* Time */}
-      <div className="mb-6">
-        <Header3 className="mb-2">Timestamp</Header3>
-        <div className="text-sm text-text-dimmed">
-          <DateTimeAccurate date={log.triggeredTimestamp} />
-        </div>
-      </div>
+      <Property.Table>
+        <Property.Item>
+          <Property.Label>Run ID</Property.Label>
+          <Property.Value>
+            <CopyableText value={log.runId} copyValue={log.runId} asChild />
+            <LinkButton
+              to={runPath}
+              variant="tertiary/small"
+              shortcut={{ key: "v" }}
+              className="mt-2"
+            >
+              View full run
+            </LinkButton>
+          </Property.Value>
+        </Property.Item>
+
+        {runStatus && (
+          <Property.Item>
+            <Property.Label>Status</Property.Label>
+            <Property.Value>
+              <SimpleTooltip
+                button={<TaskRunStatusCombo status={runStatus} />}
+                content={descriptionForTaskRunStatus(runStatus)}
+                disableHoverableContent
+                className="mt-1"
+              />
+            </Property.Value>
+          </Property.Item>
+        )}
+
+        <Property.Item>
+          <Property.Label>Task</Property.Label>
+          <Property.Value>
+            <CopyableText value={log.taskIdentifier} copyValue={log.taskIdentifier} asChild />
+          </Property.Value>
+        </Property.Item>
+
+        <Property.Item>
+          <Property.Label>Level</Property.Label>
+          <Property.Value>
+            <LogLevel level={log.level} />
+          </Property.Value>
+        </Property.Item>
+
+        <Property.Item>
+          <Property.Label>Timestamp</Property.Label>
+          <Property.Value>
+            <DateTimeAccurate date={log.triggeredTimestamp} />
+          </Property.Value>
+        </Property.Item>
+      </Property.Table>
 
       {/* Message */}
-      <div className="mb-6">
+      <div className="mb-6 mt-3">
         <PacketDisplay
           data={message}
           dataType="application/json"
           title="Message"
           searchTerm={searchTerm}
+          wrap={true}
         />
       </div>
 
@@ -262,222 +245,3 @@ function DetailsTab({ log, runPath, searchTerm }: { log: LogEntry; runPath: stri
     </>
   );
 }
-
-function RunTab({ log, runPath }: { log: LogEntry; runPath: string }) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const fetcher = useTypedFetcher<RunContextData>();
-
-  // Fetch run details when tab is active
-  useEffect(() => {
-    if (!log.runId) return;
-
-    fetcher.load(
-      `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/logs/${encodeURIComponent(log.id)}/run?runId=${encodeURIComponent(log.runId)}`
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organization.slug, project.slug, environment.slug, log.id, log.runId]);
-
-  const isLoading = fetcher.state === "loading";
-  const runData = fetcher.data?.run;
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Spinner />
-      </div>
-    );
-  }
-
-  if (!runData) {
-    return (
-      <div className="flex flex-col items-center justify-center py-8">
-        <Paragraph className="text-text-dimmed">Run not found in database.</Paragraph>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-4 py-3">
-      <Property.Table>
-        <Property.Item>
-          <Property.Label>Run ID</Property.Label>
-          <Property.Value>
-            <CopyableText value={runData.friendlyId} copyValue={runData.friendlyId} asChild />
-          </Property.Value>
-        </Property.Item>
-
-        <Property.Item>
-          <Property.Label>Status</Property.Label>
-          <Property.Value>
-            <SimpleTooltip
-              button={<TaskRunStatusCombo status={runData.status as TaskRunStatus} />}
-              content={descriptionForTaskRunStatus(runData.status as TaskRunStatus)}
-              disableHoverableContent
-            />
-          </Property.Value>
-        </Property.Item>
-
-        <Property.Item>
-          <Property.Label>Task</Property.Label>
-          <Property.Value>
-            <CopyableText
-              value={runData.taskIdentifier}
-              copyValue={runData.taskIdentifier}
-              asChild
-            />
-          </Property.Value>
-        </Property.Item>
-
-        {runData.rootRun && (
-          <Property.Item>
-            <Property.Label>Root and parent run</Property.Label>
-            <Property.Value>
-              <CopyableText
-                value={runData.rootRun.taskIdentifier}
-                copyValue={runData.rootRun.taskIdentifier}
-                asChild
-              />
-            </Property.Value>
-          </Property.Item>
-        )}
-
-        {runData.batch && (
-          <Property.Item>
-            <Property.Label>Batch</Property.Label>
-            <Property.Value>
-              <CopyableText
-                value={runData.batch.friendlyId}
-                copyValue={runData.batch.friendlyId}
-                asChild
-              />
-            </Property.Value>
-          </Property.Item>
-        )}
-
-        <Property.Item>
-          <Property.Label>Version</Property.Label>
-          <Property.Value>
-            {runData.version ? (
-              environment.type === "DEVELOPMENT" ? (
-                <CopyableText value={runData.version} copyValue={runData.version} asChild />
-              ) : (
-                <SimpleTooltip
-                  button={
-                    <TextLink
-                      to={v3DeploymentVersionPath(
-                        organization,
-                        project,
-                        environment,
-                        runData.version
-                      )}
-                      className="group flex flex-wrap items-center gap-x-1 gap-y-0"
-                    >
-                      <CopyableText value={runData.version} copyValue={runData.version} asChild />
-                    </TextLink>
-                  }
-                  content={"Jump to deployment"}
-                />
-              )
-            ) : (
-              <span className="flex items-center gap-1">
-                <span>Never started</span>
-                <InfoIconTooltip
-                  content={"Runs get locked to the latest version when they start."}
-                  contentClassName="normal-case tracking-normal"
-                />
-              </span>
-            )}
-          </Property.Value>
-        </Property.Item>
-
-        <Property.Item>
-          <Property.Label>Test run</Property.Label>
-          <Property.Value>
-            {runData.isTest ? <CheckIcon className="size-4 text-text-dimmed" /> : "–"}
-          </Property.Value>
-        </Property.Item>
-
-        <Property.Item>
-          <Property.Label>Environment</Property.Label>
-          <Property.Value>
-            <EnvironmentCombo environment={environment} />
-          </Property.Value>
-        </Property.Item>
-
-        <Property.Item>
-          <Property.Label>Queue</Property.Label>
-          <Property.Value>
-            <div>Name: {runData.queue}</div>
-            <div>Concurrency key: {runData.concurrencyKey ? runData.concurrencyKey : "–"}</div>
-          </Property.Value>
-        </Property.Item>
-
-        {runData.tags && runData.tags.length > 0 && (
-          <Property.Item>
-            <Property.Label>Tags</Property.Label>
-            <Property.Value>
-              <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
-                {runData.tags.map((tag: string) => (
-                  <RunTag
-                    key={tag}
-                    tag={tag}
-                    to={v3RunsPath(organization, project, environment, { tags: [tag] })}
-                    tooltip={`Filter runs by ${tag}`}
-                  />
-                ))}
-              </div>
-            </Property.Value>
-          </Property.Item>
-        )}
-
-        <Property.Item>
-          <Property.Label>Machine</Property.Label>
-          <Property.Value className="-ml-0.5">
-            {runData.machinePreset ? (
-              <MachineLabelCombo preset={runData.machinePreset as MachinePresetName} />
-            ) : (
-              "–"
-            )}
-          </Property.Value>
-        </Property.Item>
-
-        <Property.Item>
-          <Property.Label>Run invocation cost</Property.Label>
-          <Property.Value>
-            {runData.baseCostInCents > 0
-              ? formatCurrencyAccurate(runData.baseCostInCents / 100)
-              : "–"}
-          </Property.Value>
-        </Property.Item>
-
-        <Property.Item>
-          <Property.Label>Compute cost</Property.Label>
-          <Property.Value>
-            {runData.costInCents > 0 ? formatCurrencyAccurate(runData.costInCents / 100) : "–"}
-          </Property.Value>
-        </Property.Item>
-
-        <Property.Item>
-          <Property.Label>Total cost</Property.Label>
-          <Property.Value>
-            {runData.costInCents > 0 || runData.baseCostInCents > 0
-              ? formatCurrencyAccurate((runData.baseCostInCents + runData.costInCents) / 100)
-              : "–"}
-          </Property.Value>
-        </Property.Item>
-
-        <Property.Item>
-          <Property.Label>Usage duration</Property.Label>
-          <Property.Value>
-            {runData.usageDurationMs > 0
-              ? formatDurationMilliseconds(runData.usageDurationMs, { style: "short" })
-              : "–"}
-          </Property.Value>
-        </Property.Item>
-      </Property.Table>
-    </div>
-  );
-}
-

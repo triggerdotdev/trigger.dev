@@ -8,6 +8,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { $replica } from "~/db.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import type { TaskRunStatus } from "@trigger.dev/database";
 
 const LogIdParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -65,5 +66,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Log not found", { status: 404 });
   }
 
-  return typedjson(result);
+  // Look up the run status from Postgres
+  let runStatus: TaskRunStatus | undefined;
+  if (result.runId) {
+    const run = await $replica.taskRun.findFirst({
+      select: { status: true },
+      where: {
+        friendlyId: result.runId,
+        runtimeEnvironmentId: environment.id,
+      },
+    });
+    runStatus = run?.status;
+  }
+
+  return typedjson({ ...result, runStatus });
 };
