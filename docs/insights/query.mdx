@@ -529,7 +529,7 @@ LIMIT 100
 
 ## Best practices
 
-1. **Use the built-in time filtering** - The dashboard, API, and SDK has a time filter that is applied automatically and is easier to work with. It means the queries can be executed with multiple periods easily.
+1. **Use the built-in time filtering** - The dashboard, API, and SDK have a time filter that is applied automatically and is easier to work with. It means the queries can be executed with multiple periods easily.
 2. **Use LIMIT** - Add a `LIMIT` clause to reduce the rows returned if you don't need everything.
 3. **Use appropriate aggregations** - For large datasets, use `uniq()` instead of `uniqExact()` for approximate but faster counts
 
