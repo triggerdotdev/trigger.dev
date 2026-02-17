@@ -445,7 +445,7 @@ export const TSQL_CLICKHOUSE_FUNCTIONS: Record<string, TSQLFunctionMeta> = {
   // Other functions
   isFinite: { clickhouseName: "isFinite", minArgs: 1, maxArgs: 1 },
   isInfinite: { clickhouseName: "isInfinite", minArgs: 1, maxArgs: 1 },
-  ifNotFinite: { clickhouseName: "ifNotFinite", minArgs: 1, maxArgs: 1 },
+  ifNotFinite: { clickhouseName: "ifNotFinite", minArgs: 2, maxArgs: 2 },
   isNaN: { clickhouseName: "isNaN", minArgs: 1, maxArgs: 1 },
   bar: { clickhouseName: "bar", minArgs: 4, maxArgs: 4 },
   transform: { clickhouseName: "transform", minArgs: 3, maxArgs: 4 },

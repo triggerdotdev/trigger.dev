@@ -692,9 +692,7 @@ describe("TSQL Function Smoke Tests", () => {
     await runCases(client, [
       ["isFinite", "SELECT isFinite(1.0) AS r FROM task_runs"],
       ["isInfinite", "SELECT isInfinite(1.0 / 0) AS r FROM task_runs"],
-      // ifNotFinite: TSQL definition has maxArgs: 1, but ClickHouse expects 2.
-      // Skipped until the function definition is fixed.
-      // ["ifNotFinite", "SELECT ifNotFinite(1.0 / 0, 0) AS r FROM task_runs"],
+      ["ifNotFinite", "SELECT ifNotFinite(1.0 / 0, 0) AS r FROM task_runs"],
       ["isNaN", "SELECT isNaN(0.0 / 0) AS r FROM task_runs"],
       ["bar", "SELECT bar(usage_duration_ms, 0, 10000, 20) AS r FROM task_runs"],
       [
