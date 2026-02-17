@@ -108,10 +108,12 @@ function decodeCursor(cursor: string): LogCursor | null {
 // Convert display level to ClickHouse kinds and statuses
 function levelToKindsAndStatuses(level: LogLevel): { kinds?: string[]; statuses?: string[] } {
   switch (level) {
+    case "TRACE":
+      return { kinds: ["SPAN"] };
     case "DEBUG":
       return { kinds: ["LOG_DEBUG"] };
     case "INFO":
-      return { kinds: ["LOG_INFO", "LOG_LOG", "SPAN"] };
+      return { kinds: ["LOG_INFO", "LOG_LOG"] };
     case "WARN":
       return { kinds: ["LOG_WARN"] };
     case "ERROR":

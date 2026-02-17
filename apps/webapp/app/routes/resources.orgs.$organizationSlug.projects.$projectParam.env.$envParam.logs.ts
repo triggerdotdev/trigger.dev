@@ -10,7 +10,7 @@ import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 
 // Valid log levels for filtering
-const validLevels: LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR"];
+const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
 
 function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
   const levelParams = url.searchParams.getAll("levels").filter((v) => v.length > 0);

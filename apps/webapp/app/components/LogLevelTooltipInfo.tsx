@@ -13,6 +13,14 @@ export function LogLevelTooltipInfo() {
       </div>
       <div>
         <div className="mb-1">
+          <LogLevel level="TRACE" />
+        </div>
+        <Paragraph variant="small" className="text-text-dimmed">
+          Traces and spans representing the execution flow of your tasks.
+        </Paragraph>
+      </div>
+      <div>
+        <div className="mb-1">
           <LogLevel level="INFO" />
         </div>
         <Paragraph variant="small" className="text-text-dimmed">

@@ -40,7 +40,7 @@ import { Button } from "~/components/primitives/Buttons";
 import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags.server";
 
 // Valid log levels for filtering
-const validLevels: LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR"];
+const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
 
 function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
   const levelParams = url.searchParams.getAll("levels").filter((v) => v.length > 0);
