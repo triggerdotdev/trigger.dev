@@ -1250,6 +1250,70 @@ describe("ClickHousePrinter", () => {
     });
   });
 
+  describe("Date functions with interval units", () => {
+    it("should output dateAdd with string interval as bare keyword", () => {
+      const { sql } = printQuery("SELECT dateAdd('day', 7, created_at) AS week_later FROM task_runs");
+
+      expect(sql).toContain("dateAdd(day, 7, created_at)");
+      expect(sql).not.toContain("'day'");
+    });
+
+    it("should output dateAdd with bare identifier interval as keyword", () => {
+      const { sql } = printQuery("SELECT dateAdd(day, 7, created_at) AS week_later FROM task_runs");
+
+      expect(sql).toContain("dateAdd(day, 7, created_at)");
+    });
+
+    it("should output dateDiff with string interval as bare keyword", () => {
+      const { sql } = printQuery(
+        "SELECT dateDiff('minute', started_at, completed_at) AS duration_minutes FROM task_runs"
+      );
+
+      expect(sql).toContain("dateDiff(minute,");
+      expect(sql).not.toContain("'minute'");
+    });
+
+    it("should output dateSub with string interval as bare keyword", () => {
+      const { sql } = printQuery("SELECT dateSub('hour', 1, created_at) AS earlier FROM task_runs");
+
+      expect(sql).toContain("dateSub(hour, 1, created_at)");
+      expect(sql).not.toContain("'hour'");
+    });
+
+    it("should output dateTrunc with string interval as bare keyword", () => {
+      const { sql } = printQuery(
+        "SELECT dateTrunc('month', created_at) AS month_start FROM task_runs"
+      );
+
+      expect(sql).toContain("dateTrunc(month, created_at)");
+      expect(sql).not.toContain("'month'");
+    });
+
+    it("should output date_add (underscore variant) with bare keyword", () => {
+      const { sql } = printQuery(
+        "SELECT date_add('week', 2, created_at) AS two_weeks FROM task_runs"
+      );
+
+      expect(sql).toContain("date_add(week, 2, created_at)");
+      expect(sql).not.toContain("'week'");
+    });
+
+    it("should output date_diff (underscore variant) with bare keyword", () => {
+      const { sql } = printQuery(
+        "SELECT date_diff('second', started_at, completed_at) AS dur FROM task_runs"
+      );
+
+      expect(sql).toContain("date_diff(second,");
+      expect(sql).not.toContain("'second'");
+    });
+
+    it("should handle case-insensitive interval units", () => {
+      const { sql } = printQuery("SELECT dateAdd('DAY', 7, created_at) AS week_later FROM task_runs");
+
+      expect(sql).toContain("dateAdd(day, 7, created_at)");
+    });
+  });
+
   describe("Tenant isolation", () => {
     it("should inject tenant guards for single table", () => {
       const context = createTestContext({
