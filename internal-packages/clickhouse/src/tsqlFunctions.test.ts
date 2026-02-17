@@ -538,9 +538,6 @@ describe("TSQL Function Smoke Tests", () => {
       ["arrayFlatten", "SELECT arrayFlatten(array(array(1, 2), array(3))) AS r FROM task_runs"],
       ["arrayCompact", "SELECT arrayCompact(array(1, 1, 2, 3, 3)) AS r FROM task_runs"],
       ["arrayZip", "SELECT arrayZip(array(1, 2), array('a', 'b')) AS r FROM task_runs"],
-      // Lambda-based array functions (arrayMap, arrayFilter, arrayExists, arrayAll,
-      // arrayFirst, arrayLast, arrayFirstIndex, arrayLastIndex) are skipped because
-      // TSQL schema validation resolves lambda variables (e.g. `x`) as column references.
       ["arrayMin", "SELECT arrayMin(array(1, 2, 3)) AS r FROM task_runs"],
       ["arrayMax", "SELECT arrayMax(array(1, 2, 3)) AS r FROM task_runs"],
       ["arraySum", "SELECT arraySum(array(1, 2, 3)) AS r FROM task_runs"],
