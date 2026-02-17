@@ -196,7 +196,11 @@ export const SmartDateTime = ({ date, previousDate = null, hour12 = true }: Date
     ? formatSmartDateTime(realDate, userTimeZone, locales, hour12)
     : formatTimeOnly(realDate, userTimeZone, locales, hour12);
 
-  return <span suppressHydrationWarning>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</span>;
+  return (
+    <span suppressHydrationWarning>
+      {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
+    </span>
+  );
 };
 
 // Helper function to check if two dates are on the same day
@@ -270,14 +274,18 @@ const DateTimeAccurateInner = ({
     return hideDate
       ? formatTimeOnly(realDate, displayTimeZone, locales, hour12)
       : realPrevDate
-        ? isSameDay(realDate, realPrevDate)
-          ? formatTimeOnly(realDate, displayTimeZone, locales, hour12)
-          : formatDateTimeAccurate(realDate, displayTimeZone, locales, hour12)
-        : formatDateTimeAccurate(realDate, displayTimeZone, locales, hour12);
+      ? isSameDay(realDate, realPrevDate)
+        ? formatTimeOnly(realDate, displayTimeZone, locales, hour12)
+        : formatDateTimeAccurate(realDate, displayTimeZone, locales, hour12)
+      : formatDateTimeAccurate(realDate, displayTimeZone, locales, hour12);
   }, [realDate, displayTimeZone, locales, hour12, hideDate, previousDate]);
 
   if (!showTooltip)
-    return <span suppressHydrationWarning>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</span>;
+    return (
+      <span suppressHydrationWarning>
+        {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
+      </span>
+    );
 
   const tooltipContent = (
     <TooltipContent
@@ -290,7 +298,11 @@ const DateTimeAccurateInner = ({
 
   return (
     <SimpleTooltip
-      button={<span suppressHydrationWarning>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</span>}
+      button={
+        <span suppressHydrationWarning>
+          {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
+        </span>
+      }
       content={tooltipContent}
       side="right"
       asChild={true}
@@ -326,9 +338,13 @@ function formatDateTimeAccurate(
   locales: string[],
   hour12: boolean = true
 ): string {
-  const formattedDateTime = new Intl.DateTimeFormat(locales, {
+  const datePart = new Intl.DateTimeFormat(locales, {
     month: "short",
     day: "numeric",
+    timeZone,
+  }).format(date);
+
+  const timePart = new Intl.DateTimeFormat(locales, {
     hour: "numeric",
     minute: "numeric",
     second: "numeric",
@@ -338,7 +354,7 @@ function formatDateTimeAccurate(
     hour12,
   }).format(date);
 
-  return formattedDateTime;
+  return `${datePart} ${timePart}`;
 }
 
 export const DateTimeShort = ({ date, hour12 = true }: DateTimeProps) => {
@@ -347,7 +363,11 @@ export const DateTimeShort = ({ date, hour12 = true }: DateTimeProps) => {
   const realDate = typeof date === "string" ? new Date(date) : date;
   const formattedDateTime = formatDateTimeShort(realDate, userTimeZone, locales, hour12);
 
-  return <span suppressHydrationWarning>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</span>;
+  return (
+    <span suppressHydrationWarning>
+      {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
+    </span>
+  );
 };
 
 function formatDateTimeShort(
