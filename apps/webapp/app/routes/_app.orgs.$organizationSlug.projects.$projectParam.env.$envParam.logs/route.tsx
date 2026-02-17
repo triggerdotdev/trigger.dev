@@ -322,7 +322,10 @@ function LogsList({
   const [nextCursor, setNextCursor] = useState<string | undefined>(list.pagination.next);
 
   // Selected log state - managed locally to avoid triggering navigation
-  const [selectedLogId, setSelectedLogId] = useState<string | undefined>();
+  const [selectedLogId, setSelectedLogId] = useState<string | undefined>(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("log") ?? undefined;
+  });
 
   // Track which filter state (search params) the current fetcher request corresponds to
   const fetcherFilterStateRef = useRef<string>(location.search);
@@ -333,8 +336,9 @@ function LogsList({
   useEffect(() => {
     setAccumulatedLogs([]);
     setNextCursor(undefined);
-    // Close side panel when filters change to avoid showing a log that's no longer visible
-    setSelectedLogId(undefined);
+    // Preserve log selection from URL param, clear if not present
+    const params = new URLSearchParams(location.search);
+    setSelectedLogId(params.get("log") ?? undefined);
   }, [location.search]);
 
   // Populate accumulated logs when new data arrives
