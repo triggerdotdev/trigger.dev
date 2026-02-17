@@ -2959,11 +2959,9 @@ export class ClickHousePrinter {
     "dateadd",
     "datesub",
     "datediff",
-    "datetrunc",
     "date_add",
     "date_sub",
     "date_diff",
-    "date_trunc",
   ]);
 
   /**

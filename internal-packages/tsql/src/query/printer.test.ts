@@ -1280,13 +1280,13 @@ describe("ClickHousePrinter", () => {
       expect(sql).not.toContain("'hour'");
     });
 
-    it("should output dateTrunc with string interval as bare keyword", () => {
+    it("should keep dateTrunc interval as parameterized string (ClickHouse expects string)", () => {
       const { sql } = printQuery(
         "SELECT dateTrunc('month', created_at) AS month_start FROM task_runs"
       );
 
-      expect(sql).toContain("dateTrunc(month, created_at)");
-      expect(sql).not.toContain("'month'");
+      expect(sql).toContain("dateTrunc(");
+      expect(sql).not.toContain("dateTrunc(month,");
     });
 
     it("should output date_add (underscore variant) with bare keyword", () => {
