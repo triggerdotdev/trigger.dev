@@ -54,8 +54,6 @@ function getLevelBoxShadow(level: LogEntry["level"]): string {
   }
 }
 
-
-
 export function LogsTable({
   logs,
   searchTerm,
@@ -162,7 +160,7 @@ export function LogsTable({
                       boxShadow: getLevelBoxShadow(log.level),
                     }}
                   >
-                    <DateTimeAccurate date={log.triggeredTimestamp} />
+                    <DateTimeAccurate date={log.triggeredTimestamp} hour12={false} />
                   </TableCell>
                   <TableCell className="min-w-24">
                     <TruncatedCopyableValue value={log.runId} />
@@ -233,11 +231,7 @@ function BlankState({ isLoading, onRefresh }: { isLoading?: boolean; onRefresh?:
           No logs match your filters. Try refreshing or modifying your filters.
         </Paragraph>
         <div className="flex items-center gap-2">
-          <Button
-            LeadingIcon={ArrowPathIcon}
-            variant="tertiary/medium"
-            onClick={handleRefresh}
-          >
+          <Button LeadingIcon={ArrowPathIcon} variant="tertiary/medium" onClick={handleRefresh}>
             Refresh
           </Button>
         </div>
