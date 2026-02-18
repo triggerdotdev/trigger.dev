@@ -10,7 +10,7 @@ import { aggregateValues } from "../primitives/charts/aggregation";
 import { getRunStatusHexColor } from "~/components/runs/v3/TaskRunStatus";
 import { getSeriesColor } from "./chartColors";
 
-const MAX_SERIES = 20;
+const MAX_SERIES = 30;
 const MAX_SVG_ELEMENT_BUDGET = 6_000;
 const MIN_DATA_POINTS = 100;
 const MAX_DATA_POINTS = 500;
