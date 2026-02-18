@@ -1,23 +1,19 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 export type HighlightState = {
   /** The currently highlighted series key (e.g., "completed", "failed") */
   activeBarKey: string | null;
   /** The index of the specific data point being hovered (null when hovering legend) */
   activeDataPointIndex: number | null;
-  /** The payload data from the hovered element */
-  activePayload: any[] | null;
   /** Whether the tooltip is currently active */
   tooltipActive: boolean;
 };
 
 export type HighlightActions = {
   /** Set the hovered bar (specific data point) */
-  setHoveredBar: (key: string, index: number, payload?: any[]) => void;
+  setHoveredBar: (key: string, index: number) => void;
   /** Set the hovered legend item (highlights all bars of that type) */
   setHoveredLegendItem: (key: string) => void;
-  /** Set the active payload (for tooltip data). Pass tooltipIndex to skip redundant updates. */
-  setActivePayload: (payload: any[] | null, tooltipIndex?: number | null) => void;
   /** Set tooltip active state */
   setTooltipActive: (active: boolean) => void;
   /** Reset all highlight state */
@@ -29,70 +25,55 @@ export type UseHighlightStateReturn = HighlightState & HighlightActions;
 const initialState: HighlightState = {
   activeBarKey: null,
   activeDataPointIndex: null,
-  activePayload: null,
   tooltipActive: false,
 };
 
 /**
  * Hook to manage highlight state for chart elements.
  * Handles both bar hover (specific data point) and legend hover (all bars of a type).
+ *
+ * activePayload is intentionally NOT managed here — it lives in a separate context
+ * so that payload updates (frequent during mouse movement) don't cause bar re-renders.
  */
 export function useHighlightState(): UseHighlightStateReturn {
   const [state, setState] = useState<HighlightState>(initialState);
-  const activeTooltipIndexRef = useRef<number | null>(null);
 
-  const setHoveredBar = useCallback((key: string, index: number, payload?: any[]) => {
+  const setHoveredBar = useCallback((key: string, index: number) => {
     setState({
       activeBarKey: key,
       activeDataPointIndex: index,
-      activePayload: payload ?? null,
       tooltipActive: true,
     });
   }, []);
 
   const setHoveredLegendItem = useCallback((key: string) => {
-    setState((prev) => ({
-      ...prev,
-      activeBarKey: key,
-      activeDataPointIndex: null,
-    }));
-  }, []);
-
-  const setActivePayload = useCallback((payload: any[] | null, tooltipIndex?: number | null) => {
-    const idx = tooltipIndex ?? null;
-    if (idx !== null && idx === activeTooltipIndexRef.current) {
-      console.log("Tooltip index is the same, skipping update", activeTooltipIndexRef.current);
-      return;
-    }
-
-    console.log("Tooltip index changed", idx);
-    activeTooltipIndexRef.current = idx;
-    setState((prev) => ({
-      ...prev,
-      activePayload: payload,
-    }));
+    setState((prev) => {
+      if (prev.activeBarKey === key && prev.activeDataPointIndex === null) return prev;
+      return { ...prev, activeBarKey: key, activeDataPointIndex: null };
+    });
   }, []);
 
   const setTooltipActive = useCallback((active: boolean) => {
-    setState((prev) => ({
-      ...prev,
-      tooltipActive: active,
-    }));
+    setState((prev) => {
+      if (prev.tooltipActive === active) return prev;
+      return { ...prev, tooltipActive: active };
+    });
   }, []);
 
   const reset = useCallback(() => {
-    activeTooltipIndexRef.current = null;
     setState(initialState);
   }, []);
 
-  return {
-    ...state,
-    setHoveredBar,
-    setHoveredLegendItem,
-    setActivePayload,
-    setTooltipActive,
-    reset,
-  };
+  return useMemo(
+    () => ({
+      ...state,
+      setHoveredBar,
+      setHoveredLegendItem,
+      setTooltipActive,
+      reset,
+    }),
+    [state, setHoveredBar, setHoveredLegendItem, setTooltipActive, reset]
+  );
 }
 
 /**

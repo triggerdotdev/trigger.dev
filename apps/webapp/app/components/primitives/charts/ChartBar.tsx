@@ -65,7 +65,7 @@ export function ChartBarRenderer({
   width,
   height,
 }: ChartBarRendererProps) {
-  const { config, data, dataKey, dataKeys, visibleSeries, state, highlight, zoom, showLegend } = useChartContext();
+  const { config, data, dataKey, dataKeys, visibleSeries, state, highlight, setActivePayload, zoom, showLegend } = useChartContext();
   const hasNoData = useHasNoData();
   const zoomHandlers = useZoomHandlers();
   const enableZoom = zoom !== null;
@@ -114,7 +114,7 @@ export function ChartBarRenderer({
       onMouseMove={(e: any) => {
         zoomHandlers.onMouseMove?.(e);
         if (e?.activePayload?.length) {
-          highlight.setActivePayload(e.activePayload, e.activeTooltipIndex);
+          setActivePayload(e.activePayload, e.activeTooltipIndex);
           highlight.setTooltipActive(true);
         } else {
           highlight.setTooltipActive(false);

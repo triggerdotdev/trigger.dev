@@ -78,7 +78,7 @@ export function ChartLineRenderer({
   width,
   height,
 }: ChartLineRendererProps) {
-  const { config, data, dataKey, dataKeys, visibleSeries, state, highlight, showLegend } = useChartContext();
+  const { config, data, dataKey, dataKeys, visibleSeries, state, highlight, setActivePayload, showLegend } = useChartContext();
   const hasNoData = useHasNoData();
 
   // Render loading/error states
@@ -143,7 +143,7 @@ export function ChartLineRenderer({
         }}
         onMouseMove={(e: any) => {
           if (e?.activePayload?.length) {
-            highlight.setActivePayload(e.activePayload, e.activeTooltipIndex);
+            setActivePayload(e.activePayload, e.activeTooltipIndex);
             highlight.setTooltipActive(true);
           } else {
             highlight.setTooltipActive(false);
@@ -191,7 +191,7 @@ export function ChartLineRenderer({
       }}
       onMouseMove={(e: any) => {
         if (e?.activePayload?.length) {
-          highlight.setActivePayload(e.activePayload, e.activeTooltipIndex);
+          setActivePayload(e.activePayload, e.activeTooltipIndex);
           highlight.setTooltipActive(true);
         } else {
           highlight.setTooltipActive(false);
