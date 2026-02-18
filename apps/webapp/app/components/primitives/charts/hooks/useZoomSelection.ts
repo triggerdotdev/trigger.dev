@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 export type ZoomRange = {
   start: string;
@@ -175,14 +175,17 @@ export function useZoomSelection(): UseZoomSelectionReturn {
     setState(initialState);
   }, []);
 
-  return {
-    ...state,
-    startSelection,
-    updateSelection,
-    finishSelection,
-    cancelSelection,
-    toggleInspectionLine,
-    clearInspectionLine,
-    reset,
-  };
+  return useMemo(
+    () => ({
+      ...state,
+      startSelection,
+      updateSelection,
+      finishSelection,
+      cancelSelection,
+      toggleInspectionLine,
+      clearInspectionLine,
+      reset,
+    }),
+    [state, startSelection, updateSelection, finishSelection, cancelSelection, toggleInspectionLine, clearInspectionLine, reset]
+  );
 }
