@@ -29,6 +29,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return redirect("/");
   }
 
+  // Check admin BEFORE consuming the one-time token
+  const user = await requireUser(request);
+  if (!user.admin) {
+    return redirect("/");
+  }
+
   const validatedUserId = await validateAndConsumeImpersonationToken(impersonationToken);
 
   if (!validatedUserId || validatedUserId !== impersonateUserId) {
@@ -36,7 +42,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return redirect("/");
   }
 
-  return handleImpersonationRequest(request, impersonateUserId);
+  return redirectWithImpersonation(request, impersonateUserId, "/");
 };
 
 export async function action({ request }: ActionFunctionArgs) {

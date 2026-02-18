@@ -108,17 +108,27 @@ export async function validateAndConsumeImpersonationToken(
       return undefined;
     }
 
-    // Check if token has already been used (prevent replay attacks)
-    const redis = getImpersonationTokenRedisClient();
-    const tokenKey = token;
-
-    // Try to set the key with NX (only if not exists) and expiration
-    // This atomically marks the token as used
-    const result = await redis.set(tokenKey, "1", "EX", IMPERSONATION_TOKEN_EXPIRY_SECONDS, "NX");
-
-    if (result !== "OK") {
-      // Token was already used
-      return undefined;
+    // Atomically mark the token as used to prevent replay attacks.
+    // If Redis is unavailable, fall back to JWT expiry as the only protection.
+    if (env.CACHE_REDIS_HOST) {
+      try {
+        const redis = getImpersonationTokenRedisClient();
+        const result = await redis.set(
+          token,
+          "1",
+          "EX",
+          IMPERSONATION_TOKEN_EXPIRY_SECONDS,
+          "NX"
+        );
+        if (result !== "OK") {
+          // Token was already used
+          return undefined;
+        }
+      } catch (redisError) {
+        logger.warn("Redis unavailable for impersonation token tracking, relying on JWT expiry only", {
+          error: redisError instanceof Error ? redisError.message : String(redisError),
+        });
+      }
     }
 
     return userId;
