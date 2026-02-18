@@ -48,6 +48,10 @@ Note that between steps 4 and 5, runs triggered with the v4 package will continu
   concurrency will return to normal.
 </Warning>
 
+<Note>
+  When migrating from v3 to v4, our infrastructure IPs may change. If you use IP allowlisting (e.g. for databases or APIs), [update your allowlists](https://trigger.dev/changelog/static-ips) with the current static IPs before or immediately after switching to v4 to avoid connectivity issues or downtime.
+</Note>
+
 ## Migrate using AI
 
 Use the prompt in the accordion below to help you migrate your v3 tasks to v4. The prompt gives good results when using Claude 4 Sonnet. You’ll need a relatively large token limit.
