@@ -61,11 +61,6 @@ export type { OutputColumnMetadata } from "@internal/tsql";
 // Errors
 export { QueryError } from "./client/errors.js";
 
-export type LogsQuerySettings = {
-  list?: ClickHouseSettings;
-  detail?: ClickHouseSettings;
-};
-
 export type ClickhouseCommonConfig = {
   keepAlive?: {
     enabled?: boolean;
@@ -80,7 +75,6 @@ export type ClickhouseCommonConfig = {
     response?: boolean;
   };
   maxOpenConnections?: number;
-  logsQuerySettings?: LogsQuerySettings;
 };
 
 export type ClickHouseConfig =
@@ -104,11 +98,9 @@ export class ClickHouse {
   public readonly writer: ClickhouseWriter;
   private readonly logger: Logger;
   private _splitClients: boolean;
-  private readonly logsQuerySettings?: LogsQuerySettings;
 
   constructor(config: ClickHouseConfig) {
     this.logger = config.logger ?? new Logger("ClickHouse", config.logLevel ?? "debug");
-    this.logsQuerySettings = config.logsQuerySettings;
 
     if (config.url) {
       const url = new URL(config.url);
@@ -220,13 +212,13 @@ export class ClickHouse {
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilderV2(this.reader),
       traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilderV2(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilderV2(this.reader),
-      logDetailQueryBuilder: getLogDetailQueryBuilderV2(this.reader, this.logsQuerySettings?.detail),
+      logDetailQueryBuilder: getLogDetailQueryBuilderV2(this.reader),
     };
   }
 
   get taskEventsSearch() {
     return {
-      logsListQueryBuilder: getLogsSearchListQueryBuilder(this.reader, this.logsQuerySettings?.list),
+      logsListQueryBuilder: getLogsSearchListQueryBuilder(this.reader),
     };
   }
 }

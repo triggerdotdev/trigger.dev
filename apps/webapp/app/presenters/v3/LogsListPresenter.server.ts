@@ -1,13 +1,11 @@
 import { z } from "zod";
-import { type ClickHouse } from "@internal/clickhouse";
-import {
-  type PrismaClientOrTransaction,
-} from "@trigger.dev/database";
+import { type ClickHouse, type WhereCondition } from "@internal/clickhouse";
+import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { EVENT_STORE_TYPES, getConfiguredEventRepository } from "~/v3/eventRepository/index.server";
 
 import parseDuration from "parse-duration";
 import { type Direction } from "~/components/ListPagination";
-import { timeFilters } from "~/components/runs/v3/SharedFilters";
+import { timeFilterFromTo, timeFilters } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -28,13 +26,8 @@ type ErrorAttributes = {
 };
 
 function escapeClickHouseString(val: string): string {
-  return val
-    .replace(/\\/g, "\\\\")
-    .replace(/\//g, "\\/")
-    .replace(/%/g, "\\%")
-    .replace(/_/g, "\\_");
+  return val.replace(/\\/g, "\\\\").replace(/\//g, "\\/").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
-
 
 export type LogsListOptions = {
   userId?: string;
@@ -115,10 +108,12 @@ function decodeCursor(cursor: string): LogCursor | null {
 // Convert display level to ClickHouse kinds and statuses
 function levelToKindsAndStatuses(level: LogLevel): { kinds?: string[]; statuses?: string[] } {
   switch (level) {
+    case "TRACE":
+      return { kinds: ["SPAN"] };
     case "DEBUG":
       return { kinds: ["LOG_DEBUG"] };
     case "INFO":
-      return { kinds: ["LOG_INFO", "LOG_LOG", "SPAN"] };
+      return { kinds: ["LOG_INFO", "LOG_LOG"] };
     case "WARN":
       return { kinds: ["LOG_WARN"] };
     case "ERROR":
@@ -153,23 +148,15 @@ export class LogsListPresenter extends BasePresenter {
       retentionLimitDays,
     }: LogsListOptions
   ) {
-    const time = timeFilters({
+    const time = timeFilterFromTo({
       period,
       from,
       to,
-      defaultPeriod,
+      defaultPeriod: defaultPeriod ?? "1h",
     });
 
     let effectiveFrom = time.from;
     let effectiveTo = time.to;
-
-    if (!effectiveFrom && !effectiveTo && time.period) {
-      const periodMs = parseDuration(time.period);
-      if (periodMs) {
-        effectiveFrom = new Date(Date.now() - periodMs);
-        effectiveTo = new Date();
-      }
-    }
 
     // Apply retention limit if provided
     let wasClampedByRetention = false;
@@ -236,6 +223,11 @@ export class LogsListPresenter extends BasePresenter {
 
     const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder();
 
+    // This should be removed once we clear the old inserts, 30 DAYS, the materialized view excludes events without trace_id)
+    queryBuilder.where("trace_id != ''", {
+      environmentId,
+    });
+
     queryBuilder.where("environment_id = {environmentId: String}", {
       environmentId,
     });
@@ -245,11 +237,10 @@ export class LogsListPresenter extends BasePresenter {
     });
     queryBuilder.where("project_id = {projectId: String}", { projectId });
 
-
     if (effectiveFrom) {
-        queryBuilder.where("triggered_timestamp >= {triggeredAtStart: DateTime64(3)}", {
-          triggeredAtStart: convertDateToClickhouseDateTime(effectiveFrom),
-        });
+      queryBuilder.where("triggered_timestamp >= {triggeredAtStart: DateTime64(3)}", {
+        triggeredAtStart: convertDateToClickhouseDateTime(effectiveFrom),
+      });
     }
 
     if (effectiveTo) {
@@ -278,50 +269,43 @@ export class LogsListPresenter extends BasePresenter {
       queryBuilder.where(
         "(lower(message) like {searchPattern: String} OR lower(attributes_text) like {searchPattern: String})",
         {
-          searchPattern: `%${searchTerm}%`
+          searchPattern: `%${searchTerm}%`,
         }
       );
     }
 
     if (levels && levels.length > 0) {
-      const conditions: string[] = [];
-      const params: Record<string, string[]> = {};
+      const conditions: WhereCondition[] = [];
 
-      for (const level of levels) {
-        const filter = levelToKindsAndStatuses(level);
-        const levelConditions: string[] = [];
+      for (let i = 0; i < levels.length; i++) {
+        const filter = levelToKindsAndStatuses(levels[i]);
 
         if (filter.kinds && filter.kinds.length > 0) {
-          const kindsKey = `kinds_${level}`;
-          let kindCondition = `kind IN {${kindsKey}: Array(String)}`;
-
-
-          kindCondition += ` AND status NOT IN {excluded_statuses: Array(String)}`;
-          params["excluded_statuses"] = ["ERROR", "CANCELLED"];
-
-
-          levelConditions.push(kindCondition);
-          params[kindsKey] = filter.kinds;
+          conditions.push({
+            clause: `kind IN {kinds_${i}: Array(String)} AND status NOT IN {excluded_statuses: Array(String)}`,
+            params: {
+              [`kinds_${i}`]: filter.kinds,
+              excluded_statuses: ["ERROR", "CANCELLED"],
+            },
+          });
         }
 
         if (filter.statuses && filter.statuses.length > 0) {
-          const statusesKey = `statuses_${level}`;
-          levelConditions.push(`status IN {${statusesKey}: Array(String)}`);
-          params[statusesKey] = filter.statuses;
-        }
-
-        if (levelConditions.length > 0) {
-          conditions.push(`(${levelConditions.join(" OR ")})`);
+          conditions.push({
+            clause: `status IN {statuses_${i}: Array(String)}`,
+            params: { [`statuses_${i}`]: filter.statuses },
+          });
         }
       }
 
-      if (conditions.length > 0) {
-        queryBuilder.where(`(${conditions.join(" OR ")})`, params);
-      }
+      queryBuilder.whereOr(conditions);
     }
 
-    // Cursor pagination using explicit lexicographic comparison
-    // Must mirror the ORDER BY columns: (organization_id, environment_id, triggered_timestamp, trace_id)
+    // Cursor-based pagination using lexicographic comparison on (triggered_timestamp, trace_id).
+    // Since ORDER BY is DESC, "next page" means rows that sort *after* the cursor, i.e. less-than.
+    // The OR handles the tiebreaker: rows with an earlier timestamp always qualify, and rows
+    // with the *same* timestamp only qualify if their trace_id is also smaller.
+    // Equivalent to: WHERE (triggered_timestamp, trace_id) < (cursor.triggered_timestamp, cursor.trace_id)
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
     if (decodedCursor) {
       queryBuilder.where(
@@ -423,10 +407,13 @@ export class LogsListPresenter extends BasePresenter {
       hasFilters,
       hasAnyLogs: transformedLogs.length > 0,
       searchTerm: search,
-      retention: retentionLimitDays !== undefined ? {
-        limitDays: retentionLimitDays,
-        wasClamped: wasClampedByRetention,
-      } : undefined,
+      retention:
+        retentionLimitDays !== undefined
+          ? {
+              limitDays: retentionLimitDays,
+              wasClamped: wasClampedByRetention,
+            }
+          : undefined,
     };
   }
 }

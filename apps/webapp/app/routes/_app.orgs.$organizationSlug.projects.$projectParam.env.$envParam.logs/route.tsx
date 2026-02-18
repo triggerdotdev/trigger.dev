@@ -16,7 +16,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { LogsListPresenter, LogEntry } from "~/presenters/v3/LogsListPresenter.server";
 import type { LogLevel } from "~/utils/logUtils";
 import { $replica, prisma } from "~/db.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { logsClickhouseClient } from "~/services/clickhouseInstance.server";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -40,7 +40,7 @@ import { Button } from "~/components/primitives/Buttons";
 import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags.server";
 
 // Valid log levels for filtering
-const validLevels: LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR"];
+const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
 
 function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
   const levelParams = url.searchParams.getAll("levels").filter((v) => v.length > 0);
@@ -134,7 +134,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const plan = await getCurrentPlan(project.organizationId);
   const retentionLimitDays = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
 
-  const presenter = new LogsListPresenter($replica, clickhouseClient);
+  const presenter = new LogsListPresenter($replica, logsClickhouseClient);
 
   const listPromise = presenter
     .call(project.organizationId, environment.id, {
@@ -322,7 +322,10 @@ function LogsList({
   const [nextCursor, setNextCursor] = useState<string | undefined>(list.pagination.next);
 
   // Selected log state - managed locally to avoid triggering navigation
-  const [selectedLogId, setSelectedLogId] = useState<string | undefined>();
+  const [selectedLogId, setSelectedLogId] = useState<string | undefined>(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("log") ?? undefined;
+  });
 
   // Track which filter state (search params) the current fetcher request corresponds to
   const fetcherFilterStateRef = useRef<string>(location.search);
@@ -333,8 +336,9 @@ function LogsList({
   useEffect(() => {
     setAccumulatedLogs([]);
     setNextCursor(undefined);
-    // Close side panel when filters change to avoid showing a log that's no longer visible
-    setSelectedLogId(undefined);
+    // Preserve log selection from URL param, clear if not present
+    const params = new URLSearchParams(location.search);
+    setSelectedLogId(params.get("log") ?? undefined);
   }, [location.search]);
 
   // Populate accumulated logs when new data arrives

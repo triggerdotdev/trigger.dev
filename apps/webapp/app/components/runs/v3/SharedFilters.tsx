@@ -219,7 +219,7 @@ export function timeFilterFromTo(props: {
   from?: string | number;
   to?: string | number;
   defaultPeriod: string;
-}): { from: Date; to: Date } {
+}): { from: Date; to: Date; isDefault: boolean } {
   const time = timeFilters(props);
 
   const periodMs = time.period ? parse(time.period) : undefined;
@@ -228,6 +228,7 @@ export function timeFilterFromTo(props: {
     return {
       from: new Date(Date.now() - periodMs),
       to: new Date(),
+      isDefault: time.isDefault,
     };
   }
 
@@ -235,6 +236,7 @@ export function timeFilterFromTo(props: {
     return {
       from: time.from,
       to: time.to,
+      isDefault: time.isDefault,
     };
   }
 
@@ -242,6 +244,7 @@ export function timeFilterFromTo(props: {
     return {
       from: time.from,
       to: new Date(),
+      isDefault: time.isDefault,
     };
   }
 
@@ -249,6 +252,7 @@ export function timeFilterFromTo(props: {
   return {
     from: new Date(Date.now() - defaultPeriodMs),
     to: time.to ?? new Date(),
+    isDefault: time.isDefault,
   };
 }
 

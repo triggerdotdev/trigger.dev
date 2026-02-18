@@ -1,13 +1,14 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { logsClickhouseClient } from "~/services/clickhouseInstance.server";
 import { requireUserId } from "~/services/session.server";
 import { LogDetailPresenter } from "~/presenters/v3/LogDetailPresenter.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { $replica } from "~/db.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import type { TaskRunStatus } from "@trigger.dev/database";
 
 const LogIdParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -42,7 +43,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const [traceId, spanId, , startTime] = parts;
 
-  const presenter = new LogDetailPresenter($replica, clickhouseClient);
+  const presenter = new LogDetailPresenter($replica, logsClickhouseClient);
 
   let result;
   try {
@@ -65,5 +66,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Log not found", { status: 404 });
   }
 
-  return typedjson(result);
+  // Look up the run status from Postgres
+  let runStatus: TaskRunStatus | undefined;
+  if (result.runId) {
+    const run = await $replica.taskRun.findFirst({
+      select: { status: true },
+      where: {
+        friendlyId: result.runId,
+        runtimeEnvironmentId: environment.id,
+      },
+    });
+    runStatus = run?.status;
+  }
+
+  return typedjson({ ...result, runStatus });
 };
