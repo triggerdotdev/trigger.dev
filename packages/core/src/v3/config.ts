@@ -142,6 +142,13 @@ export type TriggerConfig = {
   machine?: MachinePresetName;
 
   /**
+   * The default region to run your tasks in. You can override this on a per-task basis or at trigger time.
+   *
+   * Check the Regions page in the dashboard for regions that are available to you.
+   */
+  region?: string;
+
+  /**
    * Set the log level for the logger. Defaults to "info", so you will see "log", "info", "warn", and "error" messages, but not "debug" messages.
    *
    * We automatically set the logLevel to "debug" during test runs

@@ -268,10 +268,11 @@ export class RunEngineTriggerTaskService {
           })
         : undefined;
 
-      const { queueName, lockedQueueId } = await this.queueConcern.resolveQueueProperties(
-        triggerRequest,
-        lockedToBackgroundWorker ?? undefined
-      );
+      const { queueName, lockedQueueId, resolvedRegion } =
+        await this.queueConcern.resolveQueueProperties(
+          triggerRequest,
+          lockedToBackgroundWorker ?? undefined
+        );
 
       //upsert tags
       const tags = await createTags(
@@ -284,7 +285,10 @@ export class RunEngineTriggerTaskService {
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
 
-      const workerQueue = await this.queueConcern.getWorkerQueue(environment, body.options?.region);
+      // Trigger-time region overrides task-level region, which overrides project default
+      const effectiveRegion = body.options?.region ?? resolvedRegion;
+
+      const workerQueue = await this.queueConcern.getWorkerQueue(environment, effectiveRegion);
 
       try {
         return await this.traceEventConcern.traceRun(

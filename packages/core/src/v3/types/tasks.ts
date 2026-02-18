@@ -277,6 +277,25 @@ type CommonTaskOptions<
    */
   maxDuration?: number;
 
+  /**
+   * The default region to run this task in. This can be overridden at trigger time via `options.region`.
+   *
+   * Check the Regions page in the dashboard for regions that are available to you.
+   *
+   * @example
+   *
+   * ```ts
+   * export const heavyTask = task({
+   *   id: "heavy-task",
+   *   region: "us-east-1",
+   *   run: async ({ payload, ctx }) => {
+   *     // ...
+   *   },
+   * });
+   * ```
+   */
+  region?: string;
+
   /** This gets called when a task is triggered. It's where you put the code you want to execute.
    *
    * @param payload - The payload that is passed to your task when it's triggered. This must be JSON serializable.

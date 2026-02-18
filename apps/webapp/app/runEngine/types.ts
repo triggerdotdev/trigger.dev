@@ -48,6 +48,7 @@ export type QueueValidationResult =
 export type QueueProperties = {
   queueName: string;
   lockedQueueId?: string;
+  resolvedRegion?: string;
 };
 
 export type LockedBackgroundWorker = Pick<

@@ -277,6 +277,7 @@ async function createWorkerTask(
         retryConfig: task.retry,
         queueConfig: task.queue,
         machineConfig: task.machine,
+        region: task.region,
         triggerSource: task.triggerSource === "schedule" ? "SCHEDULED" : "STANDARD",
         fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
         maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
