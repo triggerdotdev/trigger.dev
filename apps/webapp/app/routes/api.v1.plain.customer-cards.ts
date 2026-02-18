@@ -107,7 +107,6 @@ export async function action({ request }: ActionFunctionArgs) {
   if (!parsed.success) {
     logger.warn("Invalid Plain customer card request", {
       errors: parsed.error.errors,
-      body,
     });
     return json({ error: "Invalid request body" }, { status: 400 });
   }
@@ -170,7 +169,7 @@ export async function action({ request }: ActionFunctionArgs) {
       logger.info("User not found for Plain customer card request", {
         customerId: customer.id,
         externalId: customer.externalId,
-        email: customer.email,
+        hasEmail: !!customer.email,
       });
       return json({ cards: [] });
     }
@@ -377,11 +376,11 @@ export async function action({ request }: ActionFunctionArgs) {
             cards.push({
               key: "projects",
               timeToLiveSeconds: 300,
-            components: [
-              uiComponent.container({
-                content: [
-                  uiComponent.text({
-                    text: "Projects",
+              components: [
+                uiComponent.container({
+                  content: [
+                    uiComponent.text({
+                      text: "Projects",
                       size: "L",
                       color: "NORMAL",
                     }),

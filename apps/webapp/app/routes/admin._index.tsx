@@ -41,7 +41,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function AdminDashboardRoute() {
-  const { users, filters, page, pageCount } = useTypedLoaderData<typeof loader>() as any;
+  const { users, filters, page, pageCount } = useTypedLoaderData<typeof loader>();
 
   return (
     <main
@@ -82,14 +82,14 @@ export default function AdminDashboardRoute() {
                 <Paragraph>No users found for search</Paragraph>
               </TableBlankRow>
             ) : (
-              users.map((user: (typeof users)[0]) => {
+              users.map((user) => {
                 return (
                   <TableRow key={user.id}>
                     <TableCell>
                       <CopyableText value={user.email} />
                     </TableCell>
                     <TableCell>
-                      {user.orgMemberships.map((org: (typeof user.orgMemberships)[0]) => (
+                      {user.orgMemberships.map((org) => (
                         <LinkButton
                           key={org.organization.slug}
                           variant="minimal/small"
