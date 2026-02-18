@@ -1,12 +1,10 @@
 import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
-import { Header1 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -19,14 +17,9 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { useUser } from "~/hooks/useUser";
-import { adminGetUsers, redirectWithImpersonation } from "~/models/admin.server";
-import { requireUser, requireUserId } from "~/services/session.server";
-import {
-  validateAndConsumeImpersonationToken,
-} from "~/services/impersonation.server";
+import { adminGetUsers } from "~/models/admin.server";
+import { requireUserId } from "~/services/session.server";
 import { createSearchParams } from "~/utils/searchParams";
-import { logger } from "~/services/logger.server";
 
 export const SearchParams = z.object({
   page: z.coerce.number().optional(),
@@ -35,44 +28,7 @@ export const SearchParams = z.object({
 
 export type SearchParams = z.infer<typeof SearchParams>;
 
-const FormSchema = z.object({ id: z.string() });
-
-async function handleImpersonationRequest(
-  request: Request,
-  userId: string
-): Promise<Response> {
-  const user = await requireUser(request);
-  if (!user.admin) {
-    return redirect("/");
-  }
-  return redirectWithImpersonation(request, userId, "/");
-}
-
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  // Check if this is an impersonation request via query parameter (e.g., from Plain customer cards)
-  const url = new URL(request.url);
-  const impersonateUserId = url.searchParams.get("impersonate");
-  const impersonationToken = url.searchParams.get("impersonationToken");
-
-  if (impersonateUserId) {
-    // Require both userId and token for GET-based impersonation
-    if (!impersonationToken) {
-      logger.warn("Impersonation request missing token");
-      return redirect("/");
-    }
-
-    // Validate and consume the token (prevents replay attacks)
-    const validatedUserId = await validateAndConsumeImpersonationToken(impersonationToken);
-
-    if (!validatedUserId || validatedUserId !== impersonateUserId) {
-      logger.warn("Invalid or expired impersonation token");
-      return redirect("/");
-    }
-
-    return handleImpersonationRequest(request, impersonateUserId);
-  }
-
-  // Normal loader logic for admin dashboard
+export const loader = async ({ request }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
 
   const searchParams = createSearchParams(request.url, SearchParams);
@@ -84,19 +40,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson(result);
 };
 
-export async function action({ request }: ActionFunctionArgs) {
-  if (request.method.toLowerCase() !== "post") {
-    return new Response("Method not allowed", { status: 405 });
-  }
-
-  const payload = Object.fromEntries(await request.formData());
-  const { id } = FormSchema.parse(payload);
-
-  return handleImpersonationRequest(request, id);
-}
-
 export default function AdminDashboardRoute() {
-  const user = useUser();
   const { users, filters, page, pageCount } = useTypedLoaderData<typeof loader>() as any;
 
   return (
@@ -174,7 +118,7 @@ export default function AdminDashboardRoute() {
                     </TableCell>
                     <TableCell>{user.admin ? "✅" : ""}</TableCell>
                     <TableCell isSticky={true}>
-                      <Form method="post" reloadDocument>
+                      <Form method="post" action="/admin/impersonate" reloadDocument>
                         <input type="hidden" name="id" value={user.id} />
                         <Button
                           type="submit"

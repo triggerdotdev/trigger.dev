@@ -1,5 +1,4 @@
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
-import { json } from "@remix-run/server-runtime";
+import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { timingSafeEqual } from "crypto";
 import { uiComponent } from "@team-plain/typescript-sdk";
 import { z } from "zod";
@@ -186,7 +185,7 @@ export async function action({ request }: ActionFunctionArgs) {
           // Generate a signed one-time token for impersonation
           const impersonationToken = await generateImpersonationToken(user.id);
           // Build the impersonate URL with token for CSRF protection
-          const impersonateUrl = `${env.APP_ORIGIN}/admin?impersonate=${user.id}&impersonationToken=${encodeURIComponent(impersonationToken)}`;
+          const impersonateUrl = `${env.APP_ORIGIN}/admin/impersonate?impersonate=${user.id}&impersonationToken=${encodeURIComponent(impersonationToken)}`;
 
           cards.push({
             key: accountDetailsKey,
