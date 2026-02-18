@@ -115,54 +115,32 @@ export async function action({ request }: ActionFunctionArgs) {
 
     const { customer, cardKeys } = parsed.data;
 
-    // Look up the user by externalId (which is User.id)
-    let user = null;
-    if (customer.externalId) {
-      user = await prisma.user.findUnique({
-        where: { id: customer.externalId },
+    const userInclude = {
+      orgMemberships: {
+        where: {
+          organization: { deletedAt: null },
+        },
         include: {
-          orgMemberships: {
-            where: {
-              organization: { deletedAt: null },
-            },
+          organization: {
             include: {
-              organization: {
-                include: {
-                  projects: {
-                    where: { deletedAt: null },
-                    take: 10, // Limit to recent projects
-                    orderBy: { createdAt: "desc" },
-                  },
-                },
+              projects: {
+                where: { deletedAt: null },
+                take: 10,
+                orderBy: { createdAt: "desc" as const },
               },
             },
           },
         },
-      });
-    } else if (customer.email) {
-      // Fallback to email lookup if externalId is not provided
-      user = await prisma.user.findUnique({
-        where: { email: customer.email },
-        include: {
-          orgMemberships: {
-            where: {
-              organization: { deletedAt: null },
-            },
-            include: {
-              organization: {
-                include: {
-                  projects: {
-                    where: { deletedAt: null },
-                    take: 10,
-                    orderBy: { createdAt: "desc" },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
-    }
+      },
+    };
+
+    const where = customer.externalId
+      ? { id: customer.externalId }
+      : customer.email
+      ? { email: customer.email }
+      : null;
+
+    const user = where ? await prisma.user.findUnique({ where, include: userInclude }) : null;
 
     // If user not found, return empty cards
     if (!user) {

@@ -12,7 +12,7 @@ async function handleImpersonationRequest(request: Request, userId: string): Pro
   if (!user.admin) {
     return redirect("/");
   }
-  return redirectWithImpersonation(request, userId, "/");
+  return redirectWithImpersonation(request, userId, "/", user);
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -42,7 +42,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return redirect("/");
   }
 
-  return redirectWithImpersonation(request, impersonateUserId, "/");
+  return redirectWithImpersonation(request, impersonateUserId, "/", user);
 };
 
 export async function action({ request }: ActionFunctionArgs) {

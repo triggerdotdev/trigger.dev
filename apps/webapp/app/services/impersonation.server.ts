@@ -1,5 +1,6 @@
 import { createCookieSessionStorage, type Session } from "@remix-run/node";
 import { SignJWT, jwtVerify, errors } from "jose";
+import { randomUUID } from "node:crypto";
 import { singleton } from "~/utils/singleton";
 import { createRedisClient, type RedisClient } from "~/redis.server";
 import { env } from "~/env.server";
@@ -83,6 +84,7 @@ export async function generateImpersonationToken(userId: string): Promise<string
     .setExpirationTime(now + IMPERSONATION_TOKEN_EXPIRY_SECONDS)
     .setIssuer("https://trigger.dev")
     .setAudience("https://trigger.dev/admin")
+    .setJti(randomUUID())
     .sign(secret);
 
   return token;
@@ -109,12 +111,19 @@ export async function validateAndConsumeImpersonationToken(
     }
 
     // Atomically mark the token as used to prevent replay attacks.
+    // Use the jti (a short UUID) as the Redis key rather than the full JWT string.
     // If Redis is unavailable, fall back to JWT expiry as the only protection.
     if (env.CACHE_REDIS_HOST) {
+      // Defensively reject tokens without a jti (e.g. issued before this change)
+      if (!payload.jti) {
+        logger.warn("Impersonation token missing jti claim, rejecting for safety");
+        return undefined;
+      }
+
       try {
         const redis = getImpersonationTokenRedisClient();
         const result = await redis.set(
-          token,
+          payload.jti,
           "1",
           "EX",
           IMPERSONATION_TOKEN_EXPIRY_SECONDS,
