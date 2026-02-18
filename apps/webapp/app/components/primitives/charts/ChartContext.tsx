@@ -17,6 +17,8 @@ export type ChartContextValue = {
   dataKey: string;
   /** Computed series keys (all config keys except dataKey) */
   dataKeys: string[];
+  /** Subset of dataKeys actually rendered as SVG elements (defaults to dataKeys) */
+  visibleSeries: string[];
 
   // Display state
   state?: ChartState;
@@ -54,6 +56,8 @@ export type ChartProviderProps = {
   dataKey: string;
   /** Series keys to render (if not provided, derived from config keys) */
   series?: string[];
+  /** Subset of series to render as SVG elements on the chart (legend still shows all series) */
+  visibleSeries?: string[];
   state?: ChartState;
   /** Function to format the x-axis label (used in legend, tooltips, etc.) */
   labelFormatter?: LabelFormatter;
@@ -71,6 +75,7 @@ export function ChartProvider({
   data,
   dataKey,
   series,
+  visibleSeries: visibleSeriesProp,
   state,
   labelFormatter,
   enableZoom = false,
@@ -87,12 +92,18 @@ export function ChartProvider({
     [series, config, dataKey]
   );
 
+  const visibleSeries = useMemo(
+    () => visibleSeriesProp ?? dataKeys,
+    [visibleSeriesProp, dataKeys]
+  );
+
   const value = useMemo<ChartContextValue>(
     () => ({
       config,
       data,
       dataKey,
       dataKeys,
+      visibleSeries,
       state,
       labelFormatter,
       highlight,
@@ -100,7 +111,7 @@ export function ChartProvider({
       onZoomChange: enableZoom ? onZoomChange : undefined,
       showLegend,
     }),
-    [config, data, dataKey, dataKeys, state, labelFormatter, highlight, zoomState, enableZoom, onZoomChange, showLegend]
+    [config, data, dataKey, dataKeys, visibleSeries, state, labelFormatter, highlight, zoomState, enableZoom, onZoomChange, showLegend]
   );
 
   return <ChartCompoundContext.Provider value={value}>{children}</ChartCompoundContext.Provider>;

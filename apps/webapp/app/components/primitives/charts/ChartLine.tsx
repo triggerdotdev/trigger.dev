@@ -78,7 +78,7 @@ export function ChartLineRenderer({
   width,
   height,
 }: ChartLineRendererProps) {
-  const { config, data, dataKey, dataKeys, state, highlight, showLegend } = useChartContext();
+  const { config, data, dataKey, dataKeys, visibleSeries, state, highlight, showLegend } = useChartContext();
   const hasNoData = useHasNoData();
 
   // Render loading/error states
@@ -130,7 +130,7 @@ export function ChartLineRenderer({
   };
 
   // Render stacked area chart if stacked prop is true
-  if (stacked && dataKeys.length > 1) {
+  if (stacked && visibleSeries.length > 1) {
     return (
       <AreaChart
         data={data}
@@ -162,7 +162,7 @@ export function ChartLineRenderer({
           labelFormatter={tooltipLabelFormatter}
         />
         {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
-        {dataKeys.map((key) => (
+        {visibleSeries.map((key) => (
           <Area
             key={key}
             type={lineType}
@@ -211,7 +211,7 @@ export function ChartLineRenderer({
         labelFormatter={tooltipLabelFormatter}
       />
       {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
-      {dataKeys.map((key) => (
+      {visibleSeries.map((key) => (
         <Line
           key={key}
           dataKey={key}

@@ -68,7 +68,7 @@ export function ChartBarRenderer({
   width,
   height,
 }: ChartBarRendererProps) {
-  const { config, data, dataKey, dataKeys, state, highlight, zoom, showLegend } = useChartContext();
+  const { config, data, dataKey, dataKeys, visibleSeries, state, highlight, zoom, showLegend } = useChartContext();
   const hasNoData = useHasNoData();
   const zoomHandlers = useZoomHandlers();
   const enableZoom = zoom !== null;
@@ -188,7 +188,7 @@ export function ChartBarRenderer({
         />
       )}
 
-      {dataKeys.map((key, index, array) => {
+      {visibleSeries.map((key, index, array) => {
         return (
           <Bar
             key={key}
