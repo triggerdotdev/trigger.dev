@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback } from "react";
 import {
   Bar,
   BarChart,
@@ -11,20 +11,13 @@ import {
   type XAxisProps,
   type YAxisProps,
 } from "recharts";
-import {
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-  type ChartState,
-} from "~/components/primitives/charts/Chart";
-import { cn } from "~/utils/cn";
-import { ChartBarLoading, ChartBarInvalid, ChartBarNoData } from "./ChartLoading";
+import { ChartTooltip, ChartTooltipContent } from "~/components/primitives/charts/Chart";
 import { useChartContext } from "./ChartContext";
-import { ChartRoot, useHasNoData } from "./ChartRoot";
+import { ChartBarInvalid, ChartBarLoading, ChartBarNoData } from "./ChartLoading";
+import { useHasNoData } from "./ChartRoot";
 // Legend is now rendered by ChartRoot outside the chart container
 import { ZoomTooltip, useZoomHandlers } from "./ChartZoom";
 import { getBarOpacity } from "./hooks/useHighlightState";
-import type { ZoomRange } from "./hooks/useZoomSelection";
 
 //TODO: fix the first and last bars in a stack not having rounded corners
 
@@ -162,26 +155,27 @@ export function ChartBarRenderer({
         domain={["auto", (dataMax: number) => dataMax * 1.15]}
         {...yAxisPropsProp}
       />
-      {/* Hide tooltip when legend is shown - legend displays hover data instead */}
-      {!showLegend && (
-        <ChartTooltip
-          cursor={{ fill: "#2C3034" }}
-          content={
-            tooltipLabelFormatter ? (
-              <ChartTooltipContent />
-            ) : (
-              <ZoomTooltip
-                isSelecting={zoom?.isSelecting}
-                refAreaLeft={zoom?.refAreaLeft}
-                refAreaRight={zoom?.refAreaRight}
-                invalidSelection={zoom?.invalidSelection}
-              />
-            )
-          }
-          labelFormatter={tooltipLabelFormatter}
-          allowEscapeViewBox={{ x: false, y: true }}
-        />
-      )}
+      {/* When legend is shown below the chart, render tooltip with cursor only (no content popup).
+          Otherwise render the full tooltip with zoom instructions. */}
+      <ChartTooltip
+        cursor={{ fill: "rgba(255, 255, 255, 0.06)" }}
+        content={
+          showLegend ? (
+            () => null
+          ) : tooltipLabelFormatter ? (
+            <ChartTooltipContent />
+          ) : (
+            <ZoomTooltip
+              isSelecting={zoom?.isSelecting}
+              refAreaLeft={zoom?.refAreaLeft}
+              refAreaRight={zoom?.refAreaRight}
+              invalidSelection={zoom?.invalidSelection}
+            />
+          )
+        }
+        labelFormatter={tooltipLabelFormatter}
+        allowEscapeViewBox={{ x: false, y: true }}
+      />
 
       {/* Zoom selection area - rendered before bars to appear behind them */}
       {enableZoom && zoom?.refAreaLeft !== null && zoom?.refAreaRight !== null && (

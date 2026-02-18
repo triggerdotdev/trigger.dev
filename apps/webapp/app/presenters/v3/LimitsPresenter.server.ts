@@ -70,6 +70,9 @@ export type LimitsResult = {
     realtimeConnections: QuotaInfo | null;
     batchProcessingConcurrency: QuotaInfo;
     queueSize: QuotaInfo;
+    metricDashboards: QuotaInfo | null;
+    metricWidgetsPerDashboard: QuotaInfo | null;
+    queryPeriodDays: QuotaInfo | null;
   };
   features: {
     hasStagingEnvironment: FeatureInfo;
@@ -159,6 +162,11 @@ export class LimitsPresenter extends BasePresenter {
       },
     });
 
+    // Get metric dashboard count for this org
+    const metricDashboardCount = await this._replica.metricsDashboard.count({
+      where: { organizationId },
+    });
+
     // Get current rate limit tokens for this environment's API key
     const apiRateLimitTokens = await getRateLimitRemainingTokens(
       "api",
@@ -202,6 +210,9 @@ export class LimitsPresenter extends BasePresenter {
     const branchesLimit = limits?.branches?.number ?? null;
     const logRetentionDaysLimit = limits?.logRetentionDays?.number ?? null;
     const realtimeConnectionsLimit = limits?.realtimeConcurrentConnections?.number ?? null;
+    const metricDashboardsLimit = limits?.metricDashboards?.number ?? null;
+    const metricWidgetsPerDashboardLimit = limits?.metricWidgetsPerDashboard?.number ?? null;
+    const queryPeriodDaysLimit = limits?.queryPeriodDays?.number ?? null;
     const includedUsage = limits?.includedUsage ?? null;
     const hasStagingEnvironment = limits?.hasStagingEnvironment ?? false;
     const supportLevel = limits?.support ?? "community";
@@ -318,6 +329,40 @@ export class LimitsPresenter extends BasePresenter {
           source: getQueueSizeLimitSource(environmentType, organization),
           isUpgradable: true,
         },
+        metricDashboards:
+          metricDashboardsLimit !== null
+            ? {
+                name: "Metric dashboards",
+                description: "Maximum number of custom metric dashboards per organization",
+                limit: metricDashboardsLimit,
+                currentUsage: metricDashboardCount,
+                source: "plan",
+                canExceed: limits?.metricDashboards?.canExceed,
+                isUpgradable: true,
+              }
+            : null,
+        metricWidgetsPerDashboard:
+          metricWidgetsPerDashboardLimit !== null
+            ? {
+                name: "Charts per dashboard",
+                description: "Maximum number of charts per metrics dashboard",
+                limit: metricWidgetsPerDashboardLimit,
+                currentUsage: 0, // Varies per dashboard
+                source: "plan",
+                canExceed: limits?.metricWidgetsPerDashboard?.canExceed,
+                isUpgradable: true,
+              }
+            : null,
+        queryPeriodDays:
+          queryPeriodDaysLimit !== null
+            ? {
+                name: "Query period",
+                description: "Maximum number of days a query can look back",
+                limit: queryPeriodDaysLimit,
+                currentUsage: 0, // Not applicable - this is a duration, not a count
+                source: "plan",
+              }
+            : null,
       },
       features: {
         hasStagingEnvironment: {

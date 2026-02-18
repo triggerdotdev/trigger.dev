@@ -4,6 +4,11 @@ import { ClickHouseSettings } from "@clickhouse/client";
 export type QueryParamValue = string | number | boolean | Array<string | number | boolean> | null;
 export type QueryParams = Record<string, QueryParamValue>;
 
+export type WhereCondition = {
+  clause: string;
+  params?: QueryParams;
+};
+
 export class ClickhouseQueryBuilder<TOutput> {
   private name: string;
   private baseQuery: string;
@@ -41,6 +46,20 @@ export class ClickhouseQueryBuilder<TOutput> {
   whereIf(condition: any, clause: string, params?: QueryParams): this {
     if (condition) {
       this.where(clause, params);
+    }
+    return this;
+  }
+
+  whereOr(conditions: WhereCondition[]): this {
+    if (conditions.length === 0) {
+      return this;
+    }
+    const combinedClause = conditions.map((c) => `(${c.clause})`).join(" OR ");
+    this.whereClauses.push(`(${combinedClause})`);
+    for (const condition of conditions) {
+      if (condition.params) {
+        Object.assign(this.params, condition.params);
+      }
     }
     return this;
   }
@@ -149,6 +168,20 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
   whereIf(condition: any, clause: string, params?: QueryParams): this {
     if (condition) {
       this.where(clause, params);
+    }
+    return this;
+  }
+
+  whereOr(conditions: WhereCondition[]): this {
+    if (conditions.length === 0) {
+      return this;
+    }
+    const combinedClause = conditions.map((c) => `(${c.clause})`).join(" OR ");
+    this.whereClauses.push(`(${combinedClause})`);
+    for (const condition of conditions) {
+      if (condition.params) {
+        Object.assign(this.params, condition.params);
+      }
     }
     return this;
   }

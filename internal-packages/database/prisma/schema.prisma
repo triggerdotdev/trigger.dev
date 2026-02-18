@@ -63,6 +63,7 @@ model User {
   impersonationsPerformed ImpersonationAuditLog[] @relation("ImpersonationAdmin")
   impersonationsReceived  ImpersonationAuditLog[] @relation("ImpersonationTarget")
   customerQueries         CustomerQuery[]
+  metricsDashboards       MetricsDashboard[]
 }
 
 model MfaBackupCode {
@@ -223,6 +224,7 @@ model Organization {
   workerInstances          WorkerInstance[]
   githubAppInstallations   GithubAppInstallation[]
   customerQueries          CustomerQuery[]
+  metricsDashboards        MetricsDashboard[]
 }
 
 model OrgMember {
@@ -384,32 +386,33 @@ model Project {
   /// The master queues they are allowed to use (impacts what they can set as default and trigger runs with)
   allowedWorkerQueues String[] @default([]) @map("allowedMasterQueues")
 
-  environments                    RuntimeEnvironment[]
-  backgroundWorkers               BackgroundWorker[]
-  backgroundWorkerTasks           BackgroundWorkerTask[]
-  taskRuns                        TaskRun[]
-  runTags                         TaskRunTag[]
-  taskQueues                      TaskQueue[]
-  environmentVariables            EnvironmentVariable[]
-  checkpoints                     Checkpoint[]
-  WorkerDeployment                WorkerDeployment[]
-  CheckpointRestoreEvent          CheckpointRestoreEvent[]
-  taskSchedules                   TaskSchedule[]
-  alertChannels                   ProjectAlertChannel[]
-  alerts                          ProjectAlert[]
-  alertStorages                   ProjectAlertStorage[]
-  bulkActionGroups                BulkActionGroup[]
-  BackgroundWorkerFile            BackgroundWorkerFile[]
-  waitpoints                      Waitpoint[]
-  taskRunWaitpoints               TaskRunWaitpoint[]
-  taskRunCheckpoints              TaskRunCheckpoint[]
-  waitpointTags                   WaitpointTag[]
-  connectedGithubRepository       ConnectedGithubRepository?
-  organizationProjectIntegration  OrganizationProjectIntegration[]
-  customerQueries                 CustomerQuery[]
+  environments                   RuntimeEnvironment[]
+  backgroundWorkers              BackgroundWorker[]
+  backgroundWorkerTasks          BackgroundWorkerTask[]
+  taskRuns                       TaskRun[]
+  runTags                        TaskRunTag[]
+  taskQueues                     TaskQueue[]
+  environmentVariables           EnvironmentVariable[]
+  checkpoints                    Checkpoint[]
+  WorkerDeployment               WorkerDeployment[]
+  CheckpointRestoreEvent         CheckpointRestoreEvent[]
+  taskSchedules                  TaskSchedule[]
+  alertChannels                  ProjectAlertChannel[]
+  alerts                         ProjectAlert[]
+  alertStorages                  ProjectAlertStorage[]
+  bulkActionGroups               BulkActionGroup[]
+  BackgroundWorkerFile           BackgroundWorkerFile[]
+  waitpoints                     Waitpoint[]
+  taskRunWaitpoints              TaskRunWaitpoint[]
+  taskRunCheckpoints             TaskRunCheckpoint[]
+  waitpointTags                  WaitpointTag[]
+  connectedGithubRepository      ConnectedGithubRepository?
+  organizationProjectIntegration OrganizationProjectIntegration[]
+  customerQueries                CustomerQuery[]
 
   buildSettings         Json?
   taskScheduleInstances TaskScheduleInstance[]
+  metricsDashboards     MetricsDashboard[]
 }
 
 enum ProjectVersion {
@@ -1713,7 +1716,7 @@ model EnvironmentVariableValue {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  version       Int                    @default(1)
+  version       Int   @default(1)
   lastUpdatedBy Json?
 
   @@unique([variableId, environmentId])
@@ -1829,10 +1832,10 @@ model WorkerDeployment {
   worker   BackgroundWorker? @relation(fields: [workerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   workerId String?           @unique
 
-  triggeredBy             User?   @relation(fields: [triggeredById], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  triggeredById           String?
-  triggeredVia            String?
-  commitSHA               String?
+  triggeredBy   User?   @relation(fields: [triggeredById], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  triggeredById String?
+  triggeredVia  String?
+  commitSHA     String?
 
   startedAt   DateTime?
   installedAt DateTime?
@@ -1851,10 +1854,10 @@ model WorkerDeployment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  promotions              WorkerDeploymentPromotion[]
-  alerts                  ProjectAlert[]
-  workerInstance          WorkerInstance[]
-  integrationDeployments  IntegrationDeployment[]
+  promotions             WorkerDeploymentPromotion[]
+  alerts                 ProjectAlert[]
+  workerInstance         WorkerInstance[]
+  integrationDeployments IntegrationDeployment[]
 
   @@unique([projectId, shortCode])
   @@unique([environmentId, version])
@@ -2095,8 +2098,8 @@ model OrganizationIntegration {
 
   friendlyId String @unique
 
-  service                 IntegrationService
-  externalOrganizationId  String? /// Identifier for external, integration's organization (e.g. Vercel's team)
+  service                IntegrationService
+  externalOrganizationId String? /// Identifier for external, integration's organization (e.g. Vercel's team)
 
   integrationData Json
 
@@ -2106,33 +2109,33 @@ model OrganizationIntegration {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  alertChannels                   ProjectAlertChannel[]
-  organizationProjectIntegration  OrganizationProjectIntegration[]
+  alertChannels                  ProjectAlertChannel[]
+  organizationProjectIntegration OrganizationProjectIntegration[]
 
   @@index([externalOrganizationId])
 }
 
 model OrganizationProjectIntegration {
-	id String @id @default(cuid())
-	
-	organizationIntegration     OrganizationIntegration @relation(fields: [organizationIntegrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-	organizationIntegrationId   String
-	
-	project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId   String
-  
-  externalEntityId  String /// Identifier for webhooks, for example Vercel's projectId
-  integrationData   Json /// Save useful data like config or external entity name
-  installedBy       String? /// UserId who installed the integration
+  id String @id @default(cuid())
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  organizationIntegration   OrganizationIntegration @relation(fields: [organizationIntegrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationIntegrationId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  externalEntityId String /// Identifier for webhooks, for example Vercel's projectId
+  integrationData  Json /// Save useful data like config or external entity name
+  installedBy      String? /// UserId who installed the integration
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-  
+
   @@index([projectId])
   @@index([projectId, organizationIntegrationId])
   @@index([externalEntityId])
@@ -2523,19 +2526,49 @@ model CustomerQuery {
 }
 
 model IntegrationDeployment {
-  id                      String @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   integrationName         String /// For example Vercel
   integrationDeploymentId String /// External ID
   commitSHA               String
   deploymentId            String?
   status                  String? /// External deployment status
 
-  workerDeployment        WorkerDeployment? @relation(fields: [deploymentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  workerDeployment WorkerDeployment? @relation(fields: [deploymentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([commitSHA])
   @@index([deploymentId])
+}
+
+/// A user-defined metrics dashboard
+model MetricsDashboard {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  title       String
+  description String @default("")
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String?
+
+  /// Who created the dashboard
+  owner   User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  ownerId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// JSON that defines the config, queries, layout and config of all widgets. 
+  /// There will be a version field for the format.
+  layout String
+
+  /// Fast lookup for the list
+  @@index([projectId, createdAt(sort: Desc)])
 }

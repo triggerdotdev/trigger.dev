@@ -336,6 +336,24 @@ export interface TableSchema {
    * These are injected into the WHERE clause automatically, similar to tenant isolation.
    */
   requiredFilters?: RequiredFilter[];
+  /**
+   * The TSQL column name used as the time constraint for `timeBucket()`.
+   *
+   * When set, `timeBucket()` resolves to `toStartOfInterval(clickhouse_column, INTERVAL ...)`,
+   * using the ClickHouse column name mapped from this TSQL column.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   name: "runs",
+   *   timeConstraint: "triggered_at", // TSQL column name; maps to CH column "created_at"
+   *   columns: {
+   *     triggered_at: { name: "triggered_at", clickhouseName: "created_at", ...column("DateTime64") },
+   *   },
+   * }
+   * ```
+   */
+  timeConstraint?: string;
 }
 
 /**

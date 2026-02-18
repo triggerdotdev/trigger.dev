@@ -1,55 +1,49 @@
 import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { useNavigate } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Input } from "~/components/primitives/Input";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { cn } from "~/utils/cn";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useSearchParams } from "~/hooks/useSearchParam";
 
 export function LogsSearchInput() {
   const location = useOptimisticLocation();
-  const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const { value, replace, del } = useSearchParams();
+
   // Get initial search value from URL
-  const searchParams = new URLSearchParams(location.search);
-  const initialSearch = searchParams.get("search") ?? "";
+  const initialSearch = value("search") ?? "";
 
   const [text, setText] = useState(initialSearch);
   const [isFocused, setIsFocused] = useState(false);
 
   // Update text when URL search param changes (only when not focused to avoid overwriting user input)
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const urlSearch = params.get("search") ?? "";
+    const urlSearch = value("search") ?? "";
     if (urlSearch !== text && !isFocused) {
       setText(urlSearch);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.search]);
+  }, [value, text, isFocused]);
 
   const handleSubmit = useCallback(() => {
-    const params = new URLSearchParams(location.search);
     if (text.trim()) {
-      params.set("search", text.trim());
+      replace({ search: text.trim() });
     } else {
-      params.delete("search");
+      del("search");
     }
-    // Reset cursor when searching
-    params.delete("cursor");
-    params.delete("direction");
-    navigate(`${location.pathname}?${params.toString()}`, { replace: true });
-  }, [text, location.pathname, location.search, navigate]);
+  }, [text, replace, del]);
 
-  const handleClear = useCallback(() => {
-    setText("");
-    const params = new URLSearchParams(location.search);
-    params.delete("search");
-    params.delete("cursor");
-    params.delete("direction");
-    navigate(`${location.pathname}?${params.toString()}`, { replace: true });
-  }, [location.pathname, location.search, navigate]);
+  const handleClear = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setText("");
+      del(["search", "cursor", "direction"]);
+    },
+    [del]
+  );
 
   return (
     <div className="flex items-center gap-1">
@@ -71,7 +65,7 @@ export function LogsSearchInput() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           fullWidth
-          className={cn(isFocused && "placeholder:text-text-dimmed/70")}
+          className={cn("", isFocused && "placeholder:text-text-dimmed/70")}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
@@ -86,22 +80,21 @@ export function LogsSearchInput() {
           icon={<MagnifyingGlassIcon className="size-4" />}
           accessory={
             text.length > 0 ? (
-              <ShortcutKey shortcut={{ key: "enter" }} variant="small" />
+              <div className="-mr-1 flex items-center gap-1">
+                <ShortcutKey shortcut={{ key: "enter" }} variant="small" />
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="flex size-4.5 items-center justify-center rounded-[2px] border border-text-dimmed/40 text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+                  title="Clear search"
+                >
+                  <XMarkIcon className="size-3" />
+                </button>
+              </div>
             ) : undefined
           }
         />
       </motion.div>
-
-      {text.length > 0 && (
-        <button
-          type="button"
-          onClick={handleClear}
-          className="flex size-6 items-center justify-center rounded text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
-          title="Clear search"
-        >
-          <XMarkIcon className="size-4" />
-        </button>
-      )}
     </div>
   );
 }

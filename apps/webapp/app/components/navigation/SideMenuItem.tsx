@@ -17,6 +17,7 @@ export function SideMenuItem({
   badge,
   target,
   isCollapsed = false,
+  action,
 }: {
   icon?: RenderIcon;
   activeIconColor?: string;
@@ -28,59 +29,84 @@ export function SideMenuItem({
   badge?: ReactNode;
   target?: AnchorHTMLAttributes<HTMLAnchorElement>["target"];
   isCollapsed?: boolean;
+  action?: ReactNode;
 }) {
   const pathName = usePathName();
   const isActive = pathName === to;
 
-  return (
-    <SimpleTooltip
-      button={
-        <Link
-          to={to}
-          target={target}
-          className={cn(
-            "flex h-8 w-full items-center gap-2 overflow-hidden rounded pr-2 pl-[0.4375rem] text-text-bright transition-colors hover:bg-charcoal-750",
-            isActive ? "bg-tertiary" : ""
-          )}
-        >
-          <Icon
-            icon={icon}
-            className={cn(
-              "size-5 shrink-0",
-              isActive ? activeIconColor : inactiveIconColor ?? "text-text-dimmed"
-            )}
-          />
+  const link = (
+    <Link
+      to={to}
+      target={target}
+      className={cn(
+        "flex h-8 w-full items-center gap-2 overflow-hidden rounded pr-2 pl-[0.4375rem] text-text-bright transition-colors hover:bg-charcoal-750 group-hover/menuitem:bg-charcoal-750",
+        isActive ? "bg-tertiary" : ""
+      )}
+    >
+      <Icon
+        icon={icon}
+        className={cn(
+          "size-5 shrink-0",
+          isActive ? activeIconColor : inactiveIconColor ?? "text-text-dimmed"
+        )}
+      />
+      <motion.div
+        className="flex min-w-0 flex-1 items-center justify-between overflow-hidden"
+        initial={false}
+        animate={{
+          width: isCollapsed ? 0 : "auto",
+          opacity: isCollapsed ? 0 : 1,
+        }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+      >
+        <span className="truncate select-none text-2sm">{name}</span>
+        {badge && !isCollapsed && (
           <motion.div
-            className="flex min-w-0 flex-1 items-center justify-between overflow-hidden"
+            className="ml-1 flex shrink-0 items-center gap-1"
             initial={false}
             animate={{
-              width: isCollapsed ? 0 : "auto",
-              opacity: isCollapsed ? 0 : 1,
+              opacity: 1,
             }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
           >
-            <span className="truncate text-2sm">{name}</span>
-            {badge && !isCollapsed && (
-              <motion.div
-                className="ml-1 flex shrink-0 items-center gap-1"
-                initial={false}
-                animate={{
-                  opacity: 1,
-                }}
-                transition={{ duration: 0.15, ease: "easeOut" }}
-              >
-                {badge}
-              </motion.div>
-            )}
-            {trailingIcon && !isCollapsed && (
-              <Icon
-                icon={trailingIcon}
-                className={cn("ml-1 size-4 shrink-0", trailingIconClassName)}
-              />
-            )}
+            {badge}
           </motion.div>
-        </Link>
-      }
+        )}
+        {trailingIcon && !isCollapsed && (
+          <Icon
+            icon={trailingIcon}
+            className={cn("ml-1 size-4 shrink-0", trailingIconClassName)}
+          />
+        )}
+      </motion.div>
+    </Link>
+  );
+
+  if (action) {
+    return (
+      <div className="group/menuitem relative h-8 w-full">
+        <SimpleTooltip
+          button={link}
+          content={name}
+          side="right"
+          sideOffset={8}
+          buttonClassName="!h-8 block w-full"
+          hidden={!isCollapsed}
+          asChild
+          disableHoverableContent
+        />
+        {!isCollapsed && (
+          <div className="absolute top-1 right-1 bottom-1 flex aspect-square items-center justify-center rounded group-hover/menuitem:bg-charcoal-750">
+            {action}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <SimpleTooltip
+      button={link}
       content={name}
       side="right"
       sideOffset={8}

@@ -16,7 +16,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { LogsListPresenter, LogEntry } from "~/presenters/v3/LogsListPresenter.server";
 import type { LogLevel } from "~/utils/logUtils";
 import { $replica, prisma } from "~/db.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { logsClickhouseClient } from "~/services/clickhouseInstance.server";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -36,12 +36,11 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import { Switch } from "~/components/primitives/Switch";
 import { Button } from "~/components/primitives/Buttons";
 import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags.server";
 
 // Valid log levels for filtering
-const validLevels: LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR"];
+const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
 
 function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
   const levelParams = url.searchParams.getAll("levels").filter((v) => v.length > 0);
@@ -95,7 +94,6 @@ async function hasLogsPageAccess(
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
-  const isAdmin = user.admin || user.isImpersonating;
 
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
@@ -126,7 +124,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const runId = url.searchParams.get("runId") ?? undefined;
   const search = url.searchParams.get("search") ?? undefined;
   const levels = parseLevelsFromUrl(url);
-  const showDebug = url.searchParams.get("showDebug") === "true";
   const period = url.searchParams.get("period") ?? undefined;
   const fromStr = url.searchParams.get("from");
   const toStr = url.searchParams.get("to");
@@ -137,7 +134,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const plan = await getCurrentPlan(project.organizationId);
   const retentionLimitDays = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
 
-  const presenter = new LogsListPresenter($replica, clickhouseClient);
+  const presenter = new LogsListPresenter($replica, logsClickhouseClient);
 
   const listPromise = presenter
     .call(project.organizationId, environment.id, {
@@ -150,7 +147,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       period,
       from,
       to,
-      includeDebugLogs: isAdmin && showDebug,
       defaultPeriod: "1h",
       retentionLimitDays
     })
@@ -163,15 +159,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typeddefer({
     data: listPromise,
-    isAdmin,
-    showDebug,
     defaultPeriod: "1h",
     retentionLimitDays,
   });
 };
 
 export default function Page() {
-  const { data, isAdmin, showDebug, defaultPeriod, retentionLimitDays } =
+  const { data, defaultPeriod, retentionLimitDays } =
     useTypedLoaderData<typeof loader>();
 
   return (
@@ -199,8 +193,6 @@ export default function Page() {
             errorElement={
               <div className="grid h-full max-h-full grid-rows-[2.5rem_auto_1fr] overflow-hidden">
                 <FiltersBar
-                  isAdmin={isAdmin}
-                  showDebug={showDebug}
                   defaultPeriod={defaultPeriod}
                   retentionLimitDays={retentionLimitDays}
                 />
@@ -218,8 +210,6 @@ export default function Page() {
                 return (
                   <div className="grid h-full max-h-full grid-rows-[2.5rem_auto_1fr] overflow-hidden">
                     <FiltersBar
-                      isAdmin={isAdmin}
-                      showDebug={showDebug}
                       defaultPeriod={defaultPeriod}
                       retentionLimitDays={retentionLimitDays}
                     />
@@ -235,15 +225,11 @@ export default function Page() {
                 <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden">
                   <FiltersBar
                     list={result}
-                    isAdmin={isAdmin}
-                    showDebug={showDebug}
                     defaultPeriod={defaultPeriod}
                     retentionLimitDays={retentionLimitDays}
                   />
                   <LogsList
                     list={result}
-                    isAdmin={isAdmin}
-                    showDebug={showDebug}
                     defaultPeriod={defaultPeriod}
                   />
                 </div>
@@ -258,14 +244,10 @@ export default function Page() {
 
 function FiltersBar({
   list,
-  isAdmin,
-  showDebug,
   defaultPeriod,
   retentionLimitDays,
 }: {
   list?: Exclude<Awaited<UseDataFunctionReturn<typeof loader>["data"]>, { error: string }>;
-  isAdmin: boolean;
-  showDebug: boolean;
   defaultPeriod?: string;
   retentionLimitDays: number;
 }) {
@@ -279,16 +261,6 @@ function FiltersBar({
     searchParams.has("period") ||
     searchParams.has("from") ||
     searchParams.has("to");
-
-  const handleDebugToggle = useCallback((checked: boolean) => {
-    const url = new URL(window.location.href);
-    if (checked) {
-      url.searchParams.set("showDebug", "true");
-    } else {
-      url.searchParams.delete("showDebug");
-    }
-    window.location.href = url.toString();
-  }, []);
 
   return (
     <div className="flex items-start justify-between gap-x-2 border-b border-grid-bright p-2">
@@ -329,16 +301,6 @@ function FiltersBar({
           </>
         )}
       </div>
-      <div className="flex items-center gap-2">
-        {isAdmin && (
-          <Switch
-            variant="small"
-            label="Debug"
-            checked={showDebug}
-            onCheckedChange={handleDebugToggle}
-          />
-        )}
-      </div>
     </div>
   );
 }
@@ -347,8 +309,6 @@ function LogsList({
   list,
 }: {
   list: Exclude<Awaited<UseDataFunctionReturn<typeof loader>["data"]>, { error: string }>; //exclude error, it is handled
-  isAdmin: boolean;
-  showDebug: boolean;
   defaultPeriod?: string;
 }) {
   const navigation = useNavigation();
@@ -362,7 +322,10 @@ function LogsList({
   const [nextCursor, setNextCursor] = useState<string | undefined>(list.pagination.next);
 
   // Selected log state - managed locally to avoid triggering navigation
-  const [selectedLogId, setSelectedLogId] = useState<string | undefined>();
+  const [selectedLogId, setSelectedLogId] = useState<string | undefined>(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("log") ?? undefined;
+  });
 
   // Track which filter state (search params) the current fetcher request corresponds to
   const fetcherFilterStateRef = useRef<string>(location.search);
@@ -373,8 +336,9 @@ function LogsList({
   useEffect(() => {
     setAccumulatedLogs([]);
     setNextCursor(undefined);
-    // Close side panel when filters change to avoid showing a log that's no longer visible
-    setSelectedLogId(undefined);
+    // Preserve log selection from URL param, clear if not present
+    const params = new URLSearchParams(location.search);
+    setSelectedLogId(params.get("log") ?? undefined);
   }, [location.search]);
 
   // Populate accumulated logs when new data arrives
