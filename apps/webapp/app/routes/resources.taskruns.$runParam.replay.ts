@@ -7,7 +7,7 @@ import { $replica, prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
@@ -15,6 +15,7 @@ import parseDuration from "parse-duration";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
 import { queueTypeFromType } from "~/presenters/v3/QueueRetrievePresenter.server";
 import { ReplayRunData } from "~/v3/replayTask";
+import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 
 const ParamSchema = z.object({
   runParam: z.string(),
@@ -25,7 +26,8 @@ const QuerySchema = z.object({
 });
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  const userId = user.id;
   const { runParam } = ParamSchema.parse(params);
   const { environmentIdOverride } = QuerySchema.parse(
     Object.fromEntries(new URL(request.url).searchParams)
@@ -42,6 +44,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       maxAttempts: true,
       maxDurationInSeconds: true,
       machinePreset: true,
+      workerQueue: true,
       ttl: true,
       idempotencyKey: true,
       runTags: true,
@@ -49,6 +52,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       taskIdentifier: true,
       project: {
         select: {
+          slug: true,
           environments: {
             select: {
               id: true,
@@ -108,13 +112,22 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const disableVersionSelection = environment.type === "DEVELOPMENT";
   const allowArbitraryQueues = backgroundWorkers.at(0)?.engine === "V1";
 
-  const payload = await prettyPrintPacket(run.payload, run.payloadType);
+  const [payload, regionsResult] = await Promise.all([
+    prettyPrintPacket(run.payload, run.payloadType),
+    new RegionsPresenter().call({
+      userId,
+      projectSlug: run.project.slug,
+      isAdmin: user.admin || user.isImpersonating,
+    }),
+  ]);
 
   return typedjson({
     concurrencyKey: run.concurrencyKey,
     maxAttempts: run.maxAttempts,
     maxDurationSeconds: run.maxDurationInSeconds,
     machinePreset: run.machinePreset,
+    region: environment.type === "DEVELOPMENT" ? undefined : run.workerQueue,
+    regions: regionsResult.regions,
     ttlSeconds: run.ttl ? parseDuration(run.ttl, "s") ?? undefined : undefined,
     idempotencyKey: run.idempotencyKey,
     runTags: run.runTags,
@@ -194,6 +207,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       maxAttempts: submission.value.maxAttempts,
       maxDurationSeconds: submission.value.maxDurationSeconds,
       machine: submission.value.machine,
+      region: submission.value.region,
       delaySeconds: submission.value.delaySeconds,
       idempotencyKey: submission.value.idempotencyKey,
       idempotencyKeyTTLSeconds: submission.value.idempotencyKeyTTLSeconds,
