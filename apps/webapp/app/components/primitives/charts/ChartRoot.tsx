@@ -13,6 +13,8 @@ export type ChartRootProps = {
   dataKey: string;
   /** Series keys to render (if not provided, derived from config keys) */
   series?: string[];
+  /** Subset of series to render as SVG elements on the chart (legend still shows all series) */
+  visibleSeries?: string[];
   state?: ChartState;
   /** Function to format the x-axis label (used in legend, tooltips, etc.) */
   labelFormatter?: LabelFormatter;
@@ -38,6 +40,8 @@ export type ChartRootProps = {
   legendScrollable?: boolean;
   /** When true, chart fills its parent container height and distributes space between chart and legend */
   fillContainer?: boolean;
+  /** Content rendered between the chart and the legend */
+  beforeLegend?: React.ReactNode;
   children: React.ComponentProps<typeof RechartsPrimitive.ResponsiveContainer>["children"];
 };
 
@@ -67,6 +71,7 @@ export function ChartRoot({
   data,
   dataKey,
   series,
+  visibleSeries,
   state,
   labelFormatter,
   enableZoom = false,
@@ -80,6 +85,7 @@ export function ChartRoot({
   onViewAllLegendItems,
   legendScrollable = false,
   fillContainer = false,
+  beforeLegend,
   children,
 }: ChartRootProps) {
   return (
@@ -88,6 +94,7 @@ export function ChartRoot({
       data={data}
       dataKey={dataKey}
       series={series}
+      visibleSeries={visibleSeries}
       state={state}
       labelFormatter={labelFormatter}
       enableZoom={enableZoom}
@@ -104,6 +111,7 @@ export function ChartRoot({
         onViewAllLegendItems={onViewAllLegendItems}
         legendScrollable={legendScrollable}
         fillContainer={fillContainer}
+        beforeLegend={beforeLegend}
       >
         {children}
       </ChartRootInner>
@@ -121,6 +129,7 @@ type ChartRootInnerProps = {
   onViewAllLegendItems?: () => void;
   legendScrollable?: boolean;
   fillContainer?: boolean;
+  beforeLegend?: React.ReactNode;
   children: React.ComponentProps<typeof RechartsPrimitive.ResponsiveContainer>["children"];
 };
 
@@ -134,6 +143,7 @@ function ChartRootInner({
   onViewAllLegendItems,
   legendScrollable = false,
   fillContainer = false,
+  beforeLegend,
   children,
 }: ChartRootInnerProps) {
   const { config, zoom } = useChartContext();
@@ -167,6 +177,7 @@ function ChartRootInner({
           {children}
         </ChartContainer>
       </div>
+      {beforeLegend}
       {/* Legend rendered outside the chart container */}
       {showLegend && (
         <ChartLegendCompound
