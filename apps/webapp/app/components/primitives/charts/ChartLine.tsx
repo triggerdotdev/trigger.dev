@@ -142,9 +142,8 @@ export function ChartLineRenderer({
           right: 12,
         }}
         onMouseMove={(e: any) => {
-          // Update active payload for legend
           if (e?.activePayload?.length) {
-            highlight.setActivePayload(e.activePayload);
+            highlight.setActivePayload(e.activePayload, e.activeTooltipIndex);
             highlight.setTooltipActive(true);
           } else {
             highlight.setTooltipActive(false);
@@ -191,9 +190,8 @@ export function ChartLineRenderer({
         right: 12,
       }}
       onMouseMove={(e: any) => {
-        // Update active payload for legend
         if (e?.activePayload?.length) {
-          highlight.setActivePayload(e.activePayload);
+          highlight.setActivePayload(e.activePayload, e.activeTooltipIndex);
           highlight.setTooltipActive(true);
         } else {
           highlight.setTooltipActive(false);

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 export type HighlightState = {
   /** The currently highlighted series key (e.g., "completed", "failed") */
@@ -16,8 +16,8 @@ export type HighlightActions = {
   setHoveredBar: (key: string, index: number, payload?: any[]) => void;
   /** Set the hovered legend item (highlights all bars of that type) */
   setHoveredLegendItem: (key: string) => void;
-  /** Set the active payload (for tooltip data) */
-  setActivePayload: (payload: any[] | null) => void;
+  /** Set the active payload (for tooltip data). Pass tooltipIndex to skip redundant updates. */
+  setActivePayload: (payload: any[] | null, tooltipIndex?: number | null) => void;
   /** Set tooltip active state */
   setTooltipActive: (active: boolean) => void;
   /** Reset all highlight state */
@@ -39,6 +39,7 @@ const initialState: HighlightState = {
  */
 export function useHighlightState(): UseHighlightStateReturn {
   const [state, setState] = useState<HighlightState>(initialState);
+  const activeTooltipIndexRef = useRef<number | null>(null);
 
   const setHoveredBar = useCallback((key: string, index: number, payload?: any[]) => {
     setState({
@@ -53,11 +54,19 @@ export function useHighlightState(): UseHighlightStateReturn {
     setState((prev) => ({
       ...prev,
       activeBarKey: key,
-      activeDataPointIndex: null, // null indicates legend hover (all bars of this type)
+      activeDataPointIndex: null,
     }));
   }, []);
 
-  const setActivePayload = useCallback((payload: any[] | null) => {
+  const setActivePayload = useCallback((payload: any[] | null, tooltipIndex?: number | null) => {
+    const idx = tooltipIndex ?? null;
+    if (idx !== null && idx === activeTooltipIndexRef.current) {
+      console.log("Tooltip index is the same, skipping update", activeTooltipIndexRef.current);
+      return;
+    }
+
+    console.log("Tooltip index changed", idx);
+    activeTooltipIndexRef.current = idx;
     setState((prev) => ({
       ...prev,
       activePayload: payload,
@@ -72,6 +81,7 @@ export function useHighlightState(): UseHighlightStateReturn {
   }, []);
 
   const reset = useCallback(() => {
+    activeTooltipIndexRef.current = null;
     setState(initialState);
   }, []);
 
