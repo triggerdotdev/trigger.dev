@@ -256,6 +256,16 @@
             ]
           },
           {
+            "group": "Queues API",
+            "pages": [
+              "management/queues/list",
+              "management/queues/retrieve",
+              "management/queues/pause",
+              "management/queues/concurrency-override",
+              "management/queues/concurrency-reset"
+            ]
+          },
+          {
             "group": "Schedules API",
             "pages": [
               "management/schedules/list",
