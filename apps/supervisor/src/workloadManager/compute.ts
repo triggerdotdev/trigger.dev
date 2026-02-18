@@ -93,6 +93,10 @@ export class ComputeWorkloadManager implements WorkloadManager {
       machine: opts.machine.name,
       // Environment
       instanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
+      // Supervisor timing
+      dequeueResponseMs: opts.dequeueResponseMs,
+      pollingIntervalMs: opts.pollingIntervalMs,
+      warmStartCheckMs: opts.warmStartCheckMs,
       // Request
       image: imageRef,
       url,

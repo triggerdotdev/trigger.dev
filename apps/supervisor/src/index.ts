@@ -195,7 +195,7 @@ class ManagedSupervisor {
       this.workloadServer.notifyRun({ run });
     });
 
-    this.workerSession.on("runQueueMessage", async ({ time, message }) => {
+    this.workerSession.on("runQueueMessage", async ({ time, message, dequeueResponseMs, pollingIntervalMs }) => {
       this.logger.log(`Received message with timestamp ${time.toLocaleString()}`, message);
 
       if (message.completedWaitpoints.length > 0) {
@@ -244,7 +244,9 @@ class ManagedSupervisor {
 
       this.logger.log("Scheduling run", { runId: message.run.id });
 
+      const warmStartStart = performance.now();
       const didWarmStart = await this.tryWarmStart(message);
+      const warmStartCheckMs = Math.round(performance.now() - warmStartStart);
 
       if (didWarmStart) {
         this.logger.log("Warm start successful", { runId: message.run.id });
@@ -260,6 +262,9 @@ class ManagedSupervisor {
 
         await this.workloadManager.create({
           dequeuedAt: message.dequeuedAt,
+          dequeueResponseMs,
+          pollingIntervalMs,
+          warmStartCheckMs,
           envId: message.environment.id,
           envType: message.environment.type,
           image: message.image,
