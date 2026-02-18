@@ -284,7 +284,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
         }}
       />
       {showButtons && (
-        <div className="absolute right-0 top-0 z-10 flex items-center justify-end bg-charcoal-900/80 p-0.5">
+        <div className="absolute right-0 top-0 z-10 flex items-center justify-end bg-charcoal-900/80 p-1.5">
           {additionalActions && additionalActions}
           {showFormatButton && (
             <Button
@@ -338,11 +338,50 @@ export function TSQLEditor(opts: TSQLEditorProps) {
   );
 }
 
+// SQL keywords that legitimately appear before parentheses with a space
+const SQL_KEYWORDS_BEFORE_PAREN = new Set([
+  "IN",
+  "NOT",
+  "EXISTS",
+  "OVER",
+  "USING",
+  "VALUES",
+  "BETWEEN",
+  "LIKE",
+  "AND",
+  "OR",
+  "ON",
+  "SET",
+  "INTO",
+  "TABLE",
+  "CASE",
+  "WHEN",
+  "THEN",
+  "ELSE",
+  "AS",
+  "FROM",
+  "WHERE",
+  "HAVING",
+  "JOIN",
+  "SELECT",
+]);
+
 export function autoFormatSQL(sql: string) {
-  return formatSQL(sql, {
+  let formatted = formatSQL(sql, {
     language: "sql",
     keywordCase: "upper",
     indentStyle: "standard",
     linesBetweenQueries: 2,
   });
+
+  // sql-formatter adds a space before ( for unknown/custom functions (e.g. timeBucket ())
+  // Remove that space for anything that isn't a SQL keyword
+  formatted = formatted.replace(/(\b\w+)\s+\(/g, (match, name) => {
+    if (SQL_KEYWORDS_BEFORE_PAREN.has(name.toUpperCase())) {
+      return match;
+    }
+    return `${name}(`;
+  });
+
+  return formatted;
 }

@@ -488,6 +488,11 @@ ORDER BY run_count DESC`,
           <FunctionCategory
             title="Date/time functions"
             functions={[
+              {
+                name: "timeBucket()",
+                desc: "Auto-bucket by time period. Uses the table's time column with an interval based on the query's time range.",
+                example: "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket",
+              },
               { name: "now()", desc: "Current date and time", example: "now()" },
               { name: "today()", desc: "Current date", example: "today()" },
               { name: "yesterday()", desc: "Yesterday's date", example: "yesterday()" },

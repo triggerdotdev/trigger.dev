@@ -274,6 +274,26 @@ export function queryPath(
   return `${v3EnvironmentPath(organization, project, environment)}/query`;
 }
 
+export function v3CustomDashboardPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  dashboard: { friendlyId: string }
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/metrics/custom/${
+    dashboard.friendlyId
+  }`;
+}
+
+export function v3BuiltInDashboardPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  key: string
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/metrics/${key}`;
+}
+
 export function v3TestTaskPath(
   organization: OrgForPath,
   project: ProjectForPath,
@@ -482,7 +502,7 @@ export function v3ProjectSettingsPath(
 export function v3LogsPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  environment: EnvironmentForPath,
+  environment: EnvironmentForPath
 ) {
   return `${v3EnvironmentPath(organization, project, environment)}/logs`;
 }

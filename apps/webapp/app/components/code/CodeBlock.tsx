@@ -68,6 +68,9 @@ type CodeBlockProps = {
 
   /** Search term to highlight in the code */
   searchTerm?: string;
+
+  /** Whether to wrap the code */
+  wrap?: boolean;
 };
 
 const dimAmount = 0.5;
@@ -207,6 +210,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       fileName,
       rowTitle,
       searchTerm,
+      wrap = false,
       ...props
     }: CodeBlockProps,
     ref
@@ -215,7 +219,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
     const [copied, setCopied] = useState(false);
     const [modalCopied, setModalCopied] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isWrapped, setIsWrapped] = useState(false);
+    const [isWrapped, setIsWrapped] = useState(wrap);
 
     const onCopied = useCallback(
       (event: React.MouseEvent<HTMLButtonElement>) => {

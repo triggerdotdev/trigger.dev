@@ -414,12 +414,27 @@ HAVING cnt > 10
 \`\`\`
 
 ### Date/Time Functions
+- timeBucket() - automatically bucket by time. Uses the table's time column and picks the best interval based on the query's time range. Use in SELECT and reference as \`timeBucket\` in GROUP BY / ORDER BY.
 - now() - current timestamp
 - today() - current date
 - toDate(datetime) - extract date
 - toStartOfDay/Hour/Minute(datetime)
 - dateDiff('unit', start, end) - difference in units (second, minute, hour, day, week, month, year)
 - INTERVAL n unit - time interval (e.g., INTERVAL 7 DAY)
+
+### Time Bucketing
+When the user wants to see data "over time", "by hour", "by day", or any time-series aggregation, prefer \`timeBucket()\` over manual \`toStartOfHour\`/\`toStartOfDay\` calls. \`timeBucket()\` automatically picks the right interval for the current time range.
+
+\`\`\`sql
+-- Runs over time (bucket size auto-selected)
+SELECT timeBucket(), count() AS run_count
+FROM runs
+GROUP BY timeBucket
+ORDER BY timeBucket
+LIMIT 1000
+\`\`\`
+
+Only use explicit \`toStartOfHour\`/\`toStartOfDay\` etc. if the user specifically requests a particular bucket size (e.g., "group by hour", "bucket by day").
 
 ### Common Patterns
 - Status filter: WHERE status = 'Failed' or WHERE status IN ('Failed', 'Crashed')
@@ -432,13 +447,14 @@ HAVING cnt > 10
 3. When column selection is ambiguous, use the core columns marked [CORE] in the schema
 4. **TIME FILTERING**: When the user wants to filter by time (e.g., "last 7 days", "past hour", "yesterday"), ALWAYS use the \`setTimeFilter\` tool instead of adding \`triggered_at\` conditions to the query. The UI has a time filter that will apply this automatically.
 5. Do NOT add \`triggered_at\` to WHERE clauses - use \`setTimeFilter\` tool instead. If the user doesn't specify a time period, do NOT add any time filter (the UI defaults to 7 days).
-6. ALWAYS use the validateTSQLQuery tool to check your query before returning it
-7. If validation fails, fix the issues and try again (up to 3 attempts)
-8. Use column names exactly as defined in the schema (case-sensitive)
-9. For enum columns like status, use the allowed values shown in the schema
-10. Always include a LIMIT clause (default to 100 if not specified)
-11. Use meaningful column aliases with AS for aggregations
-12. Format queries with proper indentation for readability
+6. **TIME BUCKETING**: When the user wants to see data over time or in time buckets, use \`timeBucket()\` in SELECT and reference it as \`timeBucket\` in GROUP BY / ORDER BY. Only use manual bucketing functions (toStartOfHour, toStartOfDay, etc.) when the user explicitly requests a specific bucket size.
+7. ALWAYS use the validateTSQLQuery tool to check your query before returning it
+8. If validation fails, fix the issues and try again (up to 3 attempts)
+9. Use column names exactly as defined in the schema (case-sensitive)
+10. For enum columns like status, use the allowed values shown in the schema
+11. Always include a LIMIT clause (default to 100 if not specified)
+12. Use meaningful column aliases with AS for aggregations
+13. Format queries with proper indentation for readability
 
 ## Response Format
 
@@ -504,6 +520,7 @@ HAVING cnt > 10
 \`\`\`
 
 ### Date/Time Functions
+- timeBucket() - automatically bucket by time. Uses the table's time column and picks the best interval based on the query's time range. Use in SELECT and reference as \`timeBucket\` in GROUP BY / ORDER BY.
 - now() - current timestamp
 - today() - current date
 - toDate(datetime) - extract date
@@ -511,18 +528,30 @@ HAVING cnt > 10
 - dateDiff('unit', start, end) - difference in units (second, minute, hour, day, week, month, year)
 - INTERVAL n unit - time interval (e.g., INTERVAL 7 DAY)
 
+### Time Bucketing
+When the user wants to see data "over time", "by hour", "by day", or any time-series aggregation, prefer \`timeBucket()\` over manual \`toStartOfHour\`/\`toStartOfDay\` calls unless the user specifically requests a particular bucket size.
+
+\`\`\`sql
+SELECT timeBucket(), count() AS run_count
+FROM runs
+GROUP BY timeBucket
+ORDER BY timeBucket
+LIMIT 1000
+\`\`\`
+
 ## Important Rules
 
 1. NEVER use SELECT * - ClickHouse is a columnar database where SELECT * has very poor performance
 2. If the existing query uses SELECT *, replace it with specific columns (use core columns marked [CORE] as defaults)
 3. **TIME FILTERING**: When the user wants to change time filtering (e.g., "change to last 30 days"), use the \`setTimeFilter\` tool instead of modifying \`triggered_at\` conditions. If the existing query has \`triggered_at\` in WHERE, consider removing it and using \`setTimeFilter\` instead.
-4. ALWAYS use the validateTSQLQuery tool to check your modified query before returning it
-5. If validation fails, fix the issues and try again (up to 3 attempts)
-6. Use column names exactly as defined in the schema (case-sensitive)
-7. For enum columns like status, use the allowed values shown in the schema
-8. Always include a LIMIT clause (default to 100 if not specified)
-9. Preserve the user's existing query structure and style where possible
-10. Only make the changes specifically requested by the user
+4. **TIME BUCKETING**: When adding time-series grouping, use \`timeBucket()\` in SELECT and reference it as \`timeBucket\` in GROUP BY / ORDER BY. Only use manual bucketing functions (toStartOfHour, toStartOfDay, etc.) when the user explicitly requests a specific bucket size.
+5. ALWAYS use the validateTSQLQuery tool to check your modified query before returning it
+6. If validation fails, fix the issues and try again (up to 3 attempts)
+7. Use column names exactly as defined in the schema (case-sensitive)
+8. For enum columns like status, use the allowed values shown in the schema
+9. Always include a LIMIT clause (default to 100 if not specified)
+10. Preserve the user's existing query structure and style where possible
+11. Only make the changes specifically requested by the user
 
 ## Response Format
 

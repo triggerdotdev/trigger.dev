@@ -33,7 +33,7 @@ const ResizableHandle = ({
       // Vertical orientation
       "data-[handle-orientation=vertical]:h-0.75 data-[handle-orientation=vertical]:w-full",
       "data-[handle-orientation=vertical]:after:inset-x-0 data-[handle-orientation=vertical]:after:inset-y-auto",
-      "data-[handle-orientation=vertical]:after:top-1/2 data-[handle-orientation=vertical]:after:left-0",
+      "data-[handle-orientation=vertical]:after:left-0 data-[handle-orientation=vertical]:after:top-1/2",
       "data-[handle-orientation=vertical]:after:h-1 data-[handle-orientation=vertical]:after:w-full",
       "data-[handle-orientation=vertical]:after:-translate-y-1/2 data-[handle-orientation=vertical]:after:translate-x-0",
       className
@@ -42,9 +42,9 @@ const ResizableHandle = ({
     {...props}
   >
     {/* Horizontal orientation line indicator */}
-    <div className="absolute left-[0.0625rem] top-0 h-full w-px bg-grid-bright transition group-hover:left-0 group-hover:w-0.75 group-hover:bg-lavender-500 group-data-[handle-orientation=vertical]:hidden" />
+    <div className="absolute left-[0.0625rem] top-0 z-20 h-full w-px bg-grid-bright transition group-hover:left-0 group-hover:w-0.75 group-hover:bg-indigo-500 group-data-[handle-orientation=vertical]:hidden" />
     {/* Vertical orientation line indicator */}
-    <div className="absolute left-0 top-[0.0625rem] hidden h-px w-full bg-grid-bright transition group-hover:top-0 group-hover:h-0.75 group-hover:bg-lavender-500 group-data-[handle-orientation=vertical]:block" />
+    <div className="absolute left-0 top-[0.0625rem] z-20 hidden h-px w-full bg-grid-bright transition group-hover:top-0 group-hover:h-0.75 group-hover:bg-indigo-500 group-data-[handle-orientation=vertical]:block" />
     {withHandle && (
       <>
         {/* Horizontal orientation dots (vertical arrangement) */}
