@@ -7,6 +7,7 @@ on:
     paths:
       - "packages/**"
       - ".changeset/**"
+      - ".server-changes/**"
       - "package.json"
       - "pnpm-lock.yaml"
 
@@ -50,7 +51,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update PR title with version
+      - name: Update PR title and enhance body
         if: steps.changesets.outputs.published != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -61,6 +62,15 @@ jobs:
             # we arbitrarily reference the version of the cli package here; it is the same for all package releases
             VERSION=$(git show origin/changeset-release/main:packages/cli-v3/package.json | jq -r '.version')
             gh pr edit "$PR_NUMBER" --title "chore: release v$VERSION"
+
+            # Enhance the PR body with a clean, deduplicated summary
+            RAW_BODY=$(gh pr view "$PR_NUMBER" --json body --jq '.body')
+            ENHANCED_BODY=$(echo "$RAW_BODY" | CHANGESET_PR_BODY="$RAW_BODY" node scripts/enhance-release-pr.mjs "$VERSION")
+            if [ -n "$ENHANCED_BODY" ]; then
+              gh api repos/triggerdotdev/trigger.dev/pulls/"$PR_NUMBER" \
+                -X PATCH \
+                -f body="$ENHANCED_BODY"
+            fi
           fi
 
   update-lockfile:
@@ -88,15 +98,26 @@ jobs:
       - name: Install and update lockfile
         run: pnpm install --no-frozen-lockfile
 
-      - name: Commit and push lockfile
+      - name: Clean up consumed .server-changes/ files
         run: |
           set -e
-          if git diff --quiet pnpm-lock.yaml; then
-            echo "No lockfile changes"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add pnpm-lock.yaml
-            git commit -m "chore: update lockfile for release"
+          shopt -s nullglob
+          files=(.server-changes/*.md)
+          for f in "${files[@]}"; do
+            if [ "$(basename "$f")" != "README.md" ]; then
+              git rm "$f"
+            fi
+          done
+
+      - name: Commit and push lockfile + server-changes cleanup
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update lockfile and clean up .server-changes/ for release"
             git push origin changeset-release/main
+          else
+            echo "No changes to commit"
           fi
