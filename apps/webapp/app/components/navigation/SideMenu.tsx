@@ -612,6 +612,7 @@ export function SideMenu({
             isCollapsed={isCollapsed}
             isV3={isV3Project}
             hasIncident={incidentStatus.hasIncident}
+            isManagedCloud={incidentStatus.isManagedCloud}
           />
           <motion.div
             layout
@@ -641,12 +642,14 @@ function V3DeprecationPanel({
   isCollapsed,
   isV3,
   hasIncident,
+  isManagedCloud,
 }: {
   isCollapsed: boolean;
   isV3: boolean;
   hasIncident: boolean;
+  isManagedCloud: boolean;
 }) {
-  if (!isV3 || hasIncident) {
+  if (!isManagedCloud || !isV3 || hasIncident) {
     return null;
   }
 
