@@ -26,12 +26,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../pri
 import { v3BillingPath } from "~/utils/pathBuilder";
 import { type SideMenuEnvironment, type SideMenuProject } from "./SideMenu";
 
-function useCreateDashboard<T extends { slug: string }>({
+function useCreateDashboard({
   organization,
   project,
   environment,
 }: {
-  organization: T;
+  organization: { slug: string };
   project: { slug: string };
   environment: { slug: string };
 }) {
