@@ -10,7 +10,8 @@ The Vercel integration connects your Vercel project to your Trigger.dev project 
 This eliminates the need to manually run the `trigger.dev deploy` command or maintain custom CI/CD workflows for Vercel-based projects.
 
 <Note>
-  The Vercel integration requires the [GitHub integration](/github-integration) to be connected as well, since Trigger.dev builds your tasks from your GitHub repository.
+  The Vercel integration requires the [GitHub integration](/github-integration) to be connected as
+  well, since Trigger.dev builds your tasks from your GitHub repository.
 </Note>
 
 ## Installation
@@ -22,7 +23,8 @@ You can connect Vercel from two entry points:
 <Steps>
 
 <Step title="Connect Vercel">
-  Go to your project's **Settings** page and click **Connect Vercel**. This will redirect you to Vercel to authorize the Trigger.dev app.
+  Go to your project's **Settings** page and click **Connect Vercel**. This will redirect you to
+  Vercel to authorize the Trigger.dev app.
 </Step>
 
 <Step title="Select a Vercel project">
@@ -30,15 +32,18 @@ You can connect Vercel from two entry points:
 </Step>
 
 <Step title="Map environments">
-  If your Vercel project has custom environments, choose which one maps to your Trigger.dev staging environment.
+  If your Vercel project has custom environments, choose which one maps to your Trigger.dev staging
+  environment.
 </Step>
 
 <Step title="Sync environment variables">
-  Review the environment variables that will be pulled from Vercel into Trigger.dev. You can deselect any variables you don't want to sync.
+  Review the environment variables that will be pulled from Vercel into Trigger.dev. You can
+  deselect any variables you don't want to sync.
 </Step>
 
-<Step title="Configure build settings">
-  Optionally adjust [build settings](#build-settings) for atomic deployments, env var pulling, and new env var discovery.
+<Step title="Configure build options">
+  Optionally adjust [build options](#build-options) for atomic deployments, env var pulling, and new
+  env var discovery.
 </Step>
 
 <Step title="Connect GitHub">
@@ -52,11 +57,14 @@ You can connect Vercel from two entry points:
 <Steps>
 
 <Step title="Install the integration">
-  Install the [Trigger.dev integration from the Vercel Marketplace](https://vercel.com/marketplace/trigger). This will redirect you to Trigger.dev to complete setup.
+  Install the [Trigger.dev integration from the Vercel
+  Marketplace](https://vercel.com/marketplace/trigger). This will redirect you to Trigger.dev to
+  complete setup.
 </Step>
 
 <Step title="Select your Trigger.dev organization and project">
-  Choose which Trigger.dev organization and project to connect. If you're new to Trigger.dev, you'll be guided through creating an organization and project.
+  Choose which Trigger.dev organization and project to connect. If you're new to Trigger.dev, you'll
+  be guided through creating an organization and project.
 </Step>
 
 <Step title="Connect GitHub">
@@ -66,11 +74,17 @@ You can connect Vercel from two entry points:
 </Steps>
 
 <Note>
-  When installing from the Vercel Marketplace, default build settings are applied automatically. You can adjust them later in your project settings.
+  When installing from the Vercel Marketplace, default build settings are applied automatically. You
+  can adjust them later in your project settings.
 </Note>
 
 <Warning>
-  **Vercel Root Directory:** If your Vercel project uses a **Root Directory** (e.g. you deploy a single subfolder such as `app` or `web`), you may see "The specified Root Directory does not exist" after connecting the integration. Use the **repository root** (leave Root Directory empty) in your Vercel project settings instead. Trigger.dev always builds from the repo root; point to your app or tasks in a subfolder by setting the **Trigger config file** path (and other [Build options](#build-settings)) in your Trigger.dev project configuration.
+  **Vercel Root Directory:** If your Vercel project uses a **Root Directory** (e.g. you deploy a
+  single subfolder such as `app` or `web`), you may see "The specified Root Directory does not
+  exist" after connecting the integration. Use the **repository root** (leave Root Directory empty)
+  in your Vercel project settings instead. Trigger.dev always builds from the repo root; point to
+  your app or tasks in a subfolder by setting the **Trigger config file** path (and other [Build
+  options](#build-options)) in your Trigger.dev project configuration.
 </Warning>
 
 ## Environment variable sync
@@ -82,13 +96,15 @@ The integration syncs environment variables in both directions:
 **Trigger.dev → Vercel**: Trigger.dev syncs API keys (like `TRIGGER_SECRET_KEY`) to your Vercel project so your app can communicate with Trigger.dev.
 
 The following variables are excluded from the Vercel → Trigger.dev sync:
+
 - `TRIGGER_SECRET_KEY`, `TRIGGER_VERSION`, `TRIGGER_PREVIEW_BRANCH` (managed by Trigger.dev)
 - Sensitive/secret-type variables (Vercel API limitation)
 
 You can control sync behavior per-variable from your project's Vercel settings. Deselecting a variable prevents its value from being updated during future syncs.
 
 <Tip>
-  For dynamic environment variables (e.g., from NeonDB branching), use the `syncEnvVars` build extension instead. Learn more about [environment variables](/deploy-environment-variables).
+  For dynamic environment variables (e.g., from NeonDB branching), use the `syncEnvVars` build
+  extension instead. Learn more about [environment variables](/deploy-environment-variables).
 </Tip>
 
 ## Atomic deployments
@@ -98,7 +114,9 @@ Atomic deployments ensure your Vercel app and Trigger.dev tasks are deployed in 
 Atomic deployments are enabled for the production environment by default.
 
 <Note>
-  When atomic deployments are enabled, the integration automatically disables `Auto-assign Custom Production Domains` on your Vercel project. This is required so that Vercel doesn't promote a deployment before the Trigger.dev build is ready.
+  When atomic deployments are enabled, the integration automatically disables `Auto-assign Custom
+  Production Domains` on your Vercel project. This is required so that Vercel doesn't promote a
+  deployment before the Trigger.dev build is ready.
 </Note>
 
 Previously, setting up atomic deployments with Vercel required custom GitHub Actions workflows. The Vercel integration automates this entirely. For more details on how atomic deployments work, see [Atomic deploys](/deployment/atomic-deployment).
@@ -107,20 +125,21 @@ Previously, setting up atomic deployments with Vercel required custom GitHub Act
 
 The integration maps Vercel environments to Trigger.dev environments:
 
-| Vercel environment | Trigger.dev environment |
-| --- | --- |
-| Production | Production |
+| Vercel environment | Trigger.dev environment        |
+| ------------------ | ------------------------------ |
+| Production         | Production                     |
 | Custom environment | Staging (you choose which one) |
-| Preview | Preview |
-| Development | Development |
+| Preview            | Preview                        |
+| Development        | Development                    |
 
 If your Vercel project has a custom environment, you can select which one maps to your Trigger.dev staging environment during setup or in your project settings.
 
 <Note>
-  Preview deployments require the preview environment to be enabled on your project. Learn more about [preview branches](/deployment/preview-branches).
+  Preview deployments require the preview environment to be enabled on your project. Learn more
+  about [preview branches](/deployment/preview-branches).
 </Note>
 
-## Build settings
+## Build options
 
 You can configure the following settings per-environment from your project's Vercel settings:
 
