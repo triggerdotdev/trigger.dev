@@ -9,6 +9,7 @@ import {
   ClockIcon,
   Cog8ToothIcon,
   CogIcon,
+  ExclamationTriangleIcon,
   FolderIcon,
   FolderOpenIcon,
   GlobeAmericasIcon,
@@ -45,7 +46,6 @@ import { useHasAdminAccess } from "~/hooks/useUser";
 import { type UserWithDashboardPreferences } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
-import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { IncidentStatusPanel, useIncidentStatus } from "~/routes/resources.incidents";
 import { cn } from "~/utils/cn";
 import {
@@ -165,6 +165,8 @@ export function SideMenu({
   const isAdmin = useHasAdminAccess();
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
+  const incidentStatus = useIncidentStatus();
+  const isV3Project = project.engine === "V1";
 
   const persistSideMenuPreferences = useCallback(
     (data: {
@@ -599,8 +601,17 @@ export function SideMenu({
           </div>
         </div>
         <div>
-          <IncidentStatusPanel isCollapsed={isCollapsed} />
-          <V3DeprecationPanel isCollapsed={isCollapsed} isV3={project.engine === "V1"} />
+          <IncidentStatusPanel
+            isCollapsed={isCollapsed}
+            title={incidentStatus.title}
+            hasIncident={incidentStatus.hasIncident}
+            isManagedCloud={incidentStatus.isManagedCloud}
+          />
+          <V3DeprecationPanel
+            isCollapsed={isCollapsed}
+            isV3={isV3Project}
+            hasIncident={incidentStatus.hasIncident}
+          />
           <motion.div
             layout
             transition={{ duration: 0.2, ease: "easeInOut" }}
@@ -625,9 +636,15 @@ export function SideMenu({
   );
 }
 
-function V3DeprecationPanel({ isCollapsed, isV3 }: { isCollapsed: boolean; isV3: boolean }) {
-  const { hasIncident } = useIncidentStatus();
-
+function V3DeprecationPanel({
+  isCollapsed,
+  isV3,
+  hasIncident,
+}: {
+  isCollapsed: boolean;
+  isV3: boolean;
+  hasIncident: boolean;
+}) {
   if (!isV3 || hasIncident) {
     return null;
   }
