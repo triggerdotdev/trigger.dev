@@ -1,6 +1,6 @@
 import type { Instrumentation } from "@opentelemetry/instrumentation";
 import type { SpanExporter } from "@opentelemetry/sdk-trace-base";
-import type { MetricReader } from "@opentelemetry/sdk-metrics";
+import type { MetricReader, PushMetricExporter } from "@opentelemetry/sdk-metrics";
 import type { BuildExtension } from "./build/extensions.js";
 import type {
   AnyOnFailureHookFunction,
@@ -109,6 +109,14 @@ export type TriggerConfig = {
      * @see https://trigger.dev/docs/config/config-file#exporters
      */
     logExporters?: Array<LogRecordExporter>;
+
+    /**
+     * Metric exporters to use for OpenTelemetry. This is useful if you want to export metrics to external services.
+     * Each exporter is automatically wrapped in a PeriodicExportingMetricReader.
+     *
+     * For more control over the reader configuration, use `metricReaders` instead.
+     */
+    metricExporters?: Array<PushMetricExporter>;
 
     /**
      * Metric readers for OpenTelemetry. Add custom metric readers to export

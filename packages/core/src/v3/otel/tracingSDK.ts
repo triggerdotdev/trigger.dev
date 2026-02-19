@@ -32,6 +32,7 @@ import {
   MeterProvider,
   PeriodicExportingMetricReader,
   type MetricReader,
+  type PushMetricExporter,
 } from "@opentelemetry/sdk-metrics";
 import { RandomIdGenerator, SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
@@ -83,6 +84,7 @@ export type TracingSDKConfig = {
   instrumentations?: Instrumentation[];
   exporters?: SpanExporter[];
   logExporters?: LogRecordExporter[];
+  metricExporters?: PushMetricExporter[];
   metricReaders?: MetricReader[];
   diagLogLevel?: TracingDiagnosticLogLevel;
   resource?: Resource;
@@ -319,6 +321,14 @@ export class TracingSDK {
         exportIntervalMillis: collectionIntervalMs,
         exportTimeoutMillis: Math.min(exportTimeoutMillis, collectionIntervalMs),
       }),
+      ...(config.metricExporters ?? []).map(
+        (exporter) =>
+          new PeriodicExportingMetricReader({
+            exporter,
+            exportIntervalMillis: collectionIntervalMs,
+            exportTimeoutMillis: Math.min(exportTimeoutMillis, collectionIntervalMs),
+          })
+      ),
       ...(config.metricReaders ?? []),
     ];
 

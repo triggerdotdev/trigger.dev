@@ -189,6 +189,7 @@ async function doBootstrap() {
       forceFlushTimeoutMillis: 30_000,
       exporters: config.telemetry?.exporters ?? [],
       logExporters: config.telemetry?.logExporters ?? [],
+      metricExporters: config.telemetry?.metricExporters ?? [],
       metricReaders: config.telemetry?.metricReaders ?? [],
       resource: config.telemetry?.resource,
       hostMetrics: true,
