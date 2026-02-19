@@ -543,8 +543,15 @@ export function VercelOnboardingModal({
 
     if (!isGitHubConnectedForOnboarding) {
       setState("github-connection");
+      capture("vercel onboarding github step viewed", {
+        origin: fromMarketplaceContext ? "marketplace" : "dashboard",
+        step: "github-connection",
+        organization_slug: organizationSlug,
+        project_slug: projectSlug,
+        github_app_installed: gitHubAppInstallations.length > 0,
+      });
     }
-  }, [vercelStagingEnvironment, pullEnvVarsBeforeBuild, atomicBuilds, discoverEnvVars, syncEnvVarsMapping, nextUrl, fromMarketplaceContext, isGitHubConnectedForOnboarding, completeOnboardingFetcher, actionUrl, trackOnboarding]);
+  }, [vercelStagingEnvironment, pullEnvVarsBeforeBuild, atomicBuilds, discoverEnvVars, syncEnvVarsMapping, nextUrl, fromMarketplaceContext, isGitHubConnectedForOnboarding, completeOnboardingFetcher, actionUrl, trackOnboarding, capture, organizationSlug, projectSlug, gitHubAppInstallations.length]);
 
   const handleFinishOnboarding = useCallback((e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1081,6 +1088,7 @@ export function VercelOnboardingModal({
                       )}
                       variant="secondary/medium"
                       LeadingIcon={OctoKitty}
+                      onClick={() => trackOnboarding("vercel onboarding github app install clicked")}
                     >
                       Install GitHub app
                     </LinkButton>
@@ -1110,6 +1118,7 @@ export function VercelOnboardingModal({
                     <Button
                       variant="primary/medium"
                       onClick={() => {
+                        trackOnboarding("vercel onboarding github completed");
                         setState("completed");
                         const validUrl = safeRedirectUrl(nextUrl);
                         if (validUrl) {
@@ -1123,6 +1132,7 @@ export function VercelOnboardingModal({
                     <Button
                       variant="tertiary/medium"
                       onClick={() => {
+                        trackOnboarding("vercel onboarding github skipped");
                         setState("completed");
                         if (fromMarketplaceContext && nextUrl) {
                           const validUrl = safeRedirectUrl(nextUrl);
@@ -1141,6 +1151,7 @@ export function VercelOnboardingModal({
                     <Button
                       variant="tertiary/medium"
                       onClick={() => {
+                        trackOnboarding("vercel onboarding github skipped");
                         setState("completed");
                       }}
                     >
