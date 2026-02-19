@@ -12,7 +12,10 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type User } from "~/models/user.server";
 import { getUsername } from "~/utils/username";
 import { processGitMetadata } from "./BranchesPresenter.server";
-import { VercelProjectIntegrationDataSchema } from "~/v3/vercel/vercelProjectIntegrationSchema";
+import {
+  VercelProjectIntegrationDataSchema,
+  buildVercelDeploymentUrl,
+} from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { S2 } from "@s2-dev/streamstore";
 import { env } from "~/env.server";
 import { createRedisClient } from "~/redis.server";
@@ -201,8 +204,11 @@ export class DeploymentPresenter {
           });
 
         if (integrationDeployment) {
-          const vercelId = integrationDeployment.integrationDeploymentId.replace(/^dpl_/, "");
-          vercelDeploymentUrl = `https://vercel.com/${parsed.data.vercelTeamSlug}/${parsed.data.vercelProjectName}/${vercelId}`;
+          vercelDeploymentUrl = buildVercelDeploymentUrl(
+            parsed.data.vercelTeamSlug,
+            parsed.data.vercelProjectName,
+            integrationDeployment.integrationDeploymentId
+          );
         }
       }
     }
