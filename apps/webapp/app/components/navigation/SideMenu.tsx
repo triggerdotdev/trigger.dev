@@ -2,6 +2,7 @@ import {
   AdjustmentsHorizontalIcon,
   ArrowPathRoundedSquareIcon,
   ArrowRightOnRectangleIcon,
+  ArrowTopRightOnSquareIcon,
   BeakerIcon,
   BellAlertIcon,
   ChartBarIcon,
@@ -712,9 +713,11 @@ function V3DeprecationContent() {
         to="https://trigger.dev/docs/migrating-from-v3"
         target="_blank"
         fullWidth
+        TrailingIcon={ArrowTopRightOnSquareIcon}
+        trailingIconClassName="text-amber-300"
         className="border-amber-500/30 bg-amber-500/15 hover:!border-amber-500/50 hover:!bg-amber-500/25"
       >
-        <span className="text-amber-300">Migrate to v4 now</span>
+        <span className="text-amber-300">View migration guide</span>
       </LinkButton>
     </div>
   );
