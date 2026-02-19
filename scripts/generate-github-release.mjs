@@ -216,7 +216,11 @@ function formatRelease({ version, changesContent, contributors, packages }) {
   if (contributors.length > 0) {
     lines.push("## Contributors");
     lines.push("");
-    lines.push(contributors.map((c) => `@${c}`).join(", "));
+    lines.push(
+      contributors
+        .map((c) => (/^[A-Za-z0-9][-A-Za-z0-9]*$/.test(c) ? `@${c}` : c))
+        .join(", ")
+    );
     lines.push("");
   }
 
