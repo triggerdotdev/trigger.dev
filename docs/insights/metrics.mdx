@@ -1,0 +1,96 @@
+---
+title: "Metrics dashboards"
+description: "Create custom dashboards with real-time metrics powered by TRQL queries."
+---
+
+## Overview
+
+In the Trigger.dev dashboard we have built-in dashboards and you can create your own.
+
+Metrics dashboards are powered by [TRQL queries](/insights/query) with widgets that can be displayed as charts, tables, or single values. They automatically refresh to show the latest data.
+
+![The built-in Metrics dashboard](/images/metrics-built-in.png)
+
+### Visualization types
+
+- **Line chart** - Show trends over time
+- **Bar chart** - Compare values across categories
+- **Area chart** - Display cumulative trends
+- **Table** - Show detailed data in rows
+- **Single value** - Display a single metric (count, sum, average, etc.)
+
+You can also add Titles to your dashboard.
+
+## Filtering and time ranges
+
+All widgets on a dashboard use the time range filter applied to the dashboard.
+
+You can also filter the data by:
+
+- Scope: Environment, Project, Organization
+- Tasks
+- Queues
+
+## Creating custom metrics dashboards
+
+1. In the sidebar click the + icon next to "Metrics".
+2. Name your custom dashboard.
+3. From the top-right you can "Add chart" or "Add title".
+4. For charts you write [TRQL queries](/insights/query) and choose a visualization type.
+5. You can resize and reposition widgets on your dashboards.
+
+## Performance considerations
+
+### Optimize queries for metrics
+
+1. **Use time bucketing** - `timeBucket()` automatically groups by appropriate intervals
+2. **Limit result size** - Add `LIMIT` clauses, especially for table widgets
+3. **Use approximate functions** - `uniq()` instead of `uniqExact()` for faster approximate counts
+
+## Exporting metric data
+
+Export data from any metric widget:
+
+1. Click the widget menu (three dots)
+2. Select "Copy JSON" or "Copy CSV"
+
+## Best practices
+
+1. **Start simple** - Begin with basic metrics and iterate based on insights
+2. **Use meaningful names** - Give widgets clear, descriptive titles
+3. **Group related metrics** - Organize dashboards by theme (performance, costs, errors)
+4. **Test queries first** - Use the Query page to develop and test before adding to dashboards
+
+## Troubleshooting
+
+### Widget shows "No data"
+
+- Check that your query returns results in the Query page
+- Verify time filters include the period with data
+- Ensure task/queue filters match existing runs
+
+### Widget is slow to load
+
+- Add time range filters to your query
+- Use `LIMIT` clauses
+- Simplify aggregations
+- Check query execution time in Query page
+
+### Chart displays incorrectly
+
+- Verify column names match visualization config
+- Check data types (numbers for charts, dates for time series)
+- Ensure `timeBucket()` is used for time-series charts
+- Review that series columns exist in query results
+
+## Limits
+
+Metrics is powered by Query so have [the same limits](/insights/query#limits) as Query.
+
+There is a separate concurrency limits for metric widgets.
+
+| Limit                     | Details        |
+| :------------------------ | :------------- |
+| Concurrent widget queries | 30 per project |
+
+See [Limits](/limits) for details.
