@@ -275,14 +275,16 @@ If the above doesn't work, then we recommend you try increasing the machine size
 
 ### Realtime stream error (`sendBatchNonBlocking` / `S2AppendSession`)
 
-Errors mentioning `sendBatchNonBlocking`, `@s2-dev/streamstore`, or `S2AppendSession` (often with `code: undefined`) can occur when you close a stream and then await `waitUntilComplete()`, or when a stream runs for a long time (e.g. 20+ minutes). Wrap `waitUntilComplete()` in try/catch so it doesn't fail your task:
+Errors mentioning `sendBatchNonBlocking`, `@s2-dev/streamstore`, or `S2AppendSession` (often with `code: undefined`) can occur when you close a stream and then await `waitUntilComplete()`, or when a stream runs for a long time (e.g. 20+ minutes). Wrap `waitUntilComplete()` in try/catch so Transport/closed-stream errors don't fail your task:
 
 ```ts
+import { streams } from "@trigger.dev/sdk";
+
+const { waitUntilComplete } = streams.pipe("my-stream", dataStream); // or streams.writer(...)
 try {
-  this.closeNodeUpdatesStream();
-  await nodeUpdatesRealtime?.waitUntilComplete();
+  await waitUntilComplete();
 } catch (err) {
-  // Transport/closed-stream; log if needed
+  // Transport/closed-stream; log if needed or ignore
 }
 ```
 
