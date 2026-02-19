@@ -92,6 +92,21 @@ export type RunQueueOptions = {
     processMarkedJitterInMs?: number;
     callback: ConcurrencySweeperCallback;
   };
+  /** TTL system for automatic run expiration */
+  ttlSystem?: {
+    /** Number of shards for TTL sorted sets (default: same as queue shards) */
+    shardCount?: number;
+    /** How often to poll each shard for expired runs (ms, default: 1000) */
+    pollIntervalMs?: number;
+    /** Max number of runs to expire per poll per shard (default: 100) */
+    batchSize?: number;
+    /** Key suffix for TTL worker's queue sorted set (relative to RunQueue keyPrefix) */
+    workerQueueSuffix: string;
+    /** Key suffix for TTL worker's items hash (relative to RunQueue keyPrefix) */
+    workerItemsSuffix: string;
+    /** Visibility timeout for TTL worker jobs (ms, default: 30000) */
+    visibilityTimeoutMs?: number;
+  };
 };
 
 export interface ConcurrencySweeperCallback {
@@ -271,6 +286,7 @@ export class RunQueue {
     this.#setupSubscriber();
     this.#setupLuaLogSubscriber();
     this.#startMasterQueueConsumers();
+    this.#startTtlConsumers();
     this.#registerCommands();
   }
 
@@ -650,7 +666,17 @@ export class RunQueue {
           });
         }
 
-        return await this.#callEnqueueMessage(messagePayload);
+        // Pass TTL info to enqueue so it can be added atomically
+        const ttlInfo =
+          message.ttlExpiresAt && this.options.ttlSystem
+            ? {
+                ttlExpiresAt: message.ttlExpiresAt,
+                ttlQueueKey: this.keys.ttlQueueKeyForShard(this.#getTtlShardForQueue(queueKey)),
+                ttlMember: `${queueKey}|${message.runId}|${message.orgId}`,
+              }
+            : undefined;
+
+        await this.#callEnqueueMessage(messagePayload, ttlInfo);
       },
       {
         kind: SpanKind.PRODUCER,
@@ -1209,6 +1235,158 @@ export class RunQueue {
     }
   }
 
+  // TTL System Methods
+
+  #startTtlConsumers() {
+    if (!this.options.ttlSystem) {
+      this.logger.debug("TTL system disabled (no ttlSystem config)");
+      return;
+    }
+
+    const shardCount = this.options.ttlSystem.shardCount ?? this.shardCount;
+
+    for (let i = 0; i < shardCount; i++) {
+      this.logger.debug(`Starting TTL consumer ${i}`);
+      this.#startTtlConsumer(i).catch((err) => {
+        this.logger.error(`Failed to start TTL consumer ${i}`, { error: err });
+      });
+    }
+
+    this.logger.debug(`Started ${shardCount} TTL consumers`);
+  }
+
+  async #startTtlConsumer(shard: number) {
+    if (!this.options.ttlSystem) {
+      return;
+    }
+
+    const pollIntervalMs = this.options.ttlSystem.pollIntervalMs ?? 1000;
+    const batchSize = this.options.ttlSystem.batchSize ?? 100;
+    let processedCount = 0;
+
+    try {
+      for await (const _ of setInterval(pollIntervalMs, null, {
+        signal: this.abortController.signal,
+      })) {
+        const now = Date.now();
+
+        const [error, expiredRuns] = await tryCatch(
+          this.#expireTtlRuns(shard, now, batchSize)
+        );
+
+        if (error) {
+          this.logger.error(`Failed to expire TTL runs for shard ${shard}`, {
+            error,
+            service: this.name,
+            shard,
+          });
+          continue;
+        }
+
+        if (expiredRuns.length > 0) {
+          this.logger.debug(`Expired ${expiredRuns.length} TTL runs in shard ${shard}`, {
+            service: this.name,
+            shard,
+            count: expiredRuns.length,
+          });
+          processedCount += expiredRuns.length;
+        }
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== "AbortError") {
+        throw error;
+      }
+
+      this.logger.debug(`TTL consumer ${shard} stopped`, {
+        service: this.name,
+        shard,
+        processedCount,
+      });
+    }
+  }
+
+  /**
+   * Atomically expire TTL runs: removes from TTL set, acknowledges from normal queue,
+   * and enqueues each run to the TTL worker for DB updates.
+   */
+  async #expireTtlRuns(
+    shard: number,
+    now: number,
+    batchSize: number
+  ): Promise<Array<{ queueKey: string; runId: string; orgId: string }>> {
+    const ttlSystem = this.options.ttlSystem;
+    if (!ttlSystem) {
+      return [];
+    }
+
+    const shardCount = ttlSystem.shardCount ?? this.shardCount;
+    const ttlQueueKey = this.keys.ttlQueueKeyForShard(shard);
+    const keyPrefix = this.options.redis.keyPrefix ?? "";
+    const workerQueueKey = keyPrefix + ttlSystem.workerQueueSuffix;
+    const workerItemsKey = keyPrefix + ttlSystem.workerItemsSuffix;
+    const visibilityTimeoutMs = (ttlSystem.visibilityTimeoutMs ?? 30_000).toString();
+
+    // Atomically get and remove expired runs from TTL set, ack them from normal queues, and enqueue to TTL worker
+    const results = await this.redis.expireTtlRuns(
+      ttlQueueKey,
+      keyPrefix,
+      now.toString(),
+      batchSize.toString(),
+      shardCount.toString(),
+      workerQueueKey,
+      workerItemsKey,
+      visibilityTimeoutMs
+    );
+
+    if (!results || results.length === 0) {
+      return [];
+    }
+
+    // Parse the results: each item is "queueKey|runId|orgId"
+    const expiredRuns = results.map((member: string) => {
+      const [queueKey, runId, orgId] = member.split("|");
+      return { queueKey, runId, orgId };
+    });
+
+    // Rebalance master queues for all affected queues.
+    // Group by master queue key (derived from environment) since different queues
+    // may belong to different master queue shards.
+    const queuesByMasterKey = new Map<string, string[]>();
+
+    for (const { queueKey } of expiredRuns) {
+      const envId = this.keys.envIdFromQueue(queueKey);
+      const masterQueueKey = this.keys.masterQueueKeyForEnvironment(envId, this.shardCount);
+
+      const queues = queuesByMasterKey.get(masterQueueKey) ?? [];
+      queues.push(queueKey);
+      queuesByMasterKey.set(masterQueueKey, queues);
+    }
+
+    if (queuesByMasterKey.size > 0) {
+      const pipeline = this.redis.pipeline();
+      const keyPrefix = this.options.redis.keyPrefix ?? "";
+
+      for (const [masterQueueKey, queueNames] of queuesByMasterKey) {
+        // Deduplicate queue names within each master queue shard
+        const uniqueQueueNames = [...new Set(queueNames)];
+        pipeline.migrateLegacyMasterQueues(masterQueueKey, keyPrefix, ...uniqueQueueNames);
+      }
+
+      await pipeline.exec();
+    }
+
+    return expiredRuns;
+  }
+
+  /**
+   * Get the TTL shard for a queue key
+   */
+  #getTtlShardForQueue(queueKey: string): number {
+    const { envId } = this.keys.descriptorFromQueue(queueKey);
+    const shardCount = this.options.ttlSystem?.shardCount ?? this.shardCount;
+    return this.keys.masterQueueShardForEnvironment(envId, shardCount);
+  }
+
   async migrateLegacyMasterQueue(legacyMasterQueue: string) {
     const legacyMasterQueueKey = this.keys.legacyMasterQueueKey(legacyMasterQueue);
 
@@ -1455,7 +1633,14 @@ export class RunQueue {
     });
   }
 
-  async #callEnqueueMessage(message: OutputPayloadV2) {
+  async #callEnqueueMessage(
+    message: OutputPayloadV2,
+    ttlInfo?: {
+      ttlExpiresAt: number;
+      ttlQueueKey: string;
+      ttlMember: string;
+    }
+  ) {
     const queueKey = message.queue;
     const messageKey = this.keys.messageKey(message.orgId, message.runId);
     const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKeyFromQueue(message.queue);
@@ -1486,23 +1671,45 @@ export class RunQueue {
       messageData,
       messageScore,
       masterQueueKey,
+      ttlInfo,
       service: this.name,
     });
 
-    await this.redis.enqueueMessage(
-      masterQueueKey,
-      queueKey,
-      messageKey,
-      queueCurrentConcurrencyKey,
-      envCurrentConcurrencyKey,
-      queueCurrentDequeuedKey,
-      envCurrentDequeuedKey,
-      envQueueKey,
-      queueName,
-      messageId,
-      messageData,
-      messageScore
-    );
+    if (ttlInfo) {
+      // Use the TTL-aware enqueue that atomically adds to both queues
+      await this.redis.enqueueMessageWithTtl(
+        masterQueueKey,
+        queueKey,
+        messageKey,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        ttlInfo.ttlQueueKey,
+        queueName,
+        messageId,
+        messageData,
+        messageScore,
+        ttlInfo.ttlMember,
+        String(ttlInfo.ttlExpiresAt)
+      );
+    } else {
+      await this.redis.enqueueMessage(
+        masterQueueKey,
+        queueKey,
+        messageKey,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        queueName,
+        messageId,
+        messageData,
+        messageScore
+      );
+    }
   }
 
   async #callDequeueMessagesFromQueue({
@@ -1532,6 +1739,16 @@ export class RunQueue {
       const envQueueKey = this.keys.envQueueKeyFromQueue(messageQueue);
       const masterQueueKey = this.keys.masterQueueKeyForShard(shard);
 
+      // Get TTL queue key if TTL system is enabled
+      const ttlShardCount = this.options.ttlSystem?.shardCount ?? this.shardCount;
+      const ttlShard = this.keys.masterQueueShardForEnvironment(
+        this.keys.envIdFromQueue(messageQueue),
+        ttlShardCount
+      );
+      const ttlQueueKey = this.options.ttlSystem
+        ? this.keys.ttlQueueKeyForShard(ttlShard)
+        : "";
+
       this.logger.debug("#callDequeueMessagesFromQueue", {
         messageQueue,
         queueConcurrencyLimitKey,
@@ -1542,6 +1759,7 @@ export class RunQueue {
         messageKeyPrefix,
         envQueueKey,
         masterQueueKey,
+        ttlQueueKey,
         shard,
         maxCount,
       });
@@ -1557,6 +1775,7 @@ export class RunQueue {
         messageKeyPrefix,
         envQueueKey,
         masterQueueKey,
+        ttlQueueKey,
         //args
         messageQueue,
         String(Date.now()),
@@ -2318,8 +2537,155 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
       `,
     });
 
-    this.redis.defineCommand("dequeueMessagesFromQueue", {
+    // Enqueue with TTL tracking - atomically adds to both normal queue and TTL sorted set
+    this.redis.defineCommand("enqueueMessageWithTtl", {
       numberOfKeys: 9,
+      lua: `
+local masterQueueKey = KEYS[1]
+local queueKey = KEYS[2]
+local messageKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local ttlQueueKey = KEYS[9]
+
+local queueName = ARGV[1]
+local messageId = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = ARGV[4]
+local ttlMember = ARGV[5]
+local ttlScore = ARGV[6]
+
+-- Write the message to the message key
+redis.call('SET', messageKey, messageData)
+
+-- Add the message to the queue
+redis.call('ZADD', queueKey, messageScore, messageId)
+
+-- Add the message to the env queue
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+
+-- Add to TTL sorted set
+redis.call('ZADD', ttlQueueKey, ttlScore, ttlMember)
+
+-- Rebalance the parent queues
+local earliestMessage = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+
+if #earliestMessage == 0 then
+  redis.call('ZREM', masterQueueKey, queueName)
+else
+  redis.call('ZADD', masterQueueKey, earliestMessage[2], queueName)
+end
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+      `,
+    });
+
+    // Expire TTL runs - atomically removes from TTL set, acknowledges from normal queue, and enqueues to TTL worker
+    this.redis.defineCommand("expireTtlRuns", {
+      numberOfKeys: 1,
+      lua: `
+local ttlQueueKey = KEYS[1]
+local keyPrefix = ARGV[1]
+local currentTime = tonumber(ARGV[2])
+local batchSize = tonumber(ARGV[3])
+local shardCount = tonumber(ARGV[4])
+local workerQueueKey = ARGV[5]
+local workerItemsKey = ARGV[6]
+local visibilityTimeoutMs = tonumber(ARGV[7])
+
+-- Get expired runs from TTL sorted set (score <= currentTime)
+local expiredMembers = redis.call('ZRANGEBYSCORE', ttlQueueKey, '-inf', currentTime, 'LIMIT', 0, batchSize)
+
+if #expiredMembers == 0 then
+  return {}
+end
+
+local time = redis.call('TIME')
+local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+
+local results = {}
+
+for i, member in ipairs(expiredMembers) do
+  -- Parse member format: "queueKey|runId|orgId"
+  local pipePos1 = string.find(member, "|", 1, true)
+  if pipePos1 then
+    local pipePos2 = string.find(member, "|", pipePos1 + 1, true)
+    if pipePos2 then
+      local rawQueueKey = string.sub(member, 1, pipePos1 - 1)
+      local runId = string.sub(member, pipePos1 + 1, pipePos2 - 1)
+      local orgId = string.sub(member, pipePos2 + 1)
+
+      -- Prefix the queue key so it matches the actual Redis keys
+      local queueKey = keyPrefix .. rawQueueKey
+
+      -- Remove from TTL set
+      redis.call('ZREM', ttlQueueKey, member)
+
+      -- Construct keys for acknowledging the run from normal queue
+      -- Extract org from rawQueueKey: {org:orgId}:proj:...
+      local orgKeyStart = string.find(rawQueueKey, "{org:", 1, true)
+      local orgKeyEnd = string.find(rawQueueKey, "}", orgKeyStart, true)
+      local orgFromQueue = string.sub(rawQueueKey, orgKeyStart + 5, orgKeyEnd - 1)
+
+      local messageKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:message:" .. runId
+
+      -- Delete message key
+      redis.call('DEL', messageKey)
+
+      -- Remove from queue sorted set
+      redis.call('ZREM', queueKey, runId)
+
+      -- Remove from env queue (derive from rawQueueKey)
+      -- rawQueueKey format: {org:X}:proj:Y:env:Z:queue:Q[:ck:C]
+      local envMatch = string.match(rawQueueKey, ":env:([^:]+)")
+      if envMatch then
+        local envQueueKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:env:" .. envMatch
+        redis.call('ZREM', envQueueKey, runId)
+      end
+
+      -- Remove from concurrency sets
+      local concurrencyKey = queueKey .. ":currentConcurrency"
+      local dequeuedKey = queueKey .. ":currentDequeued"
+      redis.call('SREM', concurrencyKey, runId)
+      redis.call('SREM', dequeuedKey, runId)
+
+      -- Env concurrency (derive from rawQueueKey; must match RunQueueKeyProducer: org + proj + env)
+      -- rawQueueKey format: {org:X}:proj:Y:env:Z:queue:Q[:ck:C]
+      local projMatch = string.match(rawQueueKey, ":proj:([^:]+):env:")
+      local envConcurrencyKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:proj:" .. (projMatch or "") .. ":env:" .. (envMatch or "") .. ":currentConcurrency"
+      local envDequeuedKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:proj:" .. (projMatch or "") .. ":env:" .. (envMatch or "") .. ":currentDequeued"
+      redis.call('SREM', envConcurrencyKey, runId)
+      redis.call('SREM', envDequeuedKey, runId)
+
+      -- Enqueue to TTL worker (runId is natural dedup key)
+      local serializedItem = cjson.encode({
+        job = "expireTtlRun",
+        item = { runId = runId, orgId = orgId, queueKey = rawQueueKey },
+        visibilityTimeoutMs = visibilityTimeoutMs,
+        attempt = 0
+      })
+      redis.call('ZADD', workerQueueKey, nowMs, runId)
+      redis.call('HSET', workerItemsKey, runId, serializedItem)
+
+      -- Add to results
+      table.insert(results, member)
+    end
+  end
+end
+
+return results
+      `,
+    });
+
+    this.redis.defineCommand("dequeueMessagesFromQueue", {
+      numberOfKeys: 10,
       lua: `
 local queueKey = KEYS[1]
 local queueConcurrencyLimitKey = KEYS[2]
@@ -2330,6 +2696,7 @@ local envCurrentConcurrencyKey = KEYS[6]
 local messageKeyPrefix = KEYS[7]
 local envQueueKey = KEYS[8]
 local masterQueueKey = KEYS[9]
+local ttlQueueKey = KEYS[10]  -- Optional: TTL sorted set key (empty string if not used)
 
 local queueName = ARGV[1]
 local currentTime = tonumber(ARGV[2])
@@ -2381,24 +2748,49 @@ local dequeuedCount = 0
 for i = 1, #messages, 2 do
     local messageId = messages[i]
     local messageScore = tonumber(messages[i + 1])
-    
+
     -- Get the message payload
     local messageKey = messageKeyPrefix .. messageId
     local messagePayload = redis.call('GET', messageKey)
-    
+
     if messagePayload then
-        -- Update concurrency
+        -- Parse the message to check for TTL expiration
+        local messageData = cjson.decode(messagePayload)
+        local ttlExpiresAt = messageData and messageData.ttlExpiresAt
+
+        -- Check if TTL has expired
+        if ttlExpiresAt and ttlExpiresAt <= currentTime then
+            -- TTL expired - remove from dequeue queues so it won't be retried,
+            -- but leave messageKey and ttlQueueKey intact for the TTL consumer
+            -- to discover and properly expire the run.
+            redis.call('ZREM', queueKey, messageId)
+            redis.call('ZREM', envQueueKey, messageId)
+        else
+            -- Not expired - process normally
+            redis.call('ZREM', queueKey, messageId)
+            redis.call('ZREM', envQueueKey, messageId)
+            redis.call('SADD', queueCurrentConcurrencyKey, messageId)
+            redis.call('SADD', envCurrentConcurrencyKey, messageId)
+
+            -- Remove from TTL set if provided (run is being executed, not expired)
+            if ttlQueueKey and ttlQueueKey ~= '' and ttlExpiresAt then
+                local ttlMember = queueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
+                redis.call('ZREM', ttlQueueKey, ttlMember)
+            end
+
+            -- Add to results
+            table.insert(results, messageId)
+            table.insert(results, messageScore)
+            table.insert(results, messagePayload)
+
+            dequeuedCount = dequeuedCount + 1
+        end
+    else
+        -- Stale entry: message key was already deleted (e.g. acknowledged),
+        -- but the sorted set member was not cleaned up. Remove it so it
+        -- doesn't block newer messages from being dequeued.
         redis.call('ZREM', queueKey, messageId)
         redis.call('ZREM', envQueueKey, messageId)
-        redis.call('SADD', queueCurrentConcurrencyKey, messageId)
-        redis.call('SADD', envCurrentConcurrencyKey, messageId)
-        
-        -- Add to results
-        table.insert(results, messageId)
-        table.insert(results, messageScore)
-        table.insert(results, messagePayload)
-        
-        dequeuedCount = dequeuedCount + 1
     end
 end
 
@@ -2748,6 +3140,41 @@ declare module "@internal/redis" {
       callback?: Callback<void>
     ): Result<void, Context>;
 
+    enqueueMessageWithTtl(
+      //keys
+      masterQueueKey: string,
+      queue: string,
+      messageKey: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      ttlQueueKey: string,
+      //args
+      queueName: string,
+      messageId: string,
+      messageData: string,
+      messageScore: string,
+      ttlMember: string,
+      ttlScore: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    expireTtlRuns(
+      //keys
+      ttlQueueKey: string,
+      //args
+      keyPrefix: string,
+      currentTime: string,
+      batchSize: string,
+      shardCount: string,
+      workerQueueKey: string,
+      workerItemsKey: string,
+      visibilityTimeoutMs: string,
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
+
     dequeueMessagesFromQueue(
       //keys
       childQueue: string,
@@ -2759,6 +3186,7 @@ declare module "@internal/redis" {
       messageKeyPrefix: string,
       envQueueKey: string,
       masterQueueKey: string,
+      ttlQueueKey: string,
       //args
       childQueueName: string,
       currentTime: string,
