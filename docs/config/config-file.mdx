@@ -154,12 +154,13 @@ Some ones we recommend:
 
 ### Telemetry Exporters
 
-You can also configure custom telemetry exporters to send your traces and logs to other external services. For example, you can send your logs to [Axiom](https://axiom.co/docs/guides/opentelemetry-nodejs#exporter-instrumentation-ts). First, add the opentelemetry exporter packages to your package.json file:
+You can also configure custom telemetry exporters to send your traces, logs, and metrics to other external services. For example, you can send your logs to [Axiom](https://axiom.co/docs/guides/opentelemetry-nodejs#exporter-instrumentation-ts). First, add the opentelemetry exporter packages to your package.json file:
 
 ```json package.json
 "dependencies": {
   "@opentelemetry/exporter-logs-otlp-http": "0.52.1",
-  "@opentelemetry/exporter-trace-otlp-http": "0.52.1"
+  "@opentelemetry/exporter-trace-otlp-http": "0.52.1",
+  "@opentelemetry/exporter-metrics-otlp-http": "0.52.1"
 }
 ```
 
@@ -169,6 +170,7 @@ Then, configure the exporters in your `trigger.config.ts` file:
 import { defineConfig } from "@trigger.dev/sdk";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 
 // Initialize OTLP trace exporter with the endpoint URL and headers;
 export default defineConfig({
@@ -196,18 +198,28 @@ export default defineConfig({
         },
       }),
     ],
+    metricExporters: [
+      new OTLPMetricExporter({
+        url: "https://api.axiom.co/v1/metrics",
+        headers: {
+          Authorization: `Bearer ${process.env.AXIOM_API_TOKEN}`,
+          "X-Axiom-Dataset": process.env.AXIOM_DATASET,
+        },
+      }),
+    ],
   },
 });
 ```
 
 Make sure to set the `AXIOM_API_TOKEN` and `AXIOM_DATASET` environment variables in your project.
 
-It's important to note that you cannot configure exporters using `OTEL_*` environment variables, as they would conflict with our internal telemetry. Instead you should configure the exporters via passing in arguments to the `OTLPTraceExporter` and `OTLPLogExporter` constructors. For example, here is how you can configure exporting to Honeycomb:
+It's important to note that you cannot configure exporters using `OTEL_*` environment variables, as they would conflict with our internal telemetry. Instead you should configure the exporters via passing in arguments to the `OTLPTraceExporter`, `OTLPLogExporter`, and `OTLPMetricExporter` constructors. For example, here is how you can configure exporting to Honeycomb:
 
 ```ts trigger.config.ts
 import { defineConfig } from "@trigger.dev/sdk";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 
 // Initialize OTLP trace exporter with the endpoint URL and headers;
 export default defineConfig({
@@ -235,9 +247,20 @@ export default defineConfig({
         },
       }),
     ],
+    metricExporters: [
+      new OTLPMetricExporter({
+        url: "https://api.honeycomb.io/v1/metrics",
+        headers: {
+          "x-honeycomb-team": process.env.HONEYCOMB_API_KEY,
+          "x-honeycomb-dataset": process.env.HONEYCOMB_DATASET,
+        },
+      }),
+    ],
   },
 });
 ```
+
+Each metric exporter is automatically wrapped in a `PeriodicExportingMetricReader`. If you need more control over the reader configuration (e.g., custom export intervals), use `metricReaders` instead.
 
 ## Runtime
 
