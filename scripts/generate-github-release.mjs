@@ -99,7 +99,7 @@ function getContributors(previousVersion) {
     const contributors = new Map();
     for (const line of log.split("\n").filter(Boolean)) {
       const [name, email] = line.split("|");
-      if (!name || email?.includes("noreply.github.com")) {
+      if (!name || email?.endsWith("noreply.github.com")) {
         // Try to extract username from noreply email
         const match = email?.match(/(\d+\+)?(.+)@users\.noreply\.github\.com/);
         if (match) {
