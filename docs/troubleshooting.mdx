@@ -50,7 +50,7 @@ And you're using Yarn v1.22 or another package manager, check if you have a `.pn
 If you see "Connection error" when running `trigger login` (or "Failed to create authorization code"), try these in order:
 
 1. **Clear saved auth and retry:** `npx trigger.dev@latest logout`, then `npx trigger.dev@latest login` again. Sometimes an invalid config is cached.
-2. **VPN or firewall:** Disconnect from VPN or check firewall/proxy; try `npx trigger.dev@latest login -l debug` for more detail.
+2. **VPN or firewall:** Disconnect from VPN or check firewall/proxy; try `npx trigger.dev@latest login --log-level debug` for more detail.
 3. **TLS / certificate store:** Node may use a different CA store than your OS (e.g. `curl` works but the CLI fails). Try `export NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem` (macOS/Linux) then login again, or reinstall Node so it gets updated certs. Behind a corporate proxy or custom CA? Set `NODE_EXTRA_CA_CERTS` to that CA file.
 
 ## Deployment
