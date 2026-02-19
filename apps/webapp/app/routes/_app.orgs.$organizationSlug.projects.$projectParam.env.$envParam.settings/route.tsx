@@ -7,7 +7,7 @@ import * as Property from "~/components/primitives/PropertyTable";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { useProject } from "~/hooks/useProject";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema, v3ProjectSettingsGeneralPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3ProjectSettingsGeneralPath, v3ProjectSettingsIntegrationsPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [
@@ -21,16 +21,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   await requireUserId(request);
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
-  // Redirect /settings to /settings/general
+  // Redirect /settings to /settings/general (or /settings/integrations for Vercel onboarding)
   const url = new URL(request.url);
   if (url.pathname.endsWith("/settings") || url.pathname.endsWith("/settings/")) {
-    return redirect(
-      v3ProjectSettingsGeneralPath(
-        { slug: organizationSlug },
-        { slug: projectParam },
-        { slug: envParam }
-      )
-    );
+    const org = { slug: organizationSlug };
+    const project = { slug: projectParam };
+    const env = { slug: envParam };
+
+    const basePath = url.searchParams.has("vercelOnboarding")
+      ? v3ProjectSettingsIntegrationsPath(org, project, env)
+      : v3ProjectSettingsGeneralPath(org, project, env);
+
+    return redirect(`${basePath}${url.search}`);
   }
 
   return null;
