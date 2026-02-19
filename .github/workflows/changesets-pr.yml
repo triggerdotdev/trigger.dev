@@ -65,7 +65,7 @@ jobs:
 
             # Enhance the PR body with a clean, deduplicated summary
             RAW_BODY=$(gh pr view "$PR_NUMBER" --json body --jq '.body')
-            ENHANCED_BODY=$(echo "$RAW_BODY" | CHANGESET_PR_BODY="$RAW_BODY" node scripts/enhance-release-pr.mjs "$VERSION")
+            ENHANCED_BODY=$(CHANGESET_PR_BODY="$RAW_BODY" node scripts/enhance-release-pr.mjs "$VERSION")
             if [ -n "$ENHANCED_BODY" ]; then
               gh api repos/triggerdotdev/trigger.dev/pulls/"$PR_NUMBER" \
                 -X PATCH \

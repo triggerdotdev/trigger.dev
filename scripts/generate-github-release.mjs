@@ -17,6 +17,7 @@
  */
 
 import { execSync } from "child_process";
+import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
 
 const version = process.argv[2];
@@ -43,14 +44,24 @@ function extractChangesFromPrBody(body) {
   const lines = body.split("\n");
   const outputLines = [];
   let inDetails = false;
+  let inSummary = false;
   let foundContent = false;
 
   for (const line of lines) {
-    // Skip the title line (# trigger.dev vX.Y.Z) and Summary section
+    // Skip the title line (# trigger.dev vX.Y.Z)
     if (line.startsWith("# trigger.dev v")) continue;
+
+    // Skip the entire Summary section (heading + content until next heading)
     if (line.startsWith("## Summary")) {
-      // Skip the summary line and its content (next non-empty line)
+      inSummary = true;
       continue;
+    }
+    if (inSummary) {
+      if (line.startsWith("## ")) {
+        inSummary = false;
+      } else {
+        continue;
+      }
     }
 
     // Stop before raw changeset output
@@ -112,19 +123,28 @@ function getContributors(previousVersion) {
 
 function getPublishedPackages() {
   try {
-    const config = JSON.parse(
-      execSync("cat .changeset/config.json", {
-        cwd: ROOT_DIR,
-        encoding: "utf-8",
-      })
-    );
-    const fixed = config.fixed?.[0] || [];
-    return fixed;
+    const packagesDir = join(ROOT_DIR, "packages");
+    const names = [];
+    for (const dir of readdirSync(packagesDir, { withFileTypes: true })) {
+      if (!dir.isDirectory()) continue;
+      try {
+        const pkg = JSON.parse(
+          readFileSync(join(packagesDir, dir.name, "package.json"), "utf-8")
+        );
+        if (pkg.name && !pkg.private) {
+          names.push(pkg.name);
+        }
+      } catch {
+        // skip directories without package.json
+      }
+    }
+    return names.sort();
   } catch {
     return [
-      "@trigger.dev/sdk",
-      "@trigger.dev/core",
       "@trigger.dev/build",
+      "@trigger.dev/core",
+      "@trigger.dev/react-hooks",
+      "@trigger.dev/sdk",
       "trigger.dev",
     ];
   }
@@ -137,6 +157,12 @@ function getPreviousVersion(version) {
   } else if (parts[1] > 0) {
     parts[1]--;
     parts[2] = 0;
+  } else if (parts[0] > 0) {
+    parts[0]--;
+    parts[1] = 0;
+    parts[2] = 0;
+  } else {
+    return null;
   }
   return parts.join(".");
 }

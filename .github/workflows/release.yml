@@ -186,10 +186,10 @@ jobs:
           GENERIC_URL="https://github.com/triggerdotdev/trigger.dev/pkgs/container/trigger.dev"
 
           # Get current release body and replace the generic link with the tag-specific one
-          CURRENT_BODY=$(gh release view "${TAG}" --json body --jq '.body')
-          UPDATED_BODY="${CURRENT_BODY//$GENERIC_URL/$DOCKER_URL}"
+          gh release view "${TAG}" --json body --jq '.body' > /tmp/release-body.md
+          sed -i "s|${GENERIC_URL}|${DOCKER_URL}|g" /tmp/release-body.md
 
-          gh release edit "${TAG}" --notes "$UPDATED_BODY"
+          gh release edit "${TAG}" --notes-file /tmp/release-body.md
 
   # The prerelease job needs to be on the same workflow file due to a limitation related to how npm verifies OIDC claims.
   prerelease:
