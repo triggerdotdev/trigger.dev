@@ -175,7 +175,8 @@ jobs:
           # Query GHCR for the version ID matching this tag
           VERSION_ID=$(gh api --paginate -H "Accept: application/vnd.github+json" \
             /orgs/triggerdotdev/packages/container/trigger.dev/versions \
-            --jq ".[] | select(.metadata.container.tags[] == \"${TAG}\") | .id")
+            --jq ".[] | select(.metadata.container.tags[] == \"${TAG}\") | .id" \
+            | head -1)
 
           if [ -z "$VERSION_ID" ]; then
             echo "Warning: Could not find GHCR version ID for tag ${TAG}, skipping update"
@@ -185,9 +186,11 @@ jobs:
           DOCKER_URL="https://github.com/triggerdotdev/trigger.dev/pkgs/container/trigger.dev/${VERSION_ID}?tag=${TAG}"
           GENERIC_URL="https://github.com/triggerdotdev/trigger.dev/pkgs/container/trigger.dev"
 
-          # Get current release body and replace the generic link with the tag-specific one
+          # Get current release body and replace the generic link with the tag-specific one.
+          # Use word boundary after GENERIC_URL (closing paren) to avoid matching URLs that
+          # already have a version ID appended (idempotent on re-runs).
           gh release view "${TAG}" --json body --jq '.body' > /tmp/release-body.md
-          sed -i "s|${GENERIC_URL}|${DOCKER_URL}|g" /tmp/release-body.md
+          sed -i "s|${GENERIC_URL})|${DOCKER_URL})|g" /tmp/release-body.md
 
           gh release edit "${TAG}" --notes-file /tmp/release-body.md
 
