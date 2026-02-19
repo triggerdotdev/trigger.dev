@@ -499,6 +499,22 @@ export function v3ProjectSettingsPath(
   return `${v3EnvironmentPath(organization, project, environment)}/settings`;
 }
 
+export function v3ProjectSettingsGeneralPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3ProjectSettingsPath(organization, project, environment)}/general`;
+}
+
+export function v3ProjectSettingsIntegrationsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3ProjectSettingsPath(organization, project, environment)}/integrations`;
+}
+
 export function v3LogsPath(
   organization: OrgForPath,
   project: ProjectForPath,

@@ -76,7 +76,7 @@ import {
   EnvironmentParamSchema,
   docsPath,
   v3DeploymentPath,
-  v3ProjectSettingsPath,
+  v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
@@ -377,7 +377,7 @@ export default function Page() {
                       <LinkButton
                         variant="minimal/small"
                         LeadingIcon={CogIcon}
-                        to={v3ProjectSettingsPath(organization, project, environment)}
+                        to={v3ProjectSettingsIntegrationsPath(organization, project, environment)}
                       />
                     </div>
                   )}

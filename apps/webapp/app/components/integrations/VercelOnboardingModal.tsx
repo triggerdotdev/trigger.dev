@@ -44,7 +44,7 @@ import {
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { type VercelCustomEnvironment } from "~/models/vercelIntegration.server";
 import { type VercelOnboardingData } from "~/presenters/v3/VercelSettingsPresenter.server";
-import { vercelAppInstallPath, v3ProjectSettingsPath, githubAppInstallPath, vercelResourcePath } from "~/utils/pathBuilder";
+import { vercelAppInstallPath, v3ProjectSettingsIntegrationsPath, githubAppInstallPath, vercelResourcePath } from "~/utils/pathBuilder";
 import type { loader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { usePostHogTracking } from "~/hooks/usePostHog";
@@ -1057,7 +1057,7 @@ export function VercelOnboardingModal({
               </Callout>
 
               {(() => {
-                const baseSettingsPath = v3ProjectSettingsPath(
+                const baseSettingsPath = v3ProjectSettingsIntegrationsPath(
                   { slug: organizationSlug },
                   { slug: projectSlug },
                   { slug: environmentSlug }
