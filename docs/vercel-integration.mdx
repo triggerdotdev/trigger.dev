@@ -74,17 +74,19 @@ You can connect Vercel from two entry points:
 </Steps>
 
 <Note>
-  When installing from the Vercel Marketplace, default build settings are applied automatically. You
+  When installing from the Vercel Marketplace, default Build options are applied automatically. You
   can adjust them later in your project settings.
 </Note>
 
 <Warning>
   **Vercel Root Directory:** If your Vercel project uses a **Root Directory** (e.g. you deploy a
   single subfolder such as `app` or `web`), you may see "The specified Root Directory does not
-  exist" after connecting the integration. Use the **repository root** (leave Root Directory empty)
-  in your Vercel project settings instead. Trigger.dev always builds from the repo root; point to
-  your app or tasks in a subfolder by setting the **Trigger config file** path (and other [Build
-  options](#build-options)) in your Trigger.dev project configuration.
+  exist" after connecting the integration. If you see this error, try using the **repository root**
+  (leave Root Directory empty) in your Vercel project settings. If your Vercel frontend build
+  requires a Root Directory (e.g. in a monorepo), keep that setting in Vercel and instead point
+  Trigger.dev to the subfolder by setting the **Trigger config file** path (and other [Build
+  options](#build-options)) in your Trigger.dev project configuration. Trigger.dev always builds
+  from the repo root.
 </Warning>
 
 ## Environment variable sync
