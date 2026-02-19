@@ -124,6 +124,8 @@ You can configure the following settings per-environment from your project's Ver
 - **Pull env vars before build**: When enabled, Trigger.dev pulls the latest environment variables from Vercel before each build. Enabled for production, staging, and preview by default.
 - **Discover new env vars**: When enabled, new environment variables found in Vercel that don't yet exist in Trigger.dev are created automatically during builds. Only available for environments that also have env var pulling enabled. Enabled for production, staging, and preview by default.
 
+To change build options that would normally go in `trigger.config.ts` (such as [extensions](/config/config-file#extensions) or other build configuration), use **Build options** on your project's configuration page in the Trigger.dev dashboard.
+
 ## Disconnecting
 
 You can disconnect the Vercel integration from either side:
