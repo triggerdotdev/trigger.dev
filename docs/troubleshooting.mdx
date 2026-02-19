@@ -273,6 +273,21 @@ You could also offload the CPU-heavy work to a Node.js worker thread, but this i
 
 If the above doesn't work, then we recommend you try increasing the machine size of your task. See our [machines guide](/machines) for more information.
 
+### Realtime stream error (`sendBatchNonBlocking` / `S2AppendSession`)
+
+Errors mentioning `sendBatchNonBlocking`, `@s2-dev/streamstore`, or `S2AppendSession` (often with `code: undefined`) can occur when you close a stream and then await `waitUntilComplete()`, or when a stream runs for a long time (e.g. 20+ minutes). Wrap `waitUntilComplete()` in try/catch so it doesn't fail your task:
+
+```ts
+try {
+  this.closeNodeUpdatesStream();
+  await nodeUpdatesRealtime?.waitUntilComplete();
+} catch (err) {
+  // Transport/closed-stream; log if needed
+}
+```
+
+Alternatively, await `waitUntilComplete()` before closing the stream. See [Realtime Streams](/tasks/streams) for more.
+
 ## Framework specific issues
 
 ### NestJS swallows all errors/exceptions
