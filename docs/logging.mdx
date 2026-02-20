@@ -152,13 +152,6 @@ Trigger.dev automatically collects the following metrics for deployed tasks. No 
 | `process.cpu.utilization` | gauge | ratio | Process CPU usage (0-1) |
 | `process.cpu.time` | counter | seconds | CPU time consumed |
 | `process.memory.usage` | gauge | bytes | Process memory usage |
-| `system.memory.usage` | gauge | bytes | System memory usage |
-| `system.memory.utilization` | gauge | ratio | System memory utilization (0-1) |
-| `system.network.io` | counter | bytes | Network I/O |
-| `system.disk.io` | counter | bytes | Disk I/O (Linux only) |
-| `system.disk.operations` | counter | operations | Disk operations (Linux only) |
-| `system.filesystem.usage` | gauge | bytes | Filesystem usage (Linux only) |
-| `system.filesystem.utilization` | gauge | ratio | Filesystem utilization (Linux only) |
 | `nodejs.event_loop.utilization` | gauge | ratio | Event loop utilization (0-1) |
 | `nodejs.event_loop.delay.p95` | gauge | seconds | Event loop delay p95 |
 | `nodejs.event_loop.delay.max` | gauge | seconds | Event loop delay max |
@@ -166,7 +159,7 @@ Trigger.dev automatically collects the following metrics for deployed tasks. No 
 | `nodejs.heap.total` | gauge | bytes | V8 heap total |
 
 <Note>
-In dev mode (`trigger dev`), `system.*` metrics are not collected to reduce noise. Only `process.*`, `nodejs.*`, and custom metrics are available during development.
+In dev mode (`trigger dev`), only `process.*` and custom metrics are available.
 </Note>
 
 ### Context attributes

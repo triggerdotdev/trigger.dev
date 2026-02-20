@@ -227,7 +227,7 @@ SELECT
   task_identifier,
   avg(value) AS avg_memory
 FROM metrics
-WHERE metric_name = 'system.memory.usage'
+WHERE metric_name = 'process.memory.usage'
 GROUP BY task_identifier
 ORDER BY avg_memory DESC
 LIMIT 20
@@ -536,14 +536,14 @@ LIMIT 1000
 
 ### Memory usage by task (past 7d)
 
-Average memory usage per task identifier over the last 7 days.
+Average process memory usage per task identifier over the last 7 days.
 
 ```sql
 SELECT
   task_identifier,
   avg(value) AS avg_memory
 FROM metrics
-WHERE metric_name = 'system.memory.usage'
+WHERE metric_name = 'process.memory.usage'
 GROUP BY task_identifier
 ORDER BY avg_memory DESC
 LIMIT 20
