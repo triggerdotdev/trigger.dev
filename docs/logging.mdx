@@ -82,7 +82,7 @@ export const customTrace = task({
 
 Trigger.dev collects system and runtime metrics automatically for deployed tasks, and provides an API for recording custom metrics using OpenTelemetry.
 
-You can view metrics in the [Metrics dashboards](/insights/metrics), query them with [TRQL](/insights/query), and export them to external services via [telemetry exporters](/config/config-file#telemetry).
+You can view metrics in the [Metrics dashboards](/insights/metrics), query them with [TRQL](/insights/query), and export them to external services via [telemetry exporters](/config/config-file#telemetry-exporters).
 
 ### Custom metrics API
 
@@ -199,4 +199,4 @@ See the [Query page](/insights/query#metrics-table-columns) for the full `metric
 
 ### Exporting metrics
 
-You can send metrics to external observability services (Axiom, Honeycomb, Datadog, etc.) by configuring [telemetry exporters](/config/config-file#telemetry) in your `trigger.config.ts`.
+You can send metrics to external observability services (Axiom, Honeycomb, Datadog, etc.) by configuring [telemetry exporters](/config/config-file#telemetry-exporters) in your `trigger.config.ts`.
