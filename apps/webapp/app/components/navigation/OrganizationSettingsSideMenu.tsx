@@ -6,12 +6,14 @@ import {
   UserGroupIcon,
 } from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import { SlackIcon } from "@trigger.dev/companyicons";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
 import {
   organizationSettingsPath,
+  organizationSlackIntegrationPath,
   organizationTeamPath,
   organizationVercelIntegrationPath,
   rootPath,
@@ -125,6 +127,13 @@ export function OrganizationSettingsSideMenu({
             icon={VercelLogo}
             activeIconColor="text-white"
             to={organizationVercelIntegrationPath(organization)}
+            data-action="integrations"
+          />
+          <SideMenuItem
+            name="Slack"
+            icon={SlackIcon}
+            activeIconColor="text-white"
+            to={organizationSlackIntegrationPath(organization)}
             data-action="integrations"
           />
         </div>

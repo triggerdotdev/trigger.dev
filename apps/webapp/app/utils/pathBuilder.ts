@@ -129,6 +129,10 @@ export function organizationVercelIntegrationPath(organization: OrgForPath) {
   return `${organizationIntegrationsPath(organization)}/vercel`;
 }
 
+export function organizationSlackIntegrationPath(organization: OrgForPath) {
+  return `${organizationIntegrationsPath(organization)}/slack`;
+}
+
 function organizationParam(organization: OrgForPath) {
   return organization.slug;
 }
