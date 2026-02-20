@@ -3,10 +3,10 @@ import {
   ChartBarIcon,
   Cog8ToothIcon,
   CreditCardIcon,
-  PuzzlePieceIcon,
   UserGroupIcon,
 } from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
@@ -115,10 +115,15 @@ export function OrganizationSettingsSideMenu({
             to={organizationSettingsPath(organization)}
             data-action="settings"
           />
+        </div>
+        <div className="flex flex-col">
+          <div className="mb-1">
+            <SideMenuHeader title="Integrations" />
+          </div>
           <SideMenuItem
-            name="Integrations"
-            icon={PuzzlePieceIcon}
-            activeIconColor="text-blue-500"
+            name="Vercel"
+            icon={VercelLogo}
+            activeIconColor="text-white"
             to={organizationVercelIntegrationPath(organization)}
             data-action="integrations"
           />
