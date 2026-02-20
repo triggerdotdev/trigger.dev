@@ -70,7 +70,7 @@
     "@opentelemetry/exporter-logs-otlp-http": "0.203.0",
     "@opentelemetry/exporter-metrics-otlp-proto": "0.203.0",
     "@opentelemetry/exporter-trace-otlp-http": "0.203.0",
-    "@opentelemetry/host-metrics": "^0.36.0",
+    "@opentelemetry/host-metrics": "^0.37.0",
     "@opentelemetry/instrumentation": "0.203.0",
     "@opentelemetry/instrumentation-aws-sdk": "^0.57.0",
     "@opentelemetry/instrumentation-express": "^0.52.0",

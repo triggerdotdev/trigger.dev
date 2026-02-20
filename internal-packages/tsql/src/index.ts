@@ -109,6 +109,7 @@ export {
   type ClickHouseType,
   type ColumnSchema,
   type FieldMappings,
+  type ColumnFormatType,
   type OutputColumnMetadata,
   type RequiredFilter,
   type SchemaRegistry,
@@ -133,7 +134,9 @@ export {
 
 // Re-export time bucket utilities
 export {
+  BUCKET_THRESHOLDS,
   calculateTimeBucketInterval,
+  type BucketThreshold,
   type TimeBucketInterval,
 } from "./query/time_buckets.js";
 
