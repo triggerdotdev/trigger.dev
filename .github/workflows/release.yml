@@ -111,7 +111,7 @@ jobs:
         uses: changesets/action@v1
         with:
           publish: pnpm run changeset:release
-          createGithubReleases: true
+          createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -121,6 +121,19 @@ jobs:
         run: |
           package_version=$(echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[0].version')
           echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Create unified GitHub release
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          VERSION="${{ steps.get_version.outputs.package_version }}"
+          node scripts/generate-github-release.mjs "$VERSION" > /tmp/release-body.md
+          gh release create "v${VERSION}" \
+            --title "trigger.dev v${VERSION}" \
+            --notes-file /tmp/release-body.md \
+            --target main
 
       - name: Create and push Docker tag
         if: steps.changesets.outputs.published == 'true'
@@ -139,6 +152,47 @@ jobs:
     secrets: inherit
     with:
       image_tag: v${{ needs.release.outputs.published_package_version }}
+
+  # After Docker images are published, update the GitHub release with the exact GHCR tag URL.
+  # The GHCR package version ID is only known after the image is pushed, so we query for it here.
+  update-release:
+    name: 🔗 Update release Docker link
+    needs: [release, publish-docker]
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - name: Update GitHub release with Docker image link
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          VERSION="${{ needs.release.outputs.published_package_version }}"
+          TAG="v${VERSION}"
+
+          # Query GHCR for the version ID matching this tag
+          VERSION_ID=$(gh api --paginate -H "Accept: application/vnd.github+json" \
+            /orgs/triggerdotdev/packages/container/trigger.dev/versions \
+            --jq ".[] | select(.metadata.container.tags[] == \"${TAG}\") | .id" \
+            | head -1)
+
+          if [ -z "$VERSION_ID" ]; then
+            echo "Warning: Could not find GHCR version ID for tag ${TAG}, skipping update"
+            exit 0
+          fi
+
+          DOCKER_URL="https://github.com/triggerdotdev/trigger.dev/pkgs/container/trigger.dev/${VERSION_ID}?tag=${TAG}"
+          GENERIC_URL="https://github.com/triggerdotdev/trigger.dev/pkgs/container/trigger.dev"
+
+          # Get current release body and replace the generic link with the tag-specific one.
+          # Use word boundary after GENERIC_URL (closing paren) to avoid matching URLs that
+          # already have a version ID appended (idempotent on re-runs).
+          gh release view "${TAG}" --json body --jq '.body' > /tmp/release-body.md
+          sed -i "s|${GENERIC_URL})|${DOCKER_URL})|g" /tmp/release-body.md
+
+          gh release edit "${TAG}" --notes-file /tmp/release-body.md
 
   # The prerelease job needs to be on the same workflow file due to a limitation related to how npm verifies OIDC claims.
   prerelease:
