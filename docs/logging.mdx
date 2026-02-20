@@ -1,6 +1,6 @@
 ---
-title: "Logging and tracing"
-description: "How to use the built-in logging and tracing system."
+title: "Logging, tracing & metrics"
+description: "How to use the built-in logging, tracing, and metrics system."
 ---
 
 ![The run log](/images/run-log.png)
@@ -77,3 +77,119 @@ export const customTrace = task({
   },
 });
 ```
+
+## Metrics
+
+Trigger.dev collects system and runtime metrics automatically for deployed tasks, and provides an API for recording custom metrics using OpenTelemetry.
+
+You can view metrics in the [Metrics dashboards](/insights/metrics), query them with [TRQL](/insights/query), and export them to external services via [telemetry exporters](/config/config-file#telemetry-exporters).
+
+### Custom metrics API
+
+Import `otel` from `@trigger.dev/sdk` and use the standard OpenTelemetry Metrics API to create custom instruments.
+
+Create instruments **at module level** (outside the task `run` function) so they are reused across runs:
+
+```ts /trigger/metrics.ts
+import { task, logger, otel } from "@trigger.dev/sdk";
+
+// Create a meter — instruments are created once at module level
+const meter = otel.metrics.getMeter("my-app");
+
+const itemsProcessed = meter.createCounter("items.processed", {
+  description: "Total number of items processed",
+  unit: "items",
+});
+
+const itemDuration = meter.createHistogram("item.duration", {
+  description: "Time spent processing each item",
+  unit: "ms",
+});
+
+const queueDepth = meter.createUpDownCounter("queue.depth", {
+  description: "Current queue depth",
+  unit: "items",
+});
+
+export const processQueue = task({
+  id: "process-queue",
+  run: async (payload: { items: string[] }) => {
+    queueDepth.add(payload.items.length);
+
+    for (const item of payload.items) {
+      const start = performance.now();
+
+      // ... process item ...
+
+      const elapsed = performance.now() - start;
+
+      itemsProcessed.add(1, { "item.type": "order" });
+      itemDuration.record(elapsed, { "item.type": "order" });
+      queueDepth.add(-1);
+    }
+
+    logger.info("Queue processed", { count: payload.items.length });
+  },
+});
+```
+
+#### Available instrument types
+
+| Instrument | Method | Use case |
+| :--- | :--- | :--- |
+| Counter | `meter.createCounter()` | Monotonically increasing values (items processed, requests sent) |
+| Histogram | `meter.createHistogram()` | Distributions of values (durations, sizes) |
+| UpDownCounter | `meter.createUpDownCounter()` | Values that go up and down (queue depth, active connections) |
+
+All instruments accept optional attributes when recording values. Attributes let you break down metrics by dimension (e.g., by item type, status, or region).
+
+### Automatic system and runtime metrics
+
+Trigger.dev automatically collects the following metrics for deployed tasks. No configuration is needed. Requires SDK version **4.4.1 or later**.
+
+| Metric name | Type | Unit | Description |
+| :--- | :--- | :--- | :--- |
+| `process.cpu.utilization` | gauge | ratio | Process CPU usage (0-1) |
+| `process.cpu.time` | counter | seconds | CPU time consumed |
+| `process.memory.usage` | gauge | bytes | Process memory usage |
+| `nodejs.event_loop.utilization` | gauge | ratio | Event loop utilization (0-1) |
+| `nodejs.event_loop.delay.p95` | gauge | seconds | Event loop delay p95 |
+| `nodejs.event_loop.delay.max` | gauge | seconds | Event loop delay max |
+| `nodejs.heap.used` | gauge | bytes | V8 heap used |
+| `nodejs.heap.total` | gauge | bytes | V8 heap total |
+
+<Note>
+In dev mode (`trigger dev`), only `process.*` and custom metrics are available.
+</Note>
+
+### Context attributes
+
+All metrics (both automatic and custom) are tagged with run context so you can filter and group them:
+
+- `run_id` — the run that produced the metric
+- `task_identifier` — the task slug
+- `attempt_number` — the attempt number
+- `machine_name` — the machine preset (e.g., `small-1x`)
+- `worker_version` — the deployed worker version
+- `environment_type` — `PRODUCTION`, `STAGING`, `DEVELOPMENT`, or `PREVIEW`
+
+### Querying metrics
+
+Use [TRQL](/insights/query) to query metrics data. For example, to see average CPU utilization over time:
+
+```sql
+SELECT
+  timeBucket(),
+  avg(value) AS avg_cpu
+FROM metrics
+WHERE metric_name = 'process.cpu.utilization'
+GROUP BY timeBucket
+ORDER BY timeBucket
+LIMIT 1000
+```
+
+See the [Query page](/insights/query#metrics-table-columns) for the full `metrics` table schema.
+
+### Exporting metrics
+
+You can send metrics to external observability services (Axiom, Honeycomb, Datadog, etc.) by configuring [telemetry exporters](/config/config-file#telemetry-exporters) in your `trigger.config.ts`.
