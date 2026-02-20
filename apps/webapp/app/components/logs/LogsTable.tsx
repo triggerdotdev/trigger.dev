@@ -165,7 +165,7 @@ export function LogsTable({
                   >
                     <DateTimeAccurate date={log.triggeredTimestamp} hour12={false} />
                   </TableCell>
-                  <TableCell className="min-w-24">
+                  <TableCell className="min-w-24" onClick={handleRowClick} hasAction>
                     <TruncatedCopyableValue value={log.runId} />
                   </TableCell>
                   <TableCell className="min-w-32" onClick={handleRowClick} hasAction>
