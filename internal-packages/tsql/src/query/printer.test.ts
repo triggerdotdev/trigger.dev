@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { parseTSQLSelect, parseTSQLExpr, compileTSQL } from "../index.js";
 import { ClickHousePrinter, printToClickHouse, type PrintResult } from "./printer.js";
 import { createPrinterContext, PrinterContext } from "./printer_context.js";
-import { createSchemaRegistry, column, type TableSchema, type SchemaRegistry } from "./schema.js";
+import {
+  createSchemaRegistry,
+  column,
+  type TableSchema,
+  type SchemaRegistry,
+} from "./schema.js";
+import type { BucketThreshold } from "./time_buckets.js";
 import { QueryError, SyntaxError } from "./errors.js";
 
 /**
@@ -2335,16 +2341,19 @@ describe("Basic column metadata", () => {
         name: "status",
         type: "LowCardinality(String)",
         customRenderType: "runStatus",
+        format: "runStatus",
       });
       expect(columns[1]).toEqual({
         name: "usage_duration_ms",
         type: "UInt32",
         customRenderType: "duration",
+        format: "duration",
       });
       expect(columns[2]).toEqual({
         name: "cost_in_cents",
         type: "Float64",
         customRenderType: "cost",
+        format: "cost",
       });
     });
 
@@ -2685,6 +2694,133 @@ describe("Basic column metadata", () => {
       expect(columns[0].name).toBe("count");
       expect(columns[1].name).toBe("sum");
       expect(columns[2].name).toBe("avg");
+    });
+  });
+
+  describe("prettyFormat()", () => {
+    it("should strip prettyFormat from SQL and attach format to column metadata", () => {
+      const ctx = createMetadataTestContext();
+      const { sql, columns } = printQuery(
+        "SELECT prettyFormat(usage_duration_ms, 'bytes') AS memory FROM runs",
+        ctx
+      );
+
+      // SQL should not contain prettyFormat
+      expect(sql).not.toContain("prettyFormat");
+      expect(sql).toContain("usage_duration_ms");
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("memory");
+      expect(columns[0].format).toBe("bytes");
+    });
+
+    it("should work with aggregation wrapping", () => {
+      const ctx = createMetadataTestContext();
+      const { sql, columns } = printQuery(
+        "SELECT prettyFormat(avg(usage_duration_ms), 'bytes') AS avg_memory FROM runs",
+        ctx
+      );
+
+      expect(sql).not.toContain("prettyFormat");
+      expect(sql).toContain("avg(usage_duration_ms)");
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("avg_memory");
+      expect(columns[0].format).toBe("bytes");
+      expect(columns[0].type).toBe("Float64");
+    });
+
+    it("should work without explicit alias", () => {
+      const ctx = createMetadataTestContext();
+      const { sql, columns } = printQuery(
+        "SELECT prettyFormat(usage_duration_ms, 'percent') FROM runs",
+        ctx
+      );
+
+      expect(sql).not.toContain("prettyFormat");
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("usage_duration_ms");
+      expect(columns[0].format).toBe("percent");
+    });
+
+    it("should throw for invalid format type", () => {
+      const ctx = createMetadataTestContext();
+      expect(() => {
+        printQuery(
+          "SELECT prettyFormat(usage_duration_ms, 'invalid') FROM runs",
+          ctx
+        );
+      }).toThrow(QueryError);
+      expect(() => {
+        printQuery(
+          "SELECT prettyFormat(usage_duration_ms, 'invalid') FROM runs",
+          ctx
+        );
+      }).toThrow(/Unknown format type/);
+    });
+
+    it("should throw for wrong argument count", () => {
+      const ctx = createMetadataTestContext();
+      expect(() => {
+        printQuery("SELECT prettyFormat(usage_duration_ms) FROM runs", ctx);
+      }).toThrow(QueryError);
+      expect(() => {
+        printQuery("SELECT prettyFormat(usage_duration_ms) FROM runs", ctx);
+      }).toThrow(/requires exactly 2 arguments/);
+    });
+
+    it("should throw when second argument is not a string literal", () => {
+      const ctx = createMetadataTestContext();
+      expect(() => {
+        printQuery(
+          "SELECT prettyFormat(usage_duration_ms, 123) FROM runs",
+          ctx
+        );
+      }).toThrow(QueryError);
+      expect(() => {
+        printQuery(
+          "SELECT prettyFormat(usage_duration_ms, 123) FROM runs",
+          ctx
+        );
+      }).toThrow(/must be a string literal/);
+    });
+
+    it("should override schema-level customRenderType", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT prettyFormat(usage_duration_ms, 'bytes') AS mem FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(1);
+      // prettyFormat's format should take precedence
+      expect(columns[0].format).toBe("bytes");
+      // customRenderType from schema should NOT be set since prettyFormat overrides
+      // The source column had customRenderType: "duration" but prettyFormat replaces it
+    });
+
+    it("should auto-populate format from customRenderType when not explicitly set", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT usage_duration_ms, cost_in_cents FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(2);
+      // customRenderType should auto-populate format
+      expect(columns[0].customRenderType).toBe("duration");
+      expect(columns[0].format).toBe("duration");
+      expect(columns[1].customRenderType).toBe("cost");
+      expect(columns[1].format).toBe("cost");
+    });
+
+    it("should not set format when column has no customRenderType", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery("SELECT run_id FROM runs", ctx);
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].format).toBeUndefined();
+      expect(columns[0].customRenderType).toBeUndefined();
     });
   });
 });
@@ -3568,6 +3704,75 @@ describe("timeBucket()", () => {
       expect(sql).toContain("count()");
       // Tenant isolation should still be applied
       expect(Object.values(params)).toContain("org_test123");
+    });
+  });
+
+  describe("per-table timeBucketThresholds", () => {
+    const customThresholds: BucketThreshold[] = [
+      // 10-second minimum granularity (e.g., for pre-aggregated metrics)
+      { maxRangeSeconds: 10 * 60, interval: { value: 10, unit: "SECOND" } },
+      { maxRangeSeconds: 30 * 60, interval: { value: 30, unit: "SECOND" } },
+      { maxRangeSeconds: 2 * 60 * 60, interval: { value: 1, unit: "MINUTE" } },
+    ];
+
+    const schemaWithCustomThresholds: TableSchema = {
+      ...timeBucketSchema,
+      name: "metrics",
+      timeBucketThresholds: customThresholds,
+    };
+
+    it("should use custom thresholds when defined on the table schema", () => {
+      // 3-minute range: global default would give 5 SECOND, custom gives 10 SECOND
+      const threeMinuteRange = {
+        from: new Date("2024-01-01T00:00:00Z"),
+        to: new Date("2024-01-01T00:03:00Z"),
+      };
+
+      const schema = createSchemaRegistry([schemaWithCustomThresholds]);
+      const ctx = createPrinterContext({
+        schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test123" },
+          project_id: { op: "eq", value: "proj_test456" },
+          environment_id: { op: "eq", value: "env_test789" },
+        },
+        timeRange: threeMinuteRange,
+      });
+
+      const ast = parseTSQLSelect(
+        "SELECT timeBucket(), count() FROM metrics GROUP BY timeBucket"
+      );
+      const { sql } = printToClickHouse(ast, ctx);
+
+      // Custom thresholds: under 10 min → 10 SECOND (not the global 5 SECOND)
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 10 SECOND)");
+    });
+
+    it("should fall back to global defaults when no custom thresholds are defined", () => {
+      // 3-minute range with standard schema (no custom thresholds)
+      const threeMinuteRange = {
+        from: new Date("2024-01-01T00:00:00Z"),
+        to: new Date("2024-01-01T00:03:00Z"),
+      };
+
+      const schema = createSchemaRegistry([timeBucketSchema]);
+      const ctx = createPrinterContext({
+        schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test123" },
+          project_id: { op: "eq", value: "proj_test456" },
+          environment_id: { op: "eq", value: "env_test789" },
+        },
+        timeRange: threeMinuteRange,
+      });
+
+      const ast = parseTSQLSelect(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket"
+      );
+      const { sql } = printToClickHouse(ast, ctx);
+
+      // Global default: under 5 min → 5 SECOND
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 5 SECOND)");
     });
   });
 });

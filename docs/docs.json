@@ -180,6 +180,10 @@
             ]
           },
           {
+            "group": "Insights",
+            "pages": ["insights/query", "insights/metrics"]
+          },
+          {
             "group": "Using the Dashboard",
             "pages": ["run-tests", "troubleshooting-alerts", "replaying", "bulk-actions"]
           },
@@ -239,10 +243,7 @@
           },
           {
             "group": "Batches API",
-            "pages": [
-              "management/batches/create",
-              "management/batches/stream-items"
-            ]
+            "pages": ["management/batches/create", "management/batches/stream-items"]
           },
           {
             "group": "Runs API",
@@ -253,6 +254,16 @@
               "management/runs/cancel",
               "management/runs/reschedule",
               "management/runs/update-metadata"
+            ]
+          },
+          {
+            "group": "Queues API",
+            "pages": [
+              "management/queues/list",
+              "management/queues/retrieve",
+              "management/queues/pause",
+              "management/queues/concurrency-override",
+              "management/queues/concurrency-reset"
             ]
           },
           {
@@ -286,6 +297,10 @@
               "management/deployments/get-latest",
               "management/deployments/promote"
             ]
+          },
+          {
+            "group": "Query API",
+            "pages": ["management/query/execute"]
           }
         ]
       },

@@ -26,6 +26,7 @@ import {
   TableRow,
   type TableVariant,
 } from "../primitives/Table";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 
 type LogsTableProps = {
   logs: LogEntry[];
@@ -124,6 +125,7 @@ export function LogsTable({
             <TableHeaderCell
               className="min-w-24 whitespace-nowrap"
               tooltip={<LogLevelTooltipInfo />}
+              disableTooltipHoverableContent
             >
               Level
             </TableHeaderCell>
@@ -165,7 +167,7 @@ export function LogsTable({
                   >
                     <DateTimeAccurate date={log.triggeredTimestamp} hour12={false} />
                   </TableCell>
-                  <TableCell className="min-w-24">
+                  <TableCell className="min-w-24" onClick={handleRowClick} hasAction>
                     <TruncatedCopyableValue value={log.runId} />
                   </TableCell>
                   <TableCell className="min-w-32" onClick={handleRowClick} hasAction>
@@ -185,9 +187,11 @@ export function LogsTable({
                       <LinkButton
                         to={runPath}
                         variant="minimal/small"
-                        TrailingIcon={ArrowTopRightOnSquareIcon}
+                        TrailingIcon={RunsIcon}
+                        trailingIconClassName="text-text-bright"
+                        className="h-[1.375rem] pl-1.5 pr-2"
                       >
-                        View run
+                        <span className="text-[0.6875rem] text-text-bright">View run</span>
                       </LinkButton>
                     }
                   />

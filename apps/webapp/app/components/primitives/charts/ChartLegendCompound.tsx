@@ -26,6 +26,8 @@ export type ChartLegendCompoundProps = {
   totalLabel?: string;
   /** Aggregation method – controls the header label and how totals are computed */
   aggregation?: AggregationType;
+  /** Optional formatter for numeric values (e.g. bytes, duration) */
+  valueFormatter?: (value: number) => string;
   /** Callback when "View all" button is clicked */
   onViewAllLegendItems?: () => void;
   /** When true, constrains legend to max 50% height with scrolling */
@@ -50,6 +52,7 @@ export function ChartLegendCompound({
   className,
   totalLabel,
   aggregation,
+  valueFormatter,
   onViewAllLegendItems,
   scrollable = false,
 }: ChartLegendCompoundProps) {
@@ -180,7 +183,11 @@ export function ChartLegendCompound({
         <span className="font-medium">{currentTotalLabel}</span>
         <span className="font-medium tabular-nums">
           {currentTotal != null ? (
-            <AnimatedNumber value={currentTotal} duration={0.25} />
+            valueFormatter ? (
+              valueFormatter(currentTotal)
+            ) : (
+              <AnimatedNumber value={currentTotal} duration={0.25} />
+            )
           ) : (
             "\u2013"
           )}
@@ -252,7 +259,11 @@ export function ChartLegendCompound({
                   )}
                 >
                   {total != null ? (
-                    <AnimatedNumber value={total} duration={0.25} />
+                    valueFormatter ? (
+                      valueFormatter(total)
+                    ) : (
+                      <AnimatedNumber value={total} duration={0.25} />
+                    )
                   ) : (
                     "\u2013"
                   )}
@@ -269,6 +280,7 @@ export function ChartLegendCompound({
               item={legendItems.hoveredHiddenItem}
               value={currentData[legendItems.hoveredHiddenItem.dataKey] ?? null}
               remainingCount={legendItems.remaining - 1}
+              valueFormatter={valueFormatter}
             />
           ) : (
             <ViewAllDataRow
@@ -315,9 +327,10 @@ type HoveredHiddenItemRowProps = {
   item: { dataKey: string; color?: string; label: React.ReactNode };
   value: number | null;
   remainingCount: number;
+  valueFormatter?: (value: number) => string;
 };
 
-function HoveredHiddenItemRow({ item, value, remainingCount }: HoveredHiddenItemRowProps) {
+function HoveredHiddenItemRow({ item, value, remainingCount, valueFormatter }: HoveredHiddenItemRowProps) {
   return (
     <div className="relative flex w-full items-center justify-between gap-2 rounded px-2 py-1">
       {/* Active highlight background */}
@@ -339,7 +352,15 @@ function HoveredHiddenItemRow({ item, value, remainingCount }: HoveredHiddenItem
           {remainingCount > 0 && <span className="text-text-dimmed">+{remainingCount} more</span>}
         </div>
         <span className="tabular-nums text-text-bright">
-          {value != null ? <AnimatedNumber value={value} duration={0.25} /> : "\u2013"}
+          {value != null ? (
+            valueFormatter ? (
+              valueFormatter(value)
+            ) : (
+              <AnimatedNumber value={value} duration={0.25} />
+            )
+          ) : (
+            "\u2013"
+          )}
         </span>
       </div>
     </div>

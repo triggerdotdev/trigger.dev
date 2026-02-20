@@ -26,12 +26,14 @@ import {
   getLogDetailQueryBuilderV2,
   getLogsSearchListQueryBuilder,
 } from "./taskEvents.js";
+import { insertMetrics } from "./metrics.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
 
 export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
+export type * from "./metrics.js";
 export type * from "./client/queryBuilder.js";
 
 // Re-export column constants, indices, and type-safe accessors
@@ -56,7 +58,7 @@ export {
   type FieldMappings,
   type WhereClauseCondition,
 } from "./client/tsql.js";
-export type { OutputColumnMetadata } from "@internal/tsql";
+export type { ColumnFormatType, OutputColumnMetadata } from "@internal/tsql";
 
 // Errors
 export { QueryError } from "./client/errors.js";
@@ -203,6 +205,12 @@ export class ClickHouse {
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilder(this.reader),
       traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilder(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilder(this.reader),
+    };
+  }
+
+  get metrics() {
+    return {
+      insert: insertMetrics(this.writer),
     };
   }
 

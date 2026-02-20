@@ -2,6 +2,7 @@ import {
   AdjustmentsHorizontalIcon,
   ArrowPathRoundedSquareIcon,
   ArrowRightOnRectangleIcon,
+  ArrowTopRightOnSquareIcon,
   BeakerIcon,
   BellAlertIcon,
   ChartBarIcon,
@@ -9,6 +10,7 @@ import {
   ClockIcon,
   Cog8ToothIcon,
   CogIcon,
+  ExclamationTriangleIcon,
   FolderIcon,
   FolderOpenIcon,
   GlobeAmericasIcon,
@@ -45,7 +47,7 @@ import { useHasAdminAccess } from "~/hooks/useUser";
 import { type UserWithDashboardPreferences } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
-import { IncidentStatusPanel } from "~/routes/resources.incidents";
+import { IncidentStatusPanel, useIncidentStatus } from "~/routes/resources.incidents";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
@@ -164,6 +166,8 @@ export function SideMenu({
   const isAdmin = useHasAdminAccess();
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
+  const incidentStatus = useIncidentStatus();
+  const isV3Project = project.engine === "V1";
 
   const persistSideMenuPreferences = useCallback(
     (data: {
@@ -598,7 +602,18 @@ export function SideMenu({
           </div>
         </div>
         <div>
-          <IncidentStatusPanel isCollapsed={isCollapsed} />
+          <IncidentStatusPanel
+            isCollapsed={isCollapsed}
+            title={incidentStatus.title}
+            hasIncident={incidentStatus.hasIncident}
+            isManagedCloud={incidentStatus.isManagedCloud}
+          />
+          <V3DeprecationPanel
+            isCollapsed={isCollapsed}
+            isV3={isV3Project}
+            hasIncident={incidentStatus.hasIncident}
+            isManagedCloud={incidentStatus.isManagedCloud}
+          />
           <motion.div
             layout
             transition={{ duration: 0.2, ease: "easeInOut" }}
@@ -619,6 +634,94 @@ export function SideMenu({
           </motion.div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function V3DeprecationPanel({
+  isCollapsed,
+  isV3,
+  hasIncident,
+  isManagedCloud,
+}: {
+  isCollapsed: boolean;
+  isV3: boolean;
+  hasIncident: boolean;
+  isManagedCloud: boolean;
+}) {
+  if (!isManagedCloud || !isV3 || hasIncident) {
+    return null;
+  }
+
+  return (
+    <Popover>
+      <div className="p-1">
+        <motion.div
+          initial={false}
+          animate={{
+            height: isCollapsed ? 0 : "auto",
+            opacity: isCollapsed ? 0 : 1,
+          }}
+          transition={{ duration: 0.15 }}
+          className="overflow-hidden"
+        >
+          <V3DeprecationContent />
+        </motion.div>
+
+        <motion.div
+          initial={false}
+          animate={{
+            height: isCollapsed ? "auto" : 0,
+            opacity: isCollapsed ? 1 : 0,
+          }}
+          transition={{ duration: 0.15 }}
+          className="overflow-hidden"
+        >
+          <SimpleTooltip
+            button={
+              <PopoverTrigger className="flex !h-8 w-full items-center justify-center rounded border border-amber-500/30 bg-amber-500/15 transition-colors hover:border-amber-500/50 hover:bg-amber-500/25">
+                <ExclamationTriangleIcon className="size-5 text-amber-400" />
+              </PopoverTrigger>
+            }
+            content="V3 deprecation warning"
+            side="right"
+            sideOffset={8}
+            disableHoverableContent
+            asChild
+          />
+        </motion.div>
+      </div>
+      <PopoverContent side="right" sideOffset={8} align="start" className="w-52 !min-w-0 p-0">
+        <V3DeprecationContent />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function V3DeprecationContent() {
+  return (
+    <div className="flex flex-col gap-2 rounded border border-amber-500/30 bg-amber-500/10 p-2 pt-1.5">
+      <div className="flex items-center gap-1 border-b border-amber-500/30 pb-1">
+        <ExclamationTriangleIcon className="size-4 text-amber-400" />
+        <Paragraph variant="small/bright" className="text-amber-300">
+          V3 deprecation warning
+        </Paragraph>
+      </div>
+      <Paragraph variant="extra-small/bright" className="text-amber-300">
+        This is a v3 project. V3 deploys will stop working on 1 April 2026. Full shutdown is 1 July
+        2026 where all v3 runs will stop executing. Migrate to v4 to avoid downtime.
+      </Paragraph>
+      <LinkButton
+        variant="secondary/small"
+        to="https://trigger.dev/docs/migrating-from-v3"
+        target="_blank"
+        fullWidth
+        TrailingIcon={ArrowTopRightOnSquareIcon}
+        trailingIconClassName="text-amber-300"
+        className="border-amber-500/30 bg-amber-500/15 hover:!border-amber-500/50 hover:!bg-amber-500/25"
+      >
+        <span className="text-amber-300">View migration guide</span>
+      </LinkButton>
     </div>
   );
 }

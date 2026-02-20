@@ -59,6 +59,7 @@ import {
   ClickHouseType,
   hasFieldMapping,
   getInternalValueFromMappingCaseInsensitive,
+  type ColumnFormatType,
 } from "./schema";
 
 /**
@@ -739,6 +740,14 @@ export class ClickHousePrinter {
         metadata.description = sourceColumn.description;
       }
 
+      // Set format hint from prettyFormat() or auto-populate from customRenderType
+      const sourceWithFormat = sourceColumn as (Partial<ColumnSchema> & { format?: ColumnFormatType }) | null;
+      if (sourceWithFormat?.format) {
+        metadata.format = sourceWithFormat.format;
+      } else if (sourceColumn?.customRenderType) {
+        metadata.format = sourceColumn.customRenderType as ColumnFormatType;
+      }
+
       this.outputColumns.push(metadata);
     }
 
@@ -930,6 +939,53 @@ export class ClickHousePrinter {
         sourceColumn: columnInfo.column,
         inferredType: columnInfo.column?.type ?? null,
       };
+    }
+
+    // Handle prettyFormat(expr, 'formatType') — metadata-only wrapper
+    if ((col as Call).expression_type === "call") {
+      const call = col as Call;
+      if (call.name.toLowerCase() === "prettyformat") {
+        if (call.args.length !== 2) {
+          throw new QueryError(
+            "prettyFormat() requires exactly 2 arguments: prettyFormat(expression, 'formatType')"
+          );
+        }
+        const formatArg = call.args[1];
+        if (
+          (formatArg as Constant).expression_type !== "constant" ||
+          typeof (formatArg as Constant).value !== "string"
+        ) {
+          throw new QueryError(
+            "prettyFormat() second argument must be a string literal format type"
+          );
+        }
+        const formatType = (formatArg as Constant).value as string;
+        const validFormats = [
+          "bytes",
+          "decimalBytes",
+          "quantity",
+          "percent",
+          "duration",
+          "durationSeconds",
+          "costInDollars",
+          "cost",
+        ];
+        if (!validFormats.includes(formatType)) {
+          throw new QueryError(
+            `Unknown format type '${formatType}'. Valid types: ${validFormats.join(", ")}`
+          );
+        }
+        const innerAnalysis = this.analyzeSelectColumn(call.args[0]);
+        return {
+          outputName: innerAnalysis.outputName,
+          sourceColumn: {
+            ...(innerAnalysis.sourceColumn ?? {}),
+            type: innerAnalysis.sourceColumn?.type ?? innerAnalysis.inferredType ?? undefined,
+            format: formatType as ColumnFormatType,
+          } as Partial<ColumnSchema> & { format?: ColumnFormatType },
+          inferredType: innerAnalysis.inferredType,
+        };
+      }
     }
 
     // Handle Call (function/aggregation) - infer type from function
@@ -1559,13 +1615,20 @@ export class ClickHousePrinter {
       joinStrings.push(`AS ${this.printIdentifier(node.alias)}`);
     }
 
-    // Always add FINAL for direct table references to ensure deduplicated results
-    // from ReplacingMergeTree tables in ClickHouse
+    // Add FINAL for direct table references to ReplacingMergeTree tables
+    // to ensure deduplicated results. Only applied when the table schema
+    // opts in via `useFinal: true` (not needed for plain MergeTree tables).
     if (node.table) {
       const tableExpr = node.table;
-      const isDirectTable = (tableExpr as Field).expression_type === "field";
-      if (isDirectTable) {
-        joinStrings.push("FINAL");
+      if ((tableExpr as Field).expression_type === "field") {
+        const field = tableExpr as Field;
+        const tableName = field.chain[0];
+        if (typeof tableName === "string") {
+          const tableSchema = this.lookupTable(tableName);
+          if (tableSchema.useFinal) {
+            joinStrings.push("FINAL");
+          }
+        }
       }
     }
 
@@ -2802,6 +2865,14 @@ export class ClickHousePrinter {
   private visitCall(node: Call): string {
     const name = node.name;
 
+    // Handle prettyFormat() — strip wrapper, only emit the inner expression
+    if (name.toLowerCase() === "prettyformat") {
+      if (node.args.length !== 2) {
+        throw new QueryError("prettyFormat() requires exactly 2 arguments");
+      }
+      return this.visit(node.args[0]);
+    }
+
     // Handle timeBucket() - special TSQL function for automatic time bucketing
     if (name.toLowerCase() === "timebucket") {
       return this.visitTimeBucket(node);
@@ -2978,8 +3049,12 @@ export class ClickHousePrinter {
       );
     }
 
-    // Calculate the appropriate interval
-    const interval = calculateTimeBucketInterval(timeRange.from, timeRange.to);
+    // Calculate the appropriate interval (use table-specific thresholds if defined)
+    const interval = calculateTimeBucketInterval(
+      timeRange.from,
+      timeRange.to,
+      tableSchema.timeBucketThresholds
+    );
 
     // Emit toStartOfInterval(column, INTERVAL N UNIT)
     return `toStartOfInterval(${escapeClickHouseIdentifier(clickhouseColumnName)}, INTERVAL ${interval.value} ${interval.unit})`;
