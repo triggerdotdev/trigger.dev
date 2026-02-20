@@ -1,13 +1,14 @@
 import { Attributes } from "@opentelemetry/api";
 import { ServerBackgroundWorker, TaskRunContext } from "../schemas/index.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
-import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
+import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { TaskContext } from "./types.js";
 
 const API_NAME = "task-context";
 
 export class TaskContextAPI {
   private static _instance?: TaskContextAPI;
+  private _runDisabled = false;
 
   private constructor() {}
 
@@ -21,6 +22,10 @@ export class TaskContextAPI {
 
   get isInsideTask(): boolean {
     return this.#getTaskContext() !== undefined;
+  }
+
+  get isRunDisabled(): boolean {
+    return this._runDisabled;
   }
 
   get ctx(): TaskRunContext | undefined {
@@ -98,11 +103,12 @@ export class TaskContextAPI {
   }
 
   public disable() {
-    unregisterGlobal(API_NAME);
+    this._runDisabled = true;
   }
 
   public setGlobalTaskContext(taskContext: TaskContext): boolean {
-    return registerGlobal(API_NAME, taskContext);
+    this._runDisabled = false;
+    return registerGlobal(API_NAME, taskContext, true);
   }
 
   #getTaskContext(): TaskContext | undefined {

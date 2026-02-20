@@ -49,6 +49,7 @@ export {
   NULL_SENTINEL,
 } from "./utils/flattenAttributes.js";
 export { omit } from "./utils/omit.js";
+export { generateFriendlyId, fromFriendlyId } from "./isomorphic/friendlyId.js";
 export {
   calculateNextRetryDelay,
   calculateResetAt,

@@ -1175,9 +1175,9 @@ function QueryResultsCallouts({
     <div className="flex flex-col gap-2 px-2 pt-2">
       {hiddenColumns && hiddenColumns.length > 0 && (
         <Callout variant="warning" className="shrink-0 text-sm">
-          <code>SELECT *</code> doesn't return all columns because it's slow. The following columns
-          are not shown: <span className="font-mono text-xs">{hiddenColumns.join(", ")}</span>.
-          Specify them explicitly to include them.
+          <code>SELECT *</code> returns core columns only. To include{" "}
+          <span className="font-mono text-xs">{hiddenColumns.join(", ")}</span>, add them to your
+          SELECT explicitly.
         </Callout>
       )}
       {periodClipped && (

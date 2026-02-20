@@ -126,7 +126,7 @@ export class TaskRunProcess {
       return;
     }
 
-    await tryCatch(this.#flush());
+    await tryCatch(this.#flush({ disableContext: !kill }));
 
     if (kill) {
       await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
@@ -240,10 +240,10 @@ export class TaskRunProcess {
     return this;
   }
 
-  async #flush(timeoutInMs: number = 5_000) {
+  async #flush({ timeoutInMs = 5_000, disableContext = false } = {}) {
     logger.debug("flushing task run process", { pid: this.pid });
 
-    await this._ipc?.sendWithAck("FLUSH", { timeoutInMs }, timeoutInMs + 1_000);
+    await this._ipc?.sendWithAck("FLUSH", { timeoutInMs, disableContext }, timeoutInMs + 1_000);
   }
 
   async #cancel(timeoutInMs: number = 30_000) {

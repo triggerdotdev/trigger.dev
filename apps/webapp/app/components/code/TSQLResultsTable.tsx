@@ -35,6 +35,7 @@ import { useCopy } from "~/hooks/useCopy";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
+import { formatBytes, formatDecimalBytes, formatQuantity } from "~/utils/columnFormat";
 import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { v3ProjectPath, v3RunPathFromFriendlyId } from "~/utils/pathBuilder";
 import { ChartBlankState } from "../primitives/charts/ChartBlankState";
@@ -66,9 +67,10 @@ function getFormattedValue(value: unknown, column: OutputColumnMetadata): string
   if (value === null) return "NULL";
   if (value === undefined) return "";
 
-  // Handle custom render types
-  if (column.customRenderType) {
-    switch (column.customRenderType) {
+  // Handle format hints (from prettyFormat() or auto-populated from customRenderType)
+  const formatType = column.format ?? column.customRenderType;
+  if (formatType) {
+    switch (formatType) {
       case "duration":
         if (typeof value === "number") {
           return formatDurationMilliseconds(value, { style: "short" });
@@ -93,6 +95,26 @@ function getFormattedValue(value: unknown, column: OutputColumnMetadata): string
         // Include friendly status names for searching
         if (typeof value === "string") {
           return value;
+        }
+        break;
+      case "bytes":
+        if (typeof value === "number") {
+          return formatBytes(value);
+        }
+        break;
+      case "decimalBytes":
+        if (typeof value === "number") {
+          return formatDecimalBytes(value);
+        }
+        break;
+      case "percent":
+        if (typeof value === "number") {
+          return `${value.toFixed(2)}%`;
+        }
+        break;
+      case "quantity":
+        if (typeof value === "number") {
+          return formatQuantity(value);
         }
         break;
     }
@@ -222,6 +244,21 @@ function getDisplayLength(value: unknown, column: OutputColumnMetadata): number 
   if (value === null) return 4; // "NULL"
   if (value === undefined) return 9; // "UNDEFINED"
 
+  // Handle format hint types - estimate their rendered width
+  const fmt = column.format;
+  if (fmt === "bytes" || fmt === "decimalBytes") {
+    // e.g., "1.50 GiB" or "256.00 MB"
+    return 12;
+  }
+  if (fmt === "percent") {
+    // e.g., "45.23%"
+    return 8;
+  }
+  if (fmt === "quantity") {
+    // e.g., "1.50M"
+    return 8;
+  }
+
   // Handle custom render types - estimate their rendered width
   if (column.customRenderType) {
     switch (column.customRenderType) {
@@ -263,6 +300,8 @@ function getDisplayLength(value: unknown, column: OutputColumnMetadata): number 
         return typeof value === "string" ? Math.min(value.length, 20) : 12;
       case "queue":
         return typeof value === "string" ? Math.min(value.length, 25) : 15;
+      case "deploymentId":
+        return typeof value === "string" ? Math.min(value.length, 25) : 20;
     }
   }
 
@@ -394,6 +433,10 @@ function isRightAlignedColumn(column: OutputColumnMetadata): boolean {
   ) {
     return true;
   }
+  const fmt = column.format;
+  if (fmt === "bytes" || fmt === "decimalBytes" || fmt === "percent" || fmt === "quantity") {
+    return true;
+  }
   return isNumericType(column.type);
 }
 
@@ -474,6 +517,32 @@ function CellValue({
 
   if (value === undefined) {
     return <pre className="text-text-dimmed">UNDEFINED</pre>;
+  }
+
+  // Check format hint for new format types (from prettyFormat())
+  if (column.format && !column.customRenderType) {
+    switch (column.format) {
+      case "bytes":
+        if (typeof value === "number") {
+          return <span className="tabular-nums">{formatBytes(value)}</span>;
+        }
+        break;
+      case "decimalBytes":
+        if (typeof value === "number") {
+          return <span className="tabular-nums">{formatDecimalBytes(value)}</span>;
+        }
+        break;
+      case "percent":
+        if (typeof value === "number") {
+          return <span className="tabular-nums">{value.toFixed(2)}%</span>;
+        }
+        break;
+      case "quantity":
+        if (typeof value === "number") {
+          return <span className="tabular-nums">{formatQuantity(value)}</span>;
+        }
+        break;
+    }
   }
 
   // First check customRenderType for special rendering
@@ -574,6 +643,19 @@ function CellValue({
         if (typeof value === "string") {
           const type = value.startsWith("task/") ? "task" : "custom";
           return <QueueName type={type} name={value.replace("task/", "")} />;
+        }
+        return <span>{String(value)}</span>;
+      }
+      case "deploymentId": {
+        if (typeof value === "string" && value.startsWith("deployment_")) {
+          return (
+            <SimpleTooltip
+              content="Jump to deployment"
+              disableHoverableContent
+              hidden={!hovered}
+              button={<TextLink to={`/deployments/${value}`}>{value}</TextLink>}
+            />
+          );
         }
         return <span>{String(value)}</span>;
       }
