@@ -1,16 +1,18 @@
 import { ArrowPathIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
+import { Link } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
-import { getLevelColor, highlightSearchText } from "~/utils/logUtils";
+import { highlightSearchText } from "~/utils/logUtils";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
-import { DateTime } from "../primitives/DateTime";
+import { DateTimeAccurate } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Spinner } from "../primitives/Spinner";
+import { LogLevel } from "./LogLevel";
 import { TruncatedCopyableValue } from "../primitives/TruncatedCopyableValue";
 import { LogLevelTooltipInfo } from "~/components/LogLevelTooltipInfo";
 import {
@@ -24,8 +26,6 @@ import {
   TableRow,
   type TableVariant,
 } from "../primitives/Table";
-import { PopoverMenuItem } from "~/components/primitives/Popover";
-import { Link } from "@remix-run/react";
 
 type LogsTableProps = {
   logs: LogEntry[];
@@ -34,6 +34,7 @@ type LogsTableProps = {
   isLoadingMore?: boolean;
   hasMore?: boolean;
   onLoadMore?: () => void;
+  onCheckForMore?: () => void;
   variant?: TableVariant;
   selectedLogId?: string;
   onLogSelect?: (logId: string) => void;
@@ -48,13 +49,13 @@ function getLevelBoxShadow(level: LogEntry["level"]): string {
       return "inset 2px 0 0 0 rgb(234, 179, 8)";
     case "INFO":
       return "inset 2px 0 0 0 rgb(59, 130, 246)";
+    case "TRACE":
+      return "inset 2px 0 0 0 rgb(168, 85, 247)";
     case "DEBUG":
     default:
       return "none";
   }
 }
-
-
 
 export function LogsTable({
   logs,
@@ -63,6 +64,7 @@ export function LogsTable({
   isLoadingMore = false,
   hasMore = false,
   onLoadMore,
+  onCheckForMore,
   selectedLogId,
   onLogSelect,
 }: LogsTableProps) {
@@ -161,7 +163,7 @@ export function LogsTable({
                       boxShadow: getLevelBoxShadow(log.level),
                     }}
                   >
-                    <DateTime date={log.startTime} />
+                    <DateTimeAccurate date={log.triggeredTimestamp} hour12={false} />
                   </TableCell>
                   <TableCell className="min-w-24">
                     <TruncatedCopyableValue value={log.runId} />
@@ -170,14 +172,7 @@ export function LogsTable({
                     <span className="font-mono text-xs">{log.taskIdentifier}</span>
                   </TableCell>
                   <TableCell onClick={handleRowClick} hasAction>
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded border px-1 py-0.5 text-xxs font-medium uppercase tracking-wider",
-                        getLevelColor(log.level)
-                      )}
-                    >
-                      {log.level}
-                    </span>
+                    <LogLevel level={log.level} />
                   </TableCell>
                   <TableCell className="max-w-0 truncate" onClick={handleRowClick} hasAction>
                     <span className="block truncate font-mono text-xs" title={log.message}>
@@ -187,11 +182,13 @@ export function LogsTable({
                   <TableCellMenu
                     className="pl-32"
                     hiddenButtons={
-                      <Link to={runPath} target="_blank" rel="noopener noreferrer">
-                        <Button variant="minimal/small" TrailingIcon={ArrowTopRightOnSquareIcon}>
-                          View run
-                        </Button>
-                      </Link>
+                      <LinkButton
+                        to={runPath}
+                        variant="minimal/small"
+                        TrailingIcon={ArrowTopRightOnSquareIcon}
+                      >
+                        View run
+                      </LinkButton>
                     }
                   />
                 </TableRow>
@@ -203,20 +200,15 @@ export function LogsTable({
       {/* Infinite scroll trigger */}
       {hasMore && logs.length > 0 && (
         <div ref={loadMoreRef} className="flex items-center justify-center py-12">
-          <div
-            className={cn(
-              "flex items-center gap-2",
-              !showLoadMoreSpinner && "invisible"
-            )}
-          >
+          <div className={cn("flex items-center gap-2", !showLoadMoreSpinner && "invisible")}>
             <Spinner /> <span className="text-text-dimmed">Loading more…</span>
           </div>
         </div>
       )}
-      {/* Show all logs message */}
+      {/* Show all logs message with check for more button */}
       {!hasMore && logs.length > 0 && (
         <div className="flex items-center justify-center py-12">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col items-center gap-3">
             <span className="text-text-dimmed">Showing all {logs.length} logs</span>
           </div>
         </div>
@@ -237,11 +229,7 @@ function BlankState({ isLoading, onRefresh }: { isLoading?: boolean; onRefresh?:
           No logs match your filters. Try refreshing or modifying your filters.
         </Paragraph>
         <div className="flex items-center gap-2">
-          <Button
-            LeadingIcon={ArrowPathIcon}
-            variant="tertiary/medium"
-            onClick={handleRefresh}
-          >
+          <Button LeadingIcon={ArrowPathIcon} variant="tertiary/medium" onClick={handleRefresh}>
             Refresh
           </Button>
         </div>

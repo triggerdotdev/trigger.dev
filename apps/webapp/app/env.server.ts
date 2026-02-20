@@ -425,6 +425,11 @@ const EnvironmentSchema = z
     ORG_SLACK_INTEGRATION_CLIENT_ID: z.string().optional(),
     ORG_SLACK_INTEGRATION_CLIENT_SECRET: z.string().optional(),
 
+    /** Vercel integration OAuth credentials */
+    VERCEL_INTEGRATION_CLIENT_ID: z.string().optional(),
+    VERCEL_INTEGRATION_CLIENT_SECRET: z.string().optional(),
+    VERCEL_INTEGRATION_APP_SLUG: z.string().optional(),
+
     /** These enable the alerts feature in v3 */
     ALERT_EMAIL_TRANSPORT: z.enum(["resend", "smtp", "aws-ses"]).optional(),
     ALERT_FROM_EMAIL: z.string().optional(),
@@ -1175,8 +1180,8 @@ const EnvironmentSchema = z
     CLICKHOUSE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
     CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
 
-    // Logs List Query Settings (for paginated log views)
-    CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE: z.coerce.number().int().default(256_000_000),
+    // Logs Query Settings
+    CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE: z.coerce.number().int().default(1_000_000_000),
     CLICKHOUSE_LOGS_LIST_MAX_BYTES_BEFORE_EXTERNAL_SORT: z.coerce
       .number()
       .int()
@@ -1185,15 +1190,20 @@ const EnvironmentSchema = z
     CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ: z.coerce.number().int().default(10_000_000),
     CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME: z.coerce.number().int().default(120),
 
-    // Logs Detail Query Settings (for single log views)
-    CLICKHOUSE_LOGS_DETAIL_MAX_MEMORY_USAGE: z.coerce.number().int().default(64_000_000),
-    CLICKHOUSE_LOGS_DETAIL_MAX_THREADS: z.coerce.number().int().default(2),
-    CLICKHOUSE_LOGS_DETAIL_MAX_EXECUTION_TIME: z.coerce.number().int().default(60),
-
     // Query feature flag
     QUERY_FEATURE_ENABLED: z.string().default("1"),
 
+    // Logs page ClickHouse URL (for logs queries)
+    LOGS_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+
     // Query page ClickHouse limits (for TSQL queries)
+    QUERY_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
     QUERY_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().default(10),
     QUERY_CLICKHOUSE_MAX_MEMORY_USAGE: z.coerce.number().int().default(1_073_741_824), // 1GB in bytes
     QUERY_CLICKHOUSE_MAX_AST_ELEMENTS: z.coerce.number().int().default(4_000_000),
@@ -1203,7 +1213,10 @@ const EnvironmentSchema = z
 
     // Query page concurrency limits
     QUERY_DEFAULT_ORG_CONCURRENCY_LIMIT: z.coerce.number().int().default(3),
-    QUERY_GLOBAL_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
+    QUERY_GLOBAL_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+
+    // Metric widget concurrency limits
+    METRIC_WIDGET_DEFAULT_ORG_CONCURRENCY_LIMIT: z.coerce.number().int().default(30),
 
     EVENTS_CLICKHOUSE_URL: z
       .string()

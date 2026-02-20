@@ -128,7 +128,7 @@ export default function LoginPage() {
               <div className="relative w-full">
                 {data.lastAuthMethod === "github" && <LastUsedBadge />}
                 <Form
-                  action={`/auth/github${data.redirectTo ? `?redirectTo=${data.redirectTo}` : ""}`}
+                  action={`/auth/github${data.redirectTo ? `?redirectTo=${encodeURIComponent(data.redirectTo)}` : ""}`}
                   method="post"
                   className="w-full"
                 >
@@ -148,7 +148,7 @@ export default function LoginPage() {
               <div className="relative w-full">
                 {data.lastAuthMethod === "google" && <LastUsedBadge />}
                 <Form
-                  action={`/auth/google${data.redirectTo ? `?redirectTo=${data.redirectTo}` : ""}`}
+                  action={`/auth/google${data.redirectTo ? `?redirectTo=${encodeURIComponent(data.redirectTo)}` : ""}`}
                   method="post"
                   className="w-full"
                 >
@@ -167,7 +167,7 @@ export default function LoginPage() {
             <div className="relative w-full">
               {data.lastAuthMethod === "email" && <LastUsedBadge />}
               <LinkButton
-                to="/login/magic"
+                to={data.redirectTo ? `/login/magic?redirectTo=${encodeURIComponent(data.redirectTo)}` : "/login/magic"}
                 variant="secondary/extra-large"
                 fullWidth
                 data-action="continue with email"

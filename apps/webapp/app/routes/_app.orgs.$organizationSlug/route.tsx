@@ -3,6 +3,7 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
+import { prisma } from "~/db.server";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
@@ -87,9 +88,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   firstDayOfNextMonth.setUTCDate(1);
   firstDayOfNextMonth.setUTCHours(0, 0, 0, 0);
 
-  const [plan, usage] = await Promise.all([
+  const [plan, usage, customDashboards] = await Promise.all([
     getCurrentPlan(organization.id),
     getCachedUsage(organization.id, { from: firstDayOfMonth, to: firstDayOfNextMonth }),
+    prisma.metricsDashboard.findMany({
+      where: { organizationId: organization.id },
+      select: {
+        friendlyId: true,
+        title: true,
+        layout: true,
+      },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
   let hasExceededFreeTier = false;
@@ -99,6 +109,39 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     usagePercentage = usage.cents / plan.v3Subscription.plan.limits.includedUsage;
   }
 
+  // Derive metric dashboard limit from plan, fallback to 3
+  const metricDashboardsLimitValue = plan?.v3Subscription?.plan?.limits?.metricDashboards;
+  const dashboardLimit =
+    typeof metricDashboardsLimitValue === "number"
+      ? metricDashboardsLimitValue
+      : metricDashboardsLimitValue?.number ?? 3;
+
+  // Derive widget-per-dashboard limit from plan, fallback to 16
+  const metricWidgetsLimitValue = plan?.v3Subscription?.plan?.limits?.metricWidgetsPerDashboard;
+  const widgetLimitPerDashboard =
+    typeof metricWidgetsLimitValue === "number"
+      ? metricWidgetsLimitValue
+      : metricWidgetsLimitValue?.number ?? 16;
+
+  // Compute widget counts per dashboard from layout JSON
+  const customDashboardsWithWidgetCount = customDashboards.map((d) => {
+    let widgetCount = 0;
+    try {
+      const layout = JSON.parse(String(d.layout)) as Record<string, unknown>;
+      const widgets = layout.widgets;
+      if (widgets && typeof widgets === "object") {
+        widgetCount = Object.keys(widgets as Record<string, unknown>).length;
+      }
+    } catch {
+      // ignore parse errors
+    }
+    return {
+      friendlyId: d.friendlyId,
+      title: d.title,
+      widgetCount,
+    };
+  });
+
   return typedjson({
     organizations,
     organization,
@@ -106,6 +149,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     environment,
     isImpersonating: !!impersonationId,
     currentPlan: { ...plan, v3Usage: { ...usage, hasExceededFreeTier, usagePercentage } },
+    customDashboards: customDashboardsWithWidgetCount,
+    dashboardLimits: {
+      used: customDashboards.length,
+      limit: dashboardLimit,
+    },
+    widgetLimitPerDashboard,
   });
 };
 

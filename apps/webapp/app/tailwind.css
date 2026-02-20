@@ -1,6 +1,38 @@
 @import url("non.geist");
 @import url("non.geist/mono");
 
+@import "react-grid-layout/css/styles.css";
+@import "react-resizable/css/styles.css";
+
+/* Override react-grid-layout placeholder color (default is red) */
+.react-grid-item.react-grid-placeholder {
+  background: rgb(99 102 241) !important; /* indigo-500 */
+  border-radius: 0.375rem !important; /* rounded-md */
+}
+
+/* Sidebar reorder grid: subtle placeholder */
+.sidebar-reorder-grid .react-grid-item.react-grid-placeholder {
+  background: rgb(39 42 46) !important; /* charcoal-700 */
+  border-radius: 0.25rem;
+  opacity: 1 !important;
+}
+
+/* Sidebar reorder grid: only animate transform (vertical position), not width/height */
+.sidebar-reorder-grid .react-grid-item {
+  transition: transform 200ms ease !important;
+}
+
+/* Override resize handle icon to white */
+.react-resizable-handle {
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSA2IDYgTCAwIDYgTCAwIDQuMiBMIDQgNC4yIEwgNC4yIDQuMiBMIDQuMiAwIEwgNiAwIEwgNiA2IEwgNiA2IFoiIGZpbGw9IiNmZmZmZmYiLz48L2c+PC9zdmc+') !important;
+}
+.react-resizable-handle::after {
+  border-bottom-color: rgba(255, 255, 255, 0.4) !important;
+  border-right-color: rgba(255, 255, 255, 0.4) !important;
+  border-top-color: rgba(255, 255, 255, 0.4) !important;
+  border-left-color: rgba(255, 255, 255, 0.4) !important;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -120,6 +152,14 @@
   --muted-foreground: 215 14% 60%;
   --foreground: 210 20% 90%;
   --border: 217 19% 27%;
+
+  /* Code block styling */
+  & [data-code-block-container] {
+    @apply rounded border-charcoal-650 my-0;
+  }
+  & [data-code-block] {
+    border-top: none;
+  }
 
   & p {
     @apply my-1;

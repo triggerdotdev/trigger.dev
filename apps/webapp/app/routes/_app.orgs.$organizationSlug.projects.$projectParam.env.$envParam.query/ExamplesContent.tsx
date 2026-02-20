@@ -39,6 +39,19 @@ LIMIT 20`,
     scope: "environment",
   },
   {
+    title: "Runs over time",
+    description:
+      "Count of runs bucketed over time. The bucket size adjusts automatically to the time range.",
+    query: `SELECT
+  timeBucket(),
+  count() AS run_count
+FROM runs
+GROUP BY timeBucket
+ORDER BY timeBucket
+LIMIT 1000`,
+    scope: "environment",
+  },
+  {
     title: "Most expensive 100 runs (past 7d)",
     description: "Top 100 runs by cost over the last 7 days.",
     query: `SELECT

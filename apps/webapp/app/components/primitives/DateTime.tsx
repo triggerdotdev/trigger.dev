@@ -1,4 +1,5 @@
 import { GlobeAltIcon, GlobeAmericasIcon } from "@heroicons/react/20/solid";
+import { useRouteLoaderData } from "@remix-run/react";
 import { Laptop } from "lucide-react";
 import { memo, type ReactNode, useMemo, useSyncExternalStore } from "react";
 import { CopyButton } from "./CopyButton";
@@ -19,7 +20,7 @@ function getLocalTimeZone(): string {
 // For SSR compatibility: returns "UTC" on server, actual timezone on client
 function subscribeToTimeZone() {
   // No-op - timezone doesn't change
-  return () => { };
+  return () => {};
 }
 
 function getTimeZoneSnapshot(): string {
@@ -37,6 +38,18 @@ function getServerTimeZoneSnapshot(): string {
  */
 export function useLocalTimeZone(): string {
   return useSyncExternalStore(subscribeToTimeZone, getTimeZoneSnapshot, getServerTimeZoneSnapshot);
+}
+
+/**
+ * Hook to get the user's preferred timezone.
+ * Returns the timezone stored in the user's preferences cookie (from root loader),
+ * falling back to the browser's local timezone if not set.
+ */
+export function useUserTimeZone(): string {
+  const rootData = useRouteLoaderData("root") as { timezone?: string } | undefined;
+  const localTimeZone = useLocalTimeZone();
+  // Use stored timezone from cookie, or fall back to browser's local timezone
+  return rootData?.timezone && rootData.timezone !== "UTC" ? rootData.timezone : localTimeZone;
 }
 
 type DateTimeProps = {
@@ -63,7 +76,7 @@ export const DateTime = ({
   hour12 = true,
 }: DateTimeProps) => {
   const locales = useLocales();
-  const localTimeZone = useLocalTimeZone();
+  const userTimeZone = useUserTimeZone();
 
   const realDate = useMemo(() => (typeof date === "string" ? new Date(date) : date), [date]);
 
@@ -71,7 +84,7 @@ export const DateTime = ({
     <span suppressHydrationWarning>
       {formatDateTime(
         realDate,
-        timeZone ?? localTimeZone,
+        timeZone ?? userTimeZone,
         locales,
         includeSeconds,
         includeTime,
@@ -91,7 +104,7 @@ export const DateTime = ({
         <TooltipContent
           realDate={realDate}
           timeZone={timeZone}
-          localTimeZone={localTimeZone}
+          localTimeZone={userTimeZone}
           locales={locales}
         />
       }
@@ -167,7 +180,7 @@ export function formatDateTimeISO(date: Date, timeZone: string): string {
 // New component that only shows date when it changes
 export const SmartDateTime = ({ date, previousDate = null, hour12 = true }: DateTimeProps) => {
   const locales = useLocales();
-  const localTimeZone = useLocalTimeZone();
+  const userTimeZone = useUserTimeZone();
   const realDate = typeof date === "string" ? new Date(date) : date;
   const realPrevDate = previousDate
     ? typeof previousDate === "string"
@@ -180,10 +193,14 @@ export const SmartDateTime = ({ date, previousDate = null, hour12 = true }: Date
 
   // Format with appropriate function
   const formattedDateTime = showDatePart
-    ? formatSmartDateTime(realDate, localTimeZone, locales, hour12)
-    : formatTimeOnly(realDate, localTimeZone, locales, hour12);
+    ? formatSmartDateTime(realDate, userTimeZone, locales, hour12)
+    : formatTimeOnly(realDate, userTimeZone, locales, hour12);
 
-  return <span suppressHydrationWarning>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</span>;
+  return (
+    <span suppressHydrationWarning>
+      {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
+    </span>
+  );
 };
 
 // Helper function to check if two dates are on the same day
@@ -235,14 +252,16 @@ function formatTimeOnly(
 
 const DateTimeAccurateInner = ({
   date,
-  timeZone = "UTC",
+  timeZone,
   previousDate = null,
   showTooltip = true,
   hideDate = false,
   hour12 = true,
 }: DateTimeProps) => {
   const locales = useLocales();
-  const localTimeZone = useLocalTimeZone();
+  const userTimeZone = useUserTimeZone();
+  // Use provided timeZone prop if available, otherwise fall back to user's preferred timezone
+  const displayTimeZone = timeZone ?? userTimeZone;
   const realDate = typeof date === "string" ? new Date(date) : date;
   const realPrevDate = previousDate
     ? typeof previousDate === "string"
@@ -253,29 +272,37 @@ const DateTimeAccurateInner = ({
   // Smart formatting based on whether date changed
   const formattedDateTime = useMemo(() => {
     return hideDate
-      ? formatTimeOnly(realDate, localTimeZone, locales, hour12)
+      ? formatTimeOnly(realDate, displayTimeZone, locales, hour12)
       : realPrevDate
-        ? isSameDay(realDate, realPrevDate)
-          ? formatTimeOnly(realDate, localTimeZone, locales, hour12)
-          : formatDateTimeAccurate(realDate, localTimeZone, locales, hour12)
-        : formatDateTimeAccurate(realDate, localTimeZone, locales, hour12);
-  }, [realDate, localTimeZone, locales, hour12, hideDate, previousDate]);
+      ? isSameDay(realDate, realPrevDate)
+        ? formatTimeOnly(realDate, displayTimeZone, locales, hour12)
+        : formatDateTimeAccurate(realDate, displayTimeZone, locales, hour12)
+      : formatDateTimeAccurate(realDate, displayTimeZone, locales, hour12);
+  }, [realDate, displayTimeZone, locales, hour12, hideDate, previousDate]);
 
   if (!showTooltip)
-    return <span suppressHydrationWarning>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</span>;
+    return (
+      <span suppressHydrationWarning>
+        {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
+      </span>
+    );
 
   const tooltipContent = (
     <TooltipContent
       realDate={realDate}
       timeZone={timeZone}
-      localTimeZone={localTimeZone}
+      localTimeZone={userTimeZone}
       locales={locales}
     />
   );
 
   return (
     <SimpleTooltip
-      button={<span suppressHydrationWarning>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</span>}
+      button={
+        <span suppressHydrationWarning>
+          {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
+        </span>
+      }
       content={tooltipContent}
       side="right"
       asChild={true}
@@ -311,9 +338,13 @@ function formatDateTimeAccurate(
   locales: string[],
   hour12: boolean = true
 ): string {
-  const formattedDateTime = new Intl.DateTimeFormat(locales, {
+  const datePart = new Intl.DateTimeFormat(locales, {
     month: "short",
     day: "numeric",
+    timeZone,
+  }).format(date);
+
+  const timePart = new Intl.DateTimeFormat(locales, {
     hour: "numeric",
     minute: "numeric",
     second: "numeric",
@@ -323,16 +354,20 @@ function formatDateTimeAccurate(
     hour12,
   }).format(date);
 
-  return formattedDateTime;
+  return `${datePart} ${timePart}`;
 }
 
 export const DateTimeShort = ({ date, hour12 = true }: DateTimeProps) => {
   const locales = useLocales();
-  const localTimeZone = useLocalTimeZone();
+  const userTimeZone = useUserTimeZone();
   const realDate = typeof date === "string" ? new Date(date) : date;
-  const formattedDateTime = formatDateTimeShort(realDate, localTimeZone, locales, hour12);
+  const formattedDateTime = formatDateTimeShort(realDate, userTimeZone, locales, hour12);
 
-  return <span suppressHydrationWarning>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</span>;
+  return (
+    <span suppressHydrationWarning>
+      {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
+    </span>
+  );
 };
 
 function formatDateTimeShort(

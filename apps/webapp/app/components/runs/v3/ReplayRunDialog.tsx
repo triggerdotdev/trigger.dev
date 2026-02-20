@@ -200,6 +200,7 @@ function ReplayForm({
       tags,
       version,
       machine,
+      region,
       prioritySeconds,
     },
   ] = useForm({
@@ -362,6 +363,35 @@ function ReplayForm({
                 )}
                 <FormError id={version.errorId}>{version.error}</FormError>
               </InputGroup>
+              {replayData.regions.length > 1 && (
+                <InputGroup>
+                  <Label htmlFor={region.id} variant="small">
+                    Region
+                  </Label>
+                  <Select
+                    {...conform.select(region)}
+                    variant="tertiary/small"
+                    placeholder={replayData.disableVersionSelection ? "–" : undefined}
+                    dropdownIcon
+                    items={replayData.regions}
+                    defaultValue={replayData.region ?? undefined}
+                    disabled={replayData.disableVersionSelection}
+                  >
+                    {replayData.regions.map((r) => (
+                      <SelectItem key={r.name} value={r.name}>
+                        {r.description ? `${r.name} — ${r.description}` : r.name}
+                        {r.isDefault ? " (default)" : ""}
+                      </SelectItem>
+                    ))}
+                  </Select>
+                  {replayData.disableVersionSelection ? (
+                    <Hint>Region is not available in the development environment.</Hint>
+                  ) : (
+                    <Hint>Overrides the region for this run.</Hint>
+                  )}
+                  <FormError id={region.errorId}>{region.error}</FormError>
+                </InputGroup>
+              )}
               <InputGroup>
                 <Label htmlFor={queue.id} variant="small">
                   Queue

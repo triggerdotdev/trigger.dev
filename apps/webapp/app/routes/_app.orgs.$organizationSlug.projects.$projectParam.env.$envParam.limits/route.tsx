@@ -511,6 +511,11 @@ function QuotasSection({
   if (quotas.devQueueSize.limit !== null) quotaRows.push(quotas.devQueueSize);
   if (quotas.deployedQueueSize.limit !== null) quotaRows.push(quotas.deployedQueueSize);
 
+  // Metric & query quotas
+  if (quotas.metricDashboards) quotaRows.push(quotas.metricDashboards);
+  if (quotas.metricWidgetsPerDashboard) quotaRows.push(quotas.metricWidgetsPerDashboard);
+  if (quotas.queryPeriodDays) quotaRows.push(quotas.queryPeriodDays);
+
   return (
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1">
@@ -555,13 +560,16 @@ function QuotaRow({
   isOnTopPlan: boolean;
   billingPath: string;
 }) {
-  // For log retention, we don't show current usage as it's a duration, not a count
-  const isRetentionQuota = quota.name === "Log retention";
+  // For log retention and query period, we don't show current usage as it's a duration, not a count
+  // For widgets per dashboard, the usage varies per dashboard so we don't show a single number
+  const isDurationQuota = quota.name === "Log retention" || quota.name === "Query period";
+  const isPerItemQuota = quota.name === "Charts per dashboard";
+  const isRetentionQuota = isDurationQuota || isPerItemQuota;
   const percentage =
     !isRetentionQuota && quota.limit && quota.limit > 0 ? quota.currentUsage / quota.limit : null;
 
-  // Special handling for Log retention
-  if (quota.name === "Log retention") {
+  // Special handling for duration-based quotas (Log retention, Query period)
+  if (isDurationQuota) {
     const canUpgrade = !isOnTopPlan;
     return (
       <TableRow>
@@ -570,7 +578,9 @@ function QuotaRow({
           <InfoIconTooltip content={quota.description} disableHoverableContent />
         </TableCell>
         <TableCell alignment="right" className="font-medium tabular-nums">
-          {quota.limit !== null ? `${formatNumber(quota.limit)} days` : "Unlimited"}
+          {quota.limit !== null
+              ? `${formatNumber(quota.limit)} ${quota.limit === 1 ? "day" : "days"}`
+              : "Unlimited"}
         </TableCell>
         <TableCell alignment="right" className="tabular-nums text-text-dimmed">
           –
@@ -648,8 +658,8 @@ function QuotaRow({
       </TableCell>
       <TableCell alignment="right" className="font-medium tabular-nums">
         {quota.limit !== null
-          ? isRetentionQuota
-            ? `${formatNumber(quota.limit)} days`
+          ? isDurationQuota
+            ? `${formatNumber(quota.limit)} ${quota.limit === 1 ? "day" : "days"}`
             : formatNumber(quota.limit)
           : "Unlimited"}
       </TableCell>

@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import type * as RechartsPrimitive from "recharts";
+import type { AggregationType } from "~/components/metrics/QueryWidget";
 import { ChartContainer, type ChartConfig, type ChartState } from "./Chart";
 import { ChartProvider, useChartContext, type LabelFormatter } from "./ChartContext";
 import { ChartLegendCompound } from "./ChartLegendCompound";
@@ -12,6 +13,8 @@ export type ChartRootProps = {
   dataKey: string;
   /** Series keys to render (if not provided, derived from config keys) */
   series?: string[];
+  /** Subset of series to render as SVG elements on the chart (legend still shows all series) */
+  visibleSeries?: string[];
   state?: ChartState;
   /** Function to format the x-axis label (used in legend, tooltips, etc.) */
   labelFormatter?: LabelFormatter;
@@ -29,12 +32,16 @@ export type ChartRootProps = {
   maxLegendItems?: number;
   /** Label for the total row in the legend */
   legendTotalLabel?: string;
+  /** Aggregation method used by the legend to compute totals (defaults to sum behavior) */
+  legendAggregation?: AggregationType;
   /** Callback when "View all" legend button is clicked */
   onViewAllLegendItems?: () => void;
   /** When true, constrains legend to max 50% height with scrolling */
   legendScrollable?: boolean;
   /** When true, chart fills its parent container height and distributes space between chart and legend */
   fillContainer?: boolean;
+  /** Content rendered between the chart and the legend */
+  beforeLegend?: React.ReactNode;
   children: React.ComponentProps<typeof RechartsPrimitive.ResponsiveContainer>["children"];
 };
 
@@ -64,6 +71,7 @@ export function ChartRoot({
   data,
   dataKey,
   series,
+  visibleSeries,
   state,
   labelFormatter,
   enableZoom = false,
@@ -73,9 +81,11 @@ export function ChartRoot({
   showLegend = false,
   maxLegendItems = 5,
   legendTotalLabel,
+  legendAggregation,
   onViewAllLegendItems,
   legendScrollable = false,
   fillContainer = false,
+  beforeLegend,
   children,
 }: ChartRootProps) {
   return (
@@ -84,6 +94,7 @@ export function ChartRoot({
       data={data}
       dataKey={dataKey}
       series={series}
+      visibleSeries={visibleSeries}
       state={state}
       labelFormatter={labelFormatter}
       enableZoom={enableZoom}
@@ -96,9 +107,11 @@ export function ChartRoot({
         showLegend={showLegend}
         maxLegendItems={maxLegendItems}
         legendTotalLabel={legendTotalLabel}
+        legendAggregation={legendAggregation}
         onViewAllLegendItems={onViewAllLegendItems}
         legendScrollable={legendScrollable}
         fillContainer={fillContainer}
+        beforeLegend={beforeLegend}
       >
         {children}
       </ChartRootInner>
@@ -112,9 +125,11 @@ type ChartRootInnerProps = {
   showLegend?: boolean;
   maxLegendItems?: number;
   legendTotalLabel?: string;
+  legendAggregation?: AggregationType;
   onViewAllLegendItems?: () => void;
   legendScrollable?: boolean;
   fillContainer?: boolean;
+  beforeLegend?: React.ReactNode;
   children: React.ComponentProps<typeof RechartsPrimitive.ResponsiveContainer>["children"];
 };
 
@@ -124,9 +139,11 @@ function ChartRootInner({
   showLegend = false,
   maxLegendItems = 5,
   legendTotalLabel,
+  legendAggregation,
   onViewAllLegendItems,
   legendScrollable = false,
   fillContainer = false,
+  beforeLegend,
   children,
 }: ChartRootInnerProps) {
   const { config, zoom } = useChartContext();
@@ -160,11 +177,13 @@ function ChartRootInner({
           {children}
         </ChartContainer>
       </div>
+      {beforeLegend}
       {/* Legend rendered outside the chart container */}
       {showLegend && (
         <ChartLegendCompound
           maxItems={maxLegendItems}
           totalLabel={legendTotalLabel}
+          aggregation={legendAggregation}
           onViewAllLegendItems={onViewAllLegendItems}
           scrollable={legendScrollable}
         />
@@ -194,18 +213,79 @@ export function useHasNoData(): boolean {
 }
 
 /**
- * Hook to calculate totals for each series across all data points.
+ * Hook to calculate aggregated values for each series across all data points.
+ * When no aggregation is provided, defaults to sum (original behavior).
  * Useful for legend displays.
  */
-export function useSeriesTotal(): Record<string, number> {
+export function useSeriesTotal(aggregation?: AggregationType): Record<string, number> {
   const { data, dataKeys } = useChartContext();
 
   return useMemo(() => {
-    return data.reduce((acc, item) => {
-      for (const seriesKey of dataKeys) {
-        acc[seriesKey] = (acc[seriesKey] || 0) + Number(item[seriesKey] || 0);
+    // Sum (default) and count use additive accumulation
+    if (!aggregation || aggregation === "sum" || aggregation === "count") {
+      return data.reduce(
+        (acc, item) => {
+          for (const seriesKey of dataKeys) {
+            acc[seriesKey] = (acc[seriesKey] || 0) + Number(item[seriesKey] || 0);
+          }
+          return acc;
+        },
+        {} as Record<string, number>
+      );
+    }
+
+    if (aggregation === "avg") {
+      const sums: Record<string, number> = {};
+      const counts: Record<string, number> = {};
+      for (const item of data) {
+        for (const seriesKey of dataKeys) {
+          const rawVal = item[seriesKey];
+          if (rawVal == null) continue; // skip gap-filled nulls
+          const val = Number(rawVal);
+          sums[seriesKey] = (sums[seriesKey] || 0) + val;
+          counts[seriesKey] = (counts[seriesKey] || 0) + 1;
+        }
       }
-      return acc;
-    }, {} as Record<string, number>);
-  }, [data, dataKeys]);
+      const result: Record<string, number> = {};
+      for (const key of dataKeys) {
+        result[key] = counts[key] ? sums[key]! / counts[key]! : 0;
+      }
+      return result;
+    }
+
+    if (aggregation === "min") {
+      const result: Record<string, number> = {};
+      for (const item of data) {
+        for (const seriesKey of dataKeys) {
+          if (item[seriesKey] == null) continue; // skip gap-filled nulls
+          const val = Number(item[seriesKey]);
+          if (result[seriesKey] === undefined || val < result[seriesKey]) {
+            result[seriesKey] = val;
+          }
+        }
+      }
+      // Default to 0 for series with no data
+      for (const key of dataKeys) {
+        if (result[key] === undefined) result[key] = 0;
+      }
+      return result;
+    }
+
+    // aggregation === "max"
+    const result: Record<string, number> = {};
+    for (const item of data) {
+      for (const seriesKey of dataKeys) {
+        if (item[seriesKey] == null) continue; // skip gap-filled nulls
+        const val = Number(item[seriesKey]);
+        if (result[seriesKey] === undefined || val > result[seriesKey]) {
+          result[seriesKey] = val;
+        }
+      }
+    }
+    // Default to 0 for series with no data
+    for (const key of dataKeys) {
+      if (result[key] === undefined) result[key] = 0;
+    }
+    return result;
+  }, [data, dataKeys, aggregation]);
 }

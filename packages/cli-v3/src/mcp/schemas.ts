@@ -123,6 +123,17 @@ export const CommonRunsInput = CommonProjectsInput.extend({
 
 export type CommonRunsInput = z.output<typeof CommonRunsInput>;
 
+export const WaitForRunInput = CommonRunsInput.extend({
+  timeoutInSeconds: z
+    .number()
+    .describe(
+      "The maximum time in seconds to wait for the run to complete. If the run doesn't complete within this time, the current state of the run will be returned. Defaults to 60 seconds."
+    )
+    .default(60),
+});
+
+export type WaitForRunInput = z.output<typeof WaitForRunInput>;
+
 export const GetRunDetailsInput = CommonRunsInput.extend({
   maxTraceLines: z
     .number()

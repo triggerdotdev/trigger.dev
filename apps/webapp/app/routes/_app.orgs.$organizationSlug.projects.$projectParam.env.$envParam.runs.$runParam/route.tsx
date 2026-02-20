@@ -1822,7 +1822,7 @@ function PreviousRunButton({ to }: { to: string | null }) {
         leadingIconClassName="size-3 group-hover/button:text-text-bright transition-colors"
         className={cn("flex size-6 max-w-6 items-center", !to && "cursor-not-allowed opacity-50")}
         onClick={(e) => !to && e.preventDefault()}
-        shortcut={{ key: "[" }}
+        shortcut={{ key: "j" }}
         tooltip="Previous Run"
         disabled={!to}
         replace
@@ -1841,7 +1841,7 @@ function NextRunButton({ to }: { to: string | null }) {
         leadingIconClassName="size-3 group-hover/button:text-text-bright transition-colors"
         className={cn("flex size-6 max-w-6 items-center", !to && "cursor-not-allowed opacity-50")}
         onClick={(e) => !to && e.preventDefault()}
-        shortcut={{ key: "]" }}
+        shortcut={{ key: "k" }}
         tooltip="Next Run"
         disabled={!to}
         replace
