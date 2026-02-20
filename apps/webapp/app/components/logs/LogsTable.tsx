@@ -125,6 +125,7 @@ export function LogsTable({
             <TableHeaderCell
               className="min-w-24 whitespace-nowrap"
               tooltip={<LogLevelTooltipInfo />}
+              disableTooltipHoverableContent
             >
               Level
             </TableHeaderCell>
