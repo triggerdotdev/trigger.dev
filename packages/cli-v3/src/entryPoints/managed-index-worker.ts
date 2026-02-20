@@ -147,6 +147,20 @@ if (typeof config.machine === "string") {
   });
 }
 
+// If the config has a region, we need to apply it to all tasks that don't have a region
+if (typeof config.region === "string") {
+  tasks = tasks.map((task) => {
+    if (typeof task.region !== "string") {
+      return {
+        ...task,
+        region: config.region,
+      } satisfies TaskManifest;
+    }
+
+    return task;
+  });
+}
+
 const processKeepAlive = config.processKeepAlive ?? config.experimental_processKeepAlive;
 
 await sendMessageInCatalog(

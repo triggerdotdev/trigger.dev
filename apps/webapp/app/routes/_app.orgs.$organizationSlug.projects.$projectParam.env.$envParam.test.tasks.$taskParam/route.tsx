@@ -59,6 +59,7 @@ import { cn } from "~/utils/cn";
 import { docsPath, v3RunSpanPath, v3TaskParamsSchema, v3TestPath } from "~/utils/pathBuilder";
 import { TestTaskService } from "~/v3/services/testTask.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { TestTaskData } from "~/v3/testTask";
 import { RunTagInput } from "~/components/runs/v3/RunTagInput";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
@@ -234,6 +235,13 @@ export const action: ActionFunction = async ({ request, params }) => {
           return redirectBackWithErrorMessage(
             request,
             "Unable to start a test run: You have exceeded your free credits"
+          );
+        }
+
+        if (e instanceof ServiceValidationError) {
+          return redirectBackWithErrorMessage(
+            request,
+            `Unable to start a test run: ${e.message}`
           );
         }
 

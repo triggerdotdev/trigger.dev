@@ -10,6 +10,7 @@ export const TaskResource = z.object({
   queue: QueueManifest.extend({ name: z.string().optional() }).optional(),
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
+  region: z.string().optional(),
   triggerSource: z.string().optional(),
   schedule: ScheduleMetadata.optional(),
   maxDuration: z.number().optional(),

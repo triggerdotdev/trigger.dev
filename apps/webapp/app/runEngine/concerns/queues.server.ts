@@ -57,6 +57,7 @@ export class DefaultQueueManager implements QueueManager {
   ): Promise<QueueProperties> {
     let queueName: string;
     let lockedQueueId: string | undefined;
+    let resolvedRegion: string | undefined;
 
     // Determine queue name based on lockToVersion and provided options
     if (lockedBackgroundWorker) {
@@ -83,6 +84,17 @@ export class DefaultQueueManager implements QueueManager {
         // Use the validated queue name directly
         queueName = specifiedQueue.name;
         lockedQueueId = specifiedQueue.id;
+
+        // Get task-level region config for the locked worker
+        const lockedTask = await this.prisma.backgroundWorkerTask.findFirst({
+          where: {
+            workerId: lockedBackgroundWorker.id,
+            runtimeEnvironmentId: request.environment.id,
+            slug: request.taskId,
+          },
+          select: { region: true },
+        });
+        resolvedRegion = lockedTask?.region ?? undefined;
       } else {
         // No specific queue name provided, use the default queue for the task on the locked worker
         const lockedTask = await this.prisma.backgroundWorkerTask.findFirst({
@@ -121,6 +133,7 @@ export class DefaultQueueManager implements QueueManager {
         // Use the task's default queue name
         queueName = lockedTask.queue.name;
         lockedQueueId = lockedTask.queue.id;
+        resolvedRegion = lockedTask.region ?? undefined;
       }
     } else {
       // Task is not locked to a specific version, use regular logic
@@ -131,8 +144,10 @@ export class DefaultQueueManager implements QueueManager {
         );
       }
 
-      // Get queue name using the helper for non-locked case (handles provided name or finds default)
-      queueName = await this.getQueueName(request);
+      // Get queue name and task-level region using the helper for non-locked case
+      const queueInfo = await this._getQueueInfo(request);
+      queueName = queueInfo.queueName;
+      resolvedRegion = queueInfo.region ?? undefined;
     }
 
     // Sanitize the final determined queue name once
@@ -148,18 +163,20 @@ export class DefaultQueueManager implements QueueManager {
     return {
       queueName,
       lockedQueueId,
+      resolvedRegion,
     };
   }
 
   async getQueueName(request: TriggerTaskRequest): Promise<string> {
+    const { queueName } = await this._getQueueInfo(request);
+    return queueName;
+  }
+
+  private async _getQueueInfo(
+    request: TriggerTaskRequest
+  ): Promise<{ queueName: string; region?: string | null }> {
     const { taskId, environment, body } = request;
     const { queue } = body.options ?? {};
-
-    // Use extractQueueName to handle double-wrapped queue objects
-    const queueName = extractQueueName(queue);
-    if (queueName) {
-      return queueName;
-    }
 
     const defaultQueueName = `task/${taskId}`;
 
@@ -172,7 +189,9 @@ export class DefaultQueueManager implements QueueManager {
         environmentId: environment.id,
       });
 
-      return defaultQueueName;
+      // Use extractQueueName to handle double-wrapped queue objects
+      const queueName = extractQueueName(queue);
+      return { queueName: queueName ?? defaultQueueName };
     }
 
     const task = await this.prisma.backgroundWorkerTask.findFirst({
@@ -192,7 +211,14 @@ export class DefaultQueueManager implements QueueManager {
         environmentId: environment.id,
       });
 
-      return defaultQueueName;
+      const queueName = extractQueueName(queue);
+      return { queueName: queueName ?? defaultQueueName };
+    }
+
+    // Use specified queue name if provided, otherwise fall back to task's queue
+    const specifiedQueueName = extractQueueName(queue);
+    if (specifiedQueueName) {
+      return { queueName: specifiedQueueName, region: task.region };
     }
 
     if (!task.queue) {
@@ -202,10 +228,13 @@ export class DefaultQueueManager implements QueueManager {
         queueConfig: task.queueConfig,
       });
 
-      return defaultQueueName;
+      return { queueName: defaultQueueName, region: task.region };
     }
 
-    return task.queue.name ?? defaultQueueName;
+    return {
+      queueName: task.queue.name ?? defaultQueueName,
+      region: task.region,
+    };
   }
 
   async validateQueueLimits(
