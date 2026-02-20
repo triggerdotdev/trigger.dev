@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 4.4.1
+
+### Patch Changes
+
+- Add OTEL metrics pipeline for task workers. Workers collect process CPU/memory, Node.js runtime metrics (event loop utilization, event loop delay, heap usage), and user-defined custom metrics via `otel.metrics.getMeter()`. Metrics are exported to ClickHouse with 10-second aggregation buckets and 1m/5m rollups, and are queryable through the dashboard query engine with typed attribute columns, `prettyFormat()` for human-readable values, and AI query support. ([#3061](https://github.com/triggerdotdev/trigger.dev/pull/3061))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.1`
+
 ## 4.4.0
 
 ### Minor Changes
