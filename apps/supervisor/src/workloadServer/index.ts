@@ -24,6 +24,7 @@ import { HttpServer, type CheckpointClient } from "@trigger.dev/core/v3/serverOn
 import { type IncomingMessage } from "node:http";
 import { register } from "../metrics.js";
 import { env } from "../env.js";
+import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
 
 // Use the official export when upgrading to socket.io@4.8.0
 interface DefaultEventsMap {
@@ -53,15 +54,25 @@ type WorkloadServerEvents = {
   ];
 };
 
+const ComputeSnapshotCallbackBody = z.object({
+  snapshot_id: z.string(),
+  instance_id: z.string(),
+  status: z.enum(["completed", "failed"]),
+  error: z.string().optional(),
+  metadata: z.record(z.string()).optional(),
+});
+
 type WorkloadServerOptions = {
   port: number;
   host?: string;
   workerClient: SupervisorHttpClient;
   checkpointClient?: CheckpointClient;
+  computeManager?: ComputeWorkloadManager;
 };
 
 export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   private checkpointClient?: CheckpointClient;
+  private computeManager?: ComputeWorkloadManager;
 
   private readonly logger = new SimpleStructuredLogger("workload-server");
 
@@ -93,6 +104,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
     this.workerClient = opts.workerClient;
     this.checkpointClient = opts.checkpointClient;
+    this.computeManager = opts.computeManager;
 
     this.httpServer = this.createHttpServer({ host, port });
     this.websocketServer = this.createWebsocketServer();
@@ -231,18 +243,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           handler: async ({ reply, params, req }) => {
             this.logger.debug("Suspend request", { params, headers: req.headers });
 
-            if (!this.checkpointClient) {
-              reply.json(
-                {
-                  ok: false,
-                  error: "Checkpoints disabled",
-                } satisfies WorkloadSuspendRunResponseBody,
-                false,
-                400
-              );
-              return;
-            }
-
             const runnerId = this.runnerIdFromRequest(req);
             const deploymentVersion = this.deploymentVersionFromRequest(req);
             const projectRef = this.projectRefFromRequest(req);
@@ -256,6 +256,42 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 {
                   ok: false,
                   error: "Invalid headers",
+                } satisfies WorkloadSuspendRunResponseBody,
+                false,
+                400
+              );
+              return;
+            }
+
+            if (this.computeManager) {
+              // Compute mode: fire-and-forget snapshot with callback
+              reply.json({ ok: true } satisfies WorkloadSuspendRunResponseBody, false, 202);
+
+              const callbackUrl = `${env.TRIGGER_WORKLOAD_API_PROTOCOL}://${
+                env.TRIGGER_WORKLOAD_API_DOMAIN ?? "localhost"
+              }:${env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL}/api/v1/compute/snapshot-complete`;
+
+              const snapshotResult = await this.computeManager.snapshot({
+                runnerId,
+                callbackUrl,
+                metadata: {
+                  runId: params.runFriendlyId,
+                  snapshotFriendlyId: params.snapshotFriendlyId,
+                },
+              });
+
+              if (!snapshotResult) {
+                this.logger.error("Failed to request compute snapshot", { params, runnerId });
+              }
+
+              return;
+            }
+
+            if (!this.checkpointClient) {
+              reply.json(
+                {
+                  ok: false,
+                  error: "Checkpoints disabled",
                 } satisfies WorkloadSuspendRunResponseBody,
                 false,
                 400
@@ -393,6 +429,76 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         },
       });
     }
+
+    // Compute snapshot callback endpoint
+    httpServer.route("/api/v1/compute/snapshot-complete", "POST", {
+      bodySchema: ComputeSnapshotCallbackBody,
+      handler: async ({ reply, body }) => {
+        this.logger.info("Compute snapshot callback", {
+          snapshotId: body.snapshot_id,
+          instanceId: body.instance_id,
+          status: body.status,
+          error: body.error,
+          metadata: body.metadata,
+        });
+
+        const runId = body.metadata?.runId;
+        const snapshotFriendlyId = body.metadata?.snapshotFriendlyId;
+
+        if (!runId || !snapshotFriendlyId) {
+          this.logger.error("Compute snapshot callback missing metadata", { body });
+          reply.empty(400);
+          return;
+        }
+
+        if (body.status === "completed") {
+          const result = await this.workerClient.submitSuspendCompletion({
+            runId,
+            snapshotId: snapshotFriendlyId,
+            body: {
+              success: true,
+              checkpoint: {
+                type: "KUBERNETES",
+                location: body.snapshot_id,
+              },
+            },
+          });
+
+          if (result.success) {
+            this.logger.info("Suspend completion submitted, deleting instance", {
+              runId,
+              instanceId: body.instance_id,
+            });
+            await this.computeManager?.deleteInstance(body.instance_id);
+          } else {
+            this.logger.error("Failed to submit suspend completion", {
+              runId,
+              snapshotFriendlyId,
+              error: result.error,
+            });
+          }
+        } else {
+          const result = await this.workerClient.submitSuspendCompletion({
+            runId,
+            snapshotId: snapshotFriendlyId,
+            body: {
+              success: false,
+              error: body.error ?? "Snapshot failed",
+            },
+          });
+
+          if (!result.success) {
+            this.logger.error("Failed to submit suspend failure", {
+              runId,
+              snapshotFriendlyId,
+              error: result.error,
+            });
+          }
+        }
+
+        reply.empty(200);
+      },
+    });
 
     return httpServer;
   }

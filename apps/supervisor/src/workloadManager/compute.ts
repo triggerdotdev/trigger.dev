@@ -60,7 +60,9 @@ export class ComputeWorkloadManager implements WorkloadManager {
     }
 
     if (this.opts.snapshotPollIntervalSeconds) {
-      envVars.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS = String(this.opts.snapshotPollIntervalSeconds);
+      envVars.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS = String(
+        this.opts.snapshotPollIntervalSeconds
+      );
     }
 
     if (this.opts.additionalEnvVars) {
@@ -78,7 +80,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
     // Strip image digest — resolve by tag, not digest
     const imageRef = opts.image.split("@")[0]!;
 
-    const url = `${this.opts.gatewayUrl}/api/sandboxes`;
+    const url = `${this.opts.gatewayUrl}/api/instances`;
 
     // Wide event: single canonical log line emitted in finally
     const event: Record<string, unknown> = {
@@ -111,6 +113,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
           headers,
           signal: AbortSignal.timeout(this.opts.gatewayTimeoutMs),
           body: JSON.stringify({
+            name: runnerId,
             image: imageRef,
             env: envVars,
             cpu: opts.machine.cpu,
@@ -153,12 +156,125 @@ export class ComputeWorkloadManager implements WorkloadManager {
         return;
       }
 
-      event.sandboxId = data.id;
+      event.instanceId = data.id;
       event.ok = true;
     } finally {
       event.durationMs = Math.round(performance.now() - startMs);
       event.ok ??= false;
-      this.logger.info("create sandbox", event);
+      this.logger.info("create instance", event);
     }
+  }
+
+  private get authHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (this.opts.gatewayAuthToken) {
+      headers["Authorization"] = `Bearer ${this.opts.gatewayAuthToken}`;
+    }
+    return headers;
+  }
+
+  async snapshot(opts: {
+    runnerId: string;
+    callbackUrl: string;
+    metadata: Record<string, string>;
+  }): Promise<boolean> {
+    const url = `${this.opts.gatewayUrl}/api/instances/${opts.runnerId}/snapshot`;
+
+    const [error, response] = await tryCatch(
+      fetch(url, {
+        method: "POST",
+        headers: this.authHeaders,
+        signal: AbortSignal.timeout(this.opts.gatewayTimeoutMs),
+        body: JSON.stringify({
+          callback: {
+            url: opts.callbackUrl,
+            metadata: opts.metadata,
+          },
+        }),
+      })
+    );
+
+    if (error) {
+      this.logger.error("snapshot request failed", {
+        runnerId: opts.runnerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+
+    if (response.status !== 202) {
+      this.logger.error("snapshot request rejected", {
+        runnerId: opts.runnerId,
+        status: response.status,
+      });
+      return false;
+    }
+
+    this.logger.info("snapshot request accepted", { runnerId: opts.runnerId });
+    return true;
+  }
+
+  async deleteInstance(runnerId: string): Promise<boolean> {
+    const url = `${this.opts.gatewayUrl}/api/instances/${runnerId}`;
+
+    const [error, response] = await tryCatch(
+      fetch(url, {
+        method: "DELETE",
+        headers: this.authHeaders,
+        signal: AbortSignal.timeout(this.opts.gatewayTimeoutMs),
+      })
+    );
+
+    if (error) {
+      this.logger.error("delete instance failed", {
+        runnerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+
+    if (!response.ok) {
+      this.logger.error("delete instance rejected", {
+        runnerId,
+        status: response.status,
+      });
+      return false;
+    }
+
+    this.logger.info("delete instance success", { runnerId });
+    return true;
+  }
+
+  async restore(snapshotId: string): Promise<boolean> {
+    const url = `${this.opts.gatewayUrl}/api/snapshots/${snapshotId}/restore`;
+
+    const [error, response] = await tryCatch(
+      fetch(url, {
+        method: "POST",
+        headers: this.authHeaders,
+        signal: AbortSignal.timeout(this.opts.gatewayTimeoutMs),
+      })
+    );
+
+    if (error) {
+      this.logger.error("restore request failed", {
+        snapshotId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+
+    if (!response.ok) {
+      this.logger.error("restore request rejected", {
+        snapshotId,
+        status: response.status,
+      });
+      return false;
+    }
+
+    this.logger.info("restore request success", { snapshotId });
+    return true;
   }
 }

@@ -36,9 +36,11 @@ class ManagedSupervisor {
   private readonly metricsServer?: HttpServer;
   private readonly workloadServer: WorkloadServer;
   private readonly workloadManager: WorkloadManager;
+  private readonly computeManager?: ComputeWorkloadManager;
   private readonly logger = new SimpleStructuredLogger("managed-supervisor");
   private readonly resourceMonitor: ResourceMonitor;
   private readonly checkpointClient?: CheckpointClient;
+  private readonly isComputeMode: boolean;
 
   private readonly podCleaner?: PodCleaner;
   private readonly failedPodHandler?: FailedPodHandler;
@@ -78,16 +80,22 @@ class ManagedSupervisor {
         : new DockerResourceMonitor(new Docker())
       : new NoopResourceMonitor();
 
-    this.workloadManager = env.COMPUTE_GATEWAY_URL
-      ? new ComputeWorkloadManager({
-          ...workloadManagerOptions,
-          gatewayUrl: env.COMPUTE_GATEWAY_URL,
-          gatewayAuthToken: env.COMPUTE_GATEWAY_AUTH_TOKEN,
-          gatewayTimeoutMs: env.COMPUTE_GATEWAY_TIMEOUT_MS,
-        })
-      : this.isKubernetes
+    this.isComputeMode = !!env.COMPUTE_GATEWAY_URL;
+
+    if (env.COMPUTE_GATEWAY_URL) {
+      const computeManager = new ComputeWorkloadManager({
+        ...workloadManagerOptions,
+        gatewayUrl: env.COMPUTE_GATEWAY_URL,
+        gatewayAuthToken: env.COMPUTE_GATEWAY_AUTH_TOKEN,
+        gatewayTimeoutMs: env.COMPUTE_GATEWAY_TIMEOUT_MS,
+      });
+      this.computeManager = computeManager;
+      this.workloadManager = computeManager;
+    } else {
+      this.workloadManager = this.isKubernetes
         ? new KubernetesWorkloadManager(workloadManagerOptions)
         : new DockerWorkloadManager(workloadManagerOptions);
+    }
 
     if (this.isKubernetes) {
       if (env.POD_CLEANER_ENABLED) {
@@ -215,6 +223,22 @@ class ManagedSupervisor {
       if (checkpoint) {
         this.logger.log("Restoring run", { runId: message.run.id });
 
+        if (this.isComputeMode && this.computeManager) {
+          try {
+            const didRestore = await this.computeManager.restore(checkpoint.location);
+
+            if (didRestore) {
+              this.logger.log("Compute restore successful", { runId: message.run.id });
+            } else {
+              this.logger.error("Compute restore failed", { runId: message.run.id });
+            }
+          } catch (error) {
+            this.logger.error("Failed to restore run (compute)", { error });
+          }
+
+          return;
+        }
+
         if (!this.checkpointClient) {
           this.logger.error("No checkpoint client", { runId: message.run.id });
           return;
@@ -309,6 +333,7 @@ class ManagedSupervisor {
       host: env.TRIGGER_WORKLOAD_API_HOST_INTERNAL,
       workerClient: this.workerSession.httpClient,
       checkpointClient: this.checkpointClient,
+      computeManager: this.computeManager,
     });
 
     this.workloadServer.on("runConnected", this.onRunConnected.bind(this));
