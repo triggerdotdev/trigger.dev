@@ -193,9 +193,13 @@ async function doBootstrap() {
       metricReaders: config.telemetry?.metricReaders ?? [],
       resource: config.telemetry?.resource,
       hostMetrics: true,
+      hostMetricGroups:
+        getEnvVar("TRIGGER_SYSTEM_METRICS_ENABLED") === "1"
+          ? undefined
+          : ["process.cpu", "process.memory"],
       nodejsRuntimeMetrics: true,
-      filesystemMetrics: true,
-      diskIoMetrics: true,
+      filesystemMetrics: getEnvVar("TRIGGER_SYSTEM_METRICS_ENABLED") === "1",
+      diskIoMetrics: getEnvVar("TRIGGER_SYSTEM_METRICS_ENABLED") === "1",
     });
 
     const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);
