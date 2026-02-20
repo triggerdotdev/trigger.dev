@@ -160,9 +160,13 @@ You can also configure custom telemetry exporters to send your traces, logs, and
 "dependencies": {
   "@opentelemetry/exporter-logs-otlp-http": "0.52.1",
   "@opentelemetry/exporter-trace-otlp-http": "0.52.1",
-  "@opentelemetry/exporter-metrics-otlp-http": "0.52.1"
+  "@opentelemetry/exporter-metrics-otlp-proto": "0.52.1"
 }
 ```
+
+<Note>
+  Axiom's `/v1/metrics` endpoint only supports protobuf (`application/x-protobuf`), not JSON. Use `@opentelemetry/exporter-metrics-otlp-proto` instead of `@opentelemetry/exporter-metrics-otlp-http` for metrics. Traces and logs work fine with the `-http` (JSON) exporters.
+</Note>
 
 Then, configure the exporters in your `trigger.config.ts` file:
 
@@ -170,7 +174,7 @@ Then, configure the exporters in your `trigger.config.ts` file:
 import { defineConfig } from "@trigger.dev/sdk";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
-import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto";
 
 // Initialize OTLP trace exporter with the endpoint URL and headers;
 export default defineConfig({
@@ -203,7 +207,7 @@ export default defineConfig({
         url: "https://api.axiom.co/v1/metrics",
         headers: {
           Authorization: `Bearer ${process.env.AXIOM_API_TOKEN}`,
-          "X-Axiom-Dataset": process.env.AXIOM_DATASET,
+          "x-axiom-metrics-dataset": process.env.AXIOM_METRICS_DATASET,
         },
       }),
     ],
@@ -211,7 +215,7 @@ export default defineConfig({
 });
 ```
 
-Make sure to set the `AXIOM_API_TOKEN` and `AXIOM_DATASET` environment variables in your project.
+Make sure to set the `AXIOM_API_TOKEN`, `AXIOM_DATASET`, and `AXIOM_METRICS_DATASET` environment variables in your project. Axiom requires a separate, dedicated dataset for metrics — you cannot reuse the same dataset for traces/logs and metrics.
 
 It's important to note that you cannot configure exporters using `OTEL_*` environment variables, as they would conflict with our internal telemetry. Instead you should configure the exporters via passing in arguments to the `OTLPTraceExporter`, `OTLPLogExporter`, and `OTLPMetricExporter` constructors. For example, here is how you can configure exporting to Honeycomb:
 
