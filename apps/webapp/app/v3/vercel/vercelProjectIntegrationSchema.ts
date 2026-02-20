@@ -202,6 +202,15 @@ export function shouldSyncEnvVarForAnyEnvironment(
   return false;
 }
 
+export function buildVercelDeploymentUrl(
+  vercelTeamSlug: string | undefined,
+  vercelProjectName: string,
+  integrationDeploymentId: string
+): string {
+  const vercelId = integrationDeploymentId.replace(/^dpl_/, "");
+  return `https://vercel.com/${vercelTeamSlug}/${vercelProjectName}/${vercelId}`;
+}
+
 export function isPullEnvVarsEnabledForEnvironment(
   pullEnvVarsBeforeBuild: EnvSlug[] | null | undefined,
   environmentType: TriggerEnvironmentType

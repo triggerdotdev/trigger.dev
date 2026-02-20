@@ -129,6 +129,10 @@ export function organizationVercelIntegrationPath(organization: OrgForPath) {
   return `${organizationIntegrationsPath(organization)}/vercel`;
 }
 
+export function organizationSlackIntegrationPath(organization: OrgForPath) {
+  return `${organizationIntegrationsPath(organization)}/slack`;
+}
+
 function organizationParam(organization: OrgForPath) {
   return organization.slug;
 }
@@ -497,6 +501,22 @@ export function v3ProjectSettingsPath(
   environment: EnvironmentForPath
 ) {
   return `${v3EnvironmentPath(organization, project, environment)}/settings`;
+}
+
+export function v3ProjectSettingsGeneralPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3ProjectSettingsPath(organization, project, environment)}/general`;
+}
+
+export function v3ProjectSettingsIntegrationsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3ProjectSettingsPath(organization, project, environment)}/integrations`;
 }
 
 export function v3LogsPath(

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { GitMetadata } from "~/components/GitMetadata";
+import { VercelLink } from "~/components/integrations/VercelLink";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -516,6 +517,16 @@ export default function Page() {
                   })()}
                 </Property.Value>
               </Property.Item>
+              {deployment.vercelDeploymentUrl && (
+                <Property.Item>
+                  <Property.Label>Linked</Property.Label>
+                  <Property.Value>
+                    <div className="-ml-1 mt-0.5 flex flex-col">
+                      <VercelLink vercelDeploymentUrl={deployment.vercelDeploymentUrl} />
+                    </div>
+                  </Property.Value>
+                </Property.Item>
+              )}
             </Property.Table>
           </div>
 
