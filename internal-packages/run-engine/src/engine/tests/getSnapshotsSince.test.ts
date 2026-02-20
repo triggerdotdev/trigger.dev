@@ -191,7 +191,17 @@ describe("RunEngine getSnapshotsSince", () => {
           organizationId: authenticatedEnvironment.organization.id,
         });
 
-        // Wait for waitpoint completion
+        // Poll until the waitpoint is completed by the background worker
+        for (let i = 0; i < 50; i++) {
+          await setTimeout(100);
+          const wp = await prisma.waitpoint.findFirst({
+            where: { id: waitpoint.id },
+            select: { status: true },
+          });
+          if (wp?.status === "COMPLETED") break;
+        }
+
+        // Allow time for the snapshot to be created after waitpoint completion
         await setTimeout(200);
 
         // Get all snapshots
