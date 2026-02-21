@@ -443,21 +443,54 @@ export function SelectList(props: SelectListProps) {
 export interface SelectItemProps extends Ariakit.SelectItemProps {
   icon?: React.ReactNode;
   checkIcon?: React.ReactNode;
+  checkPosition?: "left" | "right";
   shortcut?: ShortcutDefinition;
 }
 
 const selectItemClasses =
   "group cursor-pointer px-1 pt-1 text-2sm text-text-dimmed focus-custom last:pb-1";
 
+function LeftCheckbox({ checked }: { checked: boolean }) {
+  return (
+    <div
+      className={cn(
+        "flex size-4 flex-none items-center justify-center rounded border",
+        checked ? "border-indigo-500 bg-indigo-600" : "border-charcoal-600 bg-charcoal-700"
+      )}
+    >
+      {checked && (
+        <svg className="size-3 text-white" viewBox="0 0 12 12" fill="none">
+          <path
+            d="M2.5 6L5 8.5L9.5 3.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </div>
+  );
+}
+
 export function SelectItem({
   icon,
   checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-text-bright" />,
+  checkPosition = "right",
   shortcut,
   ...props
 }: SelectItemProps) {
   const combobox = Ariakit.useComboboxContext();
   const render = combobox ? <Ariakit.ComboboxItem render={props.render} /> : undefined;
   const ref = React.useRef<HTMLDivElement>(null);
+  const select = Ariakit.useSelectContext();
+  const selectValue = select?.useState("value");
+
+  const isChecked = React.useMemo(() => {
+    if (!props.value || selectValue == null) return false;
+    if (Array.isArray(selectValue)) return selectValue.includes(props.value);
+    return selectValue === props.value;
+  }, [selectValue, props.value]);
 
   useShortcutKeys({
     shortcut: shortcut,
@@ -484,10 +517,16 @@ export function SelectItem({
       )}
       ref={ref}
     >
-      <div className="flex h-8 w-full items-center gap-1 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary">
+      <div
+        className={cn(
+          "flex h-8 w-full items-center rounded-sm px-2 hover:bg-tertiary group-data-[active-item=true]:bg-tertiary",
+          checkPosition === "left" ? "gap-2" : "gap-1"
+        )}
+      >
+        {checkPosition === "left" && <LeftCheckbox checked={isChecked} />}
         {icon}
         <div className="grow truncate">{props.children || props.value}</div>
-        {checkIcon}
+        {checkPosition === "right" && checkIcon}
         {shortcut && (
           <ShortcutKey
             className={cn("size-4 flex-none transition duration-0 group-hover:border-charcoal-600")}
