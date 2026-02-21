@@ -2,17 +2,24 @@
 
 import { useChat } from "@ai-sdk/react";
 import { TriggerChatTransport } from "@trigger.dev/sdk/chat";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { getChatToken } from "@/app/actions";
 
-export function Chat({ accessToken }: { accessToken: string }) {
+export function Chat() {
   const [input, setInput] = useState("");
 
+  const transport = useMemo(
+    () =>
+      new TriggerChatTransport({
+        task: "ai-chat",
+        accessToken: getChatToken,
+        baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
+      }),
+    []
+  );
+
   const { messages, sendMessage, status, error } = useChat({
-    transport: new TriggerChatTransport({
-      task: "ai-chat",
-      accessToken,
-      baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
-    }),
+    transport,
   });
 
   function handleSubmit(e: React.FormEvent) {
