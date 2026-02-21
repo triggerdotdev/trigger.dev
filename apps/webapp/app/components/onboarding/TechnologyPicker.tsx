@@ -7,6 +7,7 @@ import {
   ChevronDownIcon,
 } from "@heroicons/react/20/solid";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { CheckboxIndicator } from "~/components/primitives/CheckboxIndicator";
 import { cn } from "~/utils/cn";
 import { matchSorter } from "match-sorter";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
@@ -252,26 +253,7 @@ export function TechnologyPicker({
                   }}
                 >
                   <div className="flex h-8 w-full items-center gap-2 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary hover:bg-tertiary">
-                    <div
-                      className={cn(
-                        "flex size-4 flex-none items-center justify-center rounded border",
-                        value.includes(option)
-                          ? "border-indigo-500 bg-indigo-600"
-                          : "border-charcoal-600 bg-charcoal-700"
-                      )}
-                    >
-                      {value.includes(option) && (
-                        <svg className="size-3 text-white" viewBox="0 0 12 12" fill="none">
-                          <path
-                            d="M2.5 6L5 8.5L9.5 3.5"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      )}
-                    </div>
+                    <CheckboxIndicator checked={value.includes(option)} />
                     <span className="grow truncate text-text-bright">{option}</span>
                   </div>
                 </Ariakit.ComboboxItem>

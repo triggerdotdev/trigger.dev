@@ -450,28 +450,7 @@ export interface SelectItemProps extends Ariakit.SelectItemProps {
 const selectItemClasses =
   "group cursor-pointer px-1 pt-1 text-2sm text-text-dimmed focus-custom last:pb-1";
 
-function LeftCheckbox({ checked }: { checked: boolean }) {
-  return (
-    <div
-      className={cn(
-        "flex size-4 flex-none items-center justify-center rounded border",
-        checked ? "border-indigo-500 bg-indigo-600" : "border-charcoal-600 bg-charcoal-700"
-      )}
-    >
-      {checked && (
-        <svg className="size-3 text-white" viewBox="0 0 12 12" fill="none">
-          <path
-            d="M2.5 6L5 8.5L9.5 3.5"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      )}
-    </div>
-  );
-}
+import { CheckboxIndicator } from "./CheckboxIndicator";
 
 export function SelectItem({
   icon,
@@ -523,7 +502,7 @@ export function SelectItem({
           checkPosition === "left" ? "gap-2" : "gap-1"
         )}
       >
-        {checkPosition === "left" && <LeftCheckbox checked={isChecked} />}
+        {checkPosition === "left" && <CheckboxIndicator checked={isChecked} />}
         {icon}
         <div className="grow truncate">{props.children || props.value}</div>
         {checkPosition === "right" && checkIcon}
