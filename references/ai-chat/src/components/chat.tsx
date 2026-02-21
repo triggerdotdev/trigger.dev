@@ -1,9 +1,10 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { TriggerChatTransport } from "@trigger.dev/sdk/chat";
-import { useMemo, useState } from "react";
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import { useState } from "react";
 import { getChatToken } from "@/app/actions";
+import type { chat } from "@/trigger/chat";
 
 function ToolInvocation({ part }: { part: any }) {
   const [expanded, setExpanded] = useState(false);
@@ -72,15 +73,11 @@ function ToolInvocation({ part }: { part: any }) {
 export function Chat() {
   const [input, setInput] = useState("");
 
-  const transport = useMemo(
-    () =>
-      new TriggerChatTransport({
-        task: "ai-chat",
-        accessToken: getChatToken,
-        baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
-      }),
-    []
-  );
+  const transport = useTriggerChatTransport<typeof chat>({
+    task: "ai-chat",
+    accessToken: getChatToken,
+    baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
+  });
 
   const { messages, sendMessage, status, error } = useChat({
     transport,
