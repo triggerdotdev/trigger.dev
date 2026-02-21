@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ArrowRightIcon, EnvelopeIcon, UserIcon } from "@heroicons/react/20/solid";
+import { ArrowRightIcon, EnvelopeIcon, UserGroupIcon, UserIcon } from "@heroicons/react/20/solid";
 import { HandRaisedIcon } from "@heroicons/react/24/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
 import { json, type ActionFunction } from "@remix-run/node";
@@ -351,8 +351,10 @@ export default function Page() {
                       placeholder="Select an option"
                       variant="secondary/small"
                       dropdownIcon
+                      icon={<UserGroupIcon className="mr-1 size-4.5 text-text-dimmed" />}
                       items={shuffledRoles}
-                      className="h-8 rounded border-charcoal-800 bg-charcoal-750 px-3 text-sm hover:border-charcoal-600 hover:bg-charcoal-650"
+                      className="h-8 min-w-0 border-0 bg-charcoal-750 pl-2 text-sm text-text-dimmed ring-charcoal-600 transition hover:bg-charcoal-650 hover:text-text-dimmed hover:ring-1"
+                      text={(v) => (v ? <span className="text-text-bright">{v}</span> : undefined)}
                     >
                       {(items) =>
                         items.map((item) => (
@@ -363,7 +365,7 @@ export default function Page() {
                       }
                     </Select>
                     {selectedRole === "Other" && (
-                      <div className="mt-2">
+                      <div>
                         <Input
                           name="roleOther"
                           type="text"
