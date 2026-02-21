@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { FolderIcon } from "@heroicons/react/20/solid";
+import { FolderIcon, CommandLineIcon, PuzzlePieceIcon } from "@heroicons/react/20/solid";
 import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -319,25 +319,24 @@ export default function Page() {
                 <div className="border-t border-charcoal-700" />
                 <InputGroup>
                   <Label>What are you working on?</Label>
-                  <input
-                    type="hidden"
-                    name="workingOn"
-                    value={JSON.stringify(selectedWorkingOn)}
-                  />
+                  <input type="hidden" name="workingOn" value={JSON.stringify(selectedWorkingOn)} />
                   <Select<string[], string>
                     value={selectedWorkingOn}
                     setValue={setSelectedWorkingOn}
                     placeholder="Select options"
                     variant="secondary/small"
                     dropdownIcon
+                    icon={<CommandLineIcon className="mr-1 size-4 text-text-dimmed" />}
                     items={shuffledWorkingOn}
-                    className="h-8"
+                    className="h-8 border-0 bg-charcoal-750 pl-3 text-sm text-text-dimmed transition ring-charcoal-600 hover:bg-charcoal-650 hover:text-text-dimmed hover:ring-1"
                     text={(value) =>
-                      value.length === 0
-                        ? undefined
-                        : value.length <= 2
-                          ? value.join(", ")
-                          : `${value.slice(0, 2).join(", ")} +${value.length - 2} more`
+                      value.length === 0 ? undefined : (
+                        <span className="text-text-bright">
+                          {value.length <= 2
+                            ? value.join(", ")
+                            : `${value.slice(0, 2).join(", ")} +${value.length - 2} more`}
+                        </span>
+                      )
                     }
                   >
                     {(items) =>
@@ -392,14 +391,17 @@ export default function Page() {
                     placeholder="Select options"
                     variant="secondary/small"
                     dropdownIcon
+                    icon={<PuzzlePieceIcon className="size-4 text-text-dimmed" />}
                     items={[...goalOptions]}
-                    className="h-8"
+                    className="h-8 border-0 bg-charcoal-750 pl-3 text-sm text-text-dimmed transition ring-charcoal-600 hover:bg-charcoal-650 hover:text-text-dimmed hover:ring-1"
                     text={(value) =>
-                      value.length === 0
-                        ? undefined
-                        : value.length <= 2
-                          ? value.join(", ")
-                          : `${value.slice(0, 2).join(", ")} +${value.length - 2} more`
+                      value.length === 0 ? undefined : (
+                        <span className="text-text-bright">
+                          {value.length <= 2
+                            ? value.join(", ")
+                            : `${value.slice(0, 2).join(", ")} +${value.length - 2} more`}
+                        </span>
+                      )
                     }
                   >
                     {(items) =>
