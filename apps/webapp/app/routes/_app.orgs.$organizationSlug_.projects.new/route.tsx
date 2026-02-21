@@ -185,40 +185,37 @@ export const action: ActionFunction = async ({ request, params }) => {
   const configurationId = url.searchParams.get("configurationId");
   const next = url.searchParams.get("next");
 
+  const stringArraySchema = z.array(z.string());
+
+  function safeParseStringArray(value: string | undefined): string[] | undefined {
+    if (!value) return undefined;
+    try {
+      const result = stringArraySchema.safeParse(JSON.parse(value));
+      return result.success && result.data.length > 0 ? result.data : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  const onboardingData: Record<string, Prisma.InputJsonValue> = {};
+
+  const workingOn = safeParseStringArray(submission.value.workingOn);
+  if (workingOn) onboardingData.workingOn = workingOn;
+
+  if (submission.value.workingOnOther) {
+    onboardingData.workingOnOther = submission.value.workingOnOther;
+  }
+
+  const technologies = safeParseStringArray(submission.value.technologies);
+  if (technologies) onboardingData.technologies = technologies;
+
+  const technologiesOther = safeParseStringArray(submission.value.technologiesOther);
+  if (technologiesOther) onboardingData.technologiesOther = technologiesOther;
+
+  const goals = safeParseStringArray(submission.value.goals);
+  if (goals) onboardingData.goals = goals;
+
   try {
-    const stringArraySchema = z.array(z.string());
-
-    const onboardingData: Record<string, Prisma.InputJsonValue> = {};
-
-    if (submission.value.workingOn) {
-      const workingOn = stringArraySchema.parse(JSON.parse(submission.value.workingOn));
-      if (workingOn.length > 0) {
-        onboardingData.workingOn = workingOn;
-      }
-    }
-    if (submission.value.workingOnOther) {
-      onboardingData.workingOnOther = submission.value.workingOnOther;
-    }
-    if (submission.value.technologies) {
-      const technologies = stringArraySchema.parse(JSON.parse(submission.value.technologies));
-      if (technologies.length > 0) {
-        onboardingData.technologies = technologies;
-      }
-    }
-    if (submission.value.technologiesOther) {
-      const technologiesOther = stringArraySchema.parse(
-        JSON.parse(submission.value.technologiesOther)
-      );
-      if (technologiesOther.length > 0) {
-        onboardingData.technologiesOther = technologiesOther;
-      }
-    }
-    if (submission.value.goals) {
-      const goals = stringArraySchema.parse(JSON.parse(submission.value.goals));
-      if (goals.length > 0) {
-        onboardingData.goals = goals;
-      }
-    }
     const project = await createProject({
       organizationSlug: organizationSlug,
       name: submission.value.projectName,
