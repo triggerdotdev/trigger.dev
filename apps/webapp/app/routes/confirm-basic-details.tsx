@@ -163,7 +163,7 @@ export const action: ActionFunction = async ({ request }) => {
       name: submission.value.name,
       email: submission.value.email,
       referralSource: referralSourceForLegacy,
-      onboardingData,
+      onboardingData: Object.keys(onboardingData).length > 0 ? onboardingData : undefined,
     });
 
     const vercelParams = getVercelInstallParams(request);
