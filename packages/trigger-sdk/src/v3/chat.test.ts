@@ -916,6 +916,189 @@ describe("TriggerChatTransport", () => {
     });
   });
 
+  describe("lastEventId tracking", () => {
+    it("should pass lastEventId to SSE subscription on subsequent turns", async () => {
+      const controlChunk = {
+        type: "__trigger_waitpoint_ready",
+        tokenId: "wp_token_eid",
+        publicAccessToken: "wp_access_eid",
+      };
+
+      let triggerCallCount = 0;
+      const streamFetchCalls: { url: string; headers: Record<string, string> }[] = [];
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+          triggerCallCount++;
+          return new Response(
+            JSON.stringify({ id: "run_eid" }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "x-trigger-jwt": "pub_token_eid",
+              },
+            }
+          );
+        }
+
+        if (urlStr.includes("/api/v1/waitpoints/tokens/") && urlStr.includes("/complete")) {
+          return new Response(
+            JSON.stringify({ success: true }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }
+          );
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          streamFetchCalls.push({
+            url: urlStr,
+            headers: (init?.headers as Record<string, string>) ?? {},
+          });
+
+          const chunks = [
+            ...sampleChunks,
+            { type: "finish" as const, id: "part-1" } as UIMessageChunk,
+            controlChunk,
+          ];
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      // First message — triggers a new run
+      const stream1 = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-eid",
+        messageId: undefined,
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+
+      const reader1 = stream1.getReader();
+      while (true) {
+        const { done } = await reader1.read();
+        if (done) break;
+      }
+
+      // Second message — completes the waitpoint
+      const stream2 = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-eid",
+        messageId: undefined,
+        messages: [createUserMessage("Hello"), createAssistantMessage("Hi!"), createUserMessage("What's up?")],
+        abortSignal: undefined,
+      });
+
+      const reader2 = stream2.getReader();
+      while (true) {
+        const { done } = await reader2.read();
+        if (done) break;
+      }
+
+      // The second stream subscription should include a Last-Event-ID header
+      expect(streamFetchCalls.length).toBe(2);
+      const secondStreamHeaders = streamFetchCalls[1]!.headers;
+      // SSEStreamSubscription passes lastEventId as the Last-Event-ID header
+      expect(secondStreamHeaders["Last-Event-ID"]).toBeDefined();
+    });
+  });
+
+  describe("AbortController cleanup", () => {
+    it("should terminate SSE connection after intercepting control chunk", async () => {
+      const controlChunk = {
+        type: "__trigger_waitpoint_ready",
+        tokenId: "wp_token_abort",
+        publicAccessToken: "wp_access_abort",
+      };
+
+      let streamAborted = false;
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/trigger")) {
+          return new Response(
+            JSON.stringify({ id: "run_abort_cleanup" }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "x-trigger-jwt": "pub_token",
+              },
+            }
+          );
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          // Track abort signal
+          const signal = init?.signal;
+          if (signal) {
+            signal.addEventListener("abort", () => {
+              streamAborted = true;
+            });
+          }
+
+          const chunks = [
+            ...sampleChunks,
+            { type: "finish" as const, id: "part-1" } as UIMessageChunk,
+            controlChunk,
+          ];
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-abort-cleanup",
+        messageId: undefined,
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+
+      // Consume all chunks
+      const reader = stream.getReader();
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+
+      // The internal AbortController should have aborted the fetch
+      expect(streamAborted).toBe(true);
+    });
+  });
+
   describe("async accessToken", () => {
     it("should accept an async function for accessToken", async () => {
       let tokenCallCount = 0;
@@ -973,6 +1156,108 @@ describe("TriggerChatTransport", () => {
       });
 
       expect(tokenCallCount).toBe(1);
+    });
+
+    it("should resolve async token for waitpoint completion flow", async () => {
+      const controlChunk = {
+        type: "__trigger_waitpoint_ready",
+        tokenId: "wp_token_async",
+        publicAccessToken: "wp_access_async",
+      };
+
+      let tokenCallCount = 0;
+      let completeWaitpointCalled = false;
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+          return new Response(
+            JSON.stringify({ id: "run_async_wp" }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "x-trigger-jwt": "stream-token",
+              },
+            }
+          );
+        }
+
+        if (urlStr.includes("/api/v1/waitpoints/tokens/") && urlStr.includes("/complete")) {
+          completeWaitpointCalled = true;
+          return new Response(
+            JSON.stringify({ success: true }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }
+          );
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          const chunks = [
+            ...sampleChunks,
+            { type: "finish" as const, id: "part-1" } as UIMessageChunk,
+            controlChunk,
+          ];
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: async () => {
+          tokenCallCount++;
+          await new Promise((r) => setTimeout(r, 1));
+          return `async-wp-token-${tokenCallCount}`;
+        },
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      // First message — triggers a new run (calls async token)
+      const stream1 = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-async-wp",
+        messageId: undefined,
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+
+      const reader1 = stream1.getReader();
+      while (true) {
+        const { done } = await reader1.read();
+        if (done) break;
+      }
+
+      const firstTokenCount = tokenCallCount;
+
+      // Second message — should complete waitpoint (does NOT call async token)
+      const stream2 = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-async-wp",
+        messageId: undefined,
+        messages: [createUserMessage("Hello"), createAssistantMessage("Hi!"), createUserMessage("More")],
+        abortSignal: undefined,
+      });
+
+      const reader2 = stream2.getReader();
+      while (true) {
+        const { done } = await reader2.read();
+        if (done) break;
+      }
+
+      // Token function should NOT have been called again for the waitpoint path
+      expect(tokenCallCount).toBe(firstTokenCount);
+      expect(completeWaitpointCalled).toBe(true);
     });
   });
 

@@ -5,6 +5,70 @@ import { TriggerChatTransport } from "@trigger.dev/sdk/chat";
 import { useMemo, useState } from "react";
 import { getChatToken } from "@/app/actions";
 
+function ToolInvocation({ part }: { part: any }) {
+  const [expanded, setExpanded] = useState(false);
+  // Static tools: type is "tool-{name}", dynamic tools have toolName property
+  const toolName =
+    part.type === "dynamic-tool"
+      ? (part.toolName ?? "tool")
+      : part.type.startsWith("tool-")
+        ? part.type.slice(5)
+        : "tool";
+  const state = part.state ?? "input-available";
+  const args = part.input;
+  const result = part.output;
+
+  const isLoading = state === "input-streaming" || state === "input-available";
+  const isError = state === "output-error";
+
+  return (
+    <div className="my-1 rounded border border-gray-200 bg-gray-50 text-xs">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left font-medium text-gray-700 hover:bg-gray-100"
+      >
+        {isLoading && (
+          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+        )}
+        {!isLoading && !isError && <span className="text-green-600">&#10003;</span>}
+        {isError && <span className="text-red-600">&#10007;</span>}
+        <span>{toolName}</span>
+        <span className="ml-auto text-gray-400">{expanded ? "▲" : "▼"}</span>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-gray-200 px-3 py-2 space-y-2">
+          {args && Object.keys(args).length > 0 && (
+            <div>
+              <div className="mb-1 font-medium text-gray-500">Input</div>
+              <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-white p-2 text-gray-800">
+                {JSON.stringify(args, null, 2)}
+              </pre>
+            </div>
+          )}
+          {state === "output-available" && result !== undefined && (
+            <div>
+              <div className="mb-1 font-medium text-gray-500">Output</div>
+              <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-white p-2 text-gray-800">
+                {JSON.stringify(result, null, 2)}
+              </pre>
+            </div>
+          )}
+          {isError && result !== undefined && (
+            <div>
+              <div className="mb-1 font-medium text-red-500">Error</div>
+              <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-red-50 p-2 text-red-700">
+                {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Chat() {
   const [input, setInput] = useState("");
 
@@ -54,6 +118,12 @@ export function Chat() {
                 if (part.type === "text") {
                   return <span key={i}>{part.text}</span>;
                 }
+
+                // Static tools: "tool-{toolName}", dynamic tools: "dynamic-tool"
+                if (part.type.startsWith("tool-") || part.type === "dynamic-tool") {
+                  return <ToolInvocation key={i} part={part} />;
+                }
+
                 return null;
               })}
             </div>
