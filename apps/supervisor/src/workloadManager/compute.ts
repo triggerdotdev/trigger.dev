@@ -51,7 +51,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       envVars.TRIGGER_WARM_START_URL = this.opts.warmStartUrl;
     }
 
-    if (this.opts.metadataUrl) {
+    if (env.COMPUTE_SNAPSHOTS_ENABLED && this.opts.metadataUrl) {
       envVars.TRIGGER_METADATA_URL = this.opts.metadataUrl;
     }
 
@@ -266,17 +266,21 @@ export class ComputeWorkloadManager implements WorkloadManager {
       TRIGGER_WORKER_INSTANCE_NAME: env.TRIGGER_WORKER_INSTANCE_NAME,
     };
 
+    const body = {
+      name: opts.runnerId,
+      metadata,
+      cpu: opts.machine.cpu,
+      memory_mb: opts.machine.memory * 1024,
+    };
+
+    this.logger.debug("restore request body", { url, body });
+
     const [error, response] = await tryCatch(
       fetch(url, {
         method: "POST",
         headers: this.authHeaders,
         signal: AbortSignal.timeout(this.opts.gatewayTimeoutMs),
-        body: JSON.stringify({
-          name: opts.runnerId,
-          metadata,
-          cpu: opts.machine.cpu,
-          memory_mb: opts.machine.memory * 1024,
-        }),
+        body: JSON.stringify(body),
       })
     );
 

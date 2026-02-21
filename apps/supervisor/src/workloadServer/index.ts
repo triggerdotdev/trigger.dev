@@ -263,7 +263,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               return;
             }
 
-            if (this.computeManager) {
+            if (this.computeManager && env.COMPUTE_SNAPSHOTS_ENABLED) {
               // Compute mode: fire-and-forget snapshot with callback
               reply.json({ ok: true } satisfies WorkloadSuspendRunResponseBody, false, 202);
 

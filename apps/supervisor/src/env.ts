@@ -81,6 +81,7 @@ const Env = z.object({
   COMPUTE_GATEWAY_URL: z.string().url().optional(),
   COMPUTE_GATEWAY_AUTH_TOKEN: z.string().optional(),
   COMPUTE_GATEWAY_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+  COMPUTE_SNAPSHOTS_ENABLED: BoolEnv.default(false),
 
   // Kubernetes settings
   KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),

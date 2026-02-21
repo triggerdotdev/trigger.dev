@@ -223,7 +223,7 @@ class ManagedSupervisor {
       if (checkpoint) {
         this.logger.log("Restoring run", { runId: message.run.id });
 
-        if (this.isComputeMode && this.computeManager) {
+        if (this.isComputeMode && this.computeManager && env.COMPUTE_SNAPSHOTS_ENABLED) {
           try {
             // Derive runnerId unique per restore cycle (matches iceman's pattern)
             const runIdShort = message.run.friendlyId.replace("run_", "");
