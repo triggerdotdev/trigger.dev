@@ -43,6 +43,7 @@ model User {
   confirmedBasicDetails Boolean @default(false)
 
   referralSource String?
+  onboardingData Json?
 
   orgMemberships OrgMember[]
   sentInvites    OrgMemberInvite[]
@@ -411,6 +412,7 @@ model Project {
   customerQueries                CustomerQuery[]
 
   buildSettings         Json?
+  onboardingData        Json?
   taskScheduleInstances TaskScheduleInstance[]
   metricsDashboards     MetricsDashboard[]
 }
