@@ -2,8 +2,7 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { BuildingOffice2Icon } from "@heroicons/react/20/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
-import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
-import { json, redirect } from "@remix-run/node";
+import { json, redirect, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -19,18 +18,15 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { RadioGroupItem } from "~/components/primitives/RadioButton";
-import { TextArea } from "~/components/primitives/TextArea";
 import { useFeatures } from "~/hooks/useFeatures";
 import { createOrganization } from "~/models/organization.server";
 import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
 import { requireUser, requireUserId } from "~/services/session.server";
-import { sendNewOrgMessage } from "~/services/slack.server";
 import { organizationPath, rootPath } from "~/utils/pathBuilder";
 
 const schema = z.object({
   orgName: z.string().min(3).max(50),
   companySize: z.string().optional(),
-  whyUseUs: z.string().optional(),
 });
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -53,23 +49,14 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   try {
+    const companySize = submission.value.companySize ?? null;
+
     const organization = await createOrganization({
       title: submission.value.orgName,
       userId: user.id,
-      companySize: submission.value.companySize ?? null,
+      companySize,
     });
 
-    const whyUseUs = formData.get("whyUseUs");
-
-    if (whyUseUs) {
-      await sendNewOrgMessage({
-        orgName: submission.value.orgName,
-        whyUseUs: whyUseUs.toString(),
-        userEmail: user.email,
-      });
-    }
-
-    // Preserve Vercel integration params if present
     const url = new URL(request.url);
     const code = url.searchParams.get("code");
     const configurationId = url.searchParams.get("configurationId");
@@ -77,7 +64,6 @@ export const action: ActionFunction = async ({ request }) => {
     const next = url.searchParams.get("next");
 
     if (code && configurationId && integration === "vercel") {
-      // Redirect to projects/new with params preserved
       const params = new URLSearchParams({
         code,
         configurationId,
@@ -104,7 +90,6 @@ export default function NewOrganizationPage() {
 
   const [form, { orgName }] = useForm({
     id: "create-organization",
-    // TODO: type this
     lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
@@ -137,51 +122,42 @@ export default function NewOrganizationPage() {
                 <FormError id={orgName.errorId}>{orgName.error}</FormError>
               </InputGroup>
               {isManagedCloud && (
-                <>
-                  <InputGroup>
-                    <Label htmlFor={"companySize"}>Number of employees</Label>
-                    <RadioGroup
-                      name="companySize"
-                      className="flex items-center justify-between gap-2"
-                    >
-                      <RadioGroupItem
-                        id="employees-1-5"
-                        label="1-5"
-                        value={"1-5"}
-                        variant="button/small"
-                        className="grow"
-                      />
-                      <RadioGroupItem
-                        id="employees-6-49"
-                        label="6-49"
-                        value={"6-49"}
-                        variant="button/small"
-                        className="grow"
-                      />
-                      <RadioGroupItem
-                        id="employees-50-99"
-                        label="50-99"
-                        value={"50-99"}
-                        variant="button/small"
-                        className="grow"
-                      />
-                      <RadioGroupItem
-                        id="employees-100+"
-                        label="100+"
-                        value={"100+"}
-                        variant="button/small"
-                        className="grow"
-                      />
-                    </RadioGroup>
-                  </InputGroup>
-                  <InputGroup>
-                    <Label htmlFor={"whyUseUs"}>What problem are you trying to solve?</Label>
-                    <TextArea name="whyUseUs" rows={4} spellCheck={false} />
-                    <Hint>
-                      Your answer will help us understand your use case and provide better support.
-                    </Hint>
-                  </InputGroup>
-                </>
+                <InputGroup>
+                  <Label htmlFor={"companySize"}>Number of employees</Label>
+                  <RadioGroup
+                    name="companySize"
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <RadioGroupItem
+                      id="employees-1-5"
+                      label="1-5"
+                      value={"1-5"}
+                      variant="button/small"
+                      className="grow"
+                    />
+                    <RadioGroupItem
+                      id="employees-6-49"
+                      label="6-49"
+                      value={"6-49"}
+                      variant="button/small"
+                      className="grow"
+                    />
+                    <RadioGroupItem
+                      id="employees-50-99"
+                      label="50-99"
+                      value={"50-99"}
+                      variant="button/small"
+                      className="grow"
+                    />
+                    <RadioGroupItem
+                      id="employees-100+"
+                      label="100+"
+                      value={"100+"}
+                      variant="button/small"
+                      className="grow"
+                    />
+                  </RadioGroup>
+                </InputGroup>
               )}
 
               <FormButtons
