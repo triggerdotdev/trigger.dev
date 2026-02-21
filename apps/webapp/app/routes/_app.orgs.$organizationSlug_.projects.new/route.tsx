@@ -1,16 +1,17 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { FolderIcon, CommandLineIcon, PuzzlePieceIcon } from "@heroicons/react/20/solid";
+import { CommandLineIcon, FolderIcon } from "@heroicons/react/20/solid";
 import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import type { Prisma } from "@trigger.dev/database";
+import React, { useEffect, useState } from "react";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
-import { useEffect, useState } from "react";
 import { z } from "zod";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
 import { Feedback } from "~/components/Feedback";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
+import { TechnologyPicker } from "~/components/onboarding/TechnologyPicker";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -22,7 +23,6 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { ButtonSpinner } from "~/components/primitives/Spinner";
-import { TechnologyPicker } from "~/components/onboarding/TechnologyPicker";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -62,6 +62,47 @@ function shuffleArray<T>(arr: T[]): T[] {
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
   return shuffled;
+}
+
+function MultiSelectField({
+  value,
+  setValue,
+  items,
+  icon,
+}: {
+  value: string[];
+  setValue: (value: string[]) => void;
+  items: string[];
+  icon: React.ReactNode;
+}) {
+  return (
+    <Select<string[], string>
+      value={value}
+      setValue={setValue}
+      placeholder="Select options"
+      variant="secondary/small"
+      dropdownIcon
+      icon={icon}
+      items={items}
+      className="h-8 min-w-0 border-0 bg-charcoal-750 pl-2 text-sm text-text-dimmed ring-charcoal-600 transition hover:bg-charcoal-650 hover:text-text-dimmed hover:ring-1"
+      text={(v) =>
+        v.length === 0 ? undefined : (
+          <span className="flex min-w-0 items-center text-text-bright">
+            <span className="truncate">{v.slice(0, 2).join(", ")}</span>
+            {v.length > 2 && <span className="ml-1 flex-none">+{v.length - 2} more</span>}
+          </span>
+        )
+      }
+    >
+      {(items) =>
+        items.map((item) => (
+          <SelectItem key={item} value={item} checkPosition="left">
+            <span className="text-text-bright">{item}</span>
+          </SelectItem>
+        ))
+      }
+    </Select>
+  );
 }
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
@@ -320,43 +361,23 @@ export default function Page() {
                 <InputGroup>
                   <Label>What are you working on?</Label>
                   <input type="hidden" name="workingOn" value={JSON.stringify(selectedWorkingOn)} />
-                  <Select<string[], string>
+                  <MultiSelectField
                     value={selectedWorkingOn}
                     setValue={setSelectedWorkingOn}
-                    placeholder="Select options"
-                    variant="secondary/small"
-                    dropdownIcon
-                    icon={<CommandLineIcon className="mr-1 size-4 text-text-dimmed" />}
                     items={shuffledWorkingOn}
-                    className="h-8 border-0 bg-charcoal-750 pl-3 text-sm text-text-dimmed transition ring-charcoal-600 hover:bg-charcoal-650 hover:text-text-dimmed hover:ring-1"
-                    text={(value) =>
-                      value.length === 0 ? undefined : (
-                        <span className="text-text-bright">
-                          {value.length <= 2
-                            ? value.join(", ")
-                            : `${value.slice(0, 2).join(", ")} +${value.length - 2} more`}
-                        </span>
-                      )
-                    }
-                  >
-                    {(items) =>
-                      items.map((item) => (
-                        <SelectItem key={item} value={item} checkPosition="left">
-                          <span className="text-text-bright">{item}</span>
-                        </SelectItem>
-                      ))
-                    }
-                  </Select>
+                    icon={<CommandLineIcon className="mr-1 size-4 text-text-dimmed" />}
+                  />
                   {showWorkingOnOther && (
                     <>
                       <input type="hidden" name="workingOnOther" value={workingOnOther} />
                       <Input
                         type="text"
+                        variant="small"
                         value={workingOnOther}
                         onChange={(e) => setWorkingOnOther(e.target.value)}
                         placeholder="Tell us what you're working on"
                         spellCheck={false}
-                        className="mt-2"
+                        containerClassName="h-8"
                       />
                     </>
                   )}
@@ -385,33 +406,12 @@ export default function Page() {
                 <InputGroup>
                   <Label>What are you trying to do with Trigger.dev?</Label>
                   <input type="hidden" name="goals" value={JSON.stringify(selectedGoals)} />
-                  <Select<string[], string>
+                  <MultiSelectField
                     value={selectedGoals}
                     setValue={setSelectedGoals}
-                    placeholder="Select options"
-                    variant="secondary/small"
-                    dropdownIcon
-                    icon={<PuzzlePieceIcon className="size-4 text-text-dimmed" />}
                     items={[...goalOptions]}
-                    className="h-8 border-0 bg-charcoal-750 pl-3 text-sm text-text-dimmed transition ring-charcoal-600 hover:bg-charcoal-650 hover:text-text-dimmed hover:ring-1"
-                    text={(value) =>
-                      value.length === 0 ? undefined : (
-                        <span className="text-text-bright">
-                          {value.length <= 2
-                            ? value.join(", ")
-                            : `${value.slice(0, 2).join(", ")} +${value.length - 2} more`}
-                        </span>
-                      )
-                    }
-                  >
-                    {(items) =>
-                      items.map((item) => (
-                        <SelectItem key={item} value={item} checkPosition="left">
-                          <span className="text-text-bright">{item}</span>
-                        </SelectItem>
-                      ))
-                    }
-                  </Select>
+                    icon={<CommandLineIcon className="mr-1 size-4 text-text-dimmed" />}
+                  />
                 </InputGroup>
 
                 <FormButtons

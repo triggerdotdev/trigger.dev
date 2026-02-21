@@ -338,9 +338,9 @@ export function SelectTrigger({
           />
         }
       >
-        <div className="flex grow items-center gap-0.5">
-          {icon && <div className="-ml-1 flex-none">{icon}</div>}
-          <div className="truncate">{content}</div>
+        <div className="flex min-w-0 grow items-center gap-0.5 overflow-hidden">
+          {icon && <div className="flex-none">{icon}</div>}
+          <div className="min-w-0 truncate">{content}</div>
         </div>
         {dropdownIcon === true ? (
           <ChevronDown
@@ -519,7 +519,7 @@ export function SelectItem({
     >
       <div
         className={cn(
-          "flex h-8 w-full items-center rounded-sm px-2 hover:bg-tertiary group-data-[active-item=true]:bg-tertiary",
+          "flex h-8 w-full items-center rounded-sm px-2 group-data-[active-item=true]:bg-tertiary hover:bg-tertiary",
           checkPosition === "left" ? "gap-2" : "gap-1"
         )}
       >
