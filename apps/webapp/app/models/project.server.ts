@@ -102,7 +102,7 @@ export async function createProject(
       },
       externalRef: `proj_${externalRefGenerator()}`,
       version: version === "v3" ? "V3" : "V2",
-      onboardingData: onboardingData ?? undefined,
+      onboardingData,
     },
     include: {
       organization: {
