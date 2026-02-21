@@ -1,0 +1,30 @@
+{
+  "name": "references-ai-chat",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "dev:trigger": "trigger dev"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.0",
+    "@ai-sdk/react": "^3.0.0",
+    "@trigger.dev/sdk": "workspace:*",
+    "ai": "^6.0.0",
+    "next": "15.3.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@trigger.dev/build": "workspace:*",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^4",
+    "trigger.dev": "workspace:*",
+    "typescript": "^5"
+  }
+}
