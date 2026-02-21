@@ -648,15 +648,28 @@ function TasksDropdown({
         <ComboBox placeholder={"Filter by task..."} value={searchValue} />
         <SelectList>
           {filtered.map((item, index) => (
-            <SelectItem
-              key={`${item.triggerSource}-${item.slug}`}
-              value={item.slug}
-              icon={
-                <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
-              }
-            >
-              <MiddleTruncate text={item.slug}/>
-            </SelectItem>
+            <TooltipProvider key={`${item.triggerSource}-${item.slug}`}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="w-full">
+                    <SelectItem
+                      value={item.slug}
+                      icon={
+                        <TaskTriggerSourceIcon
+                          source={item.triggerSource}
+                          className="size-4 flex-none"
+                        />
+                      }
+                    >
+                      <MiddleTruncate text={item.slug} />
+                    </SelectItem>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>
+                  <Paragraph variant="extra-small">{item.slug}</Paragraph>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           ))}
         </SelectList>
       </SelectPopover>
