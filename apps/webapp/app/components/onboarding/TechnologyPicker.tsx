@@ -1,8 +1,9 @@
 import * as Ariakit from "@ariakit/react";
-import { XMarkIcon, PlusIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
+import { XMarkIcon, PlusIcon, CubeIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { matchSorter } from "match-sorter";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 
 const pillColors = [
   "bg-green-800/40 border-green-600/50",
@@ -205,10 +206,10 @@ export function TechnologyPicker({
           virtualFocus
         >
           <Ariakit.Select
-            className="flex h-9 w-full items-center rounded border border-charcoal-650 bg-charcoal-750 px-3 text-sm text-text-dimmed focus-custom hover:border-charcoal-600"
+            className="flex h-8 w-full items-center rounded bg-charcoal-750 pl-2 pr-3 text-sm text-text-dimmed ring-charcoal-600 transition focus-custom hover:bg-charcoal-650 hover:ring-1"
             onClick={() => setOpen(true)}
           >
-            <MagnifyingGlassIcon className="mr-2 size-4 flex-none text-text-dimmed" />
+            <CubeIcon className="mr-1.5 size-4 flex-none text-text-dimmed" />
             <span>Select your technologies…</span>
           </Ariakit.Select>
 
@@ -222,7 +223,8 @@ export function TechnologyPicker({
               "max-h-[min(400px,var(--popover-available-height))]"
             )}
           >
-            <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent px-3 text-xs text-text-dimmed outline-none">
+            <div className="flex h-9 w-full flex-none items-center gap-2 border-b border-grid-dimmed bg-transparent px-3 text-xs text-text-dimmed outline-none">
+              <MagnifyingGlassIcon className="size-3.5 flex-none text-text-dimmed" />
               <Ariakit.Combobox
                 autoSelect
                 placeholder="Search technologies…"
@@ -240,7 +242,7 @@ export function TechnologyPicker({
                     toggleOption(option);
                   }}
                 >
-                  <div className="flex h-8 w-full items-center gap-2 rounded-sm px-2 hover:bg-tertiary group-data-[active-item=true]:bg-tertiary">
+                  <div className="flex h-8 w-full items-center gap-2 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary hover:bg-tertiary">
                     <div
                       className={cn(
                         "flex size-4 flex-none items-center justify-center rounded border",
@@ -277,9 +279,9 @@ export function TechnologyPicker({
               )}
             </Ariakit.ComboboxList>
 
-            <div className="sticky bottom-0 border-t border-charcoal-700 bg-background-bright">
+            <div className="sticky bottom-0 border-t border-charcoal-700 bg-background-bright px-1 py-1">
               {showOtherInput ? (
-                <div className="flex items-center px-3 py-2">
+                <div className="flex h-8 w-full items-center rounded-sm bg-tertiary px-2 ring-1 ring-charcoal-650">
                   <input
                     ref={otherInputRef}
                     type="text"
@@ -287,23 +289,32 @@ export function TechnologyPicker({
                     onChange={(e) => setOtherInputValue(e.target.value)}
                     onKeyDown={handleOtherKeyDown}
                     placeholder="Type and press Enter to add"
-                    className="flex-1 bg-transparent text-xs text-text-bright outline-none placeholder:text-text-dimmed"
+                    className="flex-1 border-none bg-transparent pl-0.5 text-2sm text-text-bright shadow-none outline-none ring-0 placeholder:text-text-dimmed focus:border-none focus:outline-none focus:ring-0"
                     autoFocus
+                  />
+                  <ShortcutKey
+                    shortcut={{ key: "Enter" }}
+                    variant="small"
+                    className={cn(
+                      "mr-1.5 transition-opacity duration-150",
+                      otherInputValue.length > 0 ? "opacity-100" : "opacity-0"
+                    )}
                   />
                   <button
                     type="button"
                     onClick={() => {
-                      addCustomValue();
+                      setOtherInputValue("");
+                      setShowOtherInput(false);
                     }}
-                    className="ml-2 text-xs text-indigo-400 hover:text-indigo-300"
+                    className="flex items-center text-text-dimmed hover:text-text-bright"
                   >
-                    Add
+                    <XMarkIcon className="size-4" />
                   </button>
                 </div>
               ) : (
                 <button
                   type="button"
-                  className="group flex h-8 w-full cursor-pointer items-center gap-2 px-3 text-2sm text-text-dimmed hover:bg-tertiary"
+                  className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-2sm text-text-dimmed hover:bg-tertiary"
                   onClick={() => {
                     setShowOtherInput(true);
                     setTimeout(() => otherInputRef.current?.focus(), 0);
