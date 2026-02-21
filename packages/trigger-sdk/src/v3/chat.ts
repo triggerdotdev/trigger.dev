@@ -391,3 +391,4 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 export function createChatTransport(options: TriggerChatTransportOptions): TriggerChatTransport {
   return new TriggerChatTransport(options);
 }
+
