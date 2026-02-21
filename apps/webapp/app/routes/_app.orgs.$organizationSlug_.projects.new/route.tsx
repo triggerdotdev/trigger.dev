@@ -37,6 +37,8 @@ import {
 } from "~/utils/pathBuilder";
 import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 
+const WORKING_ON_OTHER = "Other/not sure yet";
+
 const workingOnOptions = [
   "AI agent",
   "Media processing pipeline",
@@ -44,7 +46,7 @@ const workingOnOptions = [
   "Event-driven workflow",
   "Realtime streaming",
   "Internal tool or background job",
-  "Other/not sure yet",
+  WORKING_ON_OTHER,
 ] as const;
 
 const goalOptions = [
@@ -183,37 +185,40 @@ export const action: ActionFunction = async ({ request, params }) => {
   const configurationId = url.searchParams.get("configurationId");
   const next = url.searchParams.get("next");
 
-  const onboardingData: Record<string, Prisma.InputJsonValue> = {};
-
-  if (submission.value.workingOn) {
-    const workingOn = JSON.parse(submission.value.workingOn) as string[];
-    if (workingOn.length > 0) {
-      onboardingData.workingOn = workingOn;
-    }
-  }
-  if (submission.value.workingOnOther) {
-    onboardingData.workingOnOther = submission.value.workingOnOther;
-  }
-  if (submission.value.technologies) {
-    const technologies = JSON.parse(submission.value.technologies) as string[];
-    if (technologies.length > 0) {
-      onboardingData.technologies = technologies;
-    }
-  }
-  if (submission.value.technologiesOther) {
-    const technologiesOther = JSON.parse(submission.value.technologiesOther) as string[];
-    if (technologiesOther.length > 0) {
-      onboardingData.technologiesOther = technologiesOther;
-    }
-  }
-  if (submission.value.goals) {
-    const goals = JSON.parse(submission.value.goals) as string[];
-    if (goals.length > 0) {
-      onboardingData.goals = goals;
-    }
-  }
-
   try {
+    const stringArraySchema = z.array(z.string());
+
+    const onboardingData: Record<string, Prisma.InputJsonValue> = {};
+
+    if (submission.value.workingOn) {
+      const workingOn = stringArraySchema.parse(JSON.parse(submission.value.workingOn));
+      if (workingOn.length > 0) {
+        onboardingData.workingOn = workingOn;
+      }
+    }
+    if (submission.value.workingOnOther) {
+      onboardingData.workingOnOther = submission.value.workingOnOther;
+    }
+    if (submission.value.technologies) {
+      const technologies = stringArraySchema.parse(JSON.parse(submission.value.technologies));
+      if (technologies.length > 0) {
+        onboardingData.technologies = technologies;
+      }
+    }
+    if (submission.value.technologiesOther) {
+      const technologiesOther = stringArraySchema.parse(
+        JSON.parse(submission.value.technologiesOther)
+      );
+      if (technologiesOther.length > 0) {
+        onboardingData.technologiesOther = technologiesOther;
+      }
+    }
+    if (submission.value.goals) {
+      const goals = stringArraySchema.parse(JSON.parse(submission.value.goals));
+      if (goals.length > 0) {
+        onboardingData.goals = goals;
+      }
+    }
     const project = await createProject({
       organizationSlug: organizationSlug,
       name: submission.value.projectName,
@@ -316,11 +321,11 @@ export default function Page() {
   const [shuffledWorkingOn, setShuffledWorkingOn] = useState<string[]>([...workingOnOptions]);
 
   useEffect(() => {
-    const nonOther = workingOnOptions.filter((o) => o !== "Other/not sure yet");
-    setShuffledWorkingOn([...shuffleArray(nonOther), "Other/not sure yet"]);
+    const nonOther = workingOnOptions.filter((o) => o !== WORKING_ON_OTHER);
+    setShuffledWorkingOn([...shuffleArray(nonOther), WORKING_ON_OTHER]);
   }, []);
 
-  const showWorkingOnOther = selectedWorkingOn.includes("Other/not sure yet");
+  const showWorkingOnOther = selectedWorkingOn.includes(WORKING_ON_OTHER);
 
   return (
     <AppContainer className="bg-charcoal-900">

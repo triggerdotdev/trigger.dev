@@ -309,7 +309,9 @@ export default function Page() {
                 <>
                   <div className="border-t border-charcoal-700" />
                   <InputGroup>
-                    <Label className="mb-0.5">How did you hear about us?</Label>
+                    <Label className="mb-0.5" id="referral-label">
+                      How did you hear about us?
+                    </Label>
                     <input
                       type="hidden"
                       name="referralSource"
@@ -319,6 +321,7 @@ export default function Page() {
                       value={selectedReferralSource}
                       onValueChange={setSelectedReferralSource}
                       className="flex flex-wrap gap-2"
+                      aria-labelledby="referral-label"
                     >
                       {shuffledReferralSources.map((option) => (
                         <RadioGroupItem
@@ -343,12 +346,13 @@ export default function Page() {
                   </InputGroup>
 
                   <InputGroup className="mt-1">
-                    <Label>What role fits you best?</Label>
+                    <Label id="role-label">What role fits you best?</Label>
                     <input type="hidden" name="role" value={selectedRole} />
                     <Select<string, string>
                       value={selectedRole}
                       setValue={setSelectedRole}
                       placeholder="Select an option"
+                      aria-labelledby="role-label"
                       variant="secondary/small"
                       dropdownIcon
                       icon={<UserGroupIcon className="mr-1 size-4.5 text-text-dimmed" />}

@@ -186,6 +186,7 @@ export function TechnologyPicker({
               <button
                 type="button"
                 onClick={() => removeItem(item)}
+                aria-label={`Remove ${item}`}
                 className="ml-0.5 flex items-center hover:text-white/70"
               >
                 <XMarkIcon className="size-3.5" />
@@ -214,7 +215,6 @@ export function TechnologyPicker({
         >
           <Ariakit.Select
             className="group flex h-8 w-full items-center rounded bg-charcoal-750 pl-2 pr-2.5 text-sm text-text-dimmed ring-charcoal-600 transition focus-custom hover:bg-charcoal-650 hover:ring-1"
-            onClick={() => setOpen(true)}
           >
             <div className="flex grow items-center">
               <CubeIcon className="mr-1.5 size-4 flex-none text-text-dimmed" />
@@ -280,7 +280,7 @@ export function TechnologyPicker({
                     onChange={(e) => setOtherInputValue(e.target.value)}
                     onKeyDown={handleOtherKeyDown}
                     placeholder="Type and press Enter to add"
-                    className="pl-0.5can flex-1 border-none bg-transparent text-2sm text-text-bright shadow-none outline-none ring-0 placeholder:text-text-dimmed focus:border-none focus:outline-none focus:ring-0"
+                    className="pl-0.5 flex-1 border-none bg-transparent text-2sm text-text-bright shadow-none outline-none ring-0 placeholder:text-text-dimmed focus:border-none focus:outline-none focus:ring-0"
                     autoFocus
                   />
                   <ShortcutKey
