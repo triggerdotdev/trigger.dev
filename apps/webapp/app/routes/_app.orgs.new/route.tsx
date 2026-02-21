@@ -168,7 +168,7 @@ export default function NewOrganizationPage() {
                 }
                 cancelButton={
                   hasOrganizations ? (
-                    <LinkButton to={rootPath()} variant={"tertiary/small"}>
+                    <LinkButton to={rootPath()} variant={"secondary/small"}>
                       Cancel
                     </LinkButton>
                   ) : null
