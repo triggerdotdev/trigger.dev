@@ -6,6 +6,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -16,12 +17,21 @@ interface MousePosition {
   y: number;
 }
 const MousePositionContext = createContext<MousePosition | undefined>(undefined);
-export function MousePositionProvider({ children }: { children: ReactNode }) {
+export function MousePositionProvider({
+  children,
+  recalculateTrigger,
+}: {
+  children: ReactNode;
+  recalculateTrigger?: unknown;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<MousePosition | undefined>(undefined);
+  const lastMouseCoordsRef = useRef<{ clientX: number; clientY: number } | null>(null);
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
+      lastMouseCoordsRef.current = { clientX: e.clientX, clientY: e.clientY };
+
       if (!ref.current) {
         setPosition(undefined);
         return;
@@ -41,11 +51,41 @@ export function MousePositionProvider({ children }: { children: ReactNode }) {
     [ref.current]
   );
 
+  // Recalculate position when trigger changes (e.g., panel opens/closes)
+  // Use requestAnimationFrame to wait for the DOM layout to complete
+  useEffect(() => {
+    if (!lastMouseCoordsRef.current) {
+      return;
+    }
+
+    const rafId = requestAnimationFrame(() => {
+      if (!ref.current || !lastMouseCoordsRef.current) {
+        return;
+      }
+
+      const { top, left, width, height } = ref.current.getBoundingClientRect();
+      const x = (lastMouseCoordsRef.current.clientX - left) / width;
+      const y = (lastMouseCoordsRef.current.clientY - top) / height;
+
+      if (x < 0 || x > 1 || y < 0 || y > 1) {
+        setPosition(undefined);
+        return;
+      }
+
+      setPosition({ x, y });
+    });
+
+    return () => cancelAnimationFrame(rafId);
+  }, [recalculateTrigger]);
+
   return (
     <div
       ref={ref}
       onMouseEnter={handleMouseMove}
-      onMouseLeave={() => setPosition(undefined)}
+      onMouseLeave={() => {
+        lastMouseCoordsRef.current = null;
+        setPosition(undefined);
+      }}
       onMouseMove={handleMouseMove}
       style={{ width: "100%", height: "100%" }}
     >
@@ -83,6 +123,8 @@ export type RootProps = {
   maxWidth: number;
   children?: ReactNode;
   className?: string;
+  /** When this value changes, recalculate the mouse position (useful when panels resize) */
+  recalculateTrigger?: unknown;
 };
 
 /** The main element that determines the dimensions for all sub-elements */
@@ -94,6 +136,7 @@ export function Root({
   maxWidth,
   children,
   className,
+  recalculateTrigger,
 }: RootProps) {
   const pixelWidth = calculatePixelWidth(minWidth, maxWidth, scale);
 
@@ -106,7 +149,9 @@ export function Root({
           width: `${pixelWidth}px`,
         }}
       >
-        <MousePositionProvider>{children}</MousePositionProvider>
+        <MousePositionProvider recalculateTrigger={recalculateTrigger}>
+          {children}
+        </MousePositionProvider>
       </div>
     </TimelineContext.Provider>
   );
