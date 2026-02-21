@@ -1,11 +1,12 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { FolderIcon } from "@heroicons/react/20/solid";
-import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
+import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import type { Prisma } from "@trigger.dev/database";
 import invariant from "tiny-invariant";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
 import { Feedback } from "~/components/Feedback";
@@ -19,7 +20,9 @@ import { FormTitle } from "~/components/primitives/FormTitle";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { ButtonSpinner } from "~/components/primitives/Spinner";
+import { TechnologyPicker } from "~/components/onboarding/TechnologyPicker";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -33,6 +36,33 @@ import {
   v3ProjectPath,
 } from "~/utils/pathBuilder";
 import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
+
+const workingOnOptions = [
+  "AI agent",
+  "Media processing pipeline",
+  "Media generation with AI",
+  "Event-driven workflow",
+  "Realtime streaming",
+  "Internal tool or background job",
+  "Other/not sure yet",
+] as const;
+
+const goalOptions = [
+  "Ship a production workflow",
+  "Prototype or explore",
+  "Migrate an existing system",
+  "Learn how Trigger works",
+  "Evaluate against alternatives",
+] as const;
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const shuffled = [...arr];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -62,14 +92,12 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404, statusText: "Organization not found" });
   }
 
-  //if you don't have v3 access, you must select a plan
   const { isManagedCloud } = featuresForRequest(request);
   if (isManagedCloud && !organization.v3Enabled) {
     return redirect(selectPlanPath({ slug: organizationSlug }));
   }
 
   const url = new URL(request.url);
-
   const message = url.searchParams.get("message");
 
   return typedjson({
@@ -90,6 +118,11 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 const schema = z.object({
   projectName: z.string().min(3, "Project name must have at least 3 characters").max(50),
   projectVersion: z.enum(["v2", "v3"]),
+  workingOn: z.string().optional(),
+  workingOnOther: z.string().optional(),
+  technologies: z.string().optional(),
+  technologiesOther: z.string().optional(),
+  goals: z.string().optional(),
 });
 
 export const action: ActionFunction = async ({ request, params }) => {
@@ -104,11 +137,40 @@ export const action: ActionFunction = async ({ request, params }) => {
     return json(submission);
   }
 
-  // Check for Vercel integration params in URL
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const configurationId = url.searchParams.get("configurationId");
   const next = url.searchParams.get("next");
+
+  const onboardingData: Record<string, Prisma.InputJsonValue> = {};
+
+  if (submission.value.workingOn) {
+    const workingOn = JSON.parse(submission.value.workingOn) as string[];
+    if (workingOn.length > 0) {
+      onboardingData.workingOn = workingOn;
+    }
+  }
+  if (submission.value.workingOnOther) {
+    onboardingData.workingOnOther = submission.value.workingOnOther;
+  }
+  if (submission.value.technologies) {
+    const technologies = JSON.parse(submission.value.technologies) as string[];
+    if (technologies.length > 0) {
+      onboardingData.technologies = technologies;
+    }
+  }
+  if (submission.value.technologiesOther) {
+    const technologiesOther = JSON.parse(submission.value.technologiesOther) as string[];
+    if (technologiesOther.length > 0) {
+      onboardingData.technologiesOther = technologiesOther;
+    }
+  }
+  if (submission.value.goals) {
+    const goals = JSON.parse(submission.value.goals) as string[];
+    if (goals.length > 0) {
+      onboardingData.goals = goals;
+    }
+  }
 
   try {
     const project = await createProject({
@@ -116,9 +178,9 @@ export const action: ActionFunction = async ({ request, params }) => {
       name: submission.value.projectName,
       userId,
       version: submission.value.projectVersion,
+      onboardingData: Object.keys(onboardingData).length > 0 ? onboardingData : undefined,
     });
 
-    // If this is a Vercel integration flow, generate state and redirect to connect
     if (code && configurationId) {
       const environment = await prisma.runtimeEnvironment.findFirst({
         where: {
@@ -195,7 +257,6 @@ export default function Page() {
 
   const [form, { projectName, projectVersion }] = useForm({
     id: "create-project",
-    // TODO: type this
     lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
@@ -205,10 +266,25 @@ export default function Page() {
   const navigation = useNavigation();
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
+  const [selectedWorkingOn, setSelectedWorkingOn] = useState<string[]>([]);
+  const [workingOnOther, setWorkingOnOther] = useState("");
+  const [selectedTechnologies, setSelectedTechnologies] = useState<string[]>([]);
+  const [customTechnologies, setCustomTechnologies] = useState<string[]>([]);
+  const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
+
+  const [shuffledWorkingOn, setShuffledWorkingOn] = useState<string[]>([...workingOnOptions]);
+
+  useEffect(() => {
+    const nonOther = workingOnOptions.filter((o) => o !== "Other/not sure yet");
+    setShuffledWorkingOn([...shuffleArray(nonOther), "Other/not sure yet"]);
+  }, []);
+
+  const showWorkingOnOther = selectedWorkingOn.includes("Other/not sure yet");
+
   return (
     <AppContainer className="bg-charcoal-900">
       <BackgroundWrapper>
-        <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+        <MainCenteredContainer className="max-w-[29rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
           <div>
             <FormTitle
               LeadingIcon={<FolderIcon className="size-7 text-indigo-500" />}
@@ -223,7 +299,9 @@ export default function Page() {
               )}
               <Fieldset>
                 <InputGroup>
-                  <Label htmlFor={projectName.id}>Project name</Label>
+                  <Label htmlFor={projectName.id}>
+                    Project name <span className="text-text-bright">*</span>
+                  </Label>
                   <Input
                     {...conform.input(projectName, { type: "text" })}
                     placeholder="Your project name"
@@ -237,6 +315,103 @@ export default function Page() {
                 ) : (
                   <input {...conform.input(projectVersion, { type: "hidden" })} value={"v2"} />
                 )}
+
+                <div className="border-t border-charcoal-700" />
+                <InputGroup>
+                  <Label>What are you working on?</Label>
+                  <input
+                    type="hidden"
+                    name="workingOn"
+                    value={JSON.stringify(selectedWorkingOn)}
+                  />
+                  <Select<string[], string>
+                    value={selectedWorkingOn}
+                    setValue={setSelectedWorkingOn}
+                    placeholder="Select options"
+                    variant="secondary/small"
+                    dropdownIcon
+                    items={shuffledWorkingOn}
+                    className="h-8"
+                    text={(value) =>
+                      value.length === 0
+                        ? undefined
+                        : value.length <= 2
+                          ? value.join(", ")
+                          : `${value.slice(0, 2).join(", ")} +${value.length - 2} more`
+                    }
+                  >
+                    {(items) =>
+                      items.map((item) => (
+                        <SelectItem key={item} value={item} checkPosition="left">
+                          <span className="text-text-bright">{item}</span>
+                        </SelectItem>
+                      ))
+                    }
+                  </Select>
+                  {showWorkingOnOther && (
+                    <>
+                      <input type="hidden" name="workingOnOther" value={workingOnOther} />
+                      <Input
+                        type="text"
+                        value={workingOnOther}
+                        onChange={(e) => setWorkingOnOther(e.target.value)}
+                        placeholder="Tell us what you're working on"
+                        spellCheck={false}
+                        className="mt-2"
+                      />
+                    </>
+                  )}
+                </InputGroup>
+
+                <InputGroup>
+                  <Label>What technologies are you using?</Label>
+                  <input
+                    type="hidden"
+                    name="technologies"
+                    value={JSON.stringify(selectedTechnologies)}
+                  />
+                  <input
+                    type="hidden"
+                    name="technologiesOther"
+                    value={JSON.stringify(customTechnologies)}
+                  />
+                  <TechnologyPicker
+                    value={selectedTechnologies}
+                    onChange={setSelectedTechnologies}
+                    customValues={customTechnologies}
+                    onCustomValuesChange={setCustomTechnologies}
+                  />
+                </InputGroup>
+
+                <InputGroup>
+                  <Label>What are you trying to do with Trigger.dev?</Label>
+                  <input type="hidden" name="goals" value={JSON.stringify(selectedGoals)} />
+                  <Select<string[], string>
+                    value={selectedGoals}
+                    setValue={setSelectedGoals}
+                    placeholder="Select options"
+                    variant="secondary/small"
+                    dropdownIcon
+                    items={[...goalOptions]}
+                    className="h-8"
+                    text={(value) =>
+                      value.length === 0
+                        ? undefined
+                        : value.length <= 2
+                          ? value.join(", ")
+                          : `${value.slice(0, 2).join(", ")} +${value.length - 2} more`
+                    }
+                  >
+                    {(items) =>
+                      items.map((item) => (
+                        <SelectItem key={item} value={item} checkPosition="left">
+                          <span className="text-text-bright">{item}</span>
+                        </SelectItem>
+                      ))
+                    }
+                  </Select>
+                </InputGroup>
+
                 <FormButtons
                   confirmButton={
                     <Button
