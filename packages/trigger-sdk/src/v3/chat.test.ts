@@ -3,7 +3,7 @@ import type { UIMessage, UIMessageChunk } from "ai";
 import { TriggerChatTransport, createChatTransport } from "./chat.js";
 
 // Helper: encode text as SSE format
-function sseEncode(chunks: UIMessageChunk[]): string {
+function sseEncode(chunks: (UIMessageChunk | Record<string, unknown>)[]): string {
   return chunks.map((chunk, i) => `id: ${i}\ndata: ${JSON.stringify(chunk)}\n\n`).join("");
 }
 
@@ -225,7 +225,7 @@ describe("TriggerChatTransport", () => {
       expect(triggerUrl).toContain("/api/v1/tasks/my-chat-task/trigger");
 
       const triggerBody = JSON.parse(triggerCall![1]?.body as string);
-      const payload = JSON.parse(triggerBody.payload);
+      const payload = triggerBody.payload;
       expect(payload.messages).toEqual(messages);
       expect(payload.chatId).toBe("chat-123");
       expect(payload.trigger).toBe("submit-message");
@@ -459,21 +459,19 @@ describe("TriggerChatTransport", () => {
   });
 
   describe("publicAccessToken from trigger response", () => {
-    it("should use publicAccessToken from response body when x-trigger-jwt header is absent", async () => {
+    it("should use x-trigger-jwt from trigger response as the stream auth token", async () => {
       const fetchSpy = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         if (urlStr.includes("/trigger")) {
-          // Return without x-trigger-jwt header — the ApiClient will attempt
-          // to generate a JWT from the access token. In this test the token
-          // generation will add a publicAccessToken to the result.
+          // Return with x-trigger-jwt header — this public token should be
+          // used for the subsequent stream subscription request.
           return new Response(
             JSON.stringify({ id: "run_pat" }),
             {
               status: 200,
               headers: {
                 "content-type": "application/json",
-                // Include x-trigger-jwt to simulate the server returning a public token
                 "x-trigger-jwt": "server-generated-public-token",
               },
             }
@@ -843,7 +841,7 @@ describe("TriggerChatTransport", () => {
       );
 
       const triggerBody = JSON.parse(triggerCall![1]?.body as string);
-      const payload = JSON.parse(triggerBody.payload);
+      const payload = triggerBody.payload;
 
       // body properties should be merged into the payload
       expect(payload.systemPrompt).toBe("You are helpful");
@@ -912,9 +910,421 @@ describe("TriggerChatTransport", () => {
       );
 
       const triggerBody = JSON.parse(triggerCall![1]?.body as string);
-      const payload = JSON.parse(triggerBody.payload);
+      const payload = triggerBody.payload;
       expect(payload.trigger).toBe("regenerate-message");
       expect(payload.messageId).toBe("msg-to-regen");
+    });
+  });
+
+  describe("async accessToken", () => {
+    it("should accept an async function for accessToken", async () => {
+      let tokenCallCount = 0;
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/trigger")) {
+          return new Response(
+            JSON.stringify({ id: `run_async_${tokenCallCount}` }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "x-trigger-jwt": "stream-token",
+              },
+            }
+          );
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          const chunks: UIMessageChunk[] = [
+            { type: "text-start", id: "p1" },
+            { type: "text-end", id: "p1" },
+          ];
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: async () => {
+          tokenCallCount++;
+          // Simulate async work (e.g. server action)
+          await new Promise((r) => setTimeout(r, 1));
+          return `async-token-${tokenCallCount}`;
+        },
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-async",
+        messageId: undefined,
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+
+      expect(tokenCallCount).toBe(1);
+    });
+  });
+
+  describe("single-run mode (waitpoint loop)", () => {
+    it("should store waitpoint token from control chunk and not forward it to consumer", async () => {
+      const controlChunk = {
+        type: "__trigger_waitpoint_ready",
+        tokenId: "wp_token_123",
+        publicAccessToken: "wp_access_abc",
+      };
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/trigger")) {
+          return new Response(
+            JSON.stringify({ id: "run_single" }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "x-trigger-jwt": "pub_token",
+              },
+            }
+          );
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          const chunks = [
+            ...sampleChunks,
+            { type: "finish" as const, id: "part-1" } as UIMessageChunk,
+            controlChunk,
+          ];
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-single",
+        messageId: undefined,
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+
+      // Read all chunks — the control chunk should NOT appear
+      const reader = stream.getReader();
+      const receivedChunks: UIMessageChunk[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        receivedChunks.push(value);
+      }
+
+      // All AI SDK chunks should be forwarded
+      expect(receivedChunks.length).toBe(sampleChunks.length + 1); // +1 for the finish chunk
+      // Control chunk should not be in the output
+      expect(receivedChunks.every((c) => c.type !== ("__trigger_waitpoint_ready" as any))).toBe(true);
+    });
+
+    it("should complete waitpoint token on second message instead of triggering a new run", async () => {
+      const controlChunk = {
+        type: "__trigger_waitpoint_ready",
+        tokenId: "wp_token_456",
+        publicAccessToken: "wp_access_def",
+      };
+
+      let triggerCallCount = 0;
+      let completeWaitpointCalled = false;
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+          triggerCallCount++;
+          return new Response(
+            JSON.stringify({ id: "run_resume" }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "x-trigger-jwt": "pub_token",
+              },
+            }
+          );
+        }
+
+        // Handle waitpoint token completion
+        if (urlStr.includes("/api/v1/waitpoints/tokens/") && urlStr.includes("/complete")) {
+          completeWaitpointCalled = true;
+          return new Response(
+            JSON.stringify({ success: true }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }
+          );
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          const chunks = [
+            ...sampleChunks,
+            { type: "finish" as const, id: "part-1" } as UIMessageChunk,
+            controlChunk,
+          ];
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      // First message — triggers a new run
+      const stream1 = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-resume",
+        messageId: undefined,
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+
+      // Consume stream to capture the control chunk
+      const reader1 = stream1.getReader();
+      while (true) {
+        const { done } = await reader1.read();
+        if (done) break;
+      }
+
+      expect(triggerCallCount).toBe(1);
+
+      // Second message — should complete the waitpoint instead of triggering
+      const stream2 = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-resume",
+        messageId: undefined,
+        messages: [createUserMessage("Hello"), createAssistantMessage("Hi!"), createUserMessage("How are you?")],
+        abortSignal: undefined,
+      });
+
+      // Consume second stream
+      const reader2 = stream2.getReader();
+      while (true) {
+        const { done } = await reader2.read();
+        if (done) break;
+      }
+
+      // Should NOT have triggered a second run
+      expect(triggerCallCount).toBe(1);
+      // Should have completed the waitpoint
+      expect(completeWaitpointCalled).toBe(true);
+    });
+
+    it("should fall back to triggering a new run if stream closes without control chunk", async () => {
+      let triggerCallCount = 0;
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+          triggerCallCount++;
+          return new Response(
+            JSON.stringify({ id: `run_fallback_${triggerCallCount}` }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "x-trigger-jwt": "pub_token",
+              },
+            }
+          );
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          // No control chunk — stream just ends after the finish
+          const chunks: UIMessageChunk[] = [
+            { type: "text-start", id: "p1" },
+            { type: "text-delta", id: "p1", delta: "Hello" },
+            { type: "text-end", id: "p1" },
+          ];
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      // First message
+      const stream1 = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-fallback",
+        messageId: undefined,
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+
+      const reader1 = stream1.getReader();
+      while (true) {
+        const { done } = await reader1.read();
+        if (done) break;
+      }
+
+      expect(triggerCallCount).toBe(1);
+
+      // Second message — no waitpoint token stored, should trigger a new run
+      await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-fallback",
+        messageId: undefined,
+        messages: [createUserMessage("Hello"), createAssistantMessage("Hi!"), createUserMessage("Again")],
+        abortSignal: undefined,
+      });
+
+      // Should have triggered a second run
+      expect(triggerCallCount).toBe(2);
+    });
+
+    it("should fall back to new run when completing waitpoint fails", async () => {
+      const controlChunk = {
+        type: "__trigger_waitpoint_ready",
+        tokenId: "wp_token_fail",
+        publicAccessToken: "wp_access_fail",
+      };
+
+      let triggerCallCount = 0;
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+          triggerCallCount++;
+          return new Response(
+            JSON.stringify({ id: `run_fail_${triggerCallCount}` }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "x-trigger-jwt": "pub_token",
+              },
+            }
+          );
+        }
+
+        // Waitpoint completion fails
+        if (urlStr.includes("/api/v1/waitpoints/tokens/") && urlStr.includes("/complete")) {
+          return new Response(
+            JSON.stringify({ error: "Token expired" }),
+            {
+              status: 400,
+              headers: { "content-type": "application/json" },
+            }
+          );
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          // First call has control chunk, subsequent calls don't
+          const chunks: (UIMessageChunk | Record<string, unknown>)[] = [
+            ...sampleChunks,
+            { type: "finish" as const, id: "part-1" } as UIMessageChunk,
+          ];
+
+          if (triggerCallCount <= 1) {
+            chunks.push(controlChunk);
+          }
+
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      // First message
+      const stream1 = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-fail",
+        messageId: undefined,
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+
+      const reader1 = stream1.getReader();
+      while (true) {
+        const { done } = await reader1.read();
+        if (done) break;
+      }
+
+      expect(triggerCallCount).toBe(1);
+
+      // Second message — waitpoint completion will fail, should fall back to new run
+      const stream2 = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-fail",
+        messageId: undefined,
+        messages: [createUserMessage("Hello"), createAssistantMessage("Hi!"), createUserMessage("Again")],
+        abortSignal: undefined,
+      });
+
+      const reader2 = stream2.getReader();
+      while (true) {
+        const { done } = await reader2.read();
+        if (done) break;
+      }
+
+      // Should have triggered a second run as fallback
+      expect(triggerCallCount).toBe(2);
     });
   });
 });
