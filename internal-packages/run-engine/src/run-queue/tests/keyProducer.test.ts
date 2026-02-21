@@ -359,4 +359,76 @@ describe("KeyProducer", () => {
       concurrencyKey: "c1234",
     });
   });
+
+  // Rate Limit Key Tests
+  it("queueRateLimitConfigKey", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const key = keyProducer.queueRateLimitConfigKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task/task-name"
+    );
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:rl:config");
+  });
+
+  it("queueRateLimitBucketKey (without rateLimitKey)", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const key = keyProducer.queueRateLimitBucketKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task/task-name"
+    );
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:rl");
+  });
+
+  it("queueRateLimitBucketKey (with rateLimitKey)", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const key = keyProducer.queueRateLimitBucketKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task/task-name",
+      "tenant-123"
+    );
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:rl:tenant-123");
+  });
+
+  it("queueRateLimitConfigKeyFromQueue (strips concurrency key)", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const queueKey = "{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:ck:c1234";
+    const key = keyProducer.queueRateLimitConfigKeyFromQueue(queueKey);
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:rl:config");
+  });
+
+  it("queueRateLimitConfigKeyFromQueue (no concurrency key)", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const queueKey = "{org:o1234}:proj:p1234:env:e1234:queue:task/task-name";
+    const key = keyProducer.queueRateLimitConfigKeyFromQueue(queueKey);
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:rl:config");
+  });
+
+  it("queueRateLimitBucketKeyFromQueue (with rateLimitKey)", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const queueKey = "{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:ck:c1234";
+    const key = keyProducer.queueRateLimitBucketKeyFromQueue(queueKey, "tenant-456");
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:rl:tenant-456");
+  });
+
+  it("queueRateLimitBucketKeyFromQueue (without rateLimitKey)", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const queueKey = "{org:o1234}:proj:p1234:env:e1234:queue:task/task-name";
+    const key = keyProducer.queueRateLimitBucketKeyFromQueue(queueKey);
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:rl");
+  });
 });

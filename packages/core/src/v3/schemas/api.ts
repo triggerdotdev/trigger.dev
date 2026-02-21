@@ -196,6 +196,11 @@ export const TriggerTaskRequestBody = z.object({
         })
         .optional(),
       concurrencyKey: z.string().optional(),
+      /**
+       * Rate limit key for per-tenant/per-user rate limiting.
+       * Creates a separate rate limit bucket for every unique value.
+       */
+      rateLimitKey: z.string().optional(),
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),
@@ -248,6 +253,11 @@ export const BatchTriggerTaskItem = z.object({
   options: z
     .object({
       concurrencyKey: z.string().optional(),
+      /**
+       * Rate limit key for per-tenant/per-user rate limiting.
+       * Creates a separate rate limit bucket for every unique value.
+       */
+      rateLimitKey: z.string().optional(),
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),

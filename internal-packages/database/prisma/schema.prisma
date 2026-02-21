@@ -674,6 +674,7 @@ model TaskRun {
   priorityMs Int @default(0)
 
   concurrencyKey String?
+  rateLimitKey   String?
 
   delayUntil        DateTime?
   queuedAt          DateTime?
