@@ -225,12 +225,23 @@ class ManagedSupervisor {
 
         if (this.isComputeMode && this.computeManager) {
           try {
-            const didRestore = await this.computeManager.restore(checkpoint.location);
+            // Derive runnerId unique per restore cycle (matches iceman's pattern)
+            const runIdShort = message.run.friendlyId.replace("run_", "");
+            const checkpointSuffix = checkpoint.id.slice(-8);
+            const runnerId = `runner-${runIdShort}-${checkpointSuffix}`;
+
+            const didRestore = await this.computeManager.restore({
+              snapshotId: checkpoint.location,
+              runnerId,
+              runFriendlyId: message.run.friendlyId,
+              snapshotFriendlyId: message.snapshot.friendlyId,
+              machine: message.run.machine,
+            });
 
             if (didRestore) {
-              this.logger.log("Compute restore successful", { runId: message.run.id });
+              this.logger.log("Compute restore successful", { runId: message.run.id, runnerId });
             } else {
-              this.logger.error("Compute restore failed", { runId: message.run.id });
+              this.logger.error("Compute restore failed", { runId: message.run.id, runnerId });
             }
           } catch (error) {
             this.logger.error("Failed to restore run (compute)", { error });

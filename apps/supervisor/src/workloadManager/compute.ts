@@ -247,20 +247,43 @@ export class ComputeWorkloadManager implements WorkloadManager {
     return true;
   }
 
-  async restore(snapshotId: string): Promise<boolean> {
-    const url = `${this.opts.gatewayUrl}/api/snapshots/${snapshotId}/restore`;
+  async restore(opts: {
+    snapshotId: string;
+    runnerId: string;
+    runFriendlyId: string;
+    snapshotFriendlyId: string;
+    machine: { cpu: number; memory: number };
+  }): Promise<boolean> {
+    const url = `${this.opts.gatewayUrl}/api/snapshots/${opts.snapshotId}/restore`;
+
+    const metadata: Record<string, string> = {
+      TRIGGER_RUNNER_ID: opts.runnerId,
+      TRIGGER_RUN_ID: opts.runFriendlyId,
+      TRIGGER_SNAPSHOT_ID: opts.snapshotFriendlyId,
+      TRIGGER_SUPERVISOR_API_PROTOCOL: this.opts.workloadApiProtocol,
+      TRIGGER_SUPERVISOR_API_PORT: String(this.opts.workloadApiPort),
+      TRIGGER_SUPERVISOR_API_DOMAIN: this.opts.workloadApiDomain ?? "",
+      TRIGGER_WORKER_INSTANCE_NAME: env.TRIGGER_WORKER_INSTANCE_NAME,
+    };
 
     const [error, response] = await tryCatch(
       fetch(url, {
         method: "POST",
         headers: this.authHeaders,
         signal: AbortSignal.timeout(this.opts.gatewayTimeoutMs),
+        body: JSON.stringify({
+          name: opts.runnerId,
+          metadata,
+          cpu: opts.machine.cpu,
+          memory_mb: opts.machine.memory * 1024,
+        }),
       })
     );
 
     if (error) {
       this.logger.error("restore request failed", {
-        snapshotId,
+        snapshotId: opts.snapshotId,
+        runnerId: opts.runnerId,
         error: error instanceof Error ? error.message : String(error),
       });
       return false;
@@ -268,13 +291,17 @@ export class ComputeWorkloadManager implements WorkloadManager {
 
     if (!response.ok) {
       this.logger.error("restore request rejected", {
-        snapshotId,
+        snapshotId: opts.snapshotId,
+        runnerId: opts.runnerId,
         status: response.status,
       });
       return false;
     }
 
-    this.logger.info("restore request success", { snapshotId });
+    this.logger.info("restore request success", {
+      snapshotId: opts.snapshotId,
+      runnerId: opts.runnerId,
+    });
     return true;
   }
 }
