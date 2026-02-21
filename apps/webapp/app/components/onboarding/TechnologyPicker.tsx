@@ -1,5 +1,11 @@
 import * as Ariakit from "@ariakit/react";
-import { XMarkIcon, PlusIcon, CubeIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
+import {
+  XMarkIcon,
+  PlusIcon,
+  CubeIcon,
+  MagnifyingGlassIcon,
+  ChevronDownIcon,
+} from "@heroicons/react/20/solid";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { matchSorter } from "match-sorter";
@@ -206,11 +212,14 @@ export function TechnologyPicker({
           virtualFocus
         >
           <Ariakit.Select
-            className="flex h-8 w-full items-center rounded bg-charcoal-750 pl-2 pr-3 text-sm text-text-dimmed ring-charcoal-600 transition focus-custom hover:bg-charcoal-650 hover:ring-1"
+            className="group flex h-8 w-full items-center rounded bg-charcoal-750 pl-2 pr-2.5 text-sm text-text-dimmed ring-charcoal-600 transition focus-custom hover:bg-charcoal-650 hover:ring-1"
             onClick={() => setOpen(true)}
           >
-            <CubeIcon className="mr-1.5 size-4 flex-none text-text-dimmed" />
-            <span>Select your technologies…</span>
+            <div className="flex grow items-center">
+              <CubeIcon className="mr-1.5 size-4 flex-none text-text-dimmed" />
+              <span>Select your technologies…</span>
+            </div>
+            <ChevronDownIcon className="size-4 flex-none text-text-dimmed transition group-hover:text-text-bright" />
           </Ariakit.Select>
 
           <Ariakit.SelectPopover
@@ -281,7 +290,7 @@ export function TechnologyPicker({
 
             <div className="sticky bottom-0 border-t border-charcoal-700 bg-background-bright px-1 py-1">
               {showOtherInput ? (
-                <div className="flex h-8 w-full items-center rounded-sm bg-tertiary px-2 ring-1 ring-charcoal-650">
+                <div className="flex h-8 w-full items-center rounded-sm bg-tertiary pl-0 pr-2 ring-1 ring-charcoal-650">
                   <input
                     ref={otherInputRef}
                     type="text"
@@ -289,7 +298,7 @@ export function TechnologyPicker({
                     onChange={(e) => setOtherInputValue(e.target.value)}
                     onKeyDown={handleOtherKeyDown}
                     placeholder="Type and press Enter to add"
-                    className="flex-1 border-none bg-transparent pl-0.5 text-2sm text-text-bright shadow-none outline-none ring-0 placeholder:text-text-dimmed focus:border-none focus:outline-none focus:ring-0"
+                    className="pl-0.5can flex-1 border-none bg-transparent text-2sm text-text-bright shadow-none outline-none ring-0 placeholder:text-text-dimmed focus:border-none focus:outline-none focus:ring-0"
                     autoFocus
                   />
                   <ShortcutKey
