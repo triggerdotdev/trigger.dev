@@ -47,9 +47,10 @@ export type TriggerChatTransportOptions = {
    * - A **trigger public token** created via `auth.createTriggerPublicToken(taskId)` (recommended for frontend use)
    * - A **secret API key** (for server-side use only — never expose in the browser)
    *
-   * Can also be a function that returns a token string, useful for dynamic token refresh.
+   * Can also be a function that returns a token string (sync or async),
+   * useful for dynamic token refresh or passing a Next.js server action directly.
    */
-  accessToken: string | (() => string);
+  accessToken: string | (() => string | Promise<string>);
 
   /**
    * Base URL for the Trigger.dev API.
@@ -87,6 +88,12 @@ export type TriggerChatTransportOptions = {
 type ChatSessionState = {
   runId: string;
   publicAccessToken: string;
+  /** Token ID from the `__trigger_waitpoint_ready` control chunk. */
+  waitpointTokenId?: string;
+  /** Access token scoped to complete the waitpoint (separate from the run's PAT). */
+  waitpointAccessToken?: string;
+  /** Last SSE event ID — used to resume the stream without replaying old events. */
+  lastEventId?: string;
 };
 
 /**
@@ -134,7 +141,7 @@ type ChatSessionState = {
  */
 export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly taskId: string;
-  private readonly resolveAccessToken: () => string;
+  private readonly resolveAccessToken: () => string | Promise<string>;
   private readonly baseURL: string;
   private readonly streamKey: string;
   private readonly extraHeaders: Record<string, string>;
@@ -166,19 +173,48 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     const { trigger, chatId, messageId, messages, abortSignal, body, metadata } = options;
 
     const payload = {
+      ...(body ?? {}),
       messages,
       chatId,
       trigger,
       messageId,
       metadata,
-      ...(body ?? {}),
     };
 
-    const currentToken = this.resolveAccessToken();
+    const session = this.sessions.get(chatId);
+
+    // If we have a waitpoint token from a previous turn, complete it to
+    // resume the existing run instead of triggering a new one.
+    if (session?.waitpointTokenId && session.waitpointAccessToken) {
+      const tokenId = session.waitpointTokenId;
+      const tokenAccessToken = session.waitpointAccessToken;
+
+      // Clear the used waitpoint so we don't try to reuse it
+      session.waitpointTokenId = undefined;
+      session.waitpointAccessToken = undefined;
+
+      try {
+        const wpClient = new ApiClient(this.baseURL, tokenAccessToken);
+        await wpClient.completeWaitpointToken(tokenId, { data: payload });
+
+        return this.subscribeToStream(
+          session.runId,
+          session.publicAccessToken,
+          abortSignal,
+          chatId
+        );
+      } catch {
+        // If completing the waitpoint fails (run died, token expired, etc.),
+        // fall through to trigger a new run.
+        this.sessions.delete(chatId);
+      }
+    }
+
+    const currentToken = await this.resolveAccessToken();
     const apiClient = new ApiClient(this.baseURL, currentToken);
 
     const triggerResponse = await apiClient.triggerTask(this.taskId, {
-      payload: JSON.stringify(payload),
+      payload,
       options: {
         payloadType: "application/json",
       },
@@ -195,7 +231,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       publicAccessToken: publicAccessToken ?? currentToken,
     });
 
-    return this.subscribeToStream(runId, publicAccessToken ?? currentToken, abortSignal);
+    return this.subscribeToStream(
+      runId,
+      publicAccessToken ?? currentToken,
+      abortSignal,
+      chatId
+    );
   };
 
   reconnectToStream = async (
@@ -208,25 +249,39 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       return null;
     }
 
-    return this.subscribeToStream(session.runId, session.publicAccessToken, undefined);
+    return this.subscribeToStream(session.runId, session.publicAccessToken, undefined, options.chatId);
   };
 
   private subscribeToStream(
     runId: string,
     accessToken: string,
-    abortSignal: AbortSignal | undefined
+    abortSignal: AbortSignal | undefined,
+    chatId?: string
   ): ReadableStream<UIMessageChunk> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${accessToken}`,
       ...this.extraHeaders,
     };
 
+    // When resuming a run via waitpoint, skip past previously-seen events
+    // so we only receive the new turn's response.
+    const session = chatId ? this.sessions.get(chatId) : undefined;
+
+    // Create an internal AbortController so we can terminate the underlying
+    // fetch connection when we're done reading (e.g. after intercepting the
+    // control chunk). Without this, the SSE connection stays open and leaks.
+    const internalAbort = new AbortController();
+    const combinedSignal = abortSignal
+      ? AbortSignal.any([abortSignal, internalAbort.signal])
+      : internalAbort.signal;
+
     const subscription = new SSEStreamSubscription(
       `${this.baseURL}/realtime/v1/streams/${runId}/${this.streamKey}`,
       {
         headers,
-        signal: abortSignal,
+        signal: combinedSignal,
         timeoutInSeconds: this.streamTimeoutSeconds,
+        lastEventId: session?.lastEventId,
       }
     );
 
@@ -241,20 +296,57 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               const { done, value } = await reader.read();
 
               if (done) {
+                // Stream closed without a control chunk — the run has
+                // ended (or was killed). Clear the session so that the
+                // next message triggers a fresh run.
+                if (chatId) {
+                  const s = this.sessions.get(chatId);
+                  if (s) {
+                    s.waitpointTokenId = undefined;
+                    s.waitpointAccessToken = undefined;
+                  }
+                }
                 controller.close();
                 return;
               }
 
-              if (abortSignal?.aborted) {
-                reader.cancel();
-                reader.releaseLock();
+              if (combinedSignal.aborted) {
+                internalAbort.abort();
+                await reader.cancel();
                 controller.close();
                 return;
+              }
+
+              // Track the last event ID so we can resume from here
+              if (value.id && session) {
+                session.lastEventId = value.id;
               }
 
               // Guard against heartbeat or malformed SSE events
               if (value.chunk != null && typeof value.chunk === "object") {
-                controller.enqueue(value.chunk as UIMessageChunk);
+                const chunk = value.chunk as Record<string, unknown>;
+
+                // Intercept the waitpoint-ready control chunk emitted by
+                // `chatTask` after the AI response stream completes. This
+                // chunk is never forwarded to the AI SDK consumer.
+                if (chunk.type === "__trigger_waitpoint_ready" && chatId) {
+                  const s = this.sessions.get(chatId);
+                  if (s) {
+                    s.waitpointTokenId = chunk.tokenId as string;
+                    s.waitpointAccessToken = chunk.publicAccessToken as string;
+                  }
+
+                  // Abort the underlying fetch to close the SSE connection
+                  internalAbort.abort();
+                  try {
+                    controller.close();
+                  } catch {
+                    // Controller may already be closed
+                  }
+                  return;
+                }
+
+                controller.enqueue(chunk as unknown as UIMessageChunk);
               }
             }
           } catch (readError) {
@@ -263,7 +355,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           }
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") {
-            controller.close();
+            try {
+              controller.close();
+            } catch {
+              // Controller may already be closed
+            }
             return;
           }
 
