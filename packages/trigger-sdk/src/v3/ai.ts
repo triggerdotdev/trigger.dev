@@ -4,15 +4,18 @@ import {
   Task,
   type inferSchemaIn,
   type PipeStreamOptions,
+  type TaskIdentifier,
   type TaskOptions,
   type TaskSchema,
   type TaskWithSchema,
 } from "@trigger.dev/core/v3";
 import type { UIMessage } from "ai";
 import { dynamicTool, jsonSchema, JSONSchema7, Schema, Tool, ToolCallOptions, zodSchema } from "ai";
+import { auth } from "./auth.js";
 import { metadata } from "./metadata.js";
 import { streams } from "./streams.js";
 import { createTask } from "./shared.js";
+import { wait } from "./wait.js";
 
 const METADATA_KEY = "tool.execute.options";
 
@@ -122,6 +125,29 @@ export const ai = {
   currentToolOptions: getToolOptionsFromMetadata,
 };
 
+/**
+ * Creates a public access token for a chat task.
+ *
+ * This is a convenience helper that creates a multi-use trigger public token
+ * scoped to the given task. Use it in a server action to provide the frontend
+ * `TriggerChatTransport` with an `accessToken`.
+ *
+ * @example
+ * ```ts
+ * // actions.ts
+ * "use server";
+ * import { createChatAccessToken } from "@trigger.dev/sdk/ai";
+ * import type { chat } from "@/trigger/chat";
+ *
+ * export const getChatToken = () => createChatAccessToken<typeof chat>("ai-chat");
+ * ```
+ */
+export async function createChatAccessToken<TTask extends AnyTask>(
+  taskId: TaskIdentifier<TTask>
+): Promise<string> {
+  return auth.createTriggerPublicToken(taskId as string, { multipleUse: true });
+}
+
 // ---------------------------------------------------------------------------
 // Chat transport helpers — backend side
 // ---------------------------------------------------------------------------
@@ -160,6 +186,14 @@ export type ChatTaskPayload<TMessage extends UIMessage = UIMessage> = {
   /** Custom metadata from the frontend */
   metadata?: unknown;
 };
+
+/**
+ * Tracks how many times `pipeChat` has been called in the current `chatTask` run.
+ * Used to prevent double-piping when a user both calls `pipeChat()` manually
+ * and returns a streamable from their `run` function.
+ * @internal
+ */
+let _chatPipeCount = 0;
 
 /**
  * Options for `pipeChat`.
@@ -248,6 +282,7 @@ export async function pipeChat(
   source: UIMessageStreamable | AsyncIterable<unknown> | ReadableStream<unknown>,
   options?: PipeChatOptions
 ): Promise<void> {
+  _chatPipeCount++;
   const streamKey = options?.streamKey ?? CHAT_STREAM_KEY;
 
   let stream: AsyncIterable<unknown> | ReadableStream<unknown>;
@@ -284,6 +319,11 @@ export async function pipeChat(
  * **Auto-piping:** If the `run` function returns a value with `.toUIMessageStream()`
  * (like a `StreamTextResult`), the stream is automatically piped to the frontend.
  * For complex flows, use `pipeChat()` manually from anywhere in your code.
+ *
+ * **Single-run mode:** By default, the task runs a waitpoint loop so that the
+ * entire conversation lives inside one run. After each AI response, the task
+ * emits a control chunk and pauses via `wait.forToken`. The frontend transport
+ * resumes the same run by completing the token with the next set of messages.
  */
 export type ChatTaskOptions<TIdentifier extends string> = Omit<
   TaskOptions<TIdentifier, ChatTaskPayload, unknown>,
@@ -299,6 +339,23 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
    * the stream is automatically piped to the frontend.
    */
   run: (payload: ChatTaskPayload) => Promise<unknown>;
+
+  /**
+   * Maximum number of conversational turns (message round-trips) a single run
+   * will handle before ending. After this many turns the run completes
+   * normally and the next message will start a fresh run.
+   *
+   * @default 100
+   */
+  maxTurns?: number;
+
+  /**
+   * How long to wait for the next message before timing out and ending the run.
+   * Accepts any duration string recognised by `wait.createToken` (e.g. `"1h"`, `"30m"`).
+   *
+   * @default "1h"
+   */
+  turnTimeout?: string;
 };
 
 /**
@@ -342,19 +399,49 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
 export function chatTask<TIdentifier extends string>(
   options: ChatTaskOptions<TIdentifier>
 ): Task<TIdentifier, ChatTaskPayload, unknown> {
-  const { run: userRun, ...restOptions } = options;
+  const { run: userRun, maxTurns = 100, turnTimeout = "1h", ...restOptions } = options;
 
   return createTask<TIdentifier, ChatTaskPayload, unknown>({
     ...restOptions,
     run: async (payload: ChatTaskPayload) => {
-      const result = await userRun(payload);
+      let currentPayload = payload;
 
-      // Auto-pipe if the run function returned a StreamTextResult or similar
-      if (isUIMessageStreamable(result)) {
-        await pipeChat(result);
+      for (let turn = 0; turn < maxTurns; turn++) {
+        _chatPipeCount = 0;
+
+        const result = await userRun(currentPayload);
+
+        // Auto-pipe if the run function returned a StreamTextResult or similar,
+        // but only if pipeChat() wasn't already called manually during this turn
+        if (_chatPipeCount === 0 && isUIMessageStreamable(result)) {
+          await pipeChat(result);
+        }
+
+        // Create a waitpoint token and emit a control chunk so the frontend
+        // knows to resume this run instead of triggering a new one.
+        const token = await wait.createToken({ timeout: turnTimeout });
+
+        const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+          execute: ({ write }) => {
+            write({
+              type: "__trigger_waitpoint_ready",
+              tokenId: token.id,
+              publicAccessToken: token.publicAccessToken,
+            });
+          },
+        });
+        await waitUntilComplete();
+
+        // Pause until the frontend completes the token with the next message
+        const next = await wait.forToken<ChatTaskPayload>(token);
+
+        if (!next.ok) {
+          // Timed out waiting for the next message — end the conversation
+          return;
+        }
+
+        currentPayload = next.output;
       }
-
-      return result;
     },
   });
 }
