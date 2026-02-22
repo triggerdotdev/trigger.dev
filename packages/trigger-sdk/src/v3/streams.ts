@@ -1,6 +1,7 @@
 import {
   type ApiRequestOptions,
   realtimeStreams,
+  inputStreams,
   taskContext,
   type RealtimeStreamOperationOptions,
   mergeRequestOptions,
@@ -15,6 +16,11 @@ import {
   AppendStreamOptions,
   RealtimeDefinedStream,
   InferStreamType,
+  type RealtimeDefinedInputStream,
+  type InputStreamSubscription,
+  type InputStreamOnceOptions,
+  type SendInputStreamOptions,
+  type InferInputStreamType,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 import { SpanStatusCode } from "@opentelemetry/api";
@@ -652,7 +658,57 @@ function define<TPart>(opts: RealtimeDefineStreamOptions): RealtimeDefinedStream
   };
 }
 
-export type { InferStreamType };
+export type { InferStreamType, InferInputStreamType };
+
+/**
+ * Define an input stream that can receive typed data from external callers.
+ *
+ * Inside a task, use `.on()`, `.once()`, or `.peek()` to receive data.
+ * Outside a task (e.g., from your backend), use `.send(runId, data)` to send data.
+ *
+ * @template TData - The type of data this input stream receives
+ * @param opts - Options including a unique `id` for this input stream
+ *
+ * @example
+ * ```ts
+ * import { streams, task } from "@trigger.dev/sdk";
+ *
+ * const approval = streams.input<{ approved: boolean; reviewer: string }>({ id: "approval" });
+ *
+ * export const myTask = task({
+ *   id: "my-task",
+ *   run: async (payload) => {
+ *     // Wait for the next approval
+ *     const data = await approval.once();
+ *     console.log(data.approved, data.reviewer);
+ *   },
+ * });
+ *
+ * // From your backend:
+ * // await approval.send(runId, { approved: true, reviewer: "alice" });
+ * ```
+ */
+function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
+  return {
+    id: opts.id,
+    on(handler) {
+      return inputStreams.on(
+        opts.id,
+        handler as (data: unknown) => void | Promise<void>
+      );
+    },
+    once(options) {
+      return inputStreams.once(opts.id, options) as Promise<TData>;
+    },
+    peek() {
+      return inputStreams.peek(opts.id) as TData | undefined;
+    },
+    async send(runId, data, options) {
+      const apiClient = apiClientManager.clientOrThrow();
+      await apiClient.sendInputStream(runId, opts.id, data, options?.requestOptions);
+    },
+  };
+}
 
 export const streams = {
   pipe,
@@ -660,6 +716,7 @@ export const streams = {
   append,
   writer,
   define,
+  input,
 };
 
 function getRunIdForOptions(options?: RealtimeStreamOperationOptions): string | undefined {
