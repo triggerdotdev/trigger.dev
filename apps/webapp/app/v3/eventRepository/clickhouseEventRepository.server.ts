@@ -266,6 +266,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         expires_at: convertDateToClickhouseDateTime(
           new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
         ),
+        machine_id: event.machineId ?? "",
       },
       ...this.spanEventsToTaskEventV1Input(event),
     ];

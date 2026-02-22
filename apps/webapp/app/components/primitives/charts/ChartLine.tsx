@@ -51,6 +51,8 @@ export type ChartLineRendererProps = {
   stacked?: boolean;
   /** Custom tooltip label formatter */
   tooltipLabelFormatter?: (label: string, payload: any[]) => string;
+  /** Optional formatter for numeric tooltip values (e.g. bytes, duration) */
+  tooltipValueFormatter?: (value: number) => string;
   /** Width injected by ResponsiveContainer */
   width?: number;
   /** Height injected by ResponsiveContainer */
@@ -75,10 +77,11 @@ export function ChartLineRenderer({
   yAxisProps: yAxisPropsProp,
   stacked = false,
   tooltipLabelFormatter,
+  tooltipValueFormatter,
   width,
   height,
 }: ChartLineRendererProps) {
-  const { config, data, dataKey, dataKeys, state, highlight, showLegend } = useChartContext();
+  const { config, data, dataKey, dataKeys, visibleSeries, state, highlight, setActivePayload, showLegend } = useChartContext();
   const hasNoData = useHasNoData();
 
   // Render loading/error states
@@ -130,7 +133,7 @@ export function ChartLineRenderer({
   };
 
   // Render stacked area chart if stacked prop is true
-  if (stacked && dataKeys.length > 1) {
+  if (stacked && visibleSeries.length > 1) {
     return (
       <AreaChart
         data={data}
@@ -142,9 +145,8 @@ export function ChartLineRenderer({
           right: 12,
         }}
         onMouseMove={(e: any) => {
-          // Update active payload for legend
           if (e?.activePayload?.length) {
-            highlight.setActivePayload(e.activePayload);
+            setActivePayload(e.activePayload, e.activeTooltipIndex);
             highlight.setTooltipActive(true);
           } else {
             highlight.setTooltipActive(false);
@@ -155,16 +157,20 @@ export function ChartLineRenderer({
         <CartesianGrid vertical={false} stroke="#272A2E" strokeDasharray="3 3" />
         <XAxis {...xAxisConfig} />
         <YAxis {...yAxisConfig} />
-        {/* Hide tooltip when legend is shown - legend displays hover data instead */}
-        {!showLegend && (
-          <ChartTooltip
-            cursor={false}
-            content={<ChartTooltipContent indicator="line" />}
-            labelFormatter={tooltipLabelFormatter}
-          />
-        )}
+        {/* When legend is shown below, render tooltip with cursor only (no content popup) */}
+        <ChartTooltip
+          cursor={{ stroke: "rgba(255, 255, 255, 0.1)", strokeWidth: 1 }}
+          content={
+            showLegend ? (
+              () => null
+            ) : (
+              <ChartTooltipContent indicator="line" valueFormatter={tooltipValueFormatter} />
+            )
+          }
+          labelFormatter={tooltipLabelFormatter}
+        />
         {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
-        {dataKeys.map((key) => (
+        {visibleSeries.map((key) => (
           <Area
             key={key}
             type={lineType}
@@ -188,13 +194,13 @@ export function ChartLineRenderer({
       width={width}
       height={height}
       margin={{
+        top: 5,
         left: 12,
         right: 12,
       }}
       onMouseMove={(e: any) => {
-        // Update active payload for legend
         if (e?.activePayload?.length) {
-          highlight.setActivePayload(e.activePayload);
+          setActivePayload(e.activePayload, e.activeTooltipIndex);
           highlight.setTooltipActive(true);
         } else {
           highlight.setTooltipActive(false);
@@ -205,23 +211,27 @@ export function ChartLineRenderer({
       <CartesianGrid vertical={false} stroke="#272A2E" strokeDasharray="3 3" />
       <XAxis {...xAxisConfig} />
       <YAxis {...yAxisConfig} />
-      {/* Hide tooltip when legend is shown - legend displays hover data instead */}
-      {!showLegend && (
-        <ChartTooltip
-          cursor={false}
-          content={<ChartTooltipContent />}
-          labelFormatter={tooltipLabelFormatter}
-        />
-      )}
+      {/* When legend is shown below, render tooltip with cursor only (no content popup) */}
+      <ChartTooltip
+        cursor={{ stroke: "rgba(255, 255, 255, 0.1)", strokeWidth: 1 }}
+        content={
+          showLegend ? (
+            () => null
+          ) : (
+            <ChartTooltipContent valueFormatter={tooltipValueFormatter} />
+          )
+        }
+        labelFormatter={tooltipLabelFormatter}
+      />
       {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
-      {dataKeys.map((key) => (
+      {visibleSeries.map((key) => (
         <Line
           key={key}
           dataKey={key}
           type={lineType}
           stroke={config[key]?.color}
           strokeWidth={1}
-          dot={false}
+          dot={{ r: 1.5, fill: config[key]?.color, strokeWidth: 0 }}
           activeDot={{ r: 4 }}
           isAnimationActive={false}
         />

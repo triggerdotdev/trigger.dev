@@ -308,3 +308,26 @@ export async function findDisplayableEnvironment(
 
   return displayableEnvironment(environment, userId);
 }
+
+export async function hasAccessToEnvironment({
+  environmentId,
+  projectId,
+  organizationId,
+  userId,
+}: {
+  environmentId: string;
+  projectId: string;
+  organizationId: string;
+  userId: string;
+}): Promise<boolean> {
+  const environment = await $replica.runtimeEnvironment.findFirst({
+    where: {
+      id: environmentId,
+      projectId: projectId,
+      organizationId: organizationId,
+      organization: { members: { some: { userId } } },
+    },
+  });
+
+  return environment !== null;
+}

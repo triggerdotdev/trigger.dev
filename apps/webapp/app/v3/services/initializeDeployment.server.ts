@@ -1,4 +1,8 @@
-import { BuildServerMetadata, type InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
+import {
+  BuildServerMetadata,
+  type InitializeDeploymentRequestBody,
+  type ExternalBuildData,
+} from "@trigger.dev/core/v3";
 import { customAlphabet } from "nanoid";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -89,12 +93,18 @@ export class InitializeDeploymentService extends BaseService {
         );
       }
 
-      // For the `PENDING` initial status, defer the creation of the Depot build until the deployment is started.
-      // This helps avoid Depot token expiration issues.
-      const externalBuildData =
-        payload.initialStatus === "PENDING" || payload.isNativeBuild
-          ? undefined
-          : await createRemoteImageBuild(environment.project);
+      // For the `PENDING` initial status, defer the creation of the Depot build until the deployment is started to avoid token expiration issues.
+      // For local and native builds we don't need to generate the Depot tokens. We still need to create an empty object sadly due to a bug in older CLI versions.
+      const generateExternalBuildToken =
+        payload.initialStatus === "PENDING" || payload.isNativeBuild || payload.isLocalBuild;
+
+      const externalBuildData = generateExternalBuildToken
+        ? ({
+            projectId: "-",
+            buildToken: "-",
+            buildId: "-",
+          } satisfies ExternalBuildData)
+        : await createRemoteImageBuild(environment.project);
 
       const triggeredBy = payload.userId
         ? await this._prisma.user.findFirst({
@@ -200,6 +210,7 @@ export class InitializeDeploymentService extends BaseService {
                     artifactKey: payload.artifactKey,
                     skipPromotion: payload.skipPromotion,
                     configFilePath: payload.configFilePath,
+                    skipEnqueue: payload.skipEnqueue,
                   }
                 : {}),
             }
@@ -221,6 +232,7 @@ export class InitializeDeploymentService extends BaseService {
           imageReference: imageRef,
           imagePlatform: env.DEPLOY_IMAGE_PLATFORM,
           git: payload.gitMeta ?? undefined,
+          commitSHA: payload.gitMeta?.commitSha ?? undefined,
           runtime: payload.runtime ?? undefined,
           triggeredVia: payload.triggeredVia ?? undefined,
           startedAt: initialStatus === "BUILDING" ? new Date() : undefined,
@@ -237,7 +249,8 @@ export class InitializeDeploymentService extends BaseService {
         new Date(Date.now() + timeoutMs)
       );
 
-      if (payload.isNativeBuild) {
+      // For github integration there is no artifactKey, hence we skip it here
+      if (payload.isNativeBuild && payload.artifactKey && !payload.skipEnqueue) {
         const result = await deploymentService
           .enqueueBuild(environment, deployment, payload.artifactKey, {
             skipPromotion: payload.skipPromotion,

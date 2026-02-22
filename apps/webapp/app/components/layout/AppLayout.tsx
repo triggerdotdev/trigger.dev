@@ -21,7 +21,7 @@ export function MainBody({ children }: { children: React.ReactNode }) {
 
 /** This container should be placed around the content on a page */
 export function PageContainer({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-rows-[auto_1fr] overflow-hidden">{children}</div>;
+  return <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">{children}</div>;
 }
 
 export function PageBody({

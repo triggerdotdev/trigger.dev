@@ -1,65 +1,42 @@
-import type { OutputColumnMetadata } from "@internal/clickhouse";
+import type { ColumnFormatType, OutputColumnMetadata } from "@internal/clickhouse";
+import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { BarChart3, LineChart } from "lucide-react";
 import { memo, useMemo } from "react";
+import { createValueFormatter } from "~/utils/columnFormat";
+import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import type { ChartConfig } from "~/components/primitives/charts/Chart";
 import { Chart } from "~/components/primitives/charts/ChartCompound";
-import { Paragraph } from "../primitives/Paragraph";
-import type { AggregationType, ChartConfiguration } from "./ChartConfigPanel";
+import { ChartBlankState } from "../primitives/charts/ChartBlankState";
+import { Callout } from "../primitives/Callout";
+import type { AggregationType, ChartConfiguration } from "../metrics/QueryWidget";
+import { aggregateValues } from "../primitives/charts/aggregation";
+import { getRunStatusHexColor } from "~/components/runs/v3/TaskRunStatus";
+import { getSeriesColor } from "./chartColors";
 
-// Color palette for chart series - 30 distinct colors for large datasets
-const CHART_COLORS = [
-  // Primary colors
-  "#7655fd", // Purple
-  "#22c55e", // Green
-  "#f59e0b", // Amber
-  "#ef4444", // Red
-  "#06b6d4", // Cyan
-  "#ec4899", // Pink
-  "#8b5cf6", // Violet
-  "#14b8a6", // Teal
-  "#f97316", // Orange
-  "#6366f1", // Indigo
-  // Extended palette
-  "#84cc16", // Lime
-  "#0ea5e9", // Sky
-  "#f43f5e", // Rose
-  "#a855f7", // Fuchsia
-  "#eab308", // Yellow
-  "#10b981", // Emerald
-  "#3b82f6", // Blue
-  "#d946ef", // Magenta
-  "#78716c", // Stone
-  "#facc15", // Gold
-  // Additional distinct colors
-  "#2dd4bf", // Turquoise
-  "#fb923c", // Light orange
-  "#a3e635", // Yellow-green
-  "#38bdf8", // Light blue
-  "#c084fc", // Light purple
-  "#4ade80", // Light green
-  "#fbbf24", // Light amber
-  "#f472b6", // Light pink
-  "#67e8f9", // Light cyan
-  "#818cf8", // Light indigo
-];
-
-function getSeriesColor(index: number): string {
-  return CHART_COLORS[index % CHART_COLORS.length];
-}
+const MAX_SERIES = 50;
+const MAX_SVG_ELEMENT_BUDGET = 6_000;
+const MIN_DATA_POINTS = 100;
+const MAX_DATA_POINTS = 500;
 
 interface QueryResultsChartProps {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
   config: ChartConfiguration;
+  /** The effective time range from the query filter (used to show the full x-axis period) */
+  timeRange?: { from: string; to: string };
   fullLegend?: boolean;
   /** Callback when "View all" legend button is clicked */
   onViewAllLegendItems?: () => void;
   /** When true, constrains legend to max 50% height with scrolling */
   legendScrollable?: boolean;
+  isLoading?: boolean;
 }
 
 interface TransformedData {
   data: Record<string, unknown>[];
   series: string[];
+  /** Total number of series before any truncation (equals series.length when no truncation) */
+  totalSeriesCount: number;
   /** Raw date values for determining formatting granularity */
   dateValues: Date[];
   /** Whether the x-axis is date-based (continuous time scale) */
@@ -154,11 +131,40 @@ function formatDateByGranularity(date: Date, granularity: TimeGranularity): stri
 }
 
 /**
+ * Snap a millisecond value up to the nearest "nice" interval
+ */
+function snapToNiceInterval(ms: number): number {
+  const SECOND = 1000;
+  const MINUTE = 60 * SECOND;
+  const HOUR = 60 * MINUTE;
+  const DAY = 24 * HOUR;
+
+  if (ms <= SECOND) return SECOND;
+  if (ms <= 5 * SECOND) return 5 * SECOND;
+  if (ms <= 10 * SECOND) return 10 * SECOND;
+  if (ms <= 15 * SECOND) return 15 * SECOND;
+  if (ms <= 30 * SECOND) return 30 * SECOND;
+  if (ms <= MINUTE) return MINUTE;
+  if (ms <= 5 * MINUTE) return 5 * MINUTE;
+  if (ms <= 10 * MINUTE) return 10 * MINUTE;
+  if (ms <= 15 * MINUTE) return 15 * MINUTE;
+  if (ms <= 30 * MINUTE) return 30 * MINUTE;
+  if (ms <= HOUR) return HOUR;
+  if (ms <= 2 * HOUR) return 2 * HOUR;
+  if (ms <= 4 * HOUR) return 4 * HOUR;
+  if (ms <= 6 * HOUR) return 6 * HOUR;
+  if (ms <= 12 * HOUR) return 12 * HOUR;
+  if (ms <= DAY) return DAY;
+
+  return ms;
+}
+
+/**
  * Detect the most common interval between consecutive data points
  * This helps us understand the natural granularity of the data
  */
 function detectDataInterval(timestamps: number[]): number {
-  if (timestamps.length < 2) return 60 * 1000; // Default to 1 minute
+  if (timestamps.length < 2) return 24 * 60 * 60 * 1000; // Default to 1 day
 
   const sorted = [...timestamps].sort((a, b) => a - b);
   const gaps: number[] = [];
@@ -176,25 +182,7 @@ function detectDataInterval(timestamps: number[]): number {
   // We use the minimum gap as a heuristic for the data interval
   const minGap = Math.min(...gaps);
 
-  // Round to a nice interval
-  const MINUTE = 60 * 1000;
-  const HOUR = 60 * MINUTE;
-  const DAY = 24 * HOUR;
-
-  // Snap to common intervals
-  if (minGap <= MINUTE) return MINUTE;
-  if (minGap <= 5 * MINUTE) return 5 * MINUTE;
-  if (minGap <= 10 * MINUTE) return 10 * MINUTE;
-  if (minGap <= 15 * MINUTE) return 15 * MINUTE;
-  if (minGap <= 30 * MINUTE) return 30 * MINUTE;
-  if (minGap <= HOUR) return HOUR;
-  if (minGap <= 2 * HOUR) return 2 * HOUR;
-  if (minGap <= 4 * HOUR) return 4 * HOUR;
-  if (minGap <= 6 * HOUR) return 6 * HOUR;
-  if (minGap <= 12 * HOUR) return 12 * HOUR;
-  if (minGap <= DAY) return DAY;
-
-  return minGap;
+  return snapToNiceInterval(minGap);
 }
 
 /**
@@ -218,20 +206,7 @@ function fillTimeGaps(
   // If filling would create too many points, increase the interval to stay within limits
   let effectiveInterval = interval;
   if (estimatedPoints > maxPoints) {
-    effectiveInterval = Math.ceil(range / maxPoints);
-    // Round up to a nice interval
-    const MINUTE = 60 * 1000;
-    const HOUR = 60 * MINUTE;
-    if (effectiveInterval < 5 * MINUTE) effectiveInterval = 5 * MINUTE;
-    else if (effectiveInterval < 10 * MINUTE) effectiveInterval = 10 * MINUTE;
-    else if (effectiveInterval < 15 * MINUTE) effectiveInterval = 15 * MINUTE;
-    else if (effectiveInterval < 30 * MINUTE) effectiveInterval = 30 * MINUTE;
-    else if (effectiveInterval < HOUR) effectiveInterval = HOUR;
-    else if (effectiveInterval < 2 * HOUR) effectiveInterval = 2 * HOUR;
-    else if (effectiveInterval < 4 * HOUR) effectiveInterval = 4 * HOUR;
-    else if (effectiveInterval < 6 * HOUR) effectiveInterval = 6 * HOUR;
-    else if (effectiveInterval < 12 * HOUR) effectiveInterval = 12 * HOUR;
-    else effectiveInterval = 24 * HOUR;
+    effectiveInterval = snapToNiceInterval(Math.ceil(range / maxPoints));
   }
 
   // Create a map to collect values for each bucket (for aggregation)
@@ -281,17 +256,18 @@ function fillTimeGaps(
       }
       filledData.push(point);
     } else {
-      // Create a zero-filled data point
-      const zeroPoint: Record<string, unknown> = {
+      // Create a null-filled data point so gaps appear in line/bar charts
+      // and legend aggregations (avg/min/max) skip these slots
+      const gapPoint: Record<string, unknown> = {
         [xDataKey]: t,
         __rawDate: new Date(t),
         __granularity: granularity,
         __originalX: new Date(t).toISOString(),
       };
       for (const s of series) {
-        zeroPoint[s] = 0;
+        gapPoint[s] = null;
       }
-      filledData.push(zeroPoint);
+      filledData.push(gapPoint);
     }
   }
 
@@ -390,22 +366,32 @@ function generateTimeTicks(minTime: number, maxTime: number, maxTicks = 8): numb
 }
 
 /**
- * Formats a date for tooltips (always shows full precision)
+ * Formats a date for tooltips and legend headers.
+ * Always includes time when the data point has a non-midnight time,
+ * so hovering a specific bar at e.g. 14:00 shows the full timestamp
+ * even when the axis labels only show the day.
+ * Seconds are shown whenever the granularity is "seconds" or the
+ * specific data point has non-zero seconds.
  */
 function formatDateForTooltip(date: Date, granularity: TimeGranularity): string {
-  // For shorter time ranges, include time
-  if (granularity === "seconds" || granularity === "minutes" || granularity === "hours") {
+  const hasTime = date.getHours() !== 0 || date.getMinutes() !== 0 || date.getSeconds() !== 0;
+  const hasSeconds = date.getSeconds() !== 0;
+
+  if (
+    granularity === "seconds" ||
+    (hasTime && granularity !== "months" && granularity !== "years")
+  ) {
     return date.toLocaleString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      second: granularity === "seconds" ? "2-digit" : undefined,
+      second: granularity === "seconds" || hasSeconds ? "2-digit" : undefined,
       hour12: false,
     });
   }
-  // For longer ranges, just show date
+
   return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -463,7 +449,8 @@ function tryParseDate(value: unknown): Date | null {
  */
 function transformDataForChart(
   rows: Record<string, unknown>[],
-  config: ChartConfiguration
+  config: ChartConfiguration,
+  timeRange?: { from: string; to: string }
 ): TransformedData {
   const { xAxisColumn, yAxisColumns, groupByColumn, aggregation } = config;
 
@@ -471,6 +458,7 @@ function transformDataForChart(
     return {
       data: [],
       series: [],
+      totalSeriesCount: 0,
       dateValues: [],
       isDateBased: false,
       xDataKey: xAxisColumn || "",
@@ -489,24 +477,37 @@ function transformDataForChart(
   }
 
   // Determine if X-axis is date-based (most values should be parseable as dates)
-  const isDateBased = dateValues.length >= rows.length * 0.8; // At least 80% are dates
-  const granularity = isDateBased ? detectTimeGranularity(dateValues) : "days";
+  // When there are no results but a timeRange is provided, treat as date-based
+  const isDateBased =
+    rows.length === 0 && timeRange ? true : dateValues.length >= rows.length * 0.8; // At least 80% are dates
+
+  // Detect granularity from the full time range when available, otherwise from data
+  const granularity = isDateBased
+    ? timeRange
+      ? detectTimeGranularity([new Date(timeRange.from), new Date(timeRange.to)])
+      : detectTimeGranularity(dateValues)
+    : "days";
 
   // For date-based axes, use a special key for the timestamp
   const xDataKey = isDateBased ? "__timestamp" : xAxisColumn;
 
   // Calculate time domain and ticks for date-based axes
+  // When a timeRange is provided (from the query filter), use it so the chart
+  // shows the full requested period rather than just the range of returned data.
   let timeDomain: [number, number] | null = null;
   let timeTicks: number[] | null = null;
-  if (isDateBased && dateValues.length > 0) {
-    const timestamps = dateValues.map((d) => d.getTime());
-    const minTime = Math.min(...timestamps);
-    const maxTime = Math.max(...timestamps);
+  // Raw min/max used for gap filling (without padding)
+  let rawMinTime = 0;
+  let rawMaxTime = 0;
+  if (isDateBased && (dateValues.length > 0 || timeRange)) {
+    const dataTimestamps = dateValues.map((d) => d.getTime());
+    rawMinTime = timeRange ? new Date(timeRange.from).getTime() : Math.min(...dataTimestamps);
+    rawMaxTime = timeRange ? new Date(timeRange.to).getTime() : Math.max(...dataTimestamps);
     // Add a small padding (2% on each side) so points aren't at the very edge
-    const padding = (maxTime - minTime) * 0.02;
-    timeDomain = [minTime - padding, maxTime + padding];
+    const padding = (rawMaxTime - rawMinTime) * 0.02;
+    timeDomain = [rawMinTime - padding, rawMaxTime + padding];
     // Generate evenly-spaced ticks across the entire range using nice intervals
-    timeTicks = generateTimeTicks(minTime, maxTime);
+    timeTicks = generateTimeTicks(rawMinTime, rawMaxTime);
   }
 
   // Helper to format X value for categorical axes (non-date)
@@ -561,30 +562,57 @@ function transformDataForChart(
     });
 
     // Fill in gaps with zeros for date-based data
+    const seriesForBudget = Math.min(yAxisColumns.length, MAX_SERIES);
+    const effectiveMaxPoints = Math.max(
+      MIN_DATA_POINTS,
+      Math.min(MAX_DATA_POINTS, Math.floor(MAX_SVG_ELEMENT_BUDGET / seriesForBudget))
+    );
+
     if (isDateBased && timeDomain) {
       const timestamps = dateValues.map((d) => d.getTime());
       const dataInterval = detectDataInterval(timestamps);
+      const rangeMs = rawMaxTime - rawMinTime;
+      const minRangeInterval = timeRange ? snapToNiceInterval(rangeMs / effectiveMaxPoints) : 0;
+      const maxRangeInterval =
+        timeRange && rangeMs > 0 ? snapToNiceInterval(rangeMs / 8) : Infinity;
+      const effectiveInterval = Math.min(
+        Math.max(dataInterval, minRangeInterval),
+        maxRangeInterval
+      );
       data = fillTimeGaps(
         data,
         xDataKey,
         yAxisColumns,
-        timeDomain[0],
-        timeDomain[1],
-        dataInterval,
+        rawMinTime,
+        rawMaxTime,
+        effectiveInterval,
         granularity,
-        aggregation
+        aggregation,
+        effectiveMaxPoints
       );
+    } else if (data.length > effectiveMaxPoints) {
+      data = data.slice(0, effectiveMaxPoints);
     }
 
-    return { data, series: yAxisColumns, dateValues, isDateBased, xDataKey, timeDomain, timeTicks };
+    return {
+      data,
+      series: yAxisColumns,
+      totalSeriesCount: yAxisColumns.length,
+      dateValues,
+      isDateBased,
+      xDataKey,
+      timeDomain,
+      timeTicks,
+    };
   }
 
   // With grouping: pivot data so each group value becomes a series
   const yCol = yAxisColumns[0]; // Use first Y column when grouping
-  const groupValues = new Set<string>();
 
-  // For date-based, key by timestamp; otherwise by formatted string
-  // Collect all values for aggregation
+  // First pass: collect all values grouped by (xKey, groupValue) and accumulate
+  // per-group totals so we can pick the top-N groups before building heavy data
+  // objects with thousands of keys.
+  const groupTotals = new Map<string, number>();
   const groupedByX = new Map<
     string | number,
     { values: Record<string, number[]>; rawDate: Date | null; originalX: unknown }
@@ -593,29 +621,39 @@ function transformDataForChart(
   for (const row of rows) {
     const rawDate = tryParseDate(row[xAxisColumn]);
 
-    // Skip rows with invalid dates for date-based axes
     if (isDateBased && !rawDate) continue;
 
     const xKey = isDateBased && rawDate ? rawDate.getTime() : formatX(row[xAxisColumn]);
     const groupValue = String(row[groupByColumn] ?? "Unknown");
     const yValue = toNumber(row[yCol]);
 
-    groupValues.add(groupValue);
+    groupTotals.set(groupValue, (groupTotals.get(groupValue) ?? 0) + Math.abs(yValue));
 
     if (!groupedByX.has(xKey)) {
       groupedByX.set(xKey, { values: {}, rawDate, originalX: row[xAxisColumn] });
     }
 
     const existing = groupedByX.get(xKey)!;
-    // Collect values for aggregation
     if (!existing.values[groupValue]) {
       existing.values[groupValue] = [];
     }
     existing.values[groupValue].push(yValue);
   }
 
-  // Convert to array format with aggregation applied
-  const series = Array.from(groupValues).sort();
+  // Keep only the top MAX_SERIES groups by absolute total to avoid O(n) processing
+  // downstream (data objects, gap filling, legend totals, SVG rendering).
+  const totalSeriesCount = groupTotals.size;
+  let series: string[];
+  if (groupTotals.size <= MAX_SERIES) {
+    series = Array.from(groupTotals.keys()).sort();
+  } else {
+    series = Array.from(groupTotals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_SERIES)
+      .map(([key]) => key)
+      .sort();
+  }
+  // Convert to array format with aggregation applied (only for kept series)
   let data = Array.from(groupedByX.entries()).map(([xKey, { values, rawDate, originalX }]) => {
     const point: Record<string, unknown> = {
       [xDataKey]: xKey,
@@ -629,23 +667,44 @@ function transformDataForChart(
     return point;
   });
 
-  // Fill in gaps with zeros for date-based data
+  // Dynamic data-point budget based on the (already capped) series count
+  const effectiveMaxPoints = Math.max(
+    MIN_DATA_POINTS,
+    Math.min(MAX_DATA_POINTS, Math.floor(MAX_SVG_ELEMENT_BUDGET / series.length))
+  );
+
   if (isDateBased && timeDomain) {
     const timestamps = dateValues.map((d) => d.getTime());
     const dataInterval = detectDataInterval(timestamps);
+    const rangeMs = rawMaxTime - rawMinTime;
+    const minRangeInterval = timeRange ? snapToNiceInterval(rangeMs / effectiveMaxPoints) : 0;
+    const maxRangeInterval = timeRange && rangeMs > 0 ? snapToNiceInterval(rangeMs / 8) : Infinity;
+    const effectiveInterval = Math.min(Math.max(dataInterval, minRangeInterval), maxRangeInterval);
     data = fillTimeGaps(
       data,
       xDataKey,
       series,
-      timeDomain[0],
-      timeDomain[1],
-      dataInterval,
+      rawMinTime,
+      rawMaxTime,
+      effectiveInterval,
       granularity,
-      aggregation
+      aggregation,
+      effectiveMaxPoints
     );
+  } else if (data.length > effectiveMaxPoints) {
+    data = data.slice(0, effectiveMaxPoints);
   }
 
-  return { data, series, dateValues, isDateBased, xDataKey, timeDomain, timeTicks };
+  return {
+    data,
+    series,
+    totalSeriesCount,
+    dateValues,
+    isDateBased,
+    xDataKey,
+    timeDomain,
+    timeTicks,
+  };
 }
 
 function toNumber(value: unknown): number {
@@ -655,25 +714,6 @@ function toNumber(value: unknown): number {
     return isNaN(parsed) ? 0 : parsed;
   }
   return 0;
-}
-
-/**
- * Aggregate an array of numbers using the specified aggregation function
- */
-function aggregateValues(values: number[], aggregation: AggregationType): number {
-  if (values.length === 0) return 0;
-  switch (aggregation) {
-    case "sum":
-      return values.reduce((a, b) => a + b, 0);
-    case "avg":
-      return values.reduce((a, b) => a + b, 0) / values.length;
-    case "count":
-      return values.length;
-    case "min":
-      return Math.min(...values);
-    case "max":
-      return Math.max(...values);
-  }
 }
 
 /**
@@ -725,8 +765,10 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   rows,
   columns,
   config,
+  timeRange,
   fullLegend = false,
   onViewAllLegendItems,
+  isLoading = false,
   legendScrollable = false,
 }: QueryResultsChartProps) {
   const {
@@ -743,12 +785,13 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   const {
     data: unsortedData,
     series,
+    totalSeriesCount,
     dateValues,
     isDateBased,
     xDataKey,
     timeDomain,
     timeTicks,
-  } = useMemo(() => transformDataForChart(rows, config), [rows, config]);
+  } = useMemo(() => transformDataForChart(rows, config, timeRange), [rows, config, timeRange]);
 
   // Apply sorting (for date-based, sort by timestamp to ensure correct order)
   const data = useMemo(() => {
@@ -759,13 +802,54 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     return sortData(unsortedData, sortByColumn, sortDirection, xDataKey);
   }, [unsortedData, sortByColumn, sortDirection, isDateBased, xDataKey]);
 
-  // Detect time granularity for the data
-  const timeGranularity = useMemo(
-    () => (dateValues.length > 0 ? detectTimeGranularity(dateValues) : null),
-    [dateValues]
+  // Sort series by descending total sum so largest appears at bottom of
+  // stacked charts and first in the legend
+  const sortedSeries = useMemo(() => {
+    if (series.length <= 1) return series;
+    const totals = new Map<string, number>();
+    for (const s of series) {
+      let total = 0;
+      for (const point of data) {
+        const val = point[s];
+        if (typeof val === "number" && isFinite(val)) {
+          total += Math.abs(val);
+        }
+      }
+      totals.set(s, total);
+    }
+    return [...series].sort((a, b) => (totals.get(b) ?? 0) - (totals.get(a) ?? 0));
+  }, [series, data]);
+
+  // Limit SVG-rendered series to MAX_SERIES (top N by total value)
+  const visibleSeries = useMemo(
+    () => (sortedSeries.length > MAX_SERIES ? sortedSeries.slice(0, MAX_SERIES) : sortedSeries),
+    [sortedSeries]
   );
 
-  // X-axis tick formatter for date-based axes
+  const seriesLimitCallout =
+    totalSeriesCount > series.length ? (
+      <div className="mt-1 px-2">
+        <Callout variant="warning">
+          {`Limited to the top ${
+            series.length
+          } of ${totalSeriesCount.toLocaleString()} series for performance reasons.`}
+        </Callout>
+      </div>
+    ) : null;
+
+  // Detect time granularity — use the full time range when available so tick
+  // labels are appropriate for the period (e.g. "Jan 5" for a 7-day range
+  // instead of just "16:00:00" when data is sparse)
+  const timeGranularity = useMemo(() => {
+    if (timeRange) {
+      return detectTimeGranularity([new Date(timeRange.from), new Date(timeRange.to)]);
+    }
+    return dateValues.length > 0 ? detectTimeGranularity(dateValues) : null;
+  }, [dateValues, timeRange]);
+
+  // X-axis tick formatter for date-based axes (pure – no deduplication).
+  // Label deduplication is handled inside dateAxisTick below so that the
+  // mutable "lastLabel" state is correctly reset on each Recharts render pass.
   const xAxisTickFormatter = useMemo(() => {
     if (!isDateBased || !timeGranularity) return undefined;
     return (value: number) => {
@@ -774,20 +858,44 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     };
   }, [isDateBased, timeGranularity]);
 
-  // Create dynamic Y-axis formatter based on data range
-  const yAxisFormatter = useMemo(() => createYAxisFormatter(data, series), [data, series]);
+  // Resolve the Y-axis column format for formatting
+  const yAxisFormat = useMemo(() => {
+    if (yAxisColumns.length === 0) return undefined;
+    const col = columns.find((c) => c.name === yAxisColumns[0]);
+    return (col?.format ?? col?.customRenderType) as ColumnFormatType | undefined;
+  }, [yAxisColumns, columns]);
+
+  // Create dynamic Y-axis formatter based on data range and format
+  const yAxisFormatter = useMemo(
+    () => createYAxisFormatter(data, series, yAxisFormat),
+    [data, series, yAxisFormat]
+  );
+
+  // Create value formatter for tooltips and legend based on column format
+  const tooltipValueFormatter = useMemo(
+    () => createValueFormatter(yAxisFormat),
+    [yAxisFormat]
+  );
+
+  // Check if the group-by column has a runStatus customRenderType
+  const groupByIsRunStatus = useMemo(() => {
+    if (!groupByColumn) return false;
+    const col = columns.find((c) => c.name === groupByColumn);
+    return col?.customRenderType === "runStatus";
+  }, [groupByColumn, columns]);
 
   // Build chart config for colors/labels
   const chartConfig = useMemo(() => {
     const cfg: ChartConfig = {};
-    series.forEach((s, i) => {
+    sortedSeries.forEach((s, i) => {
+      const statusColor = groupByIsRunStatus ? getRunStatusHexColor(s) : undefined;
       cfg[s] = {
         label: s,
-        color: getSeriesColor(i),
+        color: statusColor ?? config.seriesColors?.[s] ?? getSeriesColor(i),
       };
     });
     return cfg;
-  }, [series]);
+  }, [sortedSeries, groupByIsRunStatus, config.seriesColors]);
 
   // Custom tooltip label formatter for better date display
   const tooltipLabelFormatter = useMemo(() => {
@@ -831,30 +939,125 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     return [min, "auto"] as [number, string];
   }, [data, series]);
 
-  // Validation
+  // Angle all date-based labels for consistent appearance and to avoid overlap
+  const xAxisAngle = isDateBased ? -45 : 0;
+  const xAxisHeight = xAxisAngle !== 0 ? 65 : undefined;
+
+  // Check if the data would produce duplicate labels at the current granularity.
+  // Only use the custom tick renderer (with interval:0) when duplicates exist,
+  // otherwise let Recharts handle label spacing to avoid collisions.
+  const hasDuplicateLabels = useMemo(() => {
+    if (!isDateBased || !timeGranularity || data.length === 0) return false;
+    const labels = new Set<string>();
+    for (const point of data) {
+      const ts = point.__timestamp ?? point[xDataKey];
+      if (typeof ts === "number") {
+        labels.add(formatDateByGranularity(new Date(ts), timeGranularity));
+      }
+    }
+    return labels.size < data.length;
+  }, [isDateBased, timeGranularity, data, xDataKey]);
+
+  // Custom tick renderer for date-based axes: renders a tick mark alongside
+  // each label, and for unlabelled points (de-duplicated) just a subtle tick mark.
+  // De-duplication lives here (not in xAxisTickFormatter) so that the mutable
+  // lastLabel is reset when Recharts starts a new render pass (index === 0).
+  const dateAxisTick = useMemo(() => {
+    if (!isDateBased || !xAxisTickFormatter) return undefined;
+    let lastLabel = "";
+    return (props: Record<string, unknown>) => {
+      const { x, y, payload, index } = props as {
+        x: number;
+        y: number;
+        payload: { value: number };
+        index: number;
+      };
+
+      // Reset dedup state at the start of each Recharts render pass
+      if (index === 0) lastLabel = "";
+
+      const formatted = xAxisTickFormatter(payload.value);
+      const label = formatted === lastLabel ? "" : formatted;
+      lastLabel = formatted;
+      // y is the tick text position, offset from the axis by tickMargin + internal padding
+      const axisY = (y as number) - 12;
+      if (label) {
+        return (
+          <g>
+            <line
+              x1={x as number}
+              y1={axisY}
+              x2={x as number}
+              y2={axisY - 3}
+              stroke="#878C99"
+              strokeWidth={1}
+            />
+            <text
+              x={x}
+              y={axisY}
+              dy={10}
+              fill="#878C99"
+              fontSize={11}
+              textAnchor={xAxisAngle !== 0 ? "end" : "middle"}
+              style={{ fontVariantNumeric: "tabular-nums" }}
+              transform={
+                xAxisAngle !== 0 ? `rotate(${xAxisAngle}, ${x}, ${axisY + 10})` : undefined
+              }
+            >
+              {label}
+            </text>
+          </g>
+        );
+      }
+      // Small tick mark sitting on the axis baseline, pointing upward
+      return (
+        <line
+          x1={x as number}
+          y1={axisY}
+          x2={x as number}
+          y2={axisY - 3}
+          stroke="#272A2E"
+          strokeWidth={1}
+        />
+      );
+    };
+  }, [isDateBased, xAxisTickFormatter, xAxisAngle]);
+
+  // Validation — all hooks must be above this point
+  const chartIcon = chartType === "bar" ? BarChart3 : LineChart;
+
   if (!xAxisColumn) {
-    return <EmptyState message="Select an X-axis column to display the chart" />;
+    return (
+      <ChartBlankState icon={chartIcon} message="Select an X-axis column to display the chart" />
+    );
   }
 
   if (yAxisColumns.length === 0) {
-    return <EmptyState message="Select a Y-axis column to display the chart" />;
+    return (
+      <ChartBlankState icon={chartIcon} message="Select a Y-axis column to display the chart" />
+    );
   }
 
   if (rows.length === 0) {
-    return <EmptyState message="No data to display" />;
+    return <ChartBlankState icon={chartIcon} message="No data to display" />;
   }
 
   if (data.length === 0) {
-    return <EmptyState message="Unable to transform data for chart" />;
+    return <ChartBlankState icon={chartIcon} message="Unable to transform data for chart" />;
   }
-
-  // Determine appropriate angle for X-axis labels based on granularity
-  const xAxisAngle = timeGranularity === "hours" || timeGranularity === "seconds" ? -45 : 0;
-  const xAxisHeight = xAxisAngle !== 0 ? 60 : undefined;
 
   // Base x-axis props shared by all chart types
   const baseXAxisProps = {
-    tickFormatter: xAxisTickFormatter,
+    ...(dateAxisTick
+      ? {
+          tick: dateAxisTick,
+          tickLine: false,
+          tickFormatter: undefined,
+          // Only force every tick to render when there are duplicates to de-duplicate;
+          // otherwise let Recharts auto-space to avoid label collisions
+          ...(hasDuplicateLabels ? { interval: 0 } : {}),
+        }
+      : { tickFormatter: xAxisTickFormatter }),
     angle: xAxisAngle,
     textAnchor: xAxisAngle !== 0 ? ("end" as const) : ("middle" as const),
     height: xAxisHeight,
@@ -864,13 +1067,13 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   // This properly represents time gaps between data points
   const xAxisPropsForLine = isDateBased
     ? {
-      type: "number" as const,
-      domain: timeDomain ?? (["auto", "auto"] as [string, string]),
-      scale: "time" as const,
-      // Explicitly specify tick positions so labels appear across the entire range
-      ticks: timeTicks ?? undefined,
-      ...baseXAxisProps,
-    }
+        type: "number" as const,
+        domain: timeDomain ?? (["auto", "auto"] as [string, string]),
+        scale: "time" as const,
+        // Explicitly specify tick positions so labels appear across the entire range
+        ticks: timeTicks ?? undefined,
+        ...baseXAxisProps,
+      }
     : baseXAxisProps;
 
   // Bar charts always use categorical axis positioning
@@ -883,7 +1086,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     domain: yAxisDomain,
   };
 
-  const showLegend = series.length > 0;
+  const showLegend = sortedSeries.length > 0;
 
   if (chartType === "bar") {
     return (
@@ -891,20 +1094,26 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         config={chartConfig}
         data={data}
         dataKey={xDataKey}
-        series={series}
+        series={sortedSeries}
+        visibleSeries={visibleSeries}
         labelFormatter={legendLabelFormatter}
         showLegend={showLegend}
         maxLegendItems={fullLegend ? Infinity : 5}
+        legendAggregation={config.aggregation}
+        legendValueFormatter={tooltipValueFormatter}
         minHeight="300px"
         fillContainer
         onViewAllLegendItems={onViewAllLegendItems}
         legendScrollable={legendScrollable}
+        state={isLoading ? "loading" : "loaded"}
+        beforeLegend={seriesLimitCallout}
       >
         <Chart.Bar
           xAxisProps={xAxisPropsForBar}
           yAxisProps={yAxisProps}
           stackId={stacked ? "stack" : undefined}
           tooltipLabelFormatter={tooltipLabelFormatter}
+          tooltipValueFormatter={tooltipValueFormatter}
         />
       </Chart.Root>
     );
@@ -916,20 +1125,26 @@ export const QueryResultsChart = memo(function QueryResultsChart({
       config={chartConfig}
       data={data}
       dataKey={xDataKey}
-      series={series}
+      series={sortedSeries}
+      visibleSeries={visibleSeries}
       labelFormatter={legendLabelFormatter}
       showLegend={showLegend}
       maxLegendItems={fullLegend ? Infinity : 5}
+      legendAggregation={config.aggregation}
+      legendValueFormatter={tooltipValueFormatter}
       minHeight="300px"
       fillContainer
       onViewAllLegendItems={onViewAllLegendItems}
       legendScrollable={legendScrollable}
+      state={isLoading ? "loading" : "loaded"}
+      beforeLegend={seriesLimitCallout}
     >
       <Chart.Line
         xAxisProps={xAxisPropsForLine}
         yAxisProps={yAxisProps}
-        stacked={stacked && series.length > 1}
+        stacked={stacked && visibleSeries.length > 1}
         tooltipLabelFormatter={tooltipLabelFormatter}
+        tooltipValueFormatter={tooltipValueFormatter}
         lineType="linear"
       />
     </Chart.Root>
@@ -937,9 +1152,13 @@ export const QueryResultsChart = memo(function QueryResultsChart({
 });
 
 /**
- * Creates a Y-axis value formatter based on the data range
+ * Creates a Y-axis value formatter based on the data range and optional format hint
  */
-function createYAxisFormatter(data: Record<string, unknown>[], series: string[]) {
+function createYAxisFormatter(
+  data: Record<string, unknown>[],
+  series: string[],
+  format?: ColumnFormatType
+) {
   // Find min and max values across all series
   let minVal = Infinity;
   let maxVal = -Infinity;
@@ -956,6 +1175,46 @@ function createYAxisFormatter(data: Record<string, unknown>[], series: string[])
 
   const range = maxVal - minVal;
 
+  // Format-aware formatters
+  if (format === "bytes" || format === "decimalBytes") {
+    const divisor = format === "bytes" ? 1024 : 1000;
+    const units =
+      format === "bytes"
+        ? ["B", "KiB", "MiB", "GiB", "TiB"]
+        : ["B", "KB", "MB", "GB", "TB"];
+    return (value: number): string => {
+      if (value === 0) return "0 B";
+      // Use consistent unit for all ticks based on max value
+      const i = Math.min(
+        Math.max(0, Math.floor(Math.log(Math.abs(maxVal || 1)) / Math.log(divisor))),
+        units.length - 1
+      );
+      const scaled = value / Math.pow(divisor, i);
+      return `${scaled.toFixed(scaled < 10 ? 1 : 0)} ${units[i]}`;
+    };
+  }
+
+  if (format === "percent") {
+    return (value: number): string => `${value.toFixed(range < 1 ? 2 : 1)}%`;
+  }
+
+  if (format === "duration") {
+    return (value: number): string => formatDurationMilliseconds(value, { style: "short" });
+  }
+
+  if (format === "durationSeconds") {
+    return (value: number): string =>
+      formatDurationMilliseconds(value * 1000, { style: "short" });
+  }
+
+  if (format === "costInDollars" || format === "cost") {
+    return (value: number): string => {
+      const dollars = format === "cost" ? value / 100 : value;
+      return formatCurrencyAccurate(dollars);
+    };
+  }
+
+  // Default formatter
   return (value: number): string => {
     // Use abbreviations for large numbers
     if (Math.abs(value) >= 1_000_000) {
@@ -987,14 +1246,4 @@ function createYAxisFormatter(data: Record<string, unknown>[], series: string[])
     // For large ranges, no decimals
     return Math.round(value).toString();
   };
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex h-full min-h-[300px] items-center justify-center">
-      <Paragraph variant="small" className="text-text-dimmed">
-        {message}
-      </Paragraph>
-    </div>
-  );
 }

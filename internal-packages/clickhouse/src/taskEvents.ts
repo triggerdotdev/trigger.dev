@@ -19,6 +19,7 @@ export const TaskEventV1Input = z.object({
   attributes: z.unknown(),
   metadata: z.string(),
   expires_at: z.string(),
+  machine_id: z.string().optional(),
 });
 
 export type TaskEventV1Input = z.input<typeof TaskEventV1Input>;
@@ -153,6 +154,7 @@ export const TaskEventV2Input = z.object({
   attributes: z.unknown(),
   metadata: z.string(),
   expires_at: z.string(),
+  machine_id: z.string().optional(),
   // inserted_at has a default value in the table, so it's optional for inserts
   inserted_at: z.string().optional(),
 });
@@ -231,11 +233,12 @@ export function getSpanDetailsQueryBuilderV2(
   });
 }
 
+
 // ============================================================================
-// Logs List Query Builders (for aggregated logs page)
+// Search Table Query Builders (for logs page, using task_events_search_v1)
 // ============================================================================
 
-export const LogsListResult = z.object({
+export const LogsSearchListResult = z.object({
   environment_id: z.string(),
   organization_id: z.string(),
   project_id: z.string(),
@@ -250,14 +253,15 @@ export const LogsListResult = z.object({
   status: z.string(),
   duration: z.number().or(z.string()),
   attributes_text: z.string(),
+  triggered_timestamp: z.string(),
 });
 
-export type LogsListResult = z.output<typeof LogsListResult>;
+export type LogsSearchListResult = z.output<typeof LogsSearchListResult>;
 
-export function getLogsListQueryBuilderV2(ch: ClickhouseReader, settings?: ClickHouseSettings) {
-  return ch.queryBuilderFast<LogsListResult>({
-    name: "getLogsList",
-    table: "trigger_dev.task_events_v2",
+export function getLogsSearchListQueryBuilder(ch: ClickhouseReader) {
+  return ch.queryBuilderFast<LogsSearchListResult>({
+    name: "getLogsSearchList",
+    table: "trigger_dev.task_events_search_v1",
     columns: [
       "environment_id",
       "organization_id",
@@ -272,9 +276,9 @@ export function getLogsListQueryBuilderV2(ch: ClickhouseReader, settings?: Click
       "kind",
       "status",
       "duration",
-      "attributes_text"
+      "attributes_text",
+      "triggered_timestamp",
     ],
-    settings,
   });
 }
 
@@ -298,7 +302,7 @@ export const LogDetailV2Result = z.object({
 
 export type LogDetailV2Result = z.output<typeof LogDetailV2Result>;
 
-export function getLogDetailQueryBuilderV2(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+export function getLogDetailQueryBuilderV2(ch: ClickhouseReader) {
   return ch.queryBuilderFast<LogDetailV2Result>({
     name: "getLogDetail",
     table: "trigger_dev.task_events_v2",
@@ -318,6 +322,5 @@ export function getLogDetailQueryBuilderV2(ch: ClickhouseReader, settings?: Clic
       "duration",
       "attributes_text",
     ],
-    settings,
   });
 }

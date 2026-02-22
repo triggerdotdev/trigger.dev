@@ -1,5 +1,30 @@
 # internal-platform
 
+## 4.4.1
+
+## 4.4.0
+
+### Patch Changes
+
+- Add `maxDelay` option to debounce feature. This allows setting a maximum time limit for how long a debounced run can be delayed, ensuring execution happens within a specified window even with continuous triggers. ([#2984](https://github.com/triggerdotdev/trigger.dev/pull/2984))
+
+  ```typescript
+  await myTask.trigger(payload, {
+    debounce: {
+      key: "my-key",
+      delay: "5s",
+      maxDelay: "30m", // Execute within 30 minutes regardless of continuous triggers
+    },
+  });
+  ```
+
+- Fixed a minor issue in the deployment command on distinguishing between local builds for the cloud vs local builds for self-hosting setups. ([#3070](https://github.com/triggerdotdev/trigger.dev/pull/3070))
+- fix: vendor superjson to fix ESM/CJS compatibility ([#2949](https://github.com/triggerdotdev/trigger.dev/pull/2949))
+
+  Bundle superjson during build to avoid `ERR_REQUIRE_ESM` errors on Node.js versions that don't support `require(ESM)` by default (< 22.12.0) and AWS Lambda which intentionally disables it.
+
+- Add Vercel integration support to API schemas: `commitSHA` and `integrationDeployments` on deployment responses, and `source` field for environment variable imports. ([#2994](https://github.com/triggerdotdev/trigger.dev/pull/2994))
+
 ## 4.3.3
 
 ### Patch Changes

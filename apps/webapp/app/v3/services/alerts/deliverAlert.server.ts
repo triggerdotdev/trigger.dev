@@ -22,6 +22,7 @@ import { environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { type Prisma, type prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import {
+  isIntegrationForService,
   type OrganizationIntegrationForService,
   OrgIntegrationRepository,
 } from "~/models/orgIntegration.server";
@@ -644,7 +645,7 @@ export class DeliverAlertService extends BaseService {
           },
         });
 
-    if (!integration) {
+    if (!integration || !isIntegrationForService(integration, "SLACK")) {
       logger.error("[DeliverAlert] Slack integration not found", {
         alert,
       });

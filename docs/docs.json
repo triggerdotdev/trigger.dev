@@ -49,9 +49,10 @@
               "building-with-ai",
               {
                 "group": "MCP Server",
-                "pages": ["mcp-introduction", "mcp-tools", "mcp-agent-rules"]
+                "pages": ["mcp-introduction", "mcp-tools"]
               },
-              "skills"
+              "skills",
+              "mcp-agent-rules"
             ]
           },
           {
@@ -69,6 +70,7 @@
               "machines",
               "idempotency",
               "runs/max-duration",
+              "runs/heartbeats",
               "tags",
               "runs/metadata",
               "tasks/streams",
@@ -178,6 +180,10 @@
             ]
           },
           {
+            "group": "Insights",
+            "pages": ["insights/query", "insights/metrics"]
+          },
+          {
             "group": "Using the Dashboard",
             "pages": ["run-tests", "troubleshooting-alerts", "replaying", "bulk-actions"]
           },
@@ -237,10 +243,7 @@
           },
           {
             "group": "Batches API",
-            "pages": [
-              "management/batches/create",
-              "management/batches/stream-items"
-            ]
+            "pages": ["management/batches/create", "management/batches/stream-items"]
           },
           {
             "group": "Runs API",
@@ -251,6 +254,16 @@
               "management/runs/cancel",
               "management/runs/reschedule",
               "management/runs/update-metadata"
+            ]
+          },
+          {
+            "group": "Queues API",
+            "pages": [
+              "management/queues/list",
+              "management/queues/retrieve",
+              "management/queues/pause",
+              "management/queues/concurrency-override",
+              "management/queues/concurrency-reset"
             ]
           },
           {
@@ -284,6 +297,10 @@
               "management/deployments/get-latest",
               "management/deployments/promote"
             ]
+          },
+          {
+            "group": "Query API",
+            "pages": ["management/query/execute"]
           }
         ]
       },
@@ -376,6 +393,7 @@
               "guides/example-projects/claude-changelog-generator",
               "guides/example-projects/claude-github-wiki",
               "guides/example-projects/claude-thinking-chatbot",
+              "guides/example-projects/cursor-background-agent",
               "guides/example-projects/human-in-the-loop-workflow",
               "guides/example-projects/mastra-agents-with-memory",
               "guides/example-projects/meme-generator-human-in-the-loop",
