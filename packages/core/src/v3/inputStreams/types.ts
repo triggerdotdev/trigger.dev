@@ -2,6 +2,12 @@ import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 
 export interface InputStreamManager {
   /**
+   * Set the current run ID. The tail connection will be established lazily
+   * when `on()` or `once()` is first called.
+   */
+  setRunId(runId: string): void;
+
+  /**
    * Register a handler that fires every time data arrives on the given input stream.
    */
   on(streamId: string, handler: (data: unknown) => void | Promise<void>): { off: () => void };

@@ -375,6 +375,7 @@ const zodIpc = new ZodIpcConnection({
       }
 
       resetExecutionEnvironment();
+      standardInputStreamManager.setRunId(execution.run.id);
 
       standardTraceContextManager.traceContext = traceContext;
 
@@ -637,9 +638,6 @@ const zodIpc = new ZodIpcConnection({
     },
     RESOLVE_WAITPOINT: async ({ waitpoint }) => {
       _sharedWorkerRuntime?.resolveWaitpoints([waitpoint]);
-    },
-    INPUT_STREAM_CREATED: async ({ runId }) => {
-      standardInputStreamManager.connectTail(runId);
     },
   },
 });

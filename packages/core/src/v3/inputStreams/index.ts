@@ -28,6 +28,10 @@ export class InputStreamsAPI implements InputStreamManager {
     return getGlobal(API_NAME) ?? NOOP_MANAGER;
   }
 
+  public setRunId(runId: string): void {
+    this.#getManager().setRunId(runId);
+  }
+
   public on(
     streamId: string,
     handler: (data: unknown) => void | Promise<void>

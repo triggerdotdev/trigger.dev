@@ -26,12 +26,17 @@ export class StandardInputStreamManager implements InputStreamManager {
   private buffer = new Map<string, unknown[]>();
   private tailAbortController: AbortController | null = null;
   private tailPromise: Promise<void> | null = null;
+  private currentRunId: string | null = null;
 
   constructor(
     private apiClient: ApiClient,
     private baseUrl: string,
     private debug: boolean = false
   ) {}
+
+  setRunId(runId: string): void {
+    this.currentRunId = runId;
+  }
 
   on(streamId: string, handler: InputStreamHandler): { off: () => void } {
     let handlerSet = this.handlers.get(streamId);
@@ -40,6 +45,9 @@ export class StandardInputStreamManager implements InputStreamManager {
       this.handlers.set(streamId, handlerSet);
     }
     handlerSet.add(handler);
+
+    // Lazily connect the tail on first listener registration
+    this.#ensureTailConnected();
 
     // Flush any buffered data for this stream
     const buffered = this.buffer.get(streamId);
@@ -61,6 +69,9 @@ export class StandardInputStreamManager implements InputStreamManager {
   }
 
   once(streamId: string, options?: InputStreamOnceOptions): Promise<unknown> {
+    // Lazily connect the tail on first listener registration
+    this.#ensureTailConnected();
+
     // Check buffer first
     const buffered = this.buffer.get(streamId);
     if (buffered && buffered.length > 0) {
@@ -140,6 +151,7 @@ export class StandardInputStreamManager implements InputStreamManager {
 
   reset(): void {
     this.disconnect();
+    this.currentRunId = null;
     this.handlers.clear();
 
     // Reject all pending once waiters
@@ -153,6 +165,12 @@ export class StandardInputStreamManager implements InputStreamManager {
     }
     this.onceWaiters.clear();
     this.buffer.clear();
+  }
+
+  #ensureTailConnected(): void {
+    if (!this.tailAbortController && this.currentRunId) {
+      this.connectTail(this.currentRunId);
+    }
   }
 
   async #runTail(runId: string, signal: AbortSignal): Promise<void> {

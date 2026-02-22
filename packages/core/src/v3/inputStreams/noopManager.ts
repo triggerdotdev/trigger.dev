@@ -2,6 +2,8 @@ import { InputStreamManager } from "./types.js";
 import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 
 export class NoopInputStreamManager implements InputStreamManager {
+  setRunId(_runId: string): void {}
+
   on(_streamId: string, _handler: (data: unknown) => void | Promise<void>): { off: () => void } {
     return { off: () => {} };
   }
