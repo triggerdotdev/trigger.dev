@@ -27,6 +27,7 @@ export class StandardInputStreamManager implements InputStreamManager {
   private tailAbortController: AbortController | null = null;
   private tailPromise: Promise<void> | null = null;
   private currentRunId: string | null = null;
+  private streamsVersion: string | undefined;
 
   constructor(
     private apiClient: ApiClient,
@@ -34,8 +35,9 @@ export class StandardInputStreamManager implements InputStreamManager {
     private debug: boolean = false
   ) {}
 
-  setRunId(runId: string): void {
+  setRunId(runId: string, streamsVersion?: string): void {
     this.currentRunId = runId;
+    this.streamsVersion = streamsVersion;
   }
 
   on(streamId: string, handler: InputStreamHandler): { off: () => void } {
@@ -152,6 +154,7 @@ export class StandardInputStreamManager implements InputStreamManager {
   reset(): void {
     this.disconnect();
     this.currentRunId = null;
+    this.streamsVersion = undefined;
     this.handlers.clear();
 
     // Reject all pending once waiters
@@ -168,7 +171,7 @@ export class StandardInputStreamManager implements InputStreamManager {
   }
 
   #ensureTailConnected(): void {
-    if (!this.tailAbortController && this.currentRunId) {
+    if (!this.tailAbortController && this.currentRunId && this.streamsVersion === "v2") {
       this.connectTail(this.currentRunId);
     }
   }

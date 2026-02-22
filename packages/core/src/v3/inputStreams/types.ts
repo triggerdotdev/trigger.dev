@@ -2,10 +2,11 @@ import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 
 export interface InputStreamManager {
   /**
-   * Set the current run ID. The tail connection will be established lazily
-   * when `on()` or `once()` is first called.
+   * Set the current run ID and streams version. The tail connection will be
+   * established lazily when `on()` or `once()` is first called, but only
+   * for v2 (S2-backed) realtime streams.
    */
-  setRunId(runId: string): void;
+  setRunId(runId: string, streamsVersion?: string): void;
 
   /**
    * Register a handler that fires every time data arrives on the given input stream.
