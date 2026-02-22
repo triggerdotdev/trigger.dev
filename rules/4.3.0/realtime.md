@@ -1,4 +1,4 @@
-# Trigger.dev Realtime
+# Trigger.dev Realtime (v4)
 
 **Real-time monitoring and updates for runs**
 
@@ -66,7 +66,7 @@ for await (const run of runs.subscribeToBatch(batchId)) {
 }
 ```
 
-### Realtime Streams v2
+### Realtime Streams v2 (Recommended)
 
 ```ts
 import { streams, InferStreamType } from "@trigger.dev/sdk";
@@ -104,31 +104,43 @@ for await (const chunk of stream) {
 }
 ```
 
+Enable v2 by upgrading to 4.1.0 or later.
+
 ## Input Streams
 
-Input streams let you send data **into** a running task from your backend or frontend. Output streams send data out of tasks; input streams complete the loop.
+Input streams let you send data **into** a running task from your backend or frontend. This enables bidirectional communication — output streams send data out of tasks, input streams complete the loop.
 
 ### Problems Input Streams Solve
 
-**Cancelling AI streams mid-generation.** When you use AI SDK's `streamText` inside a task, the LLM keeps generating tokens until it's done — even if the user has navigated away or clicked "Stop generating." Without input streams, there's no way to tell the running task to abort. With input streams, your frontend sends a cancel signal and the task aborts the LLM call immediately.
+**Cancelling AI streams mid-generation.** When you use AI SDK's `streamText` inside a task, the LLM keeps generating tokens until it's done — even if the user has navigated away or clicked "Stop generating." Without input streams, there's no way to tell the running task to abort. The task burns through tokens and compute for a response nobody will read. With input streams, your frontend sends a cancel signal and the task aborts the LLM call immediately.
 
-**Human-in-the-loop workflows.** A task generates a draft, then pauses and waits for user approval before proceeding.
+**Human-in-the-loop workflows.** A task generates a draft email, then pauses and waits for the user to approve or edit it before sending. Input streams let the task block on `approval.once()` until the user responds.
 
-**Interactive agents.** An AI agent running as a task needs follow-up information from the user mid-execution.
+**Interactive agents.** An AI agent running as a task needs follow-up information from the user mid-execution — clarifying a question, choosing between options, or providing additional context.
 
 ### Defining Input Streams
+
+Define input streams in a shared file so both your task code and your backend/frontend can import them:
 
 ```ts
 // trigger/streams.ts
 import { streams } from "@trigger.dev/sdk";
 
-export const cancelSignal = streams.input<{ reason?: string }>({ id: "cancel" });
-export const approval = streams.input<{ approved: boolean; reviewer: string }>({ id: "approval" });
+// Typed input stream — the generic parameter defines the shape of data sent in
+export const cancelSignal = streams.input<{ reason?: string }>({
+  id: "cancel",
+});
+
+export const approval = streams.input<{ approved: boolean; reviewer: string }>({
+  id: "approval",
+});
 ```
 
 ### Receiving Data Inside a Task
 
 #### `once()` — Wait for the next value
+
+Blocks until data arrives. Useful for approval gates and one-shot signals.
 
 ```ts
 import { task } from "@trigger.dev/sdk";
@@ -138,19 +150,34 @@ export const draftEmailTask = task({
   id: "draft-email",
   run: async (payload: { to: string; subject: string }) => {
     const draft = await generateDraft(payload);
-    const result = await approval.once(); // Blocks until data arrives
+
+    // Task pauses here until someone sends approval
+    const result = await approval.once();
 
     if (result.approved) {
       await sendEmail(draft);
+      return { sent: true, reviewer: result.reviewer };
     }
-    return { sent: result.approved, reviewer: result.reviewer };
+
+    return { sent: false, reviewer: result.reviewer };
   },
 });
 ```
 
-Options: `once({ timeoutMs: 300_000 })` or `once({ signal: controller.signal })`.
+`once()` accepts options for timeouts and abort signals:
+
+```ts
+// With a timeout — rejects if no data arrives within 5 minutes
+const result = await approval.once({ timeoutMs: 300_000 });
+
+// With an abort signal
+const controller = new AbortController();
+const result = await approval.once({ signal: controller.signal });
+```
 
 #### `on()` — Listen for every value
+
+Registers a persistent handler that fires on every piece of data. Returns a subscription with an `.off()` method.
 
 ```ts
 import { task } from "@trigger.dev/sdk";
@@ -161,7 +188,9 @@ export const streamingTask = task({
   run: async (payload: { prompt: string }) => {
     const controller = new AbortController();
 
-    const sub = cancelSignal.on(() => {
+    // Listen for cancel signals
+    const sub = cancelSignal.on((data) => {
+      console.log("Cancelled:", data.reason);
       controller.abort();
     });
 
@@ -173,7 +202,7 @@ export const streamingTask = task({
       });
       return result;
     } finally {
-      sub.off();
+      sub.off(); // Clean up the listener
     }
   },
 });
@@ -181,20 +210,32 @@ export const streamingTask = task({
 
 #### `peek()` — Non-blocking check
 
+Returns the most recent buffered value without waiting, or `undefined` if nothing has been received yet.
+
 ```ts
-const latest = cancelSignal.peek(); // undefined if nothing received yet
+const latest = cancelSignal.peek();
+if (latest) {
+  // A cancel was already sent before we checked
+}
 ```
 
 ### Sending Data to a Running Task
 
+Use `.send()` from your backend to push data into a running task:
+
 ```ts
 import { cancelSignal, approval } from "./trigger/streams";
 
+// Cancel a running AI stream
 await cancelSignal.send(runId, { reason: "User clicked stop" });
+
+// Approve a draft
 await approval.send(runId, { approved: true, reviewer: "alice@example.com" });
 ```
 
-### Full Example: Cancellable AI Streaming
+### Cancelling AI SDK `streamText` Mid-Stream
+
+This is the most common use case. Here's a complete example:
 
 ```ts
 // trigger/streams.ts
@@ -215,7 +256,11 @@ export const aiTask = task({
   id: "ai-chat",
   run: async (payload: { prompt: string }) => {
     const controller = new AbortController();
-    const sub = cancelStream.on(() => controller.abort());
+
+    // If the user cancels, abort the LLM call
+    const sub = cancelStream.on(() => {
+      controller.abort();
+    });
 
     try {
       const result = streamText({
@@ -224,8 +269,10 @@ export const aiTask = task({
         abortSignal: controller.signal,
       });
 
+      // Stream output to the frontend in real-time
       const { waitUntilComplete } = aiOutput.pipe(result.textStream);
       await waitUntilComplete();
+
       return { text: await result.text };
     } finally {
       sub.off();
@@ -234,12 +281,24 @@ export const aiTask = task({
 });
 ```
 
+```ts
+// Backend: cancel from an API route
+import { cancelStream } from "./trigger/streams";
+
+export async function POST(req: Request) {
+  const { runId } = await req.json();
+  await cancelStream.send(runId, { reason: "User clicked stop" });
+  return Response.json({ cancelled: true });
+}
+```
+
 ### Important Notes
 
-- Input streams require v2 realtime streams (SDK 4.1.0+). Calling `.on()` or `.once()` without v2 throws an error.
-- Cannot send data to completed/failed/canceled runs.
-- Max 1MB per `.send()` call.
-- Data sent before a listener is registered gets buffered and delivered when a listener attaches.
+- Input streams require v2 realtime streams (enabled by default in SDK 4.1.0+). If you're on an older version, calling `.on()` or `.once()` will throw with instructions to enable it.
+- You cannot send data to a completed, failed, or canceled run.
+- Maximum payload size per `.send()` call is 1MB.
+- Data sent before any listener is registered is buffered and delivered when a listener attaches.
+- Type safety is enforced through the generic parameter on `streams.input<T>()`.
 
 ## React Frontend Usage
 
@@ -358,6 +417,26 @@ function WaitTokenComponent({ tokenId, accessToken }: { tokenId: string; accessT
   const { complete } = useWaitToken(tokenId, { accessToken });
 
   return <button onClick={() => complete({ approved: true })}>Approve Task</button>;
+}
+```
+
+### SWR Hooks (Fetch Once)
+
+```tsx
+"use client";
+import { useRun } from "@trigger.dev/react-hooks";
+import type { myTask } from "../trigger/tasks";
+
+function SWRComponent({ runId, accessToken }: { runId: string; accessToken: string }) {
+  const { run, error, isLoading } = useRun<typeof myTask>(runId, {
+    accessToken,
+    refreshInterval: 0, // Disable polling (recommended)
+  });
+
+  if (isLoading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return <div>Run: {run?.status}</div>;
 }
 ```
 
