@@ -375,7 +375,7 @@ const zodIpc = new ZodIpcConnection({
       }
 
       resetExecutionEnvironment();
-      standardInputStreamManager.setRunId(execution.run.id);
+      standardInputStreamManager.setRunId(execution.run.id, execution.run.realtimeStreamsVersion);
 
       standardTraceContextManager.traceContext = traceContext;
 
