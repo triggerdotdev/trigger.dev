@@ -143,3 +143,63 @@ export type WriterStreamOptions<TPart> = Prettify<
     }) => Promise<void> | void;
   }
 >;
+
+// --- Input streams (inbound data to running tasks) ---
+
+/**
+ * A defined input stream that can receive typed data from external callers.
+ *
+ * Inside a task, use `.on()`, `.once()`, or `.peek()` to receive data.
+ * Outside a task, use `.send()` to send data to a running task.
+ */
+export type RealtimeDefinedInputStream<TData> = {
+  id: string;
+  /**
+   * Register a handler that fires every time data arrives on this input stream.
+   * Returns a subscription object with an `.off()` method to unsubscribe.
+   */
+  on: (handler: (data: TData) => void | Promise<void>) => InputStreamSubscription;
+  /**
+   * Wait for the next piece of data on this input stream.
+   * Resolves with the data when it arrives.
+   */
+  once: (options?: InputStreamOnceOptions) => Promise<TData>;
+  /**
+   * Non-blocking peek at the most recent data received on this input stream.
+   * Returns `undefined` if no data has been received yet.
+   */
+  peek: () => TData | undefined;
+  /**
+   * Send data to this input stream on a specific run.
+   * This is used from outside the task (e.g., from your backend or another task).
+   */
+  send: (runId: string, data: TData, options?: SendInputStreamOptions) => Promise<void>;
+};
+
+export type InputStreamSubscription = {
+  off: () => void;
+};
+
+export type InputStreamOnceOptions = {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+};
+
+export type SendInputStreamOptions = {
+  requestOptions?: ApiRequestOptions;
+};
+
+export type InferInputStreamType<T> = T extends RealtimeDefinedInputStream<infer TData>
+  ? TData
+  : unknown;
+
+/**
+ * Internal record format for multiplexed input stream data on S2.
+ * All input streams for a run share a single S2 stream, demuxed by `stream` field.
+ */
+export type InputStreamRecord = {
+  stream: string;
+  data: unknown;
+  ts: number;
+  id: string;
+};

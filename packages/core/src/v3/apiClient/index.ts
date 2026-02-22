@@ -41,6 +41,7 @@ import {
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
   ScheduleObject,
+  SendInputStreamResponseBody,
   StreamBatchItemsResponse,
   TaskRunExecutionResult,
   TriggerTaskRequestBody,
@@ -1380,6 +1381,24 @@ export class ApiClient {
         method: "POST",
         headers: this.#getHeaders(false),
         body: part,
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async sendInputStream(
+    runId: string,
+    streamId: string,
+    data: unknown,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      SendInputStreamResponseBody,
+      `${this.baseUrl}/realtime/v1/streams/${runId}/input/${streamId}`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify({ data }),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
