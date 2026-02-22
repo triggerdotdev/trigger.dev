@@ -41,6 +41,8 @@ export class StandardInputStreamManager implements InputStreamManager {
   }
 
   on(streamId: string, handler: InputStreamHandler): { off: () => void } {
+    this.#requireV2Streams();
+
     let handlerSet = this.handlers.get(streamId);
     if (!handlerSet) {
       handlerSet = new Set();
@@ -71,6 +73,8 @@ export class StandardInputStreamManager implements InputStreamManager {
   }
 
   once(streamId: string, options?: InputStreamOnceOptions): Promise<unknown> {
+    this.#requireV2Streams();
+
     // Lazily connect the tail on first listener registration
     this.#ensureTailConnected();
 
@@ -170,8 +174,16 @@ export class StandardInputStreamManager implements InputStreamManager {
     this.buffer.clear();
   }
 
+  #requireV2Streams(): void {
+    if (this.currentRunId && this.streamsVersion !== "v2") {
+      throw new Error(
+        "Input streams require v2 realtime streams. Enable them with: { future: { v2RealtimeStreams: true } }"
+      );
+    }
+  }
+
   #ensureTailConnected(): void {
-    if (!this.tailAbortController && this.currentRunId && this.streamsVersion === "v2") {
+    if (!this.tailAbortController && this.currentRunId) {
       this.connectTail(this.currentRunId);
     }
   }
