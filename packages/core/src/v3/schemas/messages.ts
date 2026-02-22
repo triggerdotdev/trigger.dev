@@ -229,12 +229,6 @@ export const WorkerToExecutorMessageCatalog = {
       waitpoint: CompletedWaitpoint,
     }),
   },
-  INPUT_STREAM_CREATED: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      runId: z.string(),
-    }),
-  },
 };
 
 export const ProviderToPlatformMessages = {
