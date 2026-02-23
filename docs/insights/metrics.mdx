@@ -9,6 +9,12 @@ In the Trigger.dev dashboard we have built-in dashboards and you can create your
 
 Metrics dashboards are powered by [TRQL queries](/insights/query) with widgets that can be displayed as charts, tables, or single values. They automatically refresh to show the latest data.
 
+### Available metrics data
+
+Trigger.dev automatically collects process metrics (CPU, memory) and Node.js runtime metrics (event loop, heap) for all deployed tasks -- no configuration needed. Requires SDK version **4.4.1 or later**. You can also create custom metrics using the `otel.metrics` API from the SDK.
+
+All of this data is available in the `metrics` table for use in dashboard widgets. See [Logging, tracing & metrics](/logging#metrics) for the full list of automatic metrics and how to create custom ones, or the [Query page](/insights/query#metrics-table-columns) for the `metrics` table schema.
+
 ![The built-in Metrics dashboard](/images/metrics-built-in.png)
 
 ### Visualization types

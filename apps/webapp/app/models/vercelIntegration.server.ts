@@ -975,6 +975,13 @@ export class VercelIntegrationRepository {
             return { created: 0, updated: 0, errors: [] as string[] };
           }
 
+          await this.removeAllVercelEnvVarsByKey({
+            client,
+            vercelProjectId: params.vercelProjectId,
+            teamId: params.teamId,
+            key: "TRIGGER_SECRET_KEY",
+          });
+
           const result = await this.batchUpsertVercelEnvVars({
             client,
             vercelProjectId: params.vercelProjectId,
@@ -1524,6 +1531,35 @@ export class VercelIntegrationRepository {
     }
 
     return { created, updated, errors };
+  }
+
+  private static async removeAllVercelEnvVarsByKey(params: {
+    client: Vercel;
+    vercelProjectId: string;
+    teamId: string | null;
+    key: string;
+  }): Promise<void> {
+    const { client, vercelProjectId, teamId, key } = params;
+
+    const existingEnvs = await client.projects.filterProjectEnvs({
+      idOrName: vercelProjectId,
+      ...(teamId && { teamId }),
+    });
+
+    const envs = extractVercelEnvs(existingEnvs);
+    const idsToRemove = envs
+      .filter((env) => env.key === key && env.id)
+      .map((env) => env.id!);
+
+    if (idsToRemove.length === 0) {
+      return;
+    }
+
+    await client.projects.batchRemoveProjectEnv({
+      idOrName: vercelProjectId,
+      ...(teamId && { teamId }),
+      requestBody: { ids: idsToRemove },
+    });
   }
 
   private static async upsertVercelEnvVar(params: {

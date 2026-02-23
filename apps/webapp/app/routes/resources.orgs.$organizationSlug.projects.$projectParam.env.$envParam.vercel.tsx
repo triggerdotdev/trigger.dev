@@ -44,7 +44,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { sanitizeVercelNextUrl } from "~/v3/vercel/vercelUrls.server";
-import { EnvironmentParamSchema, v3ProjectSettingsPath, vercelAppInstallPath, vercelResourcePath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3ProjectSettingsIntegrationsPath, vercelAppInstallPath, vercelResourcePath } from "~/utils/pathBuilder";
 import {
   VercelSettingsPresenter,
   type VercelOnboardingData,
@@ -224,7 +224,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json(submission);
   }
 
-  const settingsPath = v3ProjectSettingsPath(
+  const settingsPath = v3ProjectSettingsIntegrationsPath(
     { slug: organizationSlug },
     { slug: projectParam },
     { slug: envParam }
