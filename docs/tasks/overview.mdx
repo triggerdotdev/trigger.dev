@@ -531,7 +531,7 @@ export const cancelExampleTask = task({
 ```
 
 <Info>
-  The `onCancel` hook doesn’t fire if the task being canceled isn’t currently executing (for example, it won’t run for tasks waiting at a pending waitpoint).
+  The `onCancel` hook doesn’t fire if the task being canceled isn’t currently executing (for example, it won’t run for tasks hat haven't started or tasks waiting at a waitpoint).
 </Info>
 
 <Note>
