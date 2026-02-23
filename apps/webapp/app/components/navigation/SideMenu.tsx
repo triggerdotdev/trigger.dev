@@ -49,6 +49,7 @@ import { type UserWithDashboardPreferences } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
 import { IncidentStatusPanel, useIncidentStatus } from "~/routes/resources.incidents";
+import { NotificationPanel } from "./NotificationPanel";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
@@ -637,6 +638,12 @@ export function SideMenu({
             projectCreatedAt={project.createdAt}
             hasIncident={incidentStatus.hasIncident}
             isManagedCloud={incidentStatus.isManagedCloud}
+          />
+          <NotificationPanel
+            isCollapsed={isCollapsed}
+            hasIncident={incidentStatus.hasIncident}
+            organizationId={organization.id}
+            projectId={project.id}
           />
           <motion.div
             layout
