@@ -128,7 +128,40 @@ export const approval = streams.input<{ approved: boolean; reviewer: string }>({
 
 ### Receiving Data Inside a Task
 
-#### `once()` — Wait for the next value
+#### `wait()` — Suspend until data arrives (recommended for long waits)
+
+Suspends the task entirely, freeing compute. Returns `ManualWaitpointPromise<TData>` (same as `wait.forToken()`).
+
+```ts
+import { task } from "@trigger.dev/sdk";
+import { approval } from "./streams";
+
+export const publishPost = task({
+  id: "publish-post",
+  run: async (payload: { postId: string }) => {
+    const draft = await prepareDraft(payload.postId);
+    await notifyReviewer(draft);
+
+    // Suspend — no compute cost while waiting
+    const result = await approval.wait({ timeout: "7d" });
+
+    if (result.ok) {
+      return { published: result.output.approved };
+    }
+    return { published: false, timedOut: true };
+  },
+});
+```
+
+Options: `timeout` (period string), `idempotencyKey`, `idempotencyKeyTTL`, `tags`.
+
+Use `.unwrap()` to throw on timeout: `const data = await approval.wait({ timeout: "24h" }).unwrap();`
+
+**Use `.wait()` when:** nothing to do until data arrives, wait could be long, want zero compute cost.
+
+#### `once()` — Wait for the next value (non-suspending)
+
+Keeps the task process alive. Use for short waits or when doing concurrent work.
 
 ```ts
 import { task } from "@trigger.dev/sdk";
@@ -149,6 +182,8 @@ export const draftEmailTask = task({
 ```
 
 Options: `once({ timeoutMs: 300_000 })` or `once({ signal: controller.signal })`.
+
+**Use `.once()` when:** wait is short, doing concurrent work, need AbortSignal support.
 
 #### `on()` — Listen for every value
 

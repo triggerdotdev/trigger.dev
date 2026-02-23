@@ -16,12 +16,17 @@ import {
   AppendStreamOptions,
   RealtimeDefinedStream,
   InferStreamType,
+  ManualWaitpointPromise,
+  WaitpointTimeoutError,
+  runtime,
   type RealtimeDefinedInputStream,
   type InputStreamSubscription,
   type InputStreamOnceOptions,
+  type InputStreamWaitOptions,
   type SendInputStreamOptions,
   type InferInputStreamType,
 } from "@trigger.dev/core/v3";
+import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { tracer } from "./tracer.js";
 import { SpanStatusCode } from "@opentelemetry/api";
 
@@ -702,6 +707,89 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
     },
     peek() {
       return inputStreams.peek(opts.id) as TData | undefined;
+    },
+    wait(options) {
+      return new ManualWaitpointPromise<TData>(async (resolve, reject) => {
+        try {
+          const ctx = taskContext.ctx;
+
+          if (!ctx) {
+            throw new Error("inputStream.wait() can only be used from inside a task.run()");
+          }
+
+          const apiClient = apiClientManager.clientOrThrow();
+
+          const result = await tracer.startActiveSpan(
+            `inputStream.wait()`,
+            async (span) => {
+              // 1. Create a waitpoint linked to this input stream
+              const response = await apiClient.createInputStreamWaitpoint(ctx.run.id, {
+                streamId: opts.id,
+                timeout: options?.timeout,
+                idempotencyKey: options?.idempotencyKey,
+                idempotencyKeyTTL: options?.idempotencyKeyTTL,
+                tags: options?.tags,
+                lastSeqNum: inputStreams.lastSeqNum,
+              });
+
+              // 2. Block the run on the waitpoint
+              const waitResponse = await apiClient.waitForWaitpointToken({
+                runFriendlyId: ctx.run.id,
+                waitpointFriendlyId: response.waitpointId,
+              });
+
+              if (!waitResponse.success) {
+                throw new Error("Failed to block on input stream waitpoint");
+              }
+
+              // 3. Suspend the task
+              const waitResult = await runtime.waitUntil(response.waitpointId);
+
+              // 4. Parse the output
+              const data = waitResult.output
+                ? await conditionallyImportAndParsePacket(
+                    {
+                      data: waitResult.output,
+                      dataType: waitResult.outputType ?? "application/json",
+                    },
+                    apiClient
+                  )
+                : undefined;
+
+              if (waitResult.ok) {
+                return { ok: true as const, output: data as TData };
+              } else {
+                const error = new WaitpointTimeoutError(data?.message ?? "Timed out");
+
+                span.recordException(error);
+                span.setStatus({ code: SpanStatusCode.ERROR });
+
+                return { ok: false as const, error };
+              }
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "wait",
+                [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
+                streamId: opts.id,
+                ...accessoryAttributes({
+                  items: [
+                    {
+                      text: `input:${opts.id}`,
+                      variant: "normal",
+                    },
+                  ],
+                  style: "codepath",
+                }),
+              },
+            }
+          );
+
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      });
     },
     async send(runId, data, options) {
       const apiClient = apiClientManager.clientOrThrow();

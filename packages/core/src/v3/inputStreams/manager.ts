@@ -28,12 +28,17 @@ export class StandardInputStreamManager implements InputStreamManager {
   private tailPromise: Promise<void> | null = null;
   private currentRunId: string | null = null;
   private streamsVersion: string | undefined;
+  private _lastSeqNum: number | undefined;
 
   constructor(
     private apiClient: ApiClient,
     private baseUrl: string,
     private debug: boolean = false
   ) {}
+
+  get lastSeqNum(): number | undefined {
+    return this._lastSeqNum;
+  }
 
   setRunId(runId: string, streamsVersion?: string): void {
     this.currentRunId = runId;
@@ -159,6 +164,7 @@ export class StandardInputStreamManager implements InputStreamManager {
     this.disconnect();
     this.currentRunId = null;
     this.streamsVersion = undefined;
+    this._lastSeqNum = undefined;
     this.handlers.clear();
 
     // Reject all pending once waiters
@@ -196,8 +202,14 @@ export class StandardInputStreamManager implements InputStreamManager {
         {
           signal,
           baseUrl: this.baseUrl,
-          // Long timeout — we want to keep tailing for the duration of the run
-          timeoutInSeconds: 3600,
+          // Max allowed by the SSE endpoint is 600s; the tail will reconnect on close
+          timeoutInSeconds: 600,
+          onPart: (part) => {
+            const seqNum = parseInt(part.id, 10);
+            if (Number.isFinite(seqNum)) {
+              this._lastSeqNum = seqNum;
+            }
+          },
           onComplete: () => {
             if (this.debug) {
               console.log("[InputStreamManager] Tail stream completed");
@@ -213,7 +225,22 @@ export class StandardInputStreamManager implements InputStreamManager {
 
       for await (const record of stream) {
         if (signal.aborted) break;
-        this.#dispatchRecord(record);
+
+        // S2 SSE returns record bodies as JSON strings; parse into InputStreamRecord
+        let parsed: InputStreamRecord;
+        if (typeof record === "string") {
+          try {
+            parsed = JSON.parse(record) as InputStreamRecord;
+          } catch {
+            continue;
+          }
+        } else if (record.stream) {
+          parsed = record;
+        } else {
+          continue;
+        }
+
+        this.#dispatchRecord(parsed);
       }
     } catch (error) {
       // AbortError is expected when disconnecting

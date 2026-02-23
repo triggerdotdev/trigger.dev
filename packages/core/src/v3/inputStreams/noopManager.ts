@@ -18,6 +18,10 @@ export class NoopInputStreamManager implements InputStreamManager {
     return undefined;
   }
 
+  get lastSeqNum(): number | undefined {
+    return undefined;
+  }
+
   reset(): void {}
   disconnect(): void {}
   connectTail(_runId: string, _fromSeq?: number): void {}
