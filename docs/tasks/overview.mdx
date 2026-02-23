@@ -530,6 +530,10 @@ export const cancelExampleTask = task({
 });
 ```
 
+<Info>
+  The `onCancel` hook doesn’t fire if the task being canceled isn’t currently executing (for example, it won’t run for tasks waiting at a pending waitpoint).
+</Info>
+
 <Note>
   You will have up to 30 seconds to complete the `runPromise` in the `onCancel` hook. After that
   point the process will be killed.
