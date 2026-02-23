@@ -377,15 +377,7 @@ paths:
                 - tags
               properties:
                 tags:
-                  oneOf:
-                    - type: string
-                      description: A single tag to add.
-                      example: "my-tag"
-                    - type: array
-                      description: An array of tags to add.
-                      items:
-                        type: string
-                      example: ["tag-1", "tag-2"]
+                  $ref: "#/components/schemas/RunTags"
       responses:
         "200":
           description: Successful request
@@ -2428,6 +2420,21 @@ components:
         configure({ accessToken: "tr_pat_1234" });
         ```
   schemas:
+    RunTag:
+      type: string
+      maxLength: 128
+      description: A single run tag. Must be less than 128 characters.
+      example: "user_123456"
+    RunTags:
+      oneOf:
+        - $ref: "#/components/schemas/RunTag"
+        - type: array
+          items:
+            $ref: "#/components/schemas/RunTag"
+          maxItems: 10
+          uniqueItems: true
+          example: ["user_123456", "product_4629101"]
+      description: One or more tags to attach to a run. Runs can have a maximum of 10 tags.
     SpanDetailedSummary:
       type: object
       properties:
@@ -2476,7 +2483,7 @@ components:
           type: array
           description: Nested child spans. Each child has the same structure as the parent span.
           items:
-            type: object
+            $ref: "#/components/schemas/SpanDetailedSummary"
     TriggerTaskResponse:
       type: object
       properties:
@@ -2651,18 +2658,14 @@ components:
             delay:
               $ref: "#/components/schemas/Delay"
             tags:
-              type:
-                - array
-                - string
-              example: ["user_123456", "product_4629101"]
+              allOf:
+                - $ref: "#/components/schemas/RunTags"
               description: |
                 Tags to attach to the run. Tags can be used to filter runs in the dashboard and using the SDK.
 
-                You can set up to 5 tags per run, they must be less than 64 characters each.
+                You can set up to 10 tags per run, each must be less than 128 characters.
 
                 We recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`. Stripe uses underscores.
-              items:
-                type: string
             machine:
               type: string
               enum:
