@@ -82,6 +82,7 @@ function createRunEngine() {
       },
       ttlSystem: {
         disabled: env.RUN_ENGINE_TTL_SYSTEM_DISABLED,
+        consumersDisabled: env.RUN_ENGINE_TTL_CONSUMERS_DISABLED,
         shardCount: env.RUN_ENGINE_TTL_SYSTEM_SHARD_COUNT,
         pollIntervalMs: env.RUN_ENGINE_TTL_SYSTEM_POLL_INTERVAL_MS,
         batchSize: env.RUN_ENGINE_TTL_SYSTEM_BATCH_SIZE,
