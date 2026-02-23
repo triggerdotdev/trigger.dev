@@ -7,6 +7,10 @@ Waitpoint tokens pause task runs until you complete the token. They're commonly 
 
 You can complete a token using the SDK or by making a POST request to the token's URL.
 
+<Note>
+  If you're waiting for data from an [input stream](/tasks/input-streams), use [`inputStream.wait()`](/tasks/input-streams#wait--suspend-until-data-arrives) instead — it uses waitpoint tokens internally but provides a simpler API with full type safety from your stream definition.
+</Note>
+
 ## Usage
 
 To get started using wait tokens, you need to first create a token using the `wait.createToken` function:
