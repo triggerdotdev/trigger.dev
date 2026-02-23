@@ -30,7 +30,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   return json<PlatformNotificationsLoaderData>(result);
 }
 
-const POLL_INTERVAL_MS = 60000; // 1 minute
+const POLL_INTERVAL_MS = 60_000; // 1 minute
 
 export function usePlatformNotifications(organizationId: string, projectId: string) {
   const fetcher = useFetcher<typeof loader>();
