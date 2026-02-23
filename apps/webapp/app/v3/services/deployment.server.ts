@@ -368,7 +368,7 @@ export class DeploymentService extends BaseService {
     );
 
     return fromPromise(
-      stream.append(events.map((event) => AppendRecord.make(JSON.stringify(event)))),
+      stream.append(events.map((event) => AppendRecord.string({ body: JSON.stringify(event) }))),
       (error) => ({
         type: "failed_to_append_to_event_log" as const,
         cause: error,

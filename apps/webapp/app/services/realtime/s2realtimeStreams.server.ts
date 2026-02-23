@@ -10,6 +10,12 @@ export type S2RealtimeStreamsOptions = {
   accessToken: string; // "Bearer" token issued in S2 console
   streamPrefix?: string; // defaults to ""
 
+  // Custom endpoint for s2-lite (self-hosted)
+  endpoint?: string; // e.g., "http://localhost:4566/v1"
+
+  // Skip access token issuance (s2-lite doesn't support /access-tokens)
+  skipAccessTokens?: boolean;
+
   // Read behavior
   s2WaitSeconds?: number;
 
@@ -37,8 +43,11 @@ type S2AppendAck = {
 export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   private readonly basin: string;
   private readonly baseUrl: string;
+  private readonly accountUrl: string;
+  private readonly endpoint?: string;
   private readonly token: string;
   private readonly streamPrefix: string;
+  private readonly skipAccessTokens: boolean;
 
   private readonly s2WaitSeconds: number;
 
@@ -56,9 +65,12 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
   constructor(opts: S2RealtimeStreamsOptions) {
     this.basin = opts.basin;
-    this.baseUrl = `https://${this.basin}.b.aws.s2.dev/v1`;
+    this.baseUrl = opts.endpoint ?? `https://${this.basin}.b.aws.s2.dev/v1`;
+    this.accountUrl = opts.endpoint ?? `https://aws.s2.dev/v1`;
+    this.endpoint = opts.endpoint;
     this.token = opts.accessToken;
     this.streamPrefix = opts.streamPrefix ?? "";
+    this.skipAccessTokens = opts.skipAccessTokens ?? false;
 
     this.s2WaitSeconds = opts.s2WaitSeconds ?? 60;
 
@@ -80,17 +92,20 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     runId: string,
     streamId: string
   ): Promise<{ responseHeaders?: Record<string, string> }> {
-    const id = randomUUID();
-
-    const accessToken = await this.getS2AccessToken(id);
+    const accessToken = this.skipAccessTokens
+      ? this.token
+      : await this.getS2AccessToken(randomUUID());
 
     return {
       responseHeaders: {
         "X-S2-Access-Token": accessToken,
-        "X-S2-Stream-Name": `/runs/${runId}/${streamId}`,
+        "X-S2-Stream-Name": this.skipAccessTokens
+          ? this.toStreamName(runId, streamId)
+          : `/runs/${runId}/${streamId}`,
         "X-S2-Basin": this.basin,
         "X-S2-Flush-Interval-Ms": this.flushIntervalMs.toString(),
         "X-S2-Max-Retries": this.maxRetries.toString(),
+        ...(this.endpoint ? { "X-S2-Endpoint": this.endpoint } : {}),
       },
     };
   }
@@ -142,6 +157,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
           Authorization: `Bearer ${this.token}`,
           Accept: "text/event-stream",
           "S2-Format": "raw",
+          "S2-Basin": this.basin,
         },
       }
     );
@@ -236,7 +252,8 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       headers: {
         Authorization: `Bearer ${this.token}`,
         "Content-Type": "application/json",
-        "S2-Format": "raw", // UTF-8 JSON encoding (no base64 overhead) when your data is text. :contentReference[oaicite:8]{index=8}
+        "S2-Format": "raw",
+        "S2-Basin": this.basin,
       },
       body: JSON.stringify(body),
     });
@@ -265,7 +282,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
   private async s2IssueAccessToken(id: string): Promise<string> {
     // POST /v1/access-tokens
-    const res = await fetch(`https://aws.s2.dev/v1/access-tokens`, {
+    const res = await fetch(`${this.accountUrl}/access-tokens`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.token}`,
@@ -316,6 +333,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
         Authorization: `Bearer ${this.token}`,
         Accept: "text/event-stream",
         "S2-Format": "raw",
+        "S2-Basin": this.basin,
       },
       signal: opts.signal,
     });
