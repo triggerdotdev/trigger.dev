@@ -159,6 +159,13 @@ const Env = z
         path: ["TRIGGER_METADATA_URL"],
       });
     }
+    if (data.COMPUTE_SNAPSHOTS_ENABLED && !data.TRIGGER_WORKLOAD_API_DOMAIN) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "TRIGGER_WORKLOAD_API_DOMAIN is required when COMPUTE_SNAPSHOTS_ENABLED is true",
+        path: ["TRIGGER_WORKLOAD_API_DOMAIN"],
+      });
+    }
   });
 
 export const env = Env.parse(stdEnv);

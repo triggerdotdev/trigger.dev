@@ -264,12 +264,18 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             }
 
             if (this.computeManager && env.COMPUTE_SNAPSHOTS_ENABLED) {
+              if (!env.TRIGGER_WORKLOAD_API_DOMAIN) {
+                this.logger.error(
+                  "TRIGGER_WORKLOAD_API_DOMAIN is not set, cannot create snapshot callback URL"
+                );
+                reply.json({ error: "Snapshot callbacks not configured" }, false, 500);
+                return;
+              }
+
               // Compute mode: fire-and-forget snapshot with callback
               reply.json({ ok: true } satisfies WorkloadSuspendRunResponseBody, false, 202);
 
-              const callbackUrl = `${env.TRIGGER_WORKLOAD_API_PROTOCOL}://${
-                env.TRIGGER_WORKLOAD_API_DOMAIN ?? "localhost"
-              }:${env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL}/api/v1/compute/snapshot-complete`;
+              const callbackUrl = `${env.TRIGGER_WORKLOAD_API_PROTOCOL}://${env.TRIGGER_WORKLOAD_API_DOMAIN}:${env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL}/api/v1/compute/snapshot-complete`;
 
               const snapshotResult = await this.computeManager.snapshot({
                 runnerId,
