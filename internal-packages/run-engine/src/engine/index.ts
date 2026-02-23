@@ -1481,20 +1481,6 @@ export class RunEngine {
     });
   }
 
-  /** Finds and completes a PENDING waitpoint linked to an input stream (DB fallback). */
-  async completeInputStreamWaitpoint(params: {
-    environmentId: string;
-    runFriendlyId: string;
-    streamId: string;
-    output?: {
-      value: string;
-      type?: string;
-      isError: boolean;
-    };
-  }): Promise<Waitpoint | null> {
-    return this.waitpointSystem.completeInputStreamWaitpoint(params);
-  }
-
   /**
    * This gets called AFTER the checkpoint has been created
    * The CPU/Memory checkpoint at this point exists in our snapshot storage

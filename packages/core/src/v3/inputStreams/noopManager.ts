@@ -18,7 +18,7 @@ export class NoopInputStreamManager implements InputStreamManager {
     return undefined;
   }
 
-  get lastSeqNum(): number | undefined {
+  lastSeqNum(_streamId: string): number | undefined {
     return undefined;
   }
 

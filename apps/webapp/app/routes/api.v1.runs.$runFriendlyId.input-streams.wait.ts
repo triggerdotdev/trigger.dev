@@ -28,13 +28,6 @@ const { action, loader } = createActionApiRoute(
     body: CreateInputStreamWaitpointRequestBody,
     maxContentLength: 1024 * 10, // 10KB
     method: "POST",
-    allowJWT: true,
-    corsStrategy: "all",
-    authorization: {
-      action: "write",
-      resource: (params) => ({ inputStreams: params.runFriendlyId }),
-      superScopes: ["write:inputStreams", "write:all", "admin"],
-    },
   },
   async ({ authentication, body, params }) => {
     try {
@@ -87,8 +80,6 @@ const { action, loader } = createActionApiRoute(
         idempotencyKeyExpiresAt,
         timeout,
         tags: bodyTags,
-        inputStreamRunFriendlyId: run.friendlyId,
-        inputStreamId: body.streamId,
       });
 
       // Step 2: Cache the mapping in Redis for fast lookup from .send()
@@ -113,33 +104,27 @@ const { action, loader } = createActionApiRoute(
           if (realtimeStream.readRecords) {
             const records = await realtimeStream.readRecords(
               run.friendlyId,
-              "__input",
+              `$trigger.input:${body.streamId}`,
               body.lastSeqNum
             );
 
-            // Find the first record matching this input stream ID
-            for (const record of records) {
+            if (records.length > 0) {
+              const record = records[0]!;
               try {
-                const parsed = JSON.parse(record.data) as {
-                  stream: string;
-                  data: unknown;
-                };
+                const parsed = JSON.parse(record.data) as { data: unknown };
 
-                if (parsed.stream === body.streamId) {
-                  // Data exists — complete the waitpoint immediately
-                  await engine.completeWaitpoint({
-                    id: result.waitpoint.id,
-                    output: {
-                      value: JSON.stringify(parsed.data),
-                      type: "application/json",
-                      isError: false,
-                    },
-                  });
+                // Data exists — complete the waitpoint immediately
+                await engine.completeWaitpoint({
+                  id: result.waitpoint.id,
+                  output: {
+                    value: JSON.stringify(parsed.data),
+                    type: "application/json",
+                    isError: false,
+                  },
+                });
 
-                  // Clean up the Redis cache since we completed it ourselves
-                  await deleteInputStreamWaitpoint(run.friendlyId, body.streamId);
-                  break;
-                }
+                // Clean up the Redis cache since we completed it ourselves
+                await deleteInputStreamWaitpoint(run.friendlyId, body.streamId);
               } catch {
                 // Skip malformed records
               }

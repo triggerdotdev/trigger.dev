@@ -1377,7 +1377,7 @@ export const CreateInputStreamWaitpointRequestBody = z.object({
   idempotencyKeyTTL: z.string().optional(),
   tags: z.union([z.string(), z.array(z.string())]).optional(),
   /**
-   * The last S2 sequence number the client has seen on the __input stream.
+   * The last S2 sequence number the client has seen on this input stream.
    * Used to check for data that arrived before .wait() was called.
    * If undefined, the server checks from the beginning of the stream.
    */
