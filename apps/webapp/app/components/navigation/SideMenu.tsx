@@ -127,7 +127,7 @@ type SideMenuUser = Pick<
 };
 export type SideMenuProject = Pick<
   MatchedProject,
-  "id" | "name" | "slug" | "version" | "environments" | "engine"
+  "id" | "name" | "slug" | "version" | "environments" | "engine" | "createdAt"
 >;
 export type SideMenuEnvironment = MatchedEnvironment;
 
@@ -611,6 +611,7 @@ export function SideMenu({
           <V3DeprecationPanel
             isCollapsed={isCollapsed}
             isV3={isV3Project}
+            projectCreatedAt={project.createdAt}
             hasIncident={incidentStatus.hasIncident}
             isManagedCloud={incidentStatus.isManagedCloud}
           />
@@ -641,15 +642,21 @@ export function SideMenu({
 function V3DeprecationPanel({
   isCollapsed,
   isV3,
+  projectCreatedAt,
   hasIncident,
   isManagedCloud,
 }: {
   isCollapsed: boolean;
   isV3: boolean;
+  projectCreatedAt: Date;
   hasIncident: boolean;
   isManagedCloud: boolean;
 }) {
-  if (!isManagedCloud || !isV3 || hasIncident) {
+  // Only show for projects created before v4 was released
+  const V4_RELEASE_DATE = new Date("2025-09-01");
+  const isLikelyV3 = isV3 && new Date(projectCreatedAt) < V4_RELEASE_DATE;
+
+  if (!isManagedCloud || !isLikelyV3 || hasIncident) {
     return null;
   }
 
