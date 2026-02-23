@@ -11,6 +11,7 @@ import {
   Cog8ToothIcon,
   CogIcon,
   ExclamationTriangleIcon,
+  PuzzlePieceIcon,
   FolderIcon,
   FolderOpenIcon,
   GlobeAmericasIcon,
@@ -74,7 +75,8 @@ import {
   v3LogsPath,
   v3ProjectAlertsPath,
   v3ProjectPath,
-  v3ProjectSettingsPath,
+  v3ProjectSettingsGeneralPath,
+  v3ProjectSettingsIntegrationsPath,
   v3QueuesPath,
   v3RunsPath,
   v3SchedulesPath,
@@ -589,13 +591,34 @@ export function SideMenu({
                 data-action="limits"
                 isCollapsed={isCollapsed}
               />
+            </SideMenuSection>
+
+            <SideMenuSection
+              title="Project settings"
+              isSideMenuCollapsed={isCollapsed}
+              itemSpacingClassName="space-y-0"
+              initialCollapsed={getSectionCollapsed(
+                user.dashboardPreferences.sideMenu,
+                "project-settings"
+              )}
+              onCollapseToggle={handleSectionToggle("project-settings")}
+            >
               <SideMenuItem
-                name="Project settings"
+                name="General"
                 icon={Cog8ToothIcon}
                 activeIconColor="text-text-bright"
                 inactiveIconColor="text-text-dimmed"
-                to={v3ProjectSettingsPath(organization, project, environment)}
-                data-action="project-settings"
+                to={v3ProjectSettingsGeneralPath(organization, project, environment)}
+                data-action="project-settings-general"
+                isCollapsed={isCollapsed}
+              />
+              <SideMenuItem
+                name="Integrations"
+                icon={PuzzlePieceIcon}
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
+                to={v3ProjectSettingsIntegrationsPath(organization, project, environment)}
+                data-action="project-settings-integrations"
                 isCollapsed={isCollapsed}
               />
             </SideMenuSection>

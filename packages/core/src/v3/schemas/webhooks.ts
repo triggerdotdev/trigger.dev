@@ -117,6 +117,26 @@ const deploymentCommonProperties = {
     slug: z.string(),
     name: z.string(),
   }),
+  /** Git metadata for the deployment source code */
+  git: z
+    .object({
+      branch: z.string(),
+      commitSha: z.string(),
+      commitMessage: z.string(),
+      commitUrl: z.string(),
+      branchUrl: z.string(),
+      pullRequestNumber: z.number().optional(),
+      pullRequestTitle: z.string().optional(),
+      pullRequestUrl: z.string().optional(),
+      provider: z.string().optional(),
+    })
+    .optional(),
+  /** Vercel integration data */
+  vercel: z
+    .object({
+      deploymentUrl: z.string(),
+    })
+    .optional(),
 };
 
 const deploymentDeploymentCommonProperties = {
