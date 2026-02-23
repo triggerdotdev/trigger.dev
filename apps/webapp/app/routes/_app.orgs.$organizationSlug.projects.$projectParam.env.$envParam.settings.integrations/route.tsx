@@ -122,7 +122,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam } = params;
   if (!organizationSlug || !projectParam) {
-    return json({ errors: { body: "organizationSlug is required" } }, { status: 400 });
+    return json({ errors: { body: "organizationSlug and projectParam are required" } }, { status: 400 });
   }
 
   const formData = await request.formData();
@@ -347,7 +347,7 @@ export default function IntegrationsSettingsPage() {
           onDataReload={(vercelEnvironmentId) => {
             vercelFetcher.load(
               `${vercelResourcePath(organization.slug, project.slug, environment.slug)}?vercelOnboarding=true${
-                vercelEnvironmentId ? `&vercelEnvironmentId=${vercelEnvironmentId}` : ""
+                vercelEnvironmentId ? `&vercelEnvironmentId=${encodeURIComponent(vercelEnvironmentId)}` : ""
               }`
             );
           }}

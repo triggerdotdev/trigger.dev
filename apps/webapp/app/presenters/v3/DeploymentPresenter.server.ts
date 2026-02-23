@@ -201,7 +201,7 @@ export class DeploymentPresenter {
           });
 
         if (integrationDeployment) {
-          const vercelId = integrationDeployment.integrationDeploymentId.replace(/^dpl_/, "");
+          const vercelId = integrationDeployment.integrationDeploymentId;
           vercelDeploymentUrl = `https://vercel.com/${parsed.data.vercelTeamSlug}/${parsed.data.vercelProjectName}/${vercelId}`;
         }
       }

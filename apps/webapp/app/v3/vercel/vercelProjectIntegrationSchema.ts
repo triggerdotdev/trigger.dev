@@ -203,7 +203,7 @@ export function shouldSyncEnvVarForAnyEnvironment(
 }
 
 export function buildVercelDeploymentUrl(
-  vercelTeamSlug: string | undefined,
+  vercelTeamSlug: string,
   vercelProjectName: string,
   integrationDeploymentId: string
 ): string {

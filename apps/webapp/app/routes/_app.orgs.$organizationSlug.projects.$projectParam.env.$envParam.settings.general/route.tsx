@@ -66,7 +66,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam } = params;
   if (!organizationSlug || !projectParam) {
-    return json({ errors: { body: "organizationSlug is required" } }, { status: 400 });
+    return json({ errors: { body: "organizationSlug and projectParam are required" } }, { status: 400 });
   }
 
   const formData = await request.formData();
@@ -123,7 +123,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       );
     }
     case "delete": {
-      const resultOrFail = await projectSettingsService.deleteProject(projectParam, userId);
+      const resultOrFail = await projectSettingsService.deleteProject(projectId, userId);
 
       if (resultOrFail.isErr()) {
         switch (resultOrFail.error.type) {

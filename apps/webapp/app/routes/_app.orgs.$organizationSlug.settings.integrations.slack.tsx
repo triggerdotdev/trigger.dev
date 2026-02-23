@@ -31,7 +31,7 @@ import {
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { $transaction, prisma } from "~/db.server";
 import { requireOrganization } from "~/services/org.server";
-import { OrganizationParamsSchema } from "~/utils/pathBuilder";
+import { OrganizationParamsSchema, organizationSettingsPath } from "~/utils/pathBuilder";
 import { logger } from "~/services/logger.server";
 
 function formatDate(date: Date): string {
@@ -183,7 +183,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     integrationId: slackIntegration.id,
   });
 
-  return redirect(`/orgs/${organizationSlug}/settings`);
+  return redirect(organizationSettingsPath({ slug: organizationSlug }));
 };
 
 export default function SlackIntegrationPage() {
