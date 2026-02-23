@@ -3,11 +3,11 @@ import { resolve } from "node:path";
 import { env } from "std-env";
 
 const ENVVAR_FILES = [
-  ".env",
-  ".env.development",
-  ".env.local",
   ".env.development.local",
+  ".env.local",
+  ".env.development",
   "dev.vars",
+  ".env",
 ];
 
 export function resolveDotEnvVars(cwd?: string, envFile?: string) {
