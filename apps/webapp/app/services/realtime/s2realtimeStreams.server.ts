@@ -1,6 +1,6 @@
 // app/realtime/S2RealtimeStreams.ts
 import type { UnkeyCache } from "@internal/cache";
-import { StreamIngestor, StreamResponder, StreamResponseOptions } from "./types";
+import { StreamIngestor, StreamRecord, StreamResponder, StreamResponseOptions } from "./types";
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import { randomUUID } from "node:crypto";
 
@@ -119,6 +119,87 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
   getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number> {
     throw new Error("S2 streams are written to S2 via the client, not from the server");
+  }
+
+  async readRecords(
+    runId: string,
+    streamId: string,
+    afterSeqNum?: number
+  ): Promise<StreamRecord[]> {
+    const s2Stream = this.toStreamName(runId, streamId);
+    const startSeq = afterSeqNum != null ? afterSeqNum + 1 : 0;
+
+    const qs = new URLSearchParams();
+    qs.set("seq_num", String(startSeq));
+    qs.set("clamp", "true");
+    qs.set("wait", "0"); // Non-blocking: return immediately with existing records
+
+    const res = await fetch(
+      `${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}/records?${qs}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: "text/event-stream",
+          "S2-Format": "raw",
+        },
+      }
+    );
+
+    if (!res.ok) {
+      // Stream may not exist yet (no data sent)
+      if (res.status === 404) {
+        return [];
+      }
+      const text = await res.text().catch(() => "");
+      throw new Error(`S2 readRecords failed: ${res.status} ${res.statusText} ${text}`);
+    }
+
+    // Parse the SSE response body to extract records
+    const body = await res.text();
+    return this.parseSSEBatchRecords(body);
+  }
+
+  private parseSSEBatchRecords(sseText: string): StreamRecord[] {
+    const records: StreamRecord[] = [];
+
+    // SSE events are separated by double newlines
+    const events = sseText.split("\n\n").filter((e) => e.trim());
+
+    for (const event of events) {
+      const lines = event.split("\n");
+      let eventType: string | undefined;
+      let data: string | undefined;
+
+      for (const line of lines) {
+        if (line.startsWith("event:")) {
+          eventType = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          data = line.slice(5).trim();
+        }
+      }
+
+      if (eventType === "batch" && data) {
+        try {
+          const parsed = JSON.parse(data) as {
+            records: Array<{ body: string; seq_num: number; timestamp: number }>;
+          };
+
+          for (const record of parsed.records) {
+            const parsedBody = JSON.parse(record.body) as { data: string; id: string };
+            records.push({
+              data: parsedBody.data,
+              id: parsedBody.id,
+              seqNum: record.seq_num,
+            });
+          }
+        } catch {
+          // Skip malformed events
+        }
+      }
+    }
+
+    return records;
   }
 
   // ---------- Serve SSE from S2 ----------

@@ -266,6 +266,8 @@ export class WaitpointSystem {
     idempotencyKeyExpiresAt,
     timeout,
     tags,
+    inputStreamRunFriendlyId,
+    inputStreamId,
   }: {
     environmentId: string;
     projectId: string;
@@ -273,6 +275,8 @@ export class WaitpointSystem {
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
     tags?: string[];
+    inputStreamRunFriendlyId?: string;
+    inputStreamId?: string;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     const existingWaitpoint = idempotencyKey
       ? await this.$.prisma.waitpoint.findFirst({
@@ -328,6 +332,8 @@ export class WaitpointSystem {
             projectId,
             completedAfter: timeout,
             tags,
+            inputStreamRunFriendlyId,
+            inputStreamId,
           },
           update: {},
         });
@@ -362,6 +368,40 @@ export class WaitpointSystem {
     }
 
     throw new Error(`Failed to create waitpoint after ${maxRetries} attempts due to conflicts.`);
+  }
+
+  /**
+   * Finds and completes a PENDING waitpoint linked to an input stream.
+   * This is the DB fallback path used when the Redis cache misses.
+   * Returns the completed waitpoint, or null if no matching waitpoint exists.
+   */
+  async completeInputStreamWaitpoint({
+    environmentId,
+    runFriendlyId,
+    streamId,
+    output,
+  }: {
+    environmentId: string;
+    runFriendlyId: string;
+    streamId: string;
+    output?: {
+      value: string;
+      type?: string;
+      isError: boolean;
+    };
+  }): Promise<Waitpoint | null> {
+    const waitpoint = await this.$.prisma.waitpoint.findFirst({
+      where: {
+        environmentId,
+        inputStreamRunFriendlyId: runFriendlyId,
+        inputStreamId: streamId,
+        status: "PENDING",
+      },
+    });
+
+    if (!waitpoint) return null;
+
+    return this.completeWaitpoint({ id: waitpoint.id, output });
   }
 
   /**

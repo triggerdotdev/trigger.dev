@@ -1,6 +1,7 @@
 import { AnyZodFetchOptions, ApiRequestOptions } from "../apiClient/core.js";
 import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { Prettify } from "../types/utils.js";
+import type { ManualWaitpointPromise } from "../waitpoints/index.js";
 
 export type RealtimeStreamOperationOptions = {
   signal?: AbortSignal;
@@ -170,6 +171,16 @@ export type RealtimeDefinedInputStream<TData> = {
    */
   peek: () => TData | undefined;
   /**
+   * Suspend the task until data arrives on this input stream.
+   *
+   * Unlike `.once()` which keeps the task process alive while waiting,
+   * `.wait()` suspends the task entirely — freeing compute resources.
+   * The task resumes when data is sent via `.send()`.
+   *
+   * Uses a waitpoint token internally. Can only be called inside a task.run().
+   */
+  wait: (options?: InputStreamWaitOptions) => ManualWaitpointPromise<TData>;
+  /**
    * Send data to this input stream on a specific run.
    * This is used from outside the task (e.g., from your backend or another task).
    */
@@ -187,6 +198,37 @@ export type InputStreamOnceOptions = {
 
 export type SendInputStreamOptions = {
   requestOptions?: ApiRequestOptions;
+};
+
+export type InputStreamWaitOptions = {
+  /**
+   * Maximum time to wait before the waitpoint times out.
+   * Uses the same period format as `wait.createToken()`.
+   * If the timeout is reached, the result will be `{ ok: false, error }`.
+   *
+   * @example "30s", "5m", "1h", "24h", "7d"
+   */
+  timeout?: string;
+
+  /**
+   * Idempotency key for the underlying waitpoint token.
+   * If the same key is used again (and hasn't expired), the existing
+   * waitpoint is reused. This means if the task retries, it will
+   * resume waiting on the same waitpoint rather than creating a new one.
+   */
+  idempotencyKey?: string;
+
+  /**
+   * TTL for the idempotency key. After this period, the same key
+   * will create a new waitpoint.
+   */
+  idempotencyKeyTTL?: string;
+
+  /**
+   * Tags for the underlying waitpoint token, useful for querying
+   * and filtering waitpoints via `wait.listTokens()`.
+   */
+  tags?: string[];
 };
 
 export type InferInputStreamType<T> = T extends RealtimeDefinedInputStream<infer TData>

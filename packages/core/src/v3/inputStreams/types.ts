@@ -24,6 +24,12 @@ export interface InputStreamManager {
   peek(streamId: string): unknown | undefined;
 
   /**
+   * The last S2 sequence number seen by the input stream tail.
+   * Used by `.wait()` to tell the server where to check for existing data.
+   */
+  readonly lastSeqNum: number | undefined;
+
+  /**
    * Reset state between task executions.
    */
   reset(): void;

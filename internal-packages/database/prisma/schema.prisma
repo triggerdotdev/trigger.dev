@@ -778,8 +778,6 @@ model TaskRun {
   /// Store the stream keys that are being used by the run
   realtimeStreams        String[] @default([])
 
-  /// Whether this run has an active input stream (created lazily on first streams.input send)
-  hasInputStream Boolean @default(false)
 
   @@unique([oneTimeUseToken])
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
@@ -1075,6 +1073,11 @@ model Waitpoint {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  /// If this waitpoint is linked to an input stream .wait(), this is the run's friendlyId
+  inputStreamRunFriendlyId String?
+  /// If this waitpoint is linked to an input stream .wait(), this is the stream ID
+  inputStreamId            String?
 
   /// Denormized column that holds the raw tags
   /// Denormalized column that holds the raw tags

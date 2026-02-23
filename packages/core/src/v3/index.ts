@@ -21,6 +21,7 @@ export * from "./locals-api.js";
 export * from "./heartbeats-api.js";
 export * from "./realtime-streams-api.js";
 export * from "./input-streams-api.js";
+export * from "./waitpoints/index.js";
 export * from "./schemas/index.js";
 export { SemanticInternalAttributes } from "./semanticInternalAttributes.js";
 export * from "./resource-catalog-api.js";
