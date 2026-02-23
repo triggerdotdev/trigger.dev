@@ -360,6 +360,107 @@ paths:
 
             const handle = await runs.replay("run_1234");
 
+  "/api/v1/runs/{runId}/events":
+    parameters:
+      - $ref: "#/components/parameters/runId"
+    get:
+      operationId: get_run_events_v1
+      summary: Retrieve run events
+      description: Returns all OTel span events for a run. Useful for debugging and observability.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        spanId:
+                          type: string
+                          description: The span ID of the event.
+                        parentId:
+                          type: string
+                          nullable: true
+                          description: The parent span ID, if any.
+                        runId:
+                          type: string
+                          nullable: true
+                          description: The run ID associated with this event.
+                        message:
+                          type: string
+                          description: The event message.
+                        startTime:
+                          type: string
+                          description: The start time of the event as a bigint string (nanoseconds since epoch).
+                        duration:
+                          type: number
+                          description: The duration of the event in nanoseconds.
+                        isError:
+                          type: boolean
+                          description: Whether this event represents an error.
+                        isPartial:
+                          type: boolean
+                          description: Whether this event is partial (still in progress).
+                        isCancelled:
+                          type: boolean
+                          description: Whether this event was cancelled.
+                        level:
+                          type: string
+                          enum: [TRACE, DEBUG, LOG, INFO, WARN, ERROR]
+                          description: The log level of the event.
+                        kind:
+                          type: string
+                          enum: [UNSPECIFIED, INTERNAL, SERVER, CLIENT, PRODUCER, CONSUMER, UNRECOGNIZED, LOG]
+                          description: The kind of span event.
+                        attemptNumber:
+                          type: number
+                          nullable: true
+                          description: The attempt number this event belongs to.
+                        taskSlug:
+                          type: string
+                          description: The task identifier.
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API key
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Run not found
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            const response = await fetch("https://api.trigger.dev/api/v1/runs/run_1234/events", {
+              headers: {
+                Authorization: `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+              },
+            });
+
+            const { events } = await response.json();
+
   "/api/v1/runs/{runId}/metadata":
     parameters:
       - $ref: "#/components/parameters/runId"
