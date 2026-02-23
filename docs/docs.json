@@ -254,7 +254,8 @@
               "management/runs/cancel",
               "management/runs/reschedule",
               "management/runs/update-metadata",
-              "management/runs/retrieve-events"
+              "management/runs/retrieve-events",
+              "management/runs/retrieve-trace"
             ]
           },
           {

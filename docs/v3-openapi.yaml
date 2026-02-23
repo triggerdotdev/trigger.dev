@@ -360,6 +360,67 @@ paths:
 
             const handle = await runs.replay("run_1234");
 
+  "/api/v1/runs/{runId}/trace":
+    parameters:
+      - $ref: "#/components/parameters/runId"
+    get:
+      operationId: get_run_trace_v1
+      summary: Retrieve run trace
+      description: Returns the full OTel trace tree for a run, including all spans and their children.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trace:
+                    type: object
+                    properties:
+                      traceId:
+                        type: string
+                        description: The OTel trace ID.
+                      rootSpan:
+                        $ref: "#/components/schemas/SpanDetailedSummary"
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API key
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Run not found
+                      - Trace not found
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            const response = await fetch("https://api.trigger.dev/api/v1/runs/run_1234/trace", {
+              headers: {
+                Authorization: `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+              },
+            });
+
+            const { trace } = await response.json();
+
   "/api/v1/runs/{runId}/events":
     parameters:
       - $ref: "#/components/parameters/runId"
@@ -2277,6 +2338,55 @@ components:
         configure({ accessToken: "tr_pat_1234" });
         ```
   schemas:
+    SpanDetailedSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The span ID.
+        parentId:
+          type: string
+          nullable: true
+          description: The parent span ID, if any.
+        runId:
+          type: string
+          description: The run ID this span belongs to.
+        data:
+          type: object
+          properties:
+            message:
+              type: string
+              description: The span message.
+            taskSlug:
+              type: string
+              description: The task identifier, if applicable.
+            startTime:
+              type: string
+              format: date-time
+              description: The start time of the span.
+            duration:
+              type: number
+              description: The duration of the span in nanoseconds.
+            isError:
+              type: boolean
+            isPartial:
+              type: boolean
+            isCancelled:
+              type: boolean
+            level:
+              type: string
+              enum: [TRACE, DEBUG, LOG, INFO, WARN, ERROR]
+            attemptNumber:
+              type: number
+              nullable: true
+            properties:
+              type: object
+              description: Arbitrary OTel attributes attached to the span.
+        children:
+          type: array
+          description: Nested child spans. Each child has the same structure as the parent span.
+          items:
+            type: object
     TriggerTaskResponse:
       type: object
       properties:
