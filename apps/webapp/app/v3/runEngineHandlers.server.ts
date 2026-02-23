@@ -3,7 +3,8 @@ import { SpanKind } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { createJsonErrorObject, sanitizeError } from "@trigger.dev/core/v3";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
-import { BatchTaskRunStatus, Prisma } from "@trigger.dev/database";
+import { BatchTaskRunStatus, Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
+import { TriggerFailedTaskService } from "~/runEngine/services/triggerFailedTask.server";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { findEnvironmentById, findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
@@ -15,10 +16,14 @@ import { MetadataTooLargeError } from "~/utils/packets";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";
 import { tracer } from "~/v3/tracer.server";
 import { createExceptionPropertiesFromError } from "./eventRepository/common.server";
-import { recordRunDebugLog, resolveEventRepositoryForStore } from "./eventRepository/index.server";
+import {
+  recordRunDebugLog,
+  resolveEventRepositoryForStore,
+} from "./eventRepository/index.server";
 import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
 import { engine } from "./runEngine.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
+import { TaskRunErrorCodes } from "@trigger.dev/core/v3";
 
 export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("runSucceeded", async ({ time, run }) => {
@@ -413,9 +418,8 @@ export function registerRunEngineEventBusHandlers() {
         return;
       }
 
-      let retryMessage = `Retry ${
-        typeof run.attemptNumber === "number" ? `#${run.attemptNumber - 1}` : ""
-      } delay`;
+      let retryMessage = `Retry ${typeof run.attemptNumber === "number" ? `#${run.attemptNumber - 1}` : ""
+        } delay`;
 
       if (run.nextMachineAfterOOM) {
         retryMessage += ` after OOM`;
@@ -480,10 +484,10 @@ export function registerRunEngineEventBusHandlers() {
           error:
             e instanceof Error
               ? {
-                  name: e.name,
-                  message: e.message,
-                  stack: e.stack,
-                }
+                name: e.name,
+                message: e.message,
+                stack: e.stack,
+              }
               : e,
         });
       } else {
@@ -492,10 +496,10 @@ export function registerRunEngineEventBusHandlers() {
           error:
             e instanceof Error
               ? {
-                  name: e.name,
-                  message: e.message,
-                  stack: e.stack,
-                }
+                name: e.name,
+                message: e.message,
+                stack: e.stack,
+              }
               : e,
         });
       }
@@ -644,7 +648,7 @@ export function registerRunEngineEventBusHandlers() {
  */
 export function setupBatchQueueCallbacks() {
   // Item processing callback - creates a run for each batch item
-  engine.setBatchProcessItemCallback(async ({ batchId, friendlyId, itemIndex, item, meta }) => {
+  engine.setBatchProcessItemCallback(async ({ batchId, friendlyId, itemIndex, item, meta, attempt, isFinalAttempt }) => {
     return tracer.startActiveSpan(
       "batch.processItem",
       {
@@ -655,15 +659,24 @@ export function setupBatchQueueCallbacks() {
           "batch.task": item.task,
           "batch.environment_id": meta.environmentId,
           "batch.parent_run_id": meta.parentRunId ?? "",
+          "batch.attempt": attempt,
+          "batch.is_final_attempt": isFinalAttempt,
         },
       },
       async (span) => {
+        const triggerFailedTaskService = new TriggerFailedTaskService({
+          prisma,
+          engine,
+        });
+
+        let environment: AuthenticatedEnvironment | undefined;
         try {
-          const environment = await findEnvironmentById(meta.environmentId);
+          environment = (await findEnvironmentById(meta.environmentId)) ?? undefined;
 
           if (!environment) {
             span.setAttribute("batch.result.error", "Environment not found");
             span.end();
+
             return {
               success: false as const,
               error: "Environment not found",
@@ -695,7 +708,6 @@ export function setupBatchQueueCallbacks() {
               spanParentAsLink: meta.spanParentAsLink,
               batchId,
               batchIndex: itemIndex,
-              skipChecks: true, // Already validated at batch level
               realtimeStreamsVersion: meta.realtimeStreamsVersion,
               planType: meta.planType,
             },
@@ -708,7 +720,33 @@ export function setupBatchQueueCallbacks() {
             return { success: true as const, runId: result.run.friendlyId };
           } else {
             span.setAttribute("batch.result.error", "TriggerTaskService returned undefined");
-            span.end();
+
+            // Only create a pre-failed run on the final attempt; otherwise let the retry mechanism handle it
+            if (isFinalAttempt) {
+              const failedRunId = await triggerFailedTaskService.call({
+                taskId: item.task,
+                environment,
+                payload: item.payload,
+                payloadType: item.payloadType as string,
+                errorMessage: "TriggerTaskService returned undefined",
+                parentRunId: meta.parentRunId,
+                resumeParentOnCompletion: meta.resumeParentOnCompletion,
+                batch: { id: batchId, index: itemIndex },
+                options: item.options as Record<string, unknown>,
+                traceContext: meta.traceContext as Record<string, unknown> | undefined,
+                spanParentAsLink: meta.spanParentAsLink,
+                errorCode: TaskRunErrorCodes.BATCH_ITEM_COULD_NOT_TRIGGER,
+              });
+
+              span.end();
+
+              if (failedRunId) {
+                return { success: true as const, runId: failedRunId };
+              }
+            } else {
+              span.end();
+            }
+
             return {
               success: false as const,
               error: "TriggerTaskService returned undefined",
@@ -716,15 +754,39 @@ export function setupBatchQueueCallbacks() {
             };
           }
         } catch (error) {
-          span.setAttribute(
-            "batch.result.error",
-            error instanceof Error ? error.message : String(error)
-          );
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          span.setAttribute("batch.result.error", errorMessage);
           span.recordException(error instanceof Error ? error : new Error(String(error)));
-          span.end();
+
+          // Only create a pre-failed run on the final attempt; otherwise let the retry mechanism handle it
+          if (isFinalAttempt && environment) {
+            const failedRunId = await triggerFailedTaskService.call({
+              taskId: item.task,
+              environment,
+              payload: item.payload,
+              payloadType: item.payloadType as string,
+              errorMessage,
+              parentRunId: meta.parentRunId,
+              resumeParentOnCompletion: meta.resumeParentOnCompletion,
+              batch: { id: batchId, index: itemIndex },
+              options: item.options as Record<string, unknown>,
+              traceContext: meta.traceContext as Record<string, unknown> | undefined,
+              spanParentAsLink: meta.spanParentAsLink,
+              errorCode: TaskRunErrorCodes.BATCH_ITEM_COULD_NOT_TRIGGER,
+            });
+
+            span.end();
+
+            if (failedRunId) {
+              return { success: true as const, runId: failedRunId };
+            }
+          } else {
+            span.end();
+          }
+
           return {
             success: false as const,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage,
             errorCode: "TRIGGER_ERROR",
           };
         }

@@ -80,6 +80,15 @@ function createRunEngine() {
         scanJitterInMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS,
         processMarkedJitterInMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS,
       },
+      ttlSystem: {
+        disabled: env.RUN_ENGINE_TTL_SYSTEM_DISABLED,
+        shardCount: env.RUN_ENGINE_TTL_SYSTEM_SHARD_COUNT,
+        pollIntervalMs: env.RUN_ENGINE_TTL_SYSTEM_POLL_INTERVAL_MS,
+        batchSize: env.RUN_ENGINE_TTL_SYSTEM_BATCH_SIZE,
+        workerConcurrency: env.RUN_ENGINE_TTL_WORKER_CONCURRENCY,
+        batchMaxSize: env.RUN_ENGINE_TTL_WORKER_BATCH_MAX_SIZE,
+        batchMaxWaitMs: env.RUN_ENGINE_TTL_WORKER_BATCH_MAX_WAIT_MS,
+      },
     },
     runLock: {
       redis: {
@@ -104,6 +113,7 @@ function createRunEngine() {
     },
     tracer,
     meter,
+    defaultMaxTtl: env.RUN_ENGINE_DEFAULT_MAX_TTL,
     heartbeatTimeoutsMs: {
       PENDING_EXECUTING: env.RUN_ENGINE_TIMEOUT_PENDING_EXECUTING,
       PENDING_CANCEL: env.RUN_ENGINE_TIMEOUT_PENDING_CANCEL,
@@ -187,6 +197,13 @@ function createRunEngine() {
       globalRateLimiter: env.BATCH_QUEUE_GLOBAL_RATE_LIMIT
         ? createBatchGlobalRateLimiter(env.BATCH_QUEUE_GLOBAL_RATE_LIMIT)
         : undefined,
+      retry: {
+        maxAttempts: 6,
+        minTimeoutInMs: 1_000,
+        maxTimeoutInMs: 30_000,
+        factor: 2,
+        randomize: true,
+      },
     },
     // Debounce configuration
     debounce: {

@@ -226,6 +226,22 @@ export type BatchQueueOptions = {
   consumerTraceMaxIterations?: number;
   /** Maximum seconds before rotating consumer loop trace span (default: 60) */
   consumerTraceTimeoutSeconds?: number;
+  /** Retry configuration for failed batch items.
+   * When set, items that fail to trigger will be retried with exponential backoff.
+   * After exhausting retries, the failure is recorded permanently and the batch
+   * proceeds to completion. */
+  retry?: {
+    /** Maximum number of attempts (including the first). Default: 1 (no retries) */
+    maxAttempts: number;
+    /** Base delay in milliseconds. Default: 1000 */
+    minTimeoutInMs?: number;
+    /** Maximum delay in milliseconds. Default: 30000 */
+    maxTimeoutInMs?: number;
+    /** Exponential backoff factor. Default: 2 */
+    factor?: number;
+    /** Whether to add jitter to retry delays. Default: true */
+    randomize?: boolean;
+  };
 };
 
 /**
@@ -237,6 +253,10 @@ export type ProcessBatchItemCallback = (params: {
   itemIndex: number;
   item: BatchItem;
   meta: BatchMeta;
+  /** Current attempt number (1-indexed). First attempt = 1. */
+  attempt: number;
+  /** Whether this is the final attempt (no more retries after this). */
+  isFinalAttempt: boolean;
 }) => Promise<
   { success: true; runId: string } | { success: false; error: string; errorCode?: string }
 >;

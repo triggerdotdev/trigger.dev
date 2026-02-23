@@ -90,17 +90,8 @@ export class CreateBatchService extends WithRunEngine {
             );
           }
 
-          // Validate queue limits for the expected batch size
-          const queueSizeGuard = await this.queueConcern.validateQueueLimits(
-            environment,
-            body.runCount
-          );
-
-          if (!queueSizeGuard.ok) {
-            throw new ServiceValidationError(
-              `Cannot create batch with ${body.runCount} items as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
-            );
-          }
+          // Note: Queue size limits are validated per-queue when batch items are processed,
+          // since we don't know which queues items will go to until they're streamed.
 
           // Create BatchTaskRun in Postgres with PENDING status
           // The batch will be sealed (status -> PROCESSING) when items are streamed

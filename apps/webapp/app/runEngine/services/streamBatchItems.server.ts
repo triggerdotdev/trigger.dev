@@ -1,5 +1,4 @@
 import {
-  type BatchItemNDJSON,
   type StreamBatchItemsResponse,
   BatchItemNDJSON as BatchItemNDJSONSchema,
 } from "@trigger.dev/core/v3";
@@ -186,6 +185,7 @@ export class StreamBatchItemsService extends WithRunEngine {
             sealed: false,
             enqueuedCount,
             expectedCount: batch.runCount,
+            runCount: batch.runCount,
           };
         }
 
@@ -237,6 +237,7 @@ export class StreamBatchItemsService extends WithRunEngine {
               itemsAccepted,
               itemsDeduplicated,
               sealed: true,
+              runCount: batch.runCount,
             };
           }
 
@@ -273,6 +274,7 @@ export class StreamBatchItemsService extends WithRunEngine {
           itemsAccepted,
           itemsDeduplicated,
           sealed: true,
+          runCount: batch.runCount,
         };
       }
     );
