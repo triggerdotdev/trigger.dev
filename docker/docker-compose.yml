@@ -143,6 +143,30 @@ services:
     networks:
       - app_network
 
+  s2:
+    image: ghcr.io/s2-streamstore/s2
+    command: lite
+    ports:
+      - "4566:80"
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/v1/basins?limit=1 || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+
+  s2-init:
+    image: curlimages/curl:latest
+    depends_on:
+      s2:
+        condition: service_healthy
+    networks:
+      - app_network
+    restart: "no"
+    entrypoint: ["sh", "-c", "curl -sf -X PUT http://s2:80/v1/basins/trigger-local -H 'Content-Type: application/json' -d '{\"config\":{\"create_stream_on_append\":true,\"create_stream_on_read\":true}}' && echo ' Basin trigger-local ready' || echo ' Basin trigger-local already exists'"]
+
   toxiproxy:
     container_name: toxiproxy
     image: ghcr.io/shopify/toxiproxy:latest
