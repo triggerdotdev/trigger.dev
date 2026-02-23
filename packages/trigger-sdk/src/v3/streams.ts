@@ -703,7 +703,29 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
       );
     },
     once(options) {
-      return inputStreams.once(opts.id, options) as Promise<TData>;
+      const ctx = taskContext.ctx;
+      const runId = ctx?.run.id;
+
+      return tracer.startActiveSpan(
+        `inputStream.once()`,
+        async () => {
+          return inputStreams.once(opts.id, options) as Promise<TData>;
+        },
+        {
+          attributes: {
+            [SemanticInternalAttributes.STYLE_ICON]: "streams",
+            [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
+            ...(runId
+              ? { [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${opts.id}` }
+              : {}),
+            streamId: opts.id,
+            ...accessoryAttributes({
+              items: [{ text: opts.id, variant: "normal" }],
+              style: "codepath",
+            }),
+          },
+        }
+      );
     },
     peek() {
       return inputStreams.peek(opts.id) as TData | undefined;
@@ -731,6 +753,9 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
                 tags: options?.tags,
                 lastSeqNum: inputStreams.lastSeqNum(opts.id),
               });
+
+              // Set the entity ID now that we have the waitpoint ID
+              span.setAttribute(SemanticInternalAttributes.ENTITY_ID, response.waitpointId);
 
               // 2. Block the run on the waitpoint
               const waitResponse = await apiClient.waitForWaitpointToken({
@@ -775,7 +800,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
                 ...accessoryAttributes({
                   items: [
                     {
-                      text: `input:${opts.id}`,
+                      text: opts.id,
                       variant: "normal",
                     },
                   ],
@@ -792,8 +817,26 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
       });
     },
     async send(runId, data, options) {
-      const apiClient = apiClientManager.clientOrThrow();
-      await apiClient.sendInputStream(runId, opts.id, data, options?.requestOptions);
+      return tracer.startActiveSpan(
+        `inputStream.send()`,
+        async () => {
+          const apiClient = apiClientManager.clientOrThrow();
+          await apiClient.sendInputStream(runId, opts.id, data, options?.requestOptions);
+        },
+        {
+          attributes: {
+            [SemanticInternalAttributes.STYLE_ICON]: "streams",
+            [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
+            [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${opts.id}`,
+            streamId: opts.id,
+            runId,
+            ...accessoryAttributes({
+              items: [{ text: opts.id, variant: "normal" }],
+              style: "codepath",
+            }),
+          },
+        }
+      );
     },
   };
 }

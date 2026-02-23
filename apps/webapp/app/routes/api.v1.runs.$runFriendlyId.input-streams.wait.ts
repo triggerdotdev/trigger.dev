@@ -110,24 +110,19 @@ const { action, loader } = createActionApiRoute(
 
             if (records.length > 0) {
               const record = records[0]!;
-              try {
-                const parsed = JSON.parse(record.data) as { data: unknown };
 
-                // Data exists — complete the waitpoint immediately
-                await engine.completeWaitpoint({
-                  id: result.waitpoint.id,
-                  output: {
-                    value: JSON.stringify(parsed.data),
-                    type: "application/json",
-                    isError: false,
-                  },
-                });
+              // Record data is the raw user payload — no wrapper to unwrap
+              await engine.completeWaitpoint({
+                id: result.waitpoint.id,
+                output: {
+                  value: record.data,
+                  type: "application/json",
+                  isError: false,
+                },
+              });
 
-                // Clean up the Redis cache since we completed it ourselves
-                await deleteInputStreamWaitpoint(run.friendlyId, body.streamId);
-              } catch {
-                // Skip malformed records
-              }
+              // Clean up the Redis cache since we completed it ourselves
+              await deleteInputStreamWaitpoint(run.friendlyId, body.streamId);
             }
           }
         } catch {
