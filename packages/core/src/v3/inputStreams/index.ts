@@ -47,8 +47,8 @@ export class InputStreamsAPI implements InputStreamManager {
     return this.#getManager().peek(streamId);
   }
 
-  public get lastSeqNum(): number | undefined {
-    return this.#getManager().lastSeqNum;
+  public lastSeqNum(streamId: string): number | undefined {
+    return this.#getManager().lastSeqNum(streamId);
   }
 
   public reset(): void {

@@ -68,3 +68,4 @@ apps/**/public/build
 .mcp.log
 .mcp.json
 .cursor/debug.log
+ailogger-output.log

@@ -1074,11 +1074,6 @@ model Waitpoint {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  /// If this waitpoint is linked to an input stream .wait(), this is the run's friendlyId
-  inputStreamRunFriendlyId String?
-  /// If this waitpoint is linked to an input stream .wait(), this is the stream ID
-  inputStreamId            String?
-
   /// Denormized column that holds the raw tags
   /// Denormalized column that holds the raw tags
   tags String[]

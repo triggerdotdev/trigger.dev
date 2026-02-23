@@ -729,7 +729,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
                 idempotencyKey: options?.idempotencyKey,
                 idempotencyKeyTTL: options?.idempotencyKeyTTL,
                 tags: options?.tags,
-                lastSeqNum: inputStreams.lastSeqNum,
+                lastSeqNum: inputStreams.lastSeqNum(opts.id),
               });
 
               // 2. Block the run on the waitpoint

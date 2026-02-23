@@ -11,24 +11,27 @@ type OnceWaiter = {
 };
 
 /**
- * InputStreamRecord is the shape of records on the multiplexed __input S2 stream.
+ * InputStreamRecord is the shape of records on a per-stream S2 stream.
  */
 interface InputStreamRecord {
-  stream: string;
   data: unknown;
   ts: number;
   id: string;
 }
 
+type TailState = {
+  abortController: AbortController;
+  promise: Promise<void>;
+};
+
 export class StandardInputStreamManager implements InputStreamManager {
   private handlers = new Map<string, Set<InputStreamHandler>>();
   private onceWaiters = new Map<string, OnceWaiter[]>();
   private buffer = new Map<string, unknown[]>();
-  private tailAbortController: AbortController | null = null;
-  private tailPromise: Promise<void> | null = null;
+  private tails = new Map<string, TailState>();
+  private seqNums = new Map<string, number>();
   private currentRunId: string | null = null;
   private streamsVersion: string | undefined;
-  private _lastSeqNum: number | undefined;
 
   constructor(
     private apiClient: ApiClient,
@@ -36,8 +39,8 @@ export class StandardInputStreamManager implements InputStreamManager {
     private debug: boolean = false
   ) {}
 
-  get lastSeqNum(): number | undefined {
-    return this._lastSeqNum;
+  lastSeqNum(streamId: string): number | undefined {
+    return this.seqNums.get(streamId);
   }
 
   setRunId(runId: string, streamsVersion?: string): void {
@@ -55,8 +58,8 @@ export class StandardInputStreamManager implements InputStreamManager {
     }
     handlerSet.add(handler);
 
-    // Lazily connect the tail on first listener registration
-    this.#ensureTailConnected();
+    // Lazily connect a tail for this stream
+    this.#ensureStreamTailConnected(streamId);
 
     // Flush any buffered data for this stream
     const buffered = this.buffer.get(streamId);
@@ -80,8 +83,8 @@ export class StandardInputStreamManager implements InputStreamManager {
   once(streamId: string, options?: InputStreamOnceOptions): Promise<unknown> {
     this.#requireV2Streams();
 
-    // Lazily connect the tail on first listener registration
-    this.#ensureTailConnected();
+    // Lazily connect a tail for this stream
+    this.#ensureStreamTailConnected(streamId);
 
     // Check buffer first
     const buffered = this.buffer.get(streamId);
@@ -138,33 +141,21 @@ export class StandardInputStreamManager implements InputStreamManager {
   }
 
   connectTail(runId: string, _fromSeq?: number): void {
-    // Don't create duplicate tails
-    if (this.tailAbortController) {
-      return;
-    }
-
-    this.tailAbortController = new AbortController();
-
-    this.tailPromise = this.#runTail(runId, this.tailAbortController.signal).catch((error) => {
-      if (this.debug) {
-        console.error("[InputStreamManager] Tail error:", error);
-      }
-    });
+    // No-op: tails are now created per-stream lazily
   }
 
   disconnect(): void {
-    if (this.tailAbortController) {
-      this.tailAbortController.abort();
-      this.tailAbortController = null;
+    for (const [, tail] of this.tails) {
+      tail.abortController.abort();
     }
-    this.tailPromise = null;
+    this.tails.clear();
   }
 
   reset(): void {
     this.disconnect();
     this.currentRunId = null;
     this.streamsVersion = undefined;
-    this._lastSeqNum = undefined;
+    this.seqNums.clear();
     this.handlers.clear();
 
     // Reject all pending once waiters
@@ -188,17 +179,25 @@ export class StandardInputStreamManager implements InputStreamManager {
     }
   }
 
-  #ensureTailConnected(): void {
-    if (!this.tailAbortController && this.currentRunId) {
-      this.connectTail(this.currentRunId);
+  #ensureStreamTailConnected(streamId: string): void {
+    if (!this.tails.has(streamId) && this.currentRunId) {
+      const abortController = new AbortController();
+      const promise = this.#runTail(this.currentRunId, streamId, abortController.signal).catch(
+        (error) => {
+          if (this.debug) {
+            console.error(`[InputStreamManager] Tail error for "${streamId}":`, error);
+          }
+        }
+      );
+      this.tails.set(streamId, { abortController, promise });
     }
   }
 
-  async #runTail(runId: string, signal: AbortSignal): Promise<void> {
+  async #runTail(runId: string, streamId: string, signal: AbortSignal): Promise<void> {
     try {
       const stream = await this.apiClient.fetchStream<InputStreamRecord>(
         runId,
-        "__input",
+        `input/${streamId}`,
         {
           signal,
           baseUrl: this.baseUrl,
@@ -207,17 +206,17 @@ export class StandardInputStreamManager implements InputStreamManager {
           onPart: (part) => {
             const seqNum = parseInt(part.id, 10);
             if (Number.isFinite(seqNum)) {
-              this._lastSeqNum = seqNum;
+              this.seqNums.set(streamId, seqNum);
             }
           },
           onComplete: () => {
             if (this.debug) {
-              console.log("[InputStreamManager] Tail stream completed");
+              console.log(`[InputStreamManager] Tail stream completed for "${streamId}"`);
             }
           },
           onError: (error) => {
             if (this.debug) {
-              console.error("[InputStreamManager] Tail stream error:", error);
+              console.error(`[InputStreamManager] Tail stream error for "${streamId}":`, error);
             }
           },
         }
@@ -234,13 +233,13 @@ export class StandardInputStreamManager implements InputStreamManager {
           } catch {
             continue;
           }
-        } else if (record.stream) {
+        } else if (record.data !== undefined) {
           parsed = record;
         } else {
           continue;
         }
 
-        this.#dispatchRecord(parsed);
+        this.#dispatch(streamId, parsed.data);
       }
     } catch (error) {
       // AbortError is expected when disconnecting
@@ -251,10 +250,7 @@ export class StandardInputStreamManager implements InputStreamManager {
     }
   }
 
-  #dispatchRecord(record: InputStreamRecord): void {
-    const streamId = record.stream;
-    const data = record.data;
-
+  #dispatch(streamId: string, data: unknown): void {
     // First try to resolve a once waiter
     const waiters = this.onceWaiters.get(streamId);
     if (waiters && waiters.length > 0) {
