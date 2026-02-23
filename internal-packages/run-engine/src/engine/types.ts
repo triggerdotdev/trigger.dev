@@ -71,8 +71,11 @@ export type RunEngineOptions = {
       pollIntervalMs?: number;
       /** Max number of runs to expire per poll per shard (default: 100) */
       batchSize?: number;
-      /** Whether TTL consumers are disabled (default: false) */
+      /** Whether the entire TTL system is disabled (default: false) */
       disabled?: boolean;
+      /** Whether TTL consumers + worker are disabled on this instance (default: false).
+       *  When true, ZADD on enqueue still happens but polling loops and the TTL worker don't run. */
+      consumersDisabled?: boolean;
       /** Visibility timeout for TTL worker jobs (ms, default: 120000) */
       visibilityTimeoutMs?: number;
       /** Concurrency limit for the TTL redis-worker (default: 1) */

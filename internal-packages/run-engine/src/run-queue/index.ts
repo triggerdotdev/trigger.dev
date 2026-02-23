@@ -100,6 +100,8 @@ export type RunQueueOptions = {
     pollIntervalMs?: number;
     /** Max number of runs to expire per poll per shard (default: 100) */
     batchSize?: number;
+    /** Whether TTL consumers (polling loops) are disabled on this instance (default: false) */
+    consumersDisabled?: boolean;
     /** Key suffix for TTL worker's queue sorted set (relative to RunQueue keyPrefix) */
     workerQueueSuffix: string;
     /** Key suffix for TTL worker's items hash (relative to RunQueue keyPrefix) */
@@ -1240,6 +1242,11 @@ export class RunQueue {
   #startTtlConsumers() {
     if (!this.options.ttlSystem) {
       this.logger.debug("TTL system disabled (no ttlSystem config)");
+      return;
+    }
+
+    if (this.options.ttlSystem.consumersDisabled) {
+      this.logger.debug("TTL consumers disabled on this instance");
       return;
     }
 

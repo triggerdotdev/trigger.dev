@@ -195,6 +195,7 @@ export class RunEngine {
           shardCount: options.queue?.ttlSystem?.shardCount,
           pollIntervalMs: options.queue?.ttlSystem?.pollIntervalMs,
           batchSize: options.queue?.ttlSystem?.batchSize,
+          consumersDisabled: options.queue?.ttlSystem?.consumersDisabled,
           workerQueueSuffix: "ttl-worker:{queue:ttl-expiration:}queue",
           workerItemsSuffix: "ttl-worker:{queue:ttl-expiration:}items",
           visibilityTimeoutMs: options.queue?.ttlSystem?.visibilityTimeoutMs ?? 30_000,
@@ -368,7 +369,7 @@ export class RunEngine {
 
     // Start TTL worker whenever TTL system is enabled, so expired runs enqueued by the
     // Lua script get processed even when the main engine worker is disabled (e.g. in tests).
-    if (options.queue?.ttlSystem && !options.queue.ttlSystem.disabled) {
+    if (options.queue?.ttlSystem && !options.queue.ttlSystem.disabled && !options.queue.ttlSystem.consumersDisabled) {
       this.ttlWorker.start();
     }
 
