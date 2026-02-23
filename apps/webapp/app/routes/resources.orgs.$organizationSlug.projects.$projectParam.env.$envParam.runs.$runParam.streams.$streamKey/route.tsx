@@ -98,10 +98,12 @@ export function RealtimeStreamViewer({
   runId,
   streamKey,
   metadata,
+  displayName,
 }: {
   runId: string;
   streamKey: string;
   metadata: Record<string, unknown> | undefined;
+  displayName?: string;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -244,8 +246,8 @@ export function RealtimeStreamViewer({
               variant="small/bright"
               className="mb-0 flex min-w-0 items-center gap-1 truncate whitespace-nowrap"
             >
-              <span>Stream:</span>
-              <span className="truncate font-mono text-text-dimmed">{streamKey}</span>
+              <span>{displayName ? "Input stream:" : "Stream:"}</span>
+              <span className="truncate font-mono text-text-dimmed">{displayName ?? streamKey}</span>
             </Paragraph>
           </div>
           <div className="flex w-full flex-wrap items-center justify-between gap-3 @[300px]:w-auto @[300px]:flex-nowrap">
@@ -487,6 +489,9 @@ function useRealtimeStream(resourcePath: string, startIndex?: number) {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
+    setChunks([]);
+    setError(null);
+
     const abortController = new AbortController();
     let reader: ReadableStreamDefaultReader<SSEStreamPart<unknown>> | null = null;
 

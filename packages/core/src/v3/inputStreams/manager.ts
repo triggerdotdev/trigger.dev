@@ -10,14 +10,6 @@ type OnceWaiter = {
   timeoutHandle?: ReturnType<typeof setTimeout>;
 };
 
-/**
- * InputStreamRecord is the shape of records on a per-stream S2 stream.
- */
-interface InputStreamRecord {
-  data: unknown;
-  ts: number;
-  id: string;
-}
 
 type TailState = {
   abortController: AbortController;
@@ -195,7 +187,7 @@ export class StandardInputStreamManager implements InputStreamManager {
 
   async #runTail(runId: string, streamId: string, signal: AbortSignal): Promise<void> {
     try {
-      const stream = await this.apiClient.fetchStream<InputStreamRecord>(
+      const stream = await this.apiClient.fetchStream<unknown>(
         runId,
         `input/${streamId}`,
         {
@@ -225,21 +217,19 @@ export class StandardInputStreamManager implements InputStreamManager {
       for await (const record of stream) {
         if (signal.aborted) break;
 
-        // S2 SSE returns record bodies as JSON strings; parse into InputStreamRecord
-        let parsed: InputStreamRecord;
+        // S2 SSE returns record bodies as JSON strings; parse if needed
+        let data: unknown;
         if (typeof record === "string") {
           try {
-            parsed = JSON.parse(record) as InputStreamRecord;
+            data = JSON.parse(record);
           } catch {
-            continue;
+            data = record;
           }
-        } else if (record.data !== undefined) {
-          parsed = record;
         } else {
-          continue;
+          data = record;
         }
 
-        this.#dispatch(streamId, parsed.data);
+        this.#dispatch(streamId, data);
       }
     } catch (error) {
       // AbortError is expected when disconnecting

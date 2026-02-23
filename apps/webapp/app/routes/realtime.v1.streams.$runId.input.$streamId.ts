@@ -67,13 +67,9 @@ const { action } = createActionApiRoute(
       run.realtimeStreamsVersion
     );
 
-    // Build the input stream record
+    // Build the input stream record (raw user data, no wrapper)
     const recordId = `inp_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
-    const record = JSON.stringify({
-      data: body.data.data,
-      ts: Date.now(),
-      id: recordId,
-    });
+    const record = JSON.stringify(body.data.data);
 
     // Append the record to the per-stream S2 stream (auto-creates on first write)
     await realtimeStream.appendPart(
