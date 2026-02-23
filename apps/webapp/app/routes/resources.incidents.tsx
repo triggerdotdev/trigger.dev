@@ -70,9 +70,17 @@ export function useIncidentStatus() {
   };
 }
 
-export function IncidentStatusPanel({ isCollapsed = false }: { isCollapsed?: boolean }) {
-  const { title, hasIncident, isManagedCloud } = useIncidentStatus();
-
+export function IncidentStatusPanel({
+  isCollapsed = false,
+  title,
+  hasIncident,
+  isManagedCloud,
+}: {
+  isCollapsed?: boolean;
+  title: string | null;
+  hasIncident: boolean;
+  isManagedCloud: boolean;
+}) {
   if (!isManagedCloud || !hasIncident) {
     return null;
   }

@@ -530,7 +530,17 @@ paths:
                     description: The deployment ID
                   status:
                     type: string
-                    enum: ["PENDING", "INSTALLING", "BUILDING", "DEPLOYING", "DEPLOYED", "FAILED", "CANCELED", "TIMED_OUT"]
+                    enum:
+                      [
+                        "PENDING",
+                        "INSTALLING",
+                        "BUILDING",
+                        "DEPLOYING",
+                        "DEPLOYED",
+                        "FAILED",
+                        "CANCELED",
+                        "TIMED_OUT",
+                      ]
                     description: The current status of the deployment
                   contentHash:
                     type: string
@@ -622,7 +632,17 @@ paths:
                     description: The deployment ID
                   status:
                     type: string
-                    enum: ["PENDING", "INSTALLING", "BUILDING", "DEPLOYING", "DEPLOYED", "FAILED", "CANCELED", "TIMED_OUT"]
+                    enum:
+                      [
+                        "PENDING",
+                        "INSTALLING",
+                        "BUILDING",
+                        "DEPLOYING",
+                        "DEPLOYED",
+                        "FAILED",
+                        "CANCELED",
+                        "TIMED_OUT",
+                      ]
                     description: The current status of the deployment
                   contentHash:
                     type: string
@@ -732,6 +752,122 @@ paths:
             curl -X POST "https://api.trigger.dev/api/v1/deployments/20250228.1/promote" \
               -H "Authorization: Bearer tr_dev_1234" \
               -H "Content-Type: application/json"
+
+  "/api/v1/query":
+    post:
+      operationId: execute_query_v1
+      summary: Execute a TRQL query
+      description: Execute a TRQL (Trigger.dev Query Language) query against your run data. TRQL is a SQL-style query language that allows you to analyze runs, calculate metrics, and export data.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/ExecuteQueryRequestBody"
+      responses:
+        "200":
+          description: Query executed successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ExecuteQueryResponse"
+        "400":
+          description: Invalid query or request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Error message describing the query error
+        "401":
+          description: Unauthorized - API key is missing or invalid
+        "500":
+          description: Internal server error during query execution
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: SDK - Basic query
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            // Basic query with defaults (environment scope, json format)
+            const result = await query.execute(
+              "SELECT run_id, status FROM runs LIMIT 10"
+            );
+            console.log(result.results);
+        - lang: typescript
+          label: SDK - Type-safe query
+          source: |-
+            import { query, type QueryTable } from "@trigger.dev/sdk";
+
+            // Type-safe query using QueryTable
+            const result = await query.execute<
+              QueryTable<"runs", "run_id" | "status" | "triggered_at">
+            >(
+              "SELECT run_id, status, triggered_at FROM runs LIMIT 10"
+            );
+
+            result.results.forEach(row => {
+              console.log(row.run_id, row.status); // Fully typed!
+            });
+        - lang: typescript
+          label: SDK - With options
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            const result = await query.execute(
+              "SELECT COUNT(*) as count FROM runs WHERE status = 'Failed'",
+              {
+                scope: "project",       // Query across all environments
+                period: "7d",           // Last 7 days
+                format: "json"
+              }
+            );
+        - lang: typescript
+          label: SDK - CSV export
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            const csvResult = await query.execute(
+              "SELECT run_id, status, triggered_at FROM runs",
+              {
+                format: "csv",
+                period: "30d"
+              }
+            );
+
+            // csvResult.results is a CSV string
+            const lines = csvResult.results.split('\n');
+        - lang: curl
+          label: cURL - Basic query
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/query" \
+              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "query": "SELECT run_id, status FROM runs LIMIT 10",
+                "scope": "environment",
+                "period": "7d",
+                "format": "json"
+              }'
+        - lang: curl
+          label: cURL - Aggregation query
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/query" \
+              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "query": "SELECT task_identifier, count() as runs, countIf(status = '\''Failed'\'') as failures FROM runs GROUP BY task_identifier",
+                "scope": "environment",
+                "from": "2024-01-01T00:00:00Z",
+                "to": "2024-01-31T23:59:59Z",
+                "format": "json"
+              }'
 
   "/api/v1/runs/{runId}/reschedule":
     parameters:
@@ -1618,6 +1754,301 @@ paths:
                     ]
                   }'
 
+  "/api/v1/queues":
+    get:
+      operationId: list_queues_v1
+      summary: List all queues
+      description: List all queues in your environment with pagination support.
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+          required: false
+          description: Page number of the queue listing (1-based)
+        - in: query
+          name: perPage
+          schema:
+            type: integer
+          required: false
+          description: Number of queues per page
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ListQueuesResult"
+        "401":
+          description: Unauthorized request
+      tags:
+        - queues
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { queues } from "@trigger.dev/sdk";
+
+            // List all queues
+            const allQueues = await queues.list();
+
+            // With pagination
+            const pagedQueues = await queues.list({
+              page: 1,
+              perPage: 20,
+            });
+
+  "/api/v1/queues/{queueParam}":
+    get:
+      operationId: retrieve_queue_v1
+      summary: Retrieve a queue
+      description: Get a queue by its ID, or by type and name.
+      parameters:
+        - in: path
+          name: queueParam
+          required: true
+          schema:
+            type: string
+          description: The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` query parameter.
+          example: queue_1234
+        - in: query
+          name: type
+          schema:
+            type: string
+            enum: [id, task, custom]
+            default: id
+          required: false
+          description: |
+            How to interpret the `queueParam` path parameter:
+            - `id`: Treat as a queue ID (default)
+            - `task`: Treat as a task ID to get the task's default queue
+            - `custom`: Treat as a custom queue name
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/QueueObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Queue not found
+      tags:
+        - queues
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { queues } from "@trigger.dev/sdk";
+
+            // Using queue ID
+            const queue = await queues.retrieve("queue_1234");
+
+            // Using type and name for a task queue
+            const taskQueue = await queues.retrieve({
+              type: "task",
+              name: "my-task-id",
+            });
+
+            // Using type and name for a custom queue
+            const customQueue = await queues.retrieve({
+              type: "custom",
+              name: "my-custom-queue",
+            });
+
+  "/api/v1/queues/{queueParam}/pause":
+    post:
+      operationId: pause_queue_v1
+      summary: Pause or resume a queue
+      description: Pause a queue to prevent new runs from starting, or resume a paused queue. Runs that are currently executing will continue to completion.
+      parameters:
+        - in: path
+          name: queueParam
+          required: true
+          schema:
+            type: string
+          description: The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` body parameter.
+          example: queue_1234
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["action"]
+              properties:
+                type:
+                  type: string
+                  enum: [id, task, custom]
+                  default: id
+                  description: |
+                    How to interpret the `queueParam` path parameter:
+                    - `id`: Treat as a queue ID (default)
+                    - `task`: Treat as a task ID to get the task's default queue
+                    - `custom`: Treat as a custom queue name
+                action:
+                  type: string
+                  enum: [pause, resume]
+                  description: Whether to pause or resume the queue
+      responses:
+        "200":
+          description: Queue paused or resumed successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/QueueObject"
+        "400":
+          description: Invalid request parameters
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Queue not found
+      tags:
+        - queues
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { queues } from "@trigger.dev/sdk";
+
+            // Pause a queue
+            await queues.pause("queue_1234");
+            await queues.pause({ type: "task", name: "my-task-id" });
+
+            // Resume a queue
+            await queues.resume("queue_1234");
+            await queues.resume({ type: "task", name: "my-task-id" });
+
+  "/api/v1/queues/{queueParam}/concurrency/override":
+    post:
+      operationId: override_queue_concurrency_v1
+      summary: Override queue concurrency limit
+      description: Override the concurrency limit of a queue. This is useful for temporarily scaling up or down based on demand.
+      parameters:
+        - in: path
+          name: queueParam
+          required: true
+          schema:
+            type: string
+          description: The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` body parameter.
+          example: queue_1234
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["concurrencyLimit"]
+              properties:
+                type:
+                  type: string
+                  enum: [id, task, custom]
+                  default: id
+                  description: |
+                    How to interpret the `queueParam` path parameter:
+                    - `id`: Treat as a queue ID (default)
+                    - `task`: Treat as a task ID to get the task's default queue
+                    - `custom`: Treat as a custom queue name
+                concurrencyLimit:
+                  type: integer
+                  minimum: 0
+                  maximum: 100000
+                  description: The new concurrency limit to set for the queue
+      responses:
+        "200":
+          description: Concurrency limit overridden successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/QueueObject"
+        "400":
+          description: Invalid request parameters
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Queue not found
+      tags:
+        - queues
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { queues } from "@trigger.dev/sdk";
+
+            // Override concurrency limit to 5
+            await queues.overrideConcurrencyLimit("queue_1234", 5);
+
+            // Using type and name
+            await queues.overrideConcurrencyLimit(
+              { type: "task", name: "my-task-id" },
+              20
+            );
+
+  "/api/v1/queues/{queueParam}/concurrency/reset":
+    post:
+      operationId: reset_queue_concurrency_v1
+      summary: Reset queue concurrency limit
+      description: Reset the concurrency limit of a queue back to its base value defined in code.
+      parameters:
+        - in: path
+          name: queueParam
+          required: true
+          schema:
+            type: string
+          description: The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` body parameter.
+          example: queue_1234
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [id, task, custom]
+                  default: id
+                  description: |
+                    How to interpret the `queueParam` path parameter:
+                    - `id`: Treat as a queue ID (default)
+                    - `task`: Treat as a task ID to get the task's default queue
+                    - `custom`: Treat as a custom queue name
+      responses:
+        "200":
+          description: Concurrency limit reset successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/QueueObject"
+        "400":
+          description: Queue is not overridden or invalid request parameters
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Queue not found
+      tags:
+        - queues
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { queues } from "@trigger.dev/sdk";
+
+            // Reset concurrency limit to the base value
+            await queues.resetConcurrencyLimit("queue_1234");
+
+            // Using type and name
+            await queues.resetConcurrencyLimit({
+              type: "task",
+              name: "my-task-id",
+            });
+
 components:
   parameters:
     taskIdentifier:
@@ -1763,6 +2194,97 @@ components:
           minimum: 0
           maximum: 1000
           description: An optional property that specifies the maximum number of concurrent run executions. If this property is omitted, the task can potentially use up the full concurrency of an environment.
+    QueueObject:
+      type: object
+      required: ["id", "name", "type", "running", "queued", "paused"]
+      properties:
+        id:
+          type: string
+          description: The queue ID, e.g., `queue_1234`
+          example: queue_1234
+        name:
+          type: string
+          description: The queue name. For task queues, this is the task ID. For custom queues, this is the name you specified.
+          example: my-task-id
+        type:
+          type: string
+          enum: [task, custom]
+          description: |
+            The type of queue:
+            - `task`: Created automatically for each task
+            - `custom`: Created explicitly in your code using `queue()`
+          example: task
+        running:
+          type: integer
+          description: The number of runs currently executing
+          example: 5
+        queued:
+          type: integer
+          description: The number of runs currently queued
+          example: 10
+        paused:
+          type: boolean
+          description: Whether the queue is paused. When paused, no new runs will start.
+          example: false
+        concurrencyLimit:
+          type: integer
+          nullable: true
+          description: The current concurrency limit of the queue
+          example: 10
+        concurrency:
+          type: object
+          description: Detailed concurrency information
+          properties:
+            current:
+              type: integer
+              nullable: true
+              description: The effective/current concurrency limit
+              example: 10
+            base:
+              type: integer
+              nullable: true
+              description: The base concurrency limit defined in code
+              example: 10
+            override:
+              type: integer
+              nullable: true
+              description: The override concurrency limit (if set)
+              example: null
+            overriddenAt:
+              type: string
+              format: date-time
+              nullable: true
+              description: When the concurrency limit was overridden
+              example: null
+            overriddenBy:
+              type: string
+              nullable: true
+              description: Who overrode the concurrency limit (null if via API)
+              example: null
+    ListQueuesResult:
+      type: object
+      required: ["data", "pagination"]
+      properties:
+        data:
+          type: array
+          items:
+            "$ref": "#/components/schemas/QueueObject"
+          description: An array of queue objects
+        pagination:
+          type: object
+          properties:
+            currentPage:
+              type: integer
+              description: The current page number
+              example: 1
+            totalPages:
+              type: integer
+              description: The total number of pages
+              example: 5
+            count:
+              type: integer
+              description: The total number of queues
+              example: 50
     BatchTriggerRequestBody:
       type: object
       properties:
@@ -2945,3 +3467,61 @@ components:
         stackTrace:
           type: string
           example: "Error: Something went wrong"
+    ExecuteQueryRequestBody:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: The TRQL query to execute
+          example: "SELECT run_id, status, triggered_at FROM runs WHERE status = 'Failed' LIMIT 10"
+        scope:
+          type: string
+          enum: ["environment", "project", "organization"]
+          default: "environment"
+          description: The scope of data to query - environment (default), project, or organization
+        period:
+          type: string
+          nullable: true
+          description: Time period shorthand (e.g., "7d", "30d", "1h"). Cannot be used with from/to.
+          example: "7d"
+        from:
+          type: string
+          format: date-time
+          nullable: true
+          description: Start of time range as ISO 8601 timestamp. Must be used with 'to'.
+          example: "2024-01-01T00:00:00Z"
+        to:
+          type: string
+          format: date-time
+          nullable: true
+          description: End of time range as ISO 8601 timestamp. Must be used with 'from'.
+          example: "2024-01-31T23:59:59Z"
+        format:
+          type: string
+          enum: ["json", "csv"]
+          default: "json"
+          description: Response format - "json" returns structured data (default), "csv" returns CSV string
+    ExecuteQueryResponse:
+      oneOf:
+        - type: object
+          description: JSON format response
+          properties:
+            format:
+              type: string
+              enum: ["json"]
+            results:
+              type: array
+              items:
+                type: object
+              description: Array of result rows
+        - type: object
+          description: CSV format response
+          properties:
+            format:
+              type: string
+              enum: ["csv"]
+            results:
+              type: string
+              description: CSV-formatted results

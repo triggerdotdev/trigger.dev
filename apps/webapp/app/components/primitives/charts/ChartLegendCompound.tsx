@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import type { AggregationType } from "~/components/metrics/QueryWidget";
-import { useChartContext } from "./ChartContext";
+import { useActivePayload, useChartContext } from "./ChartContext";
 import { useSeriesTotal } from "./ChartRoot";
 import { aggregateValues } from "./aggregation";
 import { cn } from "~/utils/cn";
@@ -26,6 +26,8 @@ export type ChartLegendCompoundProps = {
   totalLabel?: string;
   /** Aggregation method – controls the header label and how totals are computed */
   aggregation?: AggregationType;
+  /** Optional formatter for numeric values (e.g. bytes, duration) */
+  valueFormatter?: (value: number) => string;
   /** Callback when "View all" button is clicked */
   onViewAllLegendItems?: () => void;
   /** When true, constrains legend to max 50% height with scrolling */
@@ -50,10 +52,12 @@ export function ChartLegendCompound({
   className,
   totalLabel,
   aggregation,
+  valueFormatter,
   onViewAllLegendItems,
   scrollable = false,
 }: ChartLegendCompoundProps) {
   const { config, dataKey, dataKeys, highlight, labelFormatter } = useChartContext();
+  const activePayload = useActivePayload();
   const totals = useSeriesTotal(aggregation);
 
   // Derive the effective label from the aggregation type when no explicit label is provided
@@ -71,10 +75,10 @@ export function ChartLegendCompound({
 
   // Calculate current total based on hover state (null when hovering a gap-filled point)
   const currentTotal = useMemo((): number | null => {
-    if (!highlight.activePayload?.length) return grandTotal;
+    if (!activePayload?.length) return grandTotal;
 
     // Collect all series values from the hovered data point, preserving nulls
-    const rawValues = highlight.activePayload
+    const rawValues = activePayload
       .filter((item) => item.value !== undefined && dataKeys.includes(item.dataKey as string))
       .map((item) => item.value);
 
@@ -91,14 +95,14 @@ export function ChartLegendCompound({
       return values.reduce((a, b) => a + b, 0);
     }
     return aggregateValues(values, aggregation);
-  }, [highlight.activePayload, grandTotal, dataKeys, aggregation]);
+  }, [activePayload, grandTotal, dataKeys, aggregation]);
 
   // Get the label for the total row - x-axis value when hovering, effectiveTotalLabel otherwise
   const currentTotalLabel = useMemo(() => {
-    if (!highlight.activePayload?.length) return effectiveTotalLabel;
+    if (!activePayload?.length) return effectiveTotalLabel;
 
     // Get the x-axis label from the payload's original data
-    const firstPayloadItem = highlight.activePayload[0];
+    const firstPayloadItem = activePayload[0];
     const xAxisValue = firstPayloadItem?.payload?.[dataKey];
 
     if (xAxisValue === undefined) return effectiveTotalLabel;
@@ -106,14 +110,14 @@ export function ChartLegendCompound({
     // Apply the formatter if provided, otherwise just stringify the value
     const stringValue = String(xAxisValue);
     return labelFormatter ? labelFormatter(stringValue) : stringValue;
-  }, [highlight.activePayload, dataKey, effectiveTotalLabel, labelFormatter]);
+  }, [activePayload, dataKey, effectiveTotalLabel, labelFormatter]);
 
   // Get current data for the legend based on hover state (values may be null for gap-filled points)
   const currentData = useMemo((): Record<string, number | null> => {
-    if (!highlight.activePayload?.length) return totals;
+    if (!activePayload?.length) return totals;
 
     // If we have activePayload data from hovering over a bar/line
-    const hoverData = highlight.activePayload.reduce(
+    const hoverData = activePayload.reduce(
       (acc, item) => {
         if (item.dataKey && item.value !== undefined) {
           // Preserve null for gap-filled points instead of coercing to 0
@@ -129,7 +133,7 @@ export function ChartLegendCompound({
       ...totals,
       ...hoverData,
     };
-  }, [highlight.activePayload, totals]);
+  }, [activePayload, totals]);
 
   // Prepare legend items with capped display
   const legendItems = useMemo(() => {
@@ -163,7 +167,7 @@ export function ChartLegendCompound({
     return null;
   }
 
-  const isHovering = (highlight.activePayload?.length ?? 0) > 0;
+  const isHovering = (activePayload?.length ?? 0) > 0;
 
   return (
     <div
@@ -179,7 +183,11 @@ export function ChartLegendCompound({
         <span className="font-medium">{currentTotalLabel}</span>
         <span className="font-medium tabular-nums">
           {currentTotal != null ? (
-            <AnimatedNumber value={currentTotal} duration={0.25} />
+            valueFormatter ? (
+              valueFormatter(currentTotal)
+            ) : (
+              <AnimatedNumber value={currentTotal} duration={0.25} />
+            )
           ) : (
             "\u2013"
           )}
@@ -251,7 +259,11 @@ export function ChartLegendCompound({
                   )}
                 >
                   {total != null ? (
-                    <AnimatedNumber value={total} duration={0.25} />
+                    valueFormatter ? (
+                      valueFormatter(total)
+                    ) : (
+                      <AnimatedNumber value={total} duration={0.25} />
+                    )
                   ) : (
                     "\u2013"
                   )}
@@ -268,6 +280,7 @@ export function ChartLegendCompound({
               item={legendItems.hoveredHiddenItem}
               value={currentData[legendItems.hoveredHiddenItem.dataKey] ?? null}
               remainingCount={legendItems.remaining - 1}
+              valueFormatter={valueFormatter}
             />
           ) : (
             <ViewAllDataRow
@@ -314,9 +327,10 @@ type HoveredHiddenItemRowProps = {
   item: { dataKey: string; color?: string; label: React.ReactNode };
   value: number | null;
   remainingCount: number;
+  valueFormatter?: (value: number) => string;
 };
 
-function HoveredHiddenItemRow({ item, value, remainingCount }: HoveredHiddenItemRowProps) {
+function HoveredHiddenItemRow({ item, value, remainingCount, valueFormatter }: HoveredHiddenItemRowProps) {
   return (
     <div className="relative flex w-full items-center justify-between gap-2 rounded px-2 py-1">
       {/* Active highlight background */}
@@ -338,7 +352,15 @@ function HoveredHiddenItemRow({ item, value, remainingCount }: HoveredHiddenItem
           {remainingCount > 0 && <span className="text-text-dimmed">+{remainingCount} more</span>}
         </div>
         <span className="tabular-nums text-text-bright">
-          {value != null ? <AnimatedNumber value={value} duration={0.25} /> : "\u2013"}
+          {value != null ? (
+            valueFormatter ? (
+              valueFormatter(value)
+            ) : (
+              <AnimatedNumber value={value} duration={0.25} />
+            )
+          ) : (
+            "\u2013"
+          )}
         </span>
       </div>
     </div>

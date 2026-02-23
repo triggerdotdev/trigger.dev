@@ -3,7 +3,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   ReferenceArea,
   ReferenceLine,
   XAxis,
@@ -15,9 +14,7 @@ import { ChartTooltip, ChartTooltipContent } from "~/components/primitives/chart
 import { useChartContext } from "./ChartContext";
 import { ChartBarInvalid, ChartBarLoading, ChartBarNoData } from "./ChartLoading";
 import { useHasNoData } from "./ChartRoot";
-// Legend is now rendered by ChartRoot outside the chart container
 import { ZoomTooltip, useZoomHandlers } from "./ChartZoom";
-import { getBarOpacity } from "./hooks/useHighlightState";
 
 //TODO: fix the first and last bars in a stack not having rounded corners
 
@@ -41,6 +38,8 @@ export type ChartBarRendererProps = {
   referenceLine?: ReferenceLineProps;
   /** Custom tooltip label formatter */
   tooltipLabelFormatter?: (label: string, payload: any[]) => string;
+  /** Optional formatter for numeric tooltip values (e.g. bytes, duration) */
+  tooltipValueFormatter?: (value: number) => string;
   /** Width injected by ResponsiveContainer */
   width?: number;
   /** Height injected by ResponsiveContainer */
@@ -65,10 +64,11 @@ export function ChartBarRenderer({
   yAxisProps: yAxisPropsProp,
   referenceLine,
   tooltipLabelFormatter,
+  tooltipValueFormatter,
   width,
   height,
 }: ChartBarRendererProps) {
-  const { config, data, dataKey, dataKeys, state, highlight, zoom, showLegend } = useChartContext();
+  const { config, data, dataKey, dataKeys, visibleSeries, state, highlight, setActivePayload, zoom, showLegend } = useChartContext();
   const hasNoData = useHasNoData();
   const zoomHandlers = useZoomHandlers();
   const enableZoom = zoom !== null;
@@ -116,9 +116,8 @@ export function ChartBarRenderer({
       onMouseDown={zoomHandlers.onMouseDown}
       onMouseMove={(e: any) => {
         zoomHandlers.onMouseMove?.(e);
-        // Update active payload for legend
         if (e?.activePayload?.length) {
-          highlight.setActivePayload(e.activePayload);
+          setActivePayload(e.activePayload, e.activeTooltipIndex);
           highlight.setTooltipActive(true);
         } else {
           highlight.setTooltipActive(false);
@@ -163,7 +162,7 @@ export function ChartBarRenderer({
           showLegend ? (
             () => null
           ) : tooltipLabelFormatter ? (
-            <ChartTooltipContent />
+            <ChartTooltipContent valueFormatter={tooltipValueFormatter} />
           ) : (
             <ZoomTooltip
               isSelecting={zoom?.isSelecting}
@@ -188,7 +187,12 @@ export function ChartBarRenderer({
         />
       )}
 
-      {dataKeys.map((key, index, array) => {
+      {visibleSeries.map((key, index, array) => {
+        const dimmed =
+          !zoom?.isSelecting &&
+          highlight.activeBarKey !== null &&
+          highlight.activeBarKey !== key;
+
         return (
           <Bar
             key={key}
@@ -204,7 +208,7 @@ export function ChartBarRenderer({
               ] as [number, number, number, number]
             }
             activeBar={false}
-            fillOpacity={1}
+            fillOpacity={dimmed ? 0.2 : 1}
             onClick={(data, index, e) => handleBarClick(data, e)}
             onMouseEnter={(entry, index) => {
               if (entry.tooltipPayload?.[0]) {
@@ -214,20 +218,7 @@ export function ChartBarRenderer({
             }}
             onMouseLeave={highlight.reset}
             isAnimationActive={false}
-          >
-            {data.map((_, dataIndex) => {
-              // Don't dim bars during zoom selection
-              const opacity = zoom?.isSelecting ? 1 : getBarOpacity(key, dataIndex, highlight);
-
-              return (
-                <Cell
-                  key={`cell-${key}-${dataIndex}`}
-                  fill={config[key]?.color}
-                  fillOpacity={opacity}
-                />
-              );
-            })}
-          </Bar>
+          />
         );
       })}
 

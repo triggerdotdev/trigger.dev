@@ -17,13 +17,23 @@ export interface TimeBucketInterval {
 }
 
 /**
- * Time bucket thresholds: each entry defines a maximum time range duration (in seconds)
+ * A threshold mapping a maximum time range duration to a bucket interval.
+ */
+export interface BucketThreshold {
+  /** Maximum range duration in seconds for this threshold to apply */
+  maxRangeSeconds: number;
+  /** The bucket interval to use when the range is under maxRangeSeconds */
+  interval: TimeBucketInterval;
+}
+
+/**
+ * Default time bucket thresholds: each entry defines a maximum time range duration (in seconds)
  * and the corresponding bucket interval to use.
  *
  * The intervals are chosen to produce roughly 50-100 data points for the given range.
  * Entries are ordered from smallest to largest range.
  */
-const BUCKET_THRESHOLDS: Array<{ maxRangeSeconds: number; interval: TimeBucketInterval }> = [
+export const BUCKET_THRESHOLDS: BucketThreshold[] = [
   // Under 5 minutes → 5 second buckets (max 60 buckets)
   { maxRangeSeconds: 5 * 60, interval: { value: 5, unit: "SECOND" } },
   // Under 30 minutes → 30 second buckets (max 60 buckets)
@@ -73,10 +83,14 @@ const DEFAULT_LARGE_INTERVAL: TimeBucketInterval = { value: 1, unit: "MONTH" };
  * ); // { value: 6, unit: "HOUR" }
  * ```
  */
-export function calculateTimeBucketInterval(from: Date, to: Date): TimeBucketInterval {
+export function calculateTimeBucketInterval(
+  from: Date,
+  to: Date,
+  thresholds?: BucketThreshold[]
+): TimeBucketInterval {
   const rangeSeconds = Math.abs(to.getTime() - from.getTime()) / 1000;
 
-  for (const threshold of BUCKET_THRESHOLDS) {
+  for (const threshold of thresholds ?? BUCKET_THRESHOLDS) {
     if (rangeSeconds < threshold.maxRangeSeconds) {
       return threshold.interval;
     }

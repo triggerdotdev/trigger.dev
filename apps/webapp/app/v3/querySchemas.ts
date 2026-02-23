@@ -1,4 +1,4 @@
-import { column, type TableSchema } from "@internal/tsql";
+import { column, type BucketThreshold, type TableSchema } from "@internal/tsql";
 import { z } from "zod";
 import { autoFormatSQL } from "~/components/code/TSQLEditor";
 import { runFriendlyStatus, runStatusTitleFromStatus } from "~/components/runs/v3/TaskRunStatus";
@@ -33,6 +33,7 @@ export const runsSchema: TableSchema = {
   clickhouseName: "trigger_dev.task_runs_v2",
   description: "Task runs - stores all task execution records",
   timeConstraint: "triggered_at",
+  useFinal: true,
   tenantColumns: {
     organizationId: "organization_id",
     projectId: "project_id",
@@ -435,9 +436,170 @@ export const runsSchema: TableSchema = {
 };
 
 /**
+ * Schema definition for the metrics table (trigger_dev.metrics_v1)
+ */
+export const metricsSchema: TableSchema = {
+  name: "metrics",
+  clickhouseName: "trigger_dev.metrics_v1",
+  description: "Host and runtime metrics collected during task execution",
+  timeConstraint: "bucket_start",
+  tenantColumns: {
+    organizationId: "organization_id",
+    projectId: "project_id",
+    environmentId: "environment_id",
+  },
+  columns: {
+    environment: {
+      name: "environment",
+      clickhouseName: "environment_id",
+      ...column("String", { description: "The environment slug", example: "prod" }),
+      fieldMapping: "environment",
+      customRenderType: "environment",
+    },
+    project: {
+      name: "project",
+      clickhouseName: "project_id",
+      ...column("String", {
+        description: "The project reference, they always start with `proj_`.",
+        example: "proj_howcnaxbfxdmwmxazktx",
+      }),
+      fieldMapping: "project",
+      customRenderType: "project",
+    },
+    metric_name: {
+      name: "metric_name",
+      ...column("LowCardinality(String)", {
+        description: "The name of the metric (e.g. process.cpu.utilization, system.memory.usage)",
+        example: "process.cpu.utilization",
+        coreColumn: true,
+      }),
+    },
+    metric_type: {
+      name: "metric_type",
+      ...column("LowCardinality(String)", {
+        description: "The type of metric",
+        allowedValues: ["gauge", "sum", "histogram"],
+        example: "gauge",
+      }),
+    },
+    machine_id: {
+      name: "machine_id",
+      clickhouseName: "metric_subject",
+      ...column("String", {
+        description: "The machine ID that produced this metric",
+        example: "machine-abc123",
+      }),
+    },
+    bucket_start: {
+      name: "bucket_start",
+      ...column("DateTime", {
+        description: "The start of the 10-second aggregation bucket",
+        example: "2024-01-15 09:30:00",
+        coreColumn: true,
+      }),
+    },
+    metric_value: {
+      name: "metric_value",
+      clickhouseName: "value",
+      ...column("Float64", {
+        description: "The metric value",
+        example: "0.75",
+        coreColumn: true,
+      }),
+    },
+
+    // Attributes (JSON column for user-defined and system attributes)
+    attributes: {
+      name: "attributes",
+      ...column("JSON", {
+        description: "JSON attributes attached to the metric data point.",
+        example: '{"region": "us-east-1"}',
+      }),
+    },
+
+    // Trigger context columns (from attributes.trigger.* JSON subpaths)
+    run_id: {
+      name: "run_id",
+      ...column("String", {
+        description: "The run ID associated with this metric",
+        customRenderType: "runId",
+        example: "run_cm1a2b3c4d5e6f7g8h9i",
+        coreColumn: true,
+      }),
+      expression: "attributes.trigger.run_id",
+    },
+    task_identifier: {
+      name: "task_identifier",
+      ...column("String", {
+        description: "Task identifier/slug",
+        example: "my-background-task",
+        coreColumn: true,
+      }),
+      expression: "attributes.trigger.task_slug",
+    },
+    attempt_number: {
+      name: "attempt_number",
+      ...column("UInt64", {
+        description: "The attempt number for this metric",
+        example: "1",
+      }),
+      expression: "attributes.trigger.attempt_number",
+    },
+    machine_name: {
+      name: "machine_name",
+      ...column("String", {
+        description: "The machine preset used for execution",
+        allowedValues: [...MACHINE_PRESETS],
+        example: "small-1x",
+      }),
+      expression: "attributes.trigger.machine_name",
+    },
+    environment_type: {
+      name: "environment_type",
+      ...column("String", {
+        description: "Environment type",
+        allowedValues: [...ENVIRONMENT_TYPES],
+        customRenderType: "environmentType",
+        example: "PRODUCTION",
+      }),
+      expression: "attributes.trigger.environment_type",
+    },
+    worker_id: {
+      name: "worker_id",
+      ...column("String", {
+        description: "The worker ID that produced this metric",
+        customRenderType: "deploymentId",
+        example: "deployment_cm1a2b3c4d5e",
+      }),
+      expression: "attributes.trigger.worker_id",
+    },
+    worker_version: {
+      name: "worker_version",
+      ...column("String", {
+        description: "The worker version that produced this metric",
+        example: "20240115.1",
+      }),
+      expression: "attributes.trigger.worker_version",
+    },
+  },
+  timeBucketThresholds: [
+    // Metrics are pre-aggregated into 10-second buckets, so 10s is the most granular interval.
+    // All thresholds are shifted coarser compared to the runs table defaults.
+    { maxRangeSeconds: 3 * 60 * 60, interval: { value: 10, unit: "SECOND" } },
+    { maxRangeSeconds: 12 * 60 * 60, interval: { value: 1, unit: "MINUTE" } },
+    { maxRangeSeconds: 2 * 24 * 60 * 60, interval: { value: 5, unit: "MINUTE" } },
+    { maxRangeSeconds: 7 * 24 * 60 * 60, interval: { value: 15, unit: "MINUTE" } },
+    { maxRangeSeconds: 30 * 24 * 60 * 60, interval: { value: 1, unit: "HOUR" } },
+    { maxRangeSeconds: 90 * 24 * 60 * 60, interval: { value: 6, unit: "HOUR" } },
+    { maxRangeSeconds: 180 * 24 * 60 * 60, interval: { value: 1, unit: "DAY" } },
+    { maxRangeSeconds: 365 * 24 * 60 * 60, interval: { value: 1, unit: "WEEK" } },
+  ] satisfies BucketThreshold[],
+};
+
+/**
  * All available schemas for the query editor
  */
-export const querySchemas: TableSchema[] = [runsSchema];
+export const querySchemas: TableSchema[] = [runsSchema, metricsSchema];
 
 /**
  * Default query for the query editor
