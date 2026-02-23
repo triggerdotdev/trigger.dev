@@ -360,6 +360,96 @@ paths:
 
             const handle = await runs.replay("run_1234");
 
+  "/api/v1/runs/{runId}/tags":
+    parameters:
+      - $ref: "#/components/parameters/runId"
+    post:
+      operationId: add_run_tags_v1
+      summary: Add tags to a run
+      description: Adds one or more tags to a run. Runs can have a maximum of 10 tags. Duplicate tags are ignored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tags
+              properties:
+                tags:
+                  oneOf:
+                    - type: string
+                      description: A single tag to add.
+                      example: "my-tag"
+                    - type: array
+                      description: An array of tags to add.
+                      items:
+                        type: string
+                      example: ["tag-1", "tag-2"]
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Successfully set 2 new tags."
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API Key
+        "422":
+          description: Too many tags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Runs can only have 10 tags.
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: SDK
+          source: |-
+            import { runs } from "@trigger.dev/sdk";
+
+            await runs.addTags("run_1234", ["tag-1", "tag-2"]);
+        - lang: typescript
+          label: Fetch
+          source: |-
+            await fetch("https://api.trigger.dev/api/v1/runs/run_1234/tags", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ tags: ["tag-1", "tag-2"] }),
+            });
+
   "/api/v1/runs/{runId}/trace":
     parameters:
       - $ref: "#/components/parameters/runId"
