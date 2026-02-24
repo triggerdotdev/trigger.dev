@@ -2018,6 +2018,89 @@ paths:
             response = requests.post(url, headers=headers, json=data)
             print(response.json())
 
+  "/api/v1/tasks/{taskId}/batch":
+    parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The task identifier.
+    post:
+      operationId: batch_trigger_task_by_id_v1
+      summary: Batch trigger a specific task
+      description: Batch trigger a specific task with up to 1,000 payloads. All items in the batch run the same task.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["items"]
+              properties:
+                items:
+                  type: array
+                  description: An array of payloads to trigger the task with (max 1,000 items).
+                  items:
+                    $ref: "#/components/schemas/TriggerTaskRequestBody"
+      responses:
+        "200":
+          description: Batch triggered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchTriggerTaskResponse"
+        "400":
+          description: Invalid request parameters or body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      tags:
+        - tasks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { task } from "@trigger.dev/sdk";
+
+            export const myTask = task({
+              id: "my-task",
+              run: async (payload: { message: string }) => {
+                console.log("Hello, world!");
+              }
+            });
+
+            // Somewhere else in your code
+            await myTask.batchTrigger([
+              { payload: { message: "Hello, world!" } },
+              { payload: { message: "Hello again!" } },
+            ]);
+        - lang: curl
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/tasks/my-task/batch" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer tr_dev_1234" \
+              -d '{
+                    "items": [
+                      { "payload": { "message": "Hello, world!" } },
+                      { "payload": { "message": "Hello again!" } }
+                    ]
+                  }'
+
   "/api/v1/tasks/batch":
     post:
       operationId: batch_trigger_task_v1

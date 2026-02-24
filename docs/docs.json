@@ -239,7 +239,7 @@
           },
           {
             "group": "Tasks API",
-            "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
+            "pages": ["management/tasks/trigger", "management/tasks/batch-trigger", "management/tasks/trigger-batch"]
           },
           {
             "group": "Batches API",
