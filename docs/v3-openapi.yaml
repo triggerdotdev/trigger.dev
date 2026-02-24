@@ -1237,10 +1237,10 @@ paths:
                     description: The run ID.
                   output:
                     type: string
-                    description: The serialized output (present when ok is true).
+                    description: The serialized output as a string (present when ok is true). Use outputType to determine how to parse it — for "application/json" use JSON.parse().
                   outputType:
                     type: string
-                    description: The content type of the output, e.g. "application/json".
+                    description: The content type of the serialized output, e.g. "application/json".
                   error:
                     type: object
                     description: Error details (present when ok is false).
@@ -2018,14 +2018,9 @@ paths:
             response = requests.post(url, headers=headers, json=data)
             print(response.json())
 
-  "/api/v1/tasks/{taskId}/batch":
+  "/api/v1/tasks/{taskIdentifier}/batch":
     parameters:
-      - name: taskId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The task identifier.
+      - $ref: "#/components/parameters/taskIdentifier"
     post:
       operationId: batch_trigger_task_by_id_v1
       summary: Batch trigger a specific task
@@ -2041,6 +2036,7 @@ paths:
                 items:
                   type: array
                   description: An array of payloads to trigger the task with (max 1,000 items).
+                  maxItems: 1000
                   items:
                     $ref: "#/components/schemas/TriggerTaskRequestBody"
       responses:
@@ -2295,7 +2291,7 @@ paths:
     get:
       operationId: get_batch_results_v1
       summary: Retrieve batch results
-      description: Returns the execution results of all runs in a batch. Returns 404 if the batch doesn't exist.
+      description: Returns the execution results of all completed runs in a batch. Only finished runs (successful or failed) are included in the items array — runs that are still executing are omitted. Returns 404 if the batch doesn't exist.
       responses:
         "200":
           description: Successful request
@@ -2322,10 +2318,10 @@ paths:
                           description: The run ID.
                         output:
                           type: string
-                          description: The serialized output (present when ok is true).
+                          description: The serialized output as a string (present when ok is true). Use outputType to determine how to parse it — for "application/json" use JSON.parse().
                         outputType:
                           type: string
-                          description: The content type of the output, e.g. "application/json".
+                          description: The content type of the serialized output, e.g. "application/json".
                         error:
                           type: object
                           description: Error details (present when ok is false).
