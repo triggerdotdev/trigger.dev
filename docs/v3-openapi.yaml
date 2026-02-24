@@ -567,6 +567,41 @@ paths:
                         taskSlug:
                           type: string
                           description: The task identifier.
+                        events:
+                          type: array
+                          description: Span events (e.g. exceptions, cancellations) that occurred during this event.
+                          items:
+                            type: object
+                            properties:
+                              name:
+                                type: string
+                                description: The event name (e.g. "exception", "cancellation", "attempt_failed").
+                              time:
+                                type: string
+                                format: date-time
+                                description: The time the event occurred.
+                              properties:
+                                type: object
+                                description: Event-specific properties.
+                        style:
+                          type: object
+                          description: Display style metadata for the event.
+                          properties:
+                            icon:
+                              type: string
+                              description: Icon identifier for display.
+                            variant:
+                              type: string
+                              description: Visual variant (e.g. "success", "failure").
+                            accessory:
+                              type: object
+                              description: Accessory display element.
+                              properties:
+                                text:
+                                  type: string
+                                style:
+                                  type: string
+                                  enum: [codepath]
         "401":
           description: Unauthorized request
           content:
@@ -2479,6 +2514,22 @@ components:
             properties:
               type: object
               description: Arbitrary OTel attributes attached to the span.
+            events:
+              type: array
+              description: Span events (e.g. exceptions, cancellations) that occurred during this span.
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: The event name (e.g. "exception", "cancellation", "attempt_failed").
+                  time:
+                    type: string
+                    format: date-time
+                    description: The time the event occurred.
+                  properties:
+                    type: object
+                    description: Event-specific properties.
         children:
           type: array
           description: Nested child spans. Each child has the same structure as the parent span.
