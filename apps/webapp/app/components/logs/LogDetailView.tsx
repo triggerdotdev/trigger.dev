@@ -186,7 +186,7 @@ function DetailsTab({
             <CopyableText value={log.runId} copyValue={log.runId} asChild />
             <LinkButton
               to={runPath}
-              variant="tertiary/small"
+              variant="secondary/small"
               shortcut={{ key: "v" }}
               className="mt-2"
             >

@@ -12,6 +12,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type User } from "~/models/user.server";
 import { getUsername } from "~/utils/username";
 import { processGitMetadata } from "./BranchesPresenter.server";
+import { VercelProjectIntegrationDataSchema } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { S2 } from "@s2-dev/streamstore";
 import { env } from "~/env.server";
 import { createRedisClient } from "~/redis.server";
@@ -161,6 +162,51 @@ export class DeploymentPresenter {
     });
 
     const gitMetadata = processGitMetadata(deployment.git);
+
+    // Look up Vercel integration data to construct a deployment URL
+    let vercelDeploymentUrl: string | undefined;
+    const vercelProjectIntegration =
+      await this.#prismaClient.organizationProjectIntegration.findFirst({
+        where: {
+          projectId: project.id,
+          deletedAt: null,
+          organizationIntegration: {
+            service: "VERCEL",
+            deletedAt: null,
+          },
+        },
+        select: {
+          integrationData: true,
+        },
+      });
+
+    if (vercelProjectIntegration) {
+      const parsed = VercelProjectIntegrationDataSchema.safeParse(
+        vercelProjectIntegration.integrationData
+      );
+
+      if (parsed.success && parsed.data.vercelTeamSlug) {
+        const integrationDeployment =
+          await this.#prismaClient.integrationDeployment.findFirst({
+            where: {
+              deploymentId: deployment.id,
+              integrationName: "vercel",
+            },
+            select: {
+              integrationDeploymentId: true,
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+          });
+
+        if (integrationDeployment) {
+          const vercelId = integrationDeployment.integrationDeploymentId;
+          vercelDeploymentUrl = `https://vercel.com/${parsed.data.vercelTeamSlug}/${parsed.data.vercelProjectName}/${vercelId}`;
+        }
+      }
+    }
+
     const externalBuildData = deployment.externalBuildData
       ? ExternalBuildData.safeParse(deployment.externalBuildData)
       : undefined;
@@ -227,6 +273,7 @@ export class DeploymentPresenter {
         type: deployment.type,
         git: gitMetadata,
         triggeredVia: deployment.triggeredVia,
+        vercelDeploymentUrl,
       },
     };
   }

@@ -82,6 +82,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       organizationId: project.organizationId,
       projectId: project.id,
       environmentId: environment.id,
+      environmentType: environment.type,
       environmentApiKey: environment.apiKey,
     })
   );
@@ -507,9 +508,8 @@ function QuotasSection({
   // Include batch processing concurrency
   quotaRows.push(quotas.batchProcessingConcurrency);
 
-  // Add queue size quotas if set
-  if (quotas.devQueueSize.limit !== null) quotaRows.push(quotas.devQueueSize);
-  if (quotas.deployedQueueSize.limit !== null) quotaRows.push(quotas.deployedQueueSize);
+  // Add queue size quota if set
+  if (quotas.queueSize.limit !== null) quotaRows.push(quotas.queueSize);
 
   // Metric & query quotas
   if (quotas.metricDashboards) quotaRows.push(quotas.metricDashboards);
@@ -565,8 +565,11 @@ function QuotaRow({
   const isDurationQuota = quota.name === "Log retention" || quota.name === "Query period";
   const isPerItemQuota = quota.name === "Charts per dashboard";
   const isRetentionQuota = isDurationQuota || isPerItemQuota;
+  const isQueueSizeQuota = quota.name === "Max queued runs";
+  const hideCurrentUsage = isRetentionQuota || isQueueSizeQuota;
+  
   const percentage =
-    !isRetentionQuota && quota.limit && quota.limit > 0 ? quota.currentUsage / quota.limit : null;
+    !hideCurrentUsage && quota.limit && quota.limit > 0 ? quota.currentUsage / quota.limit : null;
 
   // Special handling for duration-based quotas (Log retention, Query period)
   if (isDurationQuota) {
@@ -667,10 +670,10 @@ function QuotaRow({
         alignment="right"
         className={cn(
           "tabular-nums",
-          isRetentionQuota ? "text-text-dimmed" : getUsageColorClass(percentage, "usage")
+          hideCurrentUsage ? "text-text-dimmed" : getUsageColorClass(percentage, "usage")
         )}
       >
-        {isRetentionQuota ? "–" : formatNumber(quota.currentUsage)}
+        {hideCurrentUsage ? "–" : formatNumber(quota.currentUsage)}
       </TableCell>
       <TableCell alignment="right">
         <SourceBadge source={quota.source} />

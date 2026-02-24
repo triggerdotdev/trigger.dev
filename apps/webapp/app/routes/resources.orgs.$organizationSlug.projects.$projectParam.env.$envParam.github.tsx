@@ -43,7 +43,7 @@ import { requireUserId } from "~/services/session.server";
 import {
   githubAppInstallPath,
   EnvironmentParamSchema,
-  v3ProjectSettingsPath,
+  v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
 import { cn } from "~/utils/cn";
 import { type BranchTrackingConfig } from "~/v3/github";
@@ -459,7 +459,7 @@ export function ConnectGitHubRepoModal({
                         navigate(
                           githubAppInstallPath(
                             organizationSlug,
-                            `${v3ProjectSettingsPath(
+                            `${v3ProjectSettingsIntegrationsPath(
                               { slug: organizationSlug },
                               { slug: projectSlug },
                               { slug: environmentSlug }
@@ -567,7 +567,7 @@ export function GitHubConnectionPrompt({
   redirectUrl?: string;
 }) {
 
-  const githubInstallationRedirect = redirectUrl || v3ProjectSettingsPath({ slug: organizationSlug }, { slug: projectSlug }, { slug: environmentSlug });
+  const githubInstallationRedirect = redirectUrl || v3ProjectSettingsIntegrationsPath({ slug: organizationSlug }, { slug: projectSlug }, { slug: environmentSlug });
   return (
     <Fieldset>
       <InputGroup fullWidth>

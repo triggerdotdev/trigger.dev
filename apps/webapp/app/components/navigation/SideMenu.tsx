@@ -11,6 +11,7 @@ import {
   Cog8ToothIcon,
   CogIcon,
   ExclamationTriangleIcon,
+  PuzzlePieceIcon,
   FolderIcon,
   FolderOpenIcon,
   GlobeAmericasIcon,
@@ -74,7 +75,8 @@ import {
   v3LogsPath,
   v3ProjectAlertsPath,
   v3ProjectPath,
-  v3ProjectSettingsPath,
+  v3ProjectSettingsGeneralPath,
+  v3ProjectSettingsIntegrationsPath,
   v3QueuesPath,
   v3RunsPath,
   v3SchedulesPath,
@@ -127,7 +129,7 @@ type SideMenuUser = Pick<
 };
 export type SideMenuProject = Pick<
   MatchedProject,
-  "id" | "name" | "slug" | "version" | "environments" | "engine"
+  "id" | "name" | "slug" | "version" | "environments" | "engine" | "createdAt"
 >;
 export type SideMenuEnvironment = MatchedEnvironment;
 
@@ -589,13 +591,34 @@ export function SideMenu({
                 data-action="limits"
                 isCollapsed={isCollapsed}
               />
+            </SideMenuSection>
+
+            <SideMenuSection
+              title="Project settings"
+              isSideMenuCollapsed={isCollapsed}
+              itemSpacingClassName="space-y-0"
+              initialCollapsed={getSectionCollapsed(
+                user.dashboardPreferences.sideMenu,
+                "project-settings"
+              )}
+              onCollapseToggle={handleSectionToggle("project-settings")}
+            >
               <SideMenuItem
-                name="Project settings"
+                name="General"
                 icon={Cog8ToothIcon}
                 activeIconColor="text-text-bright"
                 inactiveIconColor="text-text-dimmed"
-                to={v3ProjectSettingsPath(organization, project, environment)}
-                data-action="project-settings"
+                to={v3ProjectSettingsGeneralPath(organization, project, environment)}
+                data-action="project-settings-general"
+                isCollapsed={isCollapsed}
+              />
+              <SideMenuItem
+                name="Integrations"
+                icon={PuzzlePieceIcon}
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
+                to={v3ProjectSettingsIntegrationsPath(organization, project, environment)}
+                data-action="project-settings-integrations"
                 isCollapsed={isCollapsed}
               />
             </SideMenuSection>
@@ -611,6 +634,7 @@ export function SideMenu({
           <V3DeprecationPanel
             isCollapsed={isCollapsed}
             isV3={isV3Project}
+            projectCreatedAt={project.createdAt}
             hasIncident={incidentStatus.hasIncident}
             isManagedCloud={incidentStatus.isManagedCloud}
           />
@@ -641,15 +665,21 @@ export function SideMenu({
 function V3DeprecationPanel({
   isCollapsed,
   isV3,
+  projectCreatedAt,
   hasIncident,
   isManagedCloud,
 }: {
   isCollapsed: boolean;
   isV3: boolean;
+  projectCreatedAt: Date;
   hasIncident: boolean;
   isManagedCloud: boolean;
 }) {
-  if (!isManagedCloud || !isV3 || hasIncident) {
+  // Only show for projects created before v4 was released
+  const V4_RELEASE_DATE = new Date("2025-09-01");
+  const isLikelyV3 = isV3 && new Date(projectCreatedAt) < V4_RELEASE_DATE;
+
+  if (!isManagedCloud || !isLikelyV3 || hasIncident) {
     return null;
   }
 

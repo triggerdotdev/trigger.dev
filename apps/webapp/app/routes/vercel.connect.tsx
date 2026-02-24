@@ -7,7 +7,7 @@ import { VercelIntegrationRepository, type TokenResponse } from "~/models/vercel
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { requestUrl } from "~/utils/requestUrl.server";
-import { v3ProjectSettingsPath } from "~/utils/pathBuilder";
+import { v3ProjectSettingsIntegrationsPath } from "~/utils/pathBuilder";
 import { validateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 
 const VercelConnectSchema = z.object({
@@ -139,7 +139,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     throw new Response("Environment not found", { status: 404 });
   }
 
-  const settingsPath = v3ProjectSettingsPath(
+  const settingsPath = v3ProjectSettingsIntegrationsPath(
     { slug: stateData.organizationSlug },
     { slug: stateData.projectSlug },
     { slug: environment.slug }

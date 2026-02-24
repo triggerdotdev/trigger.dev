@@ -176,10 +176,22 @@ type TableCellBasicProps = {
 type TableHeaderCellProps = TableCellBasicProps & {
   hiddenLabel?: boolean;
   tooltip?: ReactNode;
+  disableTooltipHoverableContent?: boolean;
 };
 
 export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellProps>(
-  ({ className, alignment = "left", children, colSpan, hiddenLabel = false, tooltip }, ref) => {
+  (
+    {
+      className,
+      alignment = "left",
+      children,
+      colSpan,
+      hiddenLabel = false,
+      tooltip,
+      disableTooltipHoverableContent = false,
+    },
+    ref
+  ) => {
     const { variant } = useContext(TableContext);
     let alignmentClassName = "text-left";
     switch (alignment) {
@@ -222,6 +234,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
               content={tooltip}
               contentClassName="normal-case tracking-normal"
               enabled={isHovered}
+              disableHoverableContent={disableTooltipHoverableContent}
             />
           </div>
         ) : (
