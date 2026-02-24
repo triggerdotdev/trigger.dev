@@ -239,11 +239,11 @@
           },
           {
             "group": "Tasks API",
-            "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
+            "pages": ["management/tasks/trigger", "management/tasks/batch-trigger", "management/tasks/trigger-batch"]
           },
           {
             "group": "Batches API",
-            "pages": ["management/batches/create", "management/batches/stream-items"]
+            "pages": ["management/batches/create", "management/batches/retrieve", "management/batches/retrieve-results", "management/batches/stream-items"]
           },
           {
             "group": "Runs API",
@@ -256,7 +256,8 @@
               "management/runs/update-metadata",
               "management/runs/add-tags",
               "management/runs/retrieve-events",
-              "management/runs/retrieve-trace"
+              "management/runs/retrieve-trace",
+              "management/runs/retrieve-result"
             ]
           },
           {
