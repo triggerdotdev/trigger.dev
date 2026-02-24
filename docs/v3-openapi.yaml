@@ -2196,12 +2196,7 @@ paths:
 
   "/api/v1/batches/{batchId}":
     parameters:
-      - name: batchId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The batch ID.
+      - $ref: "#/components/parameters/batchId"
     get:
       operationId: retrieve_batch_v1
       summary: Retrieve a batch
@@ -2280,7 +2275,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
       tags:
-        - tasks
+        - batches
       security:
         - secretKey: []
       x-codeSamples:
@@ -2296,12 +2291,7 @@ paths:
 
   "/api/v1/batches/{batchId}/results":
     parameters:
-      - name: batchId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The batch ID.
+      - $ref: "#/components/parameters/batchId"
     get:
       operationId: get_batch_results_v1
       summary: Retrieve batch results
@@ -2361,7 +2351,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
       tags:
-        - tasks
+        - batches
       security:
         - secretKey: []
       x-codeSamples:
@@ -2741,6 +2731,14 @@ components:
       description: |
         The ID of an run, starts with `run_`. The run ID will be returned when you trigger a run on a task.
       example: run_1234
+    batchId:
+      in: path
+      name: batchId
+      required: true
+      schema:
+        type: string
+      description: The ID of the batch, starts with `batch_`.
+      example: batch_1234
     projectRef:
       in: path
       name: projectRef
