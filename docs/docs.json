@@ -253,7 +253,10 @@
               "management/runs/replay",
               "management/runs/cancel",
               "management/runs/reschedule",
-              "management/runs/update-metadata"
+              "management/runs/update-metadata",
+              "management/runs/add-tags",
+              "management/runs/retrieve-events",
+              "management/runs/retrieve-trace"
             ]
           },
           {
