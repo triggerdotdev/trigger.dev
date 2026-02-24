@@ -23,6 +23,10 @@ import CliViewRunStep from "/snippets/step-view-run.mdx";
 ## Known issues
 
 - Certain OpenTelemetry instrumentation will not work with Bun, because Bun does not support Node's `register` hook. This means that some libraries that rely on this hook will not work with Bun.
+- If Bun is installed via Homebrew (e.g. `/opt/homebrew/bin/bun`), you may see an `ENOENT: spawn /Users/<you>/.bun/bin/bun` error because the CLI expects Bun at the default install path. **Workaround:** create a symlink:
+  ```bash
+  ln -s $(which bun) ~/.bun/bin/bun
+  ```
 
 ## Initial setup
 
