@@ -2294,6 +2294,87 @@ paths:
             });
             const batch = await response.json();
 
+  "/api/v1/batches/{batchId}/results":
+    parameters:
+      - name: batchId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The batch ID.
+    get:
+      operationId: get_batch_results_v1
+      summary: Retrieve batch results
+      description: Returns the execution results of all runs in a batch. Returns 404 if the batch doesn't exist.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: The batch ID.
+                  items:
+                    type: array
+                    description: Execution results for each run in the batch.
+                    items:
+                      type: object
+                      required: [ok, id]
+                      properties:
+                        ok:
+                          type: boolean
+                          description: Whether this run completed successfully.
+                        id:
+                          type: string
+                          description: The run ID.
+                        output:
+                          type: string
+                          description: The serialized output (present when ok is true).
+                        outputType:
+                          type: string
+                          description: The content type of the output, e.g. "application/json".
+                        error:
+                          type: object
+                          description: Error details (present when ok is false).
+                        usage:
+                          type: object
+                          properties:
+                            durationMs:
+                              type: number
+                              description: Duration of the run in milliseconds.
+                        taskIdentifier:
+                          type: string
+                          description: The task identifier.
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Batch not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      tags:
+        - tasks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: Fetch
+          source: |-
+            const response = await fetch("https://api.trigger.dev/api/v1/batches/batch_1234/results", {
+              headers: {
+                "Authorization": `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+              },
+            });
+            const results = await response.json();
+
   "/api/v1/queues":
     get:
       operationId: list_queues_v1
