@@ -256,7 +256,8 @@
               "management/runs/update-metadata",
               "management/runs/add-tags",
               "management/runs/retrieve-events",
-              "management/runs/retrieve-trace"
+              "management/runs/retrieve-trace",
+              "management/runs/retrieve-result"
             ]
           },
           {

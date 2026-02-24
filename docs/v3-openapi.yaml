@@ -1213,6 +1213,84 @@ paths:
 
             const handle = await runs.reschedule("run_1234", { delay: new Date("2024-06-29T20:45:56.340Z") });
 
+  "/api/v1/runs/{runId}/result":
+    parameters:
+      - $ref: "#/components/parameters/runId"
+    get:
+      operationId: get_run_result_v1
+      summary: Retrieve run result
+      description: Returns the execution result of a completed run. Returns 404 if the run doesn't exist or hasn't finished yet.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, id]
+                properties:
+                  ok:
+                    type: boolean
+                    description: Whether the run completed successfully.
+                  id:
+                    type: string
+                    description: The run ID.
+                  output:
+                    type: string
+                    description: The serialized output (present when ok is true).
+                  outputType:
+                    type: string
+                    description: The content type of the output, e.g. "application/json".
+                  error:
+                    type: object
+                    description: Error details (present when ok is false).
+                  usage:
+                    type: object
+                    description: Execution usage stats.
+                    properties:
+                      durationMs:
+                        type: number
+                        description: Duration of the run in milliseconds.
+                  taskIdentifier:
+                    type: string
+                    description: The task identifier.
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API Key
+        "404":
+          description: Run not found or not yet finished
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Run either doesn't exist or is not finished
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: Fetch
+          source: |-
+            const response = await fetch("https://api.trigger.dev/api/v1/runs/run_1234/result", {
+              headers: {
+                "Authorization": `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+              },
+            });
+            const result = await response.json();
+
   "/api/v3/runs/{runId}":
     parameters:
       - $ref: "#/components/parameters/runId"
