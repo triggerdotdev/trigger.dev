@@ -2194,6 +2194,106 @@ paths:
                     ]
                   }'
 
+  "/api/v1/batches/{batchId}":
+    parameters:
+      - name: batchId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The batch ID.
+    get:
+      operationId: retrieve_batch_v1
+      summary: Retrieve a batch
+      description: Retrieve a batch by its ID, including its status and the IDs of all runs in the batch.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: The batch ID.
+                  status:
+                    type: string
+                    enum: [PENDING, PROCESSING, COMPLETED, PARTIAL_FAILED, ABORTED]
+                    description: The current status of the batch.
+                  idempotencyKey:
+                    type: string
+                    nullable: true
+                    description: The idempotency key provided when triggering, if any.
+                  createdAt:
+                    type: string
+                    format: date-time
+                  updatedAt:
+                    type: string
+                    format: date-time
+                  runCount:
+                    type: integer
+                    description: The total number of runs in the batch.
+                  runs:
+                    type: array
+                    items:
+                      type: string
+                    description: Array of run IDs in the batch.
+                  successfulRunCount:
+                    type: integer
+                    nullable: true
+                    description: Number of successful runs (populated after completion).
+                  failedRunCount:
+                    type: integer
+                    nullable: true
+                    description: Number of failed runs (populated after completion).
+                  errors:
+                    type: array
+                    nullable: true
+                    description: Error details for failed items (present for PARTIAL_FAILED batches).
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                          description: The index of the failed item.
+                        taskIdentifier:
+                          type: string
+                          description: The task identifier of the failed item.
+                        error:
+                          type: object
+                          description: The error details.
+                        errorCode:
+                          type: string
+                          nullable: true
+                          description: An optional error code.
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Batch not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      tags:
+        - tasks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: Fetch
+          source: |-
+            const response = await fetch("https://api.trigger.dev/api/v1/batches/batch_1234", {
+              headers: {
+                "Authorization": `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+              },
+            });
+            const batch = await response.json();
+
   "/api/v1/queues":
     get:
       operationId: list_queues_v1
