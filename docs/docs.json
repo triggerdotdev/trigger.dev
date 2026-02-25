@@ -303,6 +303,12 @@
             ]
           },
           {
+            "group": "Waitpoints API",
+            "pages": [
+              "management/waitpoints/create"
+            ]
+          },
+          {
             "group": "Query API",
             "pages": ["management/query/execute"]
           }
