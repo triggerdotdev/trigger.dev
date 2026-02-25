@@ -2782,6 +2782,10 @@ paths:
                 "$ref": "#/components/schemas/ListWaitpointTokensResult"
         "401":
           description: Unauthorized
+        "422":
+          description: Invalid query parameters (e.g. unrecognised status value)
+        "500":
+          description: Internal Server Error
       tags:
         - waitpoints
       security:
@@ -2975,6 +2979,8 @@ paths:
           description: Unauthorized
         "404":
           description: Waitpoint token not found
+        "500":
+          description: Internal Server Error
       tags:
         - waitpoints
       security:
