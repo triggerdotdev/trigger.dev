@@ -889,13 +889,15 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     const cfg: ChartConfig = {};
     sortedSeries.forEach((s, i) => {
       const statusColor = groupByIsRunStatus ? getRunStatusHexColor(s) : undefined;
+      const originalIndex = config.yAxisColumns.indexOf(s);
+      const colorIndex = originalIndex >= 0 ? originalIndex : i;
       cfg[s] = {
         label: s,
-        color: statusColor ?? config.seriesColors?.[s] ?? getSeriesColor(i),
+        color: statusColor ?? config.seriesColors?.[s] ?? getSeriesColor(colorIndex),
       };
     });
     return cfg;
-  }, [sortedSeries, groupByIsRunStatus, config.seriesColors]);
+  }, [sortedSeries, groupByIsRunStatus, config.seriesColors, config.yAxisColumns]);
 
   // Custom tooltip label formatter for better date display
   const tooltipLabelFormatter = useMemo(() => {
