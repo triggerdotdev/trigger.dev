@@ -306,6 +306,7 @@
             "group": "Waitpoints API",
             "pages": [
               "management/waitpoints/create",
+              "management/waitpoints/list",
               "management/waitpoints/retrieve"
             ]
           },

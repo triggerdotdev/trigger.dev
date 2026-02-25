@@ -2700,6 +2700,111 @@ paths:
             console.log(token.id);  // e.g. "waitpoint_abc123"
             console.log(token.url); // HTTP callback URL to complete externally
 
+  "/api/v1/waitpoints/tokens":
+    get:
+      operationId: list_waitpoint_tokens_v1
+      summary: List waitpoint tokens
+      description: >-
+        Returns a paginated list of waitpoint tokens for the current environment.
+        Results are ordered by creation date, newest first. Use cursor-based pagination
+        with `page[after]` and `page[before]` to navigate pages.
+      parameters:
+        - in: query
+          name: "page[size]"
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+          required: false
+          description: Number of tokens to return per page (1–100).
+        - in: query
+          name: "page[after]"
+          schema:
+            type: string
+          required: false
+          description: Return tokens after this cursor (from `pagination.next` in a previous response).
+        - in: query
+          name: "page[before]"
+          schema:
+            type: string
+          required: false
+          description: Return tokens before this cursor (from `pagination.previous` in a previous response).
+        - in: query
+          name: "filter[status]"
+          schema:
+            type: string
+          required: false
+          description: >-
+            Comma-separated list of statuses to filter by.
+            Allowed values: `WAITING`, `COMPLETED`, `TIMED_OUT`.
+          example: "WAITING,COMPLETED"
+        - in: query
+          name: "filter[idempotencyKey]"
+          schema:
+            type: string
+          required: false
+          description: Filter by idempotency key.
+        - in: query
+          name: "filter[tags]"
+          schema:
+            type: string
+          required: false
+          description: Comma-separated list of tags to filter by.
+          example: "user:1234567,org:9876543"
+        - in: query
+          name: "filter[createdAt][period]"
+          schema:
+            type: string
+          required: false
+          description: >-
+            Shorthand time period to filter by creation date (e.g. `1h`, `24h`, `7d`).
+            Cannot be combined with `filter[createdAt][from]` or `filter[createdAt][to]`.
+          example: "24h"
+        - in: query
+          name: "filter[createdAt][from]"
+          schema:
+            type: string
+            format: date-time
+          required: false
+          description: Filter tokens created at or after this ISO 8601 timestamp.
+        - in: query
+          name: "filter[createdAt][to]"
+          schema:
+            type: string
+            format: date-time
+          required: false
+          description: Filter tokens created at or before this ISO 8601 timestamp.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ListWaitpointTokensResult"
+        "401":
+          description: Unauthorized
+      tags:
+        - waitpoints
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { wait } from "@trigger.dev/sdk";
+
+            // Iterate over all tokens (auto-paginated)
+            for await (const token of wait.listTokens()) {
+              console.log(token.id, token.status);
+            }
+
+            // Filter by status and tags
+            for await (const token of wait.listTokens({
+              status: ["WAITING"],
+              tags: ["user:1234567"],
+            })) {
+              console.log(token.id);
+            }
+
   "/api/v1/waitpoints/tokens/{waitpointId}":
     get:
       operationId: retrieve_waitpoint_token_v1
@@ -4303,6 +4408,32 @@ components:
             results:
               type: string
               description: CSV-formatted results
+    ListWaitpointTokensResult:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            "$ref": "#/components/schemas/WaitpointTokenObject"
+          description: An array of waitpoint token objects.
+        pagination:
+          type: object
+          properties:
+            next:
+              type: string
+              nullable: true
+              description: >-
+                Cursor for the next page. Pass as `page[after]` in the next request.
+              example: waitpoint_abc123
+            previous:
+              type: string
+              nullable: true
+              description: >-
+                Cursor for the previous page. Pass as `page[before]` in the next request.
+              example: waitpoint_xyz789
     WaitpointTokenObject:
       type: object
       required:
