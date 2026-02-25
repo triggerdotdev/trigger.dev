@@ -6,7 +6,18 @@ import { getImpersonationId } from "./impersonation.server";
 export async function getUserId(request: Request): Promise<string | undefined> {
   const impersonatedUserId = await getImpersonationId(request);
 
-  if (impersonatedUserId) return impersonatedUserId;
+  if (impersonatedUserId) {
+    // Verify the real user (from the session cookie) is still an admin
+    const authUser = await authenticator.isAuthenticated(request);
+    if (authUser?.userId) {
+      const realUser = await getUserById(authUser.userId);
+      if (realUser?.admin) {
+        return impersonatedUserId;
+      }
+    }
+    // Admin revoked or session invalid — fall through to return the real user's ID
+    return authUser?.userId;
+  }
 
   let authUser = await authenticator.isAuthenticated(request);
   return authUser?.userId;
@@ -54,7 +65,7 @@ export async function requireUser(request: Request) {
       dashboardPreferences: user.dashboardPreferences,
       confirmedBasicDetails: user.confirmedBasicDetails,
       mfaEnabledAt: user.mfaEnabledAt,
-      isImpersonating: !!impersonationId,
+      isImpersonating: !!impersonationId && impersonationId === userId,
     };
   }
 

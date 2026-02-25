@@ -173,6 +173,7 @@ export function MetricWidget({
   const [response, setResponse] = useState<MetricWidgetActionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const isDirtyRef = useRef(false);
 
   // Track the latest props so the submit callback always uses fresh values
   // without needing to be recreated (which would cause useInterval to re-register listeners).
@@ -180,8 +181,11 @@ export function MetricWidget({
   propsRef.current = props;
 
   const submit = useCallback(() => {
-    // Skip fetching if the widget is not visible on screen
-    if (!isVisibleRef.current) return;
+    if (!isVisibleRef.current) {
+      isDirtyRef.current = true;
+      return;
+    }
+    isDirtyRef.current = false;
 
     // Abort any in-flight request for this widget
     abortControllerRef.current?.abort();
@@ -225,7 +229,7 @@ export function MetricWidget({
   // When a widget scrolls into view and has no data yet, trigger a load.
   const { ref: visibilityRef, isVisibleRef } = useElementVisibility({
     onVisibilityChange: (visible) => {
-      if (visible && !response) {
+      if (visible && (!response || isDirtyRef.current)) {
         submit();
       }
     },

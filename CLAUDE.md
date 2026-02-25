@@ -67,7 +67,7 @@ containerTest("should use both", async ({ prisma, redisOptions }) => {
 });
 ```
 
-### Changesets
+### Changesets and Server Changes
 
 When modifying any public package (`packages/*` or `integrations/*`), add a changeset:
 
@@ -78,6 +78,25 @@ pnpm run changeset:add
 - Default to **patch** for bug fixes and minor changes
 - Confirm with maintainers before selecting **minor** (new features)
 - **Never** select major (breaking changes) without explicit approval
+
+When modifying only server components (`apps/webapp/`, `apps/supervisor/`, etc.) with no package changes, add a `.server-changes/` file instead:
+
+```bash
+# Create a file with a descriptive name
+cat > .server-changes/fix-batch-queue-stalls.md << 'EOF'
+---
+area: webapp
+type: fix
+---
+
+Speed up batch queue processing by removing stalls and fixing retry race
+EOF
+```
+
+- **area**: `webapp` | `supervisor` | `coordinator` | `kubernetes-provider` | `docker-provider`
+- **type**: `feature` | `fix` | `improvement` | `breaking`
+- **Mixed PRs** (both packages and server): just the changeset is enough, no `.server-changes/` file needed
+- See `.server-changes/README.md` for full documentation
 
 ## Architecture Overview
 
