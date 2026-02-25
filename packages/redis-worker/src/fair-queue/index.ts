@@ -925,8 +925,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     if (this.concurrencyManager) {
       const availableCapacity = await this.concurrencyManager.getAvailableCapacity(descriptor);
       if (availableCapacity === 0) {
-        // Queue at max concurrency, back off to avoid repeated attempts
-        this.#incrementCooloff(queueId);
+        // Queue at max concurrency - don't increment cooloff here.
+        // The outer loop already handles this case (concurrency blocked)
+        // and explicitly avoids cooloff for it. Cooloff here causes
+        // spurious 5s stalls when capacity races between the tenant
+        // pre-check and this per-queue check.
         return 0;
       }
       maxClaimCount = Math.min(maxClaimCount, availableCapacity);
@@ -1228,18 +1231,17 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           attempt: storedMessage.attempt + 1,
         };
 
-        // Release with delay (and ensure queue is in master queue)
+        // Release with delay, passing the updated message data so the Lua script
+        // atomically writes the incremented attempt count when re-queuing.
         await this.visibilityManager.release(
           storedMessage.id,
           queueId,
           queueKey,
           queueItemsKey,
           masterQueueKey,
-          Date.now() + nextDelay
+          Date.now() + nextDelay,
+          JSON.stringify(updatedMessage)
         );
-
-        // Update message in items hash with new attempt count
-        await this.redis.hset(queueItemsKey, storedMessage.id, JSON.stringify(updatedMessage));
 
         // Release concurrency
         if (this.concurrencyManager) {
