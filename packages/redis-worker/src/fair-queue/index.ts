@@ -117,7 +117,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
   // Two-level tenant dispatch
   private tenantDispatch: TenantDispatch;
-  private legacyDrainComplete: boolean[];
 
   constructor(private options: FairQueueOptions<TPayloadSchema>) {
     this.redis = createRedisClient(options.redis);
@@ -193,8 +192,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       shardCount: this.shardCount,
     });
 
-    // Track per-shard drain status of legacy master queue
-    this.legacyDrainComplete = new Array(this.shardCount).fill(false);
 
     if (options.concurrencyGroups && options.concurrencyGroups.length > 0) {
       this.concurrencyManager = new ConcurrencyManager({
@@ -256,9 +253,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       },
       getDLQLength: async (tenantId: string) => {
         return await this.getDeadLetterQueueLength(tenantId);
-      },
-      isLegacyDrainComplete: (shardId: number) => {
-        return this.legacyDrainComplete[shardId] ?? false;
       },
       shardCount: this.shardCount,
       observedTenants: options?.observedTenants,
@@ -835,16 +829,10 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     hadWork = await this.#processDispatchShard(loopId, shardId, parentSpan);
 
     // Drain path: legacy master queue (simple scheduling, no DRR)
-    if (!this.legacyDrainComplete[shardId]) {
+    // Check ZCARD first (O(1)) to skip the drain path when empty
+    const legacyCount = await this.masterQueue.getShardQueueCount(shardId);
+    if (legacyCount > 0) {
       const drainHadWork = await this.#drainLegacyMasterQueueShard(loopId, shardId, parentSpan);
-      if (!drainHadWork) {
-        // Check if the old master queue shard is completely empty
-        const count = await this.masterQueue.getShardQueueCount(shardId);
-        if (count === 0) {
-          this.legacyDrainComplete[shardId] = true;
-          this.logger.info("Legacy master queue shard fully drained", { shardId });
-        }
-      }
       hadWork = hadWork || drainHadWork;
     }
 

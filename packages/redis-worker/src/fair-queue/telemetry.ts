@@ -59,7 +59,6 @@ export interface FairQueueMetrics {
   dispatchLength: ObservableGauge;
   inflightCount: ObservableGauge;
   dlqLength: ObservableGauge;
-  legacyDrainComplete: ObservableGauge;
 }
 
 /**
@@ -255,7 +254,6 @@ export class FairQueueTelemetry {
     getDispatchLength?: (shardId: number) => Promise<number>;
     getInflightCount?: (shardId: number) => Promise<number>;
     getDLQLength?: (tenantId: string) => Promise<number>;
-    isLegacyDrainComplete?: (shardId: number) => boolean;
     shardCount?: number;
     observedQueues?: string[];
     observedTenants?: string[];
@@ -337,19 +335,6 @@ export class FairQueueTelemetry {
       });
     }
 
-    // Legacy drain complete gauge (1 = drained, 0 = still draining)
-    if (callbacks.isLegacyDrainComplete && callbacks.shardCount) {
-      const isLegacyDrainComplete = callbacks.isLegacyDrainComplete;
-      const shardCount = callbacks.shardCount;
-
-      this.metrics.legacyDrainComplete.addCallback((observableResult) => {
-        for (let shardId = 0; shardId < shardCount; shardId++) {
-          observableResult.observe(isLegacyDrainComplete(shardId) ? 1 : 0, {
-            [FairQueueAttributes.SHARD_ID]: shardId.toString(),
-          });
-        }
-      });
-    }
   }
 
   // ============================================================================
@@ -462,13 +447,6 @@ export class FairQueueTelemetry {
         description: "Number of messages in dead letter queue",
         unit: "messages",
       }),
-      legacyDrainComplete: this.meter.createObservableGauge(
-        `${this.name}.legacy_drain.complete`,
-        {
-          description: "Whether legacy master queue shard drain is complete (1=done, 0=draining)",
-          unit: "boolean",
-        }
-      ),
     };
   }
 }
