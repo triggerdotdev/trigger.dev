@@ -2700,7 +2700,6 @@ paths:
             console.log(token.id);  // e.g. "waitpoint_abc123"
             console.log(token.url); // HTTP callback URL to complete externally
 
-  "/api/v1/waitpoints/tokens":
     get:
       operationId: list_waitpoint_tokens_v1
       summary: List waitpoint tokens
