@@ -5,7 +5,7 @@ description: "Query allows you to write custom queries against your data using T
 
 ### Available tables
 
-- `runs`: contains all task run data including status, timing, costs, and metadata
+- `runs`: contains all task run data including status, timing, costs, and task output. Run metadata (key-value set in your task) is not available on the Query page.
 - `metrics`: contains metrics data for your runs including CPU, memory, and your custom metrics
 
 ### `metrics` table columns
@@ -388,16 +388,19 @@ WHERE notEmpty(tags)
 
 ### JSON functions
 
-Extract data from JSON columns (like runs.output, runs.error, metrics.attributes, etc.):
+The `output` column is already JSON, so use dot notation to read or filter on it. You don't need `JSONExtract*` for `output` (those are for string columns).
 
 ```sql
 SELECT
   run_id,
   output.message AS output_message,
   output.count AS count,
-  output.error != NULL AS has_error
+  output.externalId AS external_id
 FROM runs
-WHERE output IS NOT NULL
+WHERE task_identifier = 'my-task'
+  AND output.externalId = 'something'
+ORDER BY triggered_at DESC
+LIMIT 100
 ```
 
 ## Query scopes
