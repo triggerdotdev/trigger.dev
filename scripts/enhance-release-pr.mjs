@@ -18,6 +18,7 @@
  */
 
 import { promises as fs } from "fs";
+import { execFile } from "child_process";
 import { join } from "path";
 
 const version = process.argv[2];
@@ -83,6 +84,68 @@ function parsePrBody(body) {
   return entries;
 }
 
+// --- Git + GitHub helpers for finding PR numbers ---
+
+const REPO = "triggerdotdev/trigger.dev";
+
+function gitExec(args) {
+  return new Promise((resolve, reject) => {
+    execFile("git", args, { cwd: ROOT_DIR, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve(stdout.trim());
+    });
+  });
+}
+
+async function getCommitForFile(filePath) {
+  try {
+    // Find the commit that added this file
+    const sha = await gitExec([
+      "log",
+      "--diff-filter=A",
+      "--format=%H",
+      "--",
+      filePath,
+    ]);
+    return sha.split("\n")[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getPrForCommit(commitSha) {
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  if (!token || !commitSha) return null;
+
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${REPO}/commits/${commitSha}/pulls`,
+      {
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+      }
+    );
+    if (!res.ok) return null;
+
+    const pulls = await res.json();
+    if (!pulls.length) return null;
+
+    // Prefer merged PRs, earliest merge first (same logic as @changesets/get-github-info)
+    const sorted = pulls.sort((a, b) => {
+      if (!a.merged_at && !b.merged_at) return 0;
+      if (!a.merged_at) return 1;
+      if (!b.merged_at) return -1;
+      return new Date(a.merged_at) - new Date(b.merged_at);
+    });
+
+    return sorted[0].number;
+  } catch {
+    return null;
+  }
+}
+
 // --- Parse .server-changes/ files ---
 
 async function parseServerChanges() {
@@ -96,15 +159,39 @@ async function parseServerChanges() {
     return entries;
   }
 
+  // Collect file info and look up commits in parallel
+  const fileData = [];
   for (const file of files) {
     if (!file.endsWith(".md") || file === "README.md") continue;
 
+    const filePath = join(".server-changes", file);
     const content = await fs.readFile(join(dir, file), "utf-8");
     const parsed = parseFrontmatter(content);
     if (!parsed.body.trim()) continue;
 
+    fileData.push({ filePath, parsed });
+  }
+
+  // Look up commits for all files in parallel
+  const commits = await Promise.all(
+    fileData.map((f) => getCommitForFile(f.filePath))
+  );
+
+  // Look up PRs for all commits in parallel
+  const prNumbers = await Promise.all(commits.map((sha) => getPrForCommit(sha)));
+
+  for (let i = 0; i < fileData.length; i++) {
+    const { parsed } = fileData[i];
+    let text = parsed.body.trim();
+    const pr = prNumbers[i];
+
+    // Append PR link if we found one and it's not already in the text
+    if (pr && !text.includes(`#${pr}`)) {
+      text += ` ([#${pr}](https://github.com/${REPO}/pull/${pr}))`;
+    }
+
     entries.push({
-      text: parsed.body.trim(),
+      text,
       type: parsed.frontmatter.type || "improvement",
       area: parsed.frontmatter.area || "webapp",
     });
