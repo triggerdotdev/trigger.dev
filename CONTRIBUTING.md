@@ -267,6 +267,39 @@ You will be prompted to select which packages to include in the changeset. Only 
 
 Most of the time the changes you'll make are likely to be categorized as patch releases. If you feel like there is the need for a minor or major release of the package based on the changes being made, add the changeset as such and it will be discussed during PR review.
 
+## Adding server changes
+
+Changesets only track published npm packages. If your PR only changes server components (`apps/webapp/`, `apps/supervisor/`, `apps/coordinator/`, etc.) with no package changes, add a `.server-changes/` file so the change appears in release notes.
+
+Create a markdown file with a descriptive name:
+
+```sh
+cat > .server-changes/fix-batch-queue-stalls.md << 'EOF'
+---
+area: webapp
+type: fix
+---
+
+Speed up batch queue processing by removing stalls and fixing retry race
+EOF
+```
+
+**Fields:**
+- `area` (required): `webapp` | `supervisor` | `coordinator` | `kubernetes-provider` | `docker-provider`
+- `type` (required): `feature` | `fix` | `improvement` | `breaking`
+
+The body text (below the frontmatter) is a one-line description of the change. Keep it concise — it will appear in release notes.
+
+**When to add which:**
+
+| PR changes | What to add |
+|---|---|
+| Only packages (`packages/`) | Changeset |
+| Only server (`apps/`) | `.server-changes/` file |
+| Both packages and server | Just the changeset |
+
+See `.server-changes/README.md` for more details.
+
 ## Troubleshooting
 
 ### EADDRINUSE: address already in use :::3030
