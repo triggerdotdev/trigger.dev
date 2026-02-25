@@ -308,7 +308,8 @@
               "management/waitpoints/create",
               "management/waitpoints/list",
               "management/waitpoints/retrieve",
-              "management/waitpoints/complete"
+              "management/waitpoints/complete",
+              "management/waitpoints/complete-callback"
             ]
           },
           {
