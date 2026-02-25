@@ -88,6 +88,17 @@ type FoundAlert = Prisma.Result<
           };
         };
       };
+      alertV2Definition: {
+        select: {
+          id: true;
+          name: true;
+          description: true;
+          query: true;
+          conditions: true;
+          queryPeriod: true;
+          state: true;
+        };
+      };
     };
   },
   "findUniqueOrThrow"
@@ -137,6 +148,17 @@ export class DeliverAlertService extends BaseService {
                 branchName: true,
               },
             },
+          },
+        },
+        alertV2Definition: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            query: true,
+            conditions: true,
+            queryPeriod: true,
+            state: true,
           },
         },
       },
@@ -317,6 +339,17 @@ export class DeliverAlertService extends BaseService {
           });
         }
 
+        break;
+      }
+      case "ALERT_V2_FIRING":
+      case "ALERT_V2_RESOLVED": {
+        // Email delivery for Alerts 2.0 is not yet implemented.
+        // These notifications are better served via Slack or Webhook channels.
+        logger.info("[DeliverAlert] Email delivery for Alert v2 not yet implemented", {
+          alertId: alert.id,
+          type: alert.type,
+          alertV2DefinitionId: alert.alertV2Definition?.id,
+        });
         break;
       }
       default: {
@@ -657,6 +690,46 @@ export class DeliverAlertService extends BaseService {
 
         break;
       }
+      case "ALERT_V2_FIRING":
+      case "ALERT_V2_RESOLVED": {
+        if (alert.alertV2Definition) {
+          const payload = {
+            id: alert.id,
+            created: alert.createdAt,
+            webhookVersion: "v1",
+            type:
+              alert.type === "ALERT_V2_FIRING" ? "alert.v2.firing" : "alert.v2.resolved",
+            object: {
+              alert: {
+                id: alert.alertV2Definition.id,
+                name: alert.alertV2Definition.name,
+                description: alert.alertV2Definition.description ?? undefined,
+                query: alert.alertV2Definition.query,
+                queryPeriod: alert.alertV2Definition.queryPeriod,
+                conditions: alert.alertV2Definition.conditions,
+                state: alert.type === "ALERT_V2_FIRING" ? "firing" : "ok",
+              },
+              project: {
+                id: alert.project.id,
+                ref: alert.project.externalRef,
+                slug: alert.project.slug,
+                name: alert.project.name,
+              },
+              organization: {
+                id: alert.project.organizationId,
+                slug: alert.project.organization.slug,
+                name: alert.project.organization.title,
+              },
+            },
+          };
+
+          await this.#deliverWebhook(payload, webhookProperties.data);
+        } else {
+          logger.error("[DeliverAlert] Alert v2 definition not found", { alert });
+        }
+
+        break;
+      }
       default: {
         assertNever(alert.type);
       }
@@ -912,6 +985,53 @@ export class DeliverAlertService extends BaseService {
 
           return;
         }
+      }
+      case "ALERT_V2_FIRING":
+      case "ALERT_V2_RESOLVED": {
+        if (alert.alertV2Definition) {
+          const isFiring = alert.type === "ALERT_V2_FIRING";
+          const stateEmoji = isFiring ? "🔴" : "🟢";
+          const stateText = isFiring ? "FIRING" : "RESOLVED";
+          const alertName = alert.alertV2Definition.name;
+
+          await this.#postSlackMessage(integration, {
+            channel: slackProperties.data.channelId,
+            unfurl_links: false,
+            unfurl_media: false,
+            text: `${stateEmoji} Alert *${alertName}* is ${stateText}`,
+            blocks: [
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: `${stateEmoji} *Alert ${stateText}: ${alertName}*`,
+                },
+              },
+              ...(alert.alertV2Definition.description
+                ? [
+                    {
+                      type: "section" as const,
+                      text: {
+                        type: "mrkdwn",
+                        text: alert.alertV2Definition.description,
+                      },
+                    },
+                  ]
+                : []),
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: `*Query period:* ${alert.alertV2Definition.queryPeriod}\n*Organization:* ${alert.project.organization.title}\n*Project:* ${alert.project.name}`,
+                },
+              },
+            ],
+          });
+        } else {
+          logger.error("[DeliverAlert] Alert v2 definition not found", { alert });
+        }
+
+        break;
       }
       default: {
         assertNever(alert.type);

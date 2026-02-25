@@ -27,6 +27,7 @@ import {
   getLogsSearchListQueryBuilder,
 } from "./taskEvents.js";
 import { insertMetrics } from "./metrics.js";
+import { insertAlertEvaluations } from "./alertEvaluations.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
@@ -34,6 +35,7 @@ import type { Agent as HttpsAgent } from "https";
 export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
 export type * from "./metrics.js";
+export type * from "./alertEvaluations.js";
 export type * from "./client/queryBuilder.js";
 
 // Re-export column constants, indices, and type-safe accessors
@@ -211,6 +213,12 @@ export class ClickHouse {
   get metrics() {
     return {
       insert: insertMetrics(this.writer),
+    };
+  }
+
+  get alertEvaluations() {
+    return {
+      insert: insertAlertEvaluations(this.writer),
     };
   }
 

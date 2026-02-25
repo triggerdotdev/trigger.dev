@@ -7,6 +7,8 @@ import { singleton } from "~/utils/singleton";
 import { DeliverAlertService } from "./services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "./services/alerts/performDeploymentAlerts.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
+import { EvaluateAlertDefinitionService } from "./services/alerts/evaluateAlertDefinition.server";
+import { ScheduleAlertEvaluationsService } from "./services/alerts/scheduleAlertEvaluations.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -55,6 +57,26 @@ function initializeWorker() {
         },
         logErrors: false,
       },
+      "v3.scheduleAlertEvaluations": {
+        schema: z.object({}),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 1,
+        },
+        logErrors: false,
+        // Run every minute to pick up definitions that are due for evaluation
+        cron: "* * * * *",
+      },
+      "v3.evaluateAlertDefinition": {
+        schema: z.object({
+          alertDefinitionId: z.string(),
+        }),
+        visibilityTimeoutMs: 120_000,
+        retry: {
+          maxAttempts: 2,
+        },
+        logErrors: false,
+      },
     },
     concurrency: {
       workers: env.ALERTS_WORKER_CONCURRENCY_WORKERS,
@@ -79,6 +101,14 @@ function initializeWorker() {
       "v3.performTaskRunAlerts": async ({ payload }) => {
         const service = new PerformTaskRunAlertsService();
         await service.call(payload.runId);
+      },
+      "v3.scheduleAlertEvaluations": async () => {
+        const service = new ScheduleAlertEvaluationsService();
+        await service.call();
+      },
+      "v3.evaluateAlertDefinition": async ({ payload }) => {
+        const service = new EvaluateAlertDefinitionService();
+        await service.call(payload.alertDefinitionId);
       },
     },
   });
