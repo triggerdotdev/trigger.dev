@@ -2700,6 +2700,49 @@ paths:
             console.log(token.id);  // e.g. "waitpoint_abc123"
             console.log(token.url); // HTTP callback URL to complete externally
 
+  "/api/v1/waitpoints/tokens/{waitpointId}":
+    get:
+      operationId: retrieve_waitpoint_token_v1
+      summary: Retrieve a waitpoint token
+      description: >-
+        Retrieves a waitpoint token by its ID, including its current status and output
+        if it has been completed.
+      parameters:
+        - in: path
+          name: waitpointId
+          required: true
+          schema:
+            type: string
+          description: The ID of the waitpoint token.
+          example: waitpoint_abc123
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/WaitpointTokenObject"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Waitpoint token not found
+      tags:
+        - waitpoints
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { wait } from "@trigger.dev/sdk";
+
+            const token = await wait.retrieveToken("waitpoint_abc123");
+
+            console.log(token.status); // "WAITING" | "COMPLETED" | "TIMED_OUT"
+
+            if (token.status === "COMPLETED") {
+              console.log(token.output);
+            }
+
 components:
   parameters:
     taskIdentifier:
@@ -4260,6 +4303,74 @@ components:
             results:
               type: string
               description: CSV-formatted results
+    WaitpointTokenObject:
+      type: object
+      required:
+        - id
+        - url
+        - status
+        - tags
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: The unique ID of the waitpoint token.
+          example: waitpoint_abc123
+        url:
+          type: string
+          description: >-
+            An HTTP callback URL. A POST request to this URL (with an optional JSON body)
+            will complete the waitpoint without needing an API key.
+          example: https://api.trigger.dev/api/v1/waitpoints/tokens/waitpoint_abc123/callback/abc123hash
+        status:
+          type: string
+          enum:
+            - WAITING
+            - COMPLETED
+            - TIMED_OUT
+          description: The current status of the waitpoint token.
+        idempotencyKey:
+          type: string
+          nullable: true
+          description: The idempotency key used when creating the token, if any.
+        idempotencyKeyExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the idempotency key expires.
+        timeoutAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the token will time out, if a timeout was set.
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the token was completed, if it has been completed.
+        output:
+          type: string
+          nullable: true
+          description: >-
+            The serialized output data passed when completing the token.
+            Only present when `status` is `COMPLETED`.
+        outputType:
+          type: string
+          nullable: true
+          description: The content type of the output (e.g. `"application/json"`).
+        outputIsError:
+          type: boolean
+          nullable: true
+          description: Whether the output represents an error (e.g. a timeout).
+        tags:
+          type: array
+          items:
+            type: string
+          description: Tags attached to the waitpoint.
+        createdAt:
+          type: string
+          format: date-time
+          description: When the waitpoint token was created.
     CreateWaitpointTokenRequest:
       type: object
       properties:
