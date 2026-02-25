@@ -388,7 +388,7 @@ WHERE notEmpty(tags)
 
 ### JSON functions
 
-The `output` column is already JSON, so use dot notation to read or filter on it. You don't need `JSONExtract*` for `output` (those are for string columns).
+The `output`, `error`, and `metrics.attributes` columns are already JSON, so use dot notation to read or filter on them. You don't need `JSONExtract*` for these (those are for string columns).
 
 ```sql
 SELECT
