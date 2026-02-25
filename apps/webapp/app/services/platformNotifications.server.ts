@@ -5,14 +5,35 @@ import { type PlatformNotificationScope, type PlatformNotificationSurface } from
 
 // --- Payload schema (spec v1) ---
 
+const DiscoverySchema = z.object({
+  filePatterns: z.array(z.string().min(1)).min(1),
+  contentPattern: z
+    .string()
+    .optional()
+    .refine(
+      (val) => {
+        if (!val) return true;
+        try {
+          new RegExp(val);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { message: "contentPattern must be a valid regular expression" }
+    ),
+  matchBehavior: z.enum(["show-if-found", "show-if-not-found"]),
+});
+
 const CardDataV1Schema = z.object({
-  type: z.literal("card"),
+  type: z.enum(["card", "info", "warn", "error", "success"]),
   title: z.string(),
   description: z.string(),
   image: z.string().url().optional(),
   actionLabel: z.string().optional(),
   actionUrl: z.string().url().optional(),
   dismissOnAction: z.boolean().optional(),
+  discovery: DiscoverySchema.optional(),
 });
 
 const PayloadV1Schema = z.object({
