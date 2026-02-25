@@ -42,15 +42,22 @@ function parsePrBody(body) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("- ") && !trimmed.startsWith("* ")) continue;
 
+    let text = trimmed.replace(/^[-*]\s+/, "").trim();
+    if (!text) continue;
+
+    // Skip dependency-only updates (e.g. "Updated dependencies:" or "@trigger.dev/core@4.4.2")
+    if (text.startsWith("Updated dependencies")) continue;
+    if (text.startsWith("`@trigger.dev/")) continue;
+    if (text.startsWith("@trigger.dev/")) continue;
+    if (text.startsWith("`trigger.dev@")) continue;
+    if (text.startsWith("trigger.dev@")) continue;
+
     const prMatch = trimmed.match(prPattern);
     if (prMatch) {
       const prNumber = prMatch[1];
       if (seen.has(prNumber)) continue;
       seen.add(prNumber);
     }
-
-    let text = trimmed.replace(/^[-*]\s+/, "").trim();
-    if (!text) continue;
 
     // Categorize
     const lower = text.toLowerCase();
@@ -214,12 +221,22 @@ function formatPrBody({ version, packageEntries, serverEntries, rawBody }) {
 
   // Raw changeset output in collapsed section
   if (rawBody) {
-    lines.push("<details>");
-    lines.push("<summary>Raw changeset output</summary>");
-    lines.push("");
-    lines.push(rawBody);
-    lines.push("");
-    lines.push("</details>");
+    // Strip the Changesets action boilerplate from the raw body
+    const cleanedBody = rawBody
+      .replace(
+        /This PR was opened by the \[Changesets release\].*?If you're not ready to do a release yet.*?\n/gs,
+        ""
+      )
+      .trim();
+
+    if (cleanedBody) {
+      lines.push("<details>");
+      lines.push("<summary>Raw changeset output</summary>");
+      lines.push("");
+      lines.push(cleanedBody);
+      lines.push("");
+      lines.push("</details>");
+    }
   }
 
   return lines.join("\n");
