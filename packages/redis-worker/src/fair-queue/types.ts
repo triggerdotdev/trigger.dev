@@ -181,6 +181,14 @@ export interface SchedulerContext {
 }
 
 /**
+ * Extended context for two-level dispatch scheduling.
+ */
+export interface DispatchSchedulerContext extends SchedulerContext {
+  /** Get queues for a specific tenant from the per-tenant queue index (Level 2) */
+  getQueuesForTenant(tenantId: string): Promise<QueueWithScore[]>;
+}
+
+/**
  * Pluggable scheduler interface for fair queue selection.
  */
 export interface FairScheduler {
@@ -197,6 +205,18 @@ export interface FairScheduler {
     masterQueueShard: string,
     consumerId: string,
     context: SchedulerContext
+  ): Promise<TenantQueues[]>;
+
+  /**
+   * Select queues using the two-level tenant dispatch index.
+   * Level 1: reads tenantIds from dispatch shard.
+   * Level 2: reads queueIds from per-tenant index.
+   * Optional - falls back to selectQueues with flat queue list if not implemented.
+   */
+  selectQueuesFromDispatch?(
+    dispatchShardKey: string,
+    consumerId: string,
+    context: DispatchSchedulerContext
   ): Promise<TenantQueues[]>;
 
   /**
@@ -291,6 +311,12 @@ export interface FairQueueKeyProducer {
   deadLetterQueueKey(tenantId: string): string;
   /** Get the dead letter queue data hash key for a tenant */
   deadLetterQueueDataKey(tenantId: string): string;
+
+  // Tenant dispatch keys (two-level index)
+  /** Get the dispatch index key for a shard (Level 1: tenantIds with capacity) */
+  dispatchKey(shardId: number): string;
+  /** Get the per-tenant queue index key (Level 2: queueIds for a tenant) */
+  tenantQueueIndexKey(tenantId: string): string;
 
   // Extraction methods
   /** Extract tenant ID from a queue ID */

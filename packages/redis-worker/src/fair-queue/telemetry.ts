@@ -56,8 +56,10 @@ export interface FairQueueMetrics {
   // Observable gauges (registered with callbacks)
   queueLength: ObservableGauge;
   masterQueueLength: ObservableGauge;
+  dispatchLength: ObservableGauge;
   inflightCount: ObservableGauge;
   dlqLength: ObservableGauge;
+  legacyDrainComplete: ObservableGauge;
 }
 
 /**
@@ -250,8 +252,10 @@ export class FairQueueTelemetry {
   registerGaugeCallbacks(callbacks: {
     getQueueLength?: (queueId: string) => Promise<number>;
     getMasterQueueLength?: (shardId: number) => Promise<number>;
+    getDispatchLength?: (shardId: number) => Promise<number>;
     getInflightCount?: (shardId: number) => Promise<number>;
     getDLQLength?: (tenantId: string) => Promise<number>;
+    isLegacyDrainComplete?: (shardId: number) => boolean;
     shardCount?: number;
     observedQueues?: string[];
     observedTenants?: string[];
@@ -273,7 +277,7 @@ export class FairQueueTelemetry {
       });
     }
 
-    // Master queue length gauge
+    // Legacy master queue length gauge (draining, should trend to 0)
     if (callbacks.getMasterQueueLength && callbacks.shardCount) {
       const getMasterQueueLength = callbacks.getMasterQueueLength;
       const shardCount = callbacks.shardCount;
@@ -281,6 +285,21 @@ export class FairQueueTelemetry {
       this.metrics.masterQueueLength.addCallback(async (observableResult) => {
         for (let shardId = 0; shardId < shardCount; shardId++) {
           const length = await getMasterQueueLength(shardId);
+          observableResult.observe(length, {
+            [FairQueueAttributes.SHARD_ID]: shardId.toString(),
+          });
+        }
+      });
+    }
+
+    // Dispatch index length gauge (new two-level dispatch, tenant count per shard)
+    if (callbacks.getDispatchLength && callbacks.shardCount) {
+      const getDispatchLength = callbacks.getDispatchLength;
+      const shardCount = callbacks.shardCount;
+
+      this.metrics.dispatchLength.addCallback(async (observableResult) => {
+        for (let shardId = 0; shardId < shardCount; shardId++) {
+          const length = await getDispatchLength(shardId);
           observableResult.observe(length, {
             [FairQueueAttributes.SHARD_ID]: shardId.toString(),
           });
@@ -313,6 +332,20 @@ export class FairQueueTelemetry {
           const length = await getDLQLength(tenantId);
           observableResult.observe(length, {
             [FairQueueAttributes.TENANT_ID]: tenantId,
+          });
+        }
+      });
+    }
+
+    // Legacy drain complete gauge (1 = drained, 0 = still draining)
+    if (callbacks.isLegacyDrainComplete && callbacks.shardCount) {
+      const isLegacyDrainComplete = callbacks.isLegacyDrainComplete;
+      const shardCount = callbacks.shardCount;
+
+      this.metrics.legacyDrainComplete.addCallback((observableResult) => {
+        for (let shardId = 0; shardId < shardCount; shardId++) {
+          observableResult.observe(isLegacyDrainComplete(shardId) ? 1 : 0, {
+            [FairQueueAttributes.SHARD_ID]: shardId.toString(),
           });
         }
       });
@@ -414,8 +447,12 @@ export class FairQueueTelemetry {
         unit: "messages",
       }),
       masterQueueLength: this.meter.createObservableGauge(`${this.name}.master_queue.length`, {
-        description: "Number of queues in master queue shard",
+        description: "Number of queues in legacy master queue shard (draining)",
         unit: "queues",
+      }),
+      dispatchLength: this.meter.createObservableGauge(`${this.name}.dispatch.length`, {
+        description: "Number of tenants in dispatch index shard",
+        unit: "tenants",
       }),
       inflightCount: this.meter.createObservableGauge(`${this.name}.inflight.count`, {
         description: "Number of messages currently being processed",
@@ -425,6 +462,13 @@ export class FairQueueTelemetry {
         description: "Number of messages in dead letter queue",
         unit: "messages",
       }),
+      legacyDrainComplete: this.meter.createObservableGauge(
+        `${this.name}.legacy_drain.complete`,
+        {
+          description: "Whether legacy master queue shard drain is complete (1=done, 0=draining)",
+          unit: "boolean",
+        }
+      ),
     };
   }
 }
