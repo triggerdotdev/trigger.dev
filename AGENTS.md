@@ -66,3 +66,34 @@ Refer to `ai/references/tests.md` for details on writing tests. Tests should avo
   ```
 - `references/README.md` explains how to create new reference projects for manual testing.
 
+## Cursor Cloud specific instructions
+
+### Docker services
+
+Docker must be started before any service or test that needs PostgreSQL, Redis, ElectricSQL, or ClickHouse. Run `pnpm run docker` from the repo root. The Docker daemon itself requires `sudo dockerd` (run as a background process) and `sudo chmod 666 /var/run/docker.sock` in the Cloud VM environment. Docker-in-Docker uses `fuse-overlayfs` storage driver and `iptables-legacy`.
+
+### Startup sequence (after dependency install)
+
+1. `pnpm run docker` — starts PostgreSQL (5432), Redis (6379), Electric (3060), ClickHouse (8123).
+2. `pnpm run db:migrate` — applies Prisma migrations.
+3. `pnpm run build --filter webapp && pnpm run build --filter trigger.dev && pnpm run build --filter @trigger.dev/sdk` — builds essential packages.
+4. `pnpm run dev --filter webapp` — starts the webapp on port 3030.
+
+### Seeding
+
+Run `pnpm run db:seed` from `apps/webapp` directly (not the root turbo command) to avoid build failures in optional reference projects. The seed creates a local user (`local@trigger.dev`) and reference projects including `hello-world`. This can take several minutes with no visible output due to buffering.
+
+### Login in dev mode
+
+Navigate to `http://localhost:3030`, click "Continue with Email", enter `local@trigger.dev`. The magic link auto-logs you in during local development (no real email required).
+
+### Tests
+
+- `@trigger.dev/core` tests are fast unit tests (run via `cd packages/core && pnpm run test --run`).
+- `apps/webapp` tests include testcontainer-based integration tests that start PostgreSQL/Redis containers and can take 10+ minutes. For quick verification, run specific test files rather than the full suite.
+- Always pass `--run` to vitest to avoid watch mode.
+
+### Lint
+
+Run `pnpm run lint --filter webapp` to lint the webapp. Warnings are expected (572 as of this writing); zero errors is the target.
+
