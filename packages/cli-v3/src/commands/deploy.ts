@@ -197,11 +197,18 @@ export function configureDeployCommand(program: Command) {
       )
       // Local build options
       .addOption(
-        new CommandOption("--force-local-build", "Deprecated alias for --local-build").implies({
-          localBuild: true,
-        })
+        new CommandOption("--force-local-build", "Deprecated alias for --local-build")
+          .implies({
+            localBuild: true,
+          })
+          .conflicts("nativeBuildServer")
+          .hideHelp()
       )
-      .addOption(new CommandOption("--local-build", "Build the deployment image locally"))
+      .addOption(
+        new CommandOption("--local-build", "Build the deployment image locally").conflicts(
+          "nativeBuildServer"
+        )
+      )
       .addOption(new CommandOption("--push", "Push the image after local builds").hideHelp())
       .addOption(
         new CommandOption("--no-push", "Do not push the image after local builds").hideHelp()
@@ -420,14 +427,19 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       gitMeta,
       type: features.run_engine_v2 ? "MANAGED" : "V1",
       runtime: buildManifest.runtime,
+      isLocalBuild: options.localBuild,
       isNativeBuild: false,
       triggeredVia: getTriggeredVia(),
     },
     envVars.TRIGGER_EXISTING_DEPLOYMENT_ID
   );
+
+  // When `externalBuildData` is not present the deployment implicitly goes into the local build path
+  // which is used in self-hosted setups. There are a few subtle differences between local builds for the cloud
+  // and local builds for self-hosted setups. We need to make the separation of the two paths clearer to avoid confusion.
   const isLocalBuild = options.localBuild || !deployment.externalBuildData;
-  // Would be best to actually store this separately in the deployment object. This is an okay proxy for now.
-  const remoteBuildExplicitlySkipped = options.localBuild && !!deployment.externalBuildData;
+  const authenticateToTriggerRegistry = options.localBuild;
+  const skipServerSideRegistryPush = options.localBuild;
 
   // Fail fast if we know local builds will fail
   if (isLocalBuild) {
@@ -559,7 +571,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     network: options.network,
     builder: options.builder,
     push: options.push,
-    authenticateToRegistry: remoteBuildExplicitlySkipped,
+    authenticateToRegistry: authenticateToTriggerRegistry,
   });
 
   logger.debug("Build result", buildResult);
@@ -657,7 +669,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     {
       imageDigest: buildResult.digest,
       skipPromotion: options.skipPromotion,
-      skipPushToRegistry: remoteBuildExplicitlySkipped,
+      skipPushToRegistry: skipServerSideRegistryPush,
     },
     (logMessage) => {
       if (options.plain || isCI) {

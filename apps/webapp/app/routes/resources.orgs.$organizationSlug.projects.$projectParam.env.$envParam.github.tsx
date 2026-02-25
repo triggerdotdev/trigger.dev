@@ -43,7 +43,7 @@ import { requireUserId } from "~/services/session.server";
 import {
   githubAppInstallPath,
   EnvironmentParamSchema,
-  v3ProjectSettingsPath,
+  v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
 import { cn } from "~/utils/cn";
 import { type BranchTrackingConfig } from "~/v3/github";
@@ -330,12 +330,15 @@ export function ConnectGitHubRepoModal({
   projectSlug,
   environmentSlug,
   redirectUrl,
+  preventDismiss,
 }: {
   gitHubAppInstallations: GitHubAppInstallation[];
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
   redirectUrl?: string;
+  /** When true, prevents closing the modal via Escape key or clicking outside */
+  preventDismiss?: boolean;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const lastSubmission = useActionData() as any;
@@ -385,13 +388,34 @@ export function ConnectGitHubRepoModal({
   const actionUrl = gitHubResourcePath(organizationSlug, projectSlug, environmentSlug);
 
   return (
-    <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+    <Dialog
+      open={isModalOpen}
+      onOpenChange={(open) => {
+        // When preventDismiss is true, only allow opening, not closing
+        if (preventDismiss && !open) {
+          return;
+        }
+        setIsModalOpen(open);
+      }}
+    >
       <DialogTrigger asChild>
         <Button type="button" variant={"secondary/medium"} LeadingIcon={OctoKitty}>
           Connect GitHub repo
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent
+        showCloseButton={!preventDismiss}
+        onInteractOutside={(e) => {
+          if (preventDismiss) {
+            e.preventDefault();
+          }
+        }}
+        onEscapeKeyDown={(e) => {
+          if (preventDismiss) {
+            e.preventDefault();
+          }
+        }}
+      >
         <DialogHeader>Connect GitHub repository</DialogHeader>
         <div className="mt-2 flex flex-col gap-4">
           <Form method="post" action={actionUrl} {...form.props} className="w-full">
@@ -435,7 +459,7 @@ export function ConnectGitHubRepoModal({
                         navigate(
                           githubAppInstallPath(
                             organizationSlug,
-                            `${v3ProjectSettingsPath(
+                            `${v3ProjectSettingsIntegrationsPath(
                               { slug: organizationSlug },
                               { slug: projectSlug },
                               { slug: environmentSlug }
@@ -514,9 +538,11 @@ export function ConnectGitHubRepoModal({
                   </Button>
                 }
                 cancelButton={
-                  <DialogClose asChild>
-                    <Button variant="tertiary/medium">Cancel</Button>
-                  </DialogClose>
+                  preventDismiss ? undefined : (
+                    <DialogClose asChild>
+                      <Button variant="tertiary/medium">Cancel</Button>
+                    </DialogClose>
+                  )
                 }
               />
             </Fieldset>
@@ -541,7 +567,7 @@ export function GitHubConnectionPrompt({
   redirectUrl?: string;
 }) {
 
-  const githubInstallationRedirect = redirectUrl || v3ProjectSettingsPath({ slug: organizationSlug }, { slug: projectSlug }, { slug: environmentSlug });
+  const githubInstallationRedirect = redirectUrl || v3ProjectSettingsIntegrationsPath({ slug: organizationSlug }, { slug: projectSlug }, { slug: environmentSlug });
   return (
     <Fieldset>
       <InputGroup fullWidth>

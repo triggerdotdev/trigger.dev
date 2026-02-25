@@ -360,6 +360,285 @@ paths:
 
             const handle = await runs.replay("run_1234");
 
+  "/api/v1/runs/{runId}/tags":
+    parameters:
+      - $ref: "#/components/parameters/runId"
+    post:
+      operationId: add_run_tags_v1
+      summary: Add tags to a run
+      description: Adds one or more tags to a run. Runs can have a maximum of 10 tags. Duplicate tags are ignored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tags
+              properties:
+                tags:
+                  $ref: "#/components/schemas/RunTags"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Successfully set 2 new tags."
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API Key
+        "422":
+          description: Too many tags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Runs can only have 10 tags.
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: SDK
+          source: |-
+            import { runs } from "@trigger.dev/sdk";
+
+            await runs.addTags("run_1234", ["tag-1", "tag-2"]);
+        - lang: typescript
+          label: Fetch
+          source: |-
+            await fetch("https://api.trigger.dev/api/v1/runs/run_1234/tags", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ tags: ["tag-1", "tag-2"] }),
+            });
+
+  "/api/v1/runs/{runId}/trace":
+    parameters:
+      - $ref: "#/components/parameters/runId"
+    get:
+      operationId: get_run_trace_v1
+      summary: Retrieve run trace
+      description: Returns the full OTel trace tree for a run, including all spans and their children.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trace:
+                    type: object
+                    properties:
+                      traceId:
+                        type: string
+                        description: The OTel trace ID.
+                      rootSpan:
+                        $ref: "#/components/schemas/SpanDetailedSummary"
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API key
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Run not found
+                      - Trace not found
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            const response = await fetch("https://api.trigger.dev/api/v1/runs/run_1234/trace", {
+              headers: {
+                Authorization: `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+              },
+            });
+
+            const { trace } = await response.json();
+
+  "/api/v1/runs/{runId}/events":
+    parameters:
+      - $ref: "#/components/parameters/runId"
+    get:
+      operationId: get_run_events_v1
+      summary: Retrieve run events
+      description: Returns all OTel span events for a run. Useful for debugging and observability.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        spanId:
+                          type: string
+                          description: The span ID of the event.
+                        parentId:
+                          type: string
+                          nullable: true
+                          description: The parent span ID, if any.
+                        runId:
+                          type: string
+                          nullable: true
+                          description: The run ID associated with this event.
+                        message:
+                          type: string
+                          description: The event message.
+                        startTime:
+                          type: string
+                          description: The start time of the event as a bigint string (nanoseconds since epoch).
+                        duration:
+                          type: number
+                          description: The duration of the event in nanoseconds.
+                        isError:
+                          type: boolean
+                          description: Whether this event represents an error.
+                        isPartial:
+                          type: boolean
+                          description: Whether this event is partial (still in progress).
+                        isCancelled:
+                          type: boolean
+                          description: Whether this event was cancelled.
+                        level:
+                          type: string
+                          enum: [TRACE, DEBUG, LOG, INFO, WARN, ERROR]
+                          description: The log level of the event.
+                        kind:
+                          type: string
+                          enum: [UNSPECIFIED, INTERNAL, SERVER, CLIENT, PRODUCER, CONSUMER, UNRECOGNIZED, LOG]
+                          description: The kind of span event.
+                        attemptNumber:
+                          type: number
+                          nullable: true
+                          description: The attempt number this event belongs to.
+                        taskSlug:
+                          type: string
+                          description: The task identifier.
+                        events:
+                          type: array
+                          description: Span events (e.g. exceptions, cancellations) that occurred during this event.
+                          items:
+                            type: object
+                            properties:
+                              name:
+                                type: string
+                                description: The event name (e.g. "exception", "cancellation", "attempt_failed").
+                              time:
+                                type: string
+                                format: date-time
+                                description: The time the event occurred.
+                              properties:
+                                type: object
+                                description: Event-specific properties.
+                        style:
+                          type: object
+                          description: Display style metadata for the event.
+                          properties:
+                            icon:
+                              type: string
+                              description: Icon identifier for display.
+                            variant:
+                              type: string
+                              description: Visual variant (e.g. "success", "failure").
+                            accessory:
+                              type: object
+                              description: Accessory display element.
+                              properties:
+                                text:
+                                  type: string
+                                style:
+                                  type: string
+                                  enum: [codepath]
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API key
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Run not found
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            const response = await fetch("https://api.trigger.dev/api/v1/runs/run_1234/events", {
+              headers: {
+                Authorization: `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+              },
+            });
+
+            const { events } = await response.json();
+
   "/api/v1/runs/{runId}/metadata":
     parameters:
       - $ref: "#/components/parameters/runId"
@@ -530,7 +809,17 @@ paths:
                     description: The deployment ID
                   status:
                     type: string
-                    enum: ["PENDING", "INSTALLING", "BUILDING", "DEPLOYING", "DEPLOYED", "FAILED", "CANCELED", "TIMED_OUT"]
+                    enum:
+                      [
+                        "PENDING",
+                        "INSTALLING",
+                        "BUILDING",
+                        "DEPLOYING",
+                        "DEPLOYED",
+                        "FAILED",
+                        "CANCELED",
+                        "TIMED_OUT",
+                      ]
                     description: The current status of the deployment
                   contentHash:
                     type: string
@@ -622,7 +911,17 @@ paths:
                     description: The deployment ID
                   status:
                     type: string
-                    enum: ["PENDING", "INSTALLING", "BUILDING", "DEPLOYING", "DEPLOYED", "FAILED", "CANCELED", "TIMED_OUT"]
+                    enum:
+                      [
+                        "PENDING",
+                        "INSTALLING",
+                        "BUILDING",
+                        "DEPLOYING",
+                        "DEPLOYED",
+                        "FAILED",
+                        "CANCELED",
+                        "TIMED_OUT",
+                      ]
                     description: The current status of the deployment
                   contentHash:
                     type: string
@@ -733,6 +1032,122 @@ paths:
               -H "Authorization: Bearer tr_dev_1234" \
               -H "Content-Type: application/json"
 
+  "/api/v1/query":
+    post:
+      operationId: execute_query_v1
+      summary: Execute a TRQL query
+      description: Execute a TRQL (Trigger.dev Query Language) query against your run data. TRQL is a SQL-style query language that allows you to analyze runs, calculate metrics, and export data.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/ExecuteQueryRequestBody"
+      responses:
+        "200":
+          description: Query executed successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ExecuteQueryResponse"
+        "400":
+          description: Invalid query or request parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Error message describing the query error
+        "401":
+          description: Unauthorized - API key is missing or invalid
+        "500":
+          description: Internal server error during query execution
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: SDK - Basic query
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            // Basic query with defaults (environment scope, json format)
+            const result = await query.execute(
+              "SELECT run_id, status FROM runs LIMIT 10"
+            );
+            console.log(result.results);
+        - lang: typescript
+          label: SDK - Type-safe query
+          source: |-
+            import { query, type QueryTable } from "@trigger.dev/sdk";
+
+            // Type-safe query using QueryTable
+            const result = await query.execute<
+              QueryTable<"runs", "run_id" | "status" | "triggered_at">
+            >(
+              "SELECT run_id, status, triggered_at FROM runs LIMIT 10"
+            );
+
+            result.results.forEach(row => {
+              console.log(row.run_id, row.status); // Fully typed!
+            });
+        - lang: typescript
+          label: SDK - With options
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            const result = await query.execute(
+              "SELECT COUNT(*) as count FROM runs WHERE status = 'Failed'",
+              {
+                scope: "project",       // Query across all environments
+                period: "7d",           // Last 7 days
+                format: "json"
+              }
+            );
+        - lang: typescript
+          label: SDK - CSV export
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            const csvResult = await query.execute(
+              "SELECT run_id, status, triggered_at FROM runs",
+              {
+                format: "csv",
+                period: "30d"
+              }
+            );
+
+            // csvResult.results is a CSV string
+            const lines = csvResult.results.split('\n');
+        - lang: curl
+          label: cURL - Basic query
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/query" \
+              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "query": "SELECT run_id, status FROM runs LIMIT 10",
+                "scope": "environment",
+                "period": "7d",
+                "format": "json"
+              }'
+        - lang: curl
+          label: cURL - Aggregation query
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/query" \
+              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "query": "SELECT task_identifier, count() as runs, countIf(status = '\''Failed'\'') as failures FROM runs GROUP BY task_identifier",
+                "scope": "environment",
+                "from": "2024-01-01T00:00:00Z",
+                "to": "2024-01-31T23:59:59Z",
+                "format": "json"
+              }'
+
   "/api/v1/runs/{runId}/reschedule":
     parameters:
       - $ref: "#/components/parameters/runId"
@@ -797,6 +1212,84 @@ paths:
             import { runs } from "@trigger.dev/sdk";
 
             const handle = await runs.reschedule("run_1234", { delay: new Date("2024-06-29T20:45:56.340Z") });
+
+  "/api/v1/runs/{runId}/result":
+    parameters:
+      - $ref: "#/components/parameters/runId"
+    get:
+      operationId: get_run_result_v1
+      summary: Retrieve run result
+      description: Returns the execution result of a completed run. Returns 404 if the run doesn't exist or hasn't finished yet.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, id]
+                properties:
+                  ok:
+                    type: boolean
+                    description: Whether the run completed successfully.
+                  id:
+                    type: string
+                    description: The run ID.
+                  output:
+                    type: string
+                    description: The serialized output as a string (present when ok is true). Use outputType to determine how to parse it — for "application/json" use JSON.parse().
+                  outputType:
+                    type: string
+                    description: The content type of the serialized output, e.g. "application/json".
+                  error:
+                    type: object
+                    description: Error details (present when ok is false).
+                  usage:
+                    type: object
+                    description: Execution usage stats.
+                    properties:
+                      durationMs:
+                        type: number
+                        description: Duration of the run in milliseconds.
+                  taskIdentifier:
+                    type: string
+                    description: The task identifier.
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API Key
+        "404":
+          description: Run not found or not yet finished
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Run either doesn't exist or is not finished
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: Fetch
+          source: |-
+            const response = await fetch("https://api.trigger.dev/api/v1/runs/run_1234/result", {
+              headers: {
+                "Authorization": `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+              },
+            });
+            const result = await response.json();
 
   "/api/v3/runs/{runId}":
     parameters:
@@ -1525,6 +2018,85 @@ paths:
             response = requests.post(url, headers=headers, json=data)
             print(response.json())
 
+  "/api/v1/tasks/{taskIdentifier}/batch":
+    parameters:
+      - $ref: "#/components/parameters/taskIdentifier"
+    post:
+      operationId: batch_trigger_task_by_id_v1
+      summary: Batch trigger a specific task
+      description: Batch trigger a specific task with up to 1,000 payloads. All items in the batch run the same task.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["items"]
+              properties:
+                items:
+                  type: array
+                  description: An array of payloads to trigger the task with (max 1,000 items).
+                  maxItems: 1000
+                  items:
+                    $ref: "#/components/schemas/TriggerTaskRequestBody"
+      responses:
+        "200":
+          description: Batch triggered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchTriggerTaskResponse"
+        "400":
+          description: Invalid request parameters or body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      tags:
+        - tasks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { task } from "@trigger.dev/sdk";
+
+            export const myTask = task({
+              id: "my-task",
+              run: async (payload: { message: string }) => {
+                console.log("Hello, world!");
+              }
+            });
+
+            // Somewhere else in your code
+            await myTask.batchTrigger([
+              { payload: { message: "Hello, world!" } },
+              { payload: { message: "Hello again!" } },
+            ]);
+        - lang: curl
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/tasks/my-task/batch" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer tr_dev_1234" \
+              -d '{
+                    "items": [
+                      { "payload": { "message": "Hello, world!" } },
+                      { "payload": { "message": "Hello again!" } }
+                    ]
+                  }'
+
   "/api/v1/tasks/batch":
     post:
       operationId: batch_trigger_task_v1
@@ -1618,6 +2190,472 @@ paths:
                     ]
                   }'
 
+  "/api/v1/batches/{batchId}":
+    parameters:
+      - $ref: "#/components/parameters/batchId"
+    get:
+      operationId: retrieve_batch_v1
+      summary: Retrieve a batch
+      description: Retrieve a batch by its ID, including its status and the IDs of all runs in the batch.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: The batch ID.
+                  status:
+                    type: string
+                    enum: [PENDING, PROCESSING, COMPLETED, PARTIAL_FAILED, ABORTED]
+                    description: The current status of the batch.
+                  idempotencyKey:
+                    type: string
+                    nullable: true
+                    description: The idempotency key provided when triggering, if any.
+                  createdAt:
+                    type: string
+                    format: date-time
+                  updatedAt:
+                    type: string
+                    format: date-time
+                  runCount:
+                    type: integer
+                    description: The total number of runs in the batch.
+                  runs:
+                    type: array
+                    items:
+                      type: string
+                    description: Array of run IDs in the batch.
+                  successfulRunCount:
+                    type: integer
+                    nullable: true
+                    description: Number of successful runs (populated after completion).
+                  failedRunCount:
+                    type: integer
+                    nullable: true
+                    description: Number of failed runs (populated after completion).
+                  errors:
+                    type: array
+                    nullable: true
+                    description: Error details for failed items (present for PARTIAL_FAILED batches).
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                          description: The index of the failed item.
+                        taskIdentifier:
+                          type: string
+                          description: The task identifier of the failed item.
+                        error:
+                          type: object
+                          description: The error details.
+                        errorCode:
+                          type: string
+                          nullable: true
+                          description: An optional error code.
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Batch not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      tags:
+        - batches
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: Fetch
+          source: |-
+            const response = await fetch("https://api.trigger.dev/api/v1/batches/batch_1234", {
+              headers: {
+                "Authorization": `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+              },
+            });
+            const batch = await response.json();
+
+  "/api/v1/batches/{batchId}/results":
+    parameters:
+      - $ref: "#/components/parameters/batchId"
+    get:
+      operationId: get_batch_results_v1
+      summary: Retrieve batch results
+      description: Returns the execution results of all completed runs in a batch. Only finished runs (successful or failed) are included in the items array — runs that are still executing are omitted. Returns 404 if the batch doesn't exist.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: The batch ID.
+                  items:
+                    type: array
+                    description: Execution results for each run in the batch.
+                    items:
+                      type: object
+                      required: [ok, id]
+                      properties:
+                        ok:
+                          type: boolean
+                          description: Whether this run completed successfully.
+                        id:
+                          type: string
+                          description: The run ID.
+                        output:
+                          type: string
+                          description: The serialized output as a string (present when ok is true). Use outputType to determine how to parse it — for "application/json" use JSON.parse().
+                        outputType:
+                          type: string
+                          description: The content type of the serialized output, e.g. "application/json".
+                        error:
+                          type: object
+                          description: Error details (present when ok is false).
+                        usage:
+                          type: object
+                          properties:
+                            durationMs:
+                              type: number
+                              description: Duration of the run in milliseconds.
+                        taskIdentifier:
+                          type: string
+                          description: The task identifier.
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Batch not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      tags:
+        - batches
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: Fetch
+          source: |-
+            const response = await fetch("https://api.trigger.dev/api/v1/batches/batch_1234/results", {
+              headers: {
+                "Authorization": `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+              },
+            });
+            const results = await response.json();
+
+  "/api/v1/queues":
+    get:
+      operationId: list_queues_v1
+      summary: List all queues
+      description: List all queues in your environment with pagination support.
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+          required: false
+          description: Page number of the queue listing (1-based)
+        - in: query
+          name: perPage
+          schema:
+            type: integer
+          required: false
+          description: Number of queues per page
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ListQueuesResult"
+        "401":
+          description: Unauthorized request
+      tags:
+        - queues
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { queues } from "@trigger.dev/sdk";
+
+            // List all queues
+            const allQueues = await queues.list();
+
+            // With pagination
+            const pagedQueues = await queues.list({
+              page: 1,
+              perPage: 20,
+            });
+
+  "/api/v1/queues/{queueParam}":
+    get:
+      operationId: retrieve_queue_v1
+      summary: Retrieve a queue
+      description: Get a queue by its ID, or by type and name.
+      parameters:
+        - in: path
+          name: queueParam
+          required: true
+          schema:
+            type: string
+          description: The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` query parameter.
+          example: queue_1234
+        - in: query
+          name: type
+          schema:
+            type: string
+            enum: [id, task, custom]
+            default: id
+          required: false
+          description: |
+            How to interpret the `queueParam` path parameter:
+            - `id`: Treat as a queue ID (default)
+            - `task`: Treat as a task ID to get the task's default queue
+            - `custom`: Treat as a custom queue name
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/QueueObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Queue not found
+      tags:
+        - queues
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { queues } from "@trigger.dev/sdk";
+
+            // Using queue ID
+            const queue = await queues.retrieve("queue_1234");
+
+            // Using type and name for a task queue
+            const taskQueue = await queues.retrieve({
+              type: "task",
+              name: "my-task-id",
+            });
+
+            // Using type and name for a custom queue
+            const customQueue = await queues.retrieve({
+              type: "custom",
+              name: "my-custom-queue",
+            });
+
+  "/api/v1/queues/{queueParam}/pause":
+    post:
+      operationId: pause_queue_v1
+      summary: Pause or resume a queue
+      description: Pause a queue to prevent new runs from starting, or resume a paused queue. Runs that are currently executing will continue to completion.
+      parameters:
+        - in: path
+          name: queueParam
+          required: true
+          schema:
+            type: string
+          description: The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` body parameter.
+          example: queue_1234
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["action"]
+              properties:
+                type:
+                  type: string
+                  enum: [id, task, custom]
+                  default: id
+                  description: |
+                    How to interpret the `queueParam` path parameter:
+                    - `id`: Treat as a queue ID (default)
+                    - `task`: Treat as a task ID to get the task's default queue
+                    - `custom`: Treat as a custom queue name
+                action:
+                  type: string
+                  enum: [pause, resume]
+                  description: Whether to pause or resume the queue
+      responses:
+        "200":
+          description: Queue paused or resumed successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/QueueObject"
+        "400":
+          description: Invalid request parameters
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Queue not found
+      tags:
+        - queues
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { queues } from "@trigger.dev/sdk";
+
+            // Pause a queue
+            await queues.pause("queue_1234");
+            await queues.pause({ type: "task", name: "my-task-id" });
+
+            // Resume a queue
+            await queues.resume("queue_1234");
+            await queues.resume({ type: "task", name: "my-task-id" });
+
+  "/api/v1/queues/{queueParam}/concurrency/override":
+    post:
+      operationId: override_queue_concurrency_v1
+      summary: Override queue concurrency limit
+      description: Override the concurrency limit of a queue. This is useful for temporarily scaling up or down based on demand.
+      parameters:
+        - in: path
+          name: queueParam
+          required: true
+          schema:
+            type: string
+          description: The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` body parameter.
+          example: queue_1234
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["concurrencyLimit"]
+              properties:
+                type:
+                  type: string
+                  enum: [id, task, custom]
+                  default: id
+                  description: |
+                    How to interpret the `queueParam` path parameter:
+                    - `id`: Treat as a queue ID (default)
+                    - `task`: Treat as a task ID to get the task's default queue
+                    - `custom`: Treat as a custom queue name
+                concurrencyLimit:
+                  type: integer
+                  minimum: 0
+                  maximum: 100000
+                  description: The new concurrency limit to set for the queue
+      responses:
+        "200":
+          description: Concurrency limit overridden successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/QueueObject"
+        "400":
+          description: Invalid request parameters
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Queue not found
+      tags:
+        - queues
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { queues } from "@trigger.dev/sdk";
+
+            // Override concurrency limit to 5
+            await queues.overrideConcurrencyLimit("queue_1234", 5);
+
+            // Using type and name
+            await queues.overrideConcurrencyLimit(
+              { type: "task", name: "my-task-id" },
+              20
+            );
+
+  "/api/v1/queues/{queueParam}/concurrency/reset":
+    post:
+      operationId: reset_queue_concurrency_v1
+      summary: Reset queue concurrency limit
+      description: Reset the concurrency limit of a queue back to its base value defined in code.
+      parameters:
+        - in: path
+          name: queueParam
+          required: true
+          schema:
+            type: string
+          description: The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` body parameter.
+          example: queue_1234
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [id, task, custom]
+                  default: id
+                  description: |
+                    How to interpret the `queueParam` path parameter:
+                    - `id`: Treat as a queue ID (default)
+                    - `task`: Treat as a task ID to get the task's default queue
+                    - `custom`: Treat as a custom queue name
+      responses:
+        "200":
+          description: Concurrency limit reset successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/QueueObject"
+        "400":
+          description: Queue is not overridden or invalid request parameters
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Queue not found
+      tags:
+        - queues
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { queues } from "@trigger.dev/sdk";
+
+            // Reset concurrency limit to the base value
+            await queues.resetConcurrencyLimit("queue_1234");
+
+            // Using type and name
+            await queues.resetConcurrencyLimit({
+              type: "task",
+              name: "my-task-id",
+            });
+
 components:
   parameters:
     taskIdentifier:
@@ -1689,6 +2727,14 @@ components:
       description: |
         The ID of an run, starts with `run_`. The run ID will be returned when you trigger a run on a task.
       example: run_1234
+    batchId:
+      in: path
+      name: batchId
+      required: true
+      schema:
+        type: string
+      description: The ID of the batch, starts with `batch_`.
+      example: batch_1234
     projectRef:
       in: path
       name: projectRef
@@ -1745,6 +2791,86 @@ components:
         configure({ accessToken: "tr_pat_1234" });
         ```
   schemas:
+    RunTag:
+      type: string
+      maxLength: 128
+      description: A single run tag. Must be less than 128 characters.
+      example: "user_123456"
+    RunTags:
+      oneOf:
+        - $ref: "#/components/schemas/RunTag"
+        - type: array
+          items:
+            $ref: "#/components/schemas/RunTag"
+          maxItems: 10
+          uniqueItems: true
+          example: ["user_123456", "product_4629101"]
+      description: One or more tags to attach to a run. Runs can have a maximum of 10 tags.
+    SpanDetailedSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The span ID.
+        parentId:
+          type: string
+          nullable: true
+          description: The parent span ID, if any.
+        runId:
+          type: string
+          description: The run ID this span belongs to.
+        data:
+          type: object
+          properties:
+            message:
+              type: string
+              description: The span message.
+            taskSlug:
+              type: string
+              description: The task identifier, if applicable.
+            startTime:
+              type: string
+              format: date-time
+              description: The start time of the span.
+            duration:
+              type: number
+              description: The duration of the span in nanoseconds.
+            isError:
+              type: boolean
+            isPartial:
+              type: boolean
+            isCancelled:
+              type: boolean
+            level:
+              type: string
+              enum: [TRACE, DEBUG, LOG, INFO, WARN, ERROR]
+            attemptNumber:
+              type: number
+              nullable: true
+            properties:
+              type: object
+              description: Arbitrary OTel attributes attached to the span.
+            events:
+              type: array
+              description: Span events (e.g. exceptions, cancellations) that occurred during this span.
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: The event name (e.g. "exception", "cancellation", "attempt_failed").
+                  time:
+                    type: string
+                    format: date-time
+                    description: The time the event occurred.
+                  properties:
+                    type: object
+                    description: Event-specific properties.
+        children:
+          type: array
+          description: Nested child spans. Each child has the same structure as the parent span.
+          items:
+            $ref: "#/components/schemas/SpanDetailedSummary"
     TriggerTaskResponse:
       type: object
       properties:
@@ -1763,6 +2889,97 @@ components:
           minimum: 0
           maximum: 1000
           description: An optional property that specifies the maximum number of concurrent run executions. If this property is omitted, the task can potentially use up the full concurrency of an environment.
+    QueueObject:
+      type: object
+      required: ["id", "name", "type", "running", "queued", "paused"]
+      properties:
+        id:
+          type: string
+          description: The queue ID, e.g., `queue_1234`
+          example: queue_1234
+        name:
+          type: string
+          description: The queue name. For task queues, this is the task ID. For custom queues, this is the name you specified.
+          example: my-task-id
+        type:
+          type: string
+          enum: [task, custom]
+          description: |
+            The type of queue:
+            - `task`: Created automatically for each task
+            - `custom`: Created explicitly in your code using `queue()`
+          example: task
+        running:
+          type: integer
+          description: The number of runs currently executing
+          example: 5
+        queued:
+          type: integer
+          description: The number of runs currently queued
+          example: 10
+        paused:
+          type: boolean
+          description: Whether the queue is paused. When paused, no new runs will start.
+          example: false
+        concurrencyLimit:
+          type: integer
+          nullable: true
+          description: The current concurrency limit of the queue
+          example: 10
+        concurrency:
+          type: object
+          description: Detailed concurrency information
+          properties:
+            current:
+              type: integer
+              nullable: true
+              description: The effective/current concurrency limit
+              example: 10
+            base:
+              type: integer
+              nullable: true
+              description: The base concurrency limit defined in code
+              example: 10
+            override:
+              type: integer
+              nullable: true
+              description: The override concurrency limit (if set)
+              example: null
+            overriddenAt:
+              type: string
+              format: date-time
+              nullable: true
+              description: When the concurrency limit was overridden
+              example: null
+            overriddenBy:
+              type: string
+              nullable: true
+              description: Who overrode the concurrency limit (null if via API)
+              example: null
+    ListQueuesResult:
+      type: object
+      required: ["data", "pagination"]
+      properties:
+        data:
+          type: array
+          items:
+            "$ref": "#/components/schemas/QueueObject"
+          description: An array of queue objects
+        pagination:
+          type: object
+          properties:
+            currentPage:
+              type: integer
+              description: The current page number
+              example: 1
+            totalPages:
+              type: integer
+              description: The total number of pages
+              example: 5
+            count:
+              type: integer
+              description: The total number of queues
+              example: 50
     BatchTriggerRequestBody:
       type: object
       properties:
@@ -1828,18 +3045,14 @@ components:
             delay:
               $ref: "#/components/schemas/Delay"
             tags:
-              type:
-                - array
-                - string
-              example: ["user_123456", "product_4629101"]
+              allOf:
+                - $ref: "#/components/schemas/RunTags"
               description: |
                 Tags to attach to the run. Tags can be used to filter runs in the dashboard and using the SDK.
 
-                You can set up to 5 tags per run, they must be less than 64 characters each.
+                You can set up to 10 tags per run, each must be less than 128 characters.
 
                 We recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`. Stripe uses underscores.
-              items:
-                type: string
             machine:
               type: string
               enum:
@@ -2945,3 +4158,61 @@ components:
         stackTrace:
           type: string
           example: "Error: Something went wrong"
+    ExecuteQueryRequestBody:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: The TRQL query to execute
+          example: "SELECT run_id, status, triggered_at FROM runs WHERE status = 'Failed' LIMIT 10"
+        scope:
+          type: string
+          enum: ["environment", "project", "organization"]
+          default: "environment"
+          description: The scope of data to query - environment (default), project, or organization
+        period:
+          type: string
+          nullable: true
+          description: Time period shorthand (e.g., "7d", "30d", "1h"). Cannot be used with from/to.
+          example: "7d"
+        from:
+          type: string
+          format: date-time
+          nullable: true
+          description: Start of time range as ISO 8601 timestamp. Must be used with 'to'.
+          example: "2024-01-01T00:00:00Z"
+        to:
+          type: string
+          format: date-time
+          nullable: true
+          description: End of time range as ISO 8601 timestamp. Must be used with 'from'.
+          example: "2024-01-31T23:59:59Z"
+        format:
+          type: string
+          enum: ["json", "csv"]
+          default: "json"
+          description: Response format - "json" returns structured data (default), "csv" returns CSV string
+    ExecuteQueryResponse:
+      oneOf:
+        - type: object
+          description: JSON format response
+          properties:
+            format:
+              type: string
+              enum: ["json"]
+            results:
+              type: array
+              items:
+                type: object
+              description: Array of result rows
+        - type: object
+          description: CSV format response
+          properties:
+            format:
+              type: string
+              enum: ["csv"]
+            results:
+              type: string
+              description: CSV-formatted results

@@ -47,6 +47,13 @@ export type AuthenticatableIntegration = OrganizationIntegration & {
   tokenReference: SecretReference;
 };
 
+export function isIntegrationForService<TService extends IntegrationService>(
+  integration: AuthenticatableIntegration,
+  service: TService
+): integration is OrganizationIntegrationForService<TService> {
+  return (integration.service satisfies IntegrationService) === service;
+}
+
 export class OrgIntegrationRepository {
   static async getAuthenticatedClientForIntegration<TService extends IntegrationService>(
     integration: OrganizationIntegrationForService<TService>,
@@ -88,6 +95,23 @@ export class OrgIntegrationRepository {
 
   static isSlackSupported =
     !!env.ORG_SLACK_INTEGRATION_CLIENT_ID && !!env.ORG_SLACK_INTEGRATION_CLIENT_SECRET;
+
+  static isVercelSupported =
+    !!env.VERCEL_INTEGRATION_CLIENT_ID && !!env.VERCEL_INTEGRATION_CLIENT_SECRET && !!env.VERCEL_INTEGRATION_APP_SLUG;
+
+  /**
+   * Generate the URL to install the Vercel integration.
+   * Users are redirected to Vercel's marketplace to complete the installation.
+   *
+   * @param state - Base64-encoded state containing org/project info for the callback
+   */
+  static vercelInstallUrl(state: string): string {
+    // The user goes to Vercel's marketplace to install the integration
+    // After installation, Vercel redirects to our callback with the authorization code
+    const redirectUri = encodeURIComponent(`${env.APP_ORIGIN}/vercel/callback`);
+    const encodedState = encodeURIComponent(state);
+    return `https://vercel.com/integrations/${env.VERCEL_INTEGRATION_APP_SLUG}/new?state=${encodedState}&redirect_uri=${redirectUri}`;
+  }
 
   static slackAuthorizationUrl(
     state: string,

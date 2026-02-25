@@ -372,6 +372,7 @@ const EnvironmentSchema = z
 
     // Development OTEL environment variables
     DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
+    DEV_OTEL_METRICS_ENDPOINT: z.string().optional(),
     // If this is set to 1, then the below variables are used to configure the batch processor for spans and logs
     DEV_OTEL_BATCH_PROCESSING_ENABLED: z.string().default("0"),
     DEV_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE: z.string().default("64"),
@@ -382,6 +383,9 @@ const EnvironmentSchema = z
     DEV_OTEL_LOG_SCHEDULED_DELAY_MILLIS: z.string().default("200"),
     DEV_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
     DEV_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
+    DEV_OTEL_METRICS_EXPORT_INTERVAL_MILLIS: z.string().optional(),
+    DEV_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS: z.string().optional(),
+    DEV_OTEL_METRICS_COLLECTION_INTERVAL_MILLIS: z.string().optional(),
 
     PROD_OTEL_BATCH_PROCESSING_ENABLED: z.string().default("0"),
     PROD_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE: z.string().default("64"),
@@ -392,6 +396,9 @@ const EnvironmentSchema = z
     PROD_OTEL_LOG_SCHEDULED_DELAY_MILLIS: z.string().default("200"),
     PROD_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
     PROD_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
+    PROD_OTEL_METRICS_EXPORT_INTERVAL_MILLIS: z.string().optional(),
+    PROD_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS: z.string().optional(),
+    PROD_OTEL_METRICS_COLLECTION_INTERVAL_MILLIS: z.string().optional(),
 
     TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT: z.string().default("1024"),
     TRIGGER_OTEL_LOG_ATTRIBUTE_COUNT_LIMIT: z.string().default("1024"),
@@ -424,6 +431,11 @@ const EnvironmentSchema = z
 
     ORG_SLACK_INTEGRATION_CLIENT_ID: z.string().optional(),
     ORG_SLACK_INTEGRATION_CLIENT_SECRET: z.string().optional(),
+
+    /** Vercel integration OAuth credentials */
+    VERCEL_INTEGRATION_CLIENT_ID: z.string().optional(),
+    VERCEL_INTEGRATION_CLIENT_SECRET: z.string().optional(),
+    VERCEL_INTEGRATION_APP_SLUG: z.string().optional(),
 
     /** These enable the alerts feature in v3 */
     ALERT_EMAIL_TRANSPORT: z.enum(["resend", "smtp", "aws-ses"]).optional(),
@@ -535,6 +547,9 @@ const EnvironmentSchema = z
 
     MAXIMUM_DEV_QUEUE_SIZE: z.coerce.number().int().optional(),
     MAXIMUM_DEPLOYED_QUEUE_SIZE: z.coerce.number().int().optional(),
+    QUEUE_SIZE_CACHE_TTL_MS: z.coerce.number().int().optional().default(1_000), // 1 second
+    QUEUE_SIZE_CACHE_MAX_SIZE: z.coerce.number().int().optional().default(5_000),
+    QUEUE_SIZE_CACHE_ENABLED: z.coerce.number().int().optional().default(1),
     MAX_BATCH_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
     MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
 
@@ -590,6 +605,20 @@ const EnvironmentSchema = z
     RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_SCHEDULE: z.string().optional(),
     RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS: z.coerce.number().int().optional(),
     RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS: z.coerce.number().int().optional(),
+
+    // TTL System settings for automatic run expiration
+    RUN_ENGINE_TTL_SYSTEM_DISABLED: BoolEnv.default(false),
+    RUN_ENGINE_TTL_SYSTEM_SHARD_COUNT: z.coerce.number().int().optional(),
+    RUN_ENGINE_TTL_SYSTEM_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
+    RUN_ENGINE_TTL_SYSTEM_BATCH_SIZE: z.coerce.number().int().default(100),
+    RUN_ENGINE_TTL_WORKER_CONCURRENCY: z.coerce.number().int().default(1),
+    RUN_ENGINE_TTL_WORKER_BATCH_MAX_SIZE: z.coerce.number().int().default(50),
+    RUN_ENGINE_TTL_CONSUMERS_DISABLED: BoolEnv.default(false),
+    RUN_ENGINE_TTL_WORKER_BATCH_MAX_WAIT_MS: z.coerce.number().int().default(5_000),
+
+    /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
+     *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
+    RUN_ENGINE_DEFAULT_MAX_TTL: z.string().optional(),
 
     RUN_ENGINE_RUN_LOCK_DURATION: z.coerce.number().int().default(5000),
     RUN_ENGINE_RUN_LOCK_AUTOMATIC_EXTENSION_THRESHOLD: z.coerce.number().int().default(1000),
@@ -1175,8 +1204,8 @@ const EnvironmentSchema = z
     CLICKHOUSE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
     CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
 
-    // Logs List Query Settings (for paginated log views)
-    CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE: z.coerce.number().int().default(256_000_000),
+    // Logs Query Settings
+    CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE: z.coerce.number().int().default(1_000_000_000),
     CLICKHOUSE_LOGS_LIST_MAX_BYTES_BEFORE_EXTERNAL_SORT: z.coerce
       .number()
       .int()
@@ -1185,15 +1214,20 @@ const EnvironmentSchema = z
     CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ: z.coerce.number().int().default(10_000_000),
     CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME: z.coerce.number().int().default(120),
 
-    // Logs Detail Query Settings (for single log views)
-    CLICKHOUSE_LOGS_DETAIL_MAX_MEMORY_USAGE: z.coerce.number().int().default(64_000_000),
-    CLICKHOUSE_LOGS_DETAIL_MAX_THREADS: z.coerce.number().int().default(2),
-    CLICKHOUSE_LOGS_DETAIL_MAX_EXECUTION_TIME: z.coerce.number().int().default(60),
-
     // Query feature flag
     QUERY_FEATURE_ENABLED: z.string().default("1"),
 
+    // Logs page ClickHouse URL (for logs queries)
+    LOGS_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+
     // Query page ClickHouse limits (for TSQL queries)
+    QUERY_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
     QUERY_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().default(10),
     QUERY_CLICKHOUSE_MAX_MEMORY_USAGE: z.coerce.number().int().default(1_073_741_824), // 1GB in bytes
     QUERY_CLICKHOUSE_MAX_AST_ELEMENTS: z.coerce.number().int().default(4_000_000),
@@ -1203,7 +1237,10 @@ const EnvironmentSchema = z
 
     // Query page concurrency limits
     QUERY_DEFAULT_ORG_CONCURRENCY_LIMIT: z.coerce.number().int().default(3),
-    QUERY_GLOBAL_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
+    QUERY_GLOBAL_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+
+    // Metric widget concurrency limits
+    METRIC_WIDGET_DEFAULT_ORG_CONCURRENCY_LIMIT: z.coerce.number().int().default(30),
 
     EVENTS_CLICKHOUSE_URL: z
       .string()
@@ -1216,6 +1253,9 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
     EVENTS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(1000),
     EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+    METRICS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(10000),
+    METRICS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+    METRICS_CLICKHOUSE_MAX_CONCURRENCY: z.coerce.number().int().default(3),
     EVENTS_CLICKHOUSE_INSERT_STRATEGY: z.enum(["insert", "insert_async"]).default("insert"),
     EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT: z.string().default("1"),
     EVENTS_CLICKHOUSE_ASYNC_INSERT_MAX_DATA_SIZE: z.coerce.number().int().default(10485760),

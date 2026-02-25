@@ -161,7 +161,7 @@ await yourTask.trigger({ foo: "bar" }, { ttl: "10m" });
 
 If the run hasn't started within the specified TTL, it will automatically expire, returning the status `Expired`. This is useful for time-sensitive tasks where immediate execution is important. For example, when you queue many runs simultaneously and exceed your concurrency limits, some runs might be delayed - using TTL ensures they only execute if they can start within your specified timeframe.
 
-Note that dev runs automatically have a 10-minute TTL. In Staging and Production environments, no TTL is set by default.
+Dev runs automatically have a 10-minute TTL. On Trigger.dev Cloud, staging and production runs have a maximum TTL of 14 days applied automatically (runs without an explicit TTL get 14 days; longer TTLs are clamped). See [Limits — Maximum run TTL](/limits#maximum-run-ttl) for details.
 
 ![Run with TTL](/images/run-with-ttl.png)
 

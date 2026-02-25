@@ -1,23 +1,25 @@
+import { ChevronDownIcon, ChevronUpDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
+import { IconFilter2, IconFilter2X, IconTable } from "@tabler/icons-react";
 import { rankItem } from "@tanstack/match-sorter-utils";
 import {
-  useReactTable,
+  flexRender,
   getCoreRowModel,
   getFilteredRowModel,
   getSortedRowModel,
-  flexRender,
-  type ColumnDef,
+  useReactTable,
   type CellContext,
-  type ColumnResizeMode,
-  type ColumnFiltersState,
-  type FilterFn,
   type Column,
-  type SortingState,
+  type ColumnDef,
+  type ColumnFiltersState,
+  type ColumnResizeMode,
+  type FilterFn,
   type SortDirection,
+  type SortingState,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
-import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
+import { AlertCircle, ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 import { forwardRef, memo, useEffect, useMemo, useRef, useState } from "react";
 import { EnvironmentLabel, EnvironmentSlug } from "~/components/environments/EnvironmentLabel";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
@@ -33,18 +35,15 @@ import { useCopy } from "~/hooks/useCopy";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
+import { formatBytes, formatDecimalBytes, formatQuantity } from "~/utils/columnFormat";
 import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { v3ProjectPath, v3RunPathFromFriendlyId } from "~/utils/pathBuilder";
+import { ChartBlankState } from "../primitives/charts/ChartBlankState";
 import { Paragraph } from "../primitives/Paragraph";
+
 import { TextLink } from "../primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "../primitives/Tooltip";
 import { QueueName } from "../runs/v3/QueueName";
-import {
-  FunnelIcon,
-  ChevronUpIcon,
-  ChevronDownIcon,
-  ChevronUpDownIcon,
-} from "@heroicons/react/20/solid";
 
 const MAX_STRING_DISPLAY_LENGTH = 64;
 const ROW_HEIGHT = 33; // Estimated row height in pixels
@@ -54,7 +53,7 @@ const MIN_COLUMN_WIDTH = 60;
 const MAX_COLUMN_WIDTH = 400;
 const CHAR_WIDTH_PX = 7.5; // Approximate width of a monospace character at text-xs (12px)
 const CELL_PADDING_PX = 40; // px-2 (8px) on each side + buffer for copy button
-const HEADER_ICONS_WIDTH_PX = 72; // Sort icon (16px) + filter icon (12px) + info icon (16px) + gaps (12px) + header padding (16px)
+const HEADER_ICONS_WIDTH_PX = 80; // Sort icon (16px) + filter icon (12px) + info icon (16px) + gaps (12px) + header padding (24px)
 const SAMPLE_SIZE = 100; // Number of rows to sample for width calculation
 
 // Type for row data
@@ -68,9 +67,10 @@ function getFormattedValue(value: unknown, column: OutputColumnMetadata): string
   if (value === null) return "NULL";
   if (value === undefined) return "";
 
-  // Handle custom render types
-  if (column.customRenderType) {
-    switch (column.customRenderType) {
+  // Handle format hints (from prettyFormat() or auto-populated from customRenderType)
+  const formatType = column.format ?? column.customRenderType;
+  if (formatType) {
+    switch (formatType) {
       case "duration":
         if (typeof value === "number") {
           return formatDurationMilliseconds(value, { style: "short" });
@@ -97,6 +97,26 @@ function getFormattedValue(value: unknown, column: OutputColumnMetadata): string
           return value;
         }
         break;
+      case "bytes":
+        if (typeof value === "number") {
+          return formatBytes(value);
+        }
+        break;
+      case "decimalBytes":
+        if (typeof value === "number") {
+          return formatDecimalBytes(value);
+        }
+        break;
+      case "percent":
+        if (typeof value === "number") {
+          return `${value.toFixed(2)}%`;
+        }
+        break;
+      case "quantity":
+        if (typeof value === "number") {
+          return formatQuantity(value);
+        }
+        break;
     }
   }
 
@@ -113,6 +133,7 @@ function getFormattedValue(value: unknown, column: OutputColumnMetadata): string
           hour: "2-digit",
           minute: "2-digit",
           second: "2-digit",
+          timeZone: "UTC",
         });
       } catch {
         return String(value);
@@ -160,10 +181,10 @@ const fuzzyFilter: FilterFn<RowData> = (row, columnId, value, addMeta) => {
     cellValue === null
       ? "NULL"
       : cellValue === undefined
-        ? ""
-        : typeof cellValue === "object"
-          ? JSON.stringify(cellValue)
-          : String(cellValue);
+      ? ""
+      : typeof cellValue === "object"
+      ? JSON.stringify(cellValue)
+      : String(cellValue);
 
   // Build searchable strings - formatted value (if we have column metadata)
   const formattedValue = meta?.outputColumn
@@ -224,6 +245,21 @@ function getDisplayLength(value: unknown, column: OutputColumnMetadata): number 
   if (value === null) return 4; // "NULL"
   if (value === undefined) return 9; // "UNDEFINED"
 
+  // Handle format hint types - estimate their rendered width
+  const fmt = column.format;
+  if (fmt === "bytes" || fmt === "decimalBytes") {
+    // e.g., "1.50 GiB" or "256.00 MB"
+    return 12;
+  }
+  if (fmt === "percent") {
+    // e.g., "45.23%"
+    return 8;
+  }
+  if (fmt === "quantity") {
+    // e.g., "1.50M"
+    return 8;
+  }
+
   // Handle custom render types - estimate their rendered width
   if (column.customRenderType) {
     switch (column.customRenderType) {
@@ -265,6 +301,8 @@ function getDisplayLength(value: unknown, column: OutputColumnMetadata): number 
         return typeof value === "string" ? Math.min(value.length, 20) : 12;
       case "queue":
         return typeof value === "string" ? Math.min(value.length, 25) : 15;
+      case "deploymentId":
+        return typeof value === "string" ? Math.min(value.length, 25) : 20;
     }
   }
 
@@ -396,6 +434,10 @@ function isRightAlignedColumn(column: OutputColumnMetadata): boolean {
   ) {
     return true;
   }
+  const fmt = column.format;
+  if (fmt === "bytes" || fmt === "decimalBytes" || fmt === "percent" || fmt === "quantity") {
+    return true;
+  }
   return isNumericType(column.type);
 }
 
@@ -416,7 +458,7 @@ function CellValueWrapper({
 
   return (
     <span
-      className="flex-1"
+      className="flex flex-1 items-center"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -462,6 +504,7 @@ function CellValue({
             </pre>
           }
           button={<pre className="font-mono text-xs">{truncateString(plainValue)}</pre>}
+          disableHoverableContent
         />
       );
     }
@@ -477,12 +520,45 @@ function CellValue({
     return <pre className="text-text-dimmed">UNDEFINED</pre>;
   }
 
+  // Check format hint for new format types (from prettyFormat())
+  if (column.format && !column.customRenderType) {
+    switch (column.format) {
+      case "bytes":
+        if (typeof value === "number") {
+          return <span className="tabular-nums">{formatBytes(value)}</span>;
+        }
+        break;
+      case "decimalBytes":
+        if (typeof value === "number") {
+          return <span className="tabular-nums">{formatDecimalBytes(value)}</span>;
+        }
+        break;
+      case "percent":
+        if (typeof value === "number") {
+          return <span className="tabular-nums">{value.toFixed(2)}%</span>;
+        }
+        break;
+      case "quantity":
+        if (typeof value === "number") {
+          return <span className="tabular-nums">{formatQuantity(value)}</span>;
+        }
+        break;
+    }
+  }
+
   // First check customRenderType for special rendering
   if (column.customRenderType) {
     switch (column.customRenderType) {
       case "runId": {
         if (typeof value === "string") {
-          return <TextLink to={v3RunPathFromFriendlyId(value)}>{value}</TextLink>;
+          return (
+            <SimpleTooltip
+              content="Jump to run"
+              disableHoverableContent
+              hidden={!hovered}
+              button={<TextLink to={v3RunPathFromFriendlyId(value)}>{value}</TextLink>}
+            />
+          );
         }
         break;
       }
@@ -490,19 +566,17 @@ function CellValue({
         const status = isTaskRunStatus(value)
           ? value
           : isRunFriendlyStatus(value)
-            ? runStatusFromFriendlyTitle(value)
-            : undefined;
+          ? runStatusFromFriendlyTitle(value)
+          : undefined;
         if (status) {
-          if (hovered) {
-            return (
-              <SimpleTooltip
-                content={descriptionForTaskRunStatus(status)}
-                disableHoverableContent
-                button={<TaskRunStatusCombo status={status} />}
-              />
-            );
-          }
-          return <TaskRunStatusCombo status={status} />;
+          return (
+            <SimpleTooltip
+              content={descriptionForTaskRunStatus(status)}
+              disableHoverableContent
+              hidden={!hovered}
+              button={<TaskRunStatusCombo status={status} />}
+            />
+          );
         }
         break;
       }
@@ -573,6 +647,19 @@ function CellValue({
         }
         return <span>{String(value)}</span>;
       }
+      case "deploymentId": {
+        if (typeof value === "string" && value.startsWith("deployment_")) {
+          return (
+            <SimpleTooltip
+              content="Jump to deployment"
+              disableHoverableContent
+              hidden={!hovered}
+              button={<TextLink to={`/deployments/${value}`}>{value}</TextLink>}
+            />
+          );
+        }
+        return <span>{String(value)}</span>;
+      }
     }
   }
 
@@ -581,7 +668,7 @@ function CellValue({
 
   if (isDateTimeType(type)) {
     if (typeof value === "string") {
-      return <DateTimeAccurate date={value} showTooltip={hovered} />;
+      return <DateTimeAccurate date={value} showTooltip={hovered} timeZone="UTC" />;
     }
     return <span>{String(value)}</span>;
   }
@@ -607,6 +694,7 @@ function CellValue({
               {truncateString(arrayString)}
             </span>
           }
+          disableHoverableContent
         />
       );
     }
@@ -642,6 +730,7 @@ function CellValue({
           </pre>
         }
         button={<span>{truncateString(stringValue)}</span>}
+        disableHoverableContent
       />
     );
   }
@@ -688,6 +777,7 @@ function JSONCellValue({ value }: { value: unknown }) {
         button={
           <span className="font-mono text-xs text-text-dimmed">{truncateString(jsonString)}</span>
         }
+        disableHoverableContent
       />
     );
   }
@@ -713,15 +803,16 @@ function CopyableCell({
   return (
     <div
       className={cn(
-        "relative flex w-full items-center overflow-hidden px-2 py-1.5",
-        "bg-background-dimmed group-hover/row:bg-charcoal-800",
+        "relative flex h-full w-full items-center overflow-hidden px-2",
+        "bg-background-bright group-hover/row:bg-charcoal-750",
         "font-mono text-xs text-text-dimmed group-hover/row:text-text-bright",
+        "[&_a:focus-visible]:underline [&_a:focus-visible]:underline-offset-[3px] [&_a:focus-visible]:outline-none",
         alignment === "right" && "justify-end"
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <span className="truncate">{children}</span>
+      <span className="flex items-center truncate">{children}</span>
       {isHovered && (
         <span
           onClick={(e) => {
@@ -781,18 +872,21 @@ function HeaderCellContent({
   onSortClick?: (event: React.MouseEvent) => void;
   canSort?: boolean;
 }) {
-  const [isHovered, setIsHovered] = useState(false);
+  const [isCellHovered, setIsCellHovered] = useState(false);
+  const [isFilterHovered, setIsFilterHovered] = useState(false);
+
+  const sortHighlighted = isCellHovered && !isFilterHovered;
 
   return (
     <div
       className={cn(
-        "flex w-full items-center gap-1 overflow-hidden bg-background-dimmed py-1.5 pl-2 pr-1",
+        "flex w-full items-center gap-1 overflow-hidden bg-background-bright py-2 pl-2 pr-3",
         "font-mono text-xs font-medium text-text-bright",
         alignment === "right" && "justify-end",
         canSort && "cursor-pointer select-none"
       )}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={() => setIsCellHovered(true)}
+      onMouseLeave={() => setIsCellHovered(false)}
       onClick={onSortClick}
     >
       {tooltip ? (
@@ -802,11 +896,14 @@ function HeaderCellContent({
           })}
         >
           <span className="truncate text-left">{children}</span>
-          <InfoIconTooltip
-            content={tooltip}
-            contentClassName="normal-case tracking-normal"
-            enabled={isHovered}
-          />
+          <span className="flex flex-shrink-0">
+            <InfoIconTooltip
+              content={tooltip}
+              contentClassName="normal-case tracking-normal"
+              enabled={isCellHovered}
+              disableHoverableContent
+            />
+          </span>
         </div>
       ) : (
         <span className="min-w-0 flex-1 truncate text-left">{children}</span>
@@ -814,7 +911,10 @@ function HeaderCellContent({
       {/* Sort indicator */}
       {canSort && (
         <span
-          className={cn("flex-shrink-0", sortDirection ? "text-text-bright" : "text-text-dimmed")}
+          className={cn(
+            "flex-shrink-0 transition-colors",
+            sortHighlighted ? "text-text-bright" : "text-text-dimmed"
+          )}
         >
           {sortDirection === "asc" ? (
             <ChevronUpIcon className="size-4" />
@@ -831,10 +931,12 @@ function HeaderCellContent({
             e.stopPropagation();
             onFilterClick();
           }}
-          className="flex-shrink-0 rounded text-text-dimmed transition-colors hover:bg-charcoal-700 hover:text-text-bright"
+          onMouseEnter={() => setIsFilterHovered(true)}
+          onMouseLeave={() => setIsFilterHovered(false)}
+          className="flex-shrink-0 rounded text-text-dimmed transition-colors focus-custom hover:text-text-bright"
           title="Toggle column filters"
         >
-          <FunnelIcon className="size-3" />
+          {showFilters ? <IconFilter2X className="size-4" /> : <IconFilter2 className="size-4" />}
         </button>
       )}
     </div>
@@ -866,7 +968,7 @@ function FilterCell({
   }, [shouldFocus, onFocused]);
 
   return (
-    <div className="flex items-center bg-background-dimmed px-1.5 pb-1" style={{ width }}>
+    <div className="flex items-center bg-background-bright px-1.5 pb-2" style={{ width }}>
       <DebouncedInput
         ref={inputRef}
         value={columnFilterValue ?? ""}
@@ -886,10 +988,15 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   rows,
   columns,
   prettyFormatting = true,
+  sorting: defaultSorting = [],
+  showHeaderOnEmpty = false,
 }: {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
   prettyFormatting?: boolean;
+  sorting?: SortingState;
+  /** When true, show column headers + "No results" on empty data. When false, show a blank state icon. */
+  showHeaderOnEmpty?: boolean;
 }) {
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
@@ -899,7 +1006,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   // Track which column's filter should be focused
   const [focusFilterColumn, setFocusFilterColumn] = useState<string | null>(null);
   // State for column sorting
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting] = useState<SortingState>(defaultSorting);
 
   // Create TanStack Table column definitions from OutputColumnMetadata
   // Calculate column widths based on content
@@ -959,6 +1066,10 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
 
   // Empty state
   if (rows.length === 0) {
+    if (!showHeaderOnEmpty) {
+      return <ChartBlankState icon={IconTable} message="No data to display" />;
+    }
+
     return (
       <div
         className="h-full min-h-0 w-full overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
@@ -966,7 +1077,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
       >
         <table style={{ display: "grid" }}>
           <thead
-            className="bg-background-dimmed"
+            className="border-t border-grid-bright bg-background-bright after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright"
             style={{
               display: "grid",
               position: "sticky",
@@ -987,63 +1098,24 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                         width: header.getSize(),
                       }}
                     >
-                      <HeaderCellContent
-                        alignment={meta?.alignment ?? "left"}
-                        tooltip={meta?.outputColumn.description}
-                        onFilterClick={() => {
-                          if (!showFilters) {
-                            setFocusFilterColumn(header.id);
-                          } else {
-                            setColumnFilters([]);
-                          }
-                          setShowFilters(!showFilters);
-                        }}
-                        showFilters={showFilters}
-                        hasActiveFilter={!!header.column.getFilterValue()}
-                        sortDirection={header.column.getIsSorted()}
-                        onSortClick={header.column.getToggleSortingHandler()}
-                        canSort={header.column.getCanSort()}
-                      >
+                      <HeaderCellContent alignment={meta?.alignment ?? "left"}>
                         {flexRender(header.column.columnDef.header, header.getContext())}
                       </HeaderCellContent>
-                      {/* Column resizer */}
-                      <div
-                        onDoubleClick={() => header.column.resetSize()}
-                        onMouseDown={header.getResizeHandler()}
-                        onTouchStart={header.getResizeHandler()}
-                        className={cn(
-                          "absolute right-0 top-0 h-full w-0.5 cursor-col-resize touch-none select-none",
-                          "opacity-0 group-hover/header:opacity-100",
-                          "bg-charcoal-600 hover:bg-indigo-500",
-                          header.column.getIsResizing() && "bg-indigo-500 opacity-100"
-                        )}
-                      />
                     </th>
                   );
                 })}
               </tr>
             ))}
-            {/* Filter row - shown when filters are toggled */}
-            {showFilters && (
-              <tr style={{ display: "flex", width: "100%" }}>
-                {table.getHeaderGroups()[0]?.headers.map((header) => (
-                  <FilterCell
-                    key={`filter-${header.id}`}
-                    column={header.column}
-                    width={header.getSize()}
-                    shouldFocus={focusFilterColumn === header.id}
-                    onFocused={() => setFocusFilterColumn(null)}
-                  />
-                ))}
-              </tr>
-            )}
           </thead>
           <tbody style={{ display: "grid" }}>
-            <tr style={{ display: "flex" }}>
-              <td>
-                <Paragraph variant="extra-small" className="p-4 text-text-dimmed">
-                  No results
-                </Paragraph>
+            <tr style={{ display: "flex", width: "100%" }}>
+              <td className="w-full px-3 py-6" colSpan={columns.length}>
+                <div className="flex items-center justify-center gap-1.5">
+                  <AlertCircle className="size-5 text-text-dimmed/50" />
+                  <Paragraph variant="small" className="text-text-dimmed">
+                    This query returned no results
+                  </Paragraph>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -1060,7 +1132,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
     >
       <table style={{ display: "grid" }}>
         <thead
-          className="bg-background-dimmed after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright"
+          className="border-t border-grid-bright bg-background-bright after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright"
           style={{
             display: "grid",
             position: "sticky",
@@ -1107,7 +1179,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                       onMouseDown={header.getResizeHandler()}
                       onTouchStart={header.getResizeHandler()}
                       className={cn(
-                        "absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none select-none",
+                        "absolute right-0 top-0 h-full w-0.5 cursor-col-resize touch-none select-none",
                         "opacity-0 group-hover/header:opacity-100",
                         "bg-charcoal-600 hover:bg-indigo-500",
                         header.column.getIsResizing() && "bg-indigo-500 opacity-100"
@@ -1139,7 +1211,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
             height: `${rowVirtualizer.getTotalSize()}px`,
             position: "relative",
           }}
-          className="bg-background-dimmed divide-y divide-charcoal-700"
+          className="divide-y divide-charcoal-700 bg-background-bright after:absolute after:bottom-0 after:left-0 after:right-0 after:z-[1] after:h-px after:bg-grid-bright"
         >
           {rowVirtualizer.getVirtualItems().map((virtualRow) => {
             const row = tableRows[virtualRow.index];
@@ -1147,12 +1219,13 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
               <tr
                 key={row.id}
                 data-index={virtualRow.index}
-                className="group/row hover:bg-charcoal-800"
+                className="group/row hover:bg-charcoal-750"
                 style={{
                   display: "flex",
                   position: "absolute",
                   transform: `translateY(${virtualRow.start}px)`,
                   width: "100%",
+                  height: `${virtualRow.size}px`,
                 }}
               >
                 {row.getVisibleCells().map((cell) => {

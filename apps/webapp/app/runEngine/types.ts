@@ -64,6 +64,7 @@ export interface QueueManager {
   getQueueName(request: TriggerTaskRequest): Promise<string>;
   validateQueueLimits(
     env: AuthenticatedEnvironment,
+    queueName: string,
     itemsToAdd?: number
   ): Promise<QueueValidationResult>;
   getWorkerQueue(

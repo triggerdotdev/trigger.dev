@@ -14,6 +14,7 @@ import {
   CallbackFairQueueKeyProducer,
   DRRScheduler,
   FairQueue,
+  ExponentialBackoffRetry,
   isAbortError,
   WorkerQueueManager,
   type FairQueueOptions,
@@ -65,6 +66,7 @@ export class BatchQueue {
   private tracer?: Tracer;
   private concurrencyRedis: Redis;
   private defaultConcurrency: number;
+  private maxAttempts: number;
 
   private processItemCallback?: ProcessBatchItemCallback;
   private completionCallback?: BatchCompletionCallback;
@@ -90,6 +92,7 @@ export class BatchQueue {
     this.logger = options.logger ?? new Logger("BatchQueue", options.logLevel ?? "info");
     this.tracer = options.tracer;
     this.defaultConcurrency = options.defaultConcurrency ?? 10;
+    this.maxAttempts = options.retry?.maxAttempts ?? 1;
     this.abortController = new AbortController();
     this.workerQueueBlockingTimeoutSeconds = options.workerQueueBlockingTimeoutSeconds ?? 10;
 
@@ -175,8 +178,23 @@ export class BatchQueue {
       ],
       // Optional global rate limiter to limit max items/sec across all consumers
       globalRateLimiter: options.globalRateLimiter,
-      // No retry for batch items - failures are recorded and batch completes
-      // Omit retry config entirely to disable retry and DLQ
+      // Enable retry with DLQ disabled when retry config is provided.
+      // BatchQueue handles the "final failure" in its own processing loop,
+      // so we don't need the DLQ - we just need the retry scheduling.
+      ...(options.retry
+        ? {
+          retry: {
+            strategy: new ExponentialBackoffRetry({
+              maxAttempts: options.retry.maxAttempts,
+              minTimeoutInMs: options.retry.minTimeoutInMs ?? 1_000,
+              maxTimeoutInMs: options.retry.maxTimeoutInMs ?? 30_000,
+              factor: options.retry.factor ?? 2,
+              randomize: options.retry.randomize ?? true,
+            }),
+            deadLetterQueue: false,
+          },
+        }
+        : {}),
       logger: this.logger,
       tracer: options.tracer,
       meter: options.meter,
@@ -751,6 +769,9 @@ export class BatchQueue {
         "batch.environmentId": meta.environmentId,
       });
 
+      const attempt = storedMessage.attempt;
+      const isFinalAttempt = attempt >= this.maxAttempts;
+
       let processedCount: number;
 
       try {
@@ -768,6 +789,8 @@ export class BatchQueue {
               itemIndex,
               item,
               meta,
+              attempt,
+              isFinalAttempt,
             });
           }
         );
@@ -788,6 +811,7 @@ export class BatchQueue {
             runId: result.runId,
             processedCount,
             expectedCount: meta.runCount,
+            attempt,
           });
         } else {
           span?.setAttribute("batch.result", "failure");
@@ -796,8 +820,32 @@ export class BatchQueue {
             span?.setAttribute("batch.errorCode", result.errorCode);
           }
 
-          // For offloaded payloads (payloadType: "application/store"), payload is already an R2 path
-          // For inline payloads, store the full payload - it's under the offload threshold anyway
+          // If retries are available, use FairQueue retry scheduling
+          if (!isFinalAttempt) {
+            span?.setAttribute("batch.retry", true);
+            span?.setAttribute("batch.attempt", attempt);
+
+            this.logger.warn("Batch item failed, scheduling retry via FairQueue", {
+              batchId,
+              itemIndex,
+              attempt,
+              maxAttempts: this.maxAttempts,
+              error: result.error,
+            });
+
+            await this.#startSpan("BatchQueue.failMessage", async () => {
+              return this.fairQueue.failMessage(
+                messageId,
+                queueId,
+                new Error(result.error)
+              );
+            });
+
+            // Don't record failure or check completion - message will be retried
+            return;
+          }
+
+          // Final attempt exhausted - record permanent failure
           const payloadStr = await this.#startSpan(
             "BatchQueue.serializePayload",
             async (innerSpan) => {
@@ -824,20 +872,44 @@ export class BatchQueue {
             errorCode: result.errorCode,
           });
 
-          this.logger.error("Batch item processing failed", {
+          this.logger.error("Batch item processing failed after all attempts", {
             batchId,
             itemIndex,
             error: result.error,
             processedCount,
             expectedCount: meta.runCount,
+            attempts: attempt,
           });
         }
       } catch (error) {
         span?.setAttribute("batch.result", "unexpected_error");
         span?.setAttribute("batch.error", error instanceof Error ? error.message : String(error));
 
-        // Unexpected error during processing
-        // For offloaded payloads, payload is an R2 path; for inline payloads, store full payload
+        // If retries are available, use FairQueue retry scheduling for unexpected errors too
+        if (!isFinalAttempt) {
+          span?.setAttribute("batch.retry", true);
+          span?.setAttribute("batch.attempt", attempt);
+
+          this.logger.warn("Batch item threw unexpected error, scheduling retry", {
+            batchId,
+            itemIndex,
+            attempt,
+            maxAttempts: this.maxAttempts,
+            error: error instanceof Error ? error.message : String(error),
+          });
+
+          await this.#startSpan("BatchQueue.failMessage", async () => {
+            return this.fairQueue.failMessage(
+              messageId,
+              queueId,
+              error instanceof Error ? error : new Error(String(error))
+            );
+          });
+
+          return;
+        }
+
+        // Final attempt - record permanent failure
         const payloadStr = await this.#startSpan(
           "BatchQueue.serializePayload",
           async (innerSpan) => {
@@ -863,18 +935,19 @@ export class BatchQueue {
           environment_type: meta.environmentType,
           errorCode: "UNEXPECTED_ERROR",
         });
-        this.logger.error("Unexpected error processing batch item", {
+        this.logger.error("Unexpected error processing batch item after all attempts", {
           batchId,
           itemIndex,
           error: error instanceof Error ? error.message : String(error),
           processedCount,
           expectedCount: meta.runCount,
+          attempts: attempt,
         });
       }
 
       span?.setAttribute("batch.processedCount", processedCount);
 
-      // Complete the FairQueue message (no retry for batch items)
+      // Complete the FairQueue message
       // This must happen after recording success/failure to ensure the counter
       // is updated before the message is considered done
       await this.#startSpan("BatchQueue.completeMessage", async () => {

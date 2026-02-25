@@ -1,0 +1,523 @@
+import { DocumentDuplicateIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { ClipboardIcon } from "@heroicons/react/24/outline";
+import { ChartBarIcon } from "@heroicons/react/24/solid";
+import { type OutputColumnMetadata } from "@internal/tsql";
+import { DialogClose } from "@radix-ui/react-dialog";
+import { IconBraces, IconChartHistogram, IconFileTypeCsv } from "@tabler/icons-react";
+import { assertNever } from "assert-never";
+import { Maximize2 } from "lucide-react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
+import { z } from "zod";
+import { Card } from "~/components/primitives/charts/Card";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { cn } from "~/utils/cn";
+import { rowsToCSV, rowsToJSON } from "~/utils/dataExport";
+import { QueryResultsChart } from "../code/QueryResultsChart";
+import { TSQLResultsTable } from "../code/TSQLResultsTable";
+import { Button } from "../primitives/Buttons";
+import { Callout } from "../primitives/Callout";
+import { BigNumberCard } from "../primitives/charts/BigNumberCard";
+import { Dialog, DialogContent, DialogFooter, DialogHeader } from "../primitives/Dialog";
+import { Input } from "../primitives/Input";
+import { InputGroup } from "../primitives/InputGroup";
+import { Label } from "../primitives/Label";
+import { LoadingBarDivider } from "../primitives/LoadingBarDivider";
+import {
+  Popover,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverVerticalEllipseTrigger,
+} from "../primitives/Popover";
+
+const ChartType = z.union([z.literal("bar"), z.literal("line")]);
+export type ChartType = z.infer<typeof ChartType>;
+
+const SortDirection = z.union([z.literal("asc"), z.literal("desc")]);
+export type SortDirection = z.infer<typeof SortDirection>;
+
+const AggregationType = z.union([
+  z.literal("sum"),
+  z.literal("avg"),
+  z.literal("count"),
+  z.literal("min"),
+  z.literal("max"),
+]);
+export type AggregationType = z.infer<typeof AggregationType>;
+
+const chartConfigOptions = {
+  chartType: ChartType,
+  xAxisColumn: z.string().nullable(),
+  yAxisColumns: z.string().array(),
+  groupByColumn: z.string().nullable(),
+  stacked: z.boolean(),
+  sortByColumn: z.string().nullable(),
+  sortDirection: SortDirection,
+  aggregation: AggregationType,
+  seriesColors: z.record(z.string()).optional(),
+};
+
+const ChartConfiguration = z.object({ ...chartConfigOptions });
+export type ChartConfiguration = z.infer<typeof ChartConfiguration>;
+
+const BigNumberAggregationType = z.union([
+  z.literal("sum"),
+  z.literal("avg"),
+  z.literal("count"),
+  z.literal("min"),
+  z.literal("max"),
+  z.literal("first"),
+  z.literal("last"),
+]);
+export type BigNumberAggregationType = z.infer<typeof BigNumberAggregationType>;
+
+const BigNumberSortDirection = z.union([z.literal("asc"), z.literal("desc")]);
+
+const bigNumberConfigOptions = {
+  column: z.string(),
+  aggregation: BigNumberAggregationType,
+  sortDirection: BigNumberSortDirection.optional(),
+  abbreviate: z.boolean().default(false),
+  prefix: z.string().optional(),
+  suffix: z.string().optional(),
+};
+
+const BigNumberConfiguration = z.object({ ...bigNumberConfigOptions });
+export type BigNumberConfiguration = z.infer<typeof BigNumberConfiguration>;
+
+export const QueryWidgetConfig = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("table"),
+    prettyFormatting: z.boolean().default(true),
+    sorting: z
+      .array(
+        z.object({
+          desc: z.boolean(),
+          id: z.string(),
+        })
+      )
+      .default([]),
+  }),
+  z.object({
+    type: z.literal("chart"),
+    ...chartConfigOptions,
+  }),
+  z.object({
+    type: z.literal("bignumber"),
+    ...bigNumberConfigOptions,
+  }),
+  z.object({
+    type: z.literal("title"),
+  }),
+]);
+
+export type QueryWidgetConfig = z.infer<typeof QueryWidgetConfig>;
+
+/** Result data containing rows and column metadata */
+export type QueryWidgetData = {
+  rows: Record<string, unknown>[];
+  columns: OutputColumnMetadata[];
+};
+
+/** Widget configuration with optional result data (used for edit callbacks) */
+export type WidgetData = {
+  title: string;
+  query: string;
+  display: QueryWidgetConfig;
+  /** The current result data from the widget */
+  resultData?: QueryWidgetData;
+};
+
+export type QueryWidgetProps = {
+  title: ReactNode;
+  /** String title for rename dialog (optional - if not provided, rename won't be available) */
+  titleString?: string;
+  /** The TSQL query string (used for "Copy query" in the menu) */
+  query?: string;
+  isLoading?: boolean;
+  error?: string;
+  data: QueryWidgetData;
+  config: QueryWidgetConfig;
+  /** The effective time range for the query (used to show full x-axis on time-based charts) */
+  timeRange?: { from: string; to: string };
+  accessory?: ReactNode;
+  isResizing?: boolean;
+  isDraggable?: boolean;
+  /** Additional className applied to the Card wrapper */
+  className?: string;
+  /** Callback when edit is clicked. Receives the current data. */
+  onEdit?: (data: QueryWidgetData) => void;
+  /** Callback when rename is clicked. Receives the new title. */
+  onRename?: (newTitle: string) => void;
+  /** Callback when delete is clicked. */
+  onDelete?: () => void;
+  /** Callback when duplicate is clicked. Receives the current data. */
+  onDuplicate?: (data: QueryWidgetData) => void;
+  /** When true, show table column headers even when there are no rows */
+  showTableHeaderOnEmpty?: boolean;
+};
+
+export function QueryWidget({
+  title,
+  titleString,
+  query,
+  accessory,
+  isLoading,
+  error,
+  isResizing,
+  isDraggable,
+  className,
+  onEdit,
+  onRename,
+  onDelete,
+  onDuplicate,
+  ...props
+}: QueryWidgetProps) {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState(titleString ?? "");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const hasEditActions = onEdit || onRename || onDelete || onDuplicate;
+  const hasData = props.data.rows.length > 0;
+
+  // "v" to toggle fullscreen on hovered widget
+  useShortcutKeys({
+    shortcut: { key: "v" },
+    action: useCallback(() => {
+      const isHovered = containerRef.current?.matches(":hover");
+      if (!isFullscreen && !isHovered) return;
+      setIsFullscreen((prev) => !prev);
+    }, [isFullscreen]),
+  });
+
+  const copyToClipboard = useCallback((text: string) => {
+    navigator.clipboard.writeText(text);
+  }, []);
+
+  const copyQuery = useCallback(() => {
+    if (query) {
+      copyToClipboard(query);
+    }
+  }, [query, copyToClipboard]);
+
+  const copyJSON = useCallback(() => {
+    copyToClipboard(rowsToJSON(props.data.rows));
+  }, [props.data.rows, copyToClipboard]);
+
+  const copyCSV = useCallback(() => {
+    copyToClipboard(rowsToCSV(props.data.rows, props.data.columns));
+  }, [props.data, copyToClipboard]);
+
+  return (
+    <div ref={containerRef} className="group h-full">
+      <Card className={cn("h-full overflow-hidden px-0 pb-0", className)}>
+        <Card.Header draggable={isDraggable}>
+          <div className="flex items-center gap-1.5">{title}</div>
+          <Card.Accessory>
+            <SimpleTooltip
+              button={
+                <span className="opacity-0 transition-opacity group-hover:opacity-100">
+                  <Button
+                    variant="minimal/small"
+                    LeadingIcon={Maximize2}
+                    leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
+                    onClick={() => setIsFullscreen(true)}
+                    className="!px-1"
+                  />
+                </span>
+              }
+              content={
+                <span className="flex items-center gap-1">
+                  Maximize
+                  <ShortcutKey shortcut={{ key: "v" }} variant="small/bright" />
+                </span>
+              }
+              asChild
+            />
+            <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+              <PopoverVerticalEllipseTrigger
+                isOpen={isMenuOpen}
+                className={cn(
+                  "transition-opacity",
+                  isMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                )}
+              />
+              <PopoverContent align="end" className="p-0">
+                <div className="flex flex-col gap-1 p-1">
+                  {hasEditActions && (
+                    <>
+                      {onEdit && (
+                        <PopoverMenuItem
+                          icon={IconChartHistogram}
+                          title="Edit chart"
+                          onClick={() => {
+                            onEdit(props.data);
+                            setIsMenuOpen(false);
+                          }}
+                          leadingIconClassName="-ml-0.5 -mr-1"
+                        />
+                      )}
+                      {onRename && (
+                        <PopoverMenuItem
+                          icon={PencilSquareIcon}
+                          title="Rename"
+                          onClick={() => {
+                            setRenameValue(titleString ?? "");
+                            setIsRenameDialogOpen(true);
+                            setIsMenuOpen(false);
+                          }}
+                        />
+                      )}
+                      {onDuplicate && (
+                        <PopoverMenuItem
+                          icon={DocumentDuplicateIcon}
+                          title="Duplicate chart"
+                          onClick={() => {
+                            onDuplicate(props.data);
+                            setIsMenuOpen(false);
+                          }}
+                          className="pr-4"
+                        />
+                      )}
+                    </>
+                  )}
+                  {query && (
+                    <PopoverMenuItem
+                      icon={ClipboardIcon}
+                      title="Copy query"
+                      onClick={() => {
+                        copyQuery();
+                        setIsMenuOpen(false);
+                      }}
+                    />
+                  )}
+                  <PopoverMenuItem
+                    icon={IconBraces}
+                    title="Copy JSON"
+                    disabled={!hasData}
+                    onClick={() => {
+                      copyJSON();
+                      setIsMenuOpen(false);
+                    }}
+                    leadingIconClassName="-ml-0.5 -mr-1"
+                  />
+                  <PopoverMenuItem
+                    icon={IconFileTypeCsv}
+                    title="Copy CSV"
+                    disabled={!hasData}
+                    onClick={() => {
+                      copyCSV();
+                      setIsMenuOpen(false);
+                    }}
+                    leadingIconClassName="-ml-0.5 -mr-1"
+                  />
+                  {onDelete && (
+                    <PopoverMenuItem
+                      icon={TrashIcon}
+                      title="Delete chart"
+                      leadingIconClassName="text-error"
+                      className="text-error hover:!bg-error/10"
+                      onClick={() => {
+                        onDelete();
+                        setIsMenuOpen(false);
+                      }}
+                    />
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+            {accessory}
+          </Card.Accessory>
+        </Card.Header>
+        <LoadingBarDivider isLoading={isLoading ?? false} className="bg-transparent" />
+        <Card.Content className="min-h-0 flex-1 overflow-hidden p-0">
+          {isResizing ? (
+            <div className="flex h-full flex-1 items-center justify-center p-3">
+              <div className="flex flex-col items-center gap-1 text-text-dimmed">
+                <ChartBarIcon className="size-10 text-text-dimmed" />{" "}
+                <span className="text-base font-medium">Resizing...</span>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="p-3">
+              <Callout variant="error">{error}</Callout>
+            </div>
+          ) : (
+            <QueryWidgetBody
+              {...props}
+              title={title}
+              isFullscreen={isFullscreen}
+              setIsFullscreen={setIsFullscreen}
+              isLoading={isLoading ?? false}
+            />
+          )}
+        </Card.Content>
+      </Card>
+
+      {/* Rename Dialog */}
+      {onRename && (
+        <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>Rename chart</DialogHeader>
+            <form
+              className="space-y-4 pt-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (renameValue.trim()) {
+                  onRename(renameValue.trim());
+                  setIsRenameDialogOpen(false);
+                }
+              }}
+            >
+              <InputGroup>
+                <Label>Title</Label>
+                <Input
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  placeholder="Chart title"
+                  autoFocus
+                />
+              </InputGroup>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="tertiary/medium">Cancel</Button>
+                </DialogClose>
+                <Button type="submit" variant="primary/medium" disabled={!renameValue.trim()}>
+                  Save
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
+type QueryWidgetBodyProps = {
+  title: ReactNode;
+  data: QueryWidgetData;
+  config: QueryWidgetConfig;
+  timeRange?: { from: string; to: string };
+  isFullscreen: boolean;
+  setIsFullscreen: (open: boolean) => void;
+  isLoading: boolean;
+  showTableHeaderOnEmpty?: boolean;
+};
+
+function QueryWidgetBody({
+  title,
+  data,
+  config,
+  timeRange,
+  isFullscreen,
+  setIsFullscreen,
+  isLoading,
+  showTableHeaderOnEmpty,
+}: QueryWidgetBodyProps) {
+  const type = config.type;
+
+  // Only show the loading state if we have no data yet (initial load).
+  // During a reload with existing data, keep showing the current data
+  // while the loading bar in the header indicates a refresh is in progress.
+  const hasData = data.rows.length > 0;
+  const showLoading = isLoading && !hasData;
+
+  switch (type) {
+    case "table": {
+      return (
+        <>
+          <TSQLResultsTable
+            rows={data.rows}
+            columns={data.columns}
+            prettyFormatting={config.prettyFormatting}
+            sorting={config.sorting}
+            showHeaderOnEmpty={showTableHeaderOnEmpty}
+          />
+          <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
+            <DialogContent
+              fullscreen
+              className="flex flex-col gap-0 bg-background-bright px-0 pb-0"
+            >
+              <DialogHeader className="px-4">{title}</DialogHeader>
+              <div className="min-h-0 w-full flex-1 pt-2.5">
+                <TSQLResultsTable
+                  rows={data.rows}
+                  columns={data.columns}
+                  prettyFormatting={config.prettyFormatting}
+                  sorting={config.sorting}
+                  showHeaderOnEmpty={showTableHeaderOnEmpty}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+        </>
+      );
+    }
+    case "chart": {
+      return (
+        <>
+          <QueryResultsChart
+            rows={data.rows}
+            columns={data.columns}
+            config={config}
+            timeRange={timeRange}
+            onViewAllLegendItems={() => setIsFullscreen(true)}
+            isLoading={showLoading}
+          />
+          <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
+            <DialogContent fullscreen className="flex flex-col bg-background-bright">
+              <DialogHeader>{title}</DialogHeader>
+              <div className="min-h-0 w-full flex-1 overflow-hidden pt-4">
+                <QueryResultsChart
+                  rows={data.rows}
+                  columns={data.columns}
+                  config={config}
+                  timeRange={timeRange}
+                  fullLegend
+                  legendScrollable
+                  isLoading={showLoading}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+        </>
+      );
+    }
+    case "bignumber": {
+      return (
+        <>
+          <BigNumberCard
+            rows={data.rows}
+            columns={data.columns}
+            config={config}
+            isLoading={showLoading}
+          />
+          <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
+            <DialogContent fullscreen className="flex flex-col bg-background-bright">
+              <DialogHeader>{title}</DialogHeader>
+              <div className="flex min-h-0 w-full flex-1 items-center justify-center pt-4">
+                <BigNumberCard
+                  rows={data.rows}
+                  columns={data.columns}
+                  config={config}
+                  isLoading={showLoading}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+        </>
+      );
+    }
+    case "title": {
+      // Title widgets are rendered by TitleWidget, not QueryWidget
+      return null;
+    }
+    default: {
+      assertNever(type);
+    }
+  }
+}

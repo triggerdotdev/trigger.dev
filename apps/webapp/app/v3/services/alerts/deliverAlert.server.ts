@@ -22,6 +22,7 @@ import { environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { type Prisma, type prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import {
+  isIntegrationForService,
   type OrganizationIntegrationForService,
   OrgIntegrationRepository,
 } from "~/models/orgIntegration.server";
@@ -32,14 +33,20 @@ import {
   ProjectAlertWebhookProperties,
 } from "~/models/projectAlert.server";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
+import {
+  processGitMetadata,
+  type GitMetaLinks,
+} from "~/presenters/v3/BranchesPresenter.server";
 import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server";
 import { sendAlertEmail } from "~/services/email.server";
+import { VercelProjectIntegrationDataSchema } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { v3RunPath } from "~/utils/pathBuilder";
 import { alertsRateLimiter } from "~/v3/alertsRateLimiter.server";
 import { alertsWorker } from "~/v3/alertsWorker.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
+import { fromPromise } from "neverthrow";
 import { BaseService } from "../baseService.server";
 import { CURRENT_API_VERSION } from "~/api/versions";
 
@@ -87,6 +94,11 @@ type FoundAlert = Prisma.Result<
 >;
 
 class SkipRetryError extends Error {}
+
+type DeploymentIntegrationMetadata = {
+  git: GitMetaLinks | null;
+  vercelDeploymentUrl: string | undefined;
+};
 
 export class DeliverAlertService extends BaseService {
   public async call(alertId: string) {
@@ -138,18 +150,27 @@ export class DeliverAlertService extends BaseService {
       return;
     }
 
+    const emptyMeta: DeploymentIntegrationMetadata = { git: null, vercelDeploymentUrl: undefined };
+
+    const deploymentMeta =
+      alert.type === "DEPLOYMENT_SUCCESS" || alert.type === "DEPLOYMENT_FAILURE"
+        ? (
+            await fromPromise(this.#resolveDeploymentMetadata(alert), (e) => e)
+          ).unwrapOr(emptyMeta)
+        : emptyMeta;
+
     try {
       switch (alert.channel.type) {
         case "EMAIL": {
-          await this.#sendEmail(alert);
+          await this.#sendEmail(alert, deploymentMeta);
           break;
         }
         case "SLACK": {
-          await this.#sendSlack(alert);
+          await this.#sendSlack(alert, deploymentMeta);
           break;
         }
         case "WEBHOOK": {
-          await this.#sendWebhook(alert);
+          await this.#sendWebhook(alert, deploymentMeta);
           break;
         }
         default: {
@@ -176,7 +197,7 @@ export class DeliverAlertService extends BaseService {
     });
   }
 
-  async #sendEmail(alert: FoundAlert) {
+  async #sendEmail(alert: FoundAlert, deploymentMeta: DeploymentIntegrationMetadata) {
     const emailProperties = ProjectAlertEmailProperties.safeParse(alert.channel.properties);
 
     if (!emailProperties.success) {
@@ -242,6 +263,19 @@ export class DeliverAlertService extends BaseService {
             error: preparedError,
             deploymentLink: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/deployments/${alert.workerDeployment.shortCode}`,
             organization: alert.project.organization.title,
+            git: deploymentMeta.git
+              ? {
+                  branchName: deploymentMeta.git.branchName,
+                  shortSha: deploymentMeta.git.shortSha,
+                  commitMessage: deploymentMeta.git.commitMessage,
+                  commitUrl: deploymentMeta.git.commitUrl,
+                  branchUrl: deploymentMeta.git.branchUrl,
+                  pullRequestNumber: deploymentMeta.git.pullRequestNumber,
+                  pullRequestTitle: deploymentMeta.git.pullRequestTitle,
+                  pullRequestUrl: deploymentMeta.git.pullRequestUrl,
+                }
+              : undefined,
+            vercelDeploymentUrl: deploymentMeta.vercelDeploymentUrl,
           });
         } else {
           logger.error("[DeliverAlert] Worker deployment not found", {
@@ -263,6 +297,19 @@ export class DeliverAlertService extends BaseService {
             deploymentLink: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/deployments/${alert.workerDeployment.shortCode}`,
             taskCount: alert.workerDeployment.worker?.tasks.length ?? 0,
             organization: alert.project.organization.title,
+            git: deploymentMeta.git
+              ? {
+                  branchName: deploymentMeta.git.branchName,
+                  shortSha: deploymentMeta.git.shortSha,
+                  commitMessage: deploymentMeta.git.commitMessage,
+                  commitUrl: deploymentMeta.git.commitUrl,
+                  branchUrl: deploymentMeta.git.branchUrl,
+                  pullRequestNumber: deploymentMeta.git.pullRequestNumber,
+                  pullRequestTitle: deploymentMeta.git.pullRequestTitle,
+                  pullRequestUrl: deploymentMeta.git.pullRequestUrl,
+                }
+              : undefined,
+            vercelDeploymentUrl: deploymentMeta.vercelDeploymentUrl,
           });
         } else {
           logger.error("[DeliverAlert] Worker deployment not found", {
@@ -278,7 +325,7 @@ export class DeliverAlertService extends BaseService {
     }
   }
 
-  async #sendWebhook(alert: FoundAlert) {
+  async #sendWebhook(alert: FoundAlert, deploymentMeta: DeploymentIntegrationMetadata) {
     const webhookProperties = ProjectAlertWebhookProperties.safeParse(alert.channel.properties);
 
     if (!webhookProperties.success) {
@@ -451,6 +498,8 @@ export class DeliverAlertService extends BaseService {
                   name: alert.project.name,
                 },
                 error: preparedError,
+                git: this.#buildWebhookGitObject(deploymentMeta.git),
+                vercel: this.#buildWebhookVercelObject(deploymentMeta.vercelDeploymentUrl),
               };
 
               await this.#deliverWebhook(payload, webhookProperties.data);
@@ -487,6 +536,8 @@ export class DeliverAlertService extends BaseService {
                     name: alert.project.name,
                   },
                   error: preparedError,
+                  git: this.#buildWebhookGitObject(deploymentMeta.git),
+                  vercel: this.#buildWebhookVercelObject(deploymentMeta.vercelDeploymentUrl),
                 },
               };
 
@@ -541,6 +592,8 @@ export class DeliverAlertService extends BaseService {
                   slug: alert.project.slug,
                   name: alert.project.name,
                 },
+                git: this.#buildWebhookGitObject(deploymentMeta.git),
+                vercel: this.#buildWebhookVercelObject(deploymentMeta.vercelDeploymentUrl),
               };
 
               await this.#deliverWebhook(payload, webhookProperties.data);
@@ -583,6 +636,8 @@ export class DeliverAlertService extends BaseService {
                     slug: alert.project.slug,
                     name: alert.project.name,
                   },
+                  git: this.#buildWebhookGitObject(deploymentMeta.git),
+                  vercel: this.#buildWebhookVercelObject(deploymentMeta.vercelDeploymentUrl),
                 },
               };
 
@@ -608,7 +663,7 @@ export class DeliverAlertService extends BaseService {
     }
   }
 
-  async #sendSlack(alert: FoundAlert) {
+  async #sendSlack(alert: FoundAlert, deploymentMeta: DeploymentIntegrationMetadata) {
     const slackProperties = ProjectAlertSlackProperties.safeParse(alert.channel.properties);
 
     if (!slackProperties.success) {
@@ -644,7 +699,7 @@ export class DeliverAlertService extends BaseService {
           },
         });
 
-    if (!integration) {
+    if (!integration || !isIntegrationForService(integration, "SLACK")) {
       logger.error("[DeliverAlert] Slack integration not found", {
         alert,
       });
@@ -693,9 +748,7 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `:rotating_light: Error in *${taskIdentifier}* _<!date^${Math.round(
-                    timestamp.getTime() / 1000
-                  )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
+                  text: `:rotating_light: Error in *${taskIdentifier}*`,
                 },
               },
               {
@@ -705,18 +758,7 @@ export class DeliverAlertService extends BaseService {
                   text: this.#wrapInCodeBlock(error.stackTrace ?? error.message),
                 },
               },
-              {
-                type: "context",
-                elements: [
-                  {
-                    type: "mrkdwn",
-                    text: `${runId} | ${taskIdentifier} | ${version}.${environment} | ${alert.project.name}`,
-                  },
-                ],
-              },
-              {
-                type: "divider",
-              },
+              this.#buildRunQuoteBlock(taskIdentifier, version, environment, runId, alert.project.name, timestamp),
               {
                 type: "actions",
                 elements: [
@@ -788,14 +830,13 @@ export class DeliverAlertService extends BaseService {
 
           await this.#postSlackMessage(integration, {
             channel: slackProperties.data.channelId,
+            text: `:rotating_light: Deployment failed *${version}.${environment}*`,
             blocks: [
               {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `:rotating_light: Deployment failed *${version}.${environment}* _<!date^${Math.round(
-                    timestamp.getTime() / 1000
-                  )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
+                  text: `:rotating_light: Deployment failed *${version}.${environment}*`,
                 },
               },
               {
@@ -805,15 +846,7 @@ export class DeliverAlertService extends BaseService {
                   text: this.#wrapInCodeBlock(preparedError.stack ?? preparedError.message),
                 },
               },
-              {
-                type: "context",
-                elements: [
-                  {
-                    type: "mrkdwn",
-                    text: `${alert.workerDeployment.shortCode} | ${version}.${environment} | ${alert.project.name}`,
-                  },
-                ],
-              },
+              this.#buildDeploymentQuoteBlock(alert, deploymentMeta, version, environment, timestamp),
               {
                 type: "actions",
                 elements: [
@@ -841,7 +874,6 @@ export class DeliverAlertService extends BaseService {
         if (alert.workerDeployment) {
           const version = alert.workerDeployment.version;
           const environment = alert.environment.slug;
-          const numberOfTasks = alert.workerDeployment.worker?.tasks.length ?? 0;
           const timestamp = alert.workerDeployment.deployedAt ?? new Date();
 
           await this.#postSlackMessage(integration, {
@@ -852,20 +884,10 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `:rocket: Deployed *${version}.${environment}* successfully _<!date^${Math.round(
-                    timestamp.getTime() / 1000
-                  )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
+                  text: `:rocket: Deployed *${version}.${environment}* successfully`,
                 },
               },
-              {
-                type: "context",
-                elements: [
-                  {
-                    type: "mrkdwn",
-                    text: `${numberOfTasks} tasks | ${alert.workerDeployment.shortCode} | ${version}.${environment} | ${alert.project.name}`,
-                  },
-                ],
-              },
+              this.#buildDeploymentQuoteBlock(alert, deploymentMeta, version, environment, timestamp),
               {
                 type: "actions",
                 elements: [
@@ -948,7 +970,11 @@ export class DeliverAlertService extends BaseService {
     );
 
     try {
-      return await client.chat.postMessage(message);
+      return await client.chat.postMessage({
+        ...message,
+        unfurl_links: false,
+        unfurl_media: false,
+      });
     } catch (error) {
       if (isWebAPIRateLimitedError(error)) {
         logger.warn("[DeliverAlert] Slack rate limited", {
@@ -1010,6 +1036,174 @@ export class DeliverAlertService extends BaseService {
 
       throw error;
     }
+  }
+
+  async #resolveDeploymentMetadata(
+    alert: FoundAlert
+  ): Promise<DeploymentIntegrationMetadata> {
+    const deployment = alert.workerDeployment;
+    if (!deployment) {
+      return { git: null, vercelDeploymentUrl: undefined };
+    }
+
+    const git = processGitMetadata(deployment.git);
+    const vercelDeploymentUrl = await this.#resolveVercelDeploymentUrl(
+      deployment.projectId,
+      deployment.id
+    );
+
+    return { git, vercelDeploymentUrl };
+  }
+
+  async #resolveVercelDeploymentUrl(
+    projectId: string,
+    deploymentId: string
+  ): Promise<string | undefined> {
+    const vercelProjectIntegration =
+      await this._prisma.organizationProjectIntegration.findFirst({
+        where: {
+          projectId,
+          deletedAt: null,
+          organizationIntegration: {
+            service: "VERCEL",
+            deletedAt: null,
+          },
+        },
+        select: {
+          integrationData: true,
+        },
+      });
+
+    if (!vercelProjectIntegration) {
+      return undefined;
+    }
+
+    const parsed = VercelProjectIntegrationDataSchema.safeParse(
+      vercelProjectIntegration.integrationData
+    );
+
+    if (!parsed.success || !parsed.data.vercelTeamSlug) {
+      return undefined;
+    }
+
+    const integrationDeployment =
+      await this._prisma.integrationDeployment.findFirst({
+        where: {
+          deploymentId,
+          integrationName: "vercel",
+        },
+        select: {
+          integrationDeploymentId: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+
+    if (!integrationDeployment) {
+      return undefined;
+    }
+
+    const vercelId = integrationDeployment.integrationDeploymentId.replace(/^dpl_/, "");
+    return `https://vercel.com/${parsed.data.vercelTeamSlug}/${parsed.data.vercelProjectName}/${vercelId}`;
+  }
+
+  #buildDeploymentQuoteBlock(
+    alert: FoundAlert,
+    deploymentMeta: DeploymentIntegrationMetadata,
+    version: string,
+    environment: string,
+    timestamp: Date
+  ) {
+    const git = deploymentMeta.git;
+    const shortCode = alert.workerDeployment!.shortCode;
+    const lines: string[] = [];
+
+    // Line 1: git author + branch (if available)
+    if (git) {
+      lines.push(`> By *${git.commitAuthor}* on <${git.branchUrl}|\`${git.branchName}\`>`);
+    }
+
+    // Line 2: deployment info
+    lines.push(`> ${shortCode} | ${version}.${environment} | ${alert.project.name} `);
+
+    // Line 3: provider + commit link + vercel link (conditional parts)
+    const integrationParts: string[] = [];
+    if (git?.provider === "github") {
+      integrationParts.push(`via GitHub | <${git.commitUrl}|${git.shortSha}>`);
+    }
+    if (deploymentMeta.vercelDeploymentUrl) {
+      integrationParts.push(`with <${deploymentMeta.vercelDeploymentUrl}|Vercel>`);
+    }
+    if (integrationParts.length > 0) {
+      lines.push(`> ${integrationParts.join(" | ")} `);
+    }
+
+    // Line 4: timestamp
+    lines.push(`> ${this.#formatTimestamp(timestamp)}`);
+
+    return {
+      type: "context" as const,
+      elements: [
+        {
+          type: "mrkdwn" as const,
+          text: lines.join("\n"),
+        },
+      ],
+    };
+  }
+
+  #buildRunQuoteBlock(
+    taskIdentifier: string,
+    version: string,
+    environment: string,
+    runId: string,
+    projectName: string,
+    timestamp: Date
+  ) {
+    return {
+      type: "context" as const,
+      elements: [
+        {
+          type: "mrkdwn" as const,
+          text: `> *${taskIdentifier}* | ${version}.${environment}\n> ${runId} | ${projectName}\n> ${this.#formatTimestamp(timestamp)}`,
+        },
+      ],
+    };
+  }
+
+  #formatTimestamp(date: Date): string {
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    }).format(date);
+  }
+
+  #buildWebhookGitObject(git: GitMetaLinks | null) {
+    if (!git) return undefined;
+
+    return {
+      branch: git.branchName,
+      commitSha: git.shortSha,
+      commitMessage: git.commitMessage,
+      commitUrl: git.commitUrl,
+      branchUrl: git.branchUrl,
+      pullRequestNumber: git.pullRequestNumber,
+      pullRequestTitle: git.pullRequestTitle,
+      pullRequestUrl: git.pullRequestUrl,
+      provider: git.provider,
+    };
+  }
+
+  #buildWebhookVercelObject(url: string | undefined) {
+    if (!url) return undefined;
+
+    return { deploymentUrl: url };
   }
 
   #getRunError(alert: FoundAlert): TaskRunError {

@@ -485,10 +485,22 @@ export const FinalizeDeploymentRequestBody = z.object({
 
 export type FinalizeDeploymentRequestBody = z.infer<typeof FinalizeDeploymentRequestBody>;
 
+export const BuildServerMetadata = z.object({
+  buildId: z.string().optional(),
+  isNativeBuild: z.boolean().optional(),
+  artifactKey: z.string().optional(),
+  skipPromotion: z.boolean().optional(),
+  configFilePath: z.string().optional(),
+  skipEnqueue: z.boolean().optional(),
+});
+
+export type BuildServerMetadata = z.infer<typeof BuildServerMetadata>;
+
 export const ProgressDeploymentRequestBody = z.object({
   contentHash: z.string().optional(),
   gitMeta: GitMeta.optional(),
   runtime: z.string().optional(),
+  buildServerMetadata: BuildServerMetadata.optional(),
 });
 
 export type ProgressDeploymentRequestBody = z.infer<typeof ProgressDeploymentRequestBody>;
@@ -527,16 +539,6 @@ export const DeploymentTriggeredVia = z
   .or(anyString);
 
 export type DeploymentTriggeredVia = z.infer<typeof DeploymentTriggeredVia>;
-
-export const BuildServerMetadata = z.object({
-  buildId: z.string().optional(),
-  isNativeBuild: z.boolean().optional(),
-  artifactKey: z.string().optional(),
-  skipPromotion: z.boolean().optional(),
-  configFilePath: z.string().optional(),
-});
-
-export type BuildServerMetadata = z.infer<typeof BuildServerMetadata>;
 
 export const UpsertBranchRequestBody = z.object({
   git: GitMeta.optional(),
@@ -590,41 +592,54 @@ export const InitializeDeploymentResponseBody = z.object({
 
 export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeploymentResponseBody>;
 
-export const InitializeDeploymentRequestBody = z
-  .object({
-    contentHash: z.string(),
-    userId: z.string().optional(),
-    /** @deprecated This is now determined by the webapp. This is only used to warn users with old CLI versions. */
-    selfHosted: z.boolean().optional(),
-    gitMeta: GitMeta.optional(),
-    type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
-    runtime: z.string().optional(),
-    initialStatus: z.enum(["PENDING", "BUILDING"]).optional(),
-    triggeredVia: DeploymentTriggeredVia.optional(),
-    buildId: z.string().optional(),
-  })
-  .and(
-    z.preprocess(
-      (val) => {
-        const obj = val as any;
-        if (!obj || !obj.isNativeBuild) {
-          return { ...obj, isNativeBuild: false };
-        }
-        return obj;
-      },
-      z.discriminatedUnion("isNativeBuild", [
-        z.object({
-          isNativeBuild: z.literal(true),
-          skipPromotion: z.boolean(),
-          artifactKey: z.string(),
-          configFilePath: z.string().optional(),
-        }),
-        z.object({
-          isNativeBuild: z.literal(false),
-        }),
-      ])
-    )
-  );
+const InitializeDeploymentRequestBodyBase = z.object({
+  contentHash: z.string(),
+  userId: z.string().optional(),
+  /** @deprecated This is now determined by the webapp. This is only used to warn users with old CLI versions. */
+  selfHosted: z.boolean().optional(),
+  gitMeta: GitMeta.optional(),
+  type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
+  runtime: z.string().optional(),
+  initialStatus: z.enum(["PENDING", "BUILDING"]).optional(),
+  isLocalBuild: z.boolean().optional(),
+  triggeredVia: DeploymentTriggeredVia.optional(),
+  buildId: z.string().optional(),
+});
+type BaseOutput = z.output<typeof InitializeDeploymentRequestBodyBase>;
+
+type NativeBuildOutput = BaseOutput & {
+  isNativeBuild: true;
+  skipPromotion?: boolean;
+  artifactKey?: string;
+  configFilePath?: string;
+  skipEnqueue?: boolean;
+};
+
+type NonNativeBuildOutput = BaseOutput & {
+  isNativeBuild: false;
+  skipPromotion?: never;
+  artifactKey?: never;
+  configFilePath?: never;
+  skipEnqueue?: never;
+};
+
+const InitializeDeploymentRequestBodyFull = InitializeDeploymentRequestBodyBase.extend({
+  isNativeBuild: z.boolean().default(false),
+  skipPromotion: z.boolean().optional(),
+  artifactKey: z.string().optional(),
+  configFilePath: z.string().optional(),
+  skipEnqueue: z.boolean().optional().default(false),
+});
+
+export const InitializeDeploymentRequestBody = InitializeDeploymentRequestBodyFull.transform(
+  (data): NativeBuildOutput | NonNativeBuildOutput => {
+    if (data.isNativeBuild) {
+      return { ...data, isNativeBuild: true as const };
+    }
+    const { skipPromotion, artifactKey, configFilePath, skipEnqueue, ...rest } = data;
+    return { ...rest, isNativeBuild: false as const };
+  }
+);
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
 
@@ -694,6 +709,7 @@ export const GetDeploymentResponseBody = z.object({
   version: z.string(),
   imageReference: z.string().nullish(),
   imagePlatform: z.string(),
+  commitSHA: z.string().nullish(),
   externalBuildData: ExternalBuildData.optional().nullable(),
   errorData: DeploymentErrorData.nullish(),
   worker: z
@@ -710,6 +726,17 @@ export const GetDeploymentResponseBody = z.object({
       ),
     })
     .optional(),
+  integrationDeployments: z
+    .array(
+      z.object({
+        id: z.string(),
+        integrationName: z.string(),
+        integrationDeploymentId: z.string(),
+        commitSHA: z.string(),
+        createdAt: z.coerce.date(),
+      })
+    )
+    .nullish(),
 });
 
 export type GetDeploymentResponseBody = z.infer<typeof GetDeploymentResponseBody>;
@@ -1139,6 +1166,12 @@ export const ImportEnvironmentVariablesRequestBody = z.object({
   variables: z.record(z.string()),
   parentVariables: z.record(z.string()).optional(),
   override: z.boolean().optional(),
+  source: z
+    .discriminatedUnion("type", [
+      z.object({ type: z.literal("user"), userId: z.string() }),
+      z.object({ type: z.literal("integration"), integration: z.string() }),
+    ])
+    .optional(),
 });
 
 export type ImportEnvironmentVariablesRequestBody = z.infer<

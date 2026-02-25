@@ -56,6 +56,7 @@ export type CreateEventInput = Omit<
   resourceProperties?: Attributes;
   metadata: Attributes | undefined;
   style: Attributes | undefined;
+  machineId?: string;
 };
 
 export type CreatableEventKind = TaskEventKind;

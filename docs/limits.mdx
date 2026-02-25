@@ -31,13 +31,21 @@ You can request a higher rate limit from us if you're on a paid plan.
 
 ## Queued tasks
 
-The number of queued tasks by environment.
+The maximum number of runs that can be queued **per queue** (not across all queues in the environment). Each queue can hold up to its limit independently. When a queue hits its limit, new triggers to that queue are rejected.
 
-| Limit   | Details            |
-| :------ | :----------------- |
-| Dev     | At most 500        |
-| Staging | At most 10 million |
-| Prod    | At most 10 million |
+<Note>
+  The limits below apply to [Trigger.dev Cloud](https://trigger.dev). If you self-host Trigger.dev, queue size limits are configurable via the `MAXIMUM_DEV_QUEUE_SIZE` and `MAXIMUM_DEPLOYED_QUEUE_SIZE` environment variables — see [Self-hosting environment variables](/self-hosting/env/webapp#run-engine).
+</Note>
+
+| Pricing tier | Development (per queue) | Staging / Production (per queue) |
+| :----------- | :---------------------- | :-------------------------------- |
+| Free         | 500                     | 10,000                            |
+| Hobby        | 500                     | 250,000                           |
+| Pro          | 5,000                   | 1,000,000                         |
+
+## Maximum run TTL
+
+On Trigger.dev Cloud, all runs have an enforced maximum TTL of 14 days. Runs without an explicit TTL automatically receive the 14-day TTL; runs with a TTL longer than 14 days are clamped to 14 days. This prevents queued runs from accumulating indefinitely. If you self-host, you can configure a maximum TTL via the `RUN_ENGINE_DEFAULT_MAX_TTL` environment variable — see [Self-hosting environment variables](/self-hosting/env/webapp#run-engine).
 
 ## Schedules
 
@@ -57,8 +65,8 @@ If you're creating schedules for your user you will definitely need to request m
 
 ## Projects
 
-| Pricing tier | Limit              |
-| :----------- | :----------------- |
+| Pricing tier | Limit               |
+| :----------- | :------------------ |
 | All tiers    | 10 per organization |
 
 Each project receives its own concurrency allocation. If you need to support multiple tenants with the same codebase but different environment variables, see the [Multi-tenant applications](/deploy-environment-variables#multi-tenant-applications) section for a recommended workaround.
@@ -112,7 +120,9 @@ Batch triggering uses a token bucket algorithm to rate limit the number of runs 
 **How it works**: You can burst up to your bucket size, then tokens refill at the specified rate. For example, a Free user can trigger 1,200 runs immediately, then must wait for tokens to refill (100 runs become available every 10 seconds).
 
 <Note>
-  When you hit batch rate limits, the SDK throws a `BatchTriggerError` with `isRateLimited: true`. See [Handling batch trigger errors](/triggering#handling-batch-trigger-errors) for how to detect and react to rate limits in your code.
+  When you hit batch rate limits, the SDK throws a `BatchTriggerError` with `isRateLimited: true`.
+  See [Handling batch trigger errors](/triggering#handling-batch-trigger-errors) for how to detect
+  and react to rate limits in your code.
 </Note>
 
 ## Batch processing concurrency
@@ -185,6 +195,36 @@ An alert destination is a single email address, Slack channel, or webhook URL th
 | Pro          | 100+ alert destinations |
 
 If you're on the Pro plan and need more than the plan limit, you can request more by contacting us via [email](https://trigger.dev/contact) or [Discord](https://trigger.dev/discord).
+
+## Query
+
+Query execution is subject to the following limits:
+
+| Limit              | Details               |
+| :----------------- | :-------------------- |
+| Max execution time | 10 seconds per query  |
+| Max result rows    | 10,000 rows per query |
+| Concurrent queries | 3 per project         |
+
+### Query lookback period
+
+The maximum time range a query can look back is based on your plan:
+
+| Pricing tier | Limit   |
+| :----------- | :------ |
+| Free         | 1 day   |
+| Hobby        | 7 days  |
+| Pro          | 30 days |
+
+If your query's time range exceeds your plan's lookback limit, it will be automatically clipped to the maximum allowed period.
+
+## Metric widget concurrency
+
+The number of metric widgets that can be queried concurrently per project.
+
+| Limit                     | Details        |
+| :------------------------ | :------------- |
+| Concurrent widget queries | 30 per project |
 
 ## Machines
 

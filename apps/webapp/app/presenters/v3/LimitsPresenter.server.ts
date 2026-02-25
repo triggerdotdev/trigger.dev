@@ -1,4 +1,5 @@
 import { Ratelimit } from "@upstash/ratelimit";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { createHash } from "node:crypto";
 import { env } from "~/env.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
@@ -12,6 +13,8 @@ import { BasePresenter } from "./basePresenter.server";
 import { singleton } from "~/utils/singleton";
 import { logger } from "~/services/logger.server";
 import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
+import { engine } from "~/v3/runEngine.server";
+import { getQueueSizeLimit, getQueueSizeLimitSource } from "~/v3/utils/queueLimits.server";
 
 // Create a singleton Redis client for rate limit queries
 const rateLimitRedisClient = singleton("rateLimitQueryRedisClient", () =>
@@ -66,8 +69,10 @@ export type LimitsResult = {
     logRetentionDays: QuotaInfo | null;
     realtimeConnections: QuotaInfo | null;
     batchProcessingConcurrency: QuotaInfo;
-    devQueueSize: QuotaInfo;
-    deployedQueueSize: QuotaInfo;
+    queueSize: QuotaInfo;
+    metricDashboards: QuotaInfo | null;
+    metricWidgetsPerDashboard: QuotaInfo | null;
+    queryPeriodDays: QuotaInfo | null;
   };
   features: {
     hasStagingEnvironment: FeatureInfo;
@@ -84,11 +89,13 @@ export class LimitsPresenter extends BasePresenter {
     organizationId,
     projectId,
     environmentId,
+    environmentType,
     environmentApiKey,
   }: {
     organizationId: string;
     projectId: string;
     environmentId: string;
+    environmentType: RuntimeEnvironmentType;
     environmentApiKey: string;
   }): Promise<LimitsResult> {
     // Get organization with all limit-related fields
@@ -155,6 +162,11 @@ export class LimitsPresenter extends BasePresenter {
       },
     });
 
+    // Get metric dashboard count for this org
+    const metricDashboardCount = await this._replica.metricsDashboard.count({
+      where: { organizationId },
+    });
+
     // Get current rate limit tokens for this environment's API key
     const apiRateLimitTokens = await getRateLimitRemainingTokens(
       "api",
@@ -167,6 +179,30 @@ export class LimitsPresenter extends BasePresenter {
       batchRateLimitConfig
     );
 
+    // Get current queue size for this environment
+    // We need the runtime environment fields for the engine query
+    const runtimeEnv = await this._replica.runtimeEnvironment.findFirst({
+      where: { id: environmentId },
+      select: {
+        id: true,
+        maximumConcurrencyLimit: true,
+        concurrencyLimitBurstFactor: true,
+      },
+    });
+
+    let currentQueueSize = 0;
+    if (runtimeEnv) {
+      const engineEnv = {
+        id: runtimeEnv.id,
+        type: environmentType,
+        maximumConcurrencyLimit: runtimeEnv.maximumConcurrencyLimit,
+        concurrencyLimitBurstFactor: runtimeEnv.concurrencyLimitBurstFactor,
+        organization: { id: organizationId },
+        project: { id: projectId },
+      };
+      currentQueueSize = (await engine.lengthOfEnvQueue(engineEnv)) ?? 0;
+    }
+
     // Get plan-level limits
     const schedulesLimit = limits?.schedules?.number ?? null;
     const teamMembersLimit = limits?.teamMembers?.number ?? null;
@@ -174,6 +210,9 @@ export class LimitsPresenter extends BasePresenter {
     const branchesLimit = limits?.branches?.number ?? null;
     const logRetentionDaysLimit = limits?.logRetentionDays?.number ?? null;
     const realtimeConnectionsLimit = limits?.realtimeConcurrentConnections?.number ?? null;
+    const metricDashboardsLimit = limits?.metricDashboards?.number ?? null;
+    const metricWidgetsPerDashboardLimit = limits?.metricWidgetsPerDashboard?.number ?? null;
+    const queryPeriodDaysLimit = limits?.queryPeriodDays?.number ?? null;
     const includedUsage = limits?.includedUsage ?? null;
     const hasStagingEnvironment = limits?.hasStagingEnvironment ?? false;
     const supportLevel = limits?.support ?? "community";
@@ -206,72 +245,72 @@ export class LimitsPresenter extends BasePresenter {
         schedules:
           schedulesLimit !== null
             ? {
-                name: "Schedules",
-                description: "Maximum number of schedules per project",
-                limit: schedulesLimit,
-                currentUsage: scheduleCount,
-                source: "plan",
-                canExceed: limits?.schedules?.canExceed,
-                isUpgradable: true,
-              }
+              name: "Schedules",
+              description: "Maximum number of schedules per project",
+              limit: schedulesLimit,
+              currentUsage: scheduleCount,
+              source: "plan",
+              canExceed: limits?.schedules?.canExceed,
+              isUpgradable: true,
+            }
             : null,
         teamMembers:
           teamMembersLimit !== null
             ? {
-                name: "Team members",
-                description: "Maximum number of team members in this organization",
-                limit: teamMembersLimit,
-                currentUsage: organization._count.members,
-                source: "plan",
-                canExceed: limits?.teamMembers?.canExceed,
-                isUpgradable: true,
-              }
+              name: "Team members",
+              description: "Maximum number of team members in this organization",
+              limit: teamMembersLimit,
+              currentUsage: organization._count.members,
+              source: "plan",
+              canExceed: limits?.teamMembers?.canExceed,
+              isUpgradable: true,
+            }
             : null,
         alerts:
           alertsLimit !== null
             ? {
-                name: "Alert channels",
-                description: "Maximum number of alert channels per project",
-                limit: alertsLimit,
-                currentUsage: alertChannelCount,
-                source: "plan",
-                canExceed: limits?.alerts?.canExceed,
-                isUpgradable: true,
-              }
+              name: "Alert channels",
+              description: "Maximum number of alert channels per project",
+              limit: alertsLimit,
+              currentUsage: alertChannelCount,
+              source: "plan",
+              canExceed: limits?.alerts?.canExceed,
+              isUpgradable: true,
+            }
             : null,
         branches:
           branchesLimit !== null
             ? {
-                name: "Preview branches",
-                description: "Maximum number of active preview branches per project",
-                limit: branchesLimit,
-                currentUsage: activeBranchCount,
-                source: "plan",
-                canExceed: limits?.branches?.canExceed,
-                isUpgradable: true,
-              }
+              name: "Preview branches",
+              description: "Maximum number of active preview branches per project",
+              limit: branchesLimit,
+              currentUsage: activeBranchCount,
+              source: "plan",
+              canExceed: limits?.branches?.canExceed,
+              isUpgradable: true,
+            }
             : null,
         logRetentionDays:
           logRetentionDaysLimit !== null
             ? {
-                name: "Log retention",
-                description: "Number of days logs are retained",
-                limit: logRetentionDaysLimit,
-                currentUsage: 0, // Not applicable - this is a duration, not a count
-                source: "plan",
-              }
+              name: "Log retention",
+              description: "Number of days logs are retained",
+              limit: logRetentionDaysLimit,
+              currentUsage: 0, // Not applicable - this is a duration, not a count
+              source: "plan",
+            }
             : null,
         realtimeConnections:
           realtimeConnectionsLimit !== null
             ? {
-                name: "Realtime connections",
-                description: "Maximum concurrent Realtime connections",
-                limit: realtimeConnectionsLimit,
-                currentUsage: 0, // Would need to query realtime service for this
-                source: "plan",
-                canExceed: limits?.realtimeConcurrentConnections?.canExceed,
-                isUpgradable: true,
-              }
+              name: "Realtime connections",
+              description: "Maximum concurrent Realtime connections",
+              limit: realtimeConnectionsLimit,
+              currentUsage: 0, // Would need to query realtime service for this
+              source: "plan",
+              canExceed: limits?.realtimeConcurrentConnections?.canExceed,
+              isUpgradable: true,
+            }
             : null,
         batchProcessingConcurrency: {
           name: "Batch processing concurrency",
@@ -282,20 +321,48 @@ export class LimitsPresenter extends BasePresenter {
           canExceed: true,
           isUpgradable: true,
         },
-        devQueueSize: {
-          name: "Dev queue size",
-          description: "Maximum pending runs in development environments",
-          limit: organization.maximumDevQueueSize ?? null,
-          currentUsage: 0, // Would need to query Redis for this
-          source: organization.maximumDevQueueSize ? "override" : "default",
+        queueSize: {
+          name: "Max queued runs",
+          description: "Maximum pending runs per individual queue in this environment",
+          limit: getQueueSizeLimit(environmentType, organization),
+          currentUsage: currentQueueSize,
+          source: getQueueSizeLimitSource(environmentType, organization),
+          isUpgradable: true,
         },
-        deployedQueueSize: {
-          name: "Deployed queue size",
-          description: "Maximum pending runs in deployed environments",
-          limit: organization.maximumDeployedQueueSize ?? null,
-          currentUsage: 0, // Would need to query Redis for this
-          source: organization.maximumDeployedQueueSize ? "override" : "default",
-        },
+        metricDashboards:
+          metricDashboardsLimit !== null
+            ? {
+                name: "Metric dashboards",
+                description: "Maximum number of custom metric dashboards per organization",
+                limit: metricDashboardsLimit,
+                currentUsage: metricDashboardCount,
+                source: "plan",
+                canExceed: limits?.metricDashboards?.canExceed,
+                isUpgradable: true,
+              }
+            : null,
+        metricWidgetsPerDashboard:
+          metricWidgetsPerDashboardLimit !== null
+            ? {
+                name: "Charts per dashboard",
+                description: "Maximum number of charts per metrics dashboard",
+                limit: metricWidgetsPerDashboardLimit,
+                currentUsage: 0, // Varies per dashboard
+                source: "plan",
+                canExceed: limits?.metricWidgetsPerDashboard?.canExceed,
+                isUpgradable: true,
+              }
+            : null,
+        queryPeriodDays:
+          queryPeriodDaysLimit !== null
+            ? {
+                name: "Query period",
+                description: "Maximum number of days a query can look back",
+                limit: queryPeriodDaysLimit,
+                currentUsage: 0, // Not applicable - this is a duration, not a count
+                source: "plan",
+              }
+            : null,
       },
       features: {
         hasStagingEnvironment: {

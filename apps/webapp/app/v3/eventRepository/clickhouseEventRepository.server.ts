@@ -266,6 +266,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         expires_at: convertDateToClickhouseDateTime(
           new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
         ),
+        machine_id: event.machineId ?? "",
       },
       ...this.spanEventsToTaskEventV1Input(event),
     ];
@@ -1281,6 +1282,8 @@ export class ClickhouseEventRepository implements IEventRepository {
       }
 
       if (record.kind === "SPAN") {
+        // Prefer SPAN record message for span title (task name); SPAN_EVENT "exception" must not override it
+        span.message = record.message;
         if (record.status === "ERROR") {
           span.isError = true;
           span.isPartial = false;
@@ -1296,8 +1299,6 @@ export class ClickhouseEventRepository implements IEventRepository {
         if (record.status !== "PARTIAL") {
           span.duration =
             typeof record.duration === "number" ? record.duration : Number(record.duration);
-        } else {
-          span.message = record.message;
         }
       }
 
@@ -1528,6 +1529,8 @@ export class ClickhouseEventRepository implements IEventRepository {
       }
 
       if (record.kind === "SPAN") {
+        // Prefer SPAN record message for span title (task name); SPAN_EVENT "exception" must not override it
+        span.data.message = record.message;
         if (record.status === "ERROR") {
           span.data.isError = true;
           span.data.isPartial = false;
@@ -1543,8 +1546,6 @@ export class ClickhouseEventRepository implements IEventRepository {
         if (record.status !== "PARTIAL") {
           span.data.duration =
             typeof record.duration === "number" ? record.duration : Number(record.duration);
-        } else {
-          span.data.message = record.message;
         }
       }
     }
@@ -1780,6 +1781,8 @@ export class ClickhouseEventRepository implements IEventRepository {
       }
 
       if (record.kind === "SPAN") {
+        // Prefer SPAN record message for span title (task name); SPAN_EVENT "exception" must not override it
+        span.data.message = record.message;
         if (record.status === "ERROR") {
           span.data.isError = true;
           span.data.isPartial = false;
@@ -1795,8 +1798,6 @@ export class ClickhouseEventRepository implements IEventRepository {
         if (record.status !== "PARTIAL") {
           span.data.duration =
             typeof record.duration === "number" ? record.duration : Number(record.duration);
-        } else {
-          span.data.message = record.message;
         }
       }
     }

@@ -19,6 +19,7 @@ import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PromoteIcon } from "~/assets/icons/PromoteIcon";
+import { VercelLink } from "~/components/integrations/VercelLink";
 import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import { GitMetadata } from "~/components/GitMetadata";
@@ -74,7 +75,7 @@ import {
   EnvironmentParamSchema,
   docsPath,
   v3DeploymentPath,
-  v3ProjectSettingsPath,
+  v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
@@ -160,6 +161,7 @@ export default function Page() {
     connectedGithubRepository,
     environmentGitHubBranch,
     autoReloadPollIntervalMs,
+    hasVercelIntegration,
   } = useTypedLoaderData<typeof loader>();
   const hasDeployments = totalPages > 0;
 
@@ -234,6 +236,7 @@ export default function Page() {
                       <TableHeaderCell>Deployed at</TableHeaderCell>
                       <TableHeaderCell>Deployed by</TableHeaderCell>
                       <TableHeaderCell>Git</TableHeaderCell>
+                      {hasVercelIntegration && <TableHeaderCell>Linked</TableHeaderCell>}
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
@@ -307,6 +310,22 @@ export default function Page() {
                                 <GitMetadata git={deployment.git} />
                               </div>
                             </TableCell>
+                            {hasVercelIntegration && (
+                              <TableCell isSelected={isSelected}>
+                                {deployment.vercelDeploymentUrl ? (
+                                  <div
+                                    className="-ml-1 flex items-center"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <VercelLink
+                                      vercelDeploymentUrl={deployment.vercelDeploymentUrl}
+                                    />
+                                  </div>
+                                ) : (
+                                  "–"
+                                )}
+                              </TableCell>
+                            )}
                             <DeploymentActionsCell
                               deployment={deployment}
                               path={path}
@@ -317,7 +336,7 @@ export default function Page() {
                         );
                       })
                     ) : (
-                      <TableBlankRow colSpan={8}>
+                      <TableBlankRow colSpan={hasVercelIntegration ? 9 : 8}>
                         <Paragraph className="flex items-center justify-center">
                           No deploys match your filters
                         </Paragraph>
@@ -351,7 +370,7 @@ export default function Page() {
                       <LinkButton
                         variant="minimal/small"
                         LeadingIcon={CogIcon}
-                        to={v3ProjectSettingsPath(organization, project, environment)}
+                        to={v3ProjectSettingsIntegrationsPath(organization, project, environment)}
                       />
                     </div>
                   )}

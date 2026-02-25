@@ -23,15 +23,17 @@ import {
   getTraceSummaryQueryBuilderV2,
   insertTaskEvents,
   insertTaskEventsV2,
-  getLogsListQueryBuilderV2,
   getLogDetailQueryBuilderV2,
+  getLogsSearchListQueryBuilder,
 } from "./taskEvents.js";
+import { insertMetrics } from "./metrics.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
 
 export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
+export type * from "./metrics.js";
 export type * from "./client/queryBuilder.js";
 
 // Re-export column constants, indices, and type-safe accessors
@@ -56,15 +58,10 @@ export {
   type FieldMappings,
   type WhereClauseCondition,
 } from "./client/tsql.js";
-export type { OutputColumnMetadata } from "@internal/tsql";
+export type { ColumnFormatType, OutputColumnMetadata } from "@internal/tsql";
 
 // Errors
 export { QueryError } from "./client/errors.js";
-
-export type LogsQuerySettings = {
-  list?: ClickHouseSettings;
-  detail?: ClickHouseSettings;
-};
 
 export type ClickhouseCommonConfig = {
   keepAlive?: {
@@ -80,7 +77,6 @@ export type ClickhouseCommonConfig = {
     response?: boolean;
   };
   maxOpenConnections?: number;
-  logsQuerySettings?: LogsQuerySettings;
 };
 
 export type ClickHouseConfig =
@@ -104,11 +100,9 @@ export class ClickHouse {
   public readonly writer: ClickhouseWriter;
   private readonly logger: Logger;
   private _splitClients: boolean;
-  private readonly logsQuerySettings?: LogsQuerySettings;
 
   constructor(config: ClickHouseConfig) {
     this.logger = config.logger ?? new Logger("ClickHouse", config.logLevel ?? "debug");
-    this.logsQuerySettings = config.logsQuerySettings;
 
     if (config.url) {
       const url = new URL(config.url);
@@ -214,14 +208,25 @@ export class ClickHouse {
     };
   }
 
+  get metrics() {
+    return {
+      insert: insertMetrics(this.writer),
+    };
+  }
+
   get taskEventsV2() {
     return {
       insert: insertTaskEventsV2(this.writer),
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilderV2(this.reader),
       traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilderV2(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilderV2(this.reader),
-      logsListQueryBuilder: getLogsListQueryBuilderV2(this.reader, this.logsQuerySettings?.list),
-      logDetailQueryBuilder: getLogDetailQueryBuilderV2(this.reader, this.logsQuerySettings?.detail),
+      logDetailQueryBuilder: getLogDetailQueryBuilderV2(this.reader),
+    };
+  }
+
+  get taskEventsSearch() {
+    return {
+      logsListQueryBuilder: getLogsSearchListQueryBuilder(this.reader),
     };
   }
 }

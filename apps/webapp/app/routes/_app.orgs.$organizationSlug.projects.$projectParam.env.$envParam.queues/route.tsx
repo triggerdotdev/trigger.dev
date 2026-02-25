@@ -345,7 +345,7 @@ export default function Page() {
             <BigNumber
               title="Queued"
               value={environment.queued}
-              suffix={env.paused && environment.queued > 0 ? "paused" : undefined}
+              suffix={env.paused ? <span className="text-warning">paused</span> : undefined}
               animate
               accessory={
                 <div className="flex items-start gap-1">
@@ -364,7 +364,7 @@ export default function Page() {
                   />
                 </div>
               }
-              valueClassName={cn(env.paused ? "text-warning" : undefined, "tabular-nums")}
+              valueClassName={env.paused ? "text-warning tabular-nums" : "tabular-nums"}
               compactThreshold={1000000}
             />
             <BigNumber
@@ -509,7 +509,10 @@ export default function Page() {
                   {queues.length > 0 ? (
                     queues.map((queue) => {
                       const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
-                      const isAtLimit = queue.running >= limit;
+                      const isAtConcurrencyLimit = queue.running >= limit;
+                      const isAtQueueLimit =
+                        environment.queueSizeLimit !== null &&
+                        queue.queued >= environment.queueSizeLimit;
                       const queueFilterableName = `${queue.type === "task" ? "task/" : ""}${
                         queue.name
                       }`;
@@ -535,7 +538,12 @@ export default function Page() {
                                   Paused
                                 </Badge>
                               ) : null}
-                              {isAtLimit ? (
+                              {isAtQueueLimit ? (
+                                <Badge variant="extra-small" className="text-error">
+                                  At queue limit
+                                </Badge>
+                              ) : null}
+                              {isAtConcurrencyLimit ? (
                                 <Badge variant="extra-small" className="text-warning">
                                   At concurrency limit
                                 </Badge>
@@ -546,7 +554,8 @@ export default function Page() {
                             alignment="right"
                             className={cn(
                               "w-[1%] pl-16 tabular-nums",
-                              queue.paused ? "opacity-50" : undefined
+                              queue.paused ? "opacity-50" : undefined,
+                              isAtQueueLimit && "text-error"
                             )}
                           >
                             {queue.queued}
@@ -557,7 +566,7 @@ export default function Page() {
                               "w-[1%] pl-16 tabular-nums",
                               queue.paused ? "opacity-50" : undefined,
                               queue.running > 0 && "text-text-bright",
-                              isAtLimit && "text-warning"
+                              isAtConcurrencyLimit && "text-warning"
                             )}
                           >
                             {queue.running}
@@ -577,7 +586,7 @@ export default function Page() {
                             className={cn(
                               "w-[1%] pl-16",
                               queue.paused ? "opacity-50" : undefined,
-                              isAtLimit && "text-warning",
+                              isAtConcurrencyLimit && "text-warning",
                               queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                             )}
                           >

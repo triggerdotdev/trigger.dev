@@ -22,6 +22,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { TextLink } from "~/components/primitives/TextLink";
 import { authenticator } from "~/services/auth.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
+import { setRedirectTo, commitSession as commitRedirectSession } from "~/services/redirectTo.server";
 import {
   checkMagicLinkEmailRateLimit,
   checkMagicLinkEmailDailyRateLimit,
@@ -59,6 +60,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const session = await getUserSession(request);
   const error = session.get("auth:error");
 
+  // Get redirectTo from URL params and store in session if present
+  const url = new URL(request.url);
+  const redirectTo = url.searchParams.get("redirectTo");
+  const headers = new Headers();
+  
+  if (redirectTo) {
+    const redirectSession = await setRedirectTo(request, redirectTo);
+    headers.append("Set-Cookie", await commitRedirectSession(redirectSession));
+  }
+
   let magicLinkError: string | undefined;
   if (error) {
     if ("message" in error) {
@@ -68,13 +79,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
   }
 
+  headers.append("Set-Cookie", await commitSession(session));
+
   return typedjson(
     {
       magicLinkSent: session.has("triggerdotdev:magiclink"),
       magicLinkError,
     },
     {
-      headers: { "Set-Cookie": await commitSession(session) },
+      headers,
     }
   );
 }
