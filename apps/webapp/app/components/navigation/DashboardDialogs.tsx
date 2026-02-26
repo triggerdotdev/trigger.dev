@@ -26,6 +26,46 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../pri
 import { v3BillingPath } from "~/utils/pathBuilder";
 import { type SideMenuEnvironment, type SideMenuProject } from "./SideMenu";
 
+function useCreateDashboard({
+  organization,
+  project,
+  environment,
+}: {
+  organization: { slug: string };
+  project: { slug: string };
+  environment: { slug: string };
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const navigation = useNavigation();
+  const limits = useDashboardLimits();
+  const plan = useCurrentPlan();
+
+  const isAtLimit = limits.used >= limits.limit;
+  const planLimits = (plan?.v3Subscription?.plan?.limits as any)?.metricDashboards;
+  const canExceed = typeof planLimits === "object" && planLimits.canExceed === true;
+  const canUpgrade = plan?.v3Subscription?.plan && !canExceed;
+  const isFreePlan = plan?.v3Subscription?.isPaying === false;
+
+  const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/create`;
+
+  useEffect(() => {
+    if (navigation.formAction === formAction && navigation.state === "loading") {
+      setIsOpen(false);
+    }
+  }, [navigation.formAction, navigation.state, formAction]);
+
+  return {
+    isOpen,
+    setIsOpen,
+    isAtLimit,
+    canUpgrade: !!canUpgrade,
+    isFreePlan,
+    formAction,
+    limits,
+    organization,
+  };
+}
+
 export function CreateDashboardButton({
   organization,
   project,
@@ -37,29 +77,12 @@ export function CreateDashboardButton({
   environment: SideMenuEnvironment;
   isCollapsed: boolean;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const navigation = useNavigation();
-  const limits = useDashboardLimits();
-  const plan = useCurrentPlan();
-
-  const isAtLimit = limits.used >= limits.limit;
-  const planLimits = (plan?.v3Subscription?.plan?.limits as any)?.metricDashboards;
-  const canExceed = typeof planLimits === "object" && planLimits.canExceed === true;
-  const canUpgrade = plan?.v3Subscription?.plan && !canExceed;
-
-  const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/create`;
-
-  // Close dialog when form submission starts (redirect is happening)
-  useEffect(() => {
-    if (navigation.formAction === formAction && navigation.state === "loading") {
-      setIsOpen(false);
-    }
-  }, [navigation.formAction, navigation.state, formAction]);
+  const dashboard = useCreateDashboard({ organization, project, environment });
 
   if (isCollapsed) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={dashboard.isOpen} onOpenChange={dashboard.setIsOpen}>
       <TooltipProvider disableHoverableContent>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -77,15 +100,47 @@ export function CreateDashboardButton({
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      {isAtLimit ? (
+      {dashboard.isAtLimit ? (
         <CreateDashboardUpgradeDialog
-          limits={limits}
-          canUpgrade={!!canUpgrade}
-          isFreePlan={plan?.v3Subscription?.isPaying === false}
-          organization={organization}
+          limits={dashboard.limits}
+          canUpgrade={dashboard.canUpgrade}
+          isFreePlan={dashboard.isFreePlan}
+          organization={dashboard.organization}
         />
       ) : (
-        <CreateDashboardDialog formAction={formAction} limits={limits} />
+        <CreateDashboardDialog formAction={dashboard.formAction} limits={dashboard.limits} />
+      )}
+    </Dialog>
+  );
+}
+
+export function CreateDashboardPageButton({
+  organization,
+  project,
+  environment,
+}: {
+  organization: { slug: string };
+  project: { slug: string };
+  environment: { slug: string };
+}) {
+  const dashboard = useCreateDashboard({ organization, project, environment });
+
+  return (
+    <Dialog open={dashboard.isOpen} onOpenChange={dashboard.setIsOpen}>
+      <DialogTrigger asChild>
+        <Button variant="primary/small" LeadingIcon={PlusIcon}>
+          Create custom dashboard
+        </Button>
+      </DialogTrigger>
+      {dashboard.isAtLimit ? (
+        <CreateDashboardUpgradeDialog
+          limits={dashboard.limits}
+          canUpgrade={dashboard.canUpgrade}
+          isFreePlan={dashboard.isFreePlan}
+          organization={dashboard.organization}
+        />
+      ) : (
+        <CreateDashboardDialog formAction={dashboard.formAction} limits={dashboard.limits} />
       )}
     </Dialog>
   );
@@ -105,7 +160,7 @@ function CreateDashboardUpgradeDialog({
   limits: { used: number; limit: number };
   canUpgrade: boolean;
   isFreePlan: boolean;
-  organization: MatchedOrganization;
+  organization: { slug: string };
 }) {
 
   if (isFreePlan) {
