@@ -211,6 +211,34 @@ export class StreamBatchItemsService extends WithRunEngine {
 
         // Validate we received the expected number of items
         if (enqueuedCount !== batch.runCount) {
+          // The batch queue consumers may have already processed all items and
+          // cleaned up the Redis keys before we got here (especially likely when
+          // items include pre-failed runs that complete instantly). Check if the
+          // batch was already sealed/completed in Postgres.
+          const currentBatch = await this._prisma.batchTaskRun.findUnique({
+            where: { id: batchId },
+            select: { sealed: true, status: true },
+          });
+
+          if (currentBatch?.sealed) {
+            logger.info("Batch already sealed before count check (fast completion)", {
+              batchId: batchFriendlyId,
+              itemsAccepted,
+              itemsDeduplicated,
+              enqueuedCount,
+              expectedCount: batch.runCount,
+              batchStatus: currentBatch.status,
+            });
+
+            return {
+              id: batchFriendlyId,
+              itemsAccepted,
+              itemsDeduplicated,
+              sealed: true,
+              runCount: batch.runCount,
+            };
+          }
+
           logger.warn("Batch item count mismatch", {
             batchId: batchFriendlyId,
             expected: batch.runCount,
@@ -463,6 +491,9 @@ export function createNdjsonParserStream(
   let chunks: Uint8Array[] = [];
   let totalBytes = 0;
   let lineNumber = 0;
+  // When an oversized incomplete line is detected (Case 2), we must discard
+  // all remaining bytes of that line until the next newline delimiter.
+  let skipUntilNewline = false;
 
   const NEWLINE_BYTE = 0x0a; // '\n'
 
@@ -556,6 +587,24 @@ export function createNdjsonParserStream(
 
   return new TransformStream<Uint8Array, unknown>({
     transform(chunk, controller) {
+      // If we're skipping the remainder of an oversized line, scan for the
+      // next newline in this chunk and discard everything before it.
+      if (skipUntilNewline) {
+        const nlPos = chunk.indexOf(NEWLINE_BYTE);
+        if (nlPos === -1) {
+          // Entire chunk is still part of the oversized line — discard it
+          return;
+        }
+        // Found the newline — keep everything after it
+        skipUntilNewline = false;
+        const remaining = chunk.slice(nlPos + 1);
+        if (remaining.byteLength === 0) {
+          return;
+        }
+        // Replace chunk with the remainder and fall through to normal processing
+        chunk = remaining;
+      }
+
       // Append chunk to buffer
       chunks.push(chunk);
       totalBytes += chunk.byteLength;
@@ -598,9 +647,11 @@ export function createNdjsonParserStream(
         };
         controller.enqueue(marker);
         lineNumber++;
-        // Clear buffer since we consumed the oversized data
+        // Clear buffer and skip remaining bytes of this oversized line
+        // until the next newline delimiter is found in a subsequent chunk
         chunks = [];
         totalBytes = 0;
+        skipUntilNewline = true;
         return;
       }
     },

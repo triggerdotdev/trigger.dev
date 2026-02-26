@@ -747,6 +747,38 @@ describe("createNdjsonParserStream", () => {
     expect(marker.maxSize).toBe(maxBytes);
   });
 
+  it("should skip remaining bytes of oversized line arriving in subsequent chunks", async () => {
+    const maxBytes = 50;
+    const encoder = new TextEncoder();
+    // Simulate a normal item, then an oversized item split across many chunks,
+    // then another normal item after the newline.
+    // The oversized line is: {"index":1,"task":"t","data":"xxxx...120 x's...xxxx"}\n
+    const normalItem1 = '{"index":0,"task":"t","x":1}\n';
+    const oversizedStart = '{"index":1,"task":"t","data":"';
+    const oversizedMiddle = "x".repeat(120); // way over 50 bytes
+    const oversizedEnd = '"}\n';
+    const normalItem2 = '{"index":2,"task":"t","x":2}\n';
+
+    // Send as separate chunks to trigger Case 2 (no newline, buffer > limit)
+    const chunks = [
+      encoder.encode(normalItem1 + oversizedStart),
+      encoder.encode(oversizedMiddle.slice(0, 60)),
+      encoder.encode(oversizedMiddle.slice(60)),
+      encoder.encode(oversizedEnd + normalItem2),
+    ];
+    const stream = chunksToStream(chunks);
+
+    const parser = createNdjsonParserStream(maxBytes);
+    const results = await collectStream(stream.pipeThrough(parser));
+
+    // Should get: normal item 1, oversized marker, normal item 2
+    expect(results).toHaveLength(3);
+    expect(results[0]).toEqual({ index: 0, task: "t", x: 1 });
+    expect((results[1] as OversizedItemMarker).__batchItemError).toBe("OVERSIZED");
+    expect((results[1] as OversizedItemMarker).index).toBe(1);
+    expect(results[2]).toEqual({ index: 2, task: "t", x: 2 });
+  });
+
   it("should check byte size before decoding to prevent OOM", async () => {
     // This test verifies that size is checked on raw bytes, not decoded string length
     // Unicode characters like "🎉" are 4 bytes but 2 UTF-16 code units (string length 2)

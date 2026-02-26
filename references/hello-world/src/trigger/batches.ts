@@ -1013,6 +1013,9 @@ export const largePayloadTask = task({
 export const batchSealFailureOversizedPayload = task({
   id: "batch-seal-failure-oversized",
   maxDuration: 60,
+  retry: {
+    maxAttempts: 1,
+  },
   run: async () => {
     const results = await fixedLengthTask.batchTriggerAndWait([
       { payload: { waitSeconds: 1, output: "normal" } },
