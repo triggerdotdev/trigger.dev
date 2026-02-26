@@ -180,8 +180,8 @@
             ]
           },
           {
-            "group": "Insights",
-            "pages": ["insights/query", "insights/metrics"]
+            "group": "Observability",
+            "pages": ["observability/query", "observability/dashboards"]
           },
           {
             "group": "Using the Dashboard",
@@ -239,11 +239,20 @@
           },
           {
             "group": "Tasks API",
-            "pages": ["management/tasks/trigger", "management/tasks/batch-trigger", "management/tasks/trigger-batch"]
+            "pages": [
+              "management/tasks/trigger",
+              "management/tasks/batch-trigger",
+              "management/tasks/trigger-batch"
+            ]
           },
           {
             "group": "Batches API",
-            "pages": ["management/batches/create", "management/batches/retrieve", "management/batches/retrieve-results", "management/batches/stream-items"]
+            "pages": [
+              "management/batches/create",
+              "management/batches/retrieve",
+              "management/batches/retrieve-results",
+              "management/batches/stream-items"
+            ]
           },
           {
             "group": "Runs API",
@@ -712,6 +721,14 @@
     {
       "source": "/upgrade-to-v4",
       "destination": "/migrating-from-v3"
+    },
+    {
+      "source": "/insights/query",
+      "destination": "/observability/query"
+    },
+    {
+      "source": "/insights/metrics",
+      "destination": "/observability/dashboards"
     }
   ]
 }
