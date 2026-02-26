@@ -180,29 +180,29 @@ export class EvaluateAlertDefinitionService extends BaseService {
     const stateChanged = newState !== definition.state;
     const evaluatedAt = new Date();
 
-    // Write evaluation result to ClickHouse
-    const [insertError] = await clickhouseClient.alertEvaluations.insert([
-      {
-        alert_definition_id: definition.id,
-        organization_id: definition.organizationId,
-        project_id: definition.project?.id ?? "",
-        environment_id: definition.environment?.id ?? "",
-        evaluated_at: evaluatedAt.toISOString(),
-        state: newState === "FIRING" ? "firing" : "ok",
-        state_changed: stateChanged ? 1 : 0,
-        value: queryValue,
-        conditions: JSON.stringify(conditionsResult.success ? conditionsResult.data : []),
-        query_duration_ms: queryDurationMs,
-        error_message: errorMessage,
-      },
-    ]);
-
-    if (insertError) {
-      logger.error("[EvaluateAlertDefinition] Failed to write evaluation to ClickHouse", {
-        alertDefinitionId,
-        error: insertError,
+    // Fire-and-forget: write evaluation result to ClickHouse without blocking
+    clickhouseClient.alertEvaluations
+      .insert([
+        {
+          alert_definition_id: definition.id,
+          organization_id: definition.organizationId,
+          project_id: definition.project?.id ?? "",
+          environment_id: definition.environment?.id ?? "",
+          evaluated_at: evaluatedAt.toISOString(),
+          state: newState === "FIRING" ? "firing" : "ok",
+          state_changed: stateChanged ? 1 : 0,
+          value: queryValue,
+          conditions: JSON.stringify(conditionsResult.success ? conditionsResult.data : []),
+          query_duration_ms: queryDurationMs,
+          error_message: errorMessage,
+        },
+      ])
+      .catch((error) => {
+        logger.error("[EvaluateAlertDefinition] Failed to write evaluation to ClickHouse", {
+          alertDefinitionId,
+          error,
+        });
       });
-    }
 
     // Update the definition's state, lastEvaluatedAt (and lastStateChangedAt if changed)
     await this._prisma.alertV2Definition.update({
@@ -219,6 +219,14 @@ export class EvaluateAlertDefinitionService extends BaseService {
       await this.#notifyChannels(definition, newState, evaluatedAt);
     }
 
+    // Schedule the next evaluation for this alert.
+    // Each alert is an independent recurring job: after processing it enqueues its own
+    // next run. If the alert was deleted or disabled we stop the chain.
+    if (definition.enabled) {
+      const nextRunAt = new Date(evaluatedAt.getTime() + definition.evaluationIntervalSeconds * 1000);
+      await EvaluateAlertDefinitionService.enqueue(alertDefinitionId, nextRunAt);
+    }
+
     logger.debug("[EvaluateAlertDefinition] Evaluation complete", {
       alertDefinitionId,
       previousState: definition.state,
@@ -226,6 +234,7 @@ export class EvaluateAlertDefinitionService extends BaseService {
       stateChanged,
       queryValue,
       queryDurationMs,
+      nextRunScheduled: definition.enabled,
     });
   }
 
