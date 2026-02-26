@@ -313,8 +313,9 @@ export class LimitsPresenter extends BasePresenter {
             }
             : null,
         batchProcessingConcurrency: {
-          name: "Batch processing concurrency",
-          description: "Controls how many batch items can be processed simultaneously.",
+          name: "Batch trigger processing concurrency",
+          description:
+            "When you send a batch trigger, we convert it into individual runs in parallel. This is the maximum number of batches being converted into runs at once. It does not limit how many batch runs can be executing.",
           limit: batchConcurrencyConfig.processingConcurrency,
           currentUsage: 0,
           source: batchConcurrencySource,
