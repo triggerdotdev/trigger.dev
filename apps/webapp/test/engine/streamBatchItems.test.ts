@@ -24,6 +24,8 @@ import {
   StreamBatchItemsService,
   createNdjsonParserStream,
   streamToAsyncIterable,
+  extractIndexAndTask,
+  type OversizedItemMarker,
 } from "../../app/runEngine/services/streamBatchItems.server";
 import { ServiceValidationError } from "../../app/v3/services/baseService.server";
 
@@ -705,33 +707,44 @@ describe("createNdjsonParserStream", () => {
     expect(results).toEqual([{ greeting: "こんにちは" }]);
   });
 
-  it("should reject lines exceeding maxItemBytes", async () => {
+  it("should emit OversizedItemMarker for lines exceeding maxItemBytes", async () => {
     const maxBytes = 50;
-    // Create a line that exceeds the limit
-    const largeJson = JSON.stringify({ data: "x".repeat(100) }) + "\n";
+    // Create a line that exceeds the limit with index and task fields
+    const largeJson = JSON.stringify({ index: 3, task: "my-task", data: "x".repeat(100) }) + "\n";
     const encoder = new TextEncoder();
     const stream = chunksToStream([encoder.encode(largeJson)]);
 
     const parser = createNdjsonParserStream(maxBytes);
+    const results = await collectStream(stream.pipeThrough(parser));
 
-    await expect(collectStream(stream.pipeThrough(parser))).rejects.toThrow(/exceeds maximum size/);
+    expect(results).toHaveLength(1);
+    const marker = results[0] as OversizedItemMarker;
+    expect(marker.__batchItemError).toBe("OVERSIZED");
+    expect(marker.index).toBe(3);
+    expect(marker.task).toBe("my-task");
+    expect(marker.maxSize).toBe(maxBytes);
+    expect(marker.actualSize).toBeGreaterThan(maxBytes);
   });
 
-  it("should reject unbounded accumulation without newlines", async () => {
+  it("should emit OversizedItemMarker for unbounded accumulation without newlines", async () => {
     const maxBytes = 50;
     // Send data without any newlines that exceeds the buffer limit
     const encoder = new TextEncoder();
     const chunks = [
-      encoder.encode('{"start":"'),
+      encoder.encode('{"index":7,"task":"big-task","start":"'),
       encoder.encode("x".repeat(60)), // This will push buffer over 50 bytes
     ];
     const stream = chunksToStream(chunks);
 
     const parser = createNdjsonParserStream(maxBytes);
+    const results = await collectStream(stream.pipeThrough(parser));
 
-    await expect(collectStream(stream.pipeThrough(parser))).rejects.toThrow(
-      /exceeds maximum size.*no newline found/
-    );
+    expect(results).toHaveLength(1);
+    const marker = results[0] as OversizedItemMarker;
+    expect(marker.__batchItemError).toBe("OVERSIZED");
+    expect(marker.index).toBe(7);
+    expect(marker.task).toBe("big-task");
+    expect(marker.maxSize).toBe(maxBytes);
   });
 
   it("should check byte size before decoding to prevent OOM", async () => {
@@ -756,10 +769,12 @@ describe("createNdjsonParserStream", () => {
     const results1 = await collectStream(stream1.pipeThrough(parser1));
     expect(results1).toHaveLength(1);
 
-    // Large one should fail
+    // Large one should emit an OversizedItemMarker
     const stream2 = chunksToStream([largeBytes]);
     const parser2 = createNdjsonParserStream(maxBytes);
-    await expect(collectStream(stream2.pipeThrough(parser2))).rejects.toThrow(/exceeds maximum/);
+    const results2 = await collectStream(stream2.pipeThrough(parser2));
+    expect(results2).toHaveLength(1);
+    expect((results2[0] as OversizedItemMarker).__batchItemError).toBe("OVERSIZED");
   });
 
   it("should handle final line in flush without trailing newline", async () => {
@@ -837,6 +852,28 @@ describe("createNdjsonParserStream", () => {
     expect(results).toEqual([]);
   });
 
+  it("should pass normal items and emit markers for oversized items in the same stream", async () => {
+    const maxBytes = 50;
+    const encoder = new TextEncoder();
+    // Normal item, then oversized item, then another normal item
+    const normalItem1 = '{"index":0,"task":"t","x":1}\n';
+    const oversizedItem = JSON.stringify({ index: 1, task: "t", data: "x".repeat(100) }) + "\n";
+    const normalItem2 = '{"index":2,"task":"t","x":2}\n';
+    const stream = chunksToStream([encoder.encode(normalItem1 + oversizedItem + normalItem2)]);
+
+    const parser = createNdjsonParserStream(maxBytes);
+    const results = await collectStream(stream.pipeThrough(parser));
+
+    expect(results).toHaveLength(3);
+    // First: normal parsed object
+    expect(results[0]).toEqual({ index: 0, task: "t", x: 1 });
+    // Second: oversized marker
+    expect((results[1] as OversizedItemMarker).__batchItemError).toBe("OVERSIZED");
+    expect((results[1] as OversizedItemMarker).index).toBe(1);
+    // Third: normal parsed object
+    expect(results[2]).toEqual({ index: 2, task: "t", x: 2 });
+  });
+
   it("should handle stream with only whitespace", async () => {
     const encoder = new TextEncoder();
     const stream = chunksToStream([encoder.encode("   \n\n   \n")]);
@@ -845,5 +882,36 @@ describe("createNdjsonParserStream", () => {
     const results = await collectStream(stream.pipeThrough(parser));
 
     expect(results).toEqual([]);
+  });
+});
+
+describe("extractIndexAndTask", () => {
+  const encoder = new TextEncoder();
+
+  it("should extract index and task from JSON bytes", () => {
+    const bytes = encoder.encode('{"index":42,"task":"my-task","data":"x"}');
+    const result = extractIndexAndTask(bytes);
+    expect(result.index).toBe(42);
+    expect(result.task).toBe("my-task");
+  });
+
+  it("should return defaults for empty or malformed bytes", () => {
+    const result = extractIndexAndTask(new Uint8Array(0));
+    expect(result.index).toBe(-1);
+    expect(result.task).toBe("unknown");
+  });
+
+  it("should handle keys in any order", () => {
+    const bytes = encoder.encode('{"task":"other-task","data":"y","index":99}');
+    const result = extractIndexAndTask(bytes);
+    expect(result.index).toBe(99);
+    expect(result.task).toBe("other-task");
+  });
+
+  it("should not match nested keys", () => {
+    const bytes = encoder.encode('{"nested":{"index":999,"task":"inner"},"index":5,"task":"outer"}');
+    const result = extractIndexAndTask(bytes);
+    expect(result.index).toBe(5);
+    expect(result.task).toBe("outer");
   });
 });

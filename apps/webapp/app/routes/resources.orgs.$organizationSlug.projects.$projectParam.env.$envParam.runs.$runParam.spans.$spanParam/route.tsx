@@ -58,6 +58,7 @@ import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/Ru
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
+import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
@@ -133,9 +134,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
               name: error.name,
               message: error.message,
               stack: error.stack,
-              cause: error.cause instanceof Error
-                ? { name: error.cause.name, message: error.cause.message }
-                : error.cause,
+              cause:
+                error.cause instanceof Error
+                  ? { name: error.cause.name, message: error.cause.message }
+                  : error.cause,
             }
           : error,
     });
@@ -1003,7 +1005,7 @@ function RunBody({
           )}
         </div>
       </div>
-      <div className="flex items-center flex-wrap py-2 justify-between gap-2 border-t border-grid-dimmed px-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-grid-dimmed px-2 py-2">
         <div className="flex items-center gap-4">
           {run.friendlyId !== runParam && (
             <LinkButton
@@ -1047,9 +1049,11 @@ function RunBody({
                   </PopoverTrigger>
                   <PopoverContent className="min-w-[140px] p-1" align="end">
                     <PopoverMenuItem
-                      to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${
-                        new Date(run.createdAt).getTime() - 60000
-                      }`}
+                      to={`${v3LogsPath(
+                        organization,
+                        project,
+                        environment
+                      )}?runId=${runParam}&from=${new Date(run.createdAt).getTime() - 60000}`}
                       title="View logs"
                       icon={ArrowRightIcon}
                       leadingIconClassName="text-blue-500"
@@ -1200,50 +1204,6 @@ function SpanEntity({ span }: { span: Span }) {
             <Property.Label>Message</Property.Label>
             <Property.Value className="whitespace-pre-wrap">{span.message}</Property.Value>
           </Property.Item>
-          {span.triggeredRuns.length > 0 && (
-            <Property.Item>
-              <div className="flex flex-col gap-1.5">
-                <Header3>Triggered runs</Header3>
-                <Table containerClassName="max-h-[12.5rem]">
-                  <TableHeader className="bg-background-bright">
-                    <TableRow>
-                      <TableHeaderCell>Run #</TableHeaderCell>
-                      <TableHeaderCell>Task</TableHeaderCell>
-                      <TableHeaderCell>Version</TableHeaderCell>
-                      <TableHeaderCell>Created at</TableHeaderCell>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {span.triggeredRuns.map((run) => {
-                      const path = v3RunSpanPath(
-                        organization,
-                        project,
-                        environment,
-                        { friendlyId: run.friendlyId },
-                        { spanId: run.spanId }
-                      );
-                      return (
-                        <TableRow key={run.friendlyId}>
-                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
-                            {run.number}
-                          </TableCell>
-                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
-                            {run.taskIdentifier}
-                          </TableCell>
-                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
-                            {run.taskVersion ?? "–"}
-                          </TableCell>
-                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
-                            <DateTime date={run.createdAt} />
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </Property.Item>
-          )}
         </Property.Table>
         {span.events.length > 0 && <SpanEvents spanEvents={span.events} />}
         {span.properties !== undefined ? (
@@ -1268,6 +1228,48 @@ function SpanEntity({ span }: { span: Span }) {
             showOpenInModal
           />
         ) : null}
+        {span.triggeredRuns.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <Header3>Runs</Header3>
+            <Table containerClassName="max-h-[12.5rem]">
+              <TableHeader className="bg-background-bright">
+                <TableRow>
+                  <TableHeaderCell>ID</TableHeaderCell>
+                  <TableHeaderCell>Task</TableHeaderCell>
+                  <TableHeaderCell>Status</TableHeaderCell>
+                  <TableHeaderCell>Created</TableHeaderCell>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {span.triggeredRuns.map((run) => {
+                  const path = v3RunSpanPath(
+                    organization,
+                    project,
+                    environment,
+                    { friendlyId: run.friendlyId },
+                    { spanId: run.spanId }
+                  );
+                  return (
+                    <TableRow key={run.friendlyId}>
+                      <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                        <TruncatedCopyableValue value={run.friendlyId} />
+                      </TableCell>
+                      <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                        {run.taskIdentifier}
+                      </TableCell>
+                      <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                        <TaskRunStatusCombo status={run.status} />
+                      </TableCell>
+                      <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                        <DateTimeAccurate date={run.createdAt} hour12={false} hideDate={true} />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </div>
     );
   }
