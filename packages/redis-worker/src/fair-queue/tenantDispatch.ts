@@ -40,11 +40,12 @@ export class TenantDispatch {
   }
 
   /**
-   * Get the shard ID for a queue.
-   * Uses the same jump consistent hash as MasterQueue for consistency.
+   * Get the dispatch shard ID for a tenant.
+   * Uses jump consistent hash on the tenant ID so each tenant
+   * always maps to exactly one dispatch shard.
    */
-  getShardForQueue(queueId: string): number {
-    return jumpHash(queueId, this.shardCount);
+  getShardForTenant(tenantId: string): number {
+    return jumpHash(tenantId, this.shardCount);
   }
 
   /**

@@ -991,6 +991,84 @@ describe("Two-Level Tenant Dispatch", () => {
       }
     );
   });
+  describe("dispatch shard is tenant-based, not queue-based", () => {
+    redisTest(
+      "tenant with queues in different queue shards should appear in only one dispatch shard",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        const keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+        const redis = createRedisClient(redisOptions);
+        const shardCount = 2;
+
+        const helper = new TestHelper(redisOptions, keys, { shardCount });
+
+        try {
+          const tenantId = "tenant-shard-test";
+
+          // Find two queue IDs for the same tenant that hash to different queue shards
+          // by trying different queue names
+          const { MasterQueue: MQ } = await import("../masterQueue.js");
+          const mq = new MQ({ redis: redisOptions, keys, shardCount });
+          const { TenantDispatch: TD } = await import("../tenantDispatch.js");
+          const td = new TD({ redis: redisOptions, keys, shardCount });
+
+          let queueShard0: string | null = null;
+          let queueShard1: string | null = null;
+
+          for (let i = 0; i < 100; i++) {
+            const qId = `tenant:${tenantId}:queue:q${i}`;
+            const shard = mq.getShardForQueue(qId);
+            if (shard === 0 && !queueShard0) queueShard0 = qId;
+            if (shard === 1 && !queueShard1) queueShard1 = qId;
+            if (queueShard0 && queueShard1) break;
+          }
+
+          expect(queueShard0).not.toBeNull();
+          expect(queueShard1).not.toBeNull();
+
+          // Both queues belong to the same tenant, so dispatch shard should be the same
+          const expectedDispatchShard = td.getShardForTenant(tenantId);
+
+          // Enqueue to both queues
+          await helper.fairQueue.enqueue({
+            queueId: queueShard0!,
+            tenantId,
+            payload: { value: "msg-shard0" },
+          });
+          await helper.fairQueue.enqueue({
+            queueId: queueShard1!,
+            tenantId,
+            payload: { value: "msg-shard1" },
+          });
+
+          // Verify: tenant should only appear in one dispatch shard
+          const dispatch0 = await redis.zrange(keys.dispatchKey(0), 0, -1);
+          const dispatch1 = await redis.zrange(keys.dispatchKey(1), 0, -1);
+
+          const inShard0 = dispatch0.includes(tenantId);
+          const inShard1 = dispatch1.includes(tenantId);
+
+          // Tenant should appear in exactly one shard
+          expect(inShard0 !== inShard1).toBe(true);
+
+          // And it should be the expected one
+          if (expectedDispatchShard === 0) {
+            expect(inShard0).toBe(true);
+            expect(inShard1).toBe(false);
+          } else {
+            expect(inShard0).toBe(false);
+            expect(inShard1).toBe(true);
+          }
+
+          await mq.close();
+          await td.close();
+        } finally {
+          await helper.close();
+          await redis.quit();
+        }
+      }
+    );
+  });
 });
 
 // Helper to wait for a condition

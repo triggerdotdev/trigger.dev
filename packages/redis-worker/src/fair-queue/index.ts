@@ -273,9 +273,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         const timestamp = options.timestamp ?? Date.now();
         const queueKey = this.keys.queueKey(options.queueId);
         const queueItemsKey = this.keys.queueItemsKey(options.queueId);
-        const shardId = this.masterQueue.getShardForQueue(options.queueId);
+        const dispatchShardId = this.tenantDispatch.getShardForTenant(options.tenantId);
         const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(options.tenantId);
-        const dispatchKey = this.keys.dispatchKey(shardId);
+        const dispatchKey = this.keys.dispatchKey(dispatchShardId);
 
         // Validate payload if schema provided and validation enabled
         if (this.validateOnEnqueue && this.payloadSchema) {
@@ -332,7 +332,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           [FairQueueAttributes.QUEUE_ID]: options.queueId,
           [FairQueueAttributes.TENANT_ID]: options.tenantId,
           [FairQueueAttributes.MESSAGE_ID]: messageId,
-          [FairQueueAttributes.SHARD_ID]: shardId.toString(),
+          [FairQueueAttributes.SHARD_ID]: dispatchShardId.toString(),
         });
 
         this.telemetry.recordEnqueue();
@@ -363,9 +363,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       async (span) => {
         const queueKey = this.keys.queueKey(options.queueId);
         const queueItemsKey = this.keys.queueItemsKey(options.queueId);
-        const shardId = this.masterQueue.getShardForQueue(options.queueId);
+        const dispatchShardId = this.tenantDispatch.getShardForTenant(options.tenantId);
         const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(options.tenantId);
-        const dispatchKey = this.keys.dispatchKey(shardId);
+        const dispatchKey = this.keys.dispatchKey(dispatchShardId);
         const now = Date.now();
 
         // Store queue descriptor
@@ -433,7 +433,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           [FairQueueAttributes.QUEUE_ID]: options.queueId,
           [FairQueueAttributes.TENANT_ID]: options.tenantId,
           [FairQueueAttributes.MESSAGE_COUNT]: messageIds.length,
-          [FairQueueAttributes.SHARD_ID]: shardId.toString(),
+          [FairQueueAttributes.SHARD_ID]: dispatchShardId.toString(),
         });
 
         this.telemetry.recordEnqueueBatch(messageIds.length);
@@ -1082,8 +1082,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     loopId: string,
     queueId: string,
     tenantId: string,
-    shardId: number
+    _consumerShardId: number
   ): Promise<number> {
+    // Dispatch shard is tenant-based (tenantId hash), not queue-based.
+    // In-flight/master queue shard is queue-based.
+    const dispatchShardId = this.tenantDispatch.getShardForTenant(tenantId);
     const queueKey = this.keys.queueKey(queueId);
     const queueItemsKey = this.keys.queueItemsKey(queueId);
     const descriptor = this.queueDescriptorCache.get(queueId) ?? {
@@ -1126,7 +1129,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     if (claimedMessages.length === 0) {
       // Queue is empty, update both old and new indexes and clean up caches
-      await this.#updateAllIndexesAfterDequeue(queueId, tenantId, shardId);
+      await this.#updateAllIndexesAfterDequeue(queueId, tenantId);
       this.queueDescriptorCache.delete(queueId);
       this.queueCooloffStates.delete(queueId);
       return 0;
@@ -1145,7 +1148,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           // Release ALL remaining messages (from index i onward) back to queue
           // This prevents messages from being stranded in the in-flight set
           const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(tenantId);
-          const dispatchKey = this.keys.dispatchKey(shardId);
+          const dispatchKey = this.keys.dispatchKey(dispatchShardId);
           await this.visibilityManager.releaseBatch(
             claimedMessages.slice(i),
             queueId,
@@ -1261,8 +1264,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     // Update both old and new indexes, clean up caches if queue is empty
     const { queueEmpty } = await this.#updateAllIndexesAfterDequeue(
       queueId,
-      descriptor.tenantId,
-      shardId
+      descriptor.tenantId
     );
     if (queueEmpty) {
       this.queueDescriptorCache.delete(queueId);
@@ -1310,8 +1312,10 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       : { id: queueId, tenantId: this.keys.extractTenantId(queueId), metadata: {} };
 
     // Release back to queue (visibility manager updates dispatch indexes atomically)
+    // Dispatch shard is tenant-based, not queue-based
+    const dispatchShardId = this.tenantDispatch.getShardForTenant(descriptor.tenantId);
     const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(descriptor.tenantId);
-    const dispatchKey = this.keys.dispatchKey(shardId);
+    const dispatchKey = this.keys.dispatchKey(dispatchShardId);
     await this.visibilityManager.release(
       messageId,
       queueId,
@@ -1372,12 +1376,13 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       metadata: storedMessage.metadata ?? {},
     };
 
+    const dispatchShardId = this.tenantDispatch.getShardForTenant(descriptor.tenantId);
     await this.#handleMessageFailure(
       storedMessage,
       queueId,
       queueKey,
       queueItemsKey,
-      shardId,
+      dispatchShardId,
       descriptor,
       error
     );
@@ -1392,7 +1397,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     queueId: string,
     queueKey: string,
     queueItemsKey: string,
-    shardId: number,
+    dispatchShardId: number,
     descriptor: QueueDescriptor,
     error?: Error
   ): Promise<void> {
@@ -1412,7 +1417,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         // Release with delay, passing the updated message data so the Lua script
         // atomically writes the incremented attempt count when re-queuing.
         const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(descriptor.tenantId);
-        const dispatchKey = this.keys.dispatchKey(shardId);
+        const dispatchKey = this.keys.dispatchKey(dispatchShardId);
         await this.visibilityManager.release(
           storedMessage.id,
           queueId,
@@ -1529,12 +1534,12 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     for (let shardId = 0; shardId < this.shardCount; shardId++) {
       const reclaimedMessages = await this.visibilityManager.reclaimTimedOut(shardId, (queueId) => {
         const tenantId = this.keys.extractTenantId(queueId);
-        const queueShardId = this.masterQueue.getShardForQueue(queueId);
+        const dispatchShardId = this.tenantDispatch.getShardForTenant(tenantId);
         return {
           queueKey: this.keys.queueKey(queueId),
           queueItemsKey: this.keys.queueItemsKey(queueId),
           tenantQueueIndexKey: this.keys.tenantQueueIndexKey(tenantId),
-          dispatchKey: this.keys.dispatchKey(queueShardId),
+          dispatchKey: this.keys.dispatchKey(dispatchShardId),
           tenantId,
         };
       });
@@ -1645,13 +1650,14 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
    */
   async #updateAllIndexesAfterDequeue(
     queueId: string,
-    tenantId: string,
-    shardId: number
+    tenantId: string
   ): Promise<{ queueEmpty: boolean }> {
+    const queueShardId = this.masterQueue.getShardForQueue(queueId);
+    const dispatchShardId = this.tenantDispatch.getShardForTenant(tenantId);
     const queueKey = this.keys.queueKey(queueId);
-    const masterQueueKey = this.keys.masterQueueKey(shardId);
+    const masterQueueKey = this.keys.masterQueueKey(queueShardId);
     const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(tenantId);
-    const dispatchKey = this.keys.dispatchKey(shardId);
+    const dispatchKey = this.keys.dispatchKey(dispatchShardId);
 
     // Update legacy master queue (drain path, no-op if queue not there)
     const removedFromMaster = await this.redis.updateMasterQueueIfEmpty(
