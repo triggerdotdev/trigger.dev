@@ -1182,4 +1182,104 @@ describe("FairQueue", () => {
       }
     );
   });
+
+  describe("concurrency block should not trigger cooloff", () => {
+    redisTest(
+      "should not enter cooloff when queue hits concurrency limit",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        const processed: string[] = [];
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 5000,
+          cooloff: {
+            periodMs: 5000, // Long cooloff - if triggered, messages would stall
+            threshold: 1, // Enter cooloff after just 1 increment
+          },
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 1, // Only 1 concurrent per tenant
+              defaultLimit: 1,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        // Hold first message to keep concurrency slot occupied
+        let releaseFirst: (() => void) | undefined;
+        const firstBlocking = new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        });
+        let firstStarted = false;
+
+        queue.onMessage(async (ctx) => {
+          if (ctx.message.payload.value === "msg-0") {
+            firstStarted = true;
+            // Block this message to saturate concurrency
+            await firstBlocking;
+          }
+          processed.push(ctx.message.payload.value);
+          await ctx.complete();
+        });
+
+        // Enqueue 3 messages to same tenant
+        for (let i = 0; i < 3; i++) {
+          await queue.enqueue({
+            queueId: "tenant:t1:queue:q1",
+            tenantId: "t1",
+            payload: { value: `msg-${i}` },
+          });
+        }
+
+        queue.start();
+
+        // Wait for first message to start processing (blocking the concurrency slot)
+        await vi.waitFor(
+          () => {
+            expect(firstStarted).toBe(true);
+          },
+          { timeout: 5000 }
+        );
+
+        // Release the first message so others can proceed
+        releaseFirst!();
+
+        // All 3 messages should process within a reasonable time.
+        // If cooloff was incorrectly triggered, this would take 5+ seconds.
+        const startTime = Date.now();
+        await vi.waitFor(
+          () => {
+            expect(processed).toHaveLength(3);
+          },
+          { timeout: 5000 }
+        );
+        const elapsed = Date.now() - startTime;
+
+        // Should complete well under the 5s cooloff period
+        expect(elapsed).toBeLessThan(3000);
+
+        // Cooloff states should be empty (no spurious cooloffs)
+        const cacheSizes = queue.fairQueue.getCacheSizes();
+        expect(cacheSizes.cooloffStatesSize).toBe(0);
+
+        await queue.close();
+      }
+    );
+  });
+
 });

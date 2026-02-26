@@ -31,13 +31,21 @@ You can request a higher rate limit from us if you're on a paid plan.
 
 ## Queued tasks
 
-The number of queued tasks by environment.
+The maximum number of runs that can be queued **per queue** (not across all queues in the environment). Each queue can hold up to its limit independently. When a queue hits its limit, new triggers to that queue are rejected.
 
-| Limit   | Details            |
-| :------ | :----------------- |
-| Dev     | At most 500        |
-| Staging | At most 10 million |
-| Prod    | At most 10 million |
+<Note>
+  The limits below apply to [Trigger.dev Cloud](https://trigger.dev). If you self-host Trigger.dev, queue size limits are configurable via the `MAXIMUM_DEV_QUEUE_SIZE` and `MAXIMUM_DEPLOYED_QUEUE_SIZE` environment variables — see [Self-hosting environment variables](/self-hosting/env/webapp#run-engine).
+</Note>
+
+| Pricing tier | Development (per queue) | Staging / Production (per queue) |
+| :----------- | :---------------------- | :-------------------------------- |
+| Free         | 500                     | 10,000                            |
+| Hobby        | 500                     | 250,000                           |
+| Pro          | 5,000                   | 1,000,000                         |
+
+## Maximum run TTL
+
+On Trigger.dev Cloud, all runs have an enforced maximum TTL of 14 days. Runs without an explicit TTL automatically receive the 14-day TTL; runs with a TTL longer than 14 days are clamped to 14 days. This prevents queued runs from accumulating indefinitely. If you self-host, you can configure a maximum TTL via the `RUN_ENGINE_DEFAULT_MAX_TTL` environment variable — see [Self-hosting environment variables](/self-hosting/env/webapp#run-engine).
 
 ## Schedules
 
@@ -117,17 +125,15 @@ Batch triggering uses a token bucket algorithm to rate limit the number of runs 
   and react to rate limits in your code.
 </Note>
 
-## Batch processing concurrency
+## Batch trigger processing concurrency
 
-The number of batches that can be processed concurrently per environment.
+When you send a batch trigger, we convert it into individual runs. This limit controls the maximum number of batches being converted into runs simultaneously per environment. It is not a limit on how many batch runs can be executing at once.
 
 | Pricing tier | Limit                 |
 | :----------- | :-------------------- |
 | Free         | 1 concurrent batch    |
 | Hobby        | 10 concurrent batches |
 | Pro          | 10 concurrent batches |
-
-This limits how many batches can have their items actively being processed into runs at the same time.
 
 ## Log retention
 

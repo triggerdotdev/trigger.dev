@@ -547,6 +547,9 @@ const EnvironmentSchema = z
 
     MAXIMUM_DEV_QUEUE_SIZE: z.coerce.number().int().optional(),
     MAXIMUM_DEPLOYED_QUEUE_SIZE: z.coerce.number().int().optional(),
+    QUEUE_SIZE_CACHE_TTL_MS: z.coerce.number().int().optional().default(1_000), // 1 second
+    QUEUE_SIZE_CACHE_MAX_SIZE: z.coerce.number().int().optional().default(5_000),
+    QUEUE_SIZE_CACHE_ENABLED: z.coerce.number().int().optional().default(1),
     MAX_BATCH_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
     MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
 
@@ -556,7 +559,7 @@ const EnvironmentSchema = z
     BATCH_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(100),
     BATCH_RATE_LIMIT_MAX: z.coerce.number().int().default(1200),
     BATCH_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),
-    BATCH_CONCURRENCY_LIMIT_DEFAULT: z.coerce.number().int().default(1),
+    BATCH_CONCURRENCY_LIMIT_DEFAULT: z.coerce.number().int().default(5),
 
     REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
     REALTIME_STREAM_MAX_LENGTH: z.coerce.number().int().default(1000),
@@ -602,6 +605,20 @@ const EnvironmentSchema = z
     RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_SCHEDULE: z.string().optional(),
     RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS: z.coerce.number().int().optional(),
     RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS: z.coerce.number().int().optional(),
+
+    // TTL System settings for automatic run expiration
+    RUN_ENGINE_TTL_SYSTEM_DISABLED: BoolEnv.default(false),
+    RUN_ENGINE_TTL_SYSTEM_SHARD_COUNT: z.coerce.number().int().optional(),
+    RUN_ENGINE_TTL_SYSTEM_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
+    RUN_ENGINE_TTL_SYSTEM_BATCH_SIZE: z.coerce.number().int().default(100),
+    RUN_ENGINE_TTL_WORKER_CONCURRENCY: z.coerce.number().int().default(1),
+    RUN_ENGINE_TTL_WORKER_BATCH_MAX_SIZE: z.coerce.number().int().default(50),
+    RUN_ENGINE_TTL_CONSUMERS_DISABLED: BoolEnv.default(false),
+    RUN_ENGINE_TTL_WORKER_BATCH_MAX_WAIT_MS: z.coerce.number().int().default(5_000),
+
+    /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
+     *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
+    RUN_ENGINE_DEFAULT_MAX_TTL: z.string().optional(),
 
     RUN_ENGINE_RUN_LOCK_DURATION: z.coerce.number().int().default(5000),
     RUN_ENGINE_RUN_LOCK_AUTOMATIC_EXTENSION_THRESHOLD: z.coerce.number().int().default(1000),

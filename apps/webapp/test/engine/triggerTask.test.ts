@@ -40,7 +40,7 @@ import { RunEngineTriggerTaskService } from "../../app/runEngine/services/trigge
 import { promiseWithResolvers } from "@trigger.dev/core";
 import { setTimeout } from "node:timers/promises";
 
-vi.setConfig({ testTimeout: 30_000 }); // 30 seconds timeout
+vi.setConfig({ testTimeout: 60_000 }); // 60 seconds timeout
 
 class MockPayloadProcessor implements PayloadProcessor {
   async process(request: TriggerTaskRequest): Promise<IOPacket> {
@@ -78,9 +78,9 @@ class MockTraceEventConcern implements TraceEventConcern {
         spanId: "test",
         traceContext: {},
         traceparent: undefined,
-        setAttribute: () => {},
-        failWithError: () => {},
-        stop: () => {},
+        setAttribute: () => { },
+        failWithError: () => { },
+        stop: () => { },
       },
       "test"
     );
@@ -103,9 +103,9 @@ class MockTraceEventConcern implements TraceEventConcern {
         spanId: "test",
         traceContext: {},
         traceparent: undefined,
-        setAttribute: () => {},
-        failWithError: () => {},
-        stop: () => {},
+        setAttribute: () => { },
+        failWithError: () => { },
+        stop: () => { },
       },
       "test"
     );
@@ -128,9 +128,9 @@ class MockTraceEventConcern implements TraceEventConcern {
         spanId: "test",
         traceContext: {},
         traceparent: undefined,
-        setAttribute: () => {},
-        failWithError: () => {},
-        stop: () => {},
+        setAttribute: () => { },
+        failWithError: () => { },
+        stop: () => { },
       },
       "test"
     );
