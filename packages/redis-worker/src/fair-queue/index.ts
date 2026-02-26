@@ -1094,7 +1094,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   ): Promise<number> {
     const queueKey = this.keys.queueKey(queueId);
     const queueItemsKey = this.keys.queueItemsKey(queueId);
-    const masterQueueKey = this.keys.masterQueueKey(shardId);
     const descriptor = this.queueDescriptorCache.get(queueId) ?? {
       id: queueId,
       tenantId,
@@ -1153,12 +1152,16 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         if (!reserved) {
           // Release ALL remaining messages (from index i onward) back to queue
           // This prevents messages from being stranded in the in-flight set
+          const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(tenantId);
+          const dispatchKey = this.keys.dispatchKey(shardId);
           await this.visibilityManager.releaseBatch(
             claimedMessages.slice(i),
             queueId,
             queueKey,
             queueItemsKey,
-            masterQueueKey
+            tenantQueueIndexKey,
+            dispatchKey,
+            tenantId
           );
           // Stop processing more messages from this queue since we're at capacity
           break;
@@ -1293,7 +1296,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     const shardId = this.masterQueue.getShardForQueue(queueId);
     const queueKey = this.keys.queueKey(queueId);
     const queueItemsKey = this.keys.queueItemsKey(queueId);
-    const masterQueueKey = this.keys.masterQueueKey(shardId);
     const inflightDataKey = this.keys.inflightDataKey(shardId);
 
     // Get stored message for concurrency release
@@ -1315,13 +1317,17 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         }
       : { id: queueId, tenantId: "", metadata: {} };
 
-    // Release back to queue (visibility manager updates old master queue internally)
+    // Release back to queue (visibility manager updates dispatch indexes atomically)
+    const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(descriptor.tenantId);
+    const dispatchKey = this.keys.dispatchKey(shardId);
     await this.visibilityManager.release(
       messageId,
       queueId,
       queueKey,
       queueItemsKey,
-      masterQueueKey,
+      tenantQueueIndexKey,
+      dispatchKey,
+      descriptor.tenantId,
       Date.now() // Put at back of queue
     );
 
@@ -1329,17 +1335,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     if (this.concurrencyManager && storedMessage) {
       await this.concurrencyManager.release(descriptor, messageId);
     }
-
-    // Update new dispatch indexes (message is back in queue, update scores)
-    const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(descriptor.tenantId);
-    const dispatchKey = this.keys.dispatchKey(shardId);
-    await this.redis.updateDispatchIndexes(
-      queueKey,
-      tenantQueueIndexKey,
-      dispatchKey,
-      queueId,
-      descriptor.tenantId
-    );
 
     this.logger.debug("Message released", {
       messageId,
@@ -1359,7 +1354,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     const shardId = this.masterQueue.getShardForQueue(queueId);
     const queueKey = this.keys.queueKey(queueId);
     const queueItemsKey = this.keys.queueItemsKey(queueId);
-    const masterQueueKey = this.keys.masterQueueKey(shardId);
     const inflightDataKey = this.keys.inflightDataKey(shardId);
 
     // Get stored message
@@ -1391,7 +1385,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       queueId,
       queueKey,
       queueItemsKey,
-      masterQueueKey,
       shardId,
       descriptor,
       error
@@ -1407,7 +1400,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     queueId: string,
     queueKey: string,
     queueItemsKey: string,
-    masterQueueKey: string,
     shardId: number,
     descriptor: QueueDescriptor,
     error?: Error
@@ -1427,12 +1419,16 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
         // Release with delay, passing the updated message data so the Lua script
         // atomically writes the incremented attempt count when re-queuing.
+        const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(descriptor.tenantId);
+        const dispatchKey = this.keys.dispatchKey(shardId);
         await this.visibilityManager.release(
           storedMessage.id,
           queueId,
           queueKey,
           queueItemsKey,
-          masterQueueKey,
+          tenantQueueIndexKey,
+          dispatchKey,
+          descriptor.tenantId,
           Date.now() + nextDelay,
           JSON.stringify(updatedMessage)
         );
@@ -1441,17 +1437,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         if (this.concurrencyManager) {
           await this.concurrencyManager.release(descriptor, storedMessage.id);
         }
-
-        // Update dispatch indexes (message is back in queue with delay)
-        const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(descriptor.tenantId);
-        const dispatchKey = this.keys.dispatchKey(shardId);
-        await this.redis.updateDispatchIndexes(
-          queueKey,
-          tenantQueueIndexKey,
-          dispatchKey,
-          queueId,
-          descriptor.tenantId
-        );
 
         this.telemetry.recordRetry();
 
@@ -1550,11 +1535,17 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     let totalReclaimed = 0;
 
     for (let shardId = 0; shardId < this.shardCount; shardId++) {
-      const reclaimedMessages = await this.visibilityManager.reclaimTimedOut(shardId, (queueId) => ({
-        queueKey: this.keys.queueKey(queueId),
-        queueItemsKey: this.keys.queueItemsKey(queueId),
-        masterQueueKey: this.keys.masterQueueKey(this.masterQueue.getShardForQueue(queueId)),
-      }));
+      const reclaimedMessages = await this.visibilityManager.reclaimTimedOut(shardId, (queueId) => {
+        const tenantId = this.keys.extractTenantId(queueId);
+        const queueShardId = this.masterQueue.getShardForQueue(queueId);
+        return {
+          queueKey: this.keys.queueKey(queueId),
+          queueItemsKey: this.keys.queueItemsKey(queueId),
+          tenantQueueIndexKey: this.keys.tenantQueueIndexKey(tenantId),
+          dispatchKey: this.keys.dispatchKey(queueShardId),
+          tenantId,
+        };
+      });
 
       if (reclaimedMessages.length > 0) {
         // Release concurrency for all reclaimed messages in a single batch
@@ -1580,32 +1571,8 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           }
         }
 
-        // Update dispatch indexes for reclaimed queues (messages are back in queue)
-        const updatedQueues = new Set<string>();
-        for (const msg of reclaimedMessages) {
-          const key = `${msg.tenantId}:${msg.queueId}`;
-          if (updatedQueues.has(key)) continue;
-          updatedQueues.add(key);
-
-          try {
-            const queueKey = this.keys.queueKey(msg.queueId);
-            const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(msg.tenantId);
-            const dispatchKey = this.keys.dispatchKey(shardId);
-            await this.redis.updateDispatchIndexes(
-              queueKey,
-              tenantQueueIndexKey,
-              dispatchKey,
-              msg.queueId,
-              msg.tenantId
-            );
-          } catch (error) {
-            this.logger.error("Failed to update dispatch indexes for reclaimed message", {
-              queueId: msg.queueId,
-              tenantId: msg.tenantId,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-        }
+        // Dispatch indexes are updated atomically by the releaseMessage Lua script
+        // inside reclaimTimedOut, so no separate index update needed here.
       }
 
       totalReclaimed += reclaimedMessages.length;
