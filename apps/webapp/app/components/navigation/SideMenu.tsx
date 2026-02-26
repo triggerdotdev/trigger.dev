@@ -484,7 +484,7 @@ export function SideMenu({
                   isCollapsed={isCollapsed}
                 />
                 <SideMenuItem
-                  name="Metrics"
+                  name="Dashboards"
                   icon={ChartBarIcon}
                   activeIconColor="text-metrics"
                   inactiveIconColor="text-metrics"
