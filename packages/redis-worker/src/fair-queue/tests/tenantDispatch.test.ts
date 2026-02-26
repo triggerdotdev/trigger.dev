@@ -66,9 +66,10 @@ class TestHelper {
         ? {
             strategy: new ExponentialBackoffRetry({
               maxAttempts: options.retry.maxAttempts,
-              baseDelay: options.retry.delayMs,
-              maxDelay: options.retry.delayMs,
+              minTimeoutInMs: options.retry.delayMs,
+              maxTimeoutInMs: options.retry.delayMs,
               factor: 1,
+              randomize: false,
             }),
           }
         : undefined,
