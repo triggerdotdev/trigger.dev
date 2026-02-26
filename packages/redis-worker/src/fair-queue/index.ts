@@ -27,7 +27,6 @@ import type {
   GlobalRateLimiter,
   QueueCooloffState,
   QueueDescriptor,
-  QueueWithScore,
   SchedulerContext,
   StoredMessage,
   TenantQueues,
@@ -968,8 +967,8 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
   /**
    * Fallback for schedulers that don't implement selectQueuesFromDispatch.
-   * Reads dispatch index, fetches per-tenant queues, flattens into the
-   * old-style master queue key format, and calls selectQueues.
+   * Reads dispatch index, fetches per-tenant queues, groups by tenant,
+   * and filters at-capacity tenants. No DRR deficit tracking in this path.
    */
   async #fallbackDispatchToLegacyScheduler(
     loopId: string,
@@ -981,23 +980,20 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     const tenants = await this.tenantDispatch.getTenantsFromShard(shardId);
     if (tenants.length === 0) return [];
 
-    // For each tenant, get their queues and build a flat list
-    const allQueues: QueueWithScore[] = [];
+    // For each tenant, get their queues and build grouped result
+    const tenantQueues: TenantQueues[] = [];
     for (const { tenantId } of tenants) {
+      if (this.concurrencyManager) {
+        const atCapacity = await this.concurrencyManager.isAtCapacity("tenant", tenantId);
+        if (atCapacity) continue;
+      }
       const queues = await this.tenantDispatch.getQueuesForTenant(tenantId);
-      allQueues.push(...queues);
+      if (queues.length > 0) {
+        tenantQueues.push({ tenantId, queues: queues.map((q) => q.queueId) });
+      }
     }
 
-    if (allQueues.length === 0) return [];
-
-    // Use the base scheduler context (without dispatch methods)
-    const baseContext = this.#createSchedulerContext();
-
-    // We need a temporary master queue key for the scheduler. Rather than
-    // writing to Redis, we'll group the queues by tenant ourselves and
-    // apply the same logic as the legacy selectQueues.
-    const masterQueueKey = this.keys.masterQueueKey(shardId);
-    return this.scheduler.selectQueues(masterQueueKey, loopId, baseContext);
+    return tenantQueues;
   }
 
   /**
