@@ -82,7 +82,7 @@ export const customTrace = task({
 
 Trigger.dev collects system and runtime metrics automatically for deployed tasks, and provides an API for recording custom metrics using OpenTelemetry.
 
-You can view metrics in the [Metrics dashboards](/insights/metrics), query them with [TRQL](/insights/query), and export them to external services via [telemetry exporters](/config/config-file#telemetry-exporters).
+You can view metrics in the [Dashboards](/observability/dashboards), query them with [TRQL](/observability/query), and export them to external services via [telemetry exporters](/config/config-file#telemetry-exporters).
 
 ### Custom metrics API
 
@@ -175,7 +175,7 @@ All metrics (both automatic and custom) are tagged with run context so you can f
 
 ### Querying metrics
 
-Use [TRQL](/insights/query) to query metrics data. For example, to see average CPU utilization over time:
+Use [TRQL](/observability/query) to query metrics data. For example, to see average CPU utilization over time:
 
 ```sql
 SELECT
@@ -188,7 +188,7 @@ ORDER BY timeBucket
 LIMIT 1000
 ```
 
-See the [Query page](/insights/query#metrics-table-columns) for the full `metrics` table schema.
+See the [Query page](/observability/query#metrics-table-columns) for the full `metrics` table schema.
 
 ### Exporting metrics
 
