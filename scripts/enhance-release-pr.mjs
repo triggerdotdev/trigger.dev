@@ -302,7 +302,11 @@ function formatPrBody({ version, packageEntries, serverEntries, rawBody }) {
       "These changes affect the self-hosted Docker image and Trigger.dev Cloud:"
     );
     lines.push("");
-    for (const entry of allServer) lines.push(`- ${entry.text}`);
+    for (const entry of allServer) {
+      // Indent continuation lines so multi-line entries stay inside the list item
+      const indented = entry.text.replace(/\n/g, "\n  ");
+      lines.push(`- ${indented}`);
+    }
     lines.push("");
   }
 
