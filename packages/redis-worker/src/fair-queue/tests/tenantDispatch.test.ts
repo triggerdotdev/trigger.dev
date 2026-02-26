@@ -6,6 +6,7 @@ import {
   FairQueue,
   DefaultFairQueueKeyProducer,
   DRRScheduler,
+  ExponentialBackoffRetry,
   WorkerQueueManager,
 } from "../index.js";
 import type { FairQueueKeyProducer, StoredMessage } from "../types.js";
@@ -38,6 +39,9 @@ class TestHelper {
       shardCount?: number;
       consumerIntervalMs?: number;
       concurrencyLimit?: number;
+      visibilityTimeoutMs?: number;
+      reclaimIntervalMs?: number;
+      retry?: { maxAttempts: number; delayMs: number };
     } = {}
   ) {
     const scheduler = new DRRScheduler({
@@ -54,8 +58,20 @@ class TestHelper {
       payloadSchema: TestPayloadSchema,
       shardCount: options.shardCount ?? 1,
       consumerIntervalMs: options.consumerIntervalMs ?? 20,
+      visibilityTimeoutMs: options.visibilityTimeoutMs,
+      reclaimIntervalMs: options.reclaimIntervalMs,
       startConsumers: false,
       workerQueue: { resolveWorkerQueue: () => TEST_WORKER_QUEUE_ID },
+      retry: options.retry
+        ? {
+            strategy: new ExponentialBackoffRetry({
+              maxAttempts: options.retry.maxAttempts,
+              baseDelay: options.retry.delayMs,
+              maxDelay: options.retry.delayMs,
+              factor: 1,
+            }),
+          }
+        : undefined,
       concurrencyGroups: options.concurrencyLimit
         ? [
             {
@@ -594,6 +610,237 @@ describe("Two-Level Tenant Dispatch", () => {
         await Promise.allSettled([consumerLoop]);
         await fairQueue.close();
         await workerQueueManager.close();
+      }
+    );
+  });
+  describe("release updates dispatch indexes", () => {
+    redisTest(
+      "should update dispatch indexes when message is released for retry",
+      { timeout: 20000 },
+      async ({ redisOptions }) => {
+        const keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+        const redis = createRedisClient(redisOptions);
+        const attempts: number[] = [];
+
+        const helper = new TestHelper(redisOptions, keys, {
+          retry: { maxAttempts: 3, delayMs: 100 },
+        });
+
+        await helper.fairQueue.enqueue({
+          queueId: "tenant:t1:queue:q1",
+          tenantId: "t1",
+          payload: { value: "retry-me" },
+        });
+
+        helper.onMessage(async (ctx) => {
+          attempts.push(ctx.message.attempt);
+          if (ctx.message.attempt < 2) {
+            // Fail on first attempt to trigger retry
+            await ctx.fail(new Error("transient error"));
+          } else {
+            await ctx.complete();
+          }
+        });
+        helper.start();
+
+        // Wait for successful processing on second attempt
+        await waitFor(() => attempts.length >= 2 && attempts.includes(2), 10000);
+
+        // After retry, the message went back into the queue via releaseMessage Lua.
+        // Verify it was picked up again (attempt 2 processed).
+        expect(attempts).toContain(1);
+        expect(attempts).toContain(2);
+
+        // After completion, dispatch indexes should be cleaned up
+        await waitFor(async () => {
+          const t1Queues = await redis.zcard(keys.tenantQueueIndexKey("t1"));
+          return t1Queues === 0;
+        }, 5000);
+
+        await helper.close();
+        await redis.quit();
+      }
+    );
+  });
+
+  describe("reclaim updates dispatch indexes", () => {
+    redisTest(
+      "should update dispatch indexes when timed-out message is reclaimed",
+      { timeout: 20000 },
+      async ({ redisOptions }) => {
+        const keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+        const redis = createRedisClient(redisOptions);
+        const processCount = { count: 0 };
+
+        const helper = new TestHelper(redisOptions, keys, {
+          visibilityTimeoutMs: 500,
+          reclaimIntervalMs: 200,
+        });
+
+        await helper.fairQueue.enqueue({
+          queueId: "tenant:t1:queue:q1",
+          tenantId: "t1",
+          payload: { value: "reclaim-me" },
+        });
+
+        helper.onMessage(async (ctx) => {
+          processCount.count++;
+          if (processCount.count === 1) {
+            // First attempt: don't complete, let it timeout and get reclaimed
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+          } else {
+            // Second attempt after reclaim: complete normally
+            await ctx.complete();
+          }
+        });
+        helper.start();
+
+        // Wait for message to be processed twice (once timeout, once success)
+        await waitFor(() => processCount.count >= 2, 10000);
+
+        // After reclaim + re-processing + completion, indexes should be clean
+        await waitFor(async () => {
+          const t1Queues = await redis.zcard(keys.tenantQueueIndexKey("t1"));
+          return t1Queues === 0;
+        }, 5000);
+
+        await helper.close();
+        await redis.quit();
+      }
+    );
+  });
+
+  describe("legacy message migration via reclaim", () => {
+    redisTest(
+      "should migrate legacy master queue message to dispatch index on reclaim",
+      { timeout: 20000 },
+      async ({ redisOptions }) => {
+        const keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+        const redis = createRedisClient(redisOptions);
+        const processed: string[] = [];
+
+        // Simulate pre-deploy: write message to old master queue + queue storage
+        const queueId = "tenant:t1:queue:legacy";
+        const queueKey = keys.queueKey(queueId);
+        const queueItemsKey = keys.queueItemsKey(queueId);
+        const masterQueueKey = keys.masterQueueKey(0);
+
+        const timestamp = Date.now();
+        const storedMessage: StoredMessage<TestPayload> = {
+          id: "legacy-reclaim-1",
+          queueId,
+          tenantId: "t1",
+          payload: { value: "legacy-reclaim" },
+          timestamp,
+          attempt: 1,
+        };
+
+        await redis.zadd(queueKey, timestamp, "legacy-reclaim-1");
+        await redis.hset(queueItemsKey, "legacy-reclaim-1", JSON.stringify(storedMessage));
+        await redis.zadd(masterQueueKey, timestamp, queueId);
+
+        // Verify: message only in old master queue, not in dispatch
+        expect(await redis.zcard(keys.dispatchKey(0))).toBe(0);
+        expect(await redis.zcard(keys.tenantQueueIndexKey("t1"))).toBe(0);
+
+        // Create FairQueue with short visibility timeout
+        const helper = new TestHelper(redisOptions, keys, {
+          visibilityTimeoutMs: 500,
+          reclaimIntervalMs: 200,
+        });
+
+        const processCount = { count: 0 };
+        helper.onMessage(async (ctx) => {
+          processCount.count++;
+          if (processCount.count === 1) {
+            // First attempt: don't complete, let it timeout
+            // The reclaim will put it back in queue and update dispatch indexes
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+          } else {
+            // Second attempt: complete
+            processed.push(ctx.message.payload.value);
+            await ctx.complete();
+          }
+        });
+        helper.start();
+
+        // Wait for the message to be processed (first via drain, then reclaimed into dispatch)
+        await waitFor(() => processed.length === 1, 15000);
+        expect(processed[0]).toBe("legacy-reclaim");
+
+        // After completion, both old and new indexes should be clean
+        const masterAfter = await redis.zcard(masterQueueKey);
+        const dispatchAfter = await redis.zcard(keys.dispatchKey(0));
+        const tenantQueuesAfter = await redis.zcard(keys.tenantQueueIndexKey("t1"));
+
+        // Old master queue should still be empty (drain removed it)
+        // or at least the queue itself should be gone
+        expect(tenantQueuesAfter).toBe(0);
+
+        await helper.close();
+        await redis.quit();
+      }
+    );
+
+    redisTest(
+      "should migrate legacy message to dispatch index on retry failure",
+      { timeout: 20000 },
+      async ({ redisOptions }) => {
+        const keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+        const redis = createRedisClient(redisOptions);
+        const attempts: number[] = [];
+
+        // Simulate pre-deploy: write message to old master queue
+        const queueId = "tenant:t1:queue:legacy";
+        const queueKey = keys.queueKey(queueId);
+        const queueItemsKey = keys.queueItemsKey(queueId);
+        const masterQueueKey = keys.masterQueueKey(0);
+
+        const timestamp = Date.now();
+        const storedMessage: StoredMessage<TestPayload> = {
+          id: "legacy-retry-1",
+          queueId,
+          tenantId: "t1",
+          payload: { value: "legacy-retry" },
+          timestamp,
+          attempt: 1,
+        };
+
+        await redis.zadd(queueKey, timestamp, "legacy-retry-1");
+        await redis.hset(queueItemsKey, "legacy-retry-1", JSON.stringify(storedMessage));
+        await redis.zadd(masterQueueKey, timestamp, queueId);
+
+        // Create FairQueue with retry enabled
+        const helper = new TestHelper(redisOptions, keys, {
+          retry: { maxAttempts: 3, delayMs: 100 },
+        });
+
+        helper.onMessage(async (ctx) => {
+          attempts.push(ctx.message.attempt);
+          if (ctx.message.attempt < 2) {
+            // Fail first attempt — triggers retry which writes to dispatch index
+            await ctx.fail(new Error("transient"));
+          } else {
+            await ctx.complete();
+          }
+        });
+        helper.start();
+
+        // Wait for retry to complete
+        await waitFor(() => attempts.includes(2), 10000);
+
+        // The retry release should have written to dispatch indexes.
+        // After completion, indexes should be clean.
+        await waitFor(async () => {
+          const t1Queues = await redis.zcard(keys.tenantQueueIndexKey("t1"));
+          return t1Queues === 0;
+        }, 5000);
+
+        expect(attempts).toContain(1);
+        expect(attempts).toContain(2);
+
+        await helper.close();
+        await redis.quit();
       }
     );
   });
