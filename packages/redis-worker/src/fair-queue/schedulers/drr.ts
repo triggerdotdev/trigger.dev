@@ -157,52 +157,44 @@ export class DRRScheduler extends BaseScheduler {
 
     const tenantIds = tenants.map((t) => t.tenantId);
 
-    // Add quantum to all active tenants atomically
+    // Add quantum to all active tenants atomically (1 Lua call)
     const deficits = await this.#addQuantumToTenants(tenantIds);
 
-    // Build tenant data with deficits and capacity checks
-    const tenantData: Array<{
-      tenantId: string;
-      deficit: number;
-      isAtCapacity: boolean;
-    }> = await Promise.all(
-      tenantIds.map(async (tenantId, index) => {
-        // Capacity check as safety net - dispatch should already exclude at-capacity tenants
-        // once capacity-based pruning is implemented as a follow-up
-        const isAtCapacity = await context.isAtCapacity("tenant", tenantId);
-        return {
-          tenantId,
-          deficit: deficits[index] ?? 0,
-          isAtCapacity,
-        };
-      })
-    );
+    // Build candidates sorted by deficit (highest first)
+    const candidates = tenantIds
+      .map((tenantId, index) => ({ tenantId, deficit: deficits[index] ?? 0 }))
+      .filter((t) => t.deficit >= 1);
 
-    // Filter out tenants at capacity or with no deficit
-    const eligibleTenants = tenantData.filter((t) => !t.isAtCapacity && t.deficit >= 1);
+    candidates.sort((a, b) => b.deficit - a.deficit);
 
-    // Sort by deficit (highest first for fairness)
-    eligibleTenants.sort((a, b) => b.deficit - a.deficit);
+    // Pick the first tenant with available capacity and fetch their queues.
+    // This keeps the scheduler cheap: O(1) in the common case where the
+    // highest-deficit tenant has capacity. The consumer loop iterates fast
+    // (1ms yield between rounds) so we cycle through tenants quickly.
+    for (const { tenantId, deficit } of candidates) {
+      const isAtCapacity = await context.isAtCapacity("tenant", tenantId);
+      if (isAtCapacity) continue;
 
-    this.logger.debug("DRR dispatch: tenant selection complete", {
-      dispatchTenants: tenants.length,
-      eligibleTenants: eligibleTenants.length,
-      topTenantDeficit: eligibleTenants[0]?.deficit,
-    });
-
-    // Level 2: For each eligible tenant, fetch their queues
-    const result: TenantQueues[] = [];
-    for (const { tenantId } of eligibleTenants) {
-      const queues = await context.getQueuesForTenant(tenantId);
+      // Limit queues fetched to what the tenant can actually process this round.
+      // deficit = max messages this tenant should process, so no point fetching
+      // more queues than that (each queue yields at least 1 message).
+      const queueLimit = Math.ceil(deficit);
+      const queues = await context.getQueuesForTenant(tenantId, queueLimit);
       if (queues.length > 0) {
-        result.push({
-          tenantId,
-          queues: queues.map((q) => q.queueId),
+        this.logger.debug("DRR dispatch: selected tenant", {
+          dispatchTenants: tenants.length,
+          candidates: candidates.length,
+          selectedTenant: tenantId,
+          deficit,
+          queueLimit,
+          queuesReturned: queues.length,
         });
+
+        return [{ tenantId, queues: queues.map((q) => q.queueId) }];
       }
     }
 
-    return result;
+    return [];
   }
 
   /**

@@ -505,6 +505,152 @@ describe("Two-Level Tenant Dispatch", () => {
     );
   });
 
+  describe("DRR fairness across iterations", () => {
+    redisTest(
+      "should distribute processing fairly and not starve any tenant",
+      { timeout: 30000 },
+      async ({ redisOptions }) => {
+        const keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+        const processed: Array<{ tenantId: string; order: number }> = [];
+        let processOrder = 0;
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 5,
+          maxDeficit: 20,
+        });
+
+        const fairQueue = new FairQueue({
+          redis: redisOptions,
+          keys,
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerIntervalMs: 10,
+          startConsumers: false,
+          workerQueue: { resolveWorkerQueue: () => TEST_WORKER_QUEUE_ID },
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 100, // High limit so concurrency doesn't interfere
+              defaultLimit: 100,
+            },
+          ],
+        });
+
+        const workerQueueManager = new WorkerQueueManager({
+          redis: redisOptions,
+          keys,
+        });
+
+        // Scenario: 3 tenants with very different queue counts
+        // t1: 50 queues (heavy hitter)
+        // t2: 5 queues (medium)
+        // t3: 1 queue with 5 messages (small)
+        // All should get fair service - no tenant should be starved.
+
+        for (let i = 0; i < 50; i++) {
+          await fairQueue.enqueue({
+            queueId: `tenant:t1:queue:q${i}`,
+            tenantId: "t1",
+            payload: { value: `t1-${i}` },
+          });
+        }
+
+        for (let i = 0; i < 5; i++) {
+          await fairQueue.enqueue({
+            queueId: `tenant:t2:queue:q${i}`,
+            tenantId: "t2",
+            payload: { value: `t2-${i}` },
+          });
+        }
+
+        for (let i = 0; i < 5; i++) {
+          await fairQueue.enqueue({
+            queueId: "tenant:t3:queue:q0",
+            tenantId: "t3",
+            payload: { value: `t3-${i}` },
+          });
+        }
+
+        // Start processing
+        fairQueue.start();
+        const abortController = new AbortController();
+
+        const consumerLoop = (async () => {
+          while (!abortController.signal.aborted) {
+            try {
+              const messageKey = await workerQueueManager.blockingPop(
+                TEST_WORKER_QUEUE_ID,
+                1,
+                abortController.signal
+              );
+              if (!messageKey) continue;
+
+              const colonIndex = messageKey.indexOf(":");
+              if (colonIndex === -1) continue;
+
+              const messageId = messageKey.substring(0, colonIndex);
+              const queueId = messageKey.substring(colonIndex + 1);
+              const storedMessage = await fairQueue.getMessageData(messageId, queueId);
+              if (!storedMessage) continue;
+
+              processed.push({ tenantId: storedMessage.tenantId, order: processOrder++ });
+              await fairQueue.completeMessage(messageId, queueId);
+            } catch {
+              if (abortController.signal.aborted) break;
+            }
+          }
+        })();
+
+        // Wait for all 60 messages to be processed
+        await waitFor(() => processed.length === 60, 20000);
+
+        // === Fairness assertions ===
+
+        const t1 = processed.filter((p) => p.tenantId === "t1");
+        const t2 = processed.filter((p) => p.tenantId === "t2");
+        const t3 = processed.filter((p) => p.tenantId === "t3");
+
+        // All messages processed
+        expect(t1.length).toBe(50);
+        expect(t2.length).toBe(5);
+        expect(t3.length).toBe(5);
+
+        // No tenant should be starved: every tenant should have at least one
+        // message processed in the first 20 messages. With quantum=5 and 3 tenants,
+        // each should get a turn within the first few iterations.
+        const first20 = processed.slice(0, 20);
+        const tenantsInFirst20 = new Set(first20.map((p) => p.tenantId));
+        expect(tenantsInFirst20.size).toBe(3);
+
+        // t2 and t3 should finish well before t1 (they have fewer messages).
+        // Check that t2's last message is processed before t1's last message.
+        const t2LastOrder = Math.max(...t2.map((p) => p.order));
+        const t1LastOrder = Math.max(...t1.map((p) => p.order));
+        expect(t2LastOrder).toBeLessThan(t1LastOrder);
+
+        // t3 should also finish before t1
+        const t3LastOrder = Math.max(...t3.map((p) => p.order));
+        expect(t3LastOrder).toBeLessThan(t1LastOrder);
+
+        // Check that t1 doesn't monopolize early processing.
+        // In the first 15 messages, t1 should have at most 10 (with quantum=5,
+        // t1 gets ~5 per round, and there are 3 tenants taking turns).
+        const t1InFirst15 = processed.slice(0, 15).filter((p) => p.tenantId === "t1").length;
+        expect(t1InFirst15).toBeLessThanOrEqual(10);
+
+        // Clean up
+        abortController.abort();
+        await Promise.allSettled([consumerLoop]);
+        await fairQueue.close();
+        await workerQueueManager.close();
+      }
+    );
+  });
+
   describe("noisy neighbor isolation", () => {
     redisTest(
       "should not block other tenants when one tenant is at capacity",

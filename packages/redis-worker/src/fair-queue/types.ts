@@ -185,7 +185,7 @@ export interface SchedulerContext {
  */
 export interface DispatchSchedulerContext extends SchedulerContext {
   /** Get queues for a specific tenant from the per-tenant queue index (Level 2) */
-  getQueuesForTenant(tenantId: string): Promise<QueueWithScore[]>;
+  getQueuesForTenant(tenantId: string, limit?: number): Promise<QueueWithScore[]>;
 }
 
 /**

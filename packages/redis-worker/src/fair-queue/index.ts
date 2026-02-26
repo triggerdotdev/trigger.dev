@@ -717,17 +717,13 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   }
 
   /**
-   * Get total queue count across all shards.
+   * Get total tenant count across dispatch shards plus any legacy queues still draining.
    */
   async getTotalQueueCount(): Promise<number> {
-    // Count from new dispatch index (primary) + legacy master queue (drain)
     const [dispatchCount, legacyCount] = await Promise.all([
       this.tenantDispatch.getTotalTenantCount(),
       this.masterQueue.getTotalQueueCount(),
     ]);
-    // During migration, dispatch has tenant count (not queue count).
-    // For a more accurate queue count, we'd need to sum per-tenant queue counts.
-    // For now, return the dispatch tenant count + any legacy queues still draining.
     return dispatchCount + legacyCount;
   }
 
@@ -857,8 +853,8 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     // Create dispatch-aware scheduler context
     const schedulerContext: DispatchSchedulerContext = {
       ...this.#createSchedulerContext(),
-      getQueuesForTenant: async (tenantId: string) => {
-        return this.tenantDispatch.getQueuesForTenant(tenantId);
+      getQueuesForTenant: async (tenantId: string, limit?: number) => {
+        return this.tenantDispatch.getQueuesForTenant(tenantId, limit);
       },
     };
 
@@ -1252,7 +1248,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           tenantId: storedMessage.tenantId,
           metadata: storedMessage.metadata ?? {},
         }
-      : { id: queueId, tenantId: "", metadata: {} };
+      : { id: queueId, tenantId: this.keys.extractTenantId(queueId), metadata: {} };
 
     // Complete in visibility manager
     await this.visibilityManager.complete(messageId, queueId);
@@ -1311,7 +1307,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           tenantId: storedMessage.tenantId,
           metadata: storedMessage.metadata ?? {},
         }
-      : { id: queueId, tenantId: "", metadata: {} };
+      : { id: queueId, tenantId: this.keys.extractTenantId(queueId), metadata: {} };
 
     // Release back to queue (visibility manager updates dispatch indexes atomically)
     const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(descriptor.tenantId);
