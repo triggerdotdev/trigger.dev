@@ -1,5 +1,5 @@
 ---
-title: "Metrics dashboards"
+title: "Dashboards"
 description: "Create custom dashboards with real-time metrics powered by TRQL queries."
 ---
 
@@ -7,13 +7,13 @@ description: "Create custom dashboards with real-time metrics powered by TRQL qu
 
 In the Trigger.dev dashboard we have built-in dashboards and you can create your own.
 
-Metrics dashboards are powered by [TRQL queries](/insights/query) with widgets that can be displayed as charts, tables, or single values. They automatically refresh to show the latest data.
+Dashboards are powered by [TRQL queries](/observability/query) with widgets that can be displayed as charts, tables, or single values. They automatically refresh to show the latest data.
 
 ### Available metrics data
 
 Trigger.dev automatically collects process metrics (CPU, memory) and Node.js runtime metrics (event loop, heap) for all deployed tasks -- no configuration needed. Requires SDK version **4.4.1 or later**. You can also create custom metrics using the `otel.metrics` API from the SDK.
 
-All of this data is available in the `metrics` table for use in dashboard widgets. See [Logging, tracing & metrics](/logging#metrics) for the full list of automatic metrics and how to create custom ones, or the [Query page](/insights/query#metrics-table-columns) for the `metrics` table schema.
+All of this data is available in the `metrics` table for use in dashboard widgets. See [Logging, tracing & metrics](/logging#metrics) for the full list of automatic metrics and how to create custom ones, or the [Query page](/observability/query#metrics-table-columns) for the `metrics` table schema.
 
 ![The built-in Metrics dashboard](/images/metrics-built-in.png)
 
@@ -37,12 +37,12 @@ You can also filter the data by:
 - Tasks
 - Queues
 
-## Creating custom metrics dashboards
+## Creating custom dashboards
 
-1. In the sidebar click the + icon next to "Metrics".
+1. In the sidebar click the + icon next to "Dashboards".
 2. Name your custom dashboard.
 3. From the top-right you can "Add chart" or "Add title".
-4. For charts you write [TRQL queries](/insights/query) and choose a visualization type.
+4. For charts you write [TRQL queries](/observability/query) and choose a visualization type.
 5. You can resize and reposition widgets on your dashboards.
 
 ## Performance considerations
@@ -91,7 +91,7 @@ Export data from any metric widget:
 
 ## Limits
 
-Metrics is powered by Query so have [the same limits](/insights/query#limits) as Query.
+Dashboards are powered by Query so have [the same limits](/observability/query#limits) as Query.
 
 There is a separate concurrency limits for metric widgets.
 

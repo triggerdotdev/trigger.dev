@@ -125,17 +125,15 @@ Batch triggering uses a token bucket algorithm to rate limit the number of runs 
   and react to rate limits in your code.
 </Note>
 
-## Batch processing concurrency
+## Batch trigger processing concurrency
 
-The number of batches that can be processed concurrently per environment.
+When you send a batch trigger, we convert it into individual runs. This limit controls the maximum number of batches being converted into runs simultaneously per environment. It is not a limit on how many batch runs can be executing at once.
 
 | Pricing tier | Limit                 |
 | :----------- | :-------------------- |
 | Free         | 1 concurrent batch    |
 | Hobby        | 10 concurrent batches |
 | Pro          | 10 concurrent batches |
-
-This limits how many batches can have their items actively being processed into runs at the same time.
 
 ## Log retention
 

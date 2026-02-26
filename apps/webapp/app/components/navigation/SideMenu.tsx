@@ -453,7 +453,7 @@ export function SideMenu({
 
             {(user.admin || user.isImpersonating || featureFlags.hasQueryAccess) && (
               <SideMenuSection
-                title="Insights"
+                title="Observability"
                 isSideMenuCollapsed={isCollapsed}
                 itemSpacingClassName="space-y-0"
                 initialCollapsed={getSectionCollapsed(
@@ -484,7 +484,7 @@ export function SideMenu({
                   isCollapsed={isCollapsed}
                 />
                 <SideMenuItem
-                  name="Metrics"
+                  name="Dashboards"
                   icon={ChartBarIcon}
                   activeIconColor="text-metrics"
                   inactiveIconColor="text-metrics"
