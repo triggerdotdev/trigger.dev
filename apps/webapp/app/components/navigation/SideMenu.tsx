@@ -453,7 +453,7 @@ export function SideMenu({
 
             {(user.admin || user.isImpersonating || featureFlags.hasQueryAccess) && (
               <SideMenuSection
-                title="Insights"
+                title="Observability"
                 isSideMenuCollapsed={isCollapsed}
                 itemSpacingClassName="space-y-0"
                 initialCollapsed={getSectionCollapsed(
