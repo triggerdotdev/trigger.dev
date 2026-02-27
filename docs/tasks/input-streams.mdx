@@ -108,7 +108,7 @@ Type safety is enforced through the generic parameter — both `.send()` and the
 | Method | Task suspended? | Compute cost while waiting | Best for |
 |--------|----------------|---------------------------|----------|
 | `.wait()` | **Yes** | **None** — process freed | Approval gates, human-in-the-loop, long waits |
-| `.once()` | No | Full — process stays alive | Short waits, or when doing concurrent work |
+| `.once()` | No | Full — process stays alive | Short waits, concurrent work. Returns result object with `.unwrap()` |
 | `.on(handler)` | No | Full — process stays alive | Continuous listening (cancel signals, live updates) |
 
 ### `wait()` — Suspend until data arrives
@@ -189,6 +189,8 @@ export const processOrder = task({
 
 Blocks until data arrives, but keeps the task process alive. Useful for short waits or when doing concurrent work.
 
+Returns an `InputStreamOncePromise` — similar to `ManualWaitpointPromise` from `.wait()`. Await it for a result object, or chain `.unwrap()` to get the data directly.
+
 ```ts
 import { task } from "@trigger.dev/sdk";
 import { approval } from "./streams";
@@ -198,26 +200,36 @@ export const draftEmailTask = task({
   run: async (payload: { to: string; subject: string }) => {
     const draft = await generateDraft(payload);
 
-    // Task pauses here until someone sends approval
-    const result = await approval.once();
+    // Task pauses here until someone sends approval (with a 5-minute timeout)
+    const result = await approval.once({ timeoutMs: 300_000 });
 
-    if (result.approved) {
-      await sendEmail(draft);
-      return { sent: true, reviewer: result.reviewer };
+    if (!result.ok) {
+      // Timed out — result.error is an InputStreamTimeoutError
+      return { sent: false, timedOut: true };
     }
 
-    return { sent: false, reviewer: result.reviewer };
+    if (result.output.approved) {
+      await sendEmail(draft);
+      return { sent: true, reviewer: result.output.reviewer };
+    }
+
+    return { sent: false, reviewer: result.output.reviewer };
   },
 });
 ```
 
-`once()` accepts options for timeouts and abort signals:
+Use `.unwrap()` to throw on timeout instead of checking `ok`:
 
 ```ts
-// With a timeout — rejects if no data arrives within 5 minutes
-const result = await approval.once({ timeoutMs: 300_000 });
+// Throws InputStreamTimeoutError if no data arrives within 5 minutes
+const data = await approval.once({ timeoutMs: 300_000 }).unwrap();
+console.log(data.approved); // TData directly
+```
 
-// With an abort signal
+`once()` also accepts an abort signal for cancellation:
+
+```ts
+// With an abort signal — rejects the promise when aborted
 const controller = new AbortController();
 const result = await approval.once({ signal: controller.signal });
 ```
