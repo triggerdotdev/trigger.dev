@@ -5,10 +5,12 @@ import {
   CheckIcon,
   ExclamationTriangleIcon,
   FolderIcon,
+  GlobeAltIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, useActionData, useNavigation } from "@remix-run/react";
+import { Form, type MetaFunction, useActionData, useNavigation, useSubmit } from "@remix-run/react";
 import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -26,6 +28,7 @@ import {
   parseAvatar,
   defaultAvatarHex,
   defaultAvatarColors,
+  type Avatar as AvatarT,
 } from "~/components/primitives/Avatar";
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -45,6 +48,7 @@ import {
 } from "~/components/primitives/Popover";
 import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
+import { useFaviconUrl } from "~/hooks/useFaviconUrl";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { clearCurrentProject } from "~/services/dashboardPreferences.server";
@@ -52,6 +56,7 @@ import { DeleteOrganizationService } from "~/services/deleteOrganization.server"
 import { logger } from "~/services/logger.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
+import { extractDomain, faviconUrl as buildFaviconUrl } from "~/utils/favicon";
 import {
   OrganizationParamsSchema,
   organizationPath,
@@ -79,6 +84,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       slug: true,
       title: true,
       avatar: true,
+      onboardingData: true,
     },
   });
 
@@ -86,8 +92,24 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Not found", { status: 404 });
   }
 
+  const onboardingData =
+    organization.onboardingData && typeof organization.onboardingData === "object"
+      ? (organization.onboardingData as Record<string, unknown>)
+      : {};
+
+  const parsedAvatar = parseAvatar(organization.avatar, defaultAvatar);
+  const lastIconHex =
+    parsedAvatar.type === "image" && "lastIconHex" in parsedAvatar && typeof parsedAvatar.lastIconHex === "string"
+      ? parsedAvatar.lastIconHex
+      : defaultAvatarHex;
+
   return typedjson({
-    organization: { ...organization, avatar: parseAvatar(organization.avatar, defaultAvatar) },
+    organization: {
+      ...organization,
+      avatar: parsedAvatar,
+      companyUrl: typeof onboardingData.companyUrl === "string" ? onboardingData.companyUrl : "",
+      lastIconHex,
+    },
   });
 };
 
@@ -102,6 +124,7 @@ export function createSchema(
       type: AvatarType,
       name: z.string().optional(),
       hex: z.string().optional(),
+      url: z.string().optional(),
     }),
     z.object({
       action: z.literal("rename"),
@@ -199,6 +222,53 @@ export const action: ActionFunction = async ({ request, params }) => {
         }
       }
       case "avatar": {
+        const orgWhere = {
+          slug: organizationSlug,
+          members: { some: { userId: user.id } },
+        };
+
+        if (submission.value.type === "image") {
+          const url = submission.value.url ?? "";
+          const domain = url ? extractDomain(url) : null;
+
+          const existing = await prisma.organization.findFirst({
+            where: orgWhere,
+            select: { avatar: true, onboardingData: true },
+          });
+
+          const existingData =
+            existing?.onboardingData && typeof existing.onboardingData === "object"
+              ? (existing.onboardingData as Record<string, unknown>)
+              : {};
+
+          const existingAvatarJson = existing ? existing.avatar : null;
+          const existingAvatar = parseAvatar(existingAvatarJson, defaultAvatar);
+          const lastIconHex =
+            "hex" in existingAvatar
+              ? existingAvatar.hex
+              : existingAvatar.type === "image" && "lastIconHex" in existingAvatar
+                ? (existingAvatar.lastIconHex as string)
+                : undefined;
+
+          await prisma.organization.update({
+            where: orgWhere,
+            data: {
+              avatar: {
+                type: "image",
+                url: domain ? buildFaviconUrl(domain) : "",
+                ...(lastIconHex ? { lastIconHex } : {}),
+              },
+              onboardingData: { ...existingData, companyUrl: url },
+            },
+          });
+
+          return redirectWithSuccessMessage(
+            organizationSettingsPath({ slug: organizationSlug }),
+            request,
+            `Updated logo`
+          );
+        }
+
         const avatar = AvatarData.safeParse(submission.value);
 
         if (!avatar.success) {
@@ -210,14 +280,7 @@ export const action: ActionFunction = async ({ request, params }) => {
         }
 
         await prisma.organization.update({
-          where: {
-            slug: organizationSlug,
-            members: {
-              some: {
-                userId: user.id,
-              },
-            },
-          },
+          where: orgWhere,
           data: {
             avatar: avatar.data,
           },
@@ -226,7 +289,7 @@ export const action: ActionFunction = async ({ request, params }) => {
         return redirectWithSuccessMessage(
           organizationSettingsPath({ slug: organizationSlug }),
           request,
-          `Updated icon`
+          `Updated logo`
         );
       }
     }
@@ -374,89 +437,189 @@ export default function Page() {
   );
 }
 
-function LogoForm({ organization }: { organization: { avatar: Avatar; title: string } }) {
+function LogoForm({
+  organization,
+}: {
+  organization: { avatar: AvatarT; title: string; companyUrl: string; lastIconHex: string };
+}) {
   const navigation = useNavigation();
-
-  const isSubmitting =
-    navigation.state != "idle" && navigation.formData?.get("action") === "avatar";
 
   const avatar = navigation.formData
     ? avatarFromFormData(navigation.formData) ?? organization.avatar
     : organization.avatar;
 
-  const hex = "hex" in avatar ? avatar.hex : defaultAvatarHex;
+  const hex =
+    "hex" in avatar
+      ? avatar.hex
+      : avatar.type === "image" && "lastIconHex" in avatar && avatar.lastIconHex
+        ? avatar.lastIconHex
+        : organization.lastIconHex;
+  const mode: "logo" | "icon" = avatar.type === "image" ? "logo" : "icon";
+
+  const [companyUrl, setCompanyUrl] = useState(organization.companyUrl);
+  const faviconPreview = useFaviconUrl(companyUrl);
+  const [faviconError, setFaviconError] = useState(false);
+  const logoFormRef = useRef<HTMLFormElement>(null);
+  const submit = useSubmit();
+  const initializedRef = useRef(false);
+  const prevFaviconRef = useRef(faviconPreview);
+
+  useEffect(() => {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      prevFaviconRef.current = faviconPreview;
+      return;
+    }
+    if (faviconPreview === prevFaviconRef.current) return;
+    prevFaviconRef.current = faviconPreview;
+    if (mode === "logo" && logoFormRef.current) {
+      submit(logoFormRef.current);
+    }
+  }, [faviconPreview, mode, submit]);
+
+  const showFavicon = faviconPreview && !faviconError;
 
   return (
     <Fieldset>
       <InputGroup fullWidth>
-        <Label>Icon</Label>
-        <div className="flex w-full items-end justify-between gap-2">
-          <div className="grid place-items-center overflow-hidden rounded-sm border border-charcoal-750 bg-background-bright">
-            <Avatar avatar={avatar} size={5} includePadding orgName={organization.title} />
-          </div>
-          {/* Letters */}
-          <Form method="post">
+        <Label>Logo</Label>
+        <div className="flex flex-col gap-3">
+          {/* Row 1: Logo from URL */}
+          <Form ref={logoFormRef} method="post" className="flex items-center gap-3">
             <input type="hidden" name="action" value="avatar" />
-            <input type="hidden" name="type" value="letters" />
-            <input type="hidden" name="hex" value={hex} />
+            <input type="hidden" name="type" value="image" />
+            <input type="hidden" name="url" value={companyUrl} />
             <button
               type="submit"
-              className={cn(
-                "box-content grid size-10 place-items-center rounded-sm border-2 bg-charcoal-775",
-                avatar.type === "letters"
-                  ? undefined
-                  : "border-charcoal-775 hover:border-charcoal-600"
-              )}
-              style={{
-                borderColor: avatar.type === "letters" ? hex : undefined,
-              }}
+              className="flex shrink-0 items-center gap-3"
             >
-              <Avatar
-                avatar={{
-                  type: "letters",
-                  hex,
-                }}
-                size={2.5}
-                includePadding
-                orgName={organization.title}
-              />
+              <div
+                className={cn(
+                  "flex shrink-0 items-center justify-center rounded-full border-2 p-0.5 transition",
+                  mode === "logo" ? "border-indigo-500" : "border-charcoal-700 hover:border-charcoal-600"
+                )}
+              >
+                <div className="size-2 rounded-full" style={{ backgroundColor: mode === "logo" ? "#6366f1" : "transparent" }} />
+              </div>
             </button>
+            <div className="flex flex-1 items-center gap-1.5">
+              <button
+                type="submit"
+                className={cn(
+                  "box-content grid size-10 shrink-0 place-items-center rounded-sm border-2 bg-charcoal-775",
+                  mode === "logo"
+                    ? "border-indigo-500"
+                    : "border-charcoal-775 hover:border-charcoal-600"
+                )}
+              >
+                {showFavicon ? (
+                  <img
+                    src={faviconPreview}
+                    alt=""
+                    width={28}
+                    height={28}
+                    className="rounded-sm"
+                    onError={() => setFaviconError(true)}
+                    onLoad={() => setFaviconError(false)}
+                  />
+                ) : (
+                  <GlobeAltIcon className="size-6 text-text-dimmed" />
+                )}
+              </button>
+              <Input
+                type="text"
+                value={companyUrl}
+                onChange={(e) => {
+                  setCompanyUrl(e.target.value);
+                  setFaviconError(false);
+                }}
+                onFocus={() => {
+                  if (mode !== "logo" && logoFormRef.current) {
+                    submit(logoFormRef.current);
+                  }
+                }}
+                placeholder="Enter your company URL to generate a logo"
+                variant="medium"
+                containerClassName="flex-1"
+              />
+            </div>
           </Form>
-          {/* Icons */}
-          {Object.entries(avatarIcons).map(([name]) => (
-            <Form key={name} method="post">
+
+          {/* Row 2: Icon picker */}
+          <div className="flex items-center gap-3">
+            <Form method="post" className="shrink-0">
               <input type="hidden" name="action" value="avatar" />
-              <input type="hidden" name="type" value="icon" />
-              <input type="hidden" name="name" value={name} />
+              <input type="hidden" name="type" value="letters" />
               <input type="hidden" name="hex" value={hex} />
               <button
                 type="submit"
                 className={cn(
-                  "box-content grid size-10 place-items-center rounded-sm border-2 bg-charcoal-775",
-                  avatar.type === "icon" && avatar.name === name
-                    ? undefined
-                    : "border-charcoal-775 hover:border-charcoal-600"
+                  "flex items-center justify-center rounded-full border-2 p-0.5 transition",
+                  mode === "icon" ? "border-indigo-500" : "border-charcoal-700 hover:border-charcoal-600"
                 )}
-                style={{
-                  borderColor: avatar.type === "icon" && avatar.name === name ? hex : undefined,
-                }}
               >
-                <Avatar
-                  key={name}
-                  avatar={{
-                    type: "icon",
-                    name,
-                    hex,
-                  }}
-                  size={2.5}
-                  includePadding
-                  orgName={organization.title}
-                />
+                <div className="size-2 rounded-full" style={{ backgroundColor: mode === "icon" ? "#6366f1" : "transparent" }} />
               </button>
             </Form>
-          ))}
-          {/* Hex */}
-          <HexPopover avatar={avatar} hex={hex} />
+            <div className="flex flex-wrap items-center gap-1.5">
+              {/* Letters */}
+              <Form method="post">
+                <input type="hidden" name="action" value="avatar" />
+                <input type="hidden" name="type" value="letters" />
+                <input type="hidden" name="hex" value={hex} />
+                <button
+                  type="submit"
+                  className={cn(
+                    "box-content grid size-10 place-items-center rounded-sm border-2 bg-charcoal-775",
+                    avatar.type === "letters"
+                      ? undefined
+                      : "border-charcoal-775 hover:border-charcoal-600"
+                  )}
+                  style={{
+                    borderColor: avatar.type === "letters" ? hex : undefined,
+                  }}
+                >
+                  <Avatar
+                    avatar={{ type: "letters", hex }}
+                    size={2.5}
+                    includePadding
+                    orgName={organization.title}
+                  />
+                </button>
+              </Form>
+              {/* Icons */}
+              {Object.entries(avatarIcons).map(([name]) => (
+                <Form key={name} method="post">
+                  <input type="hidden" name="action" value="avatar" />
+                  <input type="hidden" name="type" value="icon" />
+                  <input type="hidden" name="name" value={name} />
+                  <input type="hidden" name="hex" value={hex} />
+                  <button
+                    type="submit"
+                    className={cn(
+                      "box-content grid size-10 place-items-center rounded-sm border-2 bg-charcoal-775",
+                      avatar.type === "icon" && avatar.name === name
+                        ? undefined
+                        : "border-charcoal-775 hover:border-charcoal-600"
+                    )}
+                    style={{
+                      borderColor:
+                        avatar.type === "icon" && avatar.name === name ? hex : undefined,
+                    }}
+                  >
+                    <Avatar
+                      avatar={{ type: "icon", name, hex }}
+                      size={2.5}
+                      includePadding
+                      orgName={organization.title}
+                    />
+                  </button>
+                </Form>
+              ))}
+              {/* Color picker */}
+              <HexPopover avatar={avatar} hex={hex} />
+            </div>
+          </div>
         </div>
       </InputGroup>
     </Fieldset>
@@ -511,7 +674,7 @@ function HexPopover({ avatar, hex }: { avatar: Avatar; hex: string }) {
   );
 }
 
-function avatarFromFormData(formData: FormData): Avatar | undefined {
+function avatarFromFormData(formData: FormData): AvatarT | undefined {
   const action = formData.get("action");
   if (!action || action !== "avatar") {
     return undefined;
@@ -533,6 +696,12 @@ function avatarFromFormData(formData: FormData): Avatar | undefined {
       name: formData.get("name") as string,
       hex: hex as string,
     };
+  }
+
+  if (type === "image") {
+    const url = formData.get("url") as string;
+    const domain = url ? extractDomain(url) : null;
+    return { type: "image", url: domain ? buildFaviconUrl(domain) : "" };
   }
 
   return undefined;

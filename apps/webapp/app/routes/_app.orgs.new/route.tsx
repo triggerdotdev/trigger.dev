@@ -4,7 +4,7 @@ import { BuildingOffice2Icon, GlobeAltIcon } from "@heroicons/react/20/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
 import { json, redirect, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
@@ -19,10 +19,12 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { RadioGroupItem } from "~/components/primitives/RadioButton";
+import { useFaviconUrl } from "~/hooks/useFaviconUrl";
 import { useFeatures } from "~/hooks/useFeatures";
 import { createOrganization } from "~/models/organization.server";
 import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
 import { requireUser, requireUserId } from "~/services/session.server";
+import { extractDomain, faviconUrl } from "~/utils/favicon";
 import { organizationPath, rootPath } from "~/utils/pathBuilder";
 
 const schema = z.object({
@@ -30,42 +32,6 @@ const schema = z.object({
   companySize: z.string().optional(),
   companyUrl: z.string().optional(),
 });
-
-function extractDomain(input: string): string | null {
-  try {
-    const withProtocol = input.includes("://") ? input : `https://${input}`;
-    const url = new URL(withProtocol);
-    return url.hostname;
-  } catch {
-    return null;
-  }
-}
-
-function useFaviconUrl(urlInput: string) {
-  const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
-
-  const update = useCallback((value: string) => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      const domain = extractDomain(value);
-      if (domain && domain.includes(".")) {
-        setFaviconUrl(`https://www.google.com/s2/favicons?domain=${domain}&sz=64`);
-      } else {
-        setFaviconUrl(null);
-      }
-    }, 400);
-  }, []);
-
-  useEffect(() => {
-    update(urlInput);
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [urlInput, update]);
-
-  return faviconUrl;
-}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -101,10 +67,7 @@ export const action: ActionFunction = async ({ request }) => {
     if (submission.value.companyUrl) {
       const domain = extractDomain(submission.value.companyUrl);
       if (domain) {
-        avatar = {
-          type: "image",
-          url: `https://www.google.com/s2/favicons?domain=${domain}&sz=128`,
-        };
+        avatar = { type: "image", url: faviconUrl(domain) };
       }
     }
 
