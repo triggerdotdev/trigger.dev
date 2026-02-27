@@ -643,6 +643,25 @@ describe("createNdjsonParserStream", () => {
     expect(results).toEqual([{ id: 1 }, { id: 2 }]);
   });
 
+  it("should handle escaped newlines in JSON string values", async () => {
+    // JSON.stringify escapes newlines as \n (two chars: backslash + n),
+    // so they don't break NDJSON line boundaries. This is the normal case
+    // when the SDK serializes payloads containing newlines.
+    const item1 = JSON.stringify({ payload: "line1\nline2\nline3" });
+    const item2 = JSON.stringify({ payload: "no newlines" });
+    const ndjson = item1 + "\n" + item2 + "\n";
+    const encoder = new TextEncoder();
+    const stream = chunksToStream([encoder.encode(ndjson)]);
+
+    const parser = createNdjsonParserStream(1024);
+    const results = await collectStream(stream.pipeThrough(parser));
+
+    expect(results).toEqual([
+      { payload: "line1\nline2\nline3" },
+      { payload: "no newlines" },
+    ]);
+  });
+
   it("should skip empty lines", async () => {
     const ndjson = '{"a":1}\n\n{"b":2}\n   \n{"c":3}\n';
     const encoder = new TextEncoder();
