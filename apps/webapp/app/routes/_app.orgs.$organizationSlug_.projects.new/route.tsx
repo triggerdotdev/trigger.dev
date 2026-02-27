@@ -38,6 +38,7 @@ import {
 import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 
 const WORKING_ON_OTHER = "Other/not sure yet";
+const GOALS_OTHER = "Other/not sure yet";
 
 const workingOnOptions = [
   "AI agent",
@@ -55,6 +56,7 @@ const goalOptions = [
   "Migrate an existing system",
   "Learn how Trigger works",
   "Evaluate against alternatives",
+  GOALS_OTHER,
 ] as const;
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -166,6 +168,7 @@ const schema = z.object({
   technologies: z.string().optional(),
   technologiesOther: z.string().optional(),
   goals: z.string().optional(),
+  goalsOther: z.string().optional(),
 });
 
 export const action: ActionFunction = async ({ request, params }) => {
@@ -214,6 +217,10 @@ export const action: ActionFunction = async ({ request, params }) => {
 
   const goals = safeParseStringArray(submission.value.goals);
   if (goals) onboardingData.goals = goals;
+
+  if (submission.value.goalsOther) {
+    onboardingData.goalsOther = submission.value.goalsOther;
+  }
 
   try {
     const project = await createProject({
@@ -314,15 +321,21 @@ export default function Page() {
   const [selectedTechnologies, setSelectedTechnologies] = useState<string[]>([]);
   const [customTechnologies, setCustomTechnologies] = useState<string[]>([]);
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
+  const [goalsOther, setGoalsOther] = useState("");
 
   const [shuffledWorkingOn, setShuffledWorkingOn] = useState<string[]>([...workingOnOptions]);
+  const [shuffledGoals, setShuffledGoals] = useState<string[]>([...goalOptions]);
 
   useEffect(() => {
     const nonOther = workingOnOptions.filter((o) => o !== WORKING_ON_OTHER);
     setShuffledWorkingOn([...shuffleArray(nonOther), WORKING_ON_OTHER]);
+
+    const nonOtherGoals = goalOptions.filter((o) => o !== GOALS_OTHER);
+    setShuffledGoals([...shuffleArray(nonOtherGoals), GOALS_OTHER]);
   }, []);
 
   const showWorkingOnOther = selectedWorkingOn.includes(WORKING_ON_OTHER);
+  const showGoalsOther = selectedGoals.includes(GOALS_OTHER);
 
   return (
     <AppContainer className="bg-charcoal-900">
@@ -411,9 +424,23 @@ export default function Page() {
                   <MultiSelectField
                     value={selectedGoals}
                     setValue={setSelectedGoals}
-                    items={[...goalOptions]}
+                    items={shuffledGoals}
                     icon={<CommandLineIcon className="mr-1 size-4 text-text-dimmed" />}
                   />
+                  {showGoalsOther && (
+                    <>
+                      <input type="hidden" name="goalsOther" value={goalsOther} />
+                      <Input
+                        type="text"
+                        variant="small"
+                        value={goalsOther}
+                        onChange={(e) => setGoalsOther(e.target.value)}
+                        placeholder="Tell us what you're trying to do with Trigger.dev"
+                        spellCheck={false}
+                        containerClassName="h-8"
+                      />
+                    </>
+                  )}
                 </InputGroup>
 
                 <FormButtons
