@@ -195,6 +195,15 @@ export class StandardInputStreamManager implements InputStreamManager {
         })
         .finally(() => {
           this.tails.delete(streamId);
+
+          // Auto-reconnect if there are still active handlers or waiters
+          const hasHandlers =
+            this.handlers.has(streamId) && this.handlers.get(streamId)!.size > 0;
+          const hasWaiters =
+            this.onceWaiters.has(streamId) && this.onceWaiters.get(streamId)!.length > 0;
+          if (hasHandlers || hasWaiters) {
+            this.#ensureStreamTailConnected(streamId);
+          }
         });
       this.tails.set(streamId, { abortController, promise });
     }
