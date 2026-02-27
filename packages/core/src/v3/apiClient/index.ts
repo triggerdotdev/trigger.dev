@@ -8,7 +8,11 @@ import {
   ApiDeploymentListSearchParams,
   AppendToStreamResponseBody,
   BatchItemNDJSON,
+  BatchPublishEventRequestBody,
+  BatchPublishEventResponseBody,
   BatchTaskRunExecutionResult,
+  PublishEventRequestBody,
+  PublishEventResponseBody,
   BatchTriggerTaskV3RequestBody,
   BatchTriggerTaskV3Response,
   CanceledRunResponse,
@@ -1432,6 +1436,44 @@ export class ApiClient {
     return zodfetch(
       QueryExecuteResponseBody,
       `${this.baseUrl}/api/v1/query`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  publishEvent(
+    eventId: string,
+    body: PublishEventRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    const encodedEventId = encodeURIComponent(eventId);
+
+    return zodfetch(
+      PublishEventResponseBody,
+      `${this.baseUrl}/api/v1/events/${encodedEventId}/publish`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  batchPublishEvent(
+    eventId: string,
+    body: BatchPublishEventRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    const encodedEventId = encodeURIComponent(eventId);
+
+    return zodfetch(
+      BatchPublishEventResponseBody,
+      `${this.baseUrl}/api/v1/events/${encodedEventId}/batchPublish`,
       {
         method: "POST",
         headers: this.#getHeaders(false),

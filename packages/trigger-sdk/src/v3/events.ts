@@ -1,4 +1,5 @@
 import {
+  apiClientManager,
   getSchemaParseFn,
   resourceCatalog,
 } from "@trigger.dev/core/v3";
@@ -114,19 +115,61 @@ export function createEvent<TId extends string, TSchema extends Schema | undefin
     description,
     _parseFn: parseFn,
 
-    // Publish will be connected in Phase 0.8 when API endpoints exist
-    async publish(_payload, _options) {
-      throw new Error(
-        `event("${id}").publish() is not yet connected to the API. ` +
-          `The publish endpoint will be available after the backend is deployed.`
-      );
+    async publish(payload, options) {
+      // Validate payload if a schema was provided
+      const validatedPayload = parseFn ? await parseFn(payload) : payload;
+
+      const apiClient = apiClientManager.clientOrThrow();
+
+      const result = await apiClient.publishEvent(id, {
+        payload: validatedPayload,
+        options: options
+          ? {
+              idempotencyKey: options.idempotencyKey,
+              delay: options.delay instanceof Date ? options.delay.toISOString() : options.delay,
+              tags: options.tags,
+              metadata: options.metadata,
+            }
+          : undefined,
+      });
+
+      return {
+        id: result.eventId,
+        runs: result.runs,
+      };
     },
 
-    async batchPublish(_items) {
-      throw new Error(
-        `event("${id}").batchPublish() is not yet connected to the API. ` +
-          `The publish endpoint will be available after the backend is deployed.`
+    async batchPublish(items) {
+      const apiClient = apiClientManager.clientOrThrow();
+
+      const validatedItems = await Promise.all(
+        items.map(async (item) => {
+          const validatedPayload = parseFn ? await parseFn(item.payload) : item.payload;
+          return {
+            payload: validatedPayload,
+            options: item.options
+              ? {
+                  idempotencyKey: item.options.idempotencyKey,
+                  delay:
+                    item.options.delay instanceof Date
+                      ? item.options.delay.toISOString()
+                      : item.options.delay,
+                  tags: item.options.tags,
+                  metadata: item.options.metadata,
+                }
+              : undefined,
+          };
+        })
       );
+
+      const result = await apiClient.batchPublishEvent(id, {
+        items: validatedItems,
+      });
+
+      return result.results.map((r) => ({
+        id: r.eventId,
+        runs: r.runs,
+      }));
     },
   };
 
