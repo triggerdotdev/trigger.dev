@@ -34,31 +34,31 @@ export function BuildSettingsFields({
     <>
       {/* Pull env vars before build */}
       <div>
-        <div className="mb-2 flex items-center justify-between">
-          <div>
+        <div className="mb-2">
+          <div className="flex items-center justify-between">
             <Label>Pull env vars before build</Label>
-            <Hint>
-              Select which environments should pull environment variables from Vercel before each
-              build.{" "}
-              {envVarsConfigLink && (
-                <>
-                  <TextLink to={envVarsConfigLink}>Configure which variables to pull</TextLink>.
-                </>
-              )}
-            </Hint>
+            {availableEnvSlugs.length > 1 && (
+              <Switch
+                variant="small"
+                checked={
+                  availableEnvSlugs.length > 0 &&
+                  availableEnvSlugs.every((s) => pullEnvVarsBeforeBuild.includes(s))
+                }
+                onCheckedChange={(checked) => {
+                  onPullEnvVarsChange(checked ? [...availableEnvSlugs] : []);
+                }}
+              />
+            )}
           </div>
-          {availableEnvSlugs.length > 1 && (
-            <Switch
-              variant="small"
-              checked={
-                availableEnvSlugs.length > 0 &&
-                availableEnvSlugs.every((s) => pullEnvVarsBeforeBuild.includes(s))
-              }
-              onCheckedChange={(checked) => {
-                onPullEnvVarsChange(checked ? [...availableEnvSlugs] : []);
-              }}
-            />
-          )}
+          <Hint className="pr-6">
+            Select which environments should pull environment variables from Vercel before each
+            build.{" "}
+            {envVarsConfigLink && (
+              <>
+                <TextLink to={envVarsConfigLink}>Configure which variables to pull</TextLink>.
+              </>
+            )}
+          </Hint>
         </div>
         <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
           {availableEnvSlugs.map((slug) => {
@@ -90,34 +90,34 @@ export function BuildSettingsFields({
 
       {/* Discover new env vars */}
       <div>
-        <div className="mb-2 flex items-center justify-between">
-          <div>
+        <div className="mb-2">
+          <div className="flex items-center justify-between">
             <Label>Discover new env vars</Label>
-            <Hint>
-              Select which environments should automatically discover and create new environment
-              variables from Vercel during builds.
-            </Hint>
+            {availableEnvSlugs.length > 1 && (
+              <Switch
+                variant="small"
+                checked={
+                  availableEnvSlugs.length > 0 &&
+                  availableEnvSlugs.every(
+                    (s) => discoverEnvVars.includes(s) || !pullEnvVarsBeforeBuild.includes(s)
+                  ) &&
+                  availableEnvSlugs.some((s) => discoverEnvVars.includes(s))
+                }
+                disabled={!availableEnvSlugs.some((s) => pullEnvVarsBeforeBuild.includes(s))}
+                onCheckedChange={(checked) => {
+                  onDiscoverEnvVarsChange(
+                    checked
+                      ? availableEnvSlugs.filter((s) => pullEnvVarsBeforeBuild.includes(s))
+                      : []
+                  );
+                }}
+              />
+            )}
           </div>
-          {availableEnvSlugs.length > 1 && (
-            <Switch
-              variant="small"
-              checked={
-                availableEnvSlugs.length > 0 &&
-                availableEnvSlugs.every(
-                  (s) => discoverEnvVars.includes(s) || !pullEnvVarsBeforeBuild.includes(s)
-                ) &&
-                availableEnvSlugs.some((s) => discoverEnvVars.includes(s))
-              }
-              disabled={!availableEnvSlugs.some((s) => pullEnvVarsBeforeBuild.includes(s))}
-              onCheckedChange={(checked) => {
-                onDiscoverEnvVarsChange(
-                  checked
-                    ? availableEnvSlugs.filter((s) => pullEnvVarsBeforeBuild.includes(s))
-                    : []
-                );
-              }}
-            />
-          )}
+          <Hint className="pr-6">
+            Select which environments should automatically discover and create new environment
+            variables from Vercel during builds.
+          </Hint>
         </div>
         <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
           {availableEnvSlugs.map((slug) => {
@@ -155,13 +155,7 @@ export function BuildSettingsFields({
       {/* Atomic deployments */}
       <div>
         <div className="flex items-center justify-between">
-          <div>
-            <Label>Atomic deployments</Label>
-            <Hint>
-              When enabled, production deployments wait for Vercel deployment to complete before
-              promoting the Trigger.dev deployment.
-            </Hint>
-          </div>
+          <Label>Atomic deployments</Label>
           <Switch
             variant="small"
             checked={atomicBuilds.includes("prod")}
@@ -170,6 +164,16 @@ export function BuildSettingsFields({
             }}
           />
         </div>
+        <Hint className="pr-6">
+          When enabled, production deployments wait for Vercel deployment to complete before
+          promoting the Trigger.dev deployment. This will disable the "Auto-assign Custom
+          Production Domains" option in your Vercel project settings to perform staged
+          deployments.{" "}
+          <TextLink href="https://trigger.dev/docs/vercel-integration#atomic-deployments" target="_blank">
+            Learn more
+          </TextLink>
+          .
+        </Hint>
       </div>
     </>
   );

@@ -347,6 +347,81 @@ export class VercelIntegrationService {
     };
   }
 
+  async syncStagingKeyForCustomEnvironment(
+    projectId: string,
+    previousCustomEnvironmentId?: string | null,
+    newCustomEnvironmentId?: string | null
+  ) {
+    const existing = await this.getVercelProjectIntegration(projectId);
+    if (!existing) {
+      return;
+    }
+
+    const orgIntegration =
+      await VercelIntegrationRepository.findVercelOrgIntegrationForProject(projectId);
+    if (!orgIntegration) {
+      return;
+    }
+
+    const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
+    const vercelProjectId = existing.parsedIntegrationData.vercelProjectId;
+
+    // Remove the key from the old custom environment (if it changed or was removed)
+    if (previousCustomEnvironmentId && previousCustomEnvironmentId !== newCustomEnvironmentId) {
+      const removeResult = await VercelIntegrationRepository.removeEnvVarForCustomEnvironment({
+        orgIntegration,
+        vercelProjectId,
+        teamId,
+        key: "TRIGGER_SECRET_KEY",
+        customEnvironmentId: previousCustomEnvironmentId,
+      });
+
+      if (removeResult.isErr()) {
+        logger.error("Failed to remove staging TRIGGER_SECRET_KEY from previous custom environment", {
+          projectId,
+          previousCustomEnvironmentId,
+          error: removeResult.error.message,
+        });
+      }
+    }
+
+    // Create/update the key for the new custom environment
+    if (newCustomEnvironmentId) {
+      const stagingEnv = await this.#prismaClient.runtimeEnvironment.findFirst({
+        where: {
+          projectId,
+          type: "STAGING",
+        },
+        select: {
+          apiKey: true,
+        },
+      });
+
+      if (!stagingEnv) {
+        logger.warn("No STAGING runtime environment found for project", { projectId });
+        return;
+      }
+
+      const upsertResult = await VercelIntegrationRepository.upsertEnvVarForCustomEnvironment({
+        orgIntegration,
+        vercelProjectId,
+        teamId,
+        key: "TRIGGER_SECRET_KEY",
+        value: stagingEnv.apiKey,
+        customEnvironmentId: newCustomEnvironmentId,
+        type: "encrypted",
+      });
+
+      if (upsertResult.isErr()) {
+        logger.error("Failed to sync staging TRIGGER_SECRET_KEY to custom environment", {
+          projectId,
+          newCustomEnvironmentId,
+          error: upsertResult.error.message,
+        });
+      }
+    }
+  }
+
   async updateSyncEnvVarsMapping(
     projectId: string,
     syncEnvVarsMapping: SyncEnvVarsMapping
