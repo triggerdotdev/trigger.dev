@@ -456,6 +456,63 @@ describe("Two-Level Tenant Dispatch", () => {
         await redis.quit();
       }
     );
+
+    redisTest(
+      "should not re-populate legacy master queue when completing messages",
+      { timeout: 20000 },
+      async ({ redisOptions }) => {
+        const keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+        const redis = createRedisClient(redisOptions);
+
+        // Simulate pre-deploy state: queue with 2 messages in old master queue
+        const queueId = "tenant:t1:queue:legacy-noreinsert";
+        const queueKey = keys.queueKey(queueId);
+        const queueItemsKey = keys.queueItemsKey(queueId);
+        const masterQueueKey = keys.masterQueueKey(0);
+        const timestamp = Date.now();
+
+        for (let i = 0; i < 2; i++) {
+          const msg: StoredMessage<TestPayload> = {
+            id: `legacy-msg-${i}`,
+            queueId,
+            tenantId: "t1",
+            payload: { value: `msg-${i}` },
+            timestamp: timestamp + i,
+            attempt: 1,
+          };
+          await redis.zadd(queueKey, timestamp + i, `legacy-msg-${i}`);
+          await redis.hset(queueItemsKey, `legacy-msg-${i}`, JSON.stringify(msg));
+        }
+        await redis.zadd(masterQueueKey, timestamp, queueId);
+
+        const processed: string[] = [];
+        const helper = new TestHelper(redisOptions, keys);
+
+        helper.onMessage(async (ctx) => {
+          processed.push(ctx.message.payload.value);
+          await ctx.complete();
+
+          // After completing the first message, the queue still has 1 message
+          // The legacy master queue should NOT be re-populated
+          if (processed.length === 1) {
+            const masterCount = await redis.zcard(masterQueueKey);
+            // Should be 0 (drained) not 1 (re-added)
+            expect(masterCount).toBe(0);
+          }
+        });
+        helper.start();
+
+        await waitFor(() => processed.length === 2, 10000);
+        expect(processed).toHaveLength(2);
+
+        // Final check: master queue should be completely empty
+        const masterFinal = await redis.zcard(masterQueueKey);
+        expect(masterFinal).toBe(0);
+
+        await helper.close();
+        await redis.quit();
+      }
+    );
   });
 
   describe("DRR selectQueuesFromDispatch", () => {
