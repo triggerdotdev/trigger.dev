@@ -1763,7 +1763,7 @@ return (#ARGV - 1) / 3
       `,
     });
 
-    // Update master queue if queue is empty (legacy, used for drain)
+    // Remove queue from legacy master queue if empty (drain-only, never re-adds)
     this.redis.defineCommand("updateMasterQueueIfEmpty", {
       numberOfKeys: 2,
       lua: `
@@ -1775,13 +1775,13 @@ local count = redis.call('ZCARD', queueKey)
 if count == 0 then
   redis.call('ZREM', masterQueueKey, queueId)
   return 1
-else
-  local oldest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
-  if #oldest >= 2 then
-    redis.call('ZADD', masterQueueKey, oldest[2], queueId)
-  end
-  return 0
 end
+
+-- Queue still has messages but don't re-add to legacy master queue.
+-- New enqueues go through the V2 dispatch path, so we only drain here.
+-- Just remove it so it doesn't linger.
+redis.call('ZREM', masterQueueKey, queueId)
+return 0
       `,
     });
 
