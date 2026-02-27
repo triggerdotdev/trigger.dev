@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
-import { rootPath, v3RunPath } from "~/utils/pathBuilder";
+import { impersonate, rootPath, v3RunPath } from "~/utils/pathBuilder";
 
 const ParamsSchema = z.object({
   runParam: z.string(),
@@ -14,18 +14,22 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const { runParam } = ParamsSchema.parse(params);
 
+  const isAdmin = user.admin || user.isImpersonating;
+
   const run = await prisma.taskRun.findFirst({
     where: {
       friendlyId: runParam,
-      project: {
-        organization: {
-          members: {
-            some: {
-              userId: user.id,
+      ...(!isAdmin && {
+        project: {
+          organization: {
+            members: {
+              some: {
+                userId: user.id,
+              },
             },
           },
         },
-      },
+      }),
     },
     select: {
       runtimeEnvironment: {
@@ -57,12 +61,12 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     );
   }
 
-  return redirect(
-    v3RunPath(
-      { slug: run.project.organization.slug },
-      { slug: run.project.slug },
-      { slug: run.runtimeEnvironment.slug },
-      { friendlyId: runParam }
-    )
+  const path = v3RunPath(
+    { slug: run.project.organization.slug },
+    { slug: run.project.slug },
+    { slug: run.runtimeEnvironment.slug },
+    { friendlyId: runParam }
   );
+
+  return redirect(isAdmin ? impersonate(path) : path);
 }
