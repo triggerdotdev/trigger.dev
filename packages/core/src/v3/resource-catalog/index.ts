@@ -1,9 +1,9 @@
 const API_NAME = "resource-catalog";
 
-import { QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
+import { EventManifest, QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
 import { TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
-import { type ResourceCatalog } from "./catalog.js";
+import { type EventMetadata, type ResourceCatalog } from "./catalog.js";
 import { NoopResourceCatalog } from "./noopResourceCatalog.js";
 
 const NOOP_RESOURCE_CATALOG = new NoopResourceCatalog();
@@ -75,6 +75,22 @@ export class ResourceCatalogAPI {
 
   public listQueueManifests(): Array<QueueManifest> {
     return this.#getCatalog().listQueueManifests();
+  }
+
+  public registerEventMetadata(event: EventMetadata): void {
+    this.#getCatalog().registerEventMetadata(event);
+  }
+
+  public getEvent(id: string): EventMetadata | undefined {
+    return this.#getCatalog().getEvent(id);
+  }
+
+  public listEventManifests(): Array<EventManifest> {
+    return this.#getCatalog().listEventManifests();
+  }
+
+  public getTasksForEvent(eventId: string): Array<TaskMetadataWithFunctions> {
+    return this.#getCatalog().getTasksForEvent(eventId);
   }
 
   #getCatalog(): ResourceCatalog {

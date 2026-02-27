@@ -1,6 +1,6 @@
-import { QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
+import { EventManifest, QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
 import { TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
-import { ResourceCatalog } from "./catalog.js";
+import { type EventMetadata, ResourceCatalog } from "./catalog.js";
 
 export class NoopResourceCatalog implements ResourceCatalog {
   registerTaskMetadata(task: TaskMetadataWithFunctions): void {
@@ -52,6 +52,22 @@ export class NoopResourceCatalog implements ResourceCatalog {
   }
 
   listQueueManifests(): Array<QueueManifest> {
+    return [];
+  }
+
+  registerEventMetadata(event: EventMetadata): void {
+    // noop
+  }
+
+  getEvent(id: string): EventMetadata | undefined {
+    return undefined;
+  }
+
+  listEventManifests(): Array<EventManifest> {
+    return [];
+  }
+
+  getTasksForEvent(eventId: string): Array<TaskMetadataWithFunctions> {
     return [];
   }
 }

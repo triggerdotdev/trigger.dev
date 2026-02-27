@@ -174,6 +174,17 @@ export const QueueManifest = z.object({
 
 export type QueueManifest = z.infer<typeof QueueManifest>;
 
+export const EventManifest = z.object({
+  /** Unique event identifier (e.g. "order.created") */
+  id: z.string(),
+  /** Schema version */
+  version: z.string().default("1.0"),
+  /** Optional human-readable description */
+  description: z.string().optional(),
+});
+
+export type EventManifest = z.infer<typeof EventManifest>;
+
 export const ScheduleMetadata = z.object({
   cron: z.string(),
   timezone: z.string(),
@@ -190,6 +201,8 @@ const taskMetadata = {
   schedule: ScheduleMetadata.optional(),
   maxDuration: z.number().optional(),
   payloadSchema: z.unknown().optional(),
+  /** Event ID that this task subscribes to (set when task uses `on: someEvent`) */
+  onEvent: z.string().optional(),
 };
 
 export const TaskMetadata = z.object(taskMetadata);

@@ -1,4 +1,5 @@
 import {
+  EventManifest,
   TaskFileMetadata,
   TaskMetadata,
   TaskManifest,
@@ -6,7 +7,7 @@ import {
   QueueManifest,
 } from "../schemas/index.js";
 import { TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
-import { ResourceCatalog } from "./catalog.js";
+import { type EventMetadata, ResourceCatalog } from "./catalog.js";
 
 export class StandardResourceCatalog implements ResourceCatalog {
   private _taskSchemas: Map<string, TaskSchema> = new Map();
@@ -15,6 +16,8 @@ export class StandardResourceCatalog implements ResourceCatalog {
   private _taskFileMetadata: Map<string, TaskFileMetadata> = new Map();
   private _currentFileContext?: Omit<TaskFileMetadata, "exportName">;
   private _queueMetadata: Map<string, QueueManifest> = new Map();
+  private _eventMetadata: Map<string, EventMetadata> = new Map();
+  private _eventToTasks: Map<string, Set<string>> = new Map();
 
   setCurrentFileContext(filePath: string, entryPoint: string) {
     this._currentFileContext = { filePath, entryPoint };
@@ -76,6 +79,11 @@ export class StandardResourceCatalog implements ResourceCatalog {
 
     if (schema) {
       this._taskSchemas.set(task.id, schema);
+    }
+
+    // Register event→task reverse index if task subscribes to an event
+    if (metadata.onEvent) {
+      this.registerTaskMetadataForEvent(task.id, metadata.onEvent);
     }
   }
 
@@ -163,6 +171,47 @@ export class StandardResourceCatalog implements ResourceCatalog {
 
   taskExists(id: string): boolean {
     return this._taskMetadata.has(id);
+  }
+
+  registerEventMetadata(event: EventMetadata): void {
+    this._eventMetadata.set(event.id, event);
+  }
+
+  getEvent(id: string): EventMetadata | undefined {
+    return this._eventMetadata.get(id);
+  }
+
+  listEventManifests(): Array<EventManifest> {
+    return Array.from(this._eventMetadata.values()).map((event) => ({
+      id: event.id,
+      version: event.version,
+      description: event.description,
+    }));
+  }
+
+  getTasksForEvent(eventId: string): Array<TaskMetadataWithFunctions> {
+    const taskIds = this._eventToTasks.get(eventId);
+    if (!taskIds) {
+      return [];
+    }
+
+    const tasks: Array<TaskMetadataWithFunctions> = [];
+    for (const taskId of taskIds) {
+      const task = this.getTask(taskId);
+      if (task) {
+        tasks.push(task);
+      }
+    }
+    return tasks;
+  }
+
+  registerTaskMetadataForEvent(taskId: string, eventId: string): void {
+    let taskSet = this._eventToTasks.get(eventId);
+    if (!taskSet) {
+      taskSet = new Set();
+      this._eventToTasks.set(eventId, taskSet);
+    }
+    taskSet.add(taskId);
   }
 
   disable() {

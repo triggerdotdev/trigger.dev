@@ -1,5 +1,11 @@
-import { QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
+import { EventManifest, QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
 import { TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
+
+export interface EventMetadata {
+  id: string;
+  version: string;
+  description?: string;
+}
 
 export interface ResourceCatalog {
   setCurrentFileContext(filePath: string, entryPoint: string): void;
@@ -14,4 +20,8 @@ export interface ResourceCatalog {
   registerQueueMetadata(queue: QueueManifest): void;
   listQueueManifests(): Array<QueueManifest>;
   getTaskSchema(id: string): TaskSchema | undefined;
+  registerEventMetadata(event: EventMetadata): void;
+  getEvent(id: string): EventMetadata | undefined;
+  listEventManifests(): Array<EventManifest>;
+  getTasksForEvent(eventId: string): Array<TaskMetadataWithFunctions>;
 }
