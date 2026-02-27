@@ -188,9 +188,7 @@ export default function NewOrganizationPage() {
           <Form method="post" {...form.props}>
             <Fieldset>
               <InputGroup>
-                <Label htmlFor={orgName.id}>
-                  Organization name <span className="text-text-dimmed">*</span>
-                </Label>
+                <Label htmlFor={orgName.id}>Organization name *</Label>
                 <Input
                   {...conform.input(orgName, { type: "text" })}
                   placeholder="Your Organization name"
