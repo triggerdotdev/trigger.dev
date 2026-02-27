@@ -135,7 +135,7 @@ export const publishPost = task({
         await publish(draft);
         return { published: true, reviewer: result.output.reviewer };
       }
-      return { published: false, reason: result.output.comment };
+      return { published: false, reviewer: result.output.reviewer };
     }
 
     // Timed out after 7 days
@@ -349,7 +349,7 @@ export const aiTask = task({
 ### Cancel from a backend API route
 
 ```ts app/api/cancel/route.ts
-import { cancelStream } from "./trigger/streams";
+import { cancelStream } from "@/trigger/streams";
 
 export async function POST(req: Request) {
   const { runId } = await req.json();
