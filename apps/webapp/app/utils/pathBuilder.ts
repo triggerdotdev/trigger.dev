@@ -56,6 +56,11 @@ export function rootPath() {
   return `/`;
 }
 
+/** Given a path, it makes it an impersonation path */
+export function impersonate(path: string) {
+  return `/@${path}`;
+}
+
 export function accountPath() {
   return `/account`;
 }
