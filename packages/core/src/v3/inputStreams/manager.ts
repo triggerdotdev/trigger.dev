@@ -145,6 +145,19 @@ export class StandardInputStreamManager implements InputStreamManager {
     return undefined;
   }
 
+  clearHandlers(): void {
+    this.handlers.clear();
+
+    // Abort tails that no longer have any once waiters either
+    for (const [streamId, tail] of this.tails) {
+      const hasWaiters = this.onceWaiters.has(streamId) && this.onceWaiters.get(streamId)!.length > 0;
+      if (!hasWaiters) {
+        tail.abortController.abort();
+        this.tails.delete(streamId);
+      }
+    }
+  }
+
   connectTail(runId: string, _fromSeq?: number): void {
     // No-op: tails are now created per-stream lazily
   }

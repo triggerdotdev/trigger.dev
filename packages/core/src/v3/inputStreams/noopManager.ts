@@ -22,6 +22,7 @@ export class NoopInputStreamManager implements InputStreamManager {
     return undefined;
   }
 
+  clearHandlers(): void {}
   reset(): void {}
   disconnect(): void {}
   connectTail(_runId: string, _fromSeq?: number): void {}

@@ -119,7 +119,7 @@ export const inputStreamOn = task({
 
     logger.info("Subscribing to messages via .on()", { expected });
 
-    const { off } = messageStream.on((data) => {
+    messageStream.on((data) => {
       logger.info("Received message", { data });
       received.push(data);
     });
@@ -128,7 +128,6 @@ export const inputStreamOn = task({
       await wait.for({ seconds: 1 });
     }
 
-    off();
     logger.info("Done receiving messages", { count: received.length });
     return { messages: received };
   },

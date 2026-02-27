@@ -160,7 +160,8 @@ export type RealtimeDefinedInputStream<TData> = {
   id: string;
   /**
    * Register a handler that fires every time data arrives on this input stream.
-   * Returns a subscription object with an `.off()` method to unsubscribe.
+   * Handlers are automatically cleaned up when the task run completes, so calling
+   * `.off()` is optional. Returns a subscription with `.off()` for early unsubscription.
    */
   on: (handler: (data: TData) => void | Promise<void>) => InputStreamSubscription;
   /**

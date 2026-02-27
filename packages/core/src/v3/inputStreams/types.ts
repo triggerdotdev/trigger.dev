@@ -47,6 +47,8 @@ export interface InputStreamManager {
 
   /**
    * Register a handler that fires every time data arrives on the given input stream.
+   * Handlers are automatically cleaned up when the task run completes.
+   * Returns `{ off }` for early unsubscription if needed.
    */
   on(streamId: string, handler: (data: unknown) => void | Promise<void>): { off: () => void };
 
@@ -67,6 +69,12 @@ export interface InputStreamManager {
    * Used by `.wait()` to tell the server where to check for existing data.
    */
   lastSeqNum(streamId: string): number | undefined;
+
+  /**
+   * Clear all persistent `.on()` handlers and abort tails that have no remaining once waiters.
+   * Called automatically when a task run completes.
+   */
+  clearHandlers(): void;
 
   /**
    * Reset state between task executions.
