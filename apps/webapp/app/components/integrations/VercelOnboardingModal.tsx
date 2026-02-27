@@ -48,6 +48,7 @@ import { vercelAppInstallPath, v3ProjectSettingsIntegrationsPath, githubAppInsta
 import type { loader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { usePostHogTracking } from "~/hooks/usePostHog";
+import { TextLink } from "../primitives/TextLink";
 
 function safeRedirectUrl(url: string): string | null {
   try {
@@ -731,7 +732,7 @@ export function VercelOnboardingModal({
               )}
 
               <Hint>
-                Once connected, your <code className="text-xs">TRIGGER_SECRET_KEY</code> will be
+                Once connected, your <code className="text-xs rounded bg-charcoal-700 px-1 py-0.5 text-text-bright">TRIGGER_SECRET_KEY</code> will be
                 automatically synced to Vercel for each environment.
               </Hint>
 
@@ -775,6 +776,10 @@ export function VercelOnboardingModal({
               <Paragraph className="text-sm">
                 Select which custom Vercel environment should map to Trigger.dev's Staging
                 environment. Production and Preview environments are mapped automatically.
+                If you skip this step, the{" "}
+                <code className="rounded bg-charcoal-700 px-1 py-0.5 text-text-bright">TRIGGER_SECRET_KEY</code>{" "}
+                will not be installed for the staging environment in Vercel. You can configure this later in
+                project settings.
               </Paragraph>
 
               <Select
@@ -799,15 +804,6 @@ export function VercelOnboardingModal({
                   </SelectItem>
                 ))}
               </Select>
-
-              <Callout variant="info">
-                <p className="text-xs">
-                  If you skip this step, the{" "}
-                  <code className="rounded bg-charcoal-700 px-1 py-0.5 text-text-bright">TRIGGER_SECRET_KEY</code>{" "}
-                  will not be installed for the staging environment in Vercel. You can configure this later in
-                  project settings.
-                </p>
-              </Callout>
 
               <Paragraph className="text-xs text-text-dimmed">
                 Make sure the staging branch in your Vercel project's Git settings matches the staging branch
@@ -845,25 +841,13 @@ export function VercelOnboardingModal({
 
           {showEnvVarSync && (
             <div className="flex flex-col gap-4">
-              <Header3>Pull Environment Variables</Header3>
-              <Paragraph className="text-sm">
-                Select which environment variables to pull from Vercel now. This is a one-time pull.
-                Later on environment variables can be pulled before each build.
-              </Paragraph>
-
-              <div className="flex gap-4 text-sm">
-                <div className="rounded border bg-charcoal-750 px-3 py-2">
-                  <span className="font-medium text-text-bright">{syncableEnvVars.length}</span>
-                  <span className="text-text-dimmed"> can be pulled</span>
-                </div>
-                {secretEnvVars.length > 0 && (
-                  <div className="rounded border bg-charcoal-750 px-3 py-2">
-                    <span className="font-medium text-amber-400">{secretEnvVars.length}</span>
-                    <span className="text-text-dimmed"> secret (cannot pull)</span>
-                  </div>
-                )}
+              <div className="flex flex-col gap-1">
+                <Header3>Pull Environment Variables</Header3>
+                <Paragraph className="text-sm">
+                Choose which environment variables to import from Vercel. This runs as a one time pull to prefill your project with the variables it needs. You’ll be able to pull again later, or enable automatic syncing before each build if you prefer.
+                If you are using Supabase or Neon branching, <TextLink href="https://trigger.dev/docs/vercel-integration#supabase-and-neon-database-branching" target="_blank" rel="noopener noreferrer">read the docs</TextLink> for the recommended setup.
+                </Paragraph>
               </div>
-
               <div className="flex items-center justify-between rounded border bg-charcoal-800 p-3">
                 <div>
                   <Label>Pull all environment variables now</Label>
