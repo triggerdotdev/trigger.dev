@@ -1,11 +1,16 @@
 import { ApiClient } from "../apiClient/index.js";
-import { InputStreamManager } from "./types.js";
+import {
+  InputStreamManager,
+  InputStreamOncePromise,
+  InputStreamOnceResult,
+  InputStreamTimeoutError,
+} from "./types.js";
 import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 
 type InputStreamHandler = (data: unknown) => void | Promise<void>;
 
 type OnceWaiter = {
-  resolve: (data: unknown) => void;
+  resolve: (result: InputStreamOnceResult<unknown>) => void;
   reject: (error: Error) => void;
   timeoutHandle?: ReturnType<typeof setTimeout>;
 };
@@ -72,7 +77,7 @@ export class StandardInputStreamManager implements InputStreamManager {
     };
   }
 
-  once(streamId: string, options?: InputStreamOnceOptions): Promise<unknown> {
+  once(streamId: string, options?: InputStreamOnceOptions): InputStreamOncePromise<unknown> {
     this.#requireV2Streams();
 
     // Lazily connect a tail for this stream
@@ -85,10 +90,12 @@ export class StandardInputStreamManager implements InputStreamManager {
       if (buffered.length === 0) {
         this.buffer.delete(streamId);
       }
-      return Promise.resolve(data);
+      return new InputStreamOncePromise((resolve) => {
+        resolve({ ok: true, output: data });
+      });
     }
 
-    return new Promise<unknown>((resolve, reject) => {
+    return new InputStreamOncePromise<unknown>((resolve, reject) => {
       const waiter: OnceWaiter = { resolve, reject };
 
       // Handle abort signal
@@ -110,11 +117,14 @@ export class StandardInputStreamManager implements InputStreamManager {
         );
       }
 
-      // Handle timeout
+      // Handle timeout — resolve with error result instead of rejecting
       if (options?.timeoutMs) {
         waiter.timeoutHandle = setTimeout(() => {
           this.#removeOnceWaiter(streamId, waiter);
-          reject(new Error(`Timeout waiting for input stream "${streamId}" after ${options.timeoutMs}ms`));
+          resolve({
+            ok: false,
+            error: new InputStreamTimeoutError(streamId, options.timeoutMs!),
+          });
         }, options.timeoutMs);
       }
 
@@ -256,7 +266,7 @@ export class StandardInputStreamManager implements InputStreamManager {
       if (waiter.timeoutHandle) {
         clearTimeout(waiter.timeoutHandle);
       }
-      waiter.resolve(data);
+      waiter.resolve({ ok: true, output: data });
       // Also invoke persistent handlers
       this.#invokeHandlers(streamId, data);
       return;

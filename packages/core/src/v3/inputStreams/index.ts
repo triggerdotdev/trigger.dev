@@ -1,6 +1,6 @@
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { NoopInputStreamManager } from "./noopManager.js";
-import { InputStreamManager } from "./types.js";
+import { InputStreamManager, InputStreamOncePromise } from "./types.js";
 import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 
 const API_NAME = "input-streams";
@@ -39,7 +39,7 @@ export class InputStreamsAPI implements InputStreamManager {
     return this.#getManager().on(streamId, handler);
   }
 
-  public once(streamId: string, options?: InputStreamOnceOptions): Promise<unknown> {
+  public once(streamId: string, options?: InputStreamOnceOptions): InputStreamOncePromise<unknown> {
     return this.#getManager().once(streamId, options);
   }
 

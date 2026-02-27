@@ -1,5 +1,42 @@
 import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 
+export class InputStreamTimeoutError extends Error {
+  constructor(
+    public readonly streamId: string,
+    public readonly timeoutMs: number
+  ) {
+    super(`Timeout waiting for input stream "${streamId}" after ${timeoutMs}ms`);
+    this.name = "InputStreamTimeoutError";
+  }
+}
+
+export type InputStreamOnceResult<TData> =
+  | { ok: true; output: TData }
+  | { ok: false; error: InputStreamTimeoutError };
+
+export class InputStreamOncePromise<TData> extends Promise<InputStreamOnceResult<TData>> {
+  constructor(
+    executor: (
+      resolve: (
+        value: InputStreamOnceResult<TData> | PromiseLike<InputStreamOnceResult<TData>>
+      ) => void,
+      reject: (reason?: any) => void
+    ) => void
+  ) {
+    super(executor);
+  }
+
+  unwrap(): Promise<TData> {
+    return this.then((result) => {
+      if (result.ok) {
+        return result.output;
+      } else {
+        throw result.error;
+      }
+    });
+  }
+}
+
 export interface InputStreamManager {
   /**
    * Set the current run ID and streams version. The tail connection will be
@@ -15,8 +52,10 @@ export interface InputStreamManager {
 
   /**
    * Wait for the next piece of data on the given input stream.
+   * Returns a result object `{ ok, output }` or `{ ok, error }`.
+   * Chain `.unwrap()` to get the data directly or throw on timeout.
    */
-  once(streamId: string, options?: InputStreamOnceOptions): Promise<unknown>;
+  once(streamId: string, options?: InputStreamOnceOptions): InputStreamOncePromise<unknown>;
 
   /**
    * Non-blocking peek at the most recent data on the given input stream.

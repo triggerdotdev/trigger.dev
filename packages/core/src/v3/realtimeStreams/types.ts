@@ -1,4 +1,7 @@
 import { AnyZodFetchOptions, ApiRequestOptions } from "../apiClient/core.js";
+import type { InputStreamOncePromise } from "../inputStreams/types.js";
+export { InputStreamOncePromise, InputStreamTimeoutError } from "../inputStreams/types.js";
+export type { InputStreamOnceResult } from "../inputStreams/types.js";
 import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { Prettify } from "../types/utils.js";
 import type { ManualWaitpointPromise } from "../waitpoints/index.js";
@@ -162,9 +165,10 @@ export type RealtimeDefinedInputStream<TData> = {
   on: (handler: (data: TData) => void | Promise<void>) => InputStreamSubscription;
   /**
    * Wait for the next piece of data on this input stream.
-   * Resolves with the data when it arrives.
+   * Returns a result object `{ ok, output }` or `{ ok, error }`.
+   * Chain `.unwrap()` to get the data directly or throw on timeout.
    */
-  once: (options?: InputStreamOnceOptions) => Promise<TData>;
+  once: (options?: InputStreamOnceOptions) => InputStreamOncePromise<TData>;
   /**
    * Non-blocking peek at the most recent data received on this input stream.
    * Returns `undefined` if no data has been received yet.

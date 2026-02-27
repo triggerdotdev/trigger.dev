@@ -22,6 +22,8 @@ import {
   type RealtimeDefinedInputStream,
   type InputStreamSubscription,
   type InputStreamOnceOptions,
+  InputStreamOncePromise,
+  type InputStreamOnceResult,
   type InputStreamWaitOptions,
   type SendInputStreamOptions,
   type InferInputStreamType,
@@ -706,26 +708,33 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
       const ctx = taskContext.ctx;
       const runId = ctx?.run.id;
 
-      return tracer.startActiveSpan(
-        `inputStream.once()`,
-        async () => {
-          return inputStreams.once(opts.id, options) as Promise<TData>;
-        },
-        {
-          attributes: {
-            [SemanticInternalAttributes.STYLE_ICON]: "streams",
-            [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
-            ...(runId
-              ? { [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${opts.id}` }
-              : {}),
-            streamId: opts.id,
-            ...accessoryAttributes({
-              items: [{ text: opts.id, variant: "normal" }],
-              style: "codepath",
-            }),
-          },
-        }
-      );
+      const innerPromise = inputStreams.once(opts.id, options);
+
+      return new InputStreamOncePromise<TData>((resolve, reject) => {
+        tracer
+          .startActiveSpan(
+            `inputStream.once()`,
+            async () => {
+              const result = await innerPromise;
+              resolve(result as InputStreamOnceResult<TData>);
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "streams",
+                [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
+                ...(runId
+                  ? { [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${opts.id}` }
+                  : {}),
+                streamId: opts.id,
+                ...accessoryAttributes({
+                  items: [{ text: opts.id, variant: "normal" }],
+                  style: "codepath",
+                }),
+              },
+            }
+          )
+          .catch(reject);
+      });
     },
     peek() {
       return inputStreams.peek(opts.id) as TData | undefined;

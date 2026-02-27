@@ -1,4 +1,4 @@
-import { InputStreamManager } from "./types.js";
+import { InputStreamManager, InputStreamOncePromise } from "./types.js";
 import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 
 export class NoopInputStreamManager implements InputStreamManager {
@@ -8,8 +8,8 @@ export class NoopInputStreamManager implements InputStreamManager {
     return { off: () => {} };
   }
 
-  once(_streamId: string, _options?: InputStreamOnceOptions): Promise<unknown> {
-    return new Promise(() => {
+  once(_streamId: string, _options?: InputStreamOnceOptions): InputStreamOncePromise<unknown> {
+    return new InputStreamOncePromise(() => {
       // Never resolves in noop mode
     });
   }

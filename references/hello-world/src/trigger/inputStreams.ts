@@ -10,24 +10,34 @@ const messageStream = streams.input<{ text: string }>({ id: "messages" });
 /**
  * Coordinator task that exercises all input stream patterns end-to-end.
  *
- * 1. .once() — trigger a child, send it data via SSE tail, poll until complete
- * 2. .on()   — trigger a child, send it multiple messages, poll until complete
- * 3. .wait() — trigger a child, send it data (completes its waitpoint), poll until complete
- * 4. .wait() race — send data before child calls .wait(), verify race handling
+ * 1a. .once().unwrap() — trigger a child, send data, verify unwrap returns TData
+ * 1b. .once() result  — trigger a child, send data, verify result object { ok, output }
+ * 2.  .on()            — trigger a child, send it multiple messages, poll until complete
+ * 3.  .wait()          — trigger a child, send it data (completes its waitpoint), poll until complete
+ * 4.  .wait() race     — send data before child calls .wait(), verify race handling
  */
 export const inputStreamCoordinator = task({
   id: "input-stream-coordinator",
   run: async () => {
     const results: Record<string, unknown> = {};
 
-    // --- Test 1: .once() ----
-    logger.info("Test 1: .once()");
-    const onceHandle = await inputStreamOnce.trigger({});
+    // --- Test 1a: .once() with .unwrap() ---
+    logger.info("Test 1a: .once().unwrap()");
+    const onceUnwrapHandle = await inputStreamOnceUnwrap.trigger({});
     await wait.for({ seconds: 5 });
-    await approvalStream.send(onceHandle.id, { approved: true, reviewer: "coordinator-once" });
-    const onceRun = await runs.poll(onceHandle, { pollIntervalMs: 1000 });
-    results.once = onceRun.output;
-    logger.info("Test 1 passed", { output: onceRun.output });
+    await approvalStream.send(onceUnwrapHandle.id, { approved: true, reviewer: "coordinator-unwrap" });
+    const onceUnwrapRun = await runs.poll(onceUnwrapHandle, { pollIntervalMs: 1000 });
+    results.onceUnwrap = onceUnwrapRun.output;
+    logger.info("Test 1a passed", { output: onceUnwrapRun.output });
+
+    // --- Test 1b: .once() with result object ---
+    logger.info("Test 1b: .once() result object");
+    const onceResultHandle = await inputStreamOnceResult.trigger({});
+    await wait.for({ seconds: 5 });
+    await approvalStream.send(onceResultHandle.id, { approved: true, reviewer: "coordinator-result" });
+    const onceResultRun = await runs.poll(onceResultHandle, { pollIntervalMs: 1000 });
+    results.onceResult = onceResultRun.output;
+    logger.info("Test 1b passed", { output: onceResultRun.output });
 
     // --- Test 2: .on() with multiple messages ---
     logger.info("Test 2: .on()");
@@ -64,15 +74,37 @@ export const inputStreamCoordinator = task({
 });
 
 /**
- * Uses .once() to wait for a single input stream message.
+ * Uses .once().unwrap() — returns TData directly, throws InputStreamTimeoutError on timeout.
  */
-export const inputStreamOnce = task({
-  id: "input-stream-once",
+export const inputStreamOnceUnwrap = task({
+  id: "input-stream-once-unwrap",
   run: async (_payload: Record<string, never>) => {
-    logger.info("Waiting for approval via .once()");
-    const approval = await approvalStream.once();
+    logger.info("Waiting for approval via .once().unwrap()");
+
+    const approval = await approvalStream.once({ timeoutMs: 30_000 }).unwrap();
+
     logger.info("Received approval", { approval });
     return { approval };
+  },
+});
+
+/**
+ * Uses .once() with result object — check result.ok to handle timeout without try/catch.
+ */
+export const inputStreamOnceResult = task({
+  id: "input-stream-once-result",
+  run: async (_payload: Record<string, never>) => {
+    logger.info("Waiting for approval via .once() result object");
+
+    const result = await approvalStream.once({ timeoutMs: 30_000 });
+
+    if (!result.ok) {
+      logger.error("Timed out waiting for approval", { error: result.error.message });
+      return { approval: null, timedOut: true };
+    }
+
+    logger.info("Received approval", { approval: result.output });
+    return { approval: result.output };
   },
 });
 
