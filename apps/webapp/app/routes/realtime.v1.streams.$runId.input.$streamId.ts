@@ -1,7 +1,10 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import { getAndDeleteInputStreamWaitpoint } from "~/services/inputStreamWaitpointCache.server";
+import {
+  getInputStreamWaitpoint,
+  deleteInputStreamWaitpoint,
+} from "~/services/inputStreamWaitpointCache.server";
 import {
   createActionApiRoute,
   createLoaderApiRoute,
@@ -80,7 +83,8 @@ const { action } = createActionApiRoute(
     );
 
     // Check Redis cache for a linked .wait() waitpoint (fast, no DB hit if none)
-    const waitpointId = await getAndDeleteInputStreamWaitpoint(params.runId, params.streamId);
+    // Get first, complete, then delete — so the mapping survives if completeWaitpoint throws
+    const waitpointId = await getInputStreamWaitpoint(params.runId, params.streamId);
     if (waitpointId) {
       await engine.completeWaitpoint({
         id: waitpointId,
@@ -90,6 +94,7 @@ const { action } = createActionApiRoute(
           isError: false,
         },
       });
+      await deleteInputStreamWaitpoint(params.runId, params.streamId);
     }
 
     return json({ ok: true });
@@ -132,17 +137,18 @@ const loader = createLoaderApiRoute(
     const lastEventId = request.headers.get("Last-Event-ID") || undefined;
 
     const timeoutInSecondsRaw = request.headers.get("Timeout-Seconds") ?? undefined;
-    const timeoutInSeconds = timeoutInSecondsRaw ? parseInt(timeoutInSecondsRaw) : undefined;
+    const timeoutInSeconds =
+      timeoutInSecondsRaw !== undefined ? parseInt(timeoutInSecondsRaw, 10) : undefined;
 
-    if (timeoutInSeconds && isNaN(timeoutInSeconds)) {
+    if (timeoutInSeconds !== undefined && isNaN(timeoutInSeconds)) {
       return new Response("Invalid timeout seconds", { status: 400 });
     }
 
-    if (timeoutInSeconds && timeoutInSeconds < 1) {
+    if (timeoutInSeconds !== undefined && timeoutInSeconds < 1) {
       return new Response("Timeout seconds must be greater than 0", { status: 400 });
     }
 
-    if (timeoutInSeconds && timeoutInSeconds > 600) {
+    if (timeoutInSeconds !== undefined && timeoutInSeconds > 600) {
       return new Response("Timeout seconds must be less than 600", { status: 400 });
     }
 

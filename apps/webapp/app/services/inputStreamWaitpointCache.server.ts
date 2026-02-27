@@ -55,6 +55,29 @@ export async function setInputStreamWaitpoint(
 }
 
 /**
+ * Get the waitpoint ID for an input stream without deleting it.
+ * Called from the `.send()` route before completing the waitpoint.
+ */
+export async function getInputStreamWaitpoint(
+  runFriendlyId: string,
+  streamId: string
+): Promise<string | null> {
+  if (!redis) return null;
+
+  try {
+    const key = buildKey(runFriendlyId, streamId);
+    return await redis.get(key);
+  } catch (error) {
+    logger.error("Failed to get input stream waitpoint cache", {
+      runFriendlyId,
+      streamId,
+      error,
+    });
+    return null;
+  }
+}
+
+/**
  * Atomically get and delete the waitpoint ID for an input stream.
  * Uses GETDEL for atomicity — only one concurrent `.send()` call will get the ID.
  * Called from the `.send()` route.

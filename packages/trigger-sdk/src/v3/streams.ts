@@ -771,15 +771,16 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
               const waitResult = await runtime.waitUntil(response.waitpointId);
 
               // 4. Parse the output
-              const data = waitResult.output
-                ? await conditionallyImportAndParsePacket(
-                    {
-                      data: waitResult.output,
-                      dataType: waitResult.outputType ?? "application/json",
-                    },
-                    apiClient
-                  )
-                : undefined;
+              const data =
+                waitResult.output !== undefined
+                  ? await conditionallyImportAndParsePacket(
+                      {
+                        data: waitResult.output,
+                        dataType: waitResult.outputType ?? "application/json",
+                      },
+                      apiClient
+                    )
+                  : undefined;
 
               if (waitResult.ok) {
                 return { ok: true as const, output: data as TData };

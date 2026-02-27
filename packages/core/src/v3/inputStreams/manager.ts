@@ -100,6 +100,9 @@ export class StandardInputStreamManager implements InputStreamManager {
         options.signal.addEventListener(
           "abort",
           () => {
+            if (waiter.timeoutHandle) {
+              clearTimeout(waiter.timeoutHandle);
+            }
             this.#removeOnceWaiter(streamId, waiter);
             reject(new Error("Aborted"));
           },
@@ -174,13 +177,15 @@ export class StandardInputStreamManager implements InputStreamManager {
   #ensureStreamTailConnected(streamId: string): void {
     if (!this.tails.has(streamId) && this.currentRunId) {
       const abortController = new AbortController();
-      const promise = this.#runTail(this.currentRunId, streamId, abortController.signal).catch(
-        (error) => {
+      const promise = this.#runTail(this.currentRunId, streamId, abortController.signal)
+        .catch((error) => {
           if (this.debug) {
             console.error(`[InputStreamManager] Tail error for "${streamId}":`, error);
           }
-        }
-      );
+        })
+        .finally(() => {
+          this.tails.delete(streamId);
+        });
       this.tails.set(streamId, { abortController, promise });
     }
   }

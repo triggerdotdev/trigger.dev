@@ -20,7 +20,7 @@ export const inputStreamCoordinator = task({
   run: async () => {
     const results: Record<string, unknown> = {};
 
-    // --- Test 1: .once() ---
+    // --- Test 1: .once() ----
     logger.info("Test 1: .once()");
     const onceHandle = await inputStreamOnce.trigger({});
     await wait.for({ seconds: 5 });
