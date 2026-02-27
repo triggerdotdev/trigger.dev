@@ -178,7 +178,7 @@ export const EventManifest = z.object({
   /** Unique event identifier (e.g. "order.created") */
   id: z.string(),
   /** Schema version */
-  version: z.string().default("1.0"),
+  version: z.string(),
   /** Optional human-readable description */
   description: z.string().optional(),
 });

@@ -105,6 +105,7 @@ async function indexDeployment({
         cliPackageVersion: buildManifest.cliPackageVersion,
         tasks: workerManifest.tasks,
         queues: workerManifest.queues,
+        events: workerManifest.events,
         sourceFiles,
         runtime: workerManifest.runtime,
         runtimeVersion: workerManifest.runtimeVersion,

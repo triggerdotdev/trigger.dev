@@ -154,6 +154,7 @@ await sendMessageInCatalog(
     manifest: {
       tasks,
       queues: resourceCatalog.listQueueManifests(),
+      events: resourceCatalog.listEventManifests(),
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
       runtimeVersion: detectRuntimeVersion(),

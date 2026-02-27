@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { QueueManifest, RetryOptions, ScheduleMetadata } from "./schemas.js";
+import { EventManifest, QueueManifest, RetryOptions, ScheduleMetadata } from "./schemas.js";
 import { MachineConfig } from "./common.js";
 
 export const TaskResource = z.object({
@@ -15,6 +15,7 @@ export const TaskResource = z.object({
   maxDuration: z.number().optional(),
   // JSONSchema type - using z.unknown() for runtime validation to accept JSONSchema7
   payloadSchema: z.unknown().optional(),
+  onEvent: z.string().optional(),
 });
 
 export type TaskResource = z.infer<typeof TaskResource>;
@@ -34,6 +35,7 @@ export const BackgroundWorkerMetadata = z.object({
   cliPackageVersion: z.string().optional(),
   tasks: z.array(TaskResource),
   queues: z.array(QueueManifest).optional(),
+  events: z.array(EventManifest).optional(),
   sourceFiles: z.array(BackgroundWorkerSourceFileMetadata).optional(),
   runtime: z.string().optional(),
   runtimeVersion: z.string().optional(),

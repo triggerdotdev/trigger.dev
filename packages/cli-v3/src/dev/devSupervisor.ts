@@ -227,6 +227,7 @@ class DevSupervisor implements WorkerRuntime {
         cliPackageVersion: manifest.cliPackageVersion,
         tasks: backgroundWorker.manifest.tasks,
         queues: backgroundWorker.manifest.queues,
+        events: backgroundWorker.manifest.events,
         contentHash: manifest.contentHash,
         sourceFiles,
         runtime: backgroundWorker.manifest.runtime,
