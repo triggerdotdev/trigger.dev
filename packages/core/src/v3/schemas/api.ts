@@ -1598,3 +1598,57 @@ export const AppendToStreamResponseBody = z.object({
   message: z.string().optional(),
 });
 export type AppendToStreamResponseBody = z.infer<typeof AppendToStreamResponseBody>;
+
+// ---- Event publish schemas ----
+
+export const PublishEventRequestBody = z.object({
+  payload: z.any(),
+  options: z
+    .object({
+      idempotencyKey: z.string().optional(),
+      delay: z.string().or(z.coerce.date()).optional(),
+      tags: RunTags.optional(),
+      metadata: z.any().optional(),
+      context: z.any().optional(),
+    })
+    .optional(),
+});
+
+export type PublishEventRequestBody = z.infer<typeof PublishEventRequestBody>;
+
+export const PublishEventResponseBody = z.object({
+  eventId: z.string(),
+  runs: z.array(
+    z.object({
+      taskIdentifier: z.string(),
+      runId: z.string(),
+    })
+  ),
+});
+
+export type PublishEventResponseBody = z.infer<typeof PublishEventResponseBody>;
+
+export const BatchPublishEventRequestBody = z.object({
+  items: z.array(
+    z.object({
+      payload: z.any(),
+      options: z
+        .object({
+          idempotencyKey: z.string().optional(),
+          delay: z.string().or(z.coerce.date()).optional(),
+          tags: RunTags.optional(),
+          metadata: z.any().optional(),
+          context: z.any().optional(),
+        })
+        .optional(),
+    })
+  ),
+});
+
+export type BatchPublishEventRequestBody = z.infer<typeof BatchPublishEventRequestBody>;
+
+export const BatchPublishEventResponseBody = z.object({
+  results: z.array(PublishEventResponseBody),
+});
+
+export type BatchPublishEventResponseBody = z.infer<typeof BatchPublishEventResponseBody>;
