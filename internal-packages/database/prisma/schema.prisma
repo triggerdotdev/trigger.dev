@@ -191,6 +191,8 @@ model Organization {
 
   companySize String?
 
+  onboardingData Json?
+
   avatar Json?
 
   runsEnabled Boolean @default(true)
