@@ -1,4 +1,5 @@
-import { PublishEventResponseBody, TriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import { PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../../friendlyIdentifiers";
@@ -25,7 +26,30 @@ export type PublishEventResult = {
   }>;
 };
 
+/** Interface for the trigger function used by PublishEventService */
+export type TriggerFn = (
+  taskId: string,
+  environment: AuthenticatedEnvironment,
+  body: TriggerTaskRequestBody,
+  options: TriggerTaskServiceOptions
+) => Promise<TriggerTaskServiceResult | undefined>;
+
 export class PublishEventService extends BaseService {
+  private readonly _triggerFn: TriggerFn;
+
+  constructor(
+    prisma?: PrismaClientOrTransaction,
+    triggerFn?: TriggerFn
+  ) {
+    super(prisma);
+    this._triggerFn =
+      triggerFn ??
+      ((taskId, environment, body, options) => {
+        const svc = new TriggerTaskService({ prisma: this._prisma });
+        return svc.call(taskId, environment, body, options);
+      });
+  }
+
   public async call(
     eventSlug: string,
     environment: AuthenticatedEnvironment,
@@ -74,8 +98,6 @@ export class PublishEventService extends BaseService {
       const eventId = generateFriendlyId("evt");
       const runs: PublishEventResult["runs"] = [];
 
-      const triggerService = new TriggerTaskService();
-
       for (const subscription of subscriptions) {
         try {
           // Derive per-consumer idempotency key if a global one was provided
@@ -101,7 +123,7 @@ export class PublishEventService extends BaseService {
             idempotencyKey: consumerIdempotencyKey,
           };
 
-          const result = await triggerService.call(
+          const result = await this._triggerFn(
             subscription.taskSlug,
             environment,
             body,
