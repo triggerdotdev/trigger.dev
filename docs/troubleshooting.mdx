@@ -243,7 +243,11 @@ If this was a dev run, then most likely the `trigger.dev dev` CLI was stopped, a
 
 </Note>
 
-These errors can happen when code inside your task is blocking the event loop for too long. The most likely cause would be an accidental infinite loop. It could also be a CPU-heavy operation that's blocking the event loop, like nested loops with very large arrays. We recommend reading the [Don't Block the Event Loop](https://nodejs.org/en/learn/asynchronous-work/dont-block-the-event-loop) guide from Node.js for common patterns that can cause this.
+These errors can happen when code inside your task is blocking the event loop for too long. The most likely cause would be an accidental infinite loop. It could also be a CPU-heavy operation that's blocking the event loop, like nested loops with very large arrays.
+
+If you use **Prisma 7.x**, query compilation and caching run on the main thread and can block the event loop during heavy or repeated database work. In tasks that do a lot of Prisma calls (e.g. in loops or many sequential queries), add `await heartbeats.yield()` periodically so the event loop can run and send heartbeats.
+
+We recommend reading the [Don't Block the Event Loop](https://nodejs.org/en/learn/asynchronous-work/dont-block-the-event-loop) guide from Node.js for common patterns that can cause this.
 
 If you are doing a continuous CPU-heavy task, then we recommend you try using our `heartbeats.yield` function to automatically yield to the event loop periodically:
 

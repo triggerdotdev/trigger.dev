@@ -999,6 +999,45 @@ export const largePayloadTask = task({
   },
 });
 
+// ============================================================================
+// Oversized Payload Graceful Handling
+// ============================================================================
+
+/**
+ * Test: Batch with oversized item should complete gracefully
+ *
+ * Sends 2 items: one normal, one oversized (~3.2MB).
+ * The oversized item should result in a pre-failed run (ok: false)
+ * while the normal item processes successfully (ok: true).
+ */
+export const batchSealFailureOversizedPayload = task({
+  id: "batch-seal-failure-oversized",
+  maxDuration: 60,
+  retry: {
+    maxAttempts: 1,
+  },
+  run: async () => {
+    const results = await fixedLengthTask.batchTriggerAndWait([
+      { payload: { waitSeconds: 1, output: "normal" } },
+      { payload: { waitSeconds: 1, output: "x".repeat(3_200_000) } }, // ~3.2MB oversized
+    ]);
+
+    const normal = results.runs[0];
+    const oversized = results.runs[1];
+
+    logger.info("Batch results", {
+      normalOk: normal?.ok,
+      oversizedOk: oversized?.ok,
+    });
+
+    return {
+      normalOk: normal?.ok === true,
+      oversizedOk: oversized?.ok === false,
+      oversizedError: !oversized?.ok ? oversized?.error : undefined,
+    };
+  },
+});
+
 type Payload = {
   waitSeconds: number;
   error?: string;
@@ -1020,5 +1059,324 @@ export const fixedLengthTask = task({
     }
 
     return output;
+  },
+});
+
+// ============================================================================
+// Queue Size Limit Testing
+// ============================================================================
+// These tests verify that per-queue size limits are enforced correctly.
+//
+// To test:
+// 1. Set a low queue limit on the organization:
+//    UPDATE "Organization" SET "maximumDeployedQueueSize" = 5 WHERE slug = 'references-9dfd';
+// 2. Run these tasks to verify queue limits are enforced
+// 3. Reset the limit when done:
+//    UPDATE "Organization" SET "maximumDeployedQueueSize" = NULL WHERE slug = 'references-9dfd';
+// ============================================================================
+
+/**
+ * Simple task for queue limit testing.
+ * Has a dedicated queue so we can test per-queue limits independently.
+ */
+export const queueLimitTestTask = task({
+  id: "queue-limit-test-task",
+  queue: {
+    name: "queue-limit-test-queue",
+    concurrencyLimit: 1
+  },
+  run: async (payload: { index: number; testId: string }) => {
+    logger.info(`Processing queue limit test task ${payload.index}`, { payload });
+    // Sleep for a bit so runs stay in queue
+    await setTimeout(5000);
+    return {
+      index: payload.index,
+      testId: payload.testId,
+      processedAt: Date.now(),
+    };
+  },
+});
+
+/**
+ * Test: Single trigger that should fail when queue is at limit
+ *
+ * Steps to test:
+ * 1. Set maximumDeployedQueueSize = 5 on the organization
+ * 2. Run this task with count = 10
+ * 3. First 5 triggers should succeed
+ * 4. Remaining triggers should fail with queue limit error
+ */
+export const testSingleTriggerQueueLimit = task({
+  id: "test-single-trigger-queue-limit",
+  maxDuration: 120,
+  run: async (payload: { count: number }) => {
+    const count = payload.count || 10;
+    const testId = `single-trigger-limit-${Date.now()}`;
+
+    logger.info("Starting single trigger queue limit test", { count, testId });
+
+    const results: Array<{
+      index: number;
+      success: boolean;
+      runId?: string;
+      error?: string;
+    }> = [];
+
+    // Trigger tasks one by one
+    for (let i = 0; i < count; i++) {
+      try {
+        const handle = await queueLimitTestTask.trigger({
+          index: i,
+          testId,
+        });
+
+        results.push({
+          index: i,
+          success: true,
+          runId: handle.id,
+        });
+
+        logger.info(`Triggered task ${i} successfully`, { runId: handle.id });
+
+        await setTimeout(1000)
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        results.push({
+          index: i,
+          success: false,
+          error: errorMessage,
+        });
+
+        logger.warn(`Failed to trigger task ${i}`, { error: errorMessage });
+      }
+    }
+
+    const successCount = results.filter((r) => r.success).length;
+    const failCount = results.filter((r) => !r.success).length;
+    const queueLimitErrors = results.filter(
+      (r) => !r.success && r.error?.includes("queue")
+    ).length;
+
+    return {
+      testId,
+      totalAttempts: count,
+      successCount,
+      failCount,
+      queueLimitErrors,
+      results,
+    };
+  },
+});
+
+/**
+ * Test: Batch trigger that should fail when queue limit would be exceeded
+ *
+ * Steps to test:
+ * 1. Set maximumDeployedQueueSize = 5 on the organization
+ * 2. Run this task with count = 10
+ * 3. The batch should be aborted because it would exceed the queue limit
+ */
+export const testBatchTriggerQueueLimit = task({
+  id: "test-batch-trigger-queue-limit",
+  maxDuration: 120,
+  run: async (payload: { count: number }) => {
+    const count = payload.count || 10;
+    const testId = `batch-trigger-limit-${Date.now()}`;
+
+    logger.info("Starting batch trigger queue limit test", { count, testId });
+
+    const items = Array.from({ length: count }, (_, i) => ({
+      payload: { index: i, testId },
+    }));
+
+    try {
+      const result = await queueLimitTestTask.batchTrigger(items);
+
+      logger.info("Batch triggered successfully (no limit hit)", {
+        batchId: result.batchId,
+        runCount: result.runCount,
+      });
+
+      // Wait a bit and check batch status
+      await setTimeout(2000);
+      const batchResult = await batch.retrieve(result.batchId);
+
+      return {
+        testId,
+        success: true,
+        batchId: result.batchId,
+        runCount: result.runCount,
+        batchStatus: batchResult.status,
+        queueLimitHit: false,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isQueueLimitError = errorMessage.toLowerCase().includes("queue");
+
+      logger.info("Batch trigger failed", {
+        error: errorMessage,
+        isQueueLimitError,
+      });
+
+      return {
+        testId,
+        success: false,
+        error: errorMessage,
+        queueLimitHit: isQueueLimitError,
+      };
+    }
+  },
+});
+
+/**
+ * Test: Batch triggerAndWait that should fail when queue limit would be exceeded
+ *
+ * Same as testBatchTriggerQueueLimit but uses batchTriggerAndWait.
+ * This tests the blocking batch path where the parent run is blocked
+ * until the batch completes.
+ *
+ * Steps to test:
+ * 1. Set maximumDevQueueSize = 5 on the organization
+ * 2. Run this task with count = 10
+ * 3. The batch should be aborted because it would exceed the queue limit
+ */
+export const testBatchTriggerAndWaitQueueLimit = task({
+  id: "test-batch-trigger-and-wait-queue-limit",
+  maxDuration: 120,
+  run: async (payload: { count: number }) => {
+    const count = payload.count || 10;
+    const testId = `batch-wait-limit-${Date.now()}`;
+
+    logger.info("Starting batch triggerAndWait queue limit test", { count, testId });
+
+    const items = Array.from({ length: count }, (_, i) => ({
+      payload: { index: i, testId },
+    }));
+
+    try {
+      const result = await queueLimitTestTask.batchTriggerAndWait(items);
+
+      logger.info("Batch triggerAndWait completed (no limit hit)", {
+        batchId: result.id,
+        runsCount: result.runs.length,
+      });
+
+      const successCount = result.runs.filter((r) => r.ok).length;
+      const failCount = result.runs.filter((r) => !r.ok).length;
+
+      return {
+        testId,
+        success: true,
+        batchId: result.id,
+        runsCount: result.runs.length,
+        successCount,
+        failCount,
+        queueLimitHit: false,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isQueueLimitError = errorMessage.toLowerCase().includes("queue");
+
+      logger.info("Batch triggerAndWait failed", {
+        error: errorMessage,
+        isQueueLimitError,
+      });
+
+      return {
+        testId,
+        success: false,
+        error: errorMessage,
+        queueLimitHit: isQueueLimitError,
+      };
+    }
+  },
+});
+
+/**
+ * Test: Batch trigger to multiple queues with different limits
+ *
+ * This tests that per-queue validation works correctly when batch items
+ * go to different queues. Some items may succeed while the queue that
+ * exceeds its limit causes the batch to abort.
+ */
+export const testMultiQueueBatchLimit = task({
+  id: "test-multi-queue-batch-limit",
+  maxDuration: 120,
+  run: async (payload: { countPerQueue: number }) => {
+    const countPerQueue = payload.countPerQueue || 5;
+    const testId = `multi-queue-limit-${Date.now()}`;
+
+    logger.info("Starting multi-queue batch limit test", { countPerQueue, testId });
+
+    // Create items that go to different queues
+    // queueLimitTestTask goes to "queue-limit-test-queue"
+    // simpleTask goes to its default queue "task/simple-task"
+    const items = [];
+
+    // Add items for the queue-limit-test-queue
+    for (let i = 0; i < countPerQueue; i++) {
+      items.push({
+        id: "queue-limit-test-task" as const,
+        payload: { index: i, testId },
+      });
+    }
+
+    // Add items for a different queue (simple-task uses default queue)
+    for (let i = 0; i < countPerQueue; i++) {
+      items.push({
+        id: "simple-task" as const,
+        payload: { message: `multi-queue-${i}` },
+      });
+    }
+
+    try {
+      const result = await batch.trigger<typeof queueLimitTestTask | typeof simpleTask>(items);
+
+      logger.info("Multi-queue batch triggered successfully", {
+        batchId: result.batchId,
+        runCount: result.runCount,
+      });
+
+      await setTimeout(2000);
+      const batchResult = await batch.retrieve(result.batchId);
+
+      return {
+        testId,
+        success: true,
+        batchId: result.batchId,
+        runCount: result.runCount,
+        batchStatus: batchResult.status,
+        queueLimitHit: false,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isQueueLimitError = errorMessage.toLowerCase().includes("queue");
+
+      logger.info("Multi-queue batch trigger failed", {
+        error: errorMessage,
+        isQueueLimitError,
+      });
+
+      return {
+        testId,
+        success: false,
+        error: errorMessage,
+        queueLimitHit: isQueueLimitError,
+      };
+    }
+  },
+});
+
+/**
+ * Helper task to check current queue size
+ */
+export const checkQueueSize = task({
+  id: "check-queue-size",
+  run: async () => {
+    // This task just reports - actual queue size check is done server-side
+    return {
+      note: "Check the webapp logs or database for queue size information",
+      hint: "Run: SELECT * FROM \"TaskRun\" WHERE queue = 'queue-limit-test-queue' AND status IN ('PENDING', 'EXECUTING');",
+    };
   },
 });

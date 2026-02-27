@@ -1,6 +1,7 @@
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { engine } from "~/v3/runEngine.server";
+import { getQueueSizeLimit } from "~/v3/utils/queueLimits.server";
 import { BasePresenter } from "./basePresenter.server";
 
 export type Environment = {
@@ -9,6 +10,7 @@ export type Environment = {
   concurrencyLimit: number;
   burstFactor: number;
   runsEnabled: boolean;
+  queueSizeLimit: number | null;
 };
 
 export class EnvironmentQueuePresenter extends BasePresenter {
@@ -30,6 +32,8 @@ export class EnvironmentQueuePresenter extends BasePresenter {
       },
       select: {
         runsEnabled: true,
+        maximumDevQueueSize: true,
+        maximumDeployedQueueSize: true,
       },
     });
 
@@ -37,12 +41,15 @@ export class EnvironmentQueuePresenter extends BasePresenter {
       throw new Error("Organization not found");
     }
 
+    const queueSizeLimit = getQueueSizeLimit(environment.type, organization);
+
     return {
       running,
       queued,
       concurrencyLimit: environment.maximumConcurrencyLimit,
       burstFactor: environment.concurrencyLimitBurstFactor.toNumber(),
       runsEnabled: environment.type === "DEVELOPMENT" || organization.runsEnabled,
+      queueSizeLimit,
     };
   }
 }

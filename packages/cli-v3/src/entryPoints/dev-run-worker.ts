@@ -204,12 +204,18 @@ async function doBootstrap() {
 
     const tracingSDK = new TracingSDK({
       url: env.TRIGGER_OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
+      metricsUrl: env.TRIGGER_OTEL_METRICS_ENDPOINT,
       instrumentations: config.telemetry?.instrumentations ?? config.instrumentations ?? [],
       exporters: config.telemetry?.exporters ?? [],
       logExporters: config.telemetry?.logExporters ?? [],
+      metricExporters: config.telemetry?.metricExporters ?? [],
+      metricReaders: config.telemetry?.metricReaders ?? [],
       diagLogLevel: (env.TRIGGER_OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
       forceFlushTimeoutMillis: 30_000,
       resource: config.telemetry?.resource,
+      hostMetrics: true,
+      hostMetricGroups: ["process.cpu", "process.memory"],
+      nodejsRuntimeMetrics: true,
     });
 
     const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);
@@ -619,8 +625,11 @@ const zodIpc = new ZodIpcConnection({
       }
       await flushAll(timeoutInMs);
     },
-    FLUSH: async ({ timeoutInMs }) => {
+    FLUSH: async ({ timeoutInMs, disableContext }) => {
       await flushAll(timeoutInMs);
+      if (disableContext) {
+        taskContext.disable();
+      }
     },
     RESOLVE_WAITPOINT: async ({ waitpoint }) => {
       _sharedWorkerRuntime?.resolveWaitpoints([waitpoint]);

@@ -34,6 +34,8 @@ export type ChartRootProps = {
   legendTotalLabel?: string;
   /** Aggregation method used by the legend to compute totals (defaults to sum behavior) */
   legendAggregation?: AggregationType;
+  /** Optional formatter for numeric legend values (e.g. bytes, duration) */
+  legendValueFormatter?: (value: number) => string;
   /** Callback when "View all" legend button is clicked */
   onViewAllLegendItems?: () => void;
   /** When true, constrains legend to max 50% height with scrolling */
@@ -82,6 +84,7 @@ export function ChartRoot({
   maxLegendItems = 5,
   legendTotalLabel,
   legendAggregation,
+  legendValueFormatter,
   onViewAllLegendItems,
   legendScrollable = false,
   fillContainer = false,
@@ -108,6 +111,7 @@ export function ChartRoot({
         maxLegendItems={maxLegendItems}
         legendTotalLabel={legendTotalLabel}
         legendAggregation={legendAggregation}
+        legendValueFormatter={legendValueFormatter}
         onViewAllLegendItems={onViewAllLegendItems}
         legendScrollable={legendScrollable}
         fillContainer={fillContainer}
@@ -126,6 +130,7 @@ type ChartRootInnerProps = {
   maxLegendItems?: number;
   legendTotalLabel?: string;
   legendAggregation?: AggregationType;
+  legendValueFormatter?: (value: number) => string;
   onViewAllLegendItems?: () => void;
   legendScrollable?: boolean;
   fillContainer?: boolean;
@@ -140,6 +145,7 @@ function ChartRootInner({
   maxLegendItems = 5,
   legendTotalLabel,
   legendAggregation,
+  legendValueFormatter,
   onViewAllLegendItems,
   legendScrollable = false,
   fillContainer = false,
@@ -184,6 +190,7 @@ function ChartRootInner({
           maxItems={maxLegendItems}
           totalLabel={legendTotalLabel}
           aggregation={legendAggregation}
+          valueFormatter={legendValueFormatter}
           onViewAllLegendItems={onViewAllLegendItems}
           scrollable={legendScrollable}
         />

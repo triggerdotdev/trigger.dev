@@ -372,6 +372,7 @@ const EnvironmentSchema = z
 
     // Development OTEL environment variables
     DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
+    DEV_OTEL_METRICS_ENDPOINT: z.string().optional(),
     // If this is set to 1, then the below variables are used to configure the batch processor for spans and logs
     DEV_OTEL_BATCH_PROCESSING_ENABLED: z.string().default("0"),
     DEV_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE: z.string().default("64"),
@@ -382,6 +383,9 @@ const EnvironmentSchema = z
     DEV_OTEL_LOG_SCHEDULED_DELAY_MILLIS: z.string().default("200"),
     DEV_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
     DEV_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
+    DEV_OTEL_METRICS_EXPORT_INTERVAL_MILLIS: z.string().optional(),
+    DEV_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS: z.string().optional(),
+    DEV_OTEL_METRICS_COLLECTION_INTERVAL_MILLIS: z.string().optional(),
 
     PROD_OTEL_BATCH_PROCESSING_ENABLED: z.string().default("0"),
     PROD_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE: z.string().default("64"),
@@ -392,6 +396,9 @@ const EnvironmentSchema = z
     PROD_OTEL_LOG_SCHEDULED_DELAY_MILLIS: z.string().default("200"),
     PROD_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
     PROD_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
+    PROD_OTEL_METRICS_EXPORT_INTERVAL_MILLIS: z.string().optional(),
+    PROD_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS: z.string().optional(),
+    PROD_OTEL_METRICS_COLLECTION_INTERVAL_MILLIS: z.string().optional(),
 
     TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT: z.string().default("1024"),
     TRIGGER_OTEL_LOG_ATTRIBUTE_COUNT_LIMIT: z.string().default("1024"),
@@ -540,6 +547,9 @@ const EnvironmentSchema = z
 
     MAXIMUM_DEV_QUEUE_SIZE: z.coerce.number().int().optional(),
     MAXIMUM_DEPLOYED_QUEUE_SIZE: z.coerce.number().int().optional(),
+    QUEUE_SIZE_CACHE_TTL_MS: z.coerce.number().int().optional().default(1_000), // 1 second
+    QUEUE_SIZE_CACHE_MAX_SIZE: z.coerce.number().int().optional().default(5_000),
+    QUEUE_SIZE_CACHE_ENABLED: z.coerce.number().int().optional().default(1),
     MAX_BATCH_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
     MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
 
@@ -549,7 +559,7 @@ const EnvironmentSchema = z
     BATCH_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(100),
     BATCH_RATE_LIMIT_MAX: z.coerce.number().int().default(1200),
     BATCH_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),
-    BATCH_CONCURRENCY_LIMIT_DEFAULT: z.coerce.number().int().default(1),
+    BATCH_CONCURRENCY_LIMIT_DEFAULT: z.coerce.number().int().default(5),
 
     REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
     REALTIME_STREAM_MAX_LENGTH: z.coerce.number().int().default(1000),
@@ -595,6 +605,20 @@ const EnvironmentSchema = z
     RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_SCHEDULE: z.string().optional(),
     RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS: z.coerce.number().int().optional(),
     RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS: z.coerce.number().int().optional(),
+
+    // TTL System settings for automatic run expiration
+    RUN_ENGINE_TTL_SYSTEM_DISABLED: BoolEnv.default(false),
+    RUN_ENGINE_TTL_SYSTEM_SHARD_COUNT: z.coerce.number().int().optional(),
+    RUN_ENGINE_TTL_SYSTEM_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
+    RUN_ENGINE_TTL_SYSTEM_BATCH_SIZE: z.coerce.number().int().default(100),
+    RUN_ENGINE_TTL_WORKER_CONCURRENCY: z.coerce.number().int().default(1),
+    RUN_ENGINE_TTL_WORKER_BATCH_MAX_SIZE: z.coerce.number().int().default(50),
+    RUN_ENGINE_TTL_CONSUMERS_DISABLED: BoolEnv.default(false),
+    RUN_ENGINE_TTL_WORKER_BATCH_MAX_WAIT_MS: z.coerce.number().int().default(5_000),
+
+    /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
+     *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
+    RUN_ENGINE_DEFAULT_MAX_TTL: z.string().optional(),
 
     RUN_ENGINE_RUN_LOCK_DURATION: z.coerce.number().int().default(5000),
     RUN_ENGINE_RUN_LOCK_AUTOMATIC_EXTENSION_THRESHOLD: z.coerce.number().int().default(1000),
@@ -1229,6 +1253,9 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
     EVENTS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(1000),
     EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+    METRICS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(10000),
+    METRICS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+    METRICS_CLICKHOUSE_MAX_CONCURRENCY: z.coerce.number().int().default(3),
     EVENTS_CLICKHOUSE_INSERT_STRATEGY: z.enum(["insert", "insert_async"]).default("insert"),
     EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT: z.string().default("1"),
     EVENTS_CLICKHOUSE_ASYNC_INSERT_MAX_DATA_SIZE: z.coerce.number().int().default(10485760),

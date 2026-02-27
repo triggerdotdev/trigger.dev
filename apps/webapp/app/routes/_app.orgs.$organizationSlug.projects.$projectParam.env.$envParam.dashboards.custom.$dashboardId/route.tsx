@@ -55,7 +55,7 @@ import {
   v3BillingPath,
   v3BuiltInDashboardPath,
 } from "~/utils/pathBuilder";
-import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.metrics.$dashboardKey/route";
+import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboards.$dashboardKey/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { Type } from "lucide-react";
 

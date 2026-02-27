@@ -112,6 +112,7 @@ export class OrganizationsPresenter {
       organization,
       project: {
         ...fullProject,
+        createdAt: fullProject.createdAt,
         environments: sortEnvironments(
           fullProject.environments.filter((env) => {
             if (env.type !== "DEVELOPMENT") return true;
