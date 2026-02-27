@@ -152,8 +152,8 @@ mode: "wide"
 | `MAXIMUM_DEV_QUEUE_SIZE`                         | No       | —                     | Maximum queued runs per queue in development environments.                                                |
 | `MAXIMUM_DEPLOYED_QUEUE_SIZE`                    | No       | —                     | Maximum queued runs per queue in deployed (staging/prod) environments.                                   |
 | **Misc**                                         |          |                       |                                                                                                           |
-| `PROVIDER_SECRET`                                | No       | provider-secret       | Secret for provider auth. Change in self-hosted setups.                                                   |
-| `COORDINATOR_SECRET`                             | No       | coordinator-secret    | Secret for coordinator auth. Change in self-hosted setups.                                               |
+| `PROVIDER_SECRET`                                | No       | provider-secret       | Secret for provider auth. **Must be set to a secure value in self-hosted/production**; the default is insecure. |
+| `COORDINATOR_SECRET`                             | No       | coordinator-secret    | Secret for coordinator auth. **Must be set to a secure value in self-hosted/production**; the default is insecure. |
 | `TRIGGER_TELEMETRY_DISABLED`                     | No       | —                     | Disable telemetry.                                                                                        |
 | `NODE_MAX_OLD_SPACE_SIZE`                        | No       | 8192                  | Maximum memory allocation for Node.js heap in MiB (e.g. "4096" for 4GB).                                  |
 | `OPENAI_API_KEY`                                 | No       | —                     | OpenAI API key.                                                                                           |
