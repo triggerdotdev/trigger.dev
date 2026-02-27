@@ -178,7 +178,7 @@ export function TechnologyPicker({
             <span
               key={item}
               className={cn(
-                "flex items-center gap-1 rounded-sm border py-0.5 pl-1.5 pr-1 text-xs font-medium text-white",
+                "flex items-center gap-1 rounded-sm border py-0.5 pl-1.5 pr-1 text-xs font-medium text-text-bright",
                 getPillColor(item)
               )}
             >
@@ -187,7 +187,7 @@ export function TechnologyPicker({
                 type="button"
                 onClick={() => removeItem(item)}
                 aria-label={`Remove ${item}`}
-                className="ml-0.5 flex items-center hover:text-white/70"
+                className="ml-0.5 flex items-center transition hover:text-text-bright/70"
               >
                 <XMarkIcon className="size-3.5" />
               </button>
@@ -213,9 +213,7 @@ export function TechnologyPicker({
           }}
           virtualFocus
         >
-          <Ariakit.Select
-            className="group flex h-8 w-full items-center rounded bg-charcoal-750 pl-2 pr-2.5 text-sm text-text-dimmed ring-charcoal-600 transition focus-custom hover:bg-charcoal-650 hover:ring-1"
-          >
+          <Ariakit.Select className="group flex h-8 w-full items-center rounded bg-charcoal-750 pl-2 pr-2.5 text-sm text-text-dimmed ring-charcoal-600 transition focus-custom hover:bg-charcoal-650 hover:ring-1">
             <div className="flex grow items-center">
               <CubeIcon className="mr-1.5 size-4 flex-none text-text-dimmed" />
               <span>Select your technologies…</span>
@@ -280,7 +278,7 @@ export function TechnologyPicker({
                     onChange={(e) => setOtherInputValue(e.target.value)}
                     onKeyDown={handleOtherKeyDown}
                     placeholder="Type and press Enter to add"
-                    className="pl-0.5 flex-1 border-none bg-transparent text-2sm text-text-bright shadow-none outline-none ring-0 placeholder:text-text-dimmed focus:border-none focus:outline-none focus:ring-0"
+                    className="flex-1 border-none bg-transparent pl-0.5 text-2sm text-text-bright shadow-none outline-none ring-0 placeholder:text-text-dimmed focus:border-none focus:outline-none focus:ring-0"
                     autoFocus
                   />
                   <ShortcutKey

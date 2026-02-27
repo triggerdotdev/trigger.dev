@@ -81,7 +81,7 @@ function MultiSelectField({
     <Select<string[], string>
       value={value}
       setValue={setValue}
-      placeholder="Select options"
+      placeholder="Select some options"
       variant="secondary/small"
       dropdownIcon
       icon={icon}
