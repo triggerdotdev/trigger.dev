@@ -43,7 +43,7 @@ export function getRealtimeStreamInstance(
     ) {
       return new S2RealtimeStreams({
         basin: env.REALTIME_STREAMS_S2_BASIN,
-        accessToken: env.REALTIME_STREAMS_S2_ACCESS_TOKEN,
+        accessToken: env.REALTIME_STREAMS_S2_ACCESS_TOKEN ?? "",
         endpoint: env.REALTIME_STREAMS_S2_ENDPOINT,
         skipAccessTokens: env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true",
         streamPrefix: [
