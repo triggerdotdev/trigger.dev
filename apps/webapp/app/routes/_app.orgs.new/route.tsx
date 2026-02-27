@@ -1,9 +1,10 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { BuildingOffice2Icon } from "@heroicons/react/20/solid";
+import { BuildingOffice2Icon, GlobeAltIcon } from "@heroicons/react/20/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
 import { json, redirect, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
@@ -27,7 +28,44 @@ import { organizationPath, rootPath } from "~/utils/pathBuilder";
 const schema = z.object({
   orgName: z.string().min(3).max(50),
   companySize: z.string().optional(),
+  companyUrl: z.string().optional(),
 });
+
+function extractDomain(input: string): string | null {
+  try {
+    const withProtocol = input.includes("://") ? input : `https://${input}`;
+    const url = new URL(withProtocol);
+    return url.hostname;
+  } catch {
+    return null;
+  }
+}
+
+function useFaviconUrl(urlInput: string) {
+  const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const update = useCallback((value: string) => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      const domain = extractDomain(value);
+      if (domain && domain.includes(".")) {
+        setFaviconUrl(`https://www.google.com/s2/favicons?domain=${domain}&sz=64`);
+      } else {
+        setFaviconUrl(null);
+      }
+    }, 400);
+  }, []);
+
+  useEffect(() => {
+    update(urlInput);
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [urlInput, update]);
+
+  return faviconUrl;
+}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -51,10 +89,31 @@ export const action: ActionFunction = async ({ request }) => {
   try {
     const companySize = submission.value.companySize ?? null;
 
+    const onboardingData: Record<string, string> = {};
+    if (submission.value.companyUrl) {
+      onboardingData.companyUrl = submission.value.companyUrl;
+    }
+    if (submission.value.companySize) {
+      onboardingData.companySize = submission.value.companySize;
+    }
+
+    let avatar: { type: "image"; url: string } | undefined;
+    if (submission.value.companyUrl) {
+      const domain = extractDomain(submission.value.companyUrl);
+      if (domain) {
+        avatar = {
+          type: "image",
+          url: `https://www.google.com/s2/favicons?domain=${domain}&sz=128`,
+        };
+      }
+    }
+
     const organization = await createOrganization({
       title: submission.value.orgName,
       userId: user.id,
       companySize,
+      onboardingData: Object.keys(onboardingData).length > 0 ? onboardingData : undefined,
+      avatar,
     });
 
     const url = new URL(request.url);
@@ -87,6 +146,9 @@ export default function NewOrganizationPage() {
   const lastSubmission = useActionData();
   const { isManagedCloud } = useFeatures();
   const navigation = useNavigation();
+  const [companyUrl, setCompanyUrl] = useState("");
+  const faviconUrl = useFaviconUrl(companyUrl);
+  const [faviconError, setFaviconError] = useState(false);
 
   const [form, { orgName }] = useForm({
     id: "create-organization",
@@ -100,6 +162,21 @@ export default function NewOrganizationPage() {
 
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
+  const urlIcon =
+    faviconUrl && !faviconError ? (
+      <img
+        src={faviconUrl}
+        alt=""
+        width={16}
+        height={16}
+        className="ml-0.5 shrink-0 rounded-sm"
+        onError={() => setFaviconError(true)}
+        onLoad={() => setFaviconError(false)}
+      />
+    ) : (
+      GlobeAltIcon
+    );
+
   return (
     <AppContainer className="bg-charcoal-900">
       <BackgroundWrapper>
@@ -111,53 +188,73 @@ export default function NewOrganizationPage() {
           <Form method="post" {...form.props}>
             <Fieldset>
               <InputGroup>
-                <Label htmlFor={orgName.id}>Organization name</Label>
+                <Label htmlFor={orgName.id}>
+                  Organization name <span className="text-text-dimmed">*</span>
+                </Label>
                 <Input
                   {...conform.input(orgName, { type: "text" })}
                   placeholder="Your Organization name"
                   icon={BuildingOffice2Icon}
                   autoFocus
                 />
-                <Hint>E.g. your company name or your workspace name.</Hint>
+                <Hint>Normally your company name.</Hint>
                 <FormError id={orgName.errorId}>{orgName.error}</FormError>
               </InputGroup>
               {isManagedCloud && (
-                <InputGroup>
-                  <Label htmlFor={"companySize"}>Number of employees</Label>
-                  <RadioGroup
-                    name="companySize"
-                    className="flex items-center justify-between gap-2"
-                  >
-                    <RadioGroupItem
-                      id="employees-1-5"
-                      label="1-5"
-                      value={"1-5"}
-                      variant="button/small"
-                      className="grow"
+                <>
+                  <InputGroup>
+                    <Label htmlFor="companyUrl">URL</Label>
+                    <Input
+                      id="companyUrl"
+                      name="companyUrl"
+                      type="url"
+                      placeholder="Your Organization URL"
+                      icon={urlIcon}
+                      value={companyUrl}
+                      onChange={(e) => {
+                        setCompanyUrl(e.target.value);
+                        setFaviconError(false);
+                      }}
                     />
-                    <RadioGroupItem
-                      id="employees-6-49"
-                      label="6-49"
-                      value={"6-49"}
-                      variant="button/small"
-                      className="grow"
-                    />
-                    <RadioGroupItem
-                      id="employees-50-99"
-                      label="50-99"
-                      value={"50-99"}
-                      variant="button/small"
-                      className="grow"
-                    />
-                    <RadioGroupItem
-                      id="employees-100+"
-                      label="100+"
-                      value={"100+"}
-                      variant="button/small"
-                      className="grow"
-                    />
-                  </RadioGroup>
-                </InputGroup>
+                    <Hint>Add your company URL and we'll use it as your organization's logo.</Hint>
+                  </InputGroup>
+                  <InputGroup>
+                    <Label htmlFor="companySize">Number of employees</Label>
+                    <RadioGroup
+                      name="companySize"
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <RadioGroupItem
+                        id="employees-1-5"
+                        label="1-5"
+                        value={"1-5"}
+                        variant="button/small"
+                        className="grow"
+                      />
+                      <RadioGroupItem
+                        id="employees-6-49"
+                        label="6-49"
+                        value={"6-49"}
+                        variant="button/small"
+                        className="grow"
+                      />
+                      <RadioGroupItem
+                        id="employees-50-99"
+                        label="50-99"
+                        value={"50-99"}
+                        variant="button/small"
+                        className="grow"
+                      />
+                      <RadioGroupItem
+                        id="employees-100+"
+                        label="100+"
+                        value={"100+"}
+                        variant="button/small"
+                        className="grow"
+                      />
+                    </RadioGroup>
+                  </InputGroup>
+                </>
               )}
 
               <FormButtons
