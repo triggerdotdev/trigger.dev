@@ -36,6 +36,7 @@ mode: "wide"
 | `REDIS_TLS_DISABLED`                             | No       | —                     | Disable Redis TLS.                                                                                        |
 | **Auth**                                         |          |                       |                                                                                                           |
 | `WHITELISTED_EMAILS`                             | No       | —                     | Whitelisted emails regex.                                                                                 |
+| `LOGIN_RATE_LIMITS_ENABLED`                      | No       | true                  | Enable rate limiting on magic-link login.                                                                 |
 | `AUTH_GITHUB_CLIENT_ID`                          | No       | —                     | GitHub client ID.                                                                                         |
 | `AUTH_GITHUB_CLIENT_SECRET`                      | No       | —                     | GitHub client secret.                                                                                     |
 | **Email**                                        |          |                       |                                                                                                           |
@@ -59,6 +60,8 @@ mode: "wide"
 | **Concurrency limits**                           |          |                       |                                                                                                           |
 | `DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT`        | No       | 100                   | Default env execution concurrency.                                                                        |
 | `DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT`        | No       | 300                   | Default org execution concurrency, needs to be 3x env concurrency.                                        |
+| `DEFAULT_ENV_EXECUTION_CONCURRENCY_BURST_FACTOR` | No       | 1.0                   | Burst factor for env concurrency.                                                                         |
+| `DEFAULT_DEV_ENV_EXECUTION_ATTEMPTS`             | No       | 1                     | Default max attempts for dev environment runs.                                                            |
 | **Dev**                                          |          |                       |                                                                                                           |
 | `DEV_MAX_CONCURRENT_RUNS`                        | No       | 25                    | Sets the max concurrency for dev runs via the CLI.                                                        |
 | `DEV_OTEL_EXPORTER_OTLP_ENDPOINT`                | No       | `APP_ORIGIN/otel`     | OTel endpoint for dev runs.                                                                               |
@@ -78,12 +81,18 @@ mode: "wide"
 | `DEPLOY_REGISTRY_NAMESPACE`                      | No       | trigger               | Deploy registry namespace.                                                                                |
 | `DEPLOY_IMAGE_PLATFORM`                          | No       | linux/amd64           | Deploy image platform, same values as docker `--platform` flag.                                           |
 | `DEPLOY_TIMEOUT_MS`                              | No       | 480000 (8m)           | Deploy timeout (ms).                                                                                      |
+| `DEPLOY_QUEUE_TIMEOUT_MS`                        | No       | 900000 (15m)          | Deploy queue timeout (ms).                                                                                |
 | **Object store (S3)**                            |          |                       |                                                                                                           |
 | `OBJECT_STORE_BASE_URL`                          | No       | —                     | Object store base URL.                                                                                    |
 | `OBJECT_STORE_ACCESS_KEY_ID`                     | No       | —                     | Object store access key.                                                                                  |
 | `OBJECT_STORE_SECRET_ACCESS_KEY`                 | No       | —                     | Object store secret key.                                                                                  |
 | `OBJECT_STORE_REGION`                            | No       | —                     | Object store region.                                                                                      |
 | `OBJECT_STORE_SERVICE`                           | No       | s3                    | Object store service.                                                                                     |
+| `ARTIFACTS_OBJECT_STORE_BUCKET`                  | No       | —                     | Optional separate bucket for artifacts. If not set, uses main object store.                               |
+| `ARTIFACTS_OBJECT_STORE_BASE_URL`               | No       | —                     | Optional artifacts store base URL.                                                                        |
+| `ARTIFACTS_OBJECT_STORE_ACCESS_KEY_ID`          | No       | —                     | Optional artifacts store access key.                                                                     |
+| `ARTIFACTS_OBJECT_STORE_SECRET_ACCESS_KEY`      | No       | —                     | Optional artifacts store secret key.                                                                     |
+| `ARTIFACTS_OBJECT_STORE_REGION`                  | No       | —                     | Optional artifacts store region.                                                                         |
 | **Alerts**                                       |          |                       |                                                                                                           |
 | `ORG_SLACK_INTEGRATION_CLIENT_ID`                | No       | —                     | Slack client ID. Required for Slack alerts.                                                               |
 | `ORG_SLACK_INTEGRATION_CLIENT_SECRET`            | No       | —                     | Slack client secret. Required for Slack alerts.                                                           |
@@ -100,6 +109,10 @@ mode: "wide"
 | `TASK_PAYLOAD_OFFLOAD_THRESHOLD`                 | No       | 524288 (512KB)        | Max task payload size before offloading to S3.                                                            |
 | `TASK_PAYLOAD_MAXIMUM_SIZE`                      | No       | 3145728 (3MB)         | Max task payload size.                                                                                    |
 | `BATCH_TASK_PAYLOAD_MAXIMUM_SIZE`                | No       | 1000000 (1MB)         | Max batch payload size.                                                                                   |
+| `BATCH_CONCURRENCY_LIMIT_DEFAULT`                | No       | 5                     | Default concurrency for batch processing.                                                                 |
+| `BATCH_RATE_LIMIT_REFILL_RATE`                   | No       | 100                   | Batch rate limit refill rate.                                                                             |
+| `BATCH_RATE_LIMIT_MAX`                           | No       | 1200                  | Batch rate limit max.                                                                                     |
+| `BATCH_RATE_LIMIT_REFILL_INTERVAL`               | No       | 10s                   | Batch rate limit refill interval.                                                                         |
 | `TASK_RUN_METADATA_MAXIMUM_SIZE`                 | No       | 262144 (256KB)        | Max metadata size.                                                                                        |
 | `MAX_BATCH_V2_TRIGGER_ITEMS`                     | No       | 500                   | Max batch size (legacy v2 API).                                                                           |
 | `STREAMING_BATCH_MAX_ITEMS`                      | No       | 1000                  | Max items in streaming batch (v3 API, requires SDK 4.3.1+).                                               |
@@ -117,6 +130,7 @@ mode: "wide"
 | `TRIGGER_OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT`   | No       | 10                    | OTel attribute per event count limit.                                                                     |
 | `SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT`  | No       | 8192                  | OTel span attribute value length limit.                                                                   |
 | **Realtime**                                     |          |                       |                                                                                                           |
+| `REALTIME_STREAM_VERSION`                        | No       | v1                    | Realtime stream protocol version. One of `v1`, `v2`.                                                     |
 | `REALTIME_STREAM_MAX_LENGTH`                     | No       | 1000                  | Realtime stream max length.                                                                               |
 | `REALTIME_STREAM_TTL`                            | No       | 86400 (1d)            | Realtime stream TTL (s).                                                                                  |
 | **Bootstrap**                                    |          |                       |                                                                                                           |
@@ -140,6 +154,8 @@ mode: "wide"
 | `MAXIMUM_DEV_QUEUE_SIZE`                         | No       | —                     | Maximum queued runs per queue in development environments.                                                |
 | `MAXIMUM_DEPLOYED_QUEUE_SIZE`                    | No       | —                     | Maximum queued runs per queue in deployed (staging/prod) environments.                                   |
 | **Misc**                                         |          |                       |                                                                                                           |
+| `PROVIDER_SECRET`                                | No       | provider-secret       | Secret for provider auth. Change in self-hosted setups.                                                   |
+| `COORDINATOR_SECRET`                             | No       | coordinator-secret    | Secret for coordinator auth. Change in self-hosted setups.                                               |
 | `TRIGGER_TELEMETRY_DISABLED`                     | No       | —                     | Disable telemetry.                                                                                        |
 | `NODE_MAX_OLD_SPACE_SIZE`                        | No       | 8192                  | Maximum memory allocation for Node.js heap in MiB (e.g. "4096" for 4GB).                                  |
 | `OPENAI_API_KEY`                                 | No       | —                     | OpenAI API key.                                                                                           |
