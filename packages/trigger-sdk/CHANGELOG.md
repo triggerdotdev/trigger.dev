@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 4.4.2
+
+### Patch Changes
+
+- fix(sdk): batch triggerAndWait variants now return correct run.taskIdentifier instead of unknown ([#3080](https://github.com/triggerdotdev/trigger.dev/pull/3080))
+- Add PAYLOAD_TOO_LARGE error to handle graceful recovery of sending batch trigger items with payloads that exceed the maximum payload size ([#3137](https://github.com/triggerdotdev/trigger.dev/pull/3137))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.2`
+
 ## 4.4.1
 
 ### Patch Changes
