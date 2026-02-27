@@ -686,7 +686,7 @@ export type { InferStreamType, InferInputStreamType };
  *   id: "my-task",
  *   run: async (payload) => {
  *     // Wait for the next approval
- *     const data = await approval.once();
+ *     const data = await approval.once().unwrap();
  *     console.log(data.approved, data.reviewer);
  *   },
  * });
@@ -783,12 +783,12 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
               const data =
                 waitResult.output !== undefined
                   ? await conditionallyImportAndParsePacket(
-                      {
-                        data: waitResult.output,
-                        dataType: waitResult.outputType ?? "application/json",
-                      },
-                      apiClient
-                    )
+                    {
+                      data: waitResult.output,
+                      dataType: waitResult.outputType ?? "application/json",
+                    },
+                    apiClient
+                  )
                   : undefined;
 
               if (waitResult.ok) {
