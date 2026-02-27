@@ -39,6 +39,7 @@ const S2EnvSchema = z.preprocess(
       S2_ENABLED: z.literal("1"),
       S2_ACCESS_TOKEN: z.string(),
       S2_DEPLOYMENT_LOGS_BASIN_NAME: z.string(),
+      S2_DEPLOYMENT_STREAMS_LOCAL: z.string().default("0"),
     }),
     z.object({
       S2_ENABLED: z.literal("0"),

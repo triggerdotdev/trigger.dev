@@ -466,4 +466,8 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
       });
     }
   }
+
+  async readRecords(): Promise<never> {
+    throw new Error("readRecords is not implemented for Redis realtime streams");
+  }
 }

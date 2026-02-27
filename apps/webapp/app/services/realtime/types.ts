@@ -23,16 +23,11 @@ export interface StreamIngestor {
 
   getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number>;
 
-  /**
-   * Read records from a stream starting after a given sequence number.
-   * Returns immediately with whatever records exist (non-blocking).
-   * Not all backends support this — returns undefined if unsupported.
-   */
-  readRecords?(
+  readRecords(
     runId: string,
     streamId: string,
     afterSeqNum?: number
-  ): Promise<StreamRecord[] | undefined>;
+  ): Promise<StreamRecord[]>;
 }
 
 export type StreamResponseOptions = {

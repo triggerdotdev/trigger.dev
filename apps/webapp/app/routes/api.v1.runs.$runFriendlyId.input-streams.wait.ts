@@ -101,29 +101,27 @@ const { action, loader } = createActionApiRoute(
             run.realtimeStreamsVersion
           );
 
-          if (realtimeStream.readRecords) {
-            const records = await realtimeStream.readRecords(
-              run.friendlyId,
-              `$trigger.input:${body.streamId}`,
-              body.lastSeqNum
-            );
+          const records = await realtimeStream.readRecords(
+            run.friendlyId,
+            `$trigger.input:${body.streamId}`,
+            body.lastSeqNum
+          );
 
-            if (records.length > 0) {
-              const record = records[0]!;
+          if (records.length > 0) {
+            const record = records[0]!;
 
-              // Record data is the raw user payload — no wrapper to unwrap
-              await engine.completeWaitpoint({
-                id: result.waitpoint.id,
-                output: {
-                  value: record.data,
-                  type: "application/json",
-                  isError: false,
-                },
-              });
+            // Record data is the raw user payload — no wrapper to unwrap
+            await engine.completeWaitpoint({
+              id: result.waitpoint.id,
+              output: {
+                value: record.data,
+                type: "application/json",
+                isError: false,
+              },
+            });
 
-              // Clean up the Redis cache since we completed it ourselves
-              await deleteInputStreamWaitpoint(run.friendlyId, body.streamId);
-            }
+            // Clean up the Redis cache since we completed it ourselves
+            await deleteInputStreamWaitpoint(run.friendlyId, body.streamId);
           }
         } catch {
           // Non-fatal: if the S2 check fails, the waitpoint is still PENDING.
