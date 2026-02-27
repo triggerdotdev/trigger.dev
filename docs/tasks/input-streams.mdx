@@ -236,7 +236,7 @@ const result = await approval.once({ signal: controller.signal });
 
 ### `on()` — Listen for every value
 
-Registers a persistent handler that fires on every piece of data. Returns a subscription with an `.off()` method.
+Registers a persistent handler that fires on every piece of data. Handlers are automatically cleaned up when the task run completes, so you don't need to manually unsubscribe. If you need to stop listening early (before the run ends), call `.off()` on the returned subscription.
 
 ```ts
 import { task } from "@trigger.dev/sdk";
@@ -247,29 +247,21 @@ export const streamingTask = task({
   run: async (payload: { prompt: string }) => {
     const controller = new AbortController();
 
-    // Listen for cancel signals
-    const sub = cancelSignal.on((data) => {
+    // Listen for cancel signals — automatically cleaned up when run completes
+    cancelSignal.on((data) => {
       console.log("Cancelled:", data.reason);
       controller.abort();
     });
 
-    try {
-      const result = await streamText({
-        model: openai("gpt-4o"),
-        prompt: payload.prompt,
-        abortSignal: controller.signal,
-      });
-      return result;
-    } finally {
-      sub.off(); // Always clean up the listener
-    }
+    const result = await streamText({
+      model: openai("gpt-4o"),
+      prompt: payload.prompt,
+      abortSignal: controller.signal,
+    });
+    return result;
   },
 });
 ```
-
-<Warning>
-  Always call `.off()` in a `finally` block to avoid memory leaks. The subscription stays active for the lifetime of the run if not cleaned up.
-</Warning>
 
 ### `peek()` — Non-blocking check
 
@@ -323,25 +315,21 @@ export const aiTask = task({
     const controller = new AbortController();
 
     // If the user cancels, abort the LLM call
-    const sub = cancelStream.on(() => {
+    cancelStream.on(() => {
       controller.abort();
     });
 
-    try {
-      const result = streamText({
-        model: openai("gpt-4o"),
-        prompt: payload.prompt,
-        abortSignal: controller.signal,
-      });
+    const result = streamText({
+      model: openai("gpt-4o"),
+      prompt: payload.prompt,
+      abortSignal: controller.signal,
+    });
 
-      // Stream output to the frontend in real-time
-      const { waitUntilComplete } = aiOutput.pipe(result.textStream);
-      await waitUntilComplete();
+    // Stream output to the frontend in real-time
+    const { waitUntilComplete } = aiOutput.pipe(result.textStream);
+    await waitUntilComplete();
 
-      return { text: await result.text };
-    } finally {
-      sub.off();
-    }
+    return { text: await result.text };
   },
 });
 ```
@@ -409,7 +397,7 @@ export function AIChat({
 ## Best Practices
 
 1. **Use `.wait()` for long waits**: If the task has nothing else to do until data arrives (approval gates, human-in-the-loop), use `.wait()` to free compute resources. Use `.once()` only for short waits or when doing concurrent work.
-2. **Always clean up listeners**: Call `.off()` in a `finally` block when using `.on()` to prevent memory leaks
+2. **Listeners auto-cleanup**: `.on()` handlers are automatically cleaned up when the task run completes. Call `.off()` only if you need to stop listening early
 3. **Use timeouts**: Both `.wait()` and `.once()` support timeouts — always set one to avoid indefinite hangs
 4. **Use idempotency keys with `.wait()`**: If your task has retries enabled, pass an `idempotencyKey` to `.wait()` so retries resume the same wait instead of creating a new one
 5. **Define streams in shared files**: Keep your `streams.input()` definitions in a shared location (like `trigger/streams.ts`) so both task code and backend/frontend can import them with full type safety
