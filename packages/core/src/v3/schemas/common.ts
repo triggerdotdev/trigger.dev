@@ -188,6 +188,7 @@ export const TaskRunInternalError = z.object({
     "TASK_DID_CONCURRENT_WAIT",
     "RECURSIVE_WAIT_DEADLOCK",
     "BATCH_ITEM_COULD_NOT_TRIGGER",
+    "PAYLOAD_TOO_LARGE",
     "UNSPECIFIED_ERROR",
   ]),
   message: z.string().optional(),

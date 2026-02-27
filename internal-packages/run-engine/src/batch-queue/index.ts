@@ -848,7 +848,11 @@ export class BatchQueue {
             "BatchQueue.serializePayload",
             async (innerSpan) => {
               const str =
-                typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
+                item.payload === undefined || item.payload === null
+                  ? "{}"
+                  : typeof item.payload === "string"
+                    ? item.payload
+                    : JSON.stringify(item.payload);
               innerSpan?.setAttribute("batch.payloadSize", str.length);
               return str;
             }
@@ -912,7 +916,11 @@ export class BatchQueue {
           "BatchQueue.serializePayload",
           async (innerSpan) => {
             const str =
-              typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
+              item.payload === undefined || item.payload === null
+                ? "{}"
+                : typeof item.payload === "string"
+                  ? item.payload
+                  : JSON.stringify(item.payload);
             innerSpan?.setAttribute("batch.payloadSize", str.length);
             return str;
           }
