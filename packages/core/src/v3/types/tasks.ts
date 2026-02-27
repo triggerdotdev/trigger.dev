@@ -35,6 +35,12 @@ export type Queue = QueueOptions;
 export type TaskSchema = Schema;
 export type { inferSchemaIn } from "./schemas.js";
 
+/** Minimal interface for an event definition used in task subscription */
+export interface EventSource<TPayload = any> {
+  readonly id: string;
+  readonly version: string;
+}
+
 export class SubtaskUnwrapError extends Error {
   public readonly taskId: string;
   public readonly runId: string;
@@ -397,6 +403,17 @@ export type TaskWithToolOptions<
   TInitOutput extends InitOutput = any,
 > = CommonTaskOptions<TIdentifier, inferToolParameters<TParameters>, TOutput, TInitOutput> & {
   parameters: TParameters;
+};
+
+/** Task options when subscribing to an event via `on` */
+export type TaskOptionsWithEvent<
+  TIdentifier extends string,
+  TPayload,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+> = CommonTaskOptions<TIdentifier, TPayload, TOutput, TInitOutput> & {
+  /** The event to subscribe this task to */
+  on: EventSource<TPayload>;
 };
 
 declare const __output: unique symbol;

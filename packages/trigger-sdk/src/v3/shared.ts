@@ -78,7 +78,9 @@ import type {
   Task,
   TaskBatchOutputHandle,
   TaskIdentifier,
+  EventSource,
   TaskOptions,
+  TaskOptionsWithEvent,
   TaskOptionsWithSchema,
   TaskOutput,
   TaskOutputHandle,
@@ -103,6 +105,7 @@ export type {
   BatchResult,
   BatchRunHandle,
   BatchTriggerOptions,
+  EventSource,
   Queue,
   RunHandle,
   RunHandleOutput,
@@ -113,6 +116,7 @@ export type {
   TaskFromIdentifier,
   TaskIdentifier,
   TaskOptions,
+  TaskOptionsWithEvent,
   TaskOutput,
   TaskOutputHandle,
   TaskPayload,
@@ -136,6 +140,16 @@ export function queue(options: QueueOptions): Queue {
 
   return options;
 }
+
+// Overload: when subscribing to an event via `on`
+export function createTask<
+  TIdentifier extends string,
+  TPayload,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+>(
+  params: TaskOptionsWithEvent<TIdentifier, TPayload, TOutput, TInitOutput>
+): Task<TIdentifier, TPayload, TOutput>;
 
 // Overload: when payloadSchema is provided, payload type should be any
 export function createTask<
@@ -165,6 +179,7 @@ export function createTask<
   params:
     | TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>
     | TaskOptionsWithSchema<TIdentifier, TOutput, TInitOutput>
+    | TaskOptionsWithEvent<TIdentifier, TInput, TOutput, TInitOutput>
 ): Task<TIdentifier, TInput, TOutput> | Task<TIdentifier, any, TOutput> {
   const task: Task<TIdentifier, TInput, TOutput> = {
     id: params.id,
@@ -229,6 +244,9 @@ export function createTask<
 
   registerTaskLifecycleHooks(params.id, params);
 
+  // Extract onEvent from the params if this task subscribes to an event
+  const onEvent = "on" in params && params.on ? (params.on as EventSource).id : undefined;
+
   resourceCatalog.registerTaskMetadata({
     id: params.id,
     description: params.description,
@@ -237,6 +255,7 @@ export function createTask<
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
     maxDuration: params.maxDuration,
     payloadSchema: params.jsonSchema,
+    onEvent,
     fns: {
       run: params.run,
     },
