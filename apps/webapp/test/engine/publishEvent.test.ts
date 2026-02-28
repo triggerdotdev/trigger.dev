@@ -1236,4 +1236,177 @@ describe("PublishEventService", () => {
       }
     }
   );
+
+  containerTest(
+    "publishAndWait: parentRunId creates waitpoints for each subscriber",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const taskIds = ["parent-task", "handler-a", "handler-b"];
+        const { worker } = await setupBackgroundWorker(engine, env, taskIds);
+
+        // Create event definition
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "data.ready",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        // Subscribe both handlers
+        for (const taskSlug of ["handler-a", "handler-b"]) {
+          await prisma.eventSubscription.create({
+            data: {
+              eventDefinition: { connect: { id: eventDef.id } },
+              taskSlug,
+              project: { connect: { id: env.projectId } },
+              environment: { connect: { id: env.id } },
+              worker: { connect: { id: worker.id } },
+              enabled: true,
+            },
+          });
+        }
+
+        // Trigger a parent run first so we have a valid parentRunId
+        const triggerSvc = createTriggerTaskService(prisma, engine);
+        const parentResult = await triggerSvc.call({
+          taskId: "parent-task",
+          environment: env,
+          body: { payload: { setup: true } },
+          options: {},
+        });
+        expect(parentResult).toBeDefined();
+        const parentRunId = parentResult!.run.friendlyId;
+
+        // Now publish with parentRunId
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        const result = await service.call("data.ready", env, { value: 42 }, {
+          parentRunId,
+        });
+
+        expect(result.runs).toHaveLength(2);
+        expect(result.runs.every((r) => r.internalRunId !== undefined)).toBe(true);
+
+        // Verify the triggered runs have resumeParentOnCompletion set
+        for (const run of result.runs) {
+          const dbRun = await prisma.taskRun.findFirst({
+            where: { friendlyId: run.runId },
+          });
+          expect(dbRun).toBeDefined();
+          expect(dbRun!.resumeParentOnCompletion).toBe(true);
+        }
+
+        const triggeredTasks = result.runs.map((r) => r.taskIdentifier).sort();
+        expect(triggeredTasks).toEqual(["handler-a", "handler-b"]);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "publishAndWait: no subscribers returns empty runs with no waitpoints",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { worker } = await setupBackgroundWorker(engine, env, "parent-task");
+
+        // Create event definition with no subscribers
+        await prisma.eventDefinition.create({
+          data: {
+            slug: "empty.event",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        // Create a parent run
+        const triggerSvc = createTriggerTaskService(prisma, engine);
+        const parentResult = await triggerSvc.call({
+          taskId: "parent-task",
+          environment: env,
+          body: { payload: {} },
+          options: {},
+        });
+        const parentRunId = parentResult!.run.friendlyId;
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        const result = await service.call("empty.event", env, { data: "test" }, {
+          parentRunId,
+        });
+
+        expect(result.runs).toHaveLength(0);
+        expect(result.eventId).toMatch(/^evt_/);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "event log writer receives correct fanOutCount and event metadata",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { worker } = await setupBackgroundWorker(engine, env, ["task-a", "task-b"]);
+
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "audit.event",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        for (const taskSlug of ["task-a", "task-b"]) {
+          await prisma.eventSubscription.create({
+            data: {
+              eventDefinition: { connect: { id: eventDef.id } },
+              taskSlug,
+              project: { connect: { id: env.projectId } },
+              environment: { connect: { id: env.id } },
+              worker: { connect: { id: worker.id } },
+              enabled: true,
+            },
+          });
+        }
+
+        const logEntries: any[] = [];
+        const mockLogWriter = (entry: any) => logEntries.push(entry);
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn, mockLogWriter);
+
+        const result = await service.call("audit.event", env, { action: "test" }, {
+          idempotencyKey: "audit-key-1",
+          metadata: { source: "test" },
+        });
+
+        expect(result.runs).toHaveLength(2);
+
+        // Verify event log writer was called
+        expect(logEntries).toHaveLength(1);
+        const entry = logEntries[0];
+        expect(entry.eventType).toBe("audit.event");
+        expect(entry.fanOutCount).toBe(2);
+        expect(entry.idempotencyKey).toBe("audit-key-1");
+        expect(entry.metadata).toEqual({ source: "test" });
+        expect(entry.environmentId).toBe(env.id);
+        expect(entry.projectId).toBe(env.projectId);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 });
