@@ -199,3 +199,57 @@ export function isEventDefinition(value: unknown): value is AnyEventDefinition {
     (value as any)[Symbol.for("trigger.dev/event")] === true
   );
 }
+
+// ---- Pattern-based subscriptions ----
+
+/** A pattern-based event matcher for wildcard subscriptions */
+export interface EventPatternMatcher {
+  /** The event pattern used as the subscription identifier */
+  readonly id: string;
+  /** Version (always "1.0" for patterns) */
+  readonly version: string;
+  /** The wildcard pattern */
+  readonly pattern: string;
+}
+
+/**
+ * Create a pattern-based event matcher for wildcard subscriptions.
+ *
+ * Patterns use dot-separated segments with two wildcards:
+ * - `*` matches exactly one segment (e.g., `order.*` matches `order.created`)
+ * - `#` matches zero or more segments (e.g., `order.#` matches `order.status.changed`)
+ *
+ * @example
+ * ```ts
+ * import { events, task } from "@trigger.dev/sdk";
+ *
+ * // Subscribe to all order events
+ * export const orderHandler = task({
+ *   id: "order-handler",
+ *   on: events.match("order.*"),
+ *   run: async (payload) => { ... }
+ * });
+ * ```
+ */
+export function matchEvents(pattern: string): EventPatternMatcher {
+  return {
+    id: `pattern:${pattern}`,
+    version: "1.0",
+    pattern,
+  };
+}
+
+/** Namespace for event utilities */
+export const events = {
+  match: matchEvents,
+};
+
+/** Check if an event source is a pattern matcher */
+export function isEventPatternMatcher(value: unknown): value is EventPatternMatcher {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "pattern" in value &&
+    typeof (value as any).pattern === "string"
+  );
+}

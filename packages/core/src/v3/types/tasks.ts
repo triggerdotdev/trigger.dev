@@ -41,6 +41,12 @@ export interface EventSource<TPayload = any> {
   readonly version: string;
 }
 
+/** A pattern-based event source (e.g., "order.*") for wildcard subscriptions */
+export interface EventPatternSource<TPayload = any> extends EventSource<TPayload> {
+  /** The wildcard pattern (e.g., "order.*", "order.#") */
+  readonly pattern: string;
+}
+
 export class SubtaskUnwrapError extends Error {
   public readonly taskId: string;
   public readonly runId: string;

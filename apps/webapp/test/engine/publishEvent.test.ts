@@ -747,6 +747,245 @@ describe("PublishEventService", () => {
   );
 
   containerTest(
+    "wildcard pattern order.* matches order.created",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { worker } = await setupBackgroundWorker(engine, env, "order-watcher");
+
+        // Create the event definition for order.created
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "order.created",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        // Create a pattern-based subscription: order.*
+        // It still needs an eventDefinitionId (we use a "placeholder" definition)
+        const patternEventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "pattern:order.*",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: patternEventDef.id } },
+            taskSlug: "order-watcher",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+            pattern: "order.*",
+          },
+        });
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        // order.created should match order.*
+        const result = await service.call("order.created", env, { orderId: "o1" });
+        expect(result.runs).toHaveLength(1);
+        expect(result.runs[0].taskIdentifier).toBe("order-watcher");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "wildcard pattern order.* does NOT match order.status.changed",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { worker } = await setupBackgroundWorker(engine, env, "order-watcher");
+
+        // Create the event definition for order.status.changed
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "order.status.changed",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        // Pattern subscription: order.*
+        const patternEventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "pattern:order.*",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: patternEventDef.id } },
+            taskSlug: "order-watcher",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+            pattern: "order.*",
+          },
+        });
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        // order.status.changed should NOT match order.* (too many levels)
+        const result = await service.call("order.status.changed", env, { orderId: "o1" });
+        expect(result.runs).toHaveLength(0);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "wildcard pattern order.# matches multi-level slugs",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { worker } = await setupBackgroundWorker(engine, env, "order-all-handler");
+
+        // Create event definitions
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "order.status.changed",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        // Pattern subscription: order.#
+        const patternEventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "pattern:order.#",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: patternEventDef.id } },
+            taskSlug: "order-all-handler",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+            pattern: "order.#",
+          },
+        });
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        // order.status.changed matches order.# (multi-level)
+        const result = await service.call("order.status.changed", env, { orderId: "o2" });
+        expect(result.runs).toHaveLength(1);
+        expect(result.runs[0].taskIdentifier).toBe("order-all-handler");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "pattern + filter combination works",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { worker } = await setupBackgroundWorker(engine, env, [
+          "high-value-order-watcher",
+          "all-order-watcher",
+        ]);
+
+        // Create event definition
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "order.created",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        // Pattern subscription with filter: order.* + amount > 1000
+        const patternEventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "pattern:order.*",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: patternEventDef.id } },
+            taskSlug: "high-value-order-watcher",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+            pattern: "order.*",
+            filter: { amount: [{ $gt: 1000 }] },
+          },
+        });
+
+        // Pattern subscription without filter: order.*
+        const patternEventDef2 = await prisma.eventDefinition.create({
+          data: {
+            slug: "pattern:order.*:all",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: patternEventDef2.id } },
+            taskSlug: "all-order-watcher",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+            pattern: "order.*",
+          },
+        });
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        // Low value order — only all-order-watcher (pattern matches but filter doesn't)
+        const result1 = await service.call("order.created", env, { orderId: "o1", amount: 50 });
+        expect(result1.runs).toHaveLength(1);
+        expect(result1.runs[0].taskIdentifier).toBe("all-order-watcher");
+
+        // High value order — both watchers
+        const result2 = await service.call("order.created", env, { orderId: "o2", amount: 5000 });
+        expect(result2.runs).toHaveLength(2);
+        const taskIds = result2.runs.map((r) => r.taskIdentifier).sort();
+        expect(taskIds).toEqual(["all-order-watcher", "high-value-order-watcher"]);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
     "idempotency key prevents duplicate fan-out",
     async ({ prisma, redisOptions }) => {
       const engine = createEngine(prisma, redisOptions);

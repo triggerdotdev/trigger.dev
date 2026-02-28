@@ -207,6 +207,8 @@ const taskMetadata = {
   onEvent: z.string().optional(),
   /** Event filter for content-based routing (set when task uses `on: someEvent` with `filter`) */
   onEventFilter: z.unknown().optional(),
+  /** Wildcard pattern for pattern-based subscriptions (set when task uses `on: events.match("order.*")`) */
+  onEventPattern: z.string().optional(),
 };
 
 export const TaskMetadata = z.object(taskMetadata);

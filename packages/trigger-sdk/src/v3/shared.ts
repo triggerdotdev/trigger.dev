@@ -244,9 +244,11 @@ export function createTask<
 
   registerTaskLifecycleHooks(params.id, params);
 
-  // Extract onEvent and optional filter from the params if this task subscribes to an event
-  const onEvent = "on" in params && params.on ? (params.on as EventSource).id : undefined;
+  // Extract onEvent, optional filter, and optional pattern from the params if this task subscribes to an event
+  const eventSource = "on" in params && params.on ? params.on as EventSource & { pattern?: string } : undefined;
+  const onEvent = eventSource?.id;
   const onEventFilter = "filter" in params && params.filter ? params.filter : undefined;
+  const onEventPattern = eventSource && "pattern" in eventSource ? eventSource.pattern : undefined;
 
   resourceCatalog.registerTaskMetadata({
     id: params.id,
@@ -258,6 +260,7 @@ export function createTask<
     payloadSchema: params.jsonSchema,
     onEvent,
     onEventFilter,
+    onEventPattern,
     fns: {
       run: params.run,
     },

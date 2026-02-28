@@ -1,4 +1,4 @@
-import { TriggerTaskRequestBody, eventFilterMatches } from "@trigger.dev/core/v3";
+import { TriggerTaskRequestBody, eventFilterMatches, matchesPattern } from "@trigger.dev/core/v3";
 import type { EventFilter } from "@trigger.dev/core/v3";
 import { PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -95,16 +95,52 @@ export class PublishEventService extends BaseService {
         }
       }
 
-      // 3. Find all active subscriptions for this event + environment
-      const subscriptions = await this._prisma.eventSubscription.findMany({
-        where: {
-          eventDefinitionId: eventDefinition.id,
-          environmentId: environment.id,
-          enabled: true,
-        },
+      // 3. Find all active subscriptions: exact match + pattern-based
+      const [exactSubscriptions, patternSubscriptions] = await Promise.all([
+        // Exact subscriptions: tied to this specific EventDefinition
+        this._prisma.eventSubscription.findMany({
+          where: {
+            eventDefinitionId: eventDefinition.id,
+            environmentId: environment.id,
+            enabled: true,
+          },
+        }),
+        // Pattern subscriptions: have a wildcard pattern that might match this event slug
+        this._prisma.eventSubscription.findMany({
+          where: {
+            projectId: environment.projectId,
+            environmentId: environment.id,
+            enabled: true,
+            pattern: { not: null },
+          },
+        }),
+      ]);
+
+      // Filter pattern subscriptions: only keep those whose pattern matches the event slug
+      const matchingPatternSubs = patternSubscriptions.filter((sub) => {
+        if (!sub.pattern) return false;
+        try {
+          return matchesPattern(eventSlug, sub.pattern);
+        } catch (error) {
+          logger.warn("Failed to evaluate event pattern", {
+            subscriptionId: sub.id,
+            taskSlug: sub.taskSlug,
+            pattern: sub.pattern,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return false;
+        }
       });
 
+      // Deduplicate: if a subscription appears in both exact and pattern results, keep only once
+      const seenIds = new Set(exactSubscriptions.map((s) => s.id));
+      const dedupedPatternSubs = matchingPatternSubs.filter((s) => !seenIds.has(s.id));
+
+      const subscriptions = [...exactSubscriptions, ...dedupedPatternSubs];
+
       span.setAttribute("subscriberCount", subscriptions.length);
+      span.setAttribute("exactSubscriberCount", exactSubscriptions.length);
+      span.setAttribute("patternSubscriberCount", dedupedPatternSubs.length);
 
       if (subscriptions.length === 0) {
         return {

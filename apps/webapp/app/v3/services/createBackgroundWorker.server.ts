@@ -419,11 +419,13 @@ async function syncWorkerEvents(
         workerId: worker.id,
         enabled: true,
         filter: (task.onEventFilter as any) ?? undefined,
+        pattern: task.onEventPattern ?? undefined,
       },
       update: {
         workerId: worker.id,
         enabled: true,
         filter: (task.onEventFilter as any) ?? undefined,
+        pattern: task.onEventPattern ?? undefined,
       },
     });
 
