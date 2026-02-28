@@ -945,11 +945,9 @@ export function QueryEditor({
           <ResizableHandle id="query-handle" />
           <ResizablePanel
             id="query-help"
-            min="200px"
-            collapsible
-            collapsedSize="20px"
+            min="380px"
             default="400px"
-            max="500px"
+            max="800px"
             className="w-full"
           >
             <QueryHelpSidebar
