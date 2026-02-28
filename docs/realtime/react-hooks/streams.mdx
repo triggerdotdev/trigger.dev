@@ -151,7 +151,70 @@ const { parts, error } = useRealtimeStream<string>(runId, {
 });
 ```
 
-For more information on defining and using streams, see the [Realtime Streams v2](/tasks/streams) documentation.
+For more information on defining and using streams, see the [Realtime Streams](/tasks/streams) documentation.
+
+## useInputStreamSend
+
+The `useInputStreamSend` hook lets you send data from your frontend into a running task's [input stream](/tasks/streams#input-streams). Use it for cancel buttons, approval forms, or any UI that needs to push typed data into a running task.
+
+### Basic usage
+
+Pass the input stream's `id` (string), the run ID, and options such as `accessToken`. You typically get `runId` and `accessToken` from the object returned when you trigger the task (e.g. `handle.id`, `handle.publicAccessToken`). The hook returns `send`, `isLoading`, `error`, and `isReady`:
+
+```tsx
+"use client";
+
+import { useInputStreamSend } from "@trigger.dev/react-hooks";
+import { approval } from "@/trigger/streams";
+
+export function ApprovalForm({
+  runId,
+  accessToken,
+}: {
+  runId: string;
+  accessToken: string;
+}) {
+  const { send, isLoading, isReady } = useInputStreamSend(
+    approval.id,
+    runId,
+    { accessToken }
+  );
+
+  return (
+    <button
+      disabled={!isReady || isLoading}
+      onClick={() => send({ approved: true, reviewer: "alice" })}
+    >
+      Approve
+    </button>
+  );
+}
+```
+
+With a generic for type-safe payloads when not using a defined stream:
+
+```tsx
+type ApprovalPayload = { approved: boolean; reviewer: string };
+const { send } = useInputStreamSend<ApprovalPayload>("approval", runId, {
+  accessToken,
+});
+send({ approved: true, reviewer: "alice" });
+```
+
+### Options and return value
+
+- **`streamId`**: The input stream identifier (string). Use the `id` from your defined stream (e.g. `approval.id`) or the same string you used in `streams.input<T>({ id: "approval" })`.
+- **`runId`**: The run to send input to. When `runId` is undefined, `isReady` is false and `send` will not trigger.
+- **`options`**: `accessToken` (required for client usage), `baseURL` (optional). See [Realtime auth](/realtime/auth) for generating a public access token with the right scopes (e.g. input streams write for that run).
+
+Return value:
+
+- **`send(data)`**: Sends typed data to the input stream. Uses SWR mutation under the hood.
+- **`isLoading`**: True while a send is in progress.
+- **`error`**: Set if the last send failed.
+- **`isReady`**: True when both `runId` and access token are available.
+
+For receiving input stream data inside a task (`.wait()`, `.once()`, `.on()`), see [Input Streams](/tasks/streams#input-streams) in the Streams doc.
 
 ## useRealtimeRunWithStreams
 
