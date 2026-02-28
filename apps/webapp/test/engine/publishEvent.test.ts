@@ -432,6 +432,133 @@ describe("PublishEventService", () => {
   );
 
   containerTest(
+    "publish event with schema rejects invalid payload",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+        // Create event with a JSON Schema
+        await prisma.eventDefinition.create({
+          data: {
+            slug: "typed.event",
+            version: "1.0",
+            projectId: env.projectId,
+            schema: {
+              type: "object",
+              properties: {
+                orderId: { type: "string" },
+                amount: { type: "number" },
+              },
+              required: ["orderId", "amount"],
+            },
+          },
+        });
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        // Invalid payload (orderId is number instead of string, amount is missing)
+        await expect(
+          service.call("typed.event", env, { orderId: 123 })
+        ).rejects.toThrow(ServiceValidationError);
+
+        await expect(
+          service.call("typed.event", env, { orderId: 123 })
+        ).rejects.toThrow("Payload validation failed");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "publish event with schema accepts valid payload",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { worker } = await setupBackgroundWorker(engine, env, "handler");
+
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "typed.event.ok",
+            version: "1.0",
+            projectId: env.projectId,
+            schema: {
+              type: "object",
+              properties: {
+                orderId: { type: "string" },
+                amount: { type: "number" },
+              },
+              required: ["orderId", "amount"],
+            },
+          },
+        });
+
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: eventDef.id } },
+            taskSlug: "handler",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+          },
+        });
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        // Valid payload
+        const result = await service.call("typed.event.ok", env, {
+          orderId: "ord-123",
+          amount: 42.50,
+        });
+
+        expect(result.runs).toHaveLength(1);
+        expect(result.runs[0].taskIdentifier).toBe("handler");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "publish event without schema skips validation",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+        // Create event WITHOUT schema
+        await prisma.eventDefinition.create({
+          data: {
+            slug: "untyped.event",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        // Any payload should work
+        const result = await service.call("untyped.event", env, { anything: true, foo: [1, 2] });
+
+        expect(result).toBeDefined();
+        expect(result.eventId).toMatch(/^evt_/);
+        expect(result.runs).toHaveLength(0); // no subscribers
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
     "idempotency key prevents duplicate fan-out",
     async ({ prisma, redisOptions }) => {
       const engine = createEngine(prisma, redisOptions);
