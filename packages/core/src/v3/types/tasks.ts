@@ -422,6 +422,8 @@ export type TaskOptionsWithEvent<
   on: EventSource<TPayload>;
   /** Content-based filter — only receive events whose payload matches this filter */
   filter?: import("../schemas/eventFilter.js").EventFilter;
+  /** Consumer group — within a group, only one task receives each event */
+  consumerGroup?: string;
 };
 
 declare const __output: unique symbol;

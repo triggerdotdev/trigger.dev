@@ -203,11 +203,21 @@ export class PublishEventService extends BaseService {
         };
       }
 
-      // 5. Fan out: trigger each matching subscribed task
+      // 5. Apply consumer group selection — within a group, only one task receives each event
+      const subscriptionsToTrigger = this.applyConsumerGroups(matchingSubscriptions);
+
+      if (subscriptionsToTrigger.length < matchingSubscriptions.length) {
+        span.setAttribute(
+          "consumerGroupSkipped",
+          matchingSubscriptions.length - subscriptionsToTrigger.length
+        );
+      }
+
+      // 6. Fan out: trigger each matching subscribed task
       const eventId = generateFriendlyId("evt");
       const runs: PublishEventResult["runs"] = [];
 
-      for (const subscription of matchingSubscriptions) {
+      for (const subscription of subscriptionsToTrigger) {
         try {
           // Derive per-consumer idempotency key if a global one was provided
           const consumerIdempotencyKey = options.idempotencyKey
@@ -277,7 +287,7 @@ export class PublishEventService extends BaseService {
         }
       }
 
-      // 6. Persist to event log (async, non-blocking)
+      // 7. Persist to event log (async, non-blocking)
       if (this._eventLogWriter) {
         try {
           this._eventLogWriter({
@@ -308,5 +318,43 @@ export class PublishEventService extends BaseService {
 
       return { eventId, runs };
     });
+  }
+
+  /**
+   * Apply consumer group logic: within a consumer group, only one subscription receives each event.
+   * Subscriptions without a consumer group are always included (normal fan-out).
+   * Selection is round-robin based on subscription count modulo (deterministic per group per call).
+   */
+  private applyConsumerGroups(
+    subscriptions: Array<{ id: string; consumerGroup: string | null; taskSlug: string }>
+  ): typeof subscriptions {
+    const ungrouped: typeof subscriptions = [];
+    const groups = new Map<string, typeof subscriptions>();
+
+    for (const sub of subscriptions) {
+      if (!sub.consumerGroup) {
+        ungrouped.push(sub);
+      } else {
+        const group = groups.get(sub.consumerGroup);
+        if (group) {
+          group.push(sub);
+        } else {
+          groups.set(sub.consumerGroup, [sub]);
+        }
+      }
+    }
+
+    // For each consumer group, pick one member using a simple hash-based selection
+    const selected: typeof subscriptions = [...ungrouped];
+    for (const [, members] of groups) {
+      // Sort by taskSlug for deterministic ordering, then pick using a rotating index
+      // The selection rotates based on the current timestamp (second-level granularity)
+      // so load is distributed over time
+      const sorted = members.sort((a, b) => a.taskSlug.localeCompare(b.taskSlug));
+      const index = Math.floor(Date.now() / 1000) % sorted.length;
+      selected.push(sorted[index]!);
+    }
+
+    return selected;
   }
 }

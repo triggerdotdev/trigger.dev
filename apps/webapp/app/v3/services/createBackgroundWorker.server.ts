@@ -420,12 +420,14 @@ async function syncWorkerEvents(
         enabled: true,
         filter: (task.onEventFilter as any) ?? undefined,
         pattern: task.onEventPattern ?? undefined,
+        consumerGroup: task.onEventConsumerGroup ?? undefined,
       },
       update: {
         workerId: worker.id,
         enabled: true,
         filter: (task.onEventFilter as any) ?? undefined,
         pattern: task.onEventPattern ?? undefined,
+        consumerGroup: task.onEventConsumerGroup ?? undefined,
       },
     });
 

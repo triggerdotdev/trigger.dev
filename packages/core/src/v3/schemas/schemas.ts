@@ -209,6 +209,8 @@ const taskMetadata = {
   onEventFilter: z.unknown().optional(),
   /** Wildcard pattern for pattern-based subscriptions (set when task uses `on: events.match("order.*")`) */
   onEventPattern: z.string().optional(),
+  /** Consumer group name — within a group, only one task receives each event */
+  onEventConsumerGroup: z.string().optional(),
 };
 
 export const TaskMetadata = z.object(taskMetadata);

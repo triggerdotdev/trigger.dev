@@ -16,6 +16,7 @@ export const TaskResource = z.object({
   // JSONSchema type - using z.unknown() for runtime validation to accept JSONSchema7
   payloadSchema: z.unknown().optional(),
   onEvent: z.string().optional(),
+  onEventConsumerGroup: z.string().optional(),
 });
 
 export type TaskResource = z.infer<typeof TaskResource>;
