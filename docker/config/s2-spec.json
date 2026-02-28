@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/s2-streamstore/s2/main/cli/schema.json",
+  "basins": [
+    {
+      "name": "trigger-local",
+      "config": {
+        "create_stream_on_append": true,
+        "create_stream_on_read": true
+      }
+    }
+  ]
+}

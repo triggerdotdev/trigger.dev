@@ -13,7 +13,7 @@ import { env } from "~/env.server";
 import { createRemoteImageBuild } from "../remoteImageBuilder.server";
 import { FINAL_DEPLOYMENT_STATUSES } from "./failDeployment.server";
 import { enqueueBuild, generateRegistryCredentials } from "~/services/platform.v3.server";
-import { AppendRecord, S2 } from "@s2-dev/streamstore";
+import { AppendInput, AppendRecord, S2 } from "@s2-dev/streamstore";
 import { createRedisClient } from "~/redis.server";
 
 const S2_TOKEN_KEY_PREFIX = "s2-token:read:deployment-event-stream:project:";
@@ -368,7 +368,11 @@ export class DeploymentService extends BaseService {
     );
 
     return fromPromise(
-      stream.append(events.map((event) => AppendRecord.make(JSON.stringify(event)))),
+      stream.append(
+        AppendInput.create(
+          events.map((event) => AppendRecord.string({ body: JSON.stringify(event) }))
+        )
+      ),
       (error) => ({
         type: "failed_to_append_to_event_log" as const,
         cause: error,
@@ -396,9 +400,9 @@ export class DeploymentService extends BaseService {
         type: "failed_to_create_event_stream" as const,
         cause: error,
       })
-    ).map(({ name }) => ({
+    ).map(() => ({
       basin: basin.name,
-      stream: name,
+      stream: `projects/${project.externalRef}/deployments/${deployment.shortCode}`,
     }));
   }
 
@@ -426,7 +430,7 @@ export class DeploymentService extends BaseService {
       fromPromise(
         s2.accessTokens.issue({
           id: `${project.externalRef}-${new Date().getTime()}`,
-          expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
           scope: {
             ops: ["read"],
             basins: {
@@ -441,7 +445,7 @@ export class DeploymentService extends BaseService {
           type: "other" as const,
           cause: error,
         })
-      ).map(({ access_token }) => access_token);
+      ).map(({ accessToken }) => accessToken);
 
     const cacheToken = (token: string) =>
       fromPromise(

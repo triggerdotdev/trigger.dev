@@ -1,3 +1,9 @@
+export type StreamRecord = {
+  data: string;
+  id: string;
+  seqNum: number;
+};
+
 // Interface for stream ingestion
 export interface StreamIngestor {
   initializeStream(
@@ -16,6 +22,12 @@ export interface StreamIngestor {
   appendPart(part: string, partId: string, runId: string, streamId: string): Promise<void>;
 
   getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number>;
+
+  readRecords(
+    runId: string,
+    streamId: string,
+    afterSeqNum?: number
+  ): Promise<StreamRecord[]>;
 }
 
 export type StreamResponseOptions = {

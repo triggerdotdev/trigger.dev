@@ -52,6 +52,7 @@ export class StreamInstance<T> implements StreamsWriter {
             basin: parsedResponse.basin,
             stream: parsedResponse.streamName ?? this.options.key,
             accessToken: parsedResponse.accessToken,
+            endpoint: parsedResponse.endpoint,
             source: this.options.source,
             signal: this.options.signal,
             debug: this.options.debug,
@@ -103,6 +104,7 @@ type ParsedStreamResponse =
       version: "v2";
       accessToken: string;
       basin: string;
+      endpoint?: string;
       flushIntervalMs?: number;
       maxRetries?: number;
       streamName?: string;
@@ -123,6 +125,7 @@ function parseCreateStreamResponse(
     return { version: "v1" };
   }
 
+  const endpoint = headers?.["x-s2-endpoint"];
   const flushIntervalMs = headers?.["x-s2-flush-interval-ms"];
   const maxRetries = headers?.["x-s2-max-retries"];
   const streamName = headers?.["x-s2-stream-name"];
@@ -131,6 +134,7 @@ function parseCreateStreamResponse(
     version: "v2",
     accessToken,
     basin,
+    endpoint,
     flushIntervalMs: flushIntervalMs ? parseInt(flushIntervalMs) : undefined,
     maxRetries: maxRetries ? parseInt(maxRetries) : undefined,
     streamName,

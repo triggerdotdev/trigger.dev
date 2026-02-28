@@ -143,6 +143,22 @@ services:
     networks:
       - app_network
 
+  s2:
+    image: ghcr.io/s2-streamstore/s2
+    command: ["lite", "--init-file", "/s2-spec.json"]
+    volumes:
+      - ./config/s2-spec.json:/s2-spec.json:ro
+    ports:
+      - "4566:80"
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/v1/basins?limit=1 || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+
   toxiproxy:
     container_name: toxiproxy
     image: ghcr.io/shopify/toxiproxy:latest

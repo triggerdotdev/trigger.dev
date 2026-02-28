@@ -1370,6 +1370,31 @@ export const CreateWaitpointTokenResponseBody = z.object({
 });
 export type CreateWaitpointTokenResponseBody = z.infer<typeof CreateWaitpointTokenResponseBody>;
 
+export const CreateInputStreamWaitpointRequestBody = z.object({
+  streamId: z.string(),
+  timeout: z.string().optional(),
+  idempotencyKey: z.string().optional(),
+  idempotencyKeyTTL: z.string().optional(),
+  tags: z.union([z.string(), z.array(z.string())]).optional(),
+  /**
+   * The last S2 sequence number the client has seen on this input stream.
+   * Used to check for data that arrived before .wait() was called.
+   * If undefined, the server checks from the beginning of the stream.
+   */
+  lastSeqNum: z.number().optional(),
+});
+export type CreateInputStreamWaitpointRequestBody = z.infer<
+  typeof CreateInputStreamWaitpointRequestBody
+>;
+
+export const CreateInputStreamWaitpointResponseBody = z.object({
+  waitpointId: z.string(),
+  isCached: z.boolean(),
+});
+export type CreateInputStreamWaitpointResponseBody = z.infer<
+  typeof CreateInputStreamWaitpointResponseBody
+>;
+
 export const waitpointTokenStatuses = ["WAITING", "COMPLETED", "TIMED_OUT"] as const;
 export const WaitpointTokenStatus = z.enum(waitpointTokenStatuses);
 export type WaitpointTokenStatus = z.infer<typeof WaitpointTokenStatus>;
@@ -1598,3 +1623,8 @@ export const AppendToStreamResponseBody = z.object({
   message: z.string().optional(),
 });
 export type AppendToStreamResponseBody = z.infer<typeof AppendToStreamResponseBody>;
+
+export const SendInputStreamResponseBody = z.object({
+  ok: z.boolean(),
+});
+export type SendInputStreamResponseBody = z.infer<typeof SendInputStreamResponseBody>;

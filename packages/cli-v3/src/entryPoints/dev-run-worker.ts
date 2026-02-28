@@ -33,6 +33,7 @@ import {
   traceContext,
   heartbeats,
   realtimeStreams,
+  inputStreams,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -59,6 +60,7 @@ import {
   StandardTraceContextManager,
   StandardHeartbeatsManager,
   StandardRealtimeStreamsManager,
+  StandardInputStreamManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -159,6 +161,14 @@ const standardRealtimeStreamsManager = new StandardRealtimeStreamsManager(
     false
 );
 realtimeStreams.setGlobalManager(standardRealtimeStreamsManager);
+
+const standardInputStreamManager = new StandardInputStreamManager(
+  apiClientManager.clientOrThrow(),
+  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+  (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
+    false
+);
+inputStreams.setGlobalManager(standardInputStreamManager);
 
 const waitUntilTimeoutInMs = getNumberEnvVar("TRIGGER_WAIT_UNTIL_TIMEOUT_MS", 60_000);
 const waitUntilManager = new StandardWaitUntilManager(waitUntilTimeoutInMs);
@@ -333,6 +343,7 @@ function resetExecutionEnvironment() {
   usageTimeoutManager.reset();
   runMetadataManager.reset();
   standardRealtimeStreamsManager.reset();
+  standardInputStreamManager.reset();
   waitUntilManager.reset();
   _sharedWorkerRuntime?.reset();
   durableClock.reset();
@@ -380,6 +391,7 @@ const zodIpc = new ZodIpcConnection({
       }
 
       resetExecutionEnvironment();
+      standardInputStreamManager.setRunId(execution.run.id, execution.run.realtimeStreamsVersion);
 
       standardTraceContextManager.traceContext = traceContext;
       standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics, isWarmStart);

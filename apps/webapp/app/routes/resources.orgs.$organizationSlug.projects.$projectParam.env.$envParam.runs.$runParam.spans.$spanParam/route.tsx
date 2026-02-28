@@ -1348,6 +1348,7 @@ function SpanEntity({ span }: { span: Span }) {
           runId={span.entity.object.runId}
           streamKey={span.entity.object.streamKey}
           metadata={span.entity.object.metadata}
+          displayName={span.entity.object.displayName}
         />
       );
     }

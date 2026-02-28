@@ -1,6 +1,6 @@
 // app/realtime/S2RealtimeStreams.ts
 import type { UnkeyCache } from "@internal/cache";
-import { StreamIngestor, StreamResponder, StreamResponseOptions } from "./types";
+import { StreamIngestor, StreamRecord, StreamResponder, StreamResponseOptions } from "./types";
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import { randomUUID } from "node:crypto";
 
@@ -9,6 +9,12 @@ export type S2RealtimeStreamsOptions = {
   basin: string; // e.g., "my-basin"
   accessToken: string; // "Bearer" token issued in S2 console
   streamPrefix?: string; // defaults to ""
+
+  // Custom endpoint for s2-lite (self-hosted)
+  endpoint?: string; // e.g., "http://localhost:4566/v1"
+
+  // Skip access token issuance (s2-lite doesn't support /access-tokens)
+  skipAccessTokens?: boolean;
 
   // Read behavior
   s2WaitSeconds?: number;
@@ -37,8 +43,11 @@ type S2AppendAck = {
 export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   private readonly basin: string;
   private readonly baseUrl: string;
+  private readonly accountUrl: string;
+  private readonly endpoint?: string;
   private readonly token: string;
   private readonly streamPrefix: string;
+  private readonly skipAccessTokens: boolean;
 
   private readonly s2WaitSeconds: number;
 
@@ -56,9 +65,12 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
   constructor(opts: S2RealtimeStreamsOptions) {
     this.basin = opts.basin;
-    this.baseUrl = `https://${this.basin}.b.aws.s2.dev/v1`;
+    this.baseUrl = opts.endpoint ?? `https://${this.basin}.b.aws.s2.dev/v1`;
+    this.accountUrl = opts.endpoint ?? `https://aws.s2.dev/v1`;
+    this.endpoint = opts.endpoint;
     this.token = opts.accessToken;
     this.streamPrefix = opts.streamPrefix ?? "";
+    this.skipAccessTokens = opts.skipAccessTokens ?? false;
 
     this.s2WaitSeconds = opts.s2WaitSeconds ?? 60;
 
@@ -80,17 +92,20 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     runId: string,
     streamId: string
   ): Promise<{ responseHeaders?: Record<string, string> }> {
-    const id = randomUUID();
-
-    const accessToken = await this.getS2AccessToken(id);
+    const accessToken = this.skipAccessTokens
+      ? this.token
+      : await this.getS2AccessToken(randomUUID());
 
     return {
       responseHeaders: {
         "X-S2-Access-Token": accessToken,
-        "X-S2-Stream-Name": `/runs/${runId}/${streamId}`,
+        "X-S2-Stream-Name": this.skipAccessTokens
+          ? this.toStreamName(runId, streamId)
+          : `/runs/${runId}/${streamId}`,
         "X-S2-Basin": this.basin,
         "X-S2-Flush-Interval-Ms": this.flushIntervalMs.toString(),
         "X-S2-Max-Retries": this.maxRetries.toString(),
+        ...(this.endpoint ? { "X-S2-Endpoint": this.endpoint } : {}),
       },
     };
   }
@@ -119,6 +134,88 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
   getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number> {
     throw new Error("S2 streams are written to S2 via the client, not from the server");
+  }
+
+  async readRecords(
+    runId: string,
+    streamId: string,
+    afterSeqNum?: number
+  ): Promise<StreamRecord[]> {
+    const s2Stream = this.toStreamName(runId, streamId);
+    const startSeq = afterSeqNum != null ? afterSeqNum + 1 : 0;
+
+    const qs = new URLSearchParams();
+    qs.set("seq_num", String(startSeq));
+    qs.set("clamp", "true");
+    qs.set("wait", "0"); // Non-blocking: return immediately with existing records
+
+    const res = await fetch(
+      `${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}/records?${qs}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: "text/event-stream",
+          "S2-Format": "raw",
+          "S2-Basin": this.basin,
+        },
+      }
+    );
+
+    if (!res.ok) {
+      // Stream may not exist yet (no data sent)
+      if (res.status === 404) {
+        return [];
+      }
+      const text = await res.text().catch(() => "");
+      throw new Error(`S2 readRecords failed: ${res.status} ${res.statusText} ${text}`);
+    }
+
+    // Parse the SSE response body to extract records
+    const body = await res.text();
+    return this.parseSSEBatchRecords(body);
+  }
+
+  private parseSSEBatchRecords(sseText: string): StreamRecord[] {
+    const records: StreamRecord[] = [];
+
+    // SSE events are separated by double newlines
+    const events = sseText.split("\n\n").filter((e) => e.trim());
+
+    for (const event of events) {
+      const lines = event.split("\n");
+      let eventType: string | undefined;
+      let data: string | undefined;
+
+      for (const line of lines) {
+        if (line.startsWith("event:")) {
+          eventType = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          data = line.slice(5).trim();
+        }
+      }
+
+      if (eventType === "batch" && data) {
+        try {
+          const parsed = JSON.parse(data) as {
+            records: Array<{ body: string; seq_num: number; timestamp: number }>;
+          };
+
+          for (const record of parsed.records) {
+            const parsedBody = JSON.parse(record.body) as { data: string; id: string };
+            records.push({
+              data: parsedBody.data,
+              id: parsedBody.id,
+              seqNum: record.seq_num,
+            });
+          }
+        } catch {
+          // Skip malformed events
+        }
+      }
+    }
+
+    return records;
   }
 
   // ---------- Serve SSE from S2 ----------
@@ -155,7 +252,8 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       headers: {
         Authorization: `Bearer ${this.token}`,
         "Content-Type": "application/json",
-        "S2-Format": "raw", // UTF-8 JSON encoding (no base64 overhead) when your data is text. :contentReference[oaicite:8]{index=8}
+        "S2-Format": "raw",
+        "S2-Basin": this.basin,
       },
       body: JSON.stringify(body),
     });
@@ -184,7 +282,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
   private async s2IssueAccessToken(id: string): Promise<string> {
     // POST /v1/access-tokens
-    const res = await fetch(`https://aws.s2.dev/v1/access-tokens`, {
+    const res = await fetch(`${this.accountUrl}/access-tokens`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.token}`,
@@ -235,6 +333,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
         Authorization: `Bearer ${this.token}`,
         Accept: "text/event-stream",
         "S2-Format": "raw",
+        "S2-Basin": this.basin,
       },
       signal: opts.signal,
     });

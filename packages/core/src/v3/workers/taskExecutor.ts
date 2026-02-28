@@ -13,6 +13,7 @@ import {
   accessoryAttributes,
   attemptKey,
   flattenAttributes,
+  inputStreams,
   lifecycleHooks,
   OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT,
   runMetadata,
@@ -1046,6 +1047,7 @@ export class TaskExecutor {
     signal: AbortSignal
   ) {
     await this.#callCleanupFunctions(payload, ctx, initOutput, signal);
+    inputStreams.clearHandlers();
     await this.#blockForWaitUntil();
   }
 

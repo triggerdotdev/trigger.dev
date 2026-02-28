@@ -39,6 +39,7 @@ const S2EnvSchema = z.preprocess(
       S2_ENABLED: z.literal("1"),
       S2_ACCESS_TOKEN: z.string(),
       S2_DEPLOYMENT_LOGS_BASIN_NAME: z.string(),
+      S2_DEPLOYMENT_STREAMS_LOCAL: z.string().default("0"),
     }),
     z.object({
       S2_ENABLED: z.literal("0"),
@@ -1344,6 +1345,8 @@ const EnvironmentSchema = z
 
     REALTIME_STREAMS_S2_BASIN: z.string().optional(),
     REALTIME_STREAMS_S2_ACCESS_TOKEN: z.string().optional(),
+    REALTIME_STREAMS_S2_ENDPOINT: z.string().optional(),
+    REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS: z.enum(["true", "false"]).default("false"),
     REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS: z.coerce
       .number()
       .int()
