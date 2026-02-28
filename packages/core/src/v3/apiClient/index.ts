@@ -11,12 +11,16 @@ import {
   BatchPublishEventRequestBody,
   BatchPublishEventResponseBody,
   BatchTaskRunExecutionResult,
+  DiscardDeadLetterEventResponseBody,
   GetEventHistoryResponseBody,
   GetEventResponseBody,
   GetEventSchemaResponseBody,
+  ListDeadLetterEventsResponseBody,
   ListEventsResponseBody,
   ReplayEventsRequestBody,
   ReplayEventsResponseBody,
+  RetryAllDeadLetterEventsResponseBody,
+  RetryDeadLetterEventResponseBody,
   PublishEventRequestBody,
   PublishEventResponseBody,
   BatchTriggerTaskV3RequestBody,
@@ -1576,6 +1580,75 @@ export class ApiClient {
         method: "POST",
         headers: this.#getHeaders(false),
         body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listDeadLetterEvents(
+    params?: {
+      eventType?: string;
+      status?: string;
+      limit?: number;
+      cursor?: string;
+    },
+    requestOptions?: ZodFetchOptions
+  ) {
+    const searchParams = new URLSearchParams();
+    if (params?.eventType) searchParams.set("eventType", params.eventType);
+    if (params?.status) searchParams.set("status", params.status);
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    if (params?.cursor) searchParams.set("cursor", params.cursor);
+
+    const qs = searchParams.toString();
+    const url = `${this.baseUrl}/api/v1/events/dlq${qs ? `?${qs}` : ""}`;
+
+    return zodfetch(
+      ListDeadLetterEventsResponseBody,
+      url,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retryDeadLetterEvent(id: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      RetryDeadLetterEventResponseBody,
+      `${this.baseUrl}/api/v1/events/dlq/${encodeURIComponent(id)}/retry`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  discardDeadLetterEvent(id: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      DiscardDeadLetterEventResponseBody,
+      `${this.baseUrl}/api/v1/events/dlq/${encodeURIComponent(id)}/discard`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retryAllDeadLetterEvents(
+    body?: { eventType?: string },
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      RetryAllDeadLetterEventsResponseBody,
+      `${this.baseUrl}/api/v1/events/dlq/retry-all`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body ?? {}),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );

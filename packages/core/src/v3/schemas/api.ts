@@ -1753,3 +1753,54 @@ export const ReplayEventsResponseBody = z.object({
 });
 
 export type ReplayEventsResponseBody = z.infer<typeof ReplayEventsResponseBody>;
+
+export const DeadLetterEventItem = z.object({
+  id: z.string(),
+  friendlyId: z.string(),
+  eventType: z.string(),
+  payload: z.unknown(),
+  taskSlug: z.string(),
+  failedRunId: z.string(),
+  error: z.unknown().nullable(),
+  attemptCount: z.number().int(),
+  status: z.enum(["PENDING", "RETRIED", "DISCARDED"]),
+  sourceEventId: z.string().nullable(),
+  createdAt: z.string(),
+  processedAt: z.string().nullable(),
+});
+
+export type DeadLetterEventItem = z.infer<typeof DeadLetterEventItem>;
+
+export const ListDeadLetterEventsResponseBody = z.object({
+  data: z.array(DeadLetterEventItem),
+  pagination: z.object({
+    cursor: z.string().nullable(),
+    hasMore: z.boolean(),
+  }),
+});
+
+export type ListDeadLetterEventsResponseBody = z.infer<typeof ListDeadLetterEventsResponseBody>;
+
+export const RetryDeadLetterEventResponseBody = z.object({
+  id: z.string(),
+  status: z.string(),
+  runId: z.string().optional(),
+});
+
+export type RetryDeadLetterEventResponseBody = z.infer<typeof RetryDeadLetterEventResponseBody>;
+
+export const DiscardDeadLetterEventResponseBody = z.object({
+  id: z.string(),
+  status: z.string(),
+});
+
+export type DiscardDeadLetterEventResponseBody = z.infer<typeof DiscardDeadLetterEventResponseBody>;
+
+export const RetryAllDeadLetterEventsResponseBody = z.object({
+  retriedCount: z.number().int(),
+  failedCount: z.number().int(),
+});
+
+export type RetryAllDeadLetterEventsResponseBody = z.infer<
+  typeof RetryAllDeadLetterEventsResponseBody
+>;
