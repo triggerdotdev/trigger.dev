@@ -190,94 +190,26 @@ Key deliverables:
 
 ---
 
-## Phase 4: Dead Letter Queue
+## Phase 4: Dead Letter Queue — COMPLETE
 
 > **Goal**: Events that fail after all retries go to a DLQ for inspection and reprocessing.
 > **Requires**: Phase 0, Phase 3 (for persistence)
 
-### 4.1 — DLQ model
+All sub-steps 4.1–4.3 implemented and committed. See `pubsub-progress.md` for details.
 
-**File to modify**: `internal-packages/database/prisma/schema.prisma`
-
-Tasks:
-- [ ] Create `DeadLetterEvent` model:
-  ```prisma
-  model DeadLetterEvent {
-    id              String    @id @default(cuid())
-    friendlyId      String    @unique
-
-    eventType       String    // "order.created"
-    payload         Json
-    payloadType     String    @default("application/json")
-
-    taskSlug        String    // consumer that failed
-    failedRunId     String    // run that failed
-    failedRun       TaskRun   @relation(...)
-
-    error           Json?     // last error
-    attemptCount    Int       // how many attempts there were
-
-    status          DeadLetterStatus @default(PENDING)
-    // PENDING = awaiting action
-    // RETRIED = manually retried
-    // DISCARDED = manually discarded
-
-    sourceEventId   String?   // reference to event_log
-
-    projectId       String
-    environmentId   String
-
-    createdAt       DateTime  @default(now())
-    processedAt     DateTime?
-
-    @@index([projectId, environmentId, status])
-    @@index([eventType, environmentId])
-  }
-  ```
-- [ ] Enum `DeadLetterStatus`: `PENDING`, `RETRIED`, `DISCARDED`
-- [ ] Migration
-
-### 4.2 — Detect failed event runs and route to DLQ
-
-**New file**: `apps/webapp/app/v3/services/events/deadLetterService.server.ts`
-
-Tasks:
-- [ ] Listen to `runFailed` event from EventBus
-- [ ] Detect if the failed run has `sourceEventId` (came from a published event)
-- [ ] If the run exhausted all retries → create `DeadLetterEvent`
-- [ ] Emit `deadLetterCreated` event for telemetry
-- [ ] Optional: notify via webhook (reuse alert webhooks infra)
-
-### 4.3 — DLQ management API
-
-**New file**: `apps/webapp/app/routes/api.v1.events.dlq.ts`
-
-Tasks:
-- [ ] `GET /api/v1/events/dlq` — list dead letter events (paginated, filterable)
-- [ ] `POST /api/v1/events/dlq/:id/retry` — manually retry
-  - Create new run for the task with the same payload
-  - Mark DLQ entry as RETRIED
-- [ ] `POST /api/v1/events/dlq/:id/discard` — manually discard
-- [ ] `POST /api/v1/events/dlq/retry-all` — retry all PENDING of a type
-
-### 4.4 — DLQ configuration per event
-
-**File to modify**: `packages/trigger-sdk/src/v3/events.ts`
-
-Tasks:
-- [ ] Extend `event()` options:
-  ```typescript
-  event({
-    id: "order.created",
-    schema: orderSchema,
-    deadLetter: {
-      enabled: true,           // default true
-      retentionDays: 30,       // how long to keep in DLQ
-      onDeadLetter: dlqHandler // optional task that processes DLQ items
-    },
-  });
-  ```
-- [ ] If `onDeadLetter` task is defined, trigger automatically when an event goes to DLQ
+Key deliverables:
+- [x] `DeadLetterEvent` model + `DeadLetterStatus` enum + migration
+- [x] `$$event` metadata on event-triggered runs for identification
+- [x] `DeadLetterService` hooks into `FinalizeTaskRunService` on run failure
+- [x] `DeadLetterManagementService` with list, retry, discard, retryAll
+- [x] `GET /api/v1/events/dlq` — list DLQ entries (paginated, filterable)
+- [x] `POST /api/v1/events/dlq/:id/retry` — retry single entry
+- [x] `POST /api/v1/events/dlq/:id/discard` — discard single entry
+- [x] `POST /api/v1/events/dlq/retry-all` — batch retry
+- [x] API client methods: `listDeadLetterEvents`, `retryDeadLetterEvent`, `discardDeadLetterEvent`, `retryAllDeadLetterEvents`
+- [x] Response schemas added to core
+- [x] Changeset added
+- Note: Phase 4.4 (SDK event() DLQ config) deferred to Phase 8 (DX)
 
 ---
 

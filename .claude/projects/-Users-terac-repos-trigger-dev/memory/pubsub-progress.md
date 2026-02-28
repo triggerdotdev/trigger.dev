@@ -142,5 +142,41 @@ All sub-steps 0.1–0.9 implemented and committed. See git log for details.
 - `02369b128` — phase 3.3: event history API endpoint
 - `3d9863512` — phase 3.4: event replay service + API endpoint
 
-## Phase 4: Dead Letter Queue — NOT STARTED
-Next phase. DLQ model + failure detection + management API.
+## Phase 4: Dead Letter Queue — COMPLETE
+
+### What was done
+1. **4.1 — DeadLetterEvent model + enum + migration**
+   - Created `DeadLetterStatus` enum: `PENDING`, `RETRIED`, `DISCARDED`
+   - Created `DeadLetterEvent` model with: eventType, payload, taskSlug, failedRunId (FK to TaskRun), error, attemptCount, status, sourceEventId
+   - Added reverse relations on TaskRun, Project, RuntimeEnvironment
+   - Migration `20260228065743_add_dead_letter_event` (cleaned of extraneous lines)
+
+2. **4.2 — Store event context on runs + DLQ detection**
+   - Modified `PublishEventService` to inject `$$event` metadata into triggered runs: `{ eventId, eventType, sourceEventId }`
+   - Created `DeadLetterService` with `handleFailedRun(run, error)` method
+   - Extracts `$$event` from run metadata to identify event-triggered runs
+   - Hooked into `FinalizeTaskRunService` after `isFailedRunStatus()` check (alongside alerts)
+
+3. **4.3 — DLQ management API endpoints**
+   - Created `DeadLetterManagementService` with: list, retry, discard, retryAll methods
+   - `GET /api/v1/events/dlq` — paginated list with eventType/status filters
+   - `POST /api/v1/events/dlq/:id/retry` — re-triggers the task with `dlq-retry:{id}` idempotency key
+   - `POST /api/v1/events/dlq/:id/discard` — marks as DISCARDED
+   - `POST /api/v1/events/dlq/retry-all` — batch retry up to 1000 PENDING items
+   - DLQ response schemas added to core
+   - API client methods added
+
+### Key decisions
+- Used `$$event` metadata prefix (double-dollar convention) to avoid collisions with user metadata
+- Hooked into `FinalizeTaskRunService` (not EventBus) — matches existing alert pattern, has full run data available
+- Phase 4.4 (SDK DLQ config per event) deferred to Phase 8 (DX) — current implementation is sufficient
+- Retry creates new run with `dlq-retry:{dleId}` idempotency key for dedup
+- retryAll is capped at 1000 items per call
+
+### Commits
+- `ec4139642` — phase 4.1: DeadLetterEvent model + enum + migration
+- `5ed48645e` — phase 4.2: store event context on runs + DLQ detection
+- `89d0daba8` — phase 4.3: DLQ management API endpoints
+
+## Phase 5: Ordering + Consumer Groups — NOT STARTED
+Next phase. Ordering keys + consumer group fan-out.
