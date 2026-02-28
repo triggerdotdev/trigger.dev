@@ -2,10 +2,14 @@ import {
   apiClientManager,
   getSchemaParseFn,
   resourceCatalog,
+  runtime,
+  taskContext,
 } from "@trigger.dev/core/v3";
 import type {
+  EventWaitResult,
   inferSchemaIn,
   SchemaParseFn,
+  TaskRunExecutionResult,
   TaskSchema,
 } from "@trigger.dev/core/v3";
 
@@ -51,6 +55,14 @@ export interface PublishEventResult {
   }>;
 }
 
+/** Result of publishAndWait — aggregated results from all subscriber runs */
+export interface PublishAndWaitResult {
+  /** Unique ID of the published event instance */
+  id: string;
+  /** Results keyed by subscriber task identifier */
+  results: Record<string, TaskRunExecutionResult>;
+}
+
 /** An event definition that can be published and subscribed to */
 export interface EventDefinition<TId extends string, TPayload> {
   /** The event identifier */
@@ -69,6 +81,12 @@ export interface EventDefinition<TId extends string, TPayload> {
   batchPublish(
     items: Array<{ payload: TPayload; options?: PublishEventOptions }>
   ): Promise<Array<PublishEventResult>>;
+
+  /**
+   * Publish an event and wait for all subscriber runs to complete.
+   * Can only be called from inside a task.run().
+   */
+  publishAndWait(payload: TPayload, options?: PublishEventOptions): Promise<PublishAndWaitResult>;
 }
 
 /** Any event definition (for generic constraints) */
@@ -139,6 +157,50 @@ export function createEvent<TId extends string, TSchema extends Schema | undefin
       return {
         id: result.eventId,
         runs: result.runs,
+      };
+    },
+
+    async publishAndWait(payload, options) {
+      const ctx = taskContext.ctx;
+      if (!ctx) {
+        throw new Error("publishAndWait can only be used from inside a task.run()");
+      }
+
+      const validatedPayload = parseFn ? await parseFn(payload) : payload;
+      const apiClient = apiClientManager.clientOrThrow();
+
+      const response = await apiClient.publishAndWaitEvent(id, {
+        payload: validatedPayload,
+        options: options
+          ? {
+              idempotencyKey: options.idempotencyKey,
+              delay: options.delay instanceof Date ? options.delay.toISOString() : options.delay,
+              tags: options.tags,
+              metadata: options.metadata,
+              orderingKey: options.orderingKey,
+              parentRunId: ctx.run.id,
+            }
+          : {
+              parentRunId: ctx.run.id,
+            },
+      });
+
+      if (response.runs.length === 0) {
+        return { id: response.eventId, results: {} };
+      }
+
+      const waitResult = await runtime.waitForEvent({
+        eventId: response.eventId,
+        runs: response.runs.map((r) => ({
+          friendlyId: r.runId,
+          taskSlug: r.taskIdentifier,
+        })),
+        ctx,
+      });
+
+      return {
+        id: waitResult.id,
+        results: waitResult.results,
       };
     },
 

@@ -21,6 +21,8 @@ import {
   ReplayEventsResponseBody,
   RetryAllDeadLetterEventsResponseBody,
   RetryDeadLetterEventResponseBody,
+  PublishAndWaitEventRequestBody,
+  PublishAndWaitEventResponseBody,
   PublishEventRequestBody,
   PublishEventResponseBody,
   BatchTriggerTaskV3RequestBody,
@@ -1484,6 +1486,25 @@ export class ApiClient {
     return zodfetch(
       BatchPublishEventResponseBody,
       `${this.baseUrl}/api/v1/events/${encodedEventId}/batchPublish`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  publishAndWaitEvent(
+    eventId: string,
+    body: PublishAndWaitEventRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    const encodedEventId = encodeURIComponent(eventId);
+
+    return zodfetch(
+      PublishAndWaitEventResponseBody,
+      `${this.baseUrl}/api/v1/events/${encodedEventId}/publishAndWait`,
       {
         method: "POST",
         headers: this.#getHeaders(false),

@@ -8,6 +8,7 @@ export * from "./errors.js";
 export * from "./limits.js";
 export * from "./logger-api.js";
 export * from "./runtime-api.js";
+export type { EventWaitResult } from "./runtime/manager.js";
 export * from "./task-context-api.js";
 export * from "./trace-context-api.js";
 export * from "./apiClientManager-api.js";

@@ -19,6 +19,8 @@ export type PublishEventOptions = {
   metadata?: unknown;
   context?: unknown;
   orderingKey?: string;
+  /** When set, each triggered run will create a waitpoint that blocks this parent run */
+  parentRunId?: string;
 };
 
 export type PublishEventResult = {
@@ -26,6 +28,8 @@ export type PublishEventResult = {
   runs: Array<{
     taskIdentifier: string;
     runId: string;
+    /** Internal run ID, present when parentRunId is used */
+    internalRunId?: string;
   }>;
 };
 
@@ -252,6 +256,8 @@ export class PublishEventService extends BaseService {
               concurrencyKey: options.orderingKey
                 ? `evt:${eventSlug}:${options.orderingKey}`
                 : undefined,
+              parentRunId: options.parentRunId,
+              resumeParentOnCompletion: options.parentRunId ? true : undefined,
             },
           };
 
@@ -270,6 +276,7 @@ export class PublishEventService extends BaseService {
             runs.push({
               taskIdentifier: subscription.taskSlug,
               runId: result.run.friendlyId,
+              internalRunId: options.parentRunId ? result.run.id : undefined,
             });
           }
         } catch (error) {

@@ -1655,6 +1655,35 @@ export const BatchPublishEventResponseBody = z.object({
 
 export type BatchPublishEventResponseBody = z.infer<typeof BatchPublishEventResponseBody>;
 
+export const PublishAndWaitEventRequestBody = z.object({
+  payload: z.any(),
+  options: z
+    .object({
+      idempotencyKey: z.string().optional(),
+      delay: z.string().or(z.coerce.date()).optional(),
+      tags: RunTags.optional(),
+      metadata: z.any().optional(),
+      context: z.any().optional(),
+      orderingKey: z.string().optional(),
+      parentRunId: z.string(),
+    })
+    .optional(),
+});
+
+export type PublishAndWaitEventRequestBody = z.infer<typeof PublishAndWaitEventRequestBody>;
+
+export const PublishAndWaitEventResponseBody = z.object({
+  eventId: z.string(),
+  runs: z.array(
+    z.object({
+      taskIdentifier: z.string(),
+      runId: z.string(),
+    })
+  ),
+});
+
+export type PublishAndWaitEventResponseBody = z.infer<typeof PublishAndWaitEventResponseBody>;
+
 // ---- Event discovery schemas ----
 
 export const EventListItem = z.object({
