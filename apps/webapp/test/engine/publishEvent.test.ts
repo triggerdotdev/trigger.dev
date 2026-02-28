@@ -559,6 +559,194 @@ describe("PublishEventService", () => {
   );
 
   containerTest(
+    "content-based filter skips non-matching subscribers",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { worker } = await setupBackgroundWorker(engine, env, [
+          "high-value-handler",
+          "all-orders-handler",
+        ]);
+
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "order.placed",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        // Subscription with filter: only orders with amount > 1000
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: eventDef.id } },
+            taskSlug: "high-value-handler",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+            filter: { amount: [{ $gt: 1000 }] },
+          },
+        });
+
+        // Subscription without filter: gets all events
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: eventDef.id } },
+            taskSlug: "all-orders-handler",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+          },
+        });
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        // Low-value order — only all-orders-handler should get it
+        const result = await service.call("order.placed", env, { orderId: "o1", amount: 50 });
+
+        expect(result.runs).toHaveLength(1);
+        expect(result.runs[0].taskIdentifier).toBe("all-orders-handler");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "content-based filter allows matching subscribers",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { worker } = await setupBackgroundWorker(engine, env, [
+          "high-value-handler",
+          "all-orders-handler",
+        ]);
+
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "order.placed.v2",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        // Filter: amount > 1000
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: eventDef.id } },
+            taskSlug: "high-value-handler",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+            filter: { amount: [{ $gt: 1000 }] },
+          },
+        });
+
+        // No filter
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: eventDef.id } },
+            taskSlug: "all-orders-handler",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+          },
+        });
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        // High-value order — both handlers should get it
+        const result = await service.call("order.placed.v2", env, { orderId: "o2", amount: 5000 });
+
+        expect(result.runs).toHaveLength(2);
+        const taskIds = result.runs.map((r) => r.taskIdentifier).sort();
+        expect(taskIds).toEqual(["all-orders-handler", "high-value-handler"]);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "complex filter with multiple conditions",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { worker } = await setupBackgroundWorker(engine, env, [
+          "vip-gold-handler",
+          "catch-all",
+        ]);
+
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "customer.action",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        // Complex filter: status = "active" AND tier = "gold"
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: eventDef.id } },
+            taskSlug: "vip-gold-handler",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+            filter: { status: ["active"], tier: ["gold"] },
+          },
+        });
+
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: eventDef.id } },
+            taskSlug: "catch-all",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+          },
+        });
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        // Matches both conditions — both handlers triggered
+        const result1 = await service.call("customer.action", env, {
+          customerId: "c1",
+          status: "active",
+          tier: "gold",
+        });
+        expect(result1.runs).toHaveLength(2);
+
+        // Does not match (wrong tier) — only catch-all triggered
+        const result2 = await service.call("customer.action", env, {
+          customerId: "c2",
+          status: "active",
+          tier: "silver",
+        });
+        expect(result2.runs).toHaveLength(1);
+        expect(result2.runs[0].taskIdentifier).toBe("catch-all");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
     "idempotency key prevents duplicate fan-out",
     async ({ prisma, redisOptions }) => {
       const engine = createEngine(prisma, redisOptions);
