@@ -244,6 +244,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
       const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
 
+      // Get the previous staging environment before updating
+      const previousIntegration = await vercelService.getVercelProjectIntegration(project.id);
+      const previousStagingEnvId =
+        previousIntegration?.parsedIntegrationData.config?.vercelStagingEnvironment?.environmentId ?? null;
+      const newStagingEnvId = parsedStagingEnv?.environmentId ?? null;
+
       const result = await vercelService.updateVercelIntegrationConfig(project.id, {
         atomicBuilds,
         pullEnvVarsBeforeBuild,
@@ -252,6 +258,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
       });
 
       if (result) {
+        // Sync staging TRIGGER_SECRET_KEY if the custom environment changed
+        if (previousStagingEnvId !== newStagingEnvId) {
+          await vercelService.syncStagingKeyForCustomEnvironment(
+            project.id,
+            previousStagingEnvId,
+            newStagingEnvId
+          );
+        }
+
         return redirectWithSuccessMessage(settingsPath, request, "Vercel settings updated successfully");
       }
 
@@ -321,6 +336,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
       });
 
       if (result) {
+        // During onboarding there's no previous custom environment — just upsert
+        await vercelService.syncStagingKeyForCustomEnvironment(
+          project.id,
+          null,
+          parsedStagingEnv?.environmentId ?? null
+        );
         return json({ success: true });
       }
 
