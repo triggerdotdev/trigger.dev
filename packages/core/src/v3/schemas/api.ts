@@ -1652,3 +1652,54 @@ export const BatchPublishEventResponseBody = z.object({
 });
 
 export type BatchPublishEventResponseBody = z.infer<typeof BatchPublishEventResponseBody>;
+
+// ---- Event discovery schemas ----
+
+export const EventListItem = z.object({
+  id: z.string(),
+  slug: z.string(),
+  version: z.string(),
+  description: z.string().nullable(),
+  hasSchema: z.boolean(),
+  deprecatedAt: z.coerce.date().nullable(),
+  subscriberCount: z.number(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+
+export type EventListItem = z.infer<typeof EventListItem>;
+
+export const ListEventsResponseBody = z.object({
+  data: z.array(EventListItem),
+});
+
+export type ListEventsResponseBody = z.infer<typeof ListEventsResponseBody>;
+
+export const GetEventResponseBody = z.object({
+  id: z.string(),
+  slug: z.string(),
+  version: z.string(),
+  description: z.string().nullable(),
+  schema: z.unknown().nullable(),
+  deprecatedAt: z.coerce.date().nullable(),
+  deprecatedMessage: z.string().nullable(),
+  compatibleVersions: z.array(z.string()),
+  subscribers: z.array(
+    z.object({
+      taskSlug: z.string(),
+      enabled: z.boolean(),
+    })
+  ),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+
+export type GetEventResponseBody = z.infer<typeof GetEventResponseBody>;
+
+export const GetEventSchemaResponseBody = z.object({
+  slug: z.string(),
+  version: z.string(),
+  schema: z.unknown().nullable(),
+});
+
+export type GetEventSchemaResponseBody = z.infer<typeof GetEventSchemaResponseBody>;

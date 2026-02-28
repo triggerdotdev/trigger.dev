@@ -11,6 +11,9 @@ import {
   BatchPublishEventRequestBody,
   BatchPublishEventResponseBody,
   BatchTaskRunExecutionResult,
+  GetEventResponseBody,
+  GetEventSchemaResponseBody,
+  ListEventsResponseBody,
   PublishEventRequestBody,
   PublishEventResponseBody,
   BatchTriggerTaskV3RequestBody,
@@ -1478,6 +1481,46 @@ export class ApiClient {
         method: "POST",
         headers: this.#getHeaders(false),
         body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listEvents(requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ListEventsResponseBody,
+      `${this.baseUrl}/api/v1/events`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  getEvent(eventId: string, requestOptions?: ZodFetchOptions) {
+    const encodedEventId = encodeURIComponent(eventId);
+
+    return zodfetch(
+      GetEventResponseBody,
+      `${this.baseUrl}/api/v1/events/${encodedEventId}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  getEventSchema(eventId: string, requestOptions?: ZodFetchOptions) {
+    const encodedEventId = encodeURIComponent(eventId);
+
+    return zodfetch(
+      GetEventSchemaResponseBody,
+      `${this.baseUrl}/api/v1/events/${encodedEventId}/schema`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
