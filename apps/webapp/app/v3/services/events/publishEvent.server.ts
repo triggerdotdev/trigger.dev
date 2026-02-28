@@ -10,6 +10,10 @@ import {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
 } from "../triggerTask.server";
+import {
+  EventRateLimitChecker,
+  parseEventRateLimitConfig,
+} from "./eventRateLimiter.server";
 import { SchemaRegistryService } from "./schemaRegistry.server";
 
 export type PublishEventOptions = {
@@ -58,14 +62,29 @@ export type EventLogEntry = {
   fanOutCount: number;
 };
 
+/** Error thrown when a publish rate limit is exceeded */
+export class EventPublishRateLimitError extends Error {
+  constructor(
+    public readonly eventSlug: string,
+    public readonly limit: number,
+    public readonly remaining: number,
+    public readonly retryAfterMs: number
+  ) {
+    super(`Event "${eventSlug}" publish rate limit exceeded`);
+    this.name = "EventPublishRateLimitError";
+  }
+}
+
 export class PublishEventService extends BaseService {
   private readonly _triggerFn: TriggerFn;
   private readonly _eventLogWriter?: EventLogWriter;
+  private readonly _rateLimitChecker?: EventRateLimitChecker;
 
   constructor(
     prisma?: PrismaClientOrTransaction,
     triggerFn?: TriggerFn,
-    eventLogWriter?: EventLogWriter
+    eventLogWriter?: EventLogWriter,
+    rateLimitChecker?: EventRateLimitChecker
   ) {
     super(prisma);
     this._triggerFn =
@@ -75,6 +94,7 @@ export class PublishEventService extends BaseService {
         return svc.call(taskId, environment, body, options);
       });
     this._eventLogWriter = eventLogWriter;
+    this._rateLimitChecker = rateLimitChecker;
   }
 
   public async call(
@@ -105,6 +125,24 @@ export class PublishEventService extends BaseService {
       }
 
       span.setAttribute("eventDefinitionId", eventDefinition.id);
+
+      // 1b. Check rate limit (if configured and checker is available)
+      if (this._rateLimitChecker && eventDefinition.rateLimit) {
+        const rateLimitConfig = parseEventRateLimitConfig(eventDefinition.rateLimit);
+        if (rateLimitConfig) {
+          const rateLimitKey = `${environment.projectId}:${eventSlug}`;
+          const result = await this._rateLimitChecker.check(rateLimitKey, rateLimitConfig);
+          if (!result.allowed) {
+            span.setAttribute("rateLimited", true);
+            throw new EventPublishRateLimitError(
+              eventSlug,
+              result.limit ?? rateLimitConfig.limit,
+              result.remaining ?? 0,
+              result.retryAfter ?? 0
+            );
+          }
+        }
+      }
 
       // 2. Validate payload against stored schema (if exists)
       if (eventDefinition.schema) {

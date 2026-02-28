@@ -3,8 +3,12 @@ import { PublishEventRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
-import { PublishEventService } from "~/v3/services/events/publishEvent.server";
+import {
+  EventPublishRateLimitError,
+  PublishEventService,
+} from "~/v3/services/events/publishEvent.server";
 import { writeEventLog } from "~/v3/services/events/eventLogWriter.server";
+import { eventPublishRateLimitChecker } from "~/v3/services/events/eventRateLimiterGlobal.server";
 
 const ParamsSchema = z.object({
   eventId: z.string(),
@@ -22,7 +26,12 @@ const { action, loader } = createActionApiRoute(
     },
   },
   async ({ body, params, authentication }) => {
-    const service = new PublishEventService(undefined, undefined, writeEventLog);
+    const service = new PublishEventService(
+      undefined,
+      undefined,
+      writeEventLog,
+      eventPublishRateLimitChecker
+    );
 
     try {
       const result = await service.call(
@@ -41,7 +50,19 @@ const { action, loader } = createActionApiRoute(
 
       return json(result, { status: 200 });
     } catch (error) {
-      if (error instanceof ServiceValidationError) {
+      if (error instanceof EventPublishRateLimitError) {
+        return json(
+          { error: error.message },
+          {
+            status: 429,
+            headers: {
+              "x-ratelimit-limit": String(error.limit),
+              "x-ratelimit-remaining": String(error.remaining),
+              "retry-after": String(Math.ceil(error.retryAfterMs / 1000)),
+            },
+          }
+        );
+      } else if (error instanceof ServiceValidationError) {
         return json({ error: error.message }, { status: error.status ?? 422 });
       } else if (error instanceof Error) {
         return json({ error: error.message }, { status: 500 });

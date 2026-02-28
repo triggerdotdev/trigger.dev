@@ -174,6 +174,15 @@ export const QueueManifest = z.object({
 
 export type QueueManifest = z.infer<typeof QueueManifest>;
 
+export const EventRateLimitManifest = z.object({
+  /** Maximum number of publishes allowed in the window */
+  limit: z.number().int().positive(),
+  /** Time window — e.g. "1m", "10s", "1h" */
+  window: z.string(),
+});
+
+export type EventRateLimitManifest = z.infer<typeof EventRateLimitManifest>;
+
 export const EventManifest = z.object({
   /** Unique event identifier (e.g. "order.created") */
   id: z.string(),
@@ -183,6 +192,8 @@ export const EventManifest = z.object({
   description: z.string().optional(),
   /** JSON Schema of the event payload (Draft 7) */
   schema: z.unknown().optional(),
+  /** Rate limit configuration */
+  rateLimit: EventRateLimitManifest.optional(),
 });
 
 export type EventManifest = z.infer<typeof EventManifest>;

@@ -39,8 +39,10 @@ import {
 import { RunEngineTriggerTaskService } from "../../app/runEngine/services/triggerTask.server";
 import {
   PublishEventService,
+  EventPublishRateLimitError,
   type TriggerFn,
 } from "../../app/v3/services/events/publishEvent.server";
+import { InMemoryEventRateLimitChecker } from "../../app/v3/services/events/eventRateLimiter.server";
 import { ServiceValidationError } from "../../app/v3/services/common.server";
 
 vi.setConfig({ testTimeout: 120_000 });
@@ -1404,6 +1406,114 @@ describe("PublishEventService", () => {
         expect(entry.metadata).toEqual({ source: "test" });
         expect(entry.environmentId).toBe(env.id);
         expect(entry.projectId).toBe(env.projectId);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "rate limiter blocks publishes that exceed the configured limit",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { worker } = await setupBackgroundWorker(engine, env, "limited-handler");
+
+        // Create event definition with rate limit: 2 publishes per 10s
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "rate.limited.event",
+            version: "1.0",
+            projectId: env.projectId,
+            rateLimit: { limit: 2, window: "10s" },
+          },
+        });
+
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: eventDef.id } },
+            taskSlug: "limited-handler",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+          },
+        });
+
+        const rateLimitChecker = new InMemoryEventRateLimitChecker();
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn, undefined, rateLimitChecker);
+
+        // First two publishes should succeed
+        const result1 = await service.call("rate.limited.event", env, { n: 1 });
+        expect(result1.runs).toHaveLength(1);
+
+        const result2 = await service.call("rate.limited.event", env, { n: 2 });
+        expect(result2.runs).toHaveLength(1);
+
+        // Third publish should be rate limited
+        await expect(
+          service.call("rate.limited.event", env, { n: 3 })
+        ).rejects.toThrow(EventPublishRateLimitError);
+
+        // Verify error properties
+        try {
+          await service.call("rate.limited.event", env, { n: 4 });
+          expect.unreachable("Should have thrown");
+        } catch (error) {
+          expect(error).toBeInstanceOf(EventPublishRateLimitError);
+          const rle = error as EventPublishRateLimitError;
+          expect(rle.eventSlug).toBe("rate.limited.event");
+          expect(rle.limit).toBe(2);
+          expect(rle.remaining).toBe(0);
+          expect(rle.retryAfterMs).toBeGreaterThan(0);
+        }
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "rate limiter does not block when no rateLimit is configured",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { worker } = await setupBackgroundWorker(engine, env, "unlimited-handler");
+
+        // Create event definition WITHOUT rate limit
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "unlimited.event",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: eventDef.id } },
+            taskSlug: "unlimited-handler",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+          },
+        });
+
+        const rateLimitChecker = new InMemoryEventRateLimitChecker();
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn, undefined, rateLimitChecker);
+
+        // Should be able to publish many times without limit
+        for (let i = 0; i < 5; i++) {
+          const result = await service.call("unlimited.event", env, { n: i });
+          expect(result.runs).toHaveLength(1);
+        }
       } finally {
         await engine.quit();
       }

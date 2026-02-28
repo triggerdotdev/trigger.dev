@@ -190,6 +190,7 @@ export class StandardResourceCatalog implements ResourceCatalog {
       id: event.id,
       version: event.version,
       description: event.description,
+      rateLimit: event.rateLimit,
     }));
   }
 

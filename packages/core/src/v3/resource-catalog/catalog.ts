@@ -7,6 +7,8 @@ export interface EventMetadata {
   description?: string;
   /** Raw schema (Zod, etc.) stored for later conversion to JSON Schema */
   rawSchema?: unknown;
+  /** Rate limit configuration */
+  rateLimit?: { limit: number; window: string };
 }
 
 export interface ResourceCatalog {

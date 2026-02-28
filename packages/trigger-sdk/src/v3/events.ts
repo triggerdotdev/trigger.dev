@@ -18,6 +18,14 @@ type Schema = TaskSchema;
 
 // ---- Types ----
 
+/** Rate limit configuration for an event */
+export interface EventRateLimit {
+  /** Maximum number of publishes allowed in the window */
+  limit: number;
+  /** Time window — e.g. "1m", "10s", "1h" */
+  window: string;
+}
+
 /** Options for defining an event */
 export interface EventOptions<TId extends string, TSchema extends Schema | undefined = undefined> {
   /** Unique event identifier (e.g. "order.created") */
@@ -28,6 +36,8 @@ export interface EventOptions<TId extends string, TSchema extends Schema | undef
   description?: string;
   /** Schema version (defaults to "1.0") */
   version?: string;
+  /** Rate limit for publishing this event */
+  rateLimit?: EventRateLimit;
 }
 
 /** Options for publishing an event */
@@ -121,7 +131,7 @@ export function createEvent<TId extends string>(
 export function createEvent<TId extends string, TSchema extends Schema | undefined = undefined>(
   options: EventOptions<TId, TSchema>
 ): EventDefinition<TId, any> {
-  const { id, schema, description, version = "1.0" } = options;
+  const { id, schema, description, version = "1.0", rateLimit } = options;
 
   // Build the parse function if a schema is provided
   let parseFn: SchemaParseFn<any> | undefined;
@@ -245,6 +255,7 @@ export function createEvent<TId extends string, TSchema extends Schema | undefin
     version,
     description,
     rawSchema: schema,
+    rateLimit,
   });
 
   // Mark as event for runtime detection
