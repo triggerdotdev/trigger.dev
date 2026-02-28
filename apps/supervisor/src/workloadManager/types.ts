@@ -24,6 +24,7 @@ export interface WorkloadManagerCreateOptions {
   nextAttemptNumber?: number;
   dequeuedAt: Date;
   placementTags?: PlacementTag[];
+  envVars?: Record<string, string>;
   // identifiers
   envId: string;
   envType: EnvironmentType;

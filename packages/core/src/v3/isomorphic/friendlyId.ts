@@ -36,6 +36,11 @@ export function fromFriendlyId(friendlyId: string, expectedEntityName?: string):
 
   const parts = friendlyId.split("_");
 
+  // If there's no underscore, assume it's already an internal ID
+  if (parts.length === 1) {
+    return friendlyId;
+  }
+
   if (parts.length !== 2) {
     throw new Error("Invalid friendly ID format");
   }
