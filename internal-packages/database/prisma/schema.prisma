@@ -344,6 +344,7 @@ model RuntimeEnvironment {
   BulkActionGroup      BulkActionGroup[]
   customerQueries      CustomerQuery[]
   eventSubscriptions   EventSubscription[]
+  deadLetterEvents     DeadLetterEvent[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -416,6 +417,7 @@ model Project {
   metricsDashboards     MetricsDashboard[]
   eventDefinitions      EventDefinition[]
   eventSubscriptions    EventSubscription[]
+  deadLetterEvents      DeadLetterEvent[]
 }
 
 enum ProjectVersion {
@@ -642,6 +644,43 @@ model EventSubscription {
   @@index([projectId, environmentId])
 }
 
+enum DeadLetterStatus {
+  PENDING
+  RETRIED
+  DISCARDED
+}
+
+model DeadLetterEvent {
+  id         String @id @default(cuid())
+  friendlyId String @unique
+
+  eventType   String // "order.created"
+  payload     Json
+  payloadType String @default("application/json")
+
+  taskSlug    String // consumer that failed
+  failedRun   TaskRun @relation("DeadLetterRun", fields: [failedRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  failedRunId String
+
+  error        Json? // last error
+  attemptCount Int   // how many attempts there were
+
+  status      DeadLetterStatus @default(PENDING)
+
+  sourceEventId String? // reference to event_log event_id
+
+  project       Project            @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId     String
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([projectId, environmentId, status])
+  @@index([eventType, environmentId])
+}
+
 model TaskRun {
   id String @id @default(cuid())
 
@@ -770,6 +809,8 @@ model TaskRun {
 
   scheduleInstanceId String?
   scheduleId         String?
+
+  deadLetterEvents           DeadLetterEvent[] @relation("DeadLetterRun")
 
   sourceBulkActionItems      BulkActionItem[] @relation("SourceActionItemRun")
   destinationBulkActionItems BulkActionItem[] @relation("DestinationActionItemRun")
