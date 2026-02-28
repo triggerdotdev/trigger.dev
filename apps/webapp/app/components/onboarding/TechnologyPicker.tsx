@@ -314,10 +314,6 @@ export function TechnologyPicker({
                 </Ariakit.ComboboxItem>
               ))}
 
-              {filteredOptions.length === 0 && !searchValue && (
-                <div className="px-3 py-2 text-xs text-text-dimmed">No options</div>
-              )}
-
               {filteredOptions.length === 0 && searchValue && (
                 <div className="px-3 py-2 text-xs text-text-dimmed">
                   No matches for &ldquo;{searchValue}&rdquo;
