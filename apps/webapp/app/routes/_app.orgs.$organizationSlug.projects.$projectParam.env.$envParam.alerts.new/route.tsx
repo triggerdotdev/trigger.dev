@@ -158,7 +158,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const option = url.searchParams.get("option");
 
   const emailAlertsEnabled =
-    env.ALERT_FROM_EMAIL !== undefined && env.ALERT_RESEND_API_KEY !== undefined;
+    env.ALERT_FROM_EMAIL !== undefined && (env.ALERT_RESEND_API_KEY !== undefined || env.ALERT_SMTP_HOST !== undefined);
 
   return typedjson({
     ...results,
