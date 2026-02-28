@@ -16,6 +16,7 @@ import {
 import { PerformTaskRunAlertsService } from "./alerts/performTaskRunAlerts.server";
 import { BaseService } from "./baseService.server";
 import { completeBatchTaskRunItemV3 } from "./batchTriggerV3.server";
+import { DeadLetterService } from "./events/deadLetterService.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { ResumeDependentParentsService } from "./resumeDependentParents.server";
@@ -147,6 +148,17 @@ export class FinalizeTaskRunService extends BaseService {
     //enqueue alert
     if (isFailedRunStatus(run.status)) {
       await PerformTaskRunAlertsService.enqueue(run.id);
+
+      // Check if this was an event-triggered run and create a DLQ entry
+      try {
+        const dlqService = new DeadLetterService(this._prisma);
+        await dlqService.handleFailedRun(run, taskRunError);
+      } catch (dlqError) {
+        logger.error("FinalizeTaskRunService: Failed to check dead letter queue", {
+          runId: run.id,
+          error: dlqError,
+        });
+      }
     }
 
     if (isFatalRunStatus(run.status)) {

@@ -210,6 +210,20 @@ export class PublishEventService extends BaseService {
             ? `${options.idempotencyKey}:${subscription.taskSlug}`
             : undefined;
 
+          // Merge event context into metadata so DLQ can identify event-triggered runs
+          const eventMetadata = {
+            ...(typeof options.metadata === "object" && options.metadata !== null
+              ? (options.metadata as Record<string, unknown>)
+              : {}),
+            $$event: {
+              eventId,
+              eventType: eventSlug,
+              sourceEventId: options.idempotencyKey
+                ? `${options.idempotencyKey}`
+                : undefined,
+            },
+          };
+
           const body: TriggerTaskRequestBody = {
             payload,
             context: options.context,
@@ -219,7 +233,7 @@ export class PublishEventService extends BaseService {
                   ? options.tags
                   : [options.tags]
                 : undefined,
-              metadata: options.metadata,
+              metadata: eventMetadata,
               delay: options.delay,
             },
           };
