@@ -114,6 +114,9 @@ const InstallMcpCommandOptions = z.object({
   projectRef: z.string().optional(),
   tag: z.string().default(cliTag),
   devOnly: z.boolean().optional(),
+  envOnly: z.string().optional(),
+  disableDeployment: z.boolean().optional(),
+  readonly: z.boolean().optional(),
   yolo: z.boolean().default(false),
   scope: z.enum(scopes).optional(),
   client: z.enum(clients).array().optional(),
@@ -137,7 +140,19 @@ export function configureInstallMcpCommand(program: Command) {
       "The version of the trigger.dev CLI package to use for the MCP server",
       cliTag
     )
-    .option("--dev-only", "Restrict the MCP server to the dev environment only")
+    .option("--dev-only", "Restrict the MCP server to the dev environment only (Deprecated: use --env-only dev)")
+    .option(
+      "--env-only <environments>",
+      "Restrict the MCP server to specific environments only. Comma-separated list of: dev, staging, prod, preview"
+    )
+    .option(
+      "--disable-deployment",
+      "Disable deployment-related tools in the MCP server. Overridden by --readonly."
+    )
+    .option(
+      "--readonly",
+      "Run MCP server in read-only mode. Disables all write operations. Overrides --disable-deployment."
+    )
     .option("--yolo", "Install the MCP server into all supported clients")
     .option("--scope <scope>", "Choose the scope of the MCP server, either user or project")
     .option(
@@ -193,7 +208,15 @@ export async function installMcpServer(
 
   writeConfigHasSeenMCPInstallPrompt(true);
 
-  const devOnly = await resolveDevOnly(opts);
+  // Check for mutual exclusivity
+  if (opts.devOnly && opts.envOnly) {
+    throw new OutroCommandError(
+      "--dev-only and --env-only are mutually exclusive. Please use only one. Consider using --env-only dev instead of --dev-only."
+    );
+  }
+
+  // Skip devOnly prompt when envOnly is already provided
+  const devOnly = opts.envOnly ? false : await resolveDevOnly(opts);
 
   opts.devOnly = devOnly;
 
@@ -265,8 +288,19 @@ function handleUnsupportedClientOnly(options: InstallMcpCommandOptions): Install
     args.push("--api-url", options.apiUrl);
   }
 
-  if (options.devOnly) {
+  // Handle environment restrictions - envOnly takes precedence
+  if (options.envOnly) {
+    args.push("--env-only", options.envOnly);
+  } else if (options.devOnly) {
     args.push("--dev-only");
+  }
+
+  if (options.disableDeployment) {
+    args.push("--disable-deployment");
+  }
+
+  if (options.readonly) {
+    args.push("--readonly");
   }
 
   if (options.projectRef) {
@@ -476,8 +510,19 @@ function resolveMcpServerConfig(
     args.push("--api-url", options.apiUrl);
   }
 
-  if (options.devOnly) {
+  // Handle environment restrictions - envOnly takes precedence
+  if (options.envOnly) {
+    args.push("--env-only", options.envOnly);
+  } else if (options.devOnly) {
     args.push("--dev-only");
+  }
+
+  if (options.disableDeployment) {
+    args.push("--disable-deployment");
+  }
+
+  if (options.readonly) {
+    args.push("--readonly");
   }
 
   if (options.projectRef) {

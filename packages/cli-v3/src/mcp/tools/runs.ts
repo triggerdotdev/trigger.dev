@@ -12,9 +12,9 @@ export const getRunDetailsTool = {
   handler: toolHandler(GetRunDetailsInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling get_run_details", { input });
 
-    if (ctx.options.devOnly && input.environment !== "dev") {
+    if (!ctx.isEnvironmentAllowed(input.environment)) {
       return respondWithError(
-        `This MCP server is only available for the dev environment. You tried to access the ${input.environment} environment. Remove the --dev-only flag to access other environments.`
+        `Cannot access ${input.environment} environment. This MCP server is restricted to: ${ctx.getAllowedEnvironments()}`
       );
     }
 
@@ -69,9 +69,9 @@ export const waitForRunToCompleteTool = {
   handler: toolHandler(WaitForRunInput.shape, async (input, { ctx, signal }) => {
     ctx.logger?.log("calling wait_for_run_to_complete", { input });
 
-    if (ctx.options.devOnly && input.environment !== "dev") {
+    if (!ctx.isEnvironmentAllowed(input.environment)) {
       return respondWithError(
-        `This MCP server is only available for the dev environment. You tried to access the ${input.environment} environment. Remove the --dev-only flag to access other environments.`
+        `Cannot access ${input.environment} environment. This MCP server is restricted to: ${ctx.getAllowedEnvironments()}`
       );
     }
 
@@ -141,9 +141,9 @@ export const cancelRunTool = {
   handler: toolHandler(CommonRunsInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling cancel_run", { input });
 
-    if (ctx.options.devOnly && input.environment !== "dev") {
+    if (!ctx.isEnvironmentAllowed(input.environment)) {
       return respondWithError(
-        `This MCP server is only available for the dev environment. You tried to access the ${input.environment} environment. Remove the --dev-only flag to access other environments.`
+        `Cannot access ${input.environment} environment. This MCP server is restricted to: ${ctx.getAllowedEnvironments()}`
       );
     }
 
@@ -181,9 +181,9 @@ export const listRunsTool = {
   handler: toolHandler(ListRunsInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling list_runs", { input });
 
-    if (ctx.options.devOnly && input.environment !== "dev") {
+    if (!ctx.isEnvironmentAllowed(input.environment)) {
       return respondWithError(
-        `This MCP server is only available for the dev environment. You tried to access the ${input.environment} environment. Remove the --dev-only flag to access other environments.`
+        `Cannot access ${input.environment} environment. This MCP server is restricted to: ${ctx.getAllowedEnvironments()}`
       );
     }
 
