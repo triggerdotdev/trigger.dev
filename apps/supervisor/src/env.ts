@@ -81,6 +81,7 @@ const Env = z.object({
   KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
   KUBERNETES_NAMESPACE: z.string().default("default"),
   KUBERNETES_WORKER_NODETYPE_LABEL: z.string().default("v4-worker"),
+  KUBERNETES_WORKER_PRIORITY_CLASS_NAME: z.string().optional(),
   KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
   KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
   KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
