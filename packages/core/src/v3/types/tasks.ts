@@ -414,6 +414,8 @@ export type TaskOptionsWithEvent<
 > = CommonTaskOptions<TIdentifier, TPayload, TOutput, TInitOutput> & {
   /** The event to subscribe this task to */
   on: EventSource<TPayload>;
+  /** Content-based filter — only receive events whose payload matches this filter */
+  filter?: import("../schemas/eventFilter.js").EventFilter;
 };
 
 declare const __output: unique symbol;

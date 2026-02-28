@@ -205,6 +205,8 @@ const taskMetadata = {
   payloadSchema: z.unknown().optional(),
   /** Event ID that this task subscribes to (set when task uses `on: someEvent`) */
   onEvent: z.string().optional(),
+  /** Event filter for content-based routing (set when task uses `on: someEvent` with `filter`) */
+  onEventFilter: z.unknown().optional(),
 };
 
 export const TaskMetadata = z.object(taskMetadata);

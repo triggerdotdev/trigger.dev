@@ -244,8 +244,9 @@ export function createTask<
 
   registerTaskLifecycleHooks(params.id, params);
 
-  // Extract onEvent from the params if this task subscribes to an event
+  // Extract onEvent and optional filter from the params if this task subscribes to an event
   const onEvent = "on" in params && params.on ? (params.on as EventSource).id : undefined;
+  const onEventFilter = "filter" in params && params.filter ? params.filter : undefined;
 
   resourceCatalog.registerTaskMetadata({
     id: params.id,
@@ -256,6 +257,7 @@ export function createTask<
     maxDuration: params.maxDuration,
     payloadSchema: params.jsonSchema,
     onEvent,
+    onEventFilter,
     fns: {
       run: params.run,
     },
