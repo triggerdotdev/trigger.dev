@@ -36,12 +36,31 @@ export type TriggerFn = (
   options: TriggerTaskServiceOptions
 ) => Promise<TriggerTaskServiceResult | undefined>;
 
+/** Callback to persist a published event to an external log (e.g. ClickHouse) */
+export type EventLogWriter = (entry: EventLogEntry) => void;
+
+export type EventLogEntry = {
+  eventId: string;
+  eventType: string;
+  payload: unknown;
+  publishedAt: Date;
+  environmentId: string;
+  projectId: string;
+  organizationId: string;
+  idempotencyKey?: string;
+  tags?: string[];
+  metadata?: unknown;
+  fanOutCount: number;
+};
+
 export class PublishEventService extends BaseService {
   private readonly _triggerFn: TriggerFn;
+  private readonly _eventLogWriter?: EventLogWriter;
 
   constructor(
     prisma?: PrismaClientOrTransaction,
-    triggerFn?: TriggerFn
+    triggerFn?: TriggerFn,
+    eventLogWriter?: EventLogWriter
   ) {
     super(prisma);
     this._triggerFn =
@@ -50,6 +69,7 @@ export class PublishEventService extends BaseService {
         const svc = new TriggerTaskService({ prisma: this._prisma });
         return svc.call(taskId, environment, body, options);
       });
+    this._eventLogWriter = eventLogWriter;
   }
 
   public async call(
@@ -232,6 +252,35 @@ export class PublishEventService extends BaseService {
               error instanceof Error
                 ? { name: error.name, message: error.message, stack: error.stack }
                 : String(error),
+          });
+        }
+      }
+
+      // 6. Persist to event log (async, non-blocking)
+      if (this._eventLogWriter) {
+        try {
+          this._eventLogWriter({
+            eventId,
+            eventType: eventSlug,
+            payload,
+            publishedAt: new Date(),
+            environmentId: environment.id,
+            projectId: environment.projectId,
+            organizationId: environment.organizationId,
+            idempotencyKey: options.idempotencyKey,
+            tags: options.tags
+              ? Array.isArray(options.tags)
+                ? options.tags
+                : [options.tags]
+              : undefined,
+            metadata: options.metadata,
+            fanOutCount: runs.length,
+          });
+        } catch (error) {
+          logger.warn("Failed to write event to log", {
+            eventId,
+            eventSlug,
+            error: error instanceof Error ? error.message : String(error),
           });
         }
       }

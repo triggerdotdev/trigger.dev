@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { PublishEventService, PublishEventResult } from "~/v3/services/events/publishEvent.server";
+import { writeEventLog } from "~/v3/services/events/eventLogWriter.server";
 
 const ParamsSchema = z.object({
   eventId: z.string(),
@@ -21,7 +22,7 @@ const { action, loader } = createActionApiRoute(
     },
   },
   async ({ body, params, authentication }) => {
-    const service = new PublishEventService();
+    const service = new PublishEventService(undefined, undefined, writeEventLog);
 
     try {
       const results: PublishEventResult[] = [];
