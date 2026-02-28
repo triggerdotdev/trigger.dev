@@ -181,6 +181,8 @@ export const EventManifest = z.object({
   version: z.string(),
   /** Optional human-readable description */
   description: z.string().optional(),
+  /** JSON Schema of the event payload (Draft 7) */
+  schema: z.unknown().optional(),
 });
 
 export type EventManifest = z.infer<typeof EventManifest>;
