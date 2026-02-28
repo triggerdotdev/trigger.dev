@@ -442,15 +442,9 @@ function LogoForm({
   const [faviconError, setFaviconError] = useState(false);
   const logoFormRef = useRef<HTMLFormElement>(null);
   const submit = useSubmit();
-  const initializedRef = useRef(false);
   const prevFaviconRef = useRef(faviconPreview);
 
   useEffect(() => {
-    if (!initializedRef.current) {
-      initializedRef.current = true;
-      prevFaviconRef.current = faviconPreview;
-      return;
-    }
     if (faviconPreview === prevFaviconRef.current) return;
     prevFaviconRef.current = faviconPreview;
     if (mode === "logo" && logoFormRef.current) {
