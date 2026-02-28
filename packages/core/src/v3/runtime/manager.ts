@@ -5,6 +5,11 @@ import {
   WaitpointTokenResult,
 } from "../schemas/index.js";
 
+export type EventWaitResult = {
+  id: string;
+  results: Record<string, TaskRunExecutionResult>;
+};
+
 export interface RuntimeManager {
   disable(): void;
   waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult>;
@@ -17,4 +22,9 @@ export interface RuntimeManager {
     waitpointFriendlyId: string;
     finishDate?: Date;
   }): Promise<WaitpointTokenResult>;
+  waitForEvent(params: {
+    eventId: string;
+    runs: Array<{ friendlyId: string; taskSlug: string }>;
+    ctx: TaskRunContext;
+  }): Promise<EventWaitResult>;
 }

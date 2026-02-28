@@ -7,7 +7,7 @@ import {
   WaitpointTokenResult,
 } from "../schemas/index.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
-import { type RuntimeManager } from "./manager.js";
+import { type EventWaitResult, type RuntimeManager } from "./manager.js";
 import { NoopRuntimeManager } from "./noopRuntimeManager.js";
 import { usage } from "../usage-api.js";
 
@@ -52,6 +52,14 @@ export class RuntimeAPI {
     ctx: TaskRunContext;
   }): Promise<BatchTaskRunExecutionResult> {
     return usage.pauseAsync(() => this.#getRuntimeManager().waitForBatch(params));
+  }
+
+  public waitForEvent(params: {
+    eventId: string;
+    runs: Array<{ friendlyId: string; taskSlug: string }>;
+    ctx: TaskRunContext;
+  }): Promise<EventWaitResult> {
+    return usage.pauseAsync(() => this.#getRuntimeManager().waitForEvent(params));
   }
 
   public setGlobalRuntimeManager(runtimeManager: RuntimeManager): boolean {

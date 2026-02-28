@@ -5,7 +5,7 @@ import {
   TaskRunExecutionResult,
   WaitpointTokenResult,
 } from "../schemas/index.js";
-import { RuntimeManager } from "./manager.js";
+import { EventWaitResult, RuntimeManager } from "./manager.js";
 
 export class NoopRuntimeManager implements RuntimeManager {
   disable(): void {
@@ -40,6 +40,17 @@ export class NoopRuntimeManager implements RuntimeManager {
     return Promise.resolve({
       id: params.id,
       items: [],
+    });
+  }
+
+  waitForEvent(params: {
+    eventId: string;
+    runs: Array<{ friendlyId: string; taskSlug: string }>;
+    ctx: TaskRunContext;
+  }): Promise<EventWaitResult> {
+    return Promise.resolve({
+      id: params.eventId,
+      results: {},
     });
   }
 }

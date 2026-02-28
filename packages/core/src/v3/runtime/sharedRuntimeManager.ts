@@ -13,7 +13,7 @@ import {
 } from "../schemas/index.js";
 import { tryCatch } from "../tryCatch.js";
 import { ExecutorToWorkerProcessConnection } from "../zodIpc.js";
-import { RuntimeManager } from "./manager.js";
+import { EventWaitResult, RuntimeManager } from "./manager.js";
 import { preventMultipleWaits } from "./preventMultipleWaits.js";
 
 /** A function that resolves a waitpoint */
@@ -164,6 +164,50 @@ export class SharedRuntimeManager implements RuntimeManager {
         output: waitpoint.output,
         outputType: waitpoint.outputType,
       };
+    });
+  }
+
+  async waitForEvent(params: {
+    eventId: string;
+    runs: Array<{ friendlyId: string; taskSlug: string }>;
+    ctx: TaskRunContext;
+  }): Promise<EventWaitResult> {
+    return this._preventMultipleWaits(async () => {
+      if (!params.runs.length) {
+        return { id: params.eventId, results: {} };
+      }
+
+      // Create a resolver for each run, keyed by its friendly ID
+      const promises = params.runs.map((run) => {
+        return new Promise<CompletedWaitpoint>((resolve) => {
+          this.resolversById.set(run.friendlyId as ResolverId, resolve);
+        });
+      });
+
+      // Resolve any waitpoints we received before the resolvers were created
+      this.resolvePendingWaitpoints();
+
+      await lifecycleHooks.callOnWaitHookListeners({
+        type: "task",
+        runId: params.eventId,
+      });
+
+      const waitpoints = await this.suspendable(Promise.all(promises));
+
+      await lifecycleHooks.callOnResumeHookListeners({
+        type: "task",
+        runId: params.eventId,
+      });
+
+      // Aggregate results by task slug
+      const results: Record<string, TaskRunExecutionResult> = {};
+      for (let i = 0; i < params.runs.length; i++) {
+        const run = params.runs[i]!;
+        const waitpoint = waitpoints[i]!;
+        results[run.taskSlug] = this.waitpointToTaskRunExecutionResult(waitpoint);
+      }
+
+      return { id: params.eventId, results };
     });
   }
 

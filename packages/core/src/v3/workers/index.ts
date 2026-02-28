@@ -1,5 +1,5 @@
 export { TaskExecutor, type TaskExecutorOptions } from "./taskExecutor.js";
-export type { RuntimeManager } from "../runtime/manager.js";
+export type { EventWaitResult, RuntimeManager } from "../runtime/manager.js";
 export { PreciseWallClock as DurableClock } from "../clock/preciseWallClock.js";
 export { getEnvVar, getNumberEnvVar } from "../utils/getEnv.js";
 export { OtelTaskLogger, logLevels } from "../logger/taskLogger.js";
