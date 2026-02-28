@@ -18,6 +18,7 @@ export type PublishEventOptions = {
   tags?: string | string[];
   metadata?: unknown;
   context?: unknown;
+  orderingKey?: string;
 };
 
 export type PublishEventResult = {
@@ -80,6 +81,9 @@ export class PublishEventService extends BaseService {
   ): Promise<PublishEventResult> {
     return this.traceWithEnv("publishEvent", environment, async (span) => {
       span.setAttribute("eventSlug", eventSlug);
+      if (options.orderingKey) {
+        span.setAttribute("orderingKey", options.orderingKey);
+      }
 
       // 1. Look up EventDefinition by slug + projectId
       const eventDefinition = await this._prisma.eventDefinition.findFirst({
@@ -235,6 +239,9 @@ export class PublishEventService extends BaseService {
                 : undefined,
               metadata: eventMetadata,
               delay: options.delay,
+              concurrencyKey: options.orderingKey
+                ? `evt:${eventSlug}:${options.orderingKey}`
+                : undefined,
             },
           };
 

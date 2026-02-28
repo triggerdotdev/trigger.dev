@@ -1610,6 +1610,7 @@ export const PublishEventRequestBody = z.object({
       tags: RunTags.optional(),
       metadata: z.any().optional(),
       context: z.any().optional(),
+      orderingKey: z.string().optional(),
     })
     .optional(),
 });
@@ -1639,6 +1640,7 @@ export const BatchPublishEventRequestBody = z.object({
           tags: RunTags.optional(),
           metadata: z.any().optional(),
           context: z.any().optional(),
+          orderingKey: z.string().optional(),
         })
         .optional(),
     })

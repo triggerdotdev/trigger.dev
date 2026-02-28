@@ -36,6 +36,8 @@ export interface PublishEventOptions {
   tags?: string[];
   /** Metadata to attach to the generated runs */
   metadata?: Record<string, unknown>;
+  /** Ordering key — events with the same ordering key are processed sequentially per consumer */
+  orderingKey?: string;
 }
 
 /** Result of publishing an event */
@@ -129,6 +131,7 @@ export function createEvent<TId extends string, TSchema extends Schema | undefin
               delay: options.delay instanceof Date ? options.delay.toISOString() : options.delay,
               tags: options.tags,
               metadata: options.metadata,
+              orderingKey: options.orderingKey,
             }
           : undefined,
       });
@@ -156,6 +159,7 @@ export function createEvent<TId extends string, TSchema extends Schema | undefin
                       : item.options.delay,
                   tags: item.options.tags,
                   metadata: item.options.metadata,
+                  orderingKey: item.options.orderingKey,
                 }
               : undefined,
           };

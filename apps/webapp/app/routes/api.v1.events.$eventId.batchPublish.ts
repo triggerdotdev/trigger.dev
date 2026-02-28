@@ -38,6 +38,7 @@ const { action, loader } = createActionApiRoute(
             tags: item.options?.tags,
             metadata: item.options?.metadata,
             context: item.options?.context,
+            orderingKey: item.options?.orderingKey,
           }
         );
 
