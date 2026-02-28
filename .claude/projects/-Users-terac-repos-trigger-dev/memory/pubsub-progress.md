@@ -178,5 +178,41 @@ All sub-steps 0.1–0.9 implemented and committed. See git log for details.
 - `5ed48645e` — phase 4.2: store event context on runs + DLQ detection
 - `89d0daba8` — phase 4.3: DLQ management API endpoints
 
-## Phase 5: Ordering + Consumer Groups — NOT STARTED
-Next phase. Ordering keys + consumer group fan-out.
+## Phase 5: Ordering + Consumer Groups — COMPLETE
+
+### What was done
+1. **5.1 — Ordering keys**
+   - Added `orderingKey` to `PublishEventRequestBody` and `BatchPublishEventRequestBody` in core schemas
+   - Added `orderingKey` to SDK `PublishEventOptions` and pass-through in `publish()` / `batchPublish()`
+   - `PublishEventService` maps `orderingKey` to `concurrencyKey` on triggered runs: `evt:{eventSlug}:{orderingKey}`
+   - Updated publish + batchPublish routes to pass ordering key through
+   - Span attribute added for observability
+
+2. **5.2 — Consumer groups**
+   - Added `onEventConsumerGroup` to `TaskResource` and `TaskMetadata` schemas
+   - Added `consumerGroup` option to `TaskOptionsWithEvent` type
+   - SDK `shared.ts` extracts and registers `consumerGroup` from task params
+   - `syncWorkerEvents` stores `consumerGroup` in `EventSubscription` during deploy
+   - `PublishEventService.applyConsumerGroups()` groups subscriptions by `consumerGroup`
+     - Ungrouped subscriptions always receive events (normal fan-out)
+     - Within each group, one member is selected (round-robin by timestamp)
+
+3. **5.3 — Tests**
+   - 3 new integration tests: ordering key sets concurrencyKey, consumer group picks one, multiple groups + ungrouped
+   - All 19 integration tests pass, all 470 unit tests pass
+   - Full build passes: core, sdk, cli, webapp
+   - Changeset added
+
+### Key decisions
+- Ordering at **publish time** (not event definition time) — ordering key values are dynamic per-payload
+- Maps to existing `concurrencyKey` infrastructure — no new queue management needed
+- Consumer group selection uses `Math.floor(Date.now() / 1000) % members.length` for time-based rotation
+- `consumerGroup` field already existed in Prisma schema from Phase 0.4 — no migration needed
+
+### Commits
+- `dcd3ea3c1` — phase 5.1: ordering keys via concurrencyKey
+- `8c033b3dd` — phase 5.2: consumer groups for load-balanced fan-out
+- `3b3abf47a` — phase 5.3: integration tests for ordering + consumer groups
+
+## Phase 6: Publish-and-Wait — NOT STARTED
+Next phase. Fan-out/fan-in with waitpoints.

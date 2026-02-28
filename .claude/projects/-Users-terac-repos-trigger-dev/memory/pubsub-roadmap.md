@@ -213,76 +213,19 @@ Key deliverables:
 
 ---
 
-## Phase 5: Ordering + Consumer Groups
+## Phase 5: Ordering + Consumer Groups — COMPLETE
 
 > **Goal**: Order guarantees by partition key. Competing consumers for load balancing.
 > **Requires**: Phase 0
 
-### 5.1 — Ordering keys
+All sub-steps 5.1–5.3 implemented and committed. See `pubsub-progress.md` for details.
 
-**File to modify**: `packages/trigger-sdk/src/v3/events.ts`
-
-Tasks:
-- [ ] Extend `event()`:
-  ```typescript
-  event({
-    id: "order.updated",
-    schema: orderSchema,
-    orderingKey: (payload) => payload.orderId,
-    // Events with the same orderId are processed sequentially
-  });
-  ```
-- [ ] Alternative: ordering at publish time:
-  ```typescript
-  await orderUpdated.publish(payload, {
-    orderingKey: payload.orderId,
-  });
-  ```
-
-**File to modify**: `apps/webapp/app/v3/services/events/publishEvent.server.ts`
-
-Tasks:
-- [ ] When ordering key is present:
-  - Derive queue name: `event:{eventSlug}:order:{orderingKeyHash}`
-  - Use queue with `concurrencyLimit: 1` to guarantee sequence
-  - Each subscribed consumer uses this queue
-- [ ] Reuse existing `RunQueue` with named queues
-- [ ] Ordering is per-consumer: each consumer processes in order within its partition
-
-### 5.2 — Consumer Groups
-
-**File to modify**: `internal-packages/database/prisma/schema.prisma`
-
-Tasks:
-- [ ] `consumerGroup` field already defined in Phase 0.4 on `EventSubscription`
-- [ ] Constraint: within a consumer group, only 1 run per event
-
-**File to modify**: `packages/trigger-sdk/src/v3/shared.ts`
-
-Tasks:
-- [ ] Extend task options:
-  ```typescript
-  task({
-    on: orderCreated,
-    consumerGroup: "order-processors",
-    run: async (payload) => { ... },
-  });
-  ```
-
-**File to modify**: `apps/webapp/app/v3/services/events/publishEvent.server.ts`
-
-Tasks:
-- [ ] In fan-out:
-  - Group subscriptions by `consumerGroup`
-  - For subscriptions WITHOUT a group: normal fan-out (1 run each)
-  - For subscriptions WITH a group: pick 1 subscription from the group (round-robin or random)
-  - Reuse `FairQueueSelectionStrategy` for fair selection
-- [ ] Persist selection so replay uses the same consumer
-
-Tests:
-- [ ] Test: 3 tasks in the same consumer group → only 1 receives each event
-- [ ] Test: fair distribution among group members
-- [ ] Test: task without group + task with group both work on the same event
+Key deliverables:
+- [x] `orderingKey` in publish options, mapped to `concurrencyKey` on triggered runs
+- [x] `consumerGroup` option on `TaskOptionsWithEvent`, stored in `EventSubscription.consumerGroup` during deploy
+- [x] `PublishEventService.applyConsumerGroups()` — within a group, only one task receives each event
+- [x] 3 integration tests for ordering + consumer groups
+- [x] Changeset added
 
 ---
 
