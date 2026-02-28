@@ -278,7 +278,7 @@ export function TechnologyPicker({
                     onChange={(e) => setOtherInputValue(e.target.value)}
                     onKeyDown={handleOtherKeyDown}
                     placeholder="Type and press Enter to add"
-                    className="flex-1 border-none bg-transparent pl-0.5 text-2sm text-text-bright shadow-none outline-none ring-0 placeholder:text-text-dimmed focus:border-none focus:outline-none focus:ring-0"
+                    className="flex-1 border-none bg-transparent pl-2 text-2sm text-text-bright shadow-none outline-none ring-0 placeholder:text-text-dimmed focus:border-none focus:outline-none focus:ring-0"
                     autoFocus
                   />
                   <ShortcutKey
