@@ -28,6 +28,7 @@ import {
 } from "./taskEvents.js";
 import { insertMetrics } from "./metrics.js";
 import { insertEventLog, getEventLogQueryBuilder } from "./eventLog.js";
+import { getEventCountsQueryBuilder } from "./eventCounts.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
@@ -36,6 +37,7 @@ export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
 export type * from "./metrics.js";
 export type * from "./eventLog.js";
+export type * from "./eventCounts.js";
 export type * from "./client/queryBuilder.js";
 
 // Re-export column constants, indices, and type-safe accessors
@@ -236,6 +238,12 @@ export class ClickHouse {
     return {
       insert: insertEventLog(this.writer),
       queryBuilder: getEventLogQueryBuilder(this.reader),
+    };
+  }
+
+  get eventCounts() {
+    return {
+      queryBuilder: getEventCountsQueryBuilder(this.reader),
     };
   }
 }

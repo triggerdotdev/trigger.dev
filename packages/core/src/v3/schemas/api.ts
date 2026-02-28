@@ -1835,3 +1835,25 @@ export const RetryAllDeadLetterEventsResponseBody = z.object({
 export type RetryAllDeadLetterEventsResponseBody = z.infer<
   typeof RetryAllDeadLetterEventsResponseBody
 >;
+
+// ---- Event Stats schemas ----
+
+export const EventStatsTimeBucket = z.object({
+  timestamp: z.string(),
+  eventCount: z.number().int(),
+  fanOutCount: z.number().int(),
+});
+
+export type EventStatsTimeBucket = z.infer<typeof EventStatsTimeBucket>;
+
+export const GetEventStatsResponseBody = z.object({
+  eventType: z.string(),
+  period: z.string(),
+  buckets: z.array(EventStatsTimeBucket),
+  totals: z.object({
+    eventCount: z.number().int(),
+    fanOutCount: z.number().int(),
+  }),
+});
+
+export type GetEventStatsResponseBody = z.infer<typeof GetEventStatsResponseBody>;

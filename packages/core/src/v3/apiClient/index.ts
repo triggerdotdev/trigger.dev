@@ -15,6 +15,7 @@ import {
   GetEventHistoryResponseBody,
   GetEventResponseBody,
   GetEventSchemaResponseBody,
+  GetEventStatsResponseBody,
   ListDeadLetterEventsResponseBody,
   ListEventsResponseBody,
   ReplayEventsRequestBody,
@@ -1546,6 +1547,27 @@ export class ApiClient {
     return zodfetch(
       GetEventSchemaResponseBody,
       `${this.baseUrl}/api/v1/events/${encodedEventId}/schema`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  getEventStats(
+    eventId: string,
+    params?: { period?: string },
+    requestOptions?: ZodFetchOptions
+  ) {
+    const encodedEventId = encodeURIComponent(eventId);
+    const searchParams = new URLSearchParams();
+    if (params?.period) searchParams.set("period", params.period);
+    const qs = searchParams.toString();
+
+    return zodfetch(
+      GetEventStatsResponseBody,
+      `${this.baseUrl}/api/v1/events/${encodedEventId}/stats${qs ? `?${qs}` : ""}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),

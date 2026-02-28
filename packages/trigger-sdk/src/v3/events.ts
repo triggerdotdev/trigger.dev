@@ -97,6 +97,13 @@ export interface EventDefinition<TId extends string, TPayload> {
    * Can only be called from inside a task.run().
    */
   publishAndWait(payload: TPayload, options?: PublishEventOptions): Promise<PublishAndWaitResult>;
+
+  /**
+   * Validate a payload against the event's schema (if one was provided).
+   * Returns the validated payload or throws if validation fails.
+   * Useful for pre-flight checks before publishing.
+   */
+  validate(payload: TPayload): Promise<TPayload>;
 }
 
 /** Any event definition (for generic constraints) */
@@ -246,6 +253,11 @@ export function createEvent<TId extends string, TSchema extends Schema | undefin
         id: r.eventId,
         runs: r.runs,
       }));
+    },
+
+    async validate(payload) {
+      if (!parseFn) return payload;
+      return parseFn(payload);
     },
   };
 
