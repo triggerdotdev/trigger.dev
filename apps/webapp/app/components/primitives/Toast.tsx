@@ -69,21 +69,26 @@ export function ToastUI({
         width: toastWidth,
       }}
     >
-      <div className="flex w-full items-start gap-2 rounded-lg p-3">
+      <div
+        className={cn("flex w-full gap-2 rounded-lg p-3", title ? "items-start" : "items-center")}
+      >
         {variant === "success" ? (
-          <CheckCircleIcon className="mt-1 size-4 min-w-4 text-success" />
+          <CheckCircleIcon className={cn("size-4 min-w-4 text-success", title && "mt-1")} />
         ) : (
-          <ExclamationCircleIcon className="mt-1 size-4 min-w-4 text-error" />
+          <ExclamationCircleIcon className={cn("size-4 min-w-4 text-error", title && "mt-1")} />
         )}
         <div className="flex flex-col">
           {title && <Header2 className="pt-0">{title}</Header2>}
-          <Paragraph variant="small/dimmed" className="pb-1 pt-0.5">
+          <Paragraph
+            variant={title ? "small/dimmed" : "small/bright"}
+            className={title ? "pb-1 pt-0.5" : ""}
+          >
             {message}
           </Paragraph>
           <Action action={action} toastId={t} className="my-2" />
         </div>
         <button
-          className="hover:bg-midnight-800 -mr-1 -mt-1 ms-auto rounded p-2 text-text-dimmed transition hover:text-text-bright"
+          className={cn("-mr-1 ms-auto rounded p-2 text-text-dimmed transition hover:text-text-bright", title && "-mt-1")}
           onClick={() => toast.dismiss(t)}
         >
           <XMarkIcon className="size-4" />
