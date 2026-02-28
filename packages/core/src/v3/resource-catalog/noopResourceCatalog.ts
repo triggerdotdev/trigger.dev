@@ -63,6 +63,10 @@ export class NoopResourceCatalog implements ResourceCatalog {
     return undefined;
   }
 
+  getEventSchema(id: string): unknown | undefined {
+    return undefined;
+  }
+
   listEventManifests(): Array<EventManifest> {
     return [];
   }

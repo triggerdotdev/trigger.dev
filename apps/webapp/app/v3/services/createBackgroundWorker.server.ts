@@ -350,10 +350,12 @@ async function syncWorkerEvents(
           slug: event.id,
           version: event.version ?? "1.0",
           description: event.description,
+          schema: event.schema as any ?? undefined,
           projectId: worker.projectId,
         },
         update: {
           description: event.description,
+          schema: event.schema as any ?? undefined,
         },
       });
 

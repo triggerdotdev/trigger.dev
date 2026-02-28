@@ -1,5 +1,6 @@
 import {
   BuildManifest,
+  type EventManifest,
   type HandleErrorFunction,
   indexerToWorkerMessages,
   resourceCatalog,
@@ -156,7 +157,7 @@ await sendMessageInCatalog(
     manifest: {
       tasks,
       queues: resourceCatalog.listQueueManifests(),
-      events: resourceCatalog.listEventManifests(),
+      events: convertEventSchemasToJsonSchemas(resourceCatalog.listEventManifests()),
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
       runtimeVersion: detectRuntimeVersion(),
@@ -218,4 +219,21 @@ async function convertSchemasToJsonSchemas(tasks: TaskManifest[]): Promise<TaskM
   });
 
   return convertedTasks;
+}
+
+function convertEventSchemasToJsonSchemas(events: EventManifest[]): EventManifest[] {
+  return events.map((event) => {
+    const rawSchema = resourceCatalog.getEventSchema(event.id);
+
+    if (rawSchema) {
+      try {
+        const result = schemaToJsonSchema(rawSchema);
+        return { ...event, schema: result?.jsonSchema };
+      } catch {
+        return event;
+      }
+    }
+
+    return event;
+  });
 }

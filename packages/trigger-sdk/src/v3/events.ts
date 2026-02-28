@@ -173,11 +173,12 @@ export function createEvent<TId extends string, TSchema extends Schema | undefin
     },
   };
 
-  // Register event metadata in the resource catalog
+  // Register event metadata in the resource catalog (including raw schema for JSON Schema conversion)
   resourceCatalog.registerEventMetadata({
     id,
     version,
     description,
+    rawSchema: schema,
   });
 
   // Mark as event for runtime detection

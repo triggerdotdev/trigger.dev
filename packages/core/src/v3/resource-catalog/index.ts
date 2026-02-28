@@ -85,6 +85,10 @@ export class ResourceCatalogAPI {
     return this.#getCatalog().getEvent(id);
   }
 
+  public getEventSchema(id: string): unknown | undefined {
+    return this.#getCatalog().getEventSchema(id);
+  }
+
   public listEventManifests(): Array<EventManifest> {
     return this.#getCatalog().listEventManifests();
   }

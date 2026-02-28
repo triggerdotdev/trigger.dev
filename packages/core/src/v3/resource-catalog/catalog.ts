@@ -5,6 +5,8 @@ export interface EventMetadata {
   id: string;
   version: string;
   description?: string;
+  /** Raw schema (Zod, etc.) stored for later conversion to JSON Schema */
+  rawSchema?: unknown;
 }
 
 export interface ResourceCatalog {
@@ -22,6 +24,7 @@ export interface ResourceCatalog {
   getTaskSchema(id: string): TaskSchema | undefined;
   registerEventMetadata(event: EventMetadata): void;
   getEvent(id: string): EventMetadata | undefined;
+  getEventSchema(id: string): unknown | undefined;
   listEventManifests(): Array<EventManifest>;
   getTasksForEvent(eventId: string): Array<TaskMetadataWithFunctions>;
 }

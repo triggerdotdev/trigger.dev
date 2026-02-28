@@ -9,6 +9,7 @@ import {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
 } from "../triggerTask.server";
+import { SchemaRegistryService } from "./schemaRegistry.server";
 
 export type PublishEventOptions = {
   idempotencyKey?: string;
@@ -76,7 +77,24 @@ export class PublishEventService extends BaseService {
 
       span.setAttribute("eventDefinitionId", eventDefinition.id);
 
-      // 2. Find all active subscriptions for this event + environment
+      // 2. Validate payload against stored schema (if exists)
+      if (eventDefinition.schema) {
+        const schemaRegistry = new SchemaRegistryService(this._prisma);
+        const validation = schemaRegistry.validatePayload(
+          eventDefinition.id,
+          eventDefinition.schema,
+          payload
+        );
+
+        if (!validation.success) {
+          throw new ServiceValidationError(
+            `Payload validation failed for event "${eventSlug}": ${validation.errors.map((e) => `${e.path}: ${e.message}`).join(", ")}`,
+            422
+          );
+        }
+      }
+
+      // 3. Find all active subscriptions for this event + environment
       const subscriptions = await this._prisma.eventSubscription.findMany({
         where: {
           eventDefinitionId: eventDefinition.id,
@@ -94,7 +112,7 @@ export class PublishEventService extends BaseService {
         };
       }
 
-      // 3. Fan out: trigger each subscribed task
+      // 4. Fan out: trigger each subscribed task
       const eventId = generateFriendlyId("evt");
       const runs: PublishEventResult["runs"] = [];
 

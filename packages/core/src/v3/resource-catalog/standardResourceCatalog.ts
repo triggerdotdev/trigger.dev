@@ -181,6 +181,10 @@ export class StandardResourceCatalog implements ResourceCatalog {
     return this._eventMetadata.get(id);
   }
 
+  getEventSchema(id: string): unknown | undefined {
+    return this._eventMetadata.get(id)?.rawSchema;
+  }
+
   listEventManifests(): Array<EventManifest> {
     return Array.from(this._eventMetadata.values()).map((event) => ({
       id: event.id,
