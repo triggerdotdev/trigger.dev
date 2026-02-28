@@ -1036,4 +1036,204 @@ describe("PublishEventService", () => {
       }
     }
   );
+
+  containerTest(
+    "ordering key sets concurrencyKey on triggered runs",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { worker } = await setupBackgroundWorker(engine, env, "order-processor");
+
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "order.updated",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: eventDef.id } },
+            taskSlug: "order-processor",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+          },
+        });
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        // Publish with ordering key
+        const result = await service.call("order.updated", env, { orderId: "ord-1" }, {
+          orderingKey: "ord-1",
+        });
+
+        expect(result.runs).toHaveLength(1);
+
+        // Verify the run has the concurrency key set
+        const dbRun = await prisma.taskRun.findFirst({
+          where: { friendlyId: result.runs[0].runId },
+        });
+        expect(dbRun).toBeDefined();
+        expect(dbRun!.concurrencyKey).toBe("evt:order.updated:ord-1");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "consumer group: only one task in group receives each event",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const taskIds = ["processor-a", "processor-b", "processor-c", "standalone-task"];
+        const { worker } = await setupBackgroundWorker(engine, env, taskIds);
+
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "order.placed",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        // 3 tasks in the same consumer group
+        for (const taskSlug of ["processor-a", "processor-b", "processor-c"]) {
+          await prisma.eventSubscription.create({
+            data: {
+              eventDefinition: { connect: { id: eventDef.id } },
+              taskSlug,
+              project: { connect: { id: env.projectId } },
+              environment: { connect: { id: env.id } },
+              worker: { connect: { id: worker.id } },
+              enabled: true,
+              consumerGroup: "order-processors",
+            },
+          });
+        }
+
+        // 1 standalone task (no consumer group)
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: eventDef.id } },
+            taskSlug: "standalone-task",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+          },
+        });
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        const result = await service.call("order.placed", env, { orderId: "o1" });
+
+        // Should have 2 runs: 1 from consumer group (picked one) + 1 standalone
+        expect(result.runs).toHaveLength(2);
+
+        const triggeredTasks = result.runs.map((r) => r.taskIdentifier);
+        // standalone-task always gets it
+        expect(triggeredTasks).toContain("standalone-task");
+
+        // Exactly one of the consumer group members gets it
+        const groupMembers = triggeredTasks.filter((t) =>
+          ["processor-a", "processor-b", "processor-c"].includes(t)
+        );
+        expect(groupMembers).toHaveLength(1);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "consumer group: tasks without group and with group both work",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const taskIds = ["group-a-1", "group-a-2", "group-b-1", "group-b-2", "no-group"];
+        const { worker } = await setupBackgroundWorker(engine, env, taskIds);
+
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "item.sold",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        // Group A: 2 members
+        for (const taskSlug of ["group-a-1", "group-a-2"]) {
+          await prisma.eventSubscription.create({
+            data: {
+              eventDefinition: { connect: { id: eventDef.id } },
+              taskSlug,
+              project: { connect: { id: env.projectId } },
+              environment: { connect: { id: env.id } },
+              worker: { connect: { id: worker.id } },
+              enabled: true,
+              consumerGroup: "group-a",
+            },
+          });
+        }
+
+        // Group B: 2 members
+        for (const taskSlug of ["group-b-1", "group-b-2"]) {
+          await prisma.eventSubscription.create({
+            data: {
+              eventDefinition: { connect: { id: eventDef.id } },
+              taskSlug,
+              project: { connect: { id: env.projectId } },
+              environment: { connect: { id: env.id } },
+              worker: { connect: { id: worker.id } },
+              enabled: true,
+              consumerGroup: "group-b",
+            },
+          });
+        }
+
+        // No group
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: eventDef.id } },
+            taskSlug: "no-group",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+          },
+        });
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        const result = await service.call("item.sold", env, { itemId: "i1" });
+
+        // 3 runs: 1 from group-a, 1 from group-b, 1 ungrouped
+        expect(result.runs).toHaveLength(3);
+
+        const triggeredTasks = result.runs.map((r) => r.taskIdentifier);
+        expect(triggeredTasks).toContain("no-group");
+
+        // Exactly one from each group
+        const groupA = triggeredTasks.filter((t) => t.startsWith("group-a-"));
+        const groupB = triggeredTasks.filter((t) => t.startsWith("group-b-"));
+        expect(groupA).toHaveLength(1);
+        expect(groupB).toHaveLength(1);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 });
