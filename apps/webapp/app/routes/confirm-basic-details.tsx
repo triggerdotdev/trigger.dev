@@ -1,11 +1,12 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ArrowRightIcon, EnvelopeIcon, HeartIcon, UserIcon } from "@heroicons/react/20/solid";
+import { ArrowRightIcon, EnvelopeIcon, UserGroupIcon, UserIcon } from "@heroicons/react/20/solid";
 import { HandRaisedIcon } from "@heroicons/react/24/solid";
-import { ActionFunction, json } from "@remix-run/node";
+import { RadioGroup } from "@radix-ui/react-radio-group";
+import { json, type ActionFunction } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import { motion } from "framer-motion";
-import { forwardRef, useState } from "react";
+import { forwardRef, useEffect, useState } from "react";
 import { z } from "zod";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
@@ -18,6 +19,8 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { RadioGroupItem } from "~/components/primitives/RadioButton";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { prisma } from "~/db.server";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useUser } from "~/hooks/useUser";
@@ -26,6 +29,40 @@ import { updateUser } from "~/models/user.server";
 import { requireUserId } from "~/services/session.server";
 import { rootPath } from "~/utils/pathBuilder";
 import { getVercelInstallParams } from "~/v3/vercel";
+
+const referralSourceOptions = [
+  "Search engine",
+  "YouTube",
+  "Twitter/X",
+  "LinkedIn",
+  "Word of mouth",
+  "AI assistant/LLM",
+  "Blog/article",
+  "Event",
+  "Other",
+] as const;
+
+const roleOptions = [
+  "Founder",
+  "Staff/principal engineer",
+  "Senior software engineer",
+  "Software engineer",
+  "AI/ML engineer",
+  "Engineering manager",
+  "Product engineer",
+  "Non technical builder using AI tools",
+  "Student/learner",
+  "Other",
+] as const;
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const shuffled = [...arr];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
 
 function createSchema(
   constraints: {
@@ -40,13 +77,11 @@ function createSchema(
         .email()
         .superRefine((email, ctx) => {
           if (constraints.isEmailUnique === undefined) {
-            //client-side validation skips this
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message: conform.VALIDATION_UNDEFINED,
             });
           } else {
-            // Tell zod this is an async validation by returning the promise
             return constraints.isEmailUnique(email).then((isUnique) => {
               if (isUnique) {
                 return;
@@ -61,6 +96,9 @@ function createSchema(
         }),
       confirmEmail: z.string(),
       referralSource: z.string().optional(),
+      referralSourceOther: z.string().optional(),
+      role: z.string().optional(),
+      roleOther: z.string().optional(),
     })
     .refine((value) => value.email === value.confirmEmail, {
       message: "Emails must match",
@@ -99,19 +137,39 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   try {
-    const updatedUser = await updateUser({
+    const onboardingData: Record<string, string | undefined> = {};
+
+    if (submission.value.referralSource) {
+      onboardingData.referralSource = submission.value.referralSource;
+      if (submission.value.referralSource === "Other" && submission.value.referralSourceOther) {
+        onboardingData.referralSourceOther = submission.value.referralSourceOther;
+      }
+    }
+
+    if (submission.value.role) {
+      onboardingData.role = submission.value.role;
+      if (submission.value.role === "Other" && submission.value.roleOther) {
+        onboardingData.roleOther = submission.value.roleOther;
+      }
+    }
+
+    const referralSourceForLegacy =
+      submission.value.referralSource === "Other" && submission.value.referralSourceOther
+        ? `Other: ${submission.value.referralSourceOther}`
+        : submission.value.referralSource;
+
+    await updateUser({
       id: userId,
       name: submission.value.name,
       email: submission.value.email,
-      referralSource: submission.value.referralSource,
+      referralSource: referralSourceForLegacy,
+      onboardingData: Object.keys(onboardingData).length > 0 ? onboardingData : undefined,
     });
 
-    // Preserve Vercel integration params if present
     const vercelParams = getVercelInstallParams(request);
     let redirectUrl = rootPath();
 
     if (vercelParams) {
-      // Redirect to orgs/new with params preserved
       const params = new URLSearchParams({
         code: vercelParams.code,
         configurationId: vercelParams.configurationId,
@@ -143,10 +201,24 @@ export default function Page() {
   const lastSubmission = useActionData();
   const [enteredEmail, setEnteredEmail] = useState<string>(user.email ?? "");
   const { isManagedCloud } = useFeatures();
+  const [selectedReferralSource, setSelectedReferralSource] = useState<string | undefined>();
+  const [selectedRole, setSelectedRole] = useState<string>("");
 
-  const [form, { name, email, confirmEmail, referralSource }] = useForm({
+  const [shuffledReferralSources, setShuffledReferralSources] = useState<string[]>([
+    ...referralSourceOptions,
+  ]);
+  const [shuffledRoles, setShuffledRoles] = useState<string[]>([...roleOptions]);
+
+  useEffect(() => {
+    const nonOtherReferral = referralSourceOptions.filter((r) => r !== "Other");
+    setShuffledReferralSources([...shuffleArray(nonOtherReferral), "Other"]);
+
+    const nonOtherRoles = roleOptions.filter((r) => r !== "Other");
+    setShuffledRoles([...shuffleArray(nonOtherRoles), "Other"]);
+  }, []);
+
+  const [form, { name, email, confirmEmail }] = useForm({
     id: "confirm-basic-details",
-    // TODO: type this
     lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema: createSchema() });
@@ -159,7 +231,7 @@ export default function Page() {
   return (
     <AppContainer className="bg-charcoal-900">
       <BackgroundWrapper>
-        <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+        <MainCenteredContainer className="max-w-[29rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
           <Form method="post" {...form.props}>
             <FormTitle
               title="Welcome to Trigger.dev"
@@ -187,7 +259,9 @@ export default function Page() {
             />
             <Fieldset>
               <InputGroup>
-                <Label htmlFor={name.id}>Full name</Label>
+                <Label htmlFor={name.id}>
+                  Full name <span className="text-text-bright">*</span>
+                </Label>
                 <Input
                   {...conform.input(name, { type: "text" })}
                   defaultValue={user.name ?? ""}
@@ -195,11 +269,12 @@ export default function Page() {
                   icon={UserIcon}
                   autoFocus
                 />
-                <Hint>Your team will see this name and we'll use it to contact you.</Hint>
                 <FormError id={name.errorId}>{name.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label htmlFor={email.id}>Email</Label>
+                <Label htmlFor={email.id}>
+                  Email <span className="text-text-bright">*</span>
+                </Label>
                 <Input
                   {...conform.input(email, { type: "email" })}
                   defaultValue={enteredEmail}
@@ -210,9 +285,6 @@ export default function Page() {
                   icon={EnvelopeIcon}
                   spellCheck={false}
                 />
-                {!shouldShowConfirm && (
-                  <Hint>Confirm this is the email you'd like for your Trigger.dev account.</Hint>
-                )}
                 <FormError id={email.errorId}>{email.error}</FormError>
               </InputGroup>
 
@@ -225,9 +297,6 @@ export default function Page() {
                     icon={EnvelopeIcon}
                     spellCheck={false}
                   />
-                  <Hint>
-                    Check this is the email you'd like associated with your Trigger.dev account.
-                  </Hint>
                   <FormError id={confirmEmail.errorId}>{confirmEmail.error}</FormError>
                 </InputGroup>
               ) : (
@@ -235,16 +304,82 @@ export default function Page() {
                   <input {...conform.input(confirmEmail, { type: "hidden" })} value={user.email} />
                 </>
               )}
+
               {isManagedCloud && (
-                <InputGroup>
-                  <Label htmlFor={confirmEmail.id}>How did you hear about us?</Label>
-                  <Input
-                    {...conform.input(referralSource, { type: "text" })}
-                    placeholder="LLM, Google, X (Twitter)…?"
-                    icon={HeartIcon}
-                    spellCheck={false}
-                  />
-                </InputGroup>
+                <>
+                  <div className="border-t border-charcoal-700" />
+                  <InputGroup>
+                    <Label className="mb-0.5" id="referral-label">
+                      How did you hear about us?
+                    </Label>
+                    <input
+                      type="hidden"
+                      name="referralSource"
+                      value={selectedReferralSource ?? ""}
+                    />
+                    <RadioGroup
+                      value={selectedReferralSource}
+                      onValueChange={setSelectedReferralSource}
+                      className="flex flex-wrap gap-2"
+                      aria-labelledby="referral-label"
+                    >
+                      {shuffledReferralSources.map((option) => (
+                        <RadioGroupItem
+                          key={option}
+                          id={`referral-${option}`}
+                          label={option}
+                          value={option}
+                          variant="button/small"
+                        />
+                      ))}
+                    </RadioGroup>
+                    {selectedReferralSource === "Other" && (
+                      <div className="mt-2">
+                        <Input
+                          name="referralSourceOther"
+                          type="text"
+                          placeholder="What was the source?"
+                          spellCheck={false}
+                        />
+                      </div>
+                    )}
+                  </InputGroup>
+
+                  <InputGroup className="mt-1">
+                    <Label id="role-label">What role fits you best?</Label>
+                    <input type="hidden" name="role" value={selectedRole} />
+                    <Select<string, string>
+                      value={selectedRole}
+                      setValue={setSelectedRole}
+                      placeholder="Select an option"
+                      aria-labelledby="role-label"
+                      variant="secondary/small"
+                      dropdownIcon
+                      icon={<UserGroupIcon className="mr-1 size-4.5 text-text-dimmed" />}
+                      items={shuffledRoles}
+                      className="h-8 min-w-0 border-0 bg-charcoal-750 pl-2 text-sm text-text-dimmed ring-charcoal-600 transition hover:bg-charcoal-650 hover:text-text-dimmed hover:ring-1"
+                      text={(v) => (v ? <span className="text-text-bright">{v}</span> : undefined)}
+                    >
+                      {(items) =>
+                        items.map((item) => (
+                          <SelectItem key={item} value={item}>
+                            <span className="text-text-bright">{item}</span>
+                          </SelectItem>
+                        ))
+                      }
+                    </Select>
+                    {selectedRole === "Other" && (
+                      <div>
+                        <Input
+                          name="roleOther"
+                          type="text"
+                          placeholder="What's your role?"
+                          spellCheck={false}
+                        />
+                      </div>
+                    )}
+                  </InputGroup>
+                </>
               )}
 
               <FormButtons
