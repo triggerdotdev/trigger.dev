@@ -999,6 +999,45 @@ export const largePayloadTask = task({
   },
 });
 
+// ============================================================================
+// Oversized Payload Graceful Handling
+// ============================================================================
+
+/**
+ * Test: Batch with oversized item should complete gracefully
+ *
+ * Sends 2 items: one normal, one oversized (~3.2MB).
+ * The oversized item should result in a pre-failed run (ok: false)
+ * while the normal item processes successfully (ok: true).
+ */
+export const batchSealFailureOversizedPayload = task({
+  id: "batch-seal-failure-oversized",
+  maxDuration: 60,
+  retry: {
+    maxAttempts: 1,
+  },
+  run: async () => {
+    const results = await fixedLengthTask.batchTriggerAndWait([
+      { payload: { waitSeconds: 1, output: "normal" } },
+      { payload: { waitSeconds: 1, output: "x".repeat(3_200_000) } }, // ~3.2MB oversized
+    ]);
+
+    const normal = results.runs[0];
+    const oversized = results.runs[1];
+
+    logger.info("Batch results", {
+      normalOk: normal?.ok,
+      oversizedOk: oversized?.ok,
+    });
+
+    return {
+      normalOk: normal?.ok === true,
+      oversizedOk: oversized?.ok === false,
+      oversizedError: !oversized?.ok ? oversized?.error : undefined,
+    };
+  },
+});
+
 type Payload = {
   waitSeconds: number;
   error?: string;

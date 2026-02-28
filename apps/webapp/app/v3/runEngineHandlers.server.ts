@@ -669,6 +669,46 @@ export function setupBatchQueueCallbacks() {
           engine,
         });
 
+        // Check for pre-marked error items (e.g. oversized payloads)
+        const itemError = item.options?.__error as string | undefined;
+        if (itemError) {
+          const errorCode = (item.options?.__errorCode as string) ?? "ITEM_ERROR";
+
+          let environment: AuthenticatedEnvironment | undefined;
+          try {
+            environment = (await findEnvironmentById(meta.environmentId)) ?? undefined;
+          } catch {
+            // Best-effort environment lookup
+          }
+
+          if (environment) {
+            const failedRunId = await triggerFailedTaskService.call({
+              taskId: item.task,
+              environment,
+              payload: item.payload ?? "{}",
+              payloadType: item.payloadType as string,
+              errorMessage: itemError,
+              errorCode: errorCode as TaskRunErrorCodes,
+              parentRunId: meta.parentRunId,
+              resumeParentOnCompletion: meta.resumeParentOnCompletion,
+              batch: { id: batchId, index: itemIndex },
+              traceContext: meta.traceContext as Record<string, unknown> | undefined,
+              spanParentAsLink: meta.spanParentAsLink,
+            });
+
+            if (failedRunId) {
+              span.setAttribute("batch.result.pre_failed", true);
+              span.setAttribute("batch.result.run_id", failedRunId);
+              span.end();
+              return { success: true as const, runId: failedRunId };
+            }
+          }
+
+          // Fallback if TriggerFailedTaskService or environment lookup fails
+          span.end();
+          return { success: false as const, error: itemError, errorCode };
+        }
+
         let environment: AuthenticatedEnvironment | undefined;
         try {
           environment = (await findEnvironmentById(meta.environmentId)) ?? undefined;

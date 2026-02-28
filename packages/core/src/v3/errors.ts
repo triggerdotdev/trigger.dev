@@ -308,6 +308,7 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_HAS_N0_EXECUTION_SNAPSHOT":
         case "TASK_RUN_DEQUEUED_MAX_RETRIES":
         case "BATCH_ITEM_COULD_NOT_TRIGGER":
+        case "PAYLOAD_TOO_LARGE":
         case "UNSPECIFIED_ERROR":
           return false;
 

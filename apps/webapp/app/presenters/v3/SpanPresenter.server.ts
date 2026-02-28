@@ -509,8 +509,7 @@ export class SpanPresenter extends BasePresenter {
         taskIdentifier: true,
         spanId: true,
         createdAt: true,
-        number: true,
-        taskVersion: true,
+        status: true,
       },
       where: {
         parentSpanId: spanId,
