@@ -1703,3 +1703,53 @@ export const GetEventSchemaResponseBody = z.object({
 });
 
 export type GetEventSchemaResponseBody = z.infer<typeof GetEventSchemaResponseBody>;
+
+export const EventHistoryItem = z.object({
+  eventId: z.string(),
+  eventType: z.string(),
+  payload: z.unknown(),
+  publishedAt: z.string(),
+  publisherRunId: z.string().optional(),
+  idempotencyKey: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  fanOutCount: z.number().int(),
+});
+
+export type EventHistoryItem = z.infer<typeof EventHistoryItem>;
+
+export const GetEventHistoryResponseBody = z.object({
+  data: z.array(EventHistoryItem),
+  pagination: z.object({
+    cursor: z.string().nullable(),
+    hasMore: z.boolean(),
+  }),
+});
+
+export type GetEventHistoryResponseBody = z.infer<typeof GetEventHistoryResponseBody>;
+
+export const ReplayEventsRequestBody = z.object({
+  from: z.coerce.date(),
+  to: z.coerce.date(),
+  filter: z.unknown().optional(),
+  tasks: z.array(z.string()).optional(),
+  dryRun: z.boolean().optional(),
+});
+
+export type ReplayEventsRequestBody = z.infer<typeof ReplayEventsRequestBody>;
+
+export const ReplayEventsResponseBody = z.object({
+  replayedCount: z.number().int(),
+  skippedCount: z.number().int(),
+  dryRun: z.boolean(),
+  runs: z
+    .array(
+      z.object({
+        taskIdentifier: z.string(),
+        runId: z.string(),
+        sourceEventId: z.string(),
+      })
+    )
+    .optional(),
+});
+
+export type ReplayEventsResponseBody = z.infer<typeof ReplayEventsResponseBody>;

@@ -11,9 +11,12 @@ import {
   BatchPublishEventRequestBody,
   BatchPublishEventResponseBody,
   BatchTaskRunExecutionResult,
+  GetEventHistoryResponseBody,
   GetEventResponseBody,
   GetEventSchemaResponseBody,
   ListEventsResponseBody,
+  ReplayEventsRequestBody,
+  ReplayEventsResponseBody,
   PublishEventRequestBody,
   PublishEventResponseBody,
   BatchTriggerTaskV3RequestBody,
@@ -1521,6 +1524,58 @@ export class ApiClient {
       {
         method: "GET",
         headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  getEventHistory(
+    eventId: string,
+    params?: {
+      from?: string;
+      to?: string;
+      limit?: number;
+      cursor?: string;
+      publisherRunId?: string;
+    },
+    requestOptions?: ZodFetchOptions
+  ) {
+    const encodedEventId = encodeURIComponent(eventId);
+    const searchParams = new URLSearchParams();
+    if (params?.from) searchParams.set("from", params.from);
+    if (params?.to) searchParams.set("to", params.to);
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    if (params?.cursor) searchParams.set("cursor", params.cursor);
+    if (params?.publisherRunId) searchParams.set("publisherRunId", params.publisherRunId);
+
+    const qs = searchParams.toString();
+    const url = `${this.baseUrl}/api/v1/events/${encodedEventId}/history${qs ? `?${qs}` : ""}`;
+
+    return zodfetch(
+      GetEventHistoryResponseBody,
+      url,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  replayEvents(
+    eventId: string,
+    body: z.input<typeof ReplayEventsRequestBody>,
+    requestOptions?: ZodFetchOptions
+  ) {
+    const encodedEventId = encodeURIComponent(eventId);
+
+    return zodfetch(
+      ReplayEventsResponseBody,
+      `${this.baseUrl}/api/v1/events/${encodedEventId}/replay`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
