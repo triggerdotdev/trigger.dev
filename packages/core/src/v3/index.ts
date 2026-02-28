@@ -43,6 +43,13 @@ export type { LogLevel } from "./logger/taskLogger.js";
 
 export { eventFilterMatches } from "../eventFilterMatches.js";
 export {
+  compileFilter,
+  evaluateFilter,
+  invalidateFilterCache,
+  clearFilterCache,
+} from "./events/filterEvaluator.js";
+export { compilePattern, matchesPattern, clearPatternCache } from "./events/patternMatcher.js";
+export {
   flattenAttributes,
   primitiveValueOrflattenedAttributes,
   unflattenAttributes,
