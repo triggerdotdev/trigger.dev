@@ -7,15 +7,15 @@ description: Send data into running tasks from your backend code
 The Input Streams API allows you to send data into running Trigger.dev tasks from your backend code. This enables bidirectional communication — while [output streams](/realtime/backend/streams) let you read data from tasks, input streams let you push data into them.
 
 <Note>
-  To learn how to receive input stream data inside your tasks, see our [Input
-  Streams](/tasks/input-streams) documentation.
+  To learn how to receive input stream data inside your tasks, see [Input
+  Streams](/tasks/streams#input-streams) in the Streams doc.
 </Note>
 
 ## Sending data to a running task
 
 ### Using defined input streams (Recommended)
 
-The recommended approach is to use [defined input streams](/tasks/input-streams#defining-input-streams) for full type safety:
+The recommended approach is to use [defined input streams](/tasks/streams#defining-input-streams) for full type safety:
 
 ```ts
 import { cancelSignal, approval } from "./trigger/streams";
@@ -32,7 +32,7 @@ The `.send()` method is fully typed — the data parameter must match the generi
 <Note>
   `.send()` works the same regardless of how the task is listening — whether it uses `.wait()`
   (suspending), `.once()` (non-suspending), or `.on()` (continuous). The sender doesn't need to know
-  how the task is consuming the data. See [Input Streams](/tasks/input-streams) for details on each
+  how the task is consuming the data. See [Input Streams](/tasks/streams#input-streams) for details on each
   receiving method.
 </Note>
 
@@ -152,4 +152,4 @@ try {
 - Maximum payload size per `.send()` call is **1MB**
 - You cannot send data to a completed, failed, or canceled run
 - Data sent before a listener is registered inside the task is **buffered** and delivered when a listener attaches
-- Input streams require [Realtime Streams v2](/tasks/streams#enabling-streams-v2) (enabled by default in SDK 4.1.0+)
+- Input streams require the current streams implementation (v2 is the default in SDK 4.1.0+). See [Streams](/tasks/streams) for details.
