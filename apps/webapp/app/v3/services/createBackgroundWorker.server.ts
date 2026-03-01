@@ -18,6 +18,7 @@ import {
   removeQueueConcurrencyLimits,
   updateEnvConcurrencyLimits,
   updateQueueConcurrencyLimits,
+  updateGlobalQueueConcurrencyLimits,
 } from "../runQueue.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { clampMaxDuration } from "../utils/maxDuration";
@@ -362,6 +363,26 @@ async function syncWorkerEvents(
       });
 
       eventDefinitions.set(event.id, eventDef.id);
+
+      // Create ordering queue for events that have ordering config
+      if (event.ordering) {
+        const orderingQueueName = `evt-order:${event.id}`;
+        const globalLimit = event.ordering.concurrencyLimit ?? environment.maximumConcurrencyLimit;
+
+        await upsertWorkerQueueRecord(
+          orderingQueueName,
+          1, // per-key limit: always 1 for strict ordering
+          orderingQueueName,
+          "SHARED",
+          worker,
+          prisma
+        );
+
+        // Set per-key limit = 1 in Redis
+        await updateQueueConcurrencyLimits(environment, orderingQueueName, 1);
+        // Set global limit in Redis (total concurrent across all keys)
+        await updateGlobalQueueConcurrencyLimits(environment, orderingQueueName, globalLimit);
+      }
     }
   }
 

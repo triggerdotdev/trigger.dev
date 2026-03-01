@@ -303,6 +303,11 @@ export class PublishEventService extends BaseService {
                 : undefined,
               metadata: eventMetadata,
               delay: options.delay,
+              // When ordering key is present, route to dedicated ordering queue
+              // with concurrencyLimit:1 per key + global limit
+              queue: options.orderingKey
+                ? { name: `evt-order:${eventSlug}` }
+                : undefined,
               concurrencyKey: options.orderingKey
                 ? `evt:${eventSlug}:${options.orderingKey}`
                 : undefined,

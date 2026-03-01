@@ -32,6 +32,15 @@ export async function updateQueueConcurrencyLimits(
   ]);
 }
 
+/** Updates the global concurrency limit for a queue (across all concurrency keys) */
+export async function updateGlobalQueueConcurrencyLimits(
+  environment: AuthenticatedEnvironment,
+  queueName: string,
+  concurrency: number
+) {
+  await engine.runQueue.updateGlobalQueueConcurrencyLimits(environment, queueName, concurrency);
+}
+
 /** Removes MARQS and the RunQueue limits for a queue */
 export async function removeQueueConcurrencyLimits(
   environment: AuthenticatedEnvironment,

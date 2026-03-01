@@ -17,6 +17,8 @@ const constants = {
   DEAD_LETTER_QUEUE_PART: "deadLetter",
   MASTER_QUEUE_PART: "masterQueue",
   WORKER_QUEUE_PART: "workerQueue",
+  GLOBAL_CONCURRENCY_LIMIT_PART: "globalConcurrency",
+  GLOBAL_CURRENT_CONCURRENCY_PART: "globalCurrentConcurrency",
 } as const;
 
 export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
@@ -136,6 +138,20 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
   queueConcurrencyLimitKeyFromQueue(queue: string) {
     const concurrencyQueueName = queue.replace(/:ck:.+$/, "");
     return `${concurrencyQueueName}:${constants.CONCURRENCY_LIMIT_PART}`;
+  }
+
+  queueGlobalConcurrencyLimitKeyFromQueue(queue: string) {
+    const globalQueueName = queue.replace(/:ck:.+$/, "");
+    return `${globalQueueName}:${constants.GLOBAL_CONCURRENCY_LIMIT_PART}`;
+  }
+
+  queueGlobalCurrentConcurrencyKeyFromQueue(queue: string) {
+    const globalQueueName = queue.replace(/:ck:.+$/, "");
+    return `${globalQueueName}:${constants.GLOBAL_CURRENT_CONCURRENCY_PART}`;
+  }
+
+  queueGlobalConcurrencyLimitKey(env: RunQueueKeyProducerEnvironment, queue: string) {
+    return [this.queueKey(env, queue), constants.GLOBAL_CONCURRENCY_LIMIT_PART].join(":");
   }
 
   queueCurrentConcurrencyKeyFromQueue(queue: string) {

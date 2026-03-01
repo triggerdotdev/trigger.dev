@@ -9,6 +9,8 @@ export interface EventMetadata {
   rawSchema?: unknown;
   /** Rate limit configuration */
   rateLimit?: { limit: number; window: string };
+  /** Ordering configuration — enables per-key serialization with global concurrency limit */
+  ordering?: { concurrencyLimit?: number };
 }
 
 export interface ResourceCatalog {

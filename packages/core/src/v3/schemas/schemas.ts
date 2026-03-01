@@ -183,6 +183,13 @@ export const EventRateLimitManifest = z.object({
 
 export type EventRateLimitManifest = z.infer<typeof EventRateLimitManifest>;
 
+export const EventOrderingManifest = z.object({
+  /** Maximum number of ordering keys processed in parallel */
+  concurrencyLimit: z.number().int().positive().optional(),
+});
+
+export type EventOrderingManifest = z.infer<typeof EventOrderingManifest>;
+
 export const EventManifest = z.object({
   /** Unique event identifier (e.g. "order.created") */
   id: z.string(),
@@ -194,6 +201,8 @@ export const EventManifest = z.object({
   schema: z.unknown().optional(),
   /** Rate limit configuration */
   rateLimit: EventRateLimitManifest.optional(),
+  /** Ordering configuration — creates a dedicated queue with per-key serialization */
+  ordering: EventOrderingManifest.optional(),
 });
 
 export type EventManifest = z.infer<typeof EventManifest>;

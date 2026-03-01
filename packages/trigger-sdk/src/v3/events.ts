@@ -38,6 +38,25 @@ export interface EventOptions<TId extends string, TSchema extends Schema | undef
   version?: string;
   /** Rate limit for publishing this event */
   rateLimit?: EventRateLimit;
+  /**
+   * Ordering configuration. When set, events published with an `orderingKey`
+   * are guaranteed to be processed one at a time per key.
+   *
+   * @example
+   * ```ts
+   * event({
+   *   id: "order.created",
+   *   ordering: { concurrencyLimit: 5 }, // max 5 keys processed in parallel
+   * });
+   * ```
+   */
+  ordering?: EventOrdering;
+}
+
+/** Ordering configuration for an event */
+export interface EventOrdering {
+  /** Maximum number of ordering keys processed in parallel (default: environment limit) */
+  concurrencyLimit?: number;
 }
 
 /** Options for publishing an event */
@@ -170,7 +189,7 @@ export function createEvent<TId extends string>(
 export function createEvent<TId extends string, TSchema extends Schema | undefined = undefined>(
   options: EventOptions<TId, TSchema>
 ): EventDefinition<TId, any> {
-  const { id, schema, description, version = "1.0", rateLimit } = options;
+  const { id, schema, description, version = "1.0", rateLimit, ordering } = options;
 
   // Build the parse function if a schema is provided
   let parseFn: SchemaParseFn<any> | undefined;
@@ -300,6 +319,7 @@ export function createEvent<TId extends string, TSchema extends Schema | undefin
     description,
     rawSchema: schema,
     rateLimit,
+    ordering,
   });
 
   // Mark as event for runtime detection
