@@ -56,6 +56,33 @@ import { z } from "zod";
 import { logger } from "./utilities/logger.js";
 import { VERSION } from "./version.js";
 
+const CliPlatformNotificationResponseSchema = z.object({
+  notification: z
+    .object({
+      id: z.string(),
+      payload: z.object({
+        version: z.string(),
+        data: z.object({
+          type: z.enum(["info", "warn", "error", "success"]),
+          title: z.string(),
+          description: z.string(),
+          actionLabel: z.string().optional(),
+          actionUrl: z.string().optional(),
+          discovery: z
+            .object({
+              filePatterns: z.array(z.string()),
+              contentPattern: z.string().optional(),
+              matchBehavior: z.enum(["show-if-found", "show-if-not-found"]),
+            })
+            .optional(),
+        }),
+      }),
+      showCount: z.number(),
+      firstSeenAt: z.string(),
+    })
+    .nullable(),
+});
+
 export class CliApiClient {
   private engineURL: string;
 
@@ -533,6 +560,25 @@ export class CliApiClient {
         headers: this.getHeaders(),
       }
     );
+  }
+
+  async getCliPlatformNotification(projectRef?: string, signal?: AbortSignal) {
+    if (!this.accessToken) {
+      return { success: true as const, data: { notification: null } };
+    }
+
+    const url = new URL("/api/v1/platform-notifications", this.apiURL);
+    if (projectRef) {
+      url.searchParams.set("projectRef", projectRef);
+    }
+
+    return wrapZodFetch(CliPlatformNotificationResponseSchema, url.href, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      signal,
+    });
   }
 
   async triggerTaskRun(taskId: string, body?: TriggerTaskRequestBody) {

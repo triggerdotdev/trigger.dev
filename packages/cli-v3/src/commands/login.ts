@@ -20,6 +20,10 @@ import {
   writeAuthConfigCurrentProfileName,
 } from "../utilities/configFiles.js";
 import { printInitialBanner } from "../utilities/initialBanner.js";
+import {
+  awaitAndDisplayPlatformNotification,
+  fetchPlatformNotification,
+} from "../utilities/platformNotifications.js";
 import { LoginResult } from "../utilities/session.js";
 import { whoAmI } from "./whoami.js";
 import { logger } from "../utilities/logger.js";
@@ -285,6 +289,11 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
           options?.profile
         );
 
+        // Fetch platform notification in parallel with whoAmI
+        const notificationPromise = fetchPlatformNotification({
+          apiClient: new CliApiClient(authConfig?.apiUrl ?? opts.defaultApiUrl, indexResult.token),
+        });
+
         const whoAmIResult = await whoAmI(
           {
             profile: options?.profile ?? "default",
@@ -308,6 +317,8 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         } else {
           outro("Logged in successfully");
         }
+
+        await awaitAndDisplayPlatformNotification(notificationPromise);
 
         span.end();
 

@@ -1,6 +1,7 @@
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { Command, Option as CommandOption } from "commander";
 import { z } from "zod";
+import { CliApiClient } from "../apiClient.js";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import { watchConfig } from "../config.js";
 import { DevSessionInstance, startDevSession } from "../dev/devSession.js";
@@ -9,6 +10,10 @@ import { chalkError } from "../utilities/cliOutput.js";
 import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import { printDevBanner, printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
+import {
+  awaitAndDisplayPlatformNotification,
+  fetchPlatformNotification,
+} from "../utilities/platformNotifications.js";
 import { runtimeChecks } from "../utilities/runtimeCheck.js";
 import { getProjectClient, LoginResultOk } from "../utilities/session.js";
 import { login } from "./login.js";
@@ -28,6 +33,7 @@ const DevCommandOptions = CommonCommandOptions.extend({
   config: z.string().optional(),
   projectRef: z.string().optional(),
   skipUpdateCheck: z.boolean().default(false),
+  skipPlatformNotifications: z.boolean().default(false),
   envFile: z.string().optional(),
   keepTmpFiles: z.boolean().default(false),
   maxConcurrentRuns: z.coerce.number().optional(),
@@ -97,6 +103,12 @@ export function configureDevCommand(program: Command) {
         ).hideHelp()
       )
       .addOption(new CommandOption("--disable-warnings", "Suppress warnings output").hideHelp())
+      .addOption(
+        new CommandOption(
+          "--skip-platform-notifications",
+          "Skip showing platform notifications"
+        ).hideHelp()
+      )
   ).action(async (options) => {
     wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
       await devCommand(opts);
@@ -205,7 +217,16 @@ async function startDev(options: StartDevOptions) {
       logger.loggerLevel = options.logLevel;
     }
 
+    const notificationPromise = options.skipPlatformNotifications
+      ? undefined
+      : fetchPlatformNotification({
+          apiClient: new CliApiClient(options.login.auth.apiUrl, options.login.auth.accessToken),
+          projectRef: options.projectRef,
+        });
+
     await printStandloneInitialBanner(true, options.profile);
+
+    await awaitAndDisplayPlatformNotification(notificationPromise);
 
     let displayedUpdateMessage = false;
 
