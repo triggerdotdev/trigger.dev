@@ -224,6 +224,7 @@ export class StandardInputStreamManager implements InputStreamManager {
 
   async #runTail(runId: string, streamId: string, signal: AbortSignal): Promise<void> {
     try {
+      const lastSeq = this.seqNums.get(streamId);
       const stream = await this.apiClient.fetchStream<unknown>(
         runId,
         `input/${streamId}`,
@@ -232,6 +233,8 @@ export class StandardInputStreamManager implements InputStreamManager {
           baseUrl: this.baseUrl,
           // Max allowed by the SSE endpoint is 600s; the tail will reconnect on close
           timeoutInSeconds: 600,
+          // Resume from last seen sequence number to avoid replaying history on reconnect
+          lastEventId: lastSeq !== undefined ? String(lastSeq) : undefined,
           onPart: (part) => {
             const seqNum = parseInt(part.id, 10);
             if (Number.isFinite(seqNum)) {
