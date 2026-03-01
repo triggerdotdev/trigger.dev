@@ -180,6 +180,44 @@ for (const result of results) {
 | large-1x    | 4    | 8GB    |
 | large-2x    | 8    | 16GB   |
 
+## Events (Pub/Sub)
+
+Define typed events, subscribe tasks, publish with automatic fan-out:
+
+```ts
+import { event, task } from "@trigger.dev/sdk";
+import { z } from "zod";
+
+// Define event with typed schema
+export const orderCreated = event({
+  id: "order.created",
+  schema: z.object({
+    orderId: z.string(),
+    amount: z.number(),
+    customerId: z.string(),
+  }),
+});
+
+// Subscribe task — payload typed from schema
+export const sendEmail = task({
+  id: "send-order-email",
+  on: orderCreated,
+  run: async (payload) => {
+    await sendEmail(payload.customerId, `Order ${payload.orderId}`);
+  },
+});
+
+// Publish event — triggers all subscribers
+await orderCreated.publish({ orderId: "123", amount: 500, customerId: "abc" });
+
+// Publish and wait for all subscribers to finish
+const result = await orderCreated.publishAndWait(payload); // inside task.run() only
+```
+
+**Features:** content-based filters (`filter: { amount: [{ $gte: 1000 }] }`), wildcard patterns (`events.match("order.*")`), ordering keys, consumer groups, batch publish, rate limiting, DLQ, replay.
+
+See `events.md` for full documentation.
+
 ## Design Principles
 
 1. **Break complex workflows into subtasks** that can be independently retried and made idempotent
@@ -198,3 +236,4 @@ For detailed documentation on specific topics, read these files:
 - `scheduled-tasks.md` - Cron schedules, declarative and imperative
 - `realtime.md` - Real-time subscriptions, streams, React hooks
 - `config.md` - trigger.config.ts, build extensions (Prisma, Playwright, FFmpeg, etc.)
+- `events.md` - Pub/sub events, fan-out, filters, patterns, ordering, consumer groups, DLQ
