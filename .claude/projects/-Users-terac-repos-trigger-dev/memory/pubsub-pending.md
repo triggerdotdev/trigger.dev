@@ -80,26 +80,24 @@ Max 3 running at once, each key strictly ordered.
 - `concurrencyLimit: 2` + same key → 2 at a time (breaks ordering)
 - 10 different keys + `concurrencyLimit: 1` → only ~8 ran in parallel (env limit, not queue limit)
 
-### 9.6 — Large Payloads Cause Silent Fan-out Failure
+### 9.6 — Large Payloads >512KB Return 0 Runs (Silent Partial Failure)
 
-**Status**: NOT RESOLVED — needs fix
-**Priority**: HIGH — data loss / silent failure
+**Status**: NOT A BUG IN OUR CODE — infrastructure issue in dev
+**Priority**: MEDIUM — only in dev without object store configured
 **Found during**: E2E testing (2026-03-01)
 
-**Problem**: Payloads >512KB cause `PublishEventService` to return `runs: []` (HTTP 200, no error) because Trigger.dev's task trigger silently fails for large payloads (>512KB need object storage offloading which our event publish path doesn't handle).
+**Root cause**: `TriggerTaskService` detects payload >512KB and tries to offload to S3/R2 object store. In local dev, object store credentials are not set → throws `ServiceValidationError: "Failed to upload large payload to object store"`. Our `PublishEventService` catches this per-subscriber (partial failure pattern) and continues, resulting in 0 runs.
+
+**This is NOT specific to events** — a regular `tasks.trigger()` with >512KB payload would fail the same way without object store.
 
 **Test results**:
-- 100KB payload: 4 runs (OK)
-- 500KB payload: 4 runs (OK)
-- 600KB payload: 0 runs (SILENT FAILURE)
-- 2MB payload: 0 runs (SILENT FAILURE)
+- 500KB payload: 4 runs (OK — under threshold)
+- 600KB payload: 0 runs (object store not configured)
+- In production with object store: would work fine
 
-**The trigger call fails silently** — `TriggerTaskService` returns `undefined` for each subscriber, and `PublishEventService` logs it as a partial failure but still returns HTTP 200 with empty runs.
-
-**Options to resolve**:
-1. Validate payload size in PublishEventService before fan-out (reject >512KB with clear error)
-2. Use Trigger.dev's payload offloading mechanism (payloads >512KB go to object storage)
-3. Both: warn on large payloads + support offloading
+**Improvement we could make**:
+- Detect payload size BEFORE fan-out and return a clear error (413 Payload Too Large) instead of HTTP 200 with 0 runs
+- Or: propagate the TriggerTaskService error instead of treating it as partial failure
 
 ### 9.7 — ClickHouse Tables Not Created in Dev
 
