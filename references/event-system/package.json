@@ -1,0 +1,17 @@
+{
+  "name": "references-event-system",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "trigger dev",
+    "deploy": "trigger deploy"
+  },
+  "devDependencies": {
+    "trigger.dev": "workspace:*"
+  },
+  "dependencies": {
+    "@trigger.dev/build": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "zod": "3.25.76"
+  }
+}
