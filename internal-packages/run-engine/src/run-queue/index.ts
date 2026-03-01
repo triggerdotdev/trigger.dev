@@ -2063,6 +2063,7 @@ export class RunQueue {
       envCurrentDequeuedKey,
       envQueueKey,
       workerQueueKey,
+      this.keys.queueGlobalCurrentConcurrencyKeyFromQueue(message.queue),
       messageId,
       messageQueue,
       messageKeyValue,
@@ -2105,6 +2106,7 @@ export class RunQueue {
       envCurrentConcurrencyKey,
       queueCurrentDequeuedKey,
       envCurrentDequeuedKey,
+      this.keys.queueGlobalCurrentConcurrencyKeyFromQueue(queue),
       messageId
     );
   }
@@ -2151,6 +2153,7 @@ export class RunQueue {
       queueCurrentDequeuedKey,
       envCurrentDequeuedKey,
       envQueueKey,
+      this.keys.queueGlobalCurrentConcurrencyKeyFromQueue(message.queue),
       //args
       messageId,
       messageQueue,
@@ -2184,6 +2187,7 @@ export class RunQueue {
       envCurrentDequeuedKey,
       envQueueKey,
       deadLetterQueueKey,
+      this.keys.queueGlobalCurrentConcurrencyKeyFromQueue(message.queue),
       messageId,
       messageQueue
     );
@@ -2919,7 +2923,7 @@ return message
     });
 
     this.redis.defineCommand("acknowledgeMessage", {
-      numberOfKeys: 9,
+      numberOfKeys: 10,
       lua: `
 -- Keys:
 local masterQueueKey = KEYS[1]
@@ -2931,6 +2935,7 @@ local queueCurrentDequeuedKey = KEYS[6]
 local envCurrentDequeuedKey = KEYS[7]
 local envQueueKey = KEYS[8]
 local workerQueueKey = KEYS[9]
+local globalCurrentConcurrencyKey = KEYS[10]
 
 -- Args:
 local messageId = ARGV[1]
@@ -2955,6 +2960,7 @@ end
 
 -- Update the concurrency keys
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', globalCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
@@ -2967,7 +2973,7 @@ end
     });
 
     this.redis.defineCommand("nackMessage", {
-      numberOfKeys: 8,
+      numberOfKeys: 9,
       lua: `
 -- Keys:
 local masterQueueKey = KEYS[1]
@@ -2978,6 +2984,7 @@ local envCurrentConcurrencyKey = KEYS[5]
 local queueCurrentDequeuedKey = KEYS[6]
 local envCurrentDequeuedKey = KEYS[7]
 local envQueueKey = KEYS[8]
+local globalCurrentConcurrencyKey = KEYS[9]
 
 -- Args:
 local messageId = ARGV[1]
@@ -2990,6 +2997,7 @@ redis.call('SET', messageKey, messageData)
 
 -- Update the concurrency keys
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', globalCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
@@ -3009,7 +3017,7 @@ end
     });
 
     this.redis.defineCommand("moveToDeadLetterQueue", {
-      numberOfKeys: 9,
+      numberOfKeys: 10,
       lua: `
 -- Keys:
 local masterQueueKey = KEYS[1]
@@ -3021,6 +3029,7 @@ local queueCurrentDequeuedKey = KEYS[6]
 local envCurrentDequeuedKey = KEYS[7]
 local envQueueKey = KEYS[8]
 local deadLetterQueueKey = KEYS[9]
+local globalCurrentConcurrencyKey = KEYS[10]
 
 -- Args:
 local messageId = ARGV[1]
@@ -3043,6 +3052,7 @@ redis.call('ZADD', deadLetterQueueKey, tonumber(redis.call('TIME')[1]), messageI
 
 -- Update the concurrency keys
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', globalCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
@@ -3151,19 +3161,21 @@ return results
     });
 
     this.redis.defineCommand("clearMessageFromConcurrencySets", {
-      numberOfKeys: 4,
+      numberOfKeys: 5,
       lua: `
 -- Keys:
 local queueCurrentConcurrencyKey = KEYS[1]
 local envCurrentConcurrencyKey = KEYS[2]
 local queueCurrentDequeuedKey = KEYS[3]
 local envCurrentDequeuedKey = KEYS[4]
+local globalCurrentConcurrencyKey = KEYS[5]
 
 -- Args:
 local messageId = ARGV[1]
 
 -- Update the concurrency keys
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', globalCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
@@ -3285,6 +3297,7 @@ declare module "@internal/redis" {
       envCurrentDequeuedKey: string,
       envQueueKey: string,
       workerQueueKey: string,
+      globalCurrentConcurrencyKey: string,
       // args
       messageId: string,
       messageQueueName: string,
@@ -3299,6 +3312,7 @@ declare module "@internal/redis" {
       envCurrentConcurrencyKey: string,
       queueCurrentDequeuedKey: string,
       envCurrentDequeuedKey: string,
+      globalCurrentConcurrencyKey: string,
       // args
       messageId: string,
       callback?: Callback<void>
@@ -3314,6 +3328,7 @@ declare module "@internal/redis" {
       queueCurrentDequeuedKey: string,
       envCurrentDequeuedKey: string,
       envQueueKey: string,
+      globalCurrentConcurrencyKey: string,
       // args
       messageId: string,
       messageQueueName: string,
@@ -3333,6 +3348,7 @@ declare module "@internal/redis" {
       envCurrentDequeuedKey: string,
       envQueueKey: string,
       deadLetterQueueKey: string,
+      globalCurrentConcurrencyKey: string,
       // args
       messageId: string,
       messageQueueName: string,

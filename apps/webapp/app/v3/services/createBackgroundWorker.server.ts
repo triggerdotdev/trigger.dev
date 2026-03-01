@@ -373,7 +373,7 @@ async function syncWorkerEvents(
           orderingQueueName,
           1, // per-key limit: always 1 for strict ordering
           orderingQueueName,
-          "SHARED",
+          "NAMED",
           worker,
           prisma
         );
@@ -424,6 +424,20 @@ async function syncWorkerEvents(
         eventDefId = newDef.id;
         eventDefinitions.set(task.onEvent, eventDefId);
       }
+    }
+
+    // Look up event ordering config for this task's event
+    const eventManifest = metadata.events?.find((e) => e.id === task.onEvent);
+    const eventOrdering = eventManifest?.ordering;
+
+    // If the event has ordering config, set globalConcurrencyLimit on this task's queue
+    if (eventOrdering?.concurrencyLimit) {
+      const taskQueueName = `task/${task.id}`;
+      await updateGlobalQueueConcurrencyLimits(
+        environment,
+        taskQueueName,
+        eventOrdering.concurrencyLimit
+      );
     }
 
     const subscription = await prisma.eventSubscription.upsert({
