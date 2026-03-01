@@ -527,6 +527,23 @@ export function v3LogsPath(
   return `${v3EnvironmentPath(organization, project, environment)}/logs`;
 }
 
+export function v3ErrorsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/errors`;
+}
+
+export function v3ErrorPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  error: { fingerprint: string }
+) {
+  return `${v3ErrorsPath(organization, project, environment)}/${error.fingerprint}`;
+}
+
 export function v3DeploymentsPath(
   organization: OrgForPath,
   project: ProjectForPath,

@@ -73,6 +73,7 @@ import {
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
   v3LogsPath,
+  v3ErrorsPath,
   v3ProjectAlertsPath,
   v3ProjectPath,
   v3ProjectSettingsGeneralPath,
@@ -474,6 +475,15 @@ export function SideMenu({
                     isCollapsed={isCollapsed}
                   />
                 )}
+                <SideMenuItem
+                  name="Errors"
+                  icon={ExclamationTriangleIcon}
+                  activeIconColor="text-rose-500"
+                  inactiveIconColor="text-rose-500"
+                  to={v3ErrorsPath(organization, project, environment)}
+                  data-action="errors"
+                  isCollapsed={isCollapsed}
+                />
                 <SideMenuItem
                   name="Query"
                   icon={TableCellsIcon}
