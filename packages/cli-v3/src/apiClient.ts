@@ -40,6 +40,8 @@ import {
   ApiBranchListResponseBody,
   GenerateRegistryCredentialsResponseBody,
   RemoteBuildProviderStatusResponseBody,
+  ListEventsResponseBody,
+  PublishEventResponseBody,
 } from "@trigger.dev/core/v3";
 import {
   WorkloadDebugLogRequestBody,
@@ -545,6 +547,41 @@ export class CliApiClient {
       headers: this.getHeaders(),
       body: JSON.stringify(body ?? {}),
     });
+  }
+
+  async listEvents(projectRef: string) {
+    if (!this.accessToken) {
+      throw new Error("listEvents: No access token");
+    }
+
+    return wrapZodFetch(ListEventsResponseBody, `${this.apiURL}/api/v1/events`, {
+      method: "GET",
+      headers: {
+        ...this.getHeaders(),
+        "x-trigger-project-ref": projectRef,
+      },
+    });
+  }
+
+  async publishEvent(projectRef: string, eventId: string, payload: unknown) {
+    if (!this.accessToken) {
+      throw new Error("publishEvent: No access token");
+    }
+
+    const encodedEventId = encodeURIComponent(eventId);
+
+    return wrapZodFetch(
+      PublishEventResponseBody,
+      `${this.apiURL}/api/v1/events/${encodedEventId}/publish`,
+      {
+        method: "POST",
+        headers: {
+          ...this.getHeaders(),
+          "x-trigger-project-ref": projectRef,
+        },
+        body: JSON.stringify({ payload }),
+      }
+    );
   }
 
   get dev() {
