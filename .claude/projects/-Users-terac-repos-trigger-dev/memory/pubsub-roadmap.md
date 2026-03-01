@@ -24,10 +24,10 @@ First-class pub/sub event system within Trigger.dev that enables:
 | 5 | Ordering + Consumer Groups | DONE |
 | 6 | Publish-and-Wait (fan-out/fan-in) | DONE |
 | 7 | Rate Limiting + Backpressure | DONE (publish-side only) |
-| 8 | Observability + Developer Experience | DONE (API only, no UI/CLI/docs) |
-| 9.1 | Redis-backed rate limiter | DONE |
-| 9.2 | Hash-based consumer groups | DONE |
-| 9.3 | Integration tests verified | DONE |
+| 8 | Observability + Developer Experience | PARTIAL (API + types done, no UI/CLI/docs) |
+| 9.1 | Redis-backed rate limiter | DONE (`81c09cda5`) |
+| 9.2 | Hash-based consumer groups | DONE (`81c09cda5`) |
+| 9.3 | Integration tests verified | DONE (24/24 pass) |
 | 9.4 | Dashboard UI, CLI, docs, reference project | NOT STARTED |
 | 9.5 | Consumer-side rate limiting + backpressure | NOT STARTED |
 
@@ -370,16 +370,17 @@ Tasks:
 - [x] `getEventStats()` API client method
 - [x] SDK `validate()` method for pre-flight payload validation
 
-### 8.2 — Trace propagation — NOT DONE (deferred)
+### 8.2 — Trace propagation — PARTIAL
 
-**File to modify**: `apps/webapp/app/v3/services/events/publishEvent.server.ts`
+**File modified**: `apps/webapp/app/v3/services/events/publishEvent.server.ts`
 
 Tasks:
-- [ ] Propagate `traceId` from publisher to all consumer runs
-- [ ] Add span attribute `trigger.event.id` and `trigger.event.type` to each run
-- [ ] Add `sourceEventId` to TaskRun metadata
-- [ ] In run dashboard: show "Triggered by event: order.created"
-- [ ] In event dashboard: show all runs it generated
+- [x] Span attributes on publish: `eventSlug`, `eventDefinitionId`, `subscriberCount`, `matchingSubscriberCount`, `filteredOutCount`, `consumerGroupSkipped`, `rateLimited`, `orderingKey`
+- [x] `$$event` metadata on each triggered run: `{ eventId, eventType, sourceEventId }` — used by DLQ for identification
+- [ ] Propagate `traceId` from publisher to all consumer runs (currently inherits from span context)
+- [ ] Named span attributes `trigger.event.id` and `trigger.event.type` (currently uses `eventSlug`)
+- [ ] In run dashboard: show "Triggered by event: order.created" (UI work)
+- [ ] In event dashboard: show all runs it generated (UI work)
 
 ### 8.3 — Events dashboard (webapp) — NOT DONE (deferred)
 
@@ -410,11 +411,14 @@ Tasks:
 - [ ] `trigger events dlq list` — view dead letter queue
 - [ ] `trigger events dlq retry <dlqId>` — retry DLQ item
 
-### 8.5 — SDK helpers and DX — NOT DONE (deferred)
+### 8.5 — SDK helpers and DX — PARTIAL
 
-**File to modify**: `packages/trigger-sdk/src/v3/events.ts`
+**File modified**: `packages/trigger-sdk/src/v3/events.ts`
 
 Tasks:
+- [x] SDK `validate()` method for pre-flight payload validation
+- [x] Full type inference: consumer payload typed from event schema (`TaskOptionsWithEvent<..., TPayload>` flows from `EventSource<TPayload>`)
+- [x] Descriptive error messages when schema validation fails (422 with field paths from ajv)
 - [ ] Helper for local testing:
   ```typescript
   import { testEvent } from "@trigger.dev/sdk/testing";
@@ -423,8 +427,6 @@ Tasks:
   const result = await testEvent(orderCreated, { orderId: "123", amount: 50 });
   expect(result.runs).toHaveLength(2);
   ```
-- [ ] Full type inference: consumer payload typed from event schema
-- [ ] Descriptive error messages when schema validation fails
 - [ ] Complete JSDoc on all public functions
 
 ### 8.6 — Documentation — NOT DONE (deferred)
