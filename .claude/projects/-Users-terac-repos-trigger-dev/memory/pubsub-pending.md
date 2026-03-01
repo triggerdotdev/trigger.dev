@@ -38,47 +38,21 @@ Items identified during post-implementation audit. Ordered by priority.
 - SDK docs in `rules/` directory
 - Update `.claude/skills/trigger-dev-tasks/SKILL.md`
 
-### 9.5 — Ordering Key Does Not Guarantee Strict Ordering
+### 9.5 — Ordering Key with Per-Key Serialization + Global Concurrency Limit
 
-**Status**: NOT RESOLVED — needs design decision
-**Priority**: HIGH — correctness issue
-**Found during**: E2E testing (2026-03-01)
+**Status**: DONE (commit `ad83f88d3`)
 
-**Problem**: `orderingKey` maps to Trigger.dev's `concurrencyKey`, which creates a **copy of the queue per key**, each with the same `concurrencyLimit`. This means:
+**Solution**: Added `globalConcurrencyLimit` to the run engine (new Redis keys `gcl`/`gcc`). Modified 4 Lua scripts (dequeue, release, enqueue, enqueueWithTtl) to check global limit when set. PublishEventService overrides queue to `evt-order:{eventSlug}` with per-key limit=1 and global limit=N.
 
-- If task has `concurrencyLimit: 1` → ordering works per key, BUT the limit is per-key, not global. All different keys run in parallel with no global cap (only bounded by environment concurrency limit).
-- If task has `concurrencyLimit: 10` → 10 events with the SAME key can run in parallel, breaking ordering.
-- There's no way to express "strict ordering per key + global concurrency limit N" with Trigger.dev's current queue model.
-
-**Expected behavior** (like Kafka/SQS FIFO):
-- `orderingKey` = strict sequential per key (always 1 at a time per key)
-- `concurrencyLimit` = total parallel runs across all keys (separate concept)
-
-```
-concurrencyLimit: 3, ordering keys A/B/C:
-
-Slot 1: A1 → A2 → A3  (key A in order)
-Slot 2: B1 → B2        (key B in order)
-Slot 3: C1 → C2        (key C in order)
-Max 3 running at once, each key strictly ordered.
+SDK usage:
+```typescript
+event({
+  id: "order.created",
+  ordering: { concurrencyLimit: 5 },  // max 5 keys in parallel, strict per-key ordering
+});
 ```
 
-**Trigger.dev's actual behavior with concurrencyKey**:
-- Creates 3 separate queues (A, B, C), EACH with concurrencyLimit 3
-- So 9 runs could execute simultaneously (3 per key × 3 keys)
-- Not true ordering
-
-**Options to resolve**:
-1. Build ordering on top of Trigger.dev's queue system with custom logic in PublishEventService
-2. Contribute ordering support upstream to Trigger.dev's run engine
-3. Document as limitation and recommend `concurrencyLimit: 1` for ordering use cases
-4. Use a separate ordering mechanism (Redis-based FIFO per key) before triggering runs
-
-**Test results that confirmed this**:
-- `concurrencyLimit: 1` + same key → sequential (correct)
-- `concurrencyLimit: 1` + different keys → parallel (capped by env limit ~8, not by concurrencyLimit)
-- `concurrencyLimit: 2` + same key → 2 at a time (breaks ordering)
-- 10 different keys + `concurrencyLimit: 1` → only ~8 ran in parallel (env limit, not queue limit)
+**Needs E2E verification** with live hello-world project to confirm behavior.
 
 ### 9.6 — Large Payloads >512KB Return 0 Runs (Silent Partial Failure)
 
