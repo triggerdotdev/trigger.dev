@@ -1379,7 +1379,7 @@ importers:
         specifier: ^6.10.0
         version: 6.19.0(magicast@0.3.5)
       '@trigger.dev/core':
-        specifier: workspace:4.4.1
+        specifier: workspace:4.4.2
         version: link:../core
       mlly:
         specifier: ^1.7.1
@@ -1455,13 +1455,13 @@ importers:
         specifier: ^0.17.6
         version: 0.17.6
       '@trigger.dev/build':
-        specifier: workspace:4.4.1
+        specifier: workspace:4.4.2
         version: link:../build
       '@trigger.dev/core':
-        specifier: workspace:4.4.1
+        specifier: workspace:4.4.2
         version: link:../core
       '@trigger.dev/schema-to-json':
-        specifier: workspace:4.4.1
+        specifier: workspace:4.4.2
         version: link:../schema-to-json
       ansi-escapes:
         specifier: ^7.0.0
@@ -1829,7 +1829,7 @@ importers:
   packages/python:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:4.4.1
+        specifier: workspace:4.4.2
         version: link:../core
       tinyexec:
         specifier: ^0.3.2
@@ -1839,10 +1839,10 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:4.4.1
+        specifier: workspace:4.4.2
         version: link:../build
       '@trigger.dev/sdk':
-        specifier: workspace:4.4.1
+        specifier: workspace:4.4.2
         version: link:../trigger-sdk
       '@types/node':
         specifier: 20.14.14
@@ -1866,7 +1866,7 @@ importers:
   packages/react-hooks:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^4.4.1
+        specifier: workspace:^4.4.2
         version: link:../core
       react:
         specifier: ^18.0 || ^19.0 || ^19.0.0-rc
@@ -1900,7 +1900,7 @@ importers:
   packages/redis-worker:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:4.4.1
+        specifier: workspace:4.4.2
         version: link:../core
       cron-parser:
         specifier: ^4.9.0
@@ -1949,7 +1949,7 @@ importers:
   packages/rsc:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^4.4.1
+        specifier: workspace:^4.4.2
         version: link:../core
       mlly:
         specifier: ^1.7.1
@@ -1965,7 +1965,7 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:^4.4.1
+        specifier: workspace:^4.4.2
         version: link:../build
       '@types/node':
         specifier: 20.14.14
@@ -2041,7 +2041,7 @@ importers:
         specifier: 1.36.0
         version: 1.36.0
       '@trigger.dev/core':
-        specifier: workspace:4.4.1
+        specifier: workspace:4.4.2
         version: link:../core
       chalk:
         specifier: ^5.2.0
@@ -15473,10 +15473,6 @@ packages:
   lru-cache@10.4.3:
     resolution: {integrity: sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ==}
 
-  lru-cache@11.0.0:
-    resolution: {integrity: sha512-Qv32eSV1RSCfhY3fpPE2GNZ8jgM9X7rdAfemLWqTUxwiyIC4jJ6Sy0fZ8H+oLWevO6i4/bizg7c8d8i6bxrzbA==}
-    engines: {node: 20 || >=22}
-
   lru-cache@11.2.4:
     resolution: {integrity: sha512-B5Y16Jr9LB9dHVkh6ZevG+vAbOsNOYCX+sXvFWFu7B3Iz5mijW3zdbMyhsh8ANd2mSWBYdJgnqi+mL7/LrOPYg==}
     engines: {node: 20 || >=22}
@@ -23130,7 +23126,7 @@ snapshots:
   '@epic-web/test-server@0.1.0(bufferutil@4.0.9)':
     dependencies:
       '@hono/node-server': 1.12.2(hono@4.5.11)
-      '@hono/node-ws': 1.0.4(@hono/node-server@1.12.2(hono@4.11.8))(bufferutil@4.0.9)
+      '@hono/node-ws': 1.0.4(@hono/node-server@1.12.2(hono@4.5.11))(bufferutil@4.0.9)
       '@open-draft/deferred-promise': 2.2.0
       '@types/ws': 8.5.12
       hono: 4.5.11
@@ -23885,7 +23881,7 @@ snapshots:
     dependencies:
       hono: 4.11.8
 
-  '@hono/node-ws@1.0.4(@hono/node-server@1.12.2(hono@4.11.8))(bufferutil@4.0.9)':
+  '@hono/node-ws@1.0.4(@hono/node-server@1.12.2(hono@4.5.11))(bufferutil@4.0.9)':
     dependencies:
       '@hono/node-server': 1.12.2(hono@4.5.11)
       ws: 8.18.3(bufferutil@4.0.9)
@@ -36435,8 +36431,6 @@ snapshots:
 
   lru-cache@10.4.3: {}
 
-  lru-cache@11.0.0: {}
-
   lru-cache@11.2.4: {}
 
   lru-cache@4.1.5:
@@ -38267,7 +38261,7 @@ snapshots:
 
   path-scurry@2.0.0:
     dependencies:
-      lru-cache: 11.0.0
+      lru-cache: 11.2.4
       minipass: 7.1.2
 
   path-to-regexp@0.1.10: {}
