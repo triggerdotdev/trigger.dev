@@ -101,7 +101,7 @@
     "@react-stately/datepicker": "^3.9.1",
     "@react-types/datepicker": "^3.7.1",
     "@remix-run/express": "2.1.0",
-    "@remix-run/node": "2.1.0",
+    "@remix-run/node": "2.17.2",
     "@remix-run/react": "2.1.0",
     "@remix-run/router": "^1.15.3",
     "@remix-run/serve": "2.1.0",
