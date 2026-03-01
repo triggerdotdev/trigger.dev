@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { Ratelimit } from "@upstash/ratelimit";
+import type { Duration, RateLimiterRedisClient } from "~/services/rateLimiter.server";
 import { logger } from "~/services/logger.server";
 
 /**
@@ -116,5 +118,66 @@ export class InMemoryEventRateLimitChecker implements EventRateLimitChecker {
   /** Reset all state (useful for testing) */
   reset() {
     this.windows.clear();
+  }
+}
+
+/**
+ * Convert an event rate limit window string (e.g. "30s", "1m", "2h") to an
+ * Upstash Duration string (e.g. "30 s", "1 m", "2 h").
+ */
+function windowToUpstashDuration(window: string): Duration {
+  const match = window.match(/^(\d+)([smh])$/);
+  if (!match) throw new Error(`Invalid window format: ${window}`);
+
+  const value = match[1]!;
+  const unit = match[2]!;
+
+  const unitMap: Record<string, string> = { s: "s", m: "m", h: "h" };
+  return `${value} ${unitMap[unit]}` as Duration;
+}
+
+/**
+ * Redis-backed sliding window rate limiter using @upstash/ratelimit.
+ * Survives process restarts and works across multiple instances.
+ */
+export class RedisEventRateLimitChecker implements EventRateLimitChecker {
+  private limiters = new Map<string, Ratelimit>();
+
+  constructor(private readonly redisClient: RateLimiterRedisClient) {}
+
+  async check(key: string, config: EventRateLimitConfig): Promise<EventRateLimitResult> {
+    // Get or create a limiter for this specific config (keyed by limit+window)
+    const configKey = `${config.limit}:${config.window}`;
+    let limiter = this.limiters.get(configKey);
+
+    if (!limiter) {
+      limiter = new Ratelimit({
+        redis: this.redisClient,
+        limiter: Ratelimit.slidingWindow(config.limit, windowToUpstashDuration(config.window)),
+        ephemeralCache: new Map(),
+        analytics: false,
+        prefix: "ratelimit:event-publish",
+      });
+      this.limiters.set(configKey, limiter);
+    }
+
+    const result = await limiter.limit(key);
+
+    if (result.success) {
+      return {
+        allowed: true,
+        limit: result.limit,
+        remaining: result.remaining,
+      };
+    }
+
+    const retryAfter = result.reset - Date.now();
+
+    return {
+      allowed: false,
+      limit: result.limit,
+      remaining: 0,
+      retryAfter: Math.max(0, retryAfter),
+    };
   }
 }

@@ -1,4 +1,14 @@
 import { TriggerTaskRequestBody, eventFilterMatches, matchesPattern } from "@trigger.dev/core/v3";
+
+/** FNV-1a hash — fast, well-distributed hash for short strings */
+function fnv1aHash(str: string): number {
+  let hash = 0x811c9dc5; // FNV offset basis (32-bit)
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = (hash * 0x01000193) >>> 0; // FNV prime, keep as uint32
+  }
+  return hash;
+}
 import type { EventFilter } from "@trigger.dev/core/v3";
 import { PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -245,8 +255,11 @@ export class PublishEventService extends BaseService {
         };
       }
 
-      // 5. Apply consumer group selection — within a group, only one task receives each event
-      const subscriptionsToTrigger = this.applyConsumerGroups(matchingSubscriptions);
+      // 5. Generate event ID early so it can be used for deterministic consumer group selection
+      const eventId = generateFriendlyId("evt");
+
+      // 6. Apply consumer group selection — within a group, only one task receives each event
+      const subscriptionsToTrigger = this.applyConsumerGroups(matchingSubscriptions, eventId);
 
       if (subscriptionsToTrigger.length < matchingSubscriptions.length) {
         span.setAttribute(
@@ -255,8 +268,7 @@ export class PublishEventService extends BaseService {
         );
       }
 
-      // 6. Fan out: trigger each matching subscribed task
-      const eventId = generateFriendlyId("evt");
+      // 7. Fan out: trigger each matching subscribed task
       const runs: PublishEventResult["runs"] = [];
 
       for (const subscription of subscriptionsToTrigger) {
@@ -332,7 +344,7 @@ export class PublishEventService extends BaseService {
         }
       }
 
-      // 7. Persist to event log (async, non-blocking)
+      // 8. Persist to event log (async, non-blocking)
       if (this._eventLogWriter) {
         try {
           this._eventLogWriter({
@@ -368,10 +380,14 @@ export class PublishEventService extends BaseService {
   /**
    * Apply consumer group logic: within a consumer group, only one subscription receives each event.
    * Subscriptions without a consumer group are always included (normal fan-out).
-   * Selection is round-robin based on subscription count modulo (deterministic per group per call).
+   *
+   * Selection uses FNV-1a hash of the eventId for deterministic, evenly distributed routing.
+   * The same eventId always picks the same member, ensuring consistency for retries/replays.
+   * Different eventIds distribute evenly across group members.
    */
   private applyConsumerGroups(
-    subscriptions: Array<{ id: string; consumerGroup: string | null; taskSlug: string }>
+    subscriptions: Array<{ id: string; consumerGroup: string | null; taskSlug: string }>,
+    eventId?: string
   ): typeof subscriptions {
     const ungrouped: typeof subscriptions = [];
     const groups = new Map<string, typeof subscriptions>();
@@ -389,14 +405,13 @@ export class PublishEventService extends BaseService {
       }
     }
 
-    // For each consumer group, pick one member using a simple hash-based selection
     const selected: typeof subscriptions = [...ungrouped];
-    for (const [, members] of groups) {
-      // Sort by taskSlug for deterministic ordering, then pick using a rotating index
-      // The selection rotates based on the current timestamp (second-level granularity)
-      // so load is distributed over time
+    for (const [groupName, members] of groups) {
+      // Sort by taskSlug for deterministic ordering
       const sorted = members.sort((a, b) => a.taskSlug.localeCompare(b.taskSlug));
-      const index = Math.floor(Date.now() / 1000) % sorted.length;
+      // Hash the eventId + group name for deterministic, distributed selection
+      const hashInput = eventId ? `${eventId}:${groupName}` : `${Date.now()}:${groupName}`;
+      const index = fnv1aHash(hashInput) % sorted.length;
       selected.push(sorted[index]!);
     }
 
