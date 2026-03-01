@@ -24,11 +24,11 @@ First-class pub/sub event system within Trigger.dev that enables:
 | 5 | Ordering + Consumer Groups | DONE |
 | 6 | Publish-and-Wait (fan-out/fan-in) | DONE |
 | 7 | Rate Limiting + Backpressure | DONE (publish-side only) |
-| 8 | Observability + Developer Experience | PARTIAL (API + types done, no UI/CLI/docs) |
+| 8 | Observability + Developer Experience | PARTIAL (API, types, docs, CLI, ref project done; no dashboard UI) |
 | 9.1 | Redis-backed rate limiter | DONE (`81c09cda5`) |
 | 9.2 | Hash-based consumer groups | DONE (`81c09cda5`) |
 | 9.3 | Integration tests verified | DONE (24/24 pass) |
-| 9.4 | Dashboard UI, CLI, docs, reference project | NOT STARTED |
+| 9.4 | Dashboard UI, CLI, docs, reference project | PARTIAL (CLI + docs + ref done, dashboard UI pending) |
 | 9.5 | Consumer-side rate limiting + backpressure | NOT STARTED |
 
 See [pubsub-pending.md](pubsub-pending.md) for details on remaining items.
@@ -399,13 +399,13 @@ Tasks:
   - Actions: retry, discard, retry all
 - [ ] Corresponding presenters in `apps/webapp/app/v3/presenters/`
 
-### 8.4 — CLI commands — NOT DONE (deferred)
+### 8.4 — CLI commands — PARTIAL
 
-**File to modify**: `packages/cli-v3/src/commands/`
+**Files created**: `packages/cli-v3/src/commands/events/`
 
 Tasks:
-- [ ] `trigger events list` — list project events
-- [ ] `trigger events publish <eventId> --payload '{...}'` — publish from CLI
+- [x] `trigger events list` — list project events
+- [x] `trigger events publish <eventId> --payload '{...}'` — publish from CLI
 - [ ] `trigger events history <eventId> --from --to` — view history
 - [ ] `trigger events replay <eventId> --from --to` — replay
 - [ ] `trigger events dlq list` — view dead letter queue
@@ -429,31 +429,29 @@ Tasks:
   ```
 - [ ] Complete JSDoc on all public functions
 
-### 8.6 — Documentation — NOT DONE (deferred)
+### 8.6 — Documentation — DONE
 
-**New files in**: `rules/` (next version)
-
-Tasks:
-- [ ] Event system documentation for SDK rules:
-  - `events-basic.md` — define events, publish, subscribe
-  - `events-advanced.md` — filters, wildcards, ordering, consumer groups
-  - `events-reliability.md` — DLQ, replay, idempotency
-  - `events-patterns.md` — common patterns (saga, CQRS, event sourcing)
-- [ ] Update `.claude/skills/trigger-dev-tasks/SKILL.md` with event examples
-- [ ] Update `manifest.json` with new version
-
-### 8.7 — Reference project — NOT DONE (deferred)
-
-**New directory**: `references/event-system/`
+**Files created**: `rules/4.4.0/events.md`
 
 Tasks:
-- [ ] Reference project demonstrating:
-  - Definition of multiple events
-  - Tasks subscribed with filters
-  - Publish from a task
-  - Publish-and-wait pattern
-  - DLQ handler
-- [ ] Use as manual testing project (similar to hello-world)
+- [x] Event system documentation: `rules/4.4.0/events.md` — single comprehensive file covering all features (define, publish, subscribe, filters, patterns, ordering, consumer groups, DLQ, replay)
+- [x] Update `.claude/skills/trigger-dev-tasks/SKILL.md` with events section and reference
+- [x] Update `manifest.json` with new version 4.4.0
+
+### 8.7 — Reference project — DONE
+
+**Directory created**: `references/event-system/`
+
+Tasks:
+- [x] Reference project demonstrating:
+  - Definition of multiple events with schemas and rate limits
+  - Basic fan-out (multiple subscribers)
+  - Content-based filtering
+  - Wildcard pattern subscriptions
+  - Publish-and-wait (scatter-gather)
+  - Consumer groups (load balancing)
+  - Ordering keys (sequential per entity)
+- [x] Use as manual testing project (similar to hello-world)
 
 ---
 
