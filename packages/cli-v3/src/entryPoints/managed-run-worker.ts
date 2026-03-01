@@ -63,17 +63,13 @@ import {
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
 import { setInterval, setTimeout } from "node:timers/promises";
-import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
+import { installSourceMapSupport } from "../utilities/installSourceMapSupport.js";
 import { VERSION } from "../version.js";
 import { promiseWithResolvers } from "@trigger.dev/core/utils";
 
-sourceMapSupport.install({
-  handleUncaughtExceptions: false,
-  environment: "node",
-  hookRequire: false,
-});
+installSourceMapSupport();
 
 process.on("uncaughtException", function (error, origin) {
   console.error("Uncaught exception", { error, origin });
