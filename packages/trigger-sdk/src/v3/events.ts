@@ -119,17 +119,49 @@ export type EventDefinitionId<T extends AnyEventDefinition> =
 
 // ---- Implementation ----
 
-// Overload: with schema — payload type is inferred from schema
+/**
+ * Define a typed event that can be published and subscribed to.
+ *
+ * When a schema is provided, the payload type is inferred from it and
+ * validated at both publish time (SDK-side) and server-side (JSON Schema).
+ *
+ * @example
+ * ```ts
+ * import { event } from "@trigger.dev/sdk";
+ * import { z } from "zod";
+ *
+ * // With schema — payload is typed as { orderId: string, amount: number }
+ * export const orderCreated = event({
+ *   id: "order.created",
+ *   schema: z.object({ orderId: z.string(), amount: z.number() }),
+ * });
+ *
+ * // Without schema — payload is `unknown`
+ * export const systemAlert = event({ id: "system.alert" });
+ *
+ * // Publish
+ * await orderCreated.publish({ orderId: "123", amount: 500 });
+ *
+ * // Subscribe
+ * export const handler = task({
+ *   id: "handle-order",
+ *   on: orderCreated,
+ *   run: async (payload) => { // payload is typed
+ *     console.log(payload.orderId);
+ *   },
+ * });
+ * ```
+ */
 export function createEvent<TId extends string, TSchema extends Schema>(
   options: EventOptions<TId, TSchema> & { schema: TSchema }
 ): EventDefinition<TId, inferSchemaIn<TSchema>>;
 
-// Overload: without schema — payload type is unknown
+/** @see {@link createEvent} */
 export function createEvent<TId extends string>(
   options: EventOptions<TId, undefined>
 ): EventDefinition<TId, unknown>;
 
-// Overload: without schema (no schema field at all)
+/** @see {@link createEvent} */
 export function createEvent<TId extends string>(
   options: Omit<EventOptions<TId>, "schema">
 ): EventDefinition<TId, unknown>;
@@ -277,7 +309,12 @@ export function createEvent<TId extends string, TSchema extends Schema | undefin
   return eventDef;
 }
 
-/** The public `event()` function for defining events */
+/**
+ * Define a typed event that can be published and subscribed to.
+ * Alias for {@link createEvent}.
+ *
+ * @see {@link createEvent} for full documentation and examples.
+ */
 export const event = createEvent;
 
 /** Check if a value is an EventDefinition */
