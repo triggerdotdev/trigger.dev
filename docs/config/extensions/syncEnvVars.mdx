@@ -220,3 +220,72 @@ The extension syncs the following environment variables (with optional prefix):
 - `POSTGRES_PRISMA_URL` - Connection string optimized for Prisma
 - `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DATABASE`
 - `PGHOST`, `PGHOST_UNPOOLED`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`
+
+### syncSupabaseEnvVars
+
+The `syncSupabaseEnvVars` build extension syncs environment variables from your Supabase project to Trigger.dev. It uses [Supabase Branching](https://supabase.com/docs/guides/deployment/branching) to automatically detect branches and build the appropriate database connection strings and API keys for your environment.
+
+<AccordionGroup>
+<Accordion title="Setting up authentication">
+You need to set the `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_ID` environment variables, or pass them
+as arguments to the `syncSupabaseEnvVars` build extension.
+
+You can generate a `SUPABASE_ACCESS_TOKEN` in your Supabase [dashboard](https://supabase.com/dashboard/account/tokens).
+</Accordion>
+
+<Accordion title="Running in Vercel environment">
+When running the build from a Vercel environment (determined by checking if the `VERCEL`
+environment variable is present), this extension is skipped entirely.
+</Accordion>
+</AccordionGroup>
+
+<Note>
+  This extension is skipped for `prod` and `dev` environments. It is designed to sync
+  branch-specific database connections and API keys for preview/staging environments using Supabase
+  Branching.
+</Note>
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk";
+import { syncSupabaseEnvVars } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    // This will automatically use the SUPABASE_ACCESS_TOKEN and SUPABASE_PROJECT_ID environment variables
+    extensions: [syncSupabaseEnvVars()],
+  },
+});
+```
+
+Or you can pass in the token, project ID, and other options as arguments:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk";
+import { syncSupabaseEnvVars } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [
+      syncSupabaseEnvVars({
+        projectId: "your-supabase-project-id",
+        supabaseAccessToken: "your-supabase-access-token", // optional, we recommend to keep it as env variable
+        branch: "your-branch-name", // optional, defaults to ctx.branch
+        envVarPrefix: "MY_PREFIX_", // optional, prefix for all synced env vars
+      }),
+    ],
+  },
+});
+```
+
+The extension syncs the following environment variables (with optional prefix):
+
+- `DATABASE_URL`, `POSTGRES_URL`, `SUPABASE_DB_URL` — PostgreSQL connection strings
+- `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` — Individual connection parameters
+- `SUPABASE_URL` — Supabase API URL
+- `SUPABASE_ANON_KEY` — Anonymous API key
+- `SUPABASE_SERVICE_ROLE_KEY` — Service role API key
+- `SUPABASE_JWT_SECRET` — JWT secret
