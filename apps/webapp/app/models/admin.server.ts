@@ -212,8 +212,13 @@ export async function adminGetOrganizations(userId: string, { page, search }: Se
   };
 }
 
-export async function redirectWithImpersonation(request: Request, userId: string, path: string) {
-  const user = await requireUser(request);
+export async function redirectWithImpersonation(
+  request: Request,
+  userId: string,
+  path: string,
+  currentUser?: { id: string; admin: boolean }
+) {
+  const user = currentUser ?? (await requireUser(request));
   if (!user.admin) {
     throw new Error("Unauthorized");
   }
