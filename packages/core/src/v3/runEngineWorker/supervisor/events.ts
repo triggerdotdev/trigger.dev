@@ -6,6 +6,8 @@ export type WorkerEvents = {
     {
       time: Date;
       message: DequeuedMessage;
+      dequeueResponseMs?: number;
+      pollingIntervalMs?: number;
     },
   ];
   requestRunAttemptStart: [
