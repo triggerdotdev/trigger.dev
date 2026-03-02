@@ -1,5 +1,5 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { type MetaFunction, Form, Link } from "@remix-run/react";
+import { type MetaFunction, Form, Link, Outlet } from "@remix-run/react";
 import { XMarkIcon } from "@heroicons/react/20/solid";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
@@ -31,6 +31,18 @@ import { Badge } from "~/components/primitives/Badge";
 import { Header1, Header3 } from "~/components/primitives/Headers";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "~/utils/cn";
+import {
+  CopyableTableCell,
+  Table,
+  TableBlankRow,
+  TableBody,
+  TableCell,
+  TableCellChevron,
+  TableCellMenu,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "~/components/primitives/Table";
 
 export const meta: MetaFunction = () => {
   return [
@@ -106,75 +118,81 @@ export default function Page() {
     useTypedLoaderData<typeof loader>();
 
   return (
-    <PageContainer>
-      <NavBar>
-        <PageTitle title="Errors" />
-      </NavBar>
+    <>
+      <PageContainer>
+        <NavBar>
+          <PageTitle title="Errors" />
+        </NavBar>
 
-      <PageBody scrollable={false}>
-        <Suspense
-          fallback={
-            <div className="grid h-full max-h-full grid-rows-[2.5rem_auto] overflow-hidden">
-              <div className="border-b border-grid-bright" />
-              <div className="my-2 flex items-center justify-center">
-                <div className="mx-auto flex items-center gap-2">
-                  <Spinner />
-                  <Paragraph variant="small">Loading errors…</Paragraph>
-                </div>
-              </div>
-            </div>
-          }
-        >
-          <TypedAwait
-            resolve={data}
-            errorElement={
-              <div className="grid h-full max-h-full grid-rows-[2.5rem_auto_1fr] overflow-hidden">
-                <FiltersBar defaultPeriod={defaultPeriod} retentionLimitDays={retentionLimitDays} />
-                <div className="flex items-center justify-center px-3 py-12">
-                  <Callout variant="error" className="max-w-fit">
-                    Unable to load errors. Please refresh the page or try again in a moment.
-                  </Callout>
+        <PageBody scrollable={false}>
+          <Suspense
+            fallback={
+              <div className="grid h-full max-h-full grid-rows-[2.5rem_auto] overflow-hidden">
+                <div className="border-b border-grid-bright" />
+                <div className="my-2 flex items-center justify-center">
+                  <div className="mx-auto flex items-center gap-2">
+                    <Spinner />
+                    <Paragraph variant="small">Loading errors…</Paragraph>
+                  </div>
                 </div>
               </div>
             }
           >
-            {(result) => {
-              // Check if result contains an error
-              if ("error" in result) {
-                return (
-                  <div className="grid h-full max-h-full grid-rows-[2.5rem_auto_1fr] overflow-hidden">
-                    <FiltersBar
-                      defaultPeriod={defaultPeriod}
-                      retentionLimitDays={retentionLimitDays}
-                    />
-                    <div className="flex items-center justify-center px-3 py-12">
-                      <Callout variant="error" className="max-w-fit">
-                        {result.error}
-                      </Callout>
-                    </div>
-                  </div>
-                );
-              }
-              return (
-                <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden">
+            <TypedAwait
+              resolve={data}
+              errorElement={
+                <div className="grid h-full max-h-full grid-rows-[2.5rem_auto_1fr] overflow-hidden">
                   <FiltersBar
-                    list={result}
                     defaultPeriod={defaultPeriod}
                     retentionLimitDays={retentionLimitDays}
                   />
-                  <ErrorsList
-                    errorGroups={result.errorGroups}
-                    organizationSlug={organizationSlug}
-                    projectParam={projectParam}
-                    envParam={envParam}
-                  />
+                  <div className="flex items-center justify-center px-3 py-12">
+                    <Callout variant="error" className="max-w-fit">
+                      Unable to load errors. Please refresh the page or try again in a moment.
+                    </Callout>
+                  </div>
                 </div>
-              );
-            }}
-          </TypedAwait>
-        </Suspense>
-      </PageBody>
-    </PageContainer>
+              }
+            >
+              {(result) => {
+                // Check if result contains an error
+                if ("error" in result) {
+                  return (
+                    <div className="grid h-full max-h-full grid-rows-[2.5rem_auto_1fr] overflow-hidden">
+                      <FiltersBar
+                        defaultPeriod={defaultPeriod}
+                        retentionLimitDays={retentionLimitDays}
+                      />
+                      <div className="flex items-center justify-center px-3 py-12">
+                        <Callout variant="error" className="max-w-fit">
+                          {result.error}
+                        </Callout>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden">
+                    <FiltersBar
+                      list={result}
+                      defaultPeriod={defaultPeriod}
+                      retentionLimitDays={retentionLimitDays}
+                    />
+                    <ErrorsList
+                      errorGroups={result.errorGroups}
+                      organizationSlug={organizationSlug}
+                      projectParam={projectParam}
+                      envParam={envParam}
+                    />
+                  </div>
+                );
+              }}
+            </TypedAwait>
+          </Suspense>
+        </PageBody>
+      </PageContainer>
+      <Outlet />
+    </>
   );
 }
 
@@ -260,8 +278,19 @@ function ErrorsList({
   }
 
   return (
-    <div className="overflow-y-auto">
-      <div className="divide-y divide-grid-dimmed">
+    <Table containerClassName="max-h-full pb-[2.5rem]">
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell>ID</TableHeaderCell>
+          <TableHeaderCell>Error</TableHeaderCell>
+          <TableHeaderCell>Occurrences</TableHeaderCell>
+          <TableHeaderCell>Tasks</TableHeaderCell>
+          <TableHeaderCell>First seen</TableHeaderCell>
+          <TableHeaderCell>Last seen</TableHeaderCell>
+          <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {errorGroups.map((errorGroup) => (
           <ErrorGroupRow
             key={errorGroup.fingerprint}
@@ -271,8 +300,8 @@ function ErrorsList({
             envParam={envParam}
           />
         ))}
-      </div>
-    </div>
+      </TableBody>
+    </Table>
   );
 }
 
@@ -294,42 +323,25 @@ function ErrorGroupRow({
     { fingerprint: errorGroup.fingerprint }
   );
 
+  const errorMessage = `${errorGroup.errorType}: ${errorGroup.errorMessage}`;
+
   return (
-    <Link
-      to={errorPath}
-      className={cn(
-        "block px-4 py-3 transition hover:bg-charcoal-800",
-        "border-l-4 border-transparent hover:border-rose-500"
-      )}
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="mb-1 flex items-center gap-2">
-            <Badge variant="default">{errorGroup.errorType}</Badge>
-            <Paragraph variant="extra-small" className="text-text-dimmed">
-              {errorGroup.affectedTasks} task{errorGroup.affectedTasks !== 1 ? "s" : ""}
-            </Paragraph>
-          </div>
-          <Paragraph className="mb-2 truncate font-medium">{errorGroup.errorMessage}</Paragraph>
-          <div className="flex items-center gap-3 text-xs text-text-dimmed">
-            <span>
-              First seen: {formatDistanceToNow(errorGroup.firstSeen, { addSuffix: true })}
-            </span>
-            <span>•</span>
-            <span>Last seen: {formatDistanceToNow(errorGroup.lastSeen, { addSuffix: true })}</span>
-            <span>•</span>
-            <span>Sample: {errorGroup.sampleTaskIdentifier}</span>
-          </div>
-        </div>
-        <div className="flex flex-col items-end gap-1">
-          <Badge variant="outline-rounded" className="font-mono">
-            {errorGroup.count.toLocaleString()}
-          </Badge>
-          <Paragraph variant="extra-small" className="text-text-dimmed">
-            occurrences
-          </Paragraph>
-        </div>
-      </div>
-    </Link>
+    <TableRow>
+      <CopyableTableCell to={errorPath} value={errorGroup.fingerprint}>
+        {errorGroup.fingerprint.slice(-8)}
+      </CopyableTableCell>
+      <CopyableTableCell to={errorPath} className="font-mono" value={errorMessage}>
+        {errorMessage}
+      </CopyableTableCell>
+      <TableCell to={errorPath}>{errorGroup.count.toLocaleString()}</TableCell>
+      <TableCell to={errorPath}>{errorGroup.affectedTasks}</TableCell>
+      <TableCell to={errorPath}>
+        {formatDistanceToNow(errorGroup.firstSeen, { addSuffix: true })}
+      </TableCell>
+      <TableCell to={errorPath}>
+        {formatDistanceToNow(errorGroup.lastSeen, { addSuffix: true })}
+      </TableCell>
+      <TableCellChevron to={errorPath} isSticky />
+    </TableRow>
   );
 }
