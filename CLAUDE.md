@@ -122,7 +122,7 @@ export const myTask = task({
 
 ### SDK Documentation Rules
 
-The `rules/` directory contains versioned SDK documentation distributed via the SDK installer. Current version: `rules/manifest.json`. When adding new SDK features, create a new version directory with only changed files. Keep `.claude/skills/trigger-dev-tasks/` in sync.
+The `rules/` directory contains versioned SDK documentation distributed via the SDK installer. Current version: `rules/manifest.json`. Do NOT update `rules/` or `.claude/skills/trigger-dev-tasks/` unless explicitly asked - these are maintained in separate dedicated passes.
 
 ## Testing with hello-world Reference Project
 

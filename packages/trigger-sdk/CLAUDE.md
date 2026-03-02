@@ -21,7 +21,7 @@ Always import from `@trigger.dev/sdk`. Never use `@trigger.dev/sdk/v3` (deprecat
 ## When Adding Features
 
 1. Implement the feature in the SDK
-2. Don't update the `rules/` directory at repo root
-3. Don't update the `.claude/skills/trigger-dev-tasks/` skill files
-4. Add/update docs in `docs/` (Mintlify MDX format). These will almost always be updated in a separate PR.
-5. Test with `references/hello-world` reference project
+2. Test with `references/hello-world` reference project
+3. Docs updates (`docs/`) are usually done in a separate PR
+
+Do NOT update `rules/` or `.claude/skills/trigger-dev-tasks/` unless explicitly asked. These are maintained in separate dedicated passes.
