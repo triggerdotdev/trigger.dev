@@ -6,7 +6,7 @@ Remix 2.1.0 app serving as the main API, dashboard, and orchestration engine. Us
 
 - **Trigger API**: `app/routes/api.v1.tasks.$taskId.trigger.ts`
 - **Batch trigger**: `app/routes/api.v1.tasks.batch.ts`
-- **OTEL endpoints**: `app/routes/otel.v1.logs.ts`, `otel.v1.traces.ts`
+- **OTEL endpoints**: `app/routes/otel.v1.logs.ts`, `app/routes/otel.v1.traces.ts`
 - **Prisma setup**: `app/db.server.ts`
 - **Run engine config**: `app/v3/runEngine.server.ts`
 - **Services**: `app/v3/services/**/*.server.ts`

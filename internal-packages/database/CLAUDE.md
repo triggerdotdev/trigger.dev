@@ -40,8 +40,16 @@ New code should always target V2.
 
 ## Index Migration Rules
 
-- Indexes **must use CONCURRENTLY** to avoid table locks
-- **CONCURRENTLY indexes must be in their own separate migration file** - they cannot be combined with other schema changes
+When adding indexes to **existing tables**:
+
+- Use `CREATE INDEX CONCURRENTLY IF NOT EXISTS` to avoid table locks in production
+- CONCURRENTLY indexes **must be in their own separate migration file** - they cannot be combined with other schema changes (PostgreSQL requirement)
+- Only add one index per migration file
+- Pre-apply the index manually in production before deploying the migration (Prisma will skip creation if the index already exists)
+
+Indexes on **newly created tables** (in the same migration as `CREATE TABLE`) do not need CONCURRENTLY and can be in the same migration file.
+
+See `README.md` in this directory and `ai/references/migrations.md` for the full index workflow.
 
 ## Read Replicas
 
