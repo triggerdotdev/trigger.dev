@@ -13,8 +13,7 @@ jobs:
   check-pr:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: mitchellh/vouch/action/check-pr@main
+      - uses: mitchellh/vouch/action/check-pr@v1.4.2
         with:
           pr-number: ${{ github.event.pull_request.number }}
           auto-close: true
