@@ -471,11 +471,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           });
 
           if (result.success) {
-            this.logger.info("Suspend completion submitted, deleting instance", {
+            this.logger.info("Suspend completion submitted", {
               runId,
               instanceId: body.instance_id,
+              snapshotId: body.snapshot_id,
             });
-            await this.computeManager?.deleteInstance(body.instance_id);
           } else {
             this.logger.error("Failed to submit suspend completion", {
               runId,
