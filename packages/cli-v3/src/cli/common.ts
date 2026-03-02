@@ -13,7 +13,10 @@ export const CommonCommandOptions = z.object({
   apiUrl: z.string().optional(),
   logLevel: z.enum(["debug", "info", "log", "warn", "error", "none"]).default("log"),
   skipTelemetry: z.boolean().default(false),
-  profile: z.string().default(readAuthConfigCurrentProfileName()),
+  profile: z
+    .string()
+    .optional()
+    .transform((v) => v ?? readAuthConfigCurrentProfileName()),
 });
 
 export type CommonCommandOptions = z.infer<typeof CommonCommandOptions>;
