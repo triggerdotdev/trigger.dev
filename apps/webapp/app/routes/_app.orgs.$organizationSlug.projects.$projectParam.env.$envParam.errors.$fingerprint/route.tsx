@@ -1,34 +1,45 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { type MetaFunction, Link } from "@remix-run/react";
-import { ArrowLeftIcon } from "@heroicons/react/20/solid";
+import { type MetaFunction } from "@remix-run/react";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
-import {
-  TypedAwait,
-  typeddefer,
-  type UseDataFunctionReturn,
-  useTypedLoaderData,
-} from "remix-typedjson";
+import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { requireUser } from "~/services/session.server";
-import { EnvironmentParamSchema, v3ErrorsPath, v3RunPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3ErrorsPath } from "~/utils/pathBuilder";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   ErrorGroupPresenter,
-  type ErrorInstance,
+  type ErrorGroupHourlyActivity,
+  type ErrorGroupSummary,
 } from "~/presenters/v3/ErrorGroupPresenter.server";
+import {
+  NextRunListPresenter,
+  type NextRunList,
+} from "~/presenters/v3/NextRunListPresenter.server";
 import { $replica } from "~/db.server";
-import { logsClickhouseClient } from "~/services/clickhouseInstance.server";
+import { logsClickhouseClient, clickhouseClient } from "~/services/clickhouseInstance.server";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Suspense } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Callout } from "~/components/primitives/Callout";
-import { Button } from "~/components/primitives/Buttons";
-import { Badge } from "~/components/primitives/Badge";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { formatDistanceToNow } from "date-fns";
-import { cn } from "~/utils/cn";
+import { formatNumberCompact } from "~/utils/numberFormatter";
+import * as Property from "~/components/primitives/PropertyTable";
+import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
+import { DateTime, formatDateTime } from "~/components/primitives/DateTime";
+import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
+import {
+  Bar,
+  BarChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  YAxis,
+  type TooltipProps,
+} from "recharts";
+import TooltipPortal from "~/components/primitives/TooltipPortal";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
@@ -67,6 +78,24 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       projectId: project.id,
       fingerprint,
     })
+    .then(async (result) => {
+      if (result.runFriendlyIds.length === 0) {
+        return { ...result, runList: undefined };
+      }
+
+      const runListPresenter = new NextRunListPresenter($replica, clickhouseClient);
+      const runList = await runListPresenter.call(project.organizationId, environment.id, {
+        userId,
+        projectId: project.id,
+        runId: result.runFriendlyIds,
+        pageSize: 25,
+      });
+
+      return {
+        ...result,
+        runList,
+      };
+    })
     .catch((error) => {
       if (error instanceof ServiceValidationError) {
         return { error: error.message };
@@ -74,8 +103,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       throw error;
     });
 
+  const hourlyActivityPromise = presenter
+    .getHourlyOccurrences(project.organizationId, project.id, environment.id, fingerprint)
+    .catch(() => [] as ErrorGroupHourlyActivity);
+
   return typeddefer({
     data: detailPromise,
+    hourlyActivity: hourlyActivityPromise,
     organizationSlug,
     projectParam,
     envParam,
@@ -84,7 +118,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { data, organizationSlug, projectParam, envParam } = useTypedLoaderData<typeof loader>();
+  const { data, hourlyActivity, organizationSlug, projectParam, envParam, fingerprint } =
+    useTypedLoaderData<typeof loader>();
 
   const errorsPath = v3ErrorsPath(
     { slug: organizationSlug },
@@ -95,14 +130,13 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <div className="flex items-center gap-2">
-          <Link to={errorsPath}>
-            <Button variant="tertiary/small" LeadingIcon={ArrowLeftIcon}>
-              Back to Errors
-            </Button>
-          </Link>
-          <PageTitle title="Error Details" />
-        </div>
+        <PageTitle
+          backButton={{
+            to: errorsPath,
+            text: "Errors",
+          }}
+          title={<span className="font-mono text-xs">{ErrorId.toFriendlyId(fingerprint)}</span>}
+        />
       </NavBar>
 
       <PageBody scrollable={false}>
@@ -127,7 +161,6 @@ export default function Page() {
             }
           >
             {(result) => {
-              // Check if result contains an error
               if ("error" in result) {
                 return (
                   <div className="flex items-center justify-center px-3 py-12">
@@ -140,7 +173,8 @@ export default function Page() {
               return (
                 <ErrorGroupDetail
                   errorGroup={result.errorGroup}
-                  instances={result.instances}
+                  runList={result.runList}
+                  hourlyActivity={hourlyActivity}
                   organizationSlug={organizationSlug}
                   projectParam={projectParam}
                   envParam={envParam}
@@ -156,19 +190,15 @@ export default function Page() {
 
 function ErrorGroupDetail({
   errorGroup,
-  instances,
+  runList,
+  hourlyActivity,
   organizationSlug,
   projectParam,
   envParam,
 }: {
-  errorGroup:
-    | {
-        errorType: string;
-        errorMessage: string;
-        stackTrace?: string;
-      }
-    | undefined;
-  instances: ErrorInstance[];
+  errorGroup: ErrorGroupSummary | undefined;
+  runList: NextRunList | undefined;
+  hourlyActivity: Promise<ErrorGroupHourlyActivity>;
   organizationSlug: string;
   projectParam: string;
   envParam: string;
@@ -187,18 +217,49 @@ function ErrorGroupDetail({
   }
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="grid h-full grid-rows-[auto_auto_1fr] overflow-hidden">
       {/* Error Summary */}
-      <div className="border-b border-grid-bright bg-charcoal-850 p-6">
-        <div className="mb-4">
-          <Badge variant="default" className="mb-2">
-            {errorGroup.errorType}
-          </Badge>
-          <Header2 className="mb-4">{errorGroup.errorMessage}</Header2>
+      <div className="border-b border-grid-bright p-4">
+        <Header2 className="mb-4">{errorGroup.errorMessage}</Header2>
+
+        <div className="grid grid-cols-2 gap-x-12 gap-y-1">
+          <Property.Table>
+            <Property.Item>
+              <Property.Label>ID</Property.Label>
+              <Property.Value>
+                <span className="font-mono">{ErrorId.toFriendlyId(errorGroup.fingerprint)}</span>
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Task</Property.Label>
+              <Property.Value>
+                <span className="font-mono">{errorGroup.taskIdentifier}</span>
+              </Property.Value>
+            </Property.Item>
+          </Property.Table>
+
+          <Property.Table>
+            <Property.Item>
+              <Property.Label>Occurrences</Property.Label>
+              <Property.Value>{formatNumberCompact(errorGroup.count)}</Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>First seen</Property.Label>
+              <Property.Value>
+                <DateTime date={errorGroup.firstSeen} />
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Last seen</Property.Label>
+              <Property.Value>
+                {formatDistanceToNow(errorGroup.lastSeen, { addSuffix: true })}
+              </Property.Value>
+            </Property.Item>
+          </Property.Table>
         </div>
 
         {errorGroup.stackTrace && (
-          <div className="rounded-md bg-charcoal-900 p-4">
+          <div className="mt-4 rounded-md bg-charcoal-900 p-4">
             <Paragraph variant="small" className="mb-2 font-semibold text-text-bright">
               Stack Trace
             </Paragraph>
@@ -209,79 +270,120 @@ function ErrorGroupDetail({
         )}
       </div>
 
-      {/* Instances List */}
-      <div className="p-6">
-        <Header3 className="mb-4">Error Instances ({instances.length.toLocaleString()})</Header3>
+      {/* Activity over past 7 days by hour */}
+      <div className="border-b border-grid-bright px-4 py-3">
+        <Header3 className="mb-2">Activity (past 7 days)</Header3>
+        <Suspense fallback={<ActivityChartBlankState />}>
+          <TypedAwait
+            resolve={hourlyActivity}
+            errorElement={<ActivityChartBlankState />}
+          >
+            {(activity) =>
+              activity.length > 0 ? (
+                <ActivityChart activity={activity} />
+              ) : (
+                <ActivityChartBlankState />
+              )
+            }
+          </TypedAwait>
+        </Suspense>
+      </div>
 
-        {instances.length === 0 ? (
-          <Callout variant="info">No error instances found.</Callout>
+      {/* Runs Table */}
+      <div className="flex flex-col gap-1 overflow-y-hidden">
+        <Header3 className="mt-2 mb-1 px-4">Recent runs</Header3>
+        {runList ? (
+          <TaskRunsTable
+            total={runList.runs.length}
+            hasFilters={false}
+            filters={{
+              tasks: [],
+              versions: [],
+              statuses: [],
+              from: undefined,
+              to: undefined,
+            }}
+            runs={runList.runs}
+            isLoading={false}
+            variant="dimmed"
+            disableAdjacentRows
+          />
         ) : (
-          <div className="space-y-3">
-            {instances.map((instance) => (
-              <ErrorInstanceRow
-                key={instance.runId}
-                instance={instance}
-                organizationSlug={organizationSlug}
-                projectParam={projectParam}
-                envParam={envParam}
-              />
-            ))}
-          </div>
+          <Paragraph variant="small" className="text-text-dimmed">
+            No runs found for this error.
+          </Paragraph>
         )}
       </div>
     </div>
   );
 }
 
-function ErrorInstanceRow({
-  instance,
-  organizationSlug,
-  projectParam,
-  envParam,
-}: {
-  instance: ErrorInstance;
-  organizationSlug: string;
-  projectParam: string;
-  envParam: string;
-}) {
-  const runPath = v3RunPath(
-    { slug: organizationSlug },
-    { slug: projectParam },
-    { slug: envParam },
-    { friendlyId: instance.friendlyId }
-  );
+function ActivityChart({ activity }: { activity: ErrorGroupHourlyActivity }) {
+  const maxCount = Math.max(...activity.map((d) => d.count));
 
   return (
-    <Link
-      to={runPath}
-      className={cn(
-        "block rounded-md border border-grid-dimmed p-4 transition hover:border-grid-bright hover:bg-charcoal-800"
-      )}
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="mb-2 flex items-center gap-2">
-            <Paragraph className="font-mono font-semibold">{instance.friendlyId}</Paragraph>
-            <Badge variant="outline-rounded">{instance.status}</Badge>
-          </div>
-          <Paragraph variant="small" className="mb-1 text-text-dimmed">
-            Task: <span className="font-mono">{instance.taskIdentifier}</span>
-          </Paragraph>
-          <Paragraph variant="extra-small" className="text-text-dimmed">
-            {formatDistanceToNow(instance.createdAt, { addSuffix: true })} • Version:{" "}
-            {instance.taskVersion}
-          </Paragraph>
-        </div>
+    <div className="flex items-start gap-2">
+      <div className="h-16 flex-1 rounded-sm">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={activity} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+            <YAxis domain={[0, maxCount || 1]} hide />
+            <Tooltip
+              cursor={{ fill: "transparent" }}
+              content={<ActivityChartTooltip />}
+              allowEscapeViewBox={{ x: true, y: true }}
+              wrapperStyle={{ zIndex: 1000 }}
+              animationDuration={0}
+            />
+            <Bar dataKey="count" fill="#EC003F" strokeWidth={0} isAnimationActive={false} />
+            <ReferenceLine y={0} stroke="#B5B8C0" strokeWidth={1} />
+            {maxCount > 0 && (
+              <ReferenceLine
+                y={maxCount}
+                stroke="#B5B8C0"
+                strokeDasharray="3 2"
+                strokeWidth={1}
+              />
+            )}
+          </BarChart>
+        </ResponsiveContainer>
       </div>
+      <span className="text-xxs tabular-nums text-text-dimmed">
+        {formatNumberCompact(maxCount)}
+      </span>
+    </div>
+  );
+}
 
-      {/* Show error details if available */}
-      {instance.error && typeof instance.error === "object" && "message" in instance.error && (
-        <div className="mt-3 rounded border border-grid-dimmed bg-charcoal-900 p-3">
-          <Paragraph variant="extra-small" className="font-mono text-text-dimmed">
-            {String(instance.error.message)}
-          </Paragraph>
+const ActivityChartTooltip = ({ active, payload }: TooltipProps<number, string>) => {
+  if (active && payload && payload.length > 0) {
+    const entry = payload[0].payload as { date: Date; count: number };
+    const date = entry.date instanceof Date ? entry.date : new Date(entry.date);
+    const formattedDate = formatDateTime(date, "UTC", [], false, true);
+
+    return (
+      <TooltipPortal active={active}>
+        <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
+          <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
+          <div className="mt-2 text-xs text-text-bright">
+            <span className="tabular-nums">{entry.count}</span>{" "}
+            <span className="text-text-dimmed">
+              {entry.count === 1 ? "occurrence" : "occurrences"}
+            </span>
+          </div>
         </div>
-      )}
-    </Link>
+      </TooltipPortal>
+    );
+  }
+
+  return null;
+};
+
+function ActivityChartBlankState() {
+  return (
+    <div className="flex h-16 w-full items-end gap-px rounded-sm">
+      {[...Array(42)].map((_, i) => (
+        <div key={i} className="h-full flex-1 bg-charcoal-850" />
+      ))}
+    </div>
   );
 }

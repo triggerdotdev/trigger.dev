@@ -1,5 +1,6 @@
 import { GlobeAltIcon, GlobeAmericasIcon } from "@heroicons/react/20/solid";
 import { useRouteLoaderData } from "@remix-run/react";
+import { formatDistanceToNow } from "date-fns";
 import { Laptop } from "lucide-react";
 import { memo, type ReactNode, useMemo, useSyncExternalStore } from "react";
 import { CopyButton } from "./CopyButton";
@@ -356,6 +357,39 @@ function formatDateTimeAccurate(
 
   return `${datePart} ${timePart}`;
 }
+
+type RelativeDateTimeProps = {
+  date: Date | string;
+  timeZone?: string;
+};
+
+export const RelativeDateTime = ({ date, timeZone }: RelativeDateTimeProps) => {
+  const locales = useLocales();
+  const userTimeZone = useUserTimeZone();
+
+  const realDate = useMemo(() => (typeof date === "string" ? new Date(date) : date), [date]);
+
+  const relativeText = useMemo(() => {
+    const text = formatDistanceToNow(realDate, { addSuffix: true });
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }, [realDate]);
+
+  return (
+    <SimpleTooltip
+      button={<span suppressHydrationWarning>{relativeText}</span>}
+      content={
+        <TooltipContent
+          realDate={realDate}
+          timeZone={timeZone}
+          localTimeZone={userTimeZone}
+          locales={locales}
+        />
+      }
+      side="right"
+      asChild={true}
+    />
+  );
+};
 
 export const DateTimeShort = ({ date, hour12 = true }: DateTimeProps) => {
   const locales = useLocales();

@@ -53,12 +53,12 @@ export type ErrorHourlyActivity = ErrorHourlyOccurrences[string];
 
 // Cursor for error groups pagination
 type ErrorGroupCursor = {
-  lastSeen: string;
+  occurrenceCount: number;
   fingerprint: string;
 };
 
 const ErrorGroupCursorSchema = z.object({
-  lastSeen: z.string(),
+  occurrenceCount: z.number(),
   fingerprint: z.string(),
 });
 
@@ -193,19 +193,19 @@ export class ErrorsListPresenter extends BasePresenter {
       );
     }
 
-    // Cursor-based pagination
+    // Cursor-based pagination (sorted by occurrence_count DESC)
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
     if (decodedCursor) {
       queryBuilder.having(
-        "(last_seen < {cursorLastSeen: String} OR (last_seen = {cursorLastSeen: String} AND error_fingerprint < {cursorFingerprint: String}))",
+        "(occurrence_count < {cursorOccurrenceCount: UInt64} OR (occurrence_count = {cursorOccurrenceCount: UInt64} AND error_fingerprint < {cursorFingerprint: String}))",
         {
-          cursorLastSeen: decodedCursor.lastSeen,
+          cursorOccurrenceCount: decodedCursor.occurrenceCount,
           cursorFingerprint: decodedCursor.fingerprint,
         }
       );
     }
 
-    queryBuilder.orderBy("last_seen DESC, error_fingerprint DESC");
+    queryBuilder.orderBy("occurrence_count DESC, error_fingerprint DESC");
     queryBuilder.limit(pageSize + 1);
 
     const [queryError, records] = await queryBuilder.execute();
@@ -223,7 +223,7 @@ export class ErrorsListPresenter extends BasePresenter {
     if (hasMore && errorGroups.length > 0) {
       const lastError = errorGroups[errorGroups.length - 1];
       nextCursor = encodeCursor({
-        lastSeen: lastError.last_seen,
+        occurrenceCount: lastError.occurrence_count,
         fingerprint: lastError.error_fingerprint,
       });
     }

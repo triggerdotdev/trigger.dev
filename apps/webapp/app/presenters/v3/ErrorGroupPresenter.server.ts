@@ -59,6 +59,27 @@ function decodeCursor(cursor: string): ErrorInstanceCursor | null {
   }
 }
 
+function parseClickHouseDateTime(value: string): Date {
+  const asNum = Number(value);
+  if (!isNaN(asNum) && asNum > 1e12) {
+    return new Date(asNum);
+  }
+  return new Date(value.replace(" ", "T") + "Z");
+}
+
+export type ErrorGroupSummary = {
+  fingerprint: string;
+  errorType: string;
+  errorMessage: string;
+  stackTrace?: string;
+  taskIdentifier: string;
+  count: number;
+  firstSeen: Date;
+  lastSeen: Date;
+};
+
+export type ErrorGroupHourlyActivity = Array<{ date: Date; count: number }>;
+
 export class ErrorGroupPresenter extends BasePresenter {
   constructor(
     private readonly replica: PrismaClientOrTransaction,
@@ -70,13 +91,7 @@ export class ErrorGroupPresenter extends BasePresenter {
   public async call(
     organizationId: string,
     environmentId: string,
-    {
-      userId,
-      projectId,
-      fingerprint,
-      cursor,
-      pageSize = DEFAULT_PAGE_SIZE,
-    }: ErrorGroupOptions
+    { userId, projectId, fingerprint, cursor, pageSize = DEFAULT_PAGE_SIZE }: ErrorGroupOptions
   ) {
     const displayableEnvironment = await findDisplayableEnvironment(environmentId, userId);
 
@@ -84,10 +99,148 @@ export class ErrorGroupPresenter extends BasePresenter {
       throw new ServiceValidationError("No environment found");
     }
 
-    // Use the error instances query builder
+    // Run summary (aggregated) and instances queries in parallel
+    const [summary, instancesResult] = await Promise.all([
+      this.getSummary(organizationId, projectId, environmentId, fingerprint),
+      this.getInstances(organizationId, projectId, environmentId, fingerprint, cursor, pageSize),
+    ]);
+
+    // Get stack trace from the most recent instance
+    let stackTrace: string | undefined;
+    if (instancesResult.instances.length > 0) {
+      const firstInstance = instancesResult.instances[0];
+      try {
+        const errorData = JSON.parse(firstInstance.error_text) as Record<string, unknown>;
+        stackTrace = (errorData.stack || errorData.stacktrace) as string | undefined;
+      } catch {
+        // no stack trace available
+      }
+    }
+
+    // Build error group combining aggregated summary with instance stack trace
+    let errorGroup: ErrorGroupSummary | undefined;
+    if (summary) {
+      errorGroup = {
+        ...summary,
+        stackTrace,
+      };
+    }
+
+    // Transform instances
+    const transformedInstances = instancesResult.instances.map((instance) => {
+      let parsedError: any;
+      try {
+        parsedError = JSON.parse(instance.error_text);
+      } catch {
+        parsedError = { message: instance.error_text };
+      }
+
+      return {
+        runId: instance.run_id,
+        friendlyId: instance.friendly_id,
+        taskIdentifier: instance.task_identifier,
+        createdAt: new Date(parseInt(instance.created_at) * 1000),
+        status: instance.status,
+        error: parsedError,
+        traceId: instance.trace_id,
+        taskVersion: instance.task_version,
+      };
+    });
+
+    return {
+      errorGroup,
+      instances: transformedInstances,
+      runFriendlyIds: transformedInstances.map((i) => i.friendlyId),
+      pagination: instancesResult.pagination,
+    };
+  }
+
+  public async getHourlyOccurrences(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    fingerprint: string
+  ): Promise<ErrorGroupHourlyActivity> {
+    const hours = 168; // 7 days
+
+    const [queryError, records] = await this.clickhouse.errors.getHourlyOccurrences({
+      organizationId,
+      projectId,
+      environmentId,
+      fingerprints: [fingerprint],
+      hours,
+    });
+
+    if (queryError) {
+      throw queryError;
+    }
+
+    const buckets: number[] = [];
+    const nowMs = Date.now();
+    for (let i = hours - 1; i >= 0; i--) {
+      const hourStart = Math.floor((nowMs - i * 3_600_000) / 3_600_000) * 3_600;
+      buckets.push(hourStart);
+    }
+
+    const byHour = new Map<number, number>();
+    for (const row of records ?? []) {
+      byHour.set(row.hour_epoch, row.count);
+    }
+
+    return buckets.map((epoch) => ({
+      date: new Date(epoch * 1000),
+      count: byHour.get(epoch) ?? 0,
+    }));
+  }
+
+  private async getSummary(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    fingerprint: string
+  ): Promise<Omit<ErrorGroupSummary, "stackTrace"> | undefined> {
+    const queryBuilder = this.clickhouse.errors.listQueryBuilder();
+
+    queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
+    queryBuilder.where("project_id = {projectId: String}", { projectId });
+    queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
+    queryBuilder.where("error_fingerprint = {fingerprint: String}", { fingerprint });
+
+    queryBuilder.groupBy("error_fingerprint, task_identifier");
+    queryBuilder.limit(1);
+
+    const [queryError, records] = await queryBuilder.execute();
+
+    if (queryError) {
+      throw queryError;
+    }
+
+    if (!records || records.length === 0) {
+      return undefined;
+    }
+
+    const record = records[0];
+    return {
+      fingerprint: record.error_fingerprint,
+      errorType: record.error_type,
+      errorMessage: record.error_message,
+      taskIdentifier: record.task_identifier,
+      count: record.occurrence_count,
+      firstSeen: parseClickHouseDateTime(record.first_seen),
+      lastSeen: parseClickHouseDateTime(record.last_seen),
+    };
+  }
+
+  private async getInstances(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    fingerprint: string,
+    cursor: string | undefined,
+    pageSize: number
+  ) {
     const queryBuilder = this.clickhouse.errors.instancesQueryBuilder();
 
-    // Apply filters
     queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
     queryBuilder.where("project_id = {projectId: String}", { projectId });
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
@@ -96,7 +249,6 @@ export class ErrorGroupPresenter extends BasePresenter {
     });
     queryBuilder.where("_is_deleted = 0");
 
-    // Cursor-based pagination
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
     if (decodedCursor) {
       queryBuilder.where(
@@ -121,7 +273,6 @@ export class ErrorGroupPresenter extends BasePresenter {
     const hasMore = results.length > pageSize;
     const instances = results.slice(0, pageSize);
 
-    // Build next cursor from the last item
     let nextCursor: string | undefined;
     if (hasMore && instances.length > 0) {
       const lastInstance = instances[instances.length - 1];
@@ -131,57 +282,8 @@ export class ErrorGroupPresenter extends BasePresenter {
       });
     }
 
-    // Get error group summary from the first instance
-    let errorGroup:
-      | {
-          errorType: string;
-          errorMessage: string;
-          stackTrace?: string;
-        }
-      | undefined;
-
-    if (instances.length > 0) {
-      const firstInstance = instances[0];
-      try {
-        const errorData = JSON.parse(firstInstance.error_text);
-        errorGroup = {
-          errorType: errorData.type || errorData.name || "Error",
-          errorMessage: errorData.message || "Unknown error",
-          stackTrace: errorData.stack || errorData.stacktrace,
-        };
-      } catch {
-        // If parsing fails, use fallback
-        errorGroup = {
-          errorType: "Error",
-          errorMessage: firstInstance.error_text.substring(0, 200),
-        };
-      }
-    }
-
-    // Transform results
-    const transformedInstances = instances.map((instance) => {
-      let parsedError: any;
-      try {
-        parsedError = JSON.parse(instance.error_text);
-      } catch {
-        parsedError = { message: instance.error_text };
-      }
-
-      return {
-        runId: instance.run_id,
-        friendlyId: instance.friendly_id,
-        taskIdentifier: instance.task_identifier,
-        createdAt: new Date(parseInt(instance.created_at) * 1000),
-        status: instance.status,
-        error: parsedError,
-        traceId: instance.trace_id,
-        taskVersion: instance.task_version,
-      };
-    });
-
     return {
-      errorGroup,
-      instances: transformedInstances,
+      instances,
       pagination: {
         hasMore,
         nextCursor,
