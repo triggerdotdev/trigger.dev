@@ -679,7 +679,7 @@ export function VercelOnboardingModal({
         onClose();
       }
     }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <div className="flex items-center gap-2">
             <VercelLogo className="size-5" />
@@ -799,6 +799,20 @@ export function VercelOnboardingModal({
                   </SelectItem>
                 ))}
               </Select>
+
+              <Callout variant="info">
+                <p className="text-xs">
+                  If you skip this step, the{" "}
+                  <code className="rounded bg-charcoal-700 px-1 py-0.5 text-text-bright">TRIGGER_SECRET_KEY</code>{" "}
+                  will not be installed for the staging environment in Vercel. You can configure this later in
+                  project settings.
+                </p>
+              </Callout>
+
+              <Paragraph className="text-xs text-text-dimmed">
+                Make sure the staging branch in your Vercel project's Git settings matches the staging branch
+                configured in your GitHub integration.
+              </Paragraph>
 
               <div className="flex items-center justify-between gap-2">
                 <Button

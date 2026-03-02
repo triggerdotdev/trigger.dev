@@ -27,6 +27,11 @@ import {
   envTypeToVercelTarget,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
+import {
+  callVercelWithRecovery,
+  wrapVercelCallWithRecovery,
+  VercelSchemas,
+} from "./vercelSdkRecovery.server";
 
 // ---------------------------------------------------------------------------
 // Pure helpers
@@ -314,17 +319,21 @@ export class VercelIntegrationRepository {
     teamId: string | null
   ): ResultAsync<string, VercelApiError> {
     if (teamId) {
-      return wrapVercelCall(
+      return wrapVercelCallWithRecovery(
         client.teams.getTeam({ teamId }),
+        VercelSchemas.getTeam,
         "Failed to fetch Vercel team",
-        { teamId }
+        { teamId },
+        toVercelApiError
       ).map((response) => response.slug);
     }
 
-    return wrapVercelCall(
+    return wrapVercelCallWithRecovery(
       client.user.getAuthUser(),
+      VercelSchemas.getAuthUser,
       "Failed to fetch Vercel user",
-      {}
+      {},
+      toVercelApiError
     ).map((response) => response?.user.username ?? "unknown");
   }
 
@@ -333,10 +342,11 @@ export class VercelIntegrationRepository {
   ): ResultAsync<{ isValid: boolean }, VercelApiError> {
     return this.getVercelClient(integration)
       .andThen((client) =>
-        ResultAsync.fromPromise(
+        callVercelWithRecovery(
           client.user.getAuthUser(),
-          toVercelApiError
-        )
+          VercelSchemas.getAuthUser,
+          { context: "validateVercelToken" }
+        ).mapErr(toVercelApiError)
       )
       .map(() => ({ isValid: true }))
       .orElse((error) =>
@@ -420,13 +430,15 @@ export class VercelIntegrationRepository {
     projectId: string,
     teamId?: string | null
   ): ResultAsync<VercelCustomEnvironment[], VercelApiError> {
-    return wrapVercelCall(
+    return wrapVercelCallWithRecovery(
       client.environment.getV9ProjectsIdOrNameCustomEnvironments({
         idOrName: projectId,
         ...(teamId && { teamId }),
       }),
+      VercelSchemas.getCustomEnvironments,
       "Failed to fetch Vercel custom environments",
-      { projectId, teamId }
+      { projectId, teamId },
+      toVercelApiError
     ).map((response) => (response.environments || []).map(toVercelCustomEnvironment));
   }
 
@@ -435,13 +447,15 @@ export class VercelIntegrationRepository {
     projectId: string,
     teamId?: string | null,
   ): ResultAsync<VercelEnvironmentVariable[], VercelApiError> {
-    return wrapVercelCall(
+    return wrapVercelCallWithRecovery(
       client.projects.filterProjectEnvs({
         idOrName: projectId,
         ...(teamId && { teamId }),
       }),
+      VercelSchemas.filterProjectEnvs,
       "Failed to fetch Vercel environment variables",
-      { projectId, teamId }
+      { projectId, teamId },
+      toVercelApiError
     ).map((response) => {
       // Warn if response is paginated (more data exists that we're not fetching)
       if (
@@ -467,13 +481,15 @@ export class VercelIntegrationRepository {
     /** If provided, only include keys that pass this filter */
     shouldIncludeKey?: (key: string) => boolean
   ): ResultAsync<VercelEnvironmentVariableValue[], VercelApiError> {
-    return wrapVercelCall(
+    return wrapVercelCallWithRecovery(
       client.projects.filterProjectEnvs({
         idOrName: projectId,
         ...(teamId && { teamId }),
       }),
+      VercelSchemas.filterProjectEnvs,
       "Failed to fetch Vercel environment variable values",
-      { projectId, teamId, target }
+      { projectId, teamId, target },
+      toVercelApiError
     ).andThen((response) => {
       // Apply all filters BEFORE decryption to avoid unnecessary API calls
       const filteredEnvs = extractVercelEnvs(response).filter((env) => {
@@ -510,13 +526,14 @@ export class VercelIntegrationRepository {
 
     // Encrypted vars: fetch decrypted value via individual endpoint
     // (list endpoint's decrypt param is deprecated)
-    const result = await ResultAsync.fromPromise(
+    const result = await callVercelWithRecovery(
       client.projects.getProjectEnv({
         idOrName: projectId,
         id: env.id,
         ...(teamId && { teamId }),
       }),
-      (error) => error
+      VercelSchemas.getProjectEnv,
+      { context: "resolveEnvVarValue" }
     );
 
     if (result.isErr()) {
@@ -552,13 +569,15 @@ export class VercelIntegrationRepository {
       isSecret: boolean;
       target: string[];
     }>, VercelApiError> {
-    return wrapVercelCall(
+    return wrapVercelCallWithRecovery(
       client.environment.listSharedEnvVariable({
         teamId,
         ...(projectId && { projectId }),
       }),
+      VercelSchemas.listSharedEnvVariable,
       "Failed to fetch Vercel shared environment variables",
-      { teamId, projectId }
+      { teamId, projectId },
+      toVercelApiError
     ).map((response) => {
       const envVars = response.data || [];
       return envVars
@@ -593,13 +612,15 @@ export class VercelIntegrationRepository {
     }>,
     VercelApiError
   > {
-    return wrapVercelCall(
+    return wrapVercelCallWithRecovery(
       client.environment.listSharedEnvVariable({
         teamId,
         ...(projectId && { projectId }),
       }),
+      VercelSchemas.listSharedEnvVariable,
       "Failed to fetch Vercel shared environment variable values",
-      { teamId, projectId }
+      { teamId, projectId },
+      toVercelApiError
     ).andThen((listResponse) => {
       const envVars = listResponse.data || [];
       if (envVars.length === 0) {
@@ -635,12 +656,13 @@ export class VercelIntegrationRepository {
               }
 
               // Try to get the decrypted value for this shared env var
-              const getResult = await ResultAsync.fromPromise(
+              const getResult = await callVercelWithRecovery(
                 client.environment.getSharedEnvVar({
                   id: envId,
                   teamId,
                 }),
-                (error) => error
+                VercelSchemas.getSharedEnvVar,
+                { context: "getSharedEnvVar" }
               );
 
               if (getResult.isOk()) {
@@ -655,47 +677,12 @@ export class VercelIntegrationRepository {
                 };
               }
 
-              // Workaround: Vercel SDK may throw ResponseValidationError even when the API response
-              // is valid (e.g., deletedAt: null vs expected number). Extract value from rawValue.
-              const error = getResult.error;
-              let errorValue: string | undefined;
-              if (error && typeof error === "object" && "rawValue" in error) {
-                const rawValue = (error as any).rawValue;
-                if (rawValue && typeof rawValue === "object" && "value" in rawValue) {
-                  errorValue = rawValue.value as string | undefined;
-                }
-              }
-
-              const fallbackValue = errorValue || listValue;
-
-              if (fallbackValue) {
-                logger.warn("getSharedEnvVar failed validation, using value from error.rawValue or list response", {
-                  teamId,
-                  envId,
-                  envKey,
-                  error: error instanceof Error ? error.message : String(error),
-                  hasErrorRawValue: !!errorValue,
-                  hasListValue: !!listValue,
-                  valueLength: fallbackValue.length,
-                });
-                return {
-                  key: envKey,
-                  value: fallbackValue,
-                  target: normalizeTarget(env.target),
-                  type,
-                  isSecret,
-                  applyToAllCustomEnvironments: applyToAllCustomEnvs,
-                };
-              }
-
-              logger.warn("Failed to get decrypted value for shared env var, no fallback available", {
+              logger.warn("Failed to get decrypted value for shared env var", {
                 teamId,
                 projectId,
                 envId,
                 envKey,
-                error: error instanceof Error ? error.message : String(error),
-                errorStack: error instanceof Error ? error.stack : undefined,
-                hasRawValue: error && typeof error === "object" && "rawValue" in error,
+                error: getResult.error instanceof Error ? getResult.error.message : String(getResult.error),
               });
               return null;
             })
@@ -723,11 +710,18 @@ export class VercelIntegrationRepository {
         let from: string | undefined;
 
         do {
-          const response = await client.projects.getProjects({
-            ...(teamId && { teamId }),
-            limit: "100",
-            ...(from && { from }),
-          });
+          const response = await callVercelWithRecovery(
+            client.projects.getProjects({
+              ...(teamId && { teamId }),
+              limit: "100",
+              ...(from && { from }),
+            }),
+            VercelSchemas.getProjects,
+            { context: "getVercelProjects" }
+          ).match(
+            (val) => val,
+            (err) => { throw err; }
+          );
 
           const projects = Array.isArray(response)
             ? response
@@ -1088,6 +1082,111 @@ export class VercelIntegrationRepository {
     );
   }
 
+  static upsertEnvVarForCustomEnvironment(params: {
+    orgIntegration: OrganizationIntegration & { tokenReference: SecretReference };
+    vercelProjectId: string;
+    teamId: string | null;
+    key: string;
+    value: string;
+    customEnvironmentId: string;
+    type: "sensitive" | "encrypted" | "plain";
+  }): ResultAsync<void, VercelApiError> {
+    return this.getVercelClient(params.orgIntegration).andThen((client) =>
+      ResultAsync.fromPromise(
+        (async () => {
+          const { vercelProjectId, teamId, key, value, customEnvironmentId, type } = params;
+
+          const existingEnvs = await callVercelWithRecovery(
+            client.projects.filterProjectEnvs({
+              idOrName: vercelProjectId,
+              ...(teamId && { teamId }),
+            }),
+            VercelSchemas.filterProjectEnvs,
+            { context: "upsertEnvVarForCustomEnvironment" }
+          ).match(
+            (val) => val,
+            (err) => { throw err; }
+          );
+
+          const envs = extractVercelEnvs(existingEnvs);
+
+          const existingEnv = envs.find((env) => {
+            if (env.key !== key) return false;
+            return (env as any).customEnvironmentIds?.includes(customEnvironmentId);
+          });
+
+          if (existingEnv && existingEnv.id) {
+            await client.projects.editProjectEnv({
+              idOrName: vercelProjectId,
+              id: existingEnv.id,
+              ...(teamId && { teamId }),
+              requestBody: {
+                value,
+                type,
+              },
+            });
+          } else {
+            await client.projects.createProjectEnv({
+              idOrName: vercelProjectId,
+              ...(teamId && { teamId }),
+              requestBody: {
+                key,
+                value,
+                type,
+                customEnvironmentIds: [customEnvironmentId],
+              } as any,
+            });
+          }
+        })(),
+        (error) => toVercelApiError(error)
+      )
+    );
+  }
+
+  static removeEnvVarForCustomEnvironment(params: {
+    orgIntegration: OrganizationIntegration & { tokenReference: SecretReference };
+    vercelProjectId: string;
+    teamId: string | null;
+    key: string;
+    customEnvironmentId: string;
+  }): ResultAsync<void, VercelApiError> {
+    return this.getVercelClient(params.orgIntegration).andThen((client) =>
+      ResultAsync.fromPromise(
+        (async () => {
+          const { vercelProjectId, teamId, key, customEnvironmentId } = params;
+
+          const existingEnvs = await callVercelWithRecovery(
+            client.projects.filterProjectEnvs({
+              idOrName: vercelProjectId,
+              ...(teamId && { teamId }),
+            }),
+            VercelSchemas.filterProjectEnvs,
+            { context: "removeEnvVarForCustomEnvironment" }
+          ).match(
+            (val) => val,
+            (err) => { throw err; }
+          );
+
+          const envs = extractVercelEnvs(existingEnvs);
+
+          const existingEnv = envs.find((env) => {
+            if (env.key !== key) return false;
+            return (env as any).customEnvironmentIds?.includes(customEnvironmentId);
+          });
+
+          if (existingEnv && existingEnv.id) {
+            await client.projects.batchRemoveProjectEnv({
+              idOrName: vercelProjectId,
+              ...(teamId && { teamId }),
+              requestBody: { ids: [existingEnv.id] },
+            });
+          }
+        })(),
+        (error) => toVercelApiError(error)
+      )
+    );
+  }
+
   static pullEnvVarsFromVercel(params: {
     projectId: string;
     vercelProjectId: string;
@@ -1416,10 +1515,17 @@ export class VercelIntegrationRepository {
       return { created: 0, updated: 0, errors: [] };
     }
 
-    const existingEnvs = await client.projects.filterProjectEnvs({
-      idOrName: vercelProjectId,
-      ...(teamId && { teamId }),
-    });
+    const existingEnvs = await callVercelWithRecovery(
+      client.projects.filterProjectEnvs({
+        idOrName: vercelProjectId,
+        ...(teamId && { teamId }),
+      }),
+      VercelSchemas.filterProjectEnvs,
+      { context: "batchUpsertVercelEnvVars" }
+    ).match(
+      (val) => val,
+      (err) => { throw err; }
+    );
 
     const existingEnvsList = extractVercelEnvs(existingEnvs);
 
@@ -1541,10 +1647,17 @@ export class VercelIntegrationRepository {
   }): Promise<void> {
     const { client, vercelProjectId, teamId, key } = params;
 
-    const existingEnvs = await client.projects.filterProjectEnvs({
-      idOrName: vercelProjectId,
-      ...(teamId && { teamId }),
-    });
+    const existingEnvs = await callVercelWithRecovery(
+      client.projects.filterProjectEnvs({
+        idOrName: vercelProjectId,
+        ...(teamId && { teamId }),
+      }),
+      VercelSchemas.filterProjectEnvs,
+      { context: "removeAllVercelEnvVarsByKey" }
+    ).match(
+      (val) => val,
+      (err) => { throw err; }
+    );
 
     const envs = extractVercelEnvs(existingEnvs);
     const idsToRemove = envs
@@ -1573,10 +1686,17 @@ export class VercelIntegrationRepository {
   }): Promise<void> {
     const { client, vercelProjectId, teamId, key, value, target, type } = params;
 
-    const existingEnvs = await client.projects.filterProjectEnvs({
-      idOrName: vercelProjectId,
-      ...(teamId && { teamId }),
-    });
+    const existingEnvs = await callVercelWithRecovery(
+      client.projects.filterProjectEnvs({
+        idOrName: vercelProjectId,
+        ...(teamId && { teamId }),
+      }),
+      VercelSchemas.filterProjectEnvs,
+      { context: "upsertVercelEnvVar" }
+    ).match(
+      (val) => val,
+      (err) => { throw err; }
+    );
 
     const envs = extractVercelEnvs(existingEnvs);
 
@@ -1620,14 +1740,16 @@ export class VercelIntegrationRepository {
     teamId?: string | null
   ): ResultAsync<boolean | null, VercelApiError> {
     // Vercel SDK lacks a getProject method — updateProject with empty body reads without modifying.
-    return wrapVercelCall(
+    return wrapVercelCallWithRecovery(
       client.projects.updateProject({
         idOrName: vercelProjectId,
         ...(teamId && { teamId }),
         requestBody: {},
       }),
+      VercelSchemas.updateProject,
       "Failed to get Vercel project autoAssignCustomDomains",
-      { vercelProjectId, teamId }
+      { vercelProjectId, teamId },
+      toVercelApiError
     ).map((project) => project.autoAssignCustomDomains ?? null);
   }
 
