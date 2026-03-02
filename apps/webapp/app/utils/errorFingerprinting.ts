@@ -5,12 +5,15 @@ import { createHash } from "node:crypto";
  * Groups similar errors together by normalizing dynamic values.
  */
 export function calculateErrorFingerprint(error: unknown): string {
-  if (!error || typeof error !== "object") return "";
+  if (!error || typeof error !== "object" || Array.isArray(error)) return "";
 
+  // This is a but ugly but…
+  // 1. We can't use a schema here because it's a hot path and needs to be fast.
+  // 2. It won't be an instanceof Error because it's from the database.
   const errorObj = error as any;
-  const errorType = errorObj.type || errorObj.name || "Error";
-  const message = errorObj.message || "";
-  const stack = errorObj.stack || errorObj.stacktrace || "";
+  const errorType = String(errorObj.type || errorObj.name || "Error");
+  const message = String(errorObj.message || "");
+  const stack = String(errorObj.stack || errorObj.stacktrace || "");
 
   // Normalize message to group similar errors
   const normalizedMessage = normalizeErrorMessage(message);
@@ -35,10 +38,7 @@ export function normalizeErrorMessage(message: string): string {
   return (
     message
       // UUIDs (8-4-4-4-12 format)
-      .replace(
-        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
-        "<uuid>"
-      )
+      .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "<uuid>")
       // Run IDs (run_xxxxx format)
       .replace(/run_[a-zA-Z0-9]+/g, "<run-id>")
       // Task run friendly IDs (task_xxxxx or similar)

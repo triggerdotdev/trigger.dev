@@ -1195,6 +1195,7 @@ const EnvironmentSchema = z
     RUN_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
     RUN_REPLICATION_INSERT_STRATEGY: z.enum(["insert", "insert_async"]).default("insert"),
     RUN_REPLICATION_DISABLE_PAYLOAD_INSERT: z.string().default("0"),
+    RUN_REPLICATION_DISABLE_ERROR_FINGERPRINTING: z.string().default("0"),
 
     // Clickhouse
     CLICKHOUSE_URL: z.string(),

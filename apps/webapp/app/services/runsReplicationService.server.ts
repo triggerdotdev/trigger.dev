@@ -71,6 +71,7 @@ export type RunsReplicationServiceOptions = {
   insertBaseDelayMs?: number;
   insertMaxDelayMs?: number;
   disablePayloadInsert?: boolean;
+  disableErrorFingerprinting?: boolean;
 };
 
 type PostgresTaskRun = TaskRun & { masterQueue: string };
@@ -116,6 +117,7 @@ export class RunsReplicationService {
   private _insertMaxDelayMs: number;
   private _insertStrategy: "insert" | "insert_async";
   private _disablePayloadInsert: boolean;
+  private _disableErrorFingerprinting: boolean;
 
   // Metrics
   private _replicationLagHistogram: Histogram;
@@ -190,6 +192,7 @@ export class RunsReplicationService {
 
     this._insertStrategy = options.insertStrategy ?? "insert";
     this._disablePayloadInsert = options.disablePayloadInsert ?? false;
+    this._disableErrorFingerprinting = options.disableErrorFingerprinting ?? false;
 
     this._replicationClient = new LogicalReplicationClient({
       pgConfig: {
@@ -856,7 +859,10 @@ export class RunsReplicationService {
     const errorData = { data: run.error };
 
     // Calculate error fingerprint for failed runs
-    const errorFingerprint = (['SYSTEM_FAILURE', 'CRASHED', 'INTERRUPTED', 'COMPLETED_WITH_ERRORS'].includes(run.status))
+    const errorFingerprint = (
+      !this._disableErrorFingerprinting &&
+      ['SYSTEM_FAILURE', 'CRASHED', 'INTERRUPTED', 'COMPLETED_WITH_ERRORS'].includes(run.status)
+    )
       ? calculateErrorFingerprint(run.error)
       : '';
 
