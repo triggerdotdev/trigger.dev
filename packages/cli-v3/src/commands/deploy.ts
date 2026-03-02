@@ -1155,9 +1155,8 @@ async function handleNativeBuildServerDeploy({
   const [readSessionError, readSession] = await tryCatch(
     stream.readSession(
       {
-        seq_num: 0,
-        wait: 60 * 20, // 20 minutes
-        as: "bytes",
+        start: { from: { seqNum: 0 }, clamp: true },
+        stop: { waitSecs: 60 * 20 }, // 20 minutes
       },
       { signal: abortController.signal }
     )
@@ -1176,12 +1175,11 @@ async function handleNativeBuildServerDeploy({
     return process.exit(0);
   }
 
-  const decoder = new TextDecoder();
   let finalDeploymentEvent: DeploymentFinalizedEvent["data"] | undefined;
   let queuedSpinnerStopped = false;
 
   for await (const record of readSession) {
-    const decoded = decoder.decode(record.body);
+    const decoded = record.body;
     const result = DeploymentEventFromString.safeParse(decoded);
     if (!result.success) {
       logger.debug("Failed to parse deployment event, skipping", {
@@ -1195,7 +1193,7 @@ async function handleNativeBuildServerDeploy({
 
     switch (event.type) {
       case "log": {
-        if (record.seq_num === 0) {
+        if (record.seqNum === 0) {
           $queuedSpinner.stop("Build started");
           console.log("│");
           queuedSpinnerStopped = true;

@@ -1,5 +1,6 @@
 import { TriggerButton } from "@/components/trigger-button";
 import { AIChatButton } from "@/components/ai-chat-button";
+import { triggerApprovalTask, triggerMessagesTask } from "./actions";
 
 export default function Home() {
   return (
@@ -43,6 +44,31 @@ export default function Home() {
           <TriggerButton useDurableStreams={true} scenario="slow-steady">
             Slow Steady Stream (5 min) (Durable)
           </TriggerButton>
+        </div>
+
+        <div className="mt-8 pt-8 border-t border-gray-300 w-full">
+          <h2 className="text-xl font-semibold mb-4">Input Streams</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Test sending data from the UI to a running task via useInputStreamSend
+          </p>
+          <div className="flex gap-3">
+            <form action={triggerApprovalTask}>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                Approval Flow (.wait)
+              </button>
+            </form>
+            <form action={triggerMessagesTask}>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Messages Flow (.on)
+              </button>
+            </form>
+          </div>
         </div>
 
         <div className="mt-8 pt-8 border-t border-gray-300">

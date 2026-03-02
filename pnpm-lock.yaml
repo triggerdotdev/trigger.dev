@@ -456,8 +456,8 @@ importers:
         specifier: ^0.1.3
         version: 0.1.3(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.1.0(typescript@5.5.4))
       '@s2-dev/streamstore':
-        specifier: ^0.17.2
-        version: 0.17.3(typescript@5.5.4)
+        specifier: ^0.22.5
+        version: 0.22.5(supports-color@10.0.0)
       '@sentry/remix':
         specifier: 9.46.0
         version: 9.46.0(patch_hash=146126b032581925294aaed63ab53ce3f5e0356a755f1763d7a9a76b9846943b)(@remix-run/node@2.1.0(typescript@5.5.4))(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.1.0(typescript@5.5.4))(encoding@0.1.13)(react@18.2.0)
@@ -1452,8 +1452,8 @@ importers:
         specifier: 1.36.0
         version: 1.36.0
       '@s2-dev/streamstore':
-        specifier: ^0.17.6
-        version: 0.17.6
+        specifier: ^0.22.5
+        version: 0.22.5(supports-color@10.0.0)
       '@trigger.dev/build':
         specifier: workspace:4.4.1
         version: link:../build
@@ -1729,8 +1729,8 @@ importers:
         specifier: 1.36.0
         version: 1.36.0
       '@s2-dev/streamstore':
-        specifier: 0.17.3
-        version: 0.17.3(typescript@5.5.4)
+        specifier: 0.22.5
+        version: 0.22.5(supports-color@10.0.0)
       dequal:
         specifier: ^2.0.3
         version: 2.0.3
@@ -9412,13 +9412,8 @@ packages:
   '@rushstack/eslint-patch@1.2.0':
     resolution: {integrity: sha512-sXo/qW2/pAcmT43VoRKOJbDOfV3cYpq3szSVfIThQXNt+E4DfKj361vaAt3c88U5tPUxzEswam7GW48PJqtKAg==}
 
-  '@s2-dev/streamstore@0.17.3':
-    resolution: {integrity: sha512-UeXL5+MgZQfNkbhCgEDVm7PrV5B3bxh6Zp4C5pUzQQwaoA+iGh2QiiIptRZynWgayzRv4vh0PYfnKpTzJEXegQ==}
-    peerDependencies:
-      typescript: 5.5.4
-
-  '@s2-dev/streamstore@0.17.6':
-    resolution: {integrity: sha512-ocjZfKaPKmo2yhudM58zVNHv3rBLSbTKkabVoLFn9nAxU6iLrR2CO3QmSo7/waohI3EZHAWxF/Pw8kA8d6QH2g==}
+  '@s2-dev/streamstore@0.22.5':
+    resolution: {integrity: sha512-GqdOKIbIoIxT+40fnKzHbrsHB6gBqKdECmFe7D3Ojk4FoN1Hu0LhFzZv6ZmVMjoHHU+55debS1xSWjZwQmbIyQ==}
 
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
@@ -18967,21 +18962,22 @@ packages:
   tar@6.1.13:
     resolution: {integrity: sha512-jdIBIN6LTIe2jqzay/2vtYLlBHa3JF42ot3h1dW8Q0PaAG4v8rm0cvpVePtau5C6OKXGGcgO9q2AMNSWxiLqKw==}
     engines: {node: '>=10'}
-    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exhorbitant rates) by contacting i@izs.me
+    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   tar@6.2.1:
     resolution: {integrity: sha512-DZ4yORTwrbTj/7MZYq2w+/ZFdI6OZ/f9SFHR+71gIVUZhOQPHzVCLpvRnPgyaMpfWxxk/4ONva3GQSyNIKRv6A==}
     engines: {node: '>=10'}
-    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exhorbitant rates) by contacting i@izs.me
+    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   tar@7.4.3:
     resolution: {integrity: sha512-5S7Va8hKfV7W5U6g3aYxXmlPoZVAwUMy9AOKyF2fVuZa2UD3qZjg578OrLRt8PcNN1PleVaL/5/yYATNL0ICUw==}
     engines: {node: '>=18'}
-    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exhorbitant rates) by contacting i@izs.me
+    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   tar@7.5.6:
     resolution: {integrity: sha512-xqUeu2JAIJpXyvskvU3uvQW8PAmHrtXp2KDuMJwQqW8Sqq0CaZBAQ+dKS3RBXVhU4wC5NjAdKrmh84241gO9cA==}
     engines: {node: '>=18'}
+    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   tdigest@0.1.2:
     resolution: {integrity: sha512-+G0LLgjjo9BZX2MfdvPfH+MKLCrxlXSYec5DaPYP1fe6Iyhf0/fSmJ0bFiZ1F8BT6cGXl2LpltQptzjXKWEkKA==}
@@ -22393,7 +22389,7 @@ snapshots:
       '@babel/traverse': 7.24.7
       '@babel/types': 7.24.0
       convert-source-map: 1.9.0
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       gensync: 1.0.0-beta.2
       json5: 2.2.3
       semver: 6.3.1
@@ -22681,7 +22677,7 @@ snapshots:
       '@babel/helper-split-export-declaration': 7.24.7
       '@babel/parser': 7.27.5
       '@babel/types': 7.27.3
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       globals: 11.12.0
     transitivePeerDependencies:
       - supports-color
@@ -23129,8 +23125,8 @@ snapshots:
 
   '@epic-web/test-server@0.1.0(bufferutil@4.0.9)':
     dependencies:
-      '@hono/node-server': 1.12.2(hono@4.5.11)
-      '@hono/node-ws': 1.0.4(@hono/node-server@1.12.2(hono@4.11.8))(bufferutil@4.0.9)
+      '@hono/node-server': 1.12.2(hono@4.11.8)
+      '@hono/node-ws': 1.0.4(@hono/node-server@1.12.2(hono@4.5.11))(bufferutil@4.0.9)
       '@open-draft/deferred-promise': 2.2.0
       '@types/ws': 8.5.12
       hono: 4.5.11
@@ -23662,7 +23658,7 @@ snapshots:
   '@eslint/eslintrc@1.4.1':
     dependencies:
       ajv: 6.12.6
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       espree: 9.6.0
       globals: 13.19.0
       ignore: 5.2.4
@@ -23877,17 +23873,17 @@ snapshots:
     dependencies:
       react: 18.2.0
 
-  '@hono/node-server@1.12.2(hono@4.5.11)':
+  '@hono/node-server@1.12.2(hono@4.11.8)':
     dependencies:
-      hono: 4.5.11
+      hono: 4.11.8
 
   '@hono/node-server@1.19.9(hono@4.11.8)':
     dependencies:
       hono: 4.11.8
 
-  '@hono/node-ws@1.0.4(@hono/node-server@1.12.2(hono@4.11.8))(bufferutil@4.0.9)':
+  '@hono/node-ws@1.0.4(@hono/node-server@1.12.2(hono@4.5.11))(bufferutil@4.0.9)':
     dependencies:
-      '@hono/node-server': 1.12.2(hono@4.5.11)
+      '@hono/node-server': 1.12.2(hono@4.11.8)
       ws: 8.18.3(bufferutil@4.0.9)
     transitivePeerDependencies:
       - bufferutil
@@ -23896,7 +23892,7 @@ snapshots:
   '@humanwhocodes/config-array@0.11.8':
     dependencies:
       '@humanwhocodes/object-schema': 1.2.1
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       minimatch: 3.1.2
     transitivePeerDependencies:
       - supports-color
@@ -23912,7 +23908,7 @@ snapshots:
       '@antfu/install-pkg': 1.1.0
       '@antfu/utils': 9.3.0
       '@iconify/types': 2.0.0
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       globals: 15.15.0
       kolorist: 1.8.0
       local-pkg: 1.1.2
@@ -25645,7 +25641,7 @@ snapshots:
 
   '@puppeteer/browsers@2.10.6':
     dependencies:
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       extract-zip: 2.0.1
       progress: 2.0.3
       proxy-agent: 6.5.0
@@ -29208,14 +29204,12 @@ snapshots:
 
   '@rushstack/eslint-patch@1.2.0': {}
 
-  '@s2-dev/streamstore@0.17.3(typescript@5.5.4)':
+  '@s2-dev/streamstore@0.22.5(supports-color@10.0.0)':
     dependencies:
       '@protobuf-ts/runtime': 2.11.1
-      typescript: 5.5.4
-
-  '@s2-dev/streamstore@0.17.6':
-    dependencies:
-      '@protobuf-ts/runtime': 2.11.1
+      debug: 4.4.3(supports-color@10.0.0)
+    transitivePeerDependencies:
+      - supports-color
 
   '@sec-ant/readable-stream@0.4.1': {}
 
@@ -31296,7 +31290,7 @@ snapshots:
     dependencies:
       '@typescript-eslint/typescript-estree': 5.59.6(typescript@5.5.4)
       '@typescript-eslint/utils': 5.59.6(eslint@8.31.0)(typescript@5.5.4)
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       eslint: 8.31.0
       tsutils: 3.21.0(typescript@5.5.4)
     optionalDependencies:
@@ -31310,7 +31304,7 @@ snapshots:
     dependencies:
       '@typescript-eslint/types': 5.59.6
       '@typescript-eslint/visitor-keys': 5.59.6
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       globby: 11.1.0
       is-glob: 4.0.3
       semver: 7.7.3
@@ -31819,7 +31813,7 @@ snapshots:
 
   agent-base@6.0.2:
     dependencies:
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -32315,7 +32309,7 @@ snapshots:
     dependencies:
       bytes: 3.1.2
       content-type: 1.0.5
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       http-errors: 2.0.0
       iconv-lite: 0.6.3
       on-finished: 2.4.1
@@ -32329,7 +32323,7 @@ snapshots:
     dependencies:
       bytes: 3.1.2
       content-type: 1.0.5
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@10.0.0)
       http-errors: 2.0.0
       iconv-lite: 0.7.2
       on-finished: 2.4.1
@@ -33321,15 +33315,15 @@ snapshots:
     dependencies:
       ms: 2.1.3
 
-  debug@4.4.1(supports-color@10.0.0):
+  debug@4.4.1:
+    dependencies:
+      ms: 2.1.3
+
+  debug@4.4.3(supports-color@10.0.0):
     dependencies:
       ms: 2.1.3
     optionalDependencies:
       supports-color: 10.0.0
-
-  debug@4.4.3:
-    dependencies:
-      ms: 2.1.3
 
   decamelize-keys@1.1.1:
     dependencies:
@@ -33473,7 +33467,7 @@ snapshots:
 
   docker-modem@5.0.6:
     dependencies:
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       readable-stream: 3.6.0
       split-ca: 1.0.1
       ssh2: 1.16.0
@@ -34170,7 +34164,7 @@ snapshots:
 
   eslint-import-resolver-typescript@3.5.5(@typescript-eslint/parser@5.59.6(eslint@8.31.0)(typescript@5.5.4))(eslint-import-resolver-node@0.3.7)(eslint-plugin-import@2.29.1)(eslint@8.31.0):
     dependencies:
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       enhanced-resolve: 5.15.0
       eslint: 8.31.0
       eslint-module-utils: 2.7.4(@typescript-eslint/parser@5.59.6(eslint@8.31.0)(typescript@5.5.4))(eslint-import-resolver-node@0.3.7)(eslint-import-resolver-typescript@3.5.5)(eslint@8.31.0)
@@ -34652,7 +34646,7 @@ snapshots:
       content-type: 1.0.5
       cookie: 0.7.1
       cookie-signature: 1.2.2
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       depd: 2.0.0
       encodeurl: 2.0.0
       escape-html: 1.0.3
@@ -34691,7 +34685,7 @@ snapshots:
 
   extract-zip@2.0.1:
     dependencies:
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       get-stream: 5.2.0
       yauzl: 2.10.0
     optionalDependencies:
@@ -34865,7 +34859,7 @@ snapshots:
 
   finalhandler@2.1.0(supports-color@10.0.0):
     dependencies:
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       encodeurl: 2.0.0
       escape-html: 1.0.3
       on-finished: 2.4.1
@@ -35125,7 +35119,7 @@ snapshots:
     dependencies:
       basic-ftp: 5.0.3
       data-uri-to-buffer: 5.0.1
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       fs-extra: 8.1.0
     transitivePeerDependencies:
       - supports-color
@@ -35284,7 +35278,7 @@ snapshots:
       '@types/node': 20.14.14
       '@types/semver': 7.5.1
       chalk: 4.1.2
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       interpret: 3.1.1
       semver: 7.7.3
       tslib: 2.8.1
@@ -35568,7 +35562,7 @@ snapshots:
   http-proxy-agent@7.0.2:
     dependencies:
       agent-base: 7.1.4
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -35581,14 +35575,14 @@ snapshots:
   https-proxy-agent@5.0.1:
     dependencies:
       agent-base: 6.0.2
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
     transitivePeerDependencies:
       - supports-color
 
   https-proxy-agent@7.0.6:
     dependencies:
       agent-base: 7.1.4
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -35953,7 +35947,7 @@ snapshots:
   istanbul-lib-source-maps@5.0.6:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.25
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       istanbul-lib-coverage: 3.2.2
     transitivePeerDependencies:
       - supports-color
@@ -37249,7 +37243,7 @@ snapshots:
   micromark@3.1.0:
     dependencies:
       '@types/debug': 4.1.12
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       decode-named-character-reference: 1.0.2
       micromark-core-commonmark: 1.0.6
       micromark-factory-space: 1.0.0
@@ -37271,7 +37265,7 @@ snapshots:
   micromark@4.0.2:
     dependencies:
       '@types/debug': 4.1.12
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       decode-named-character-reference: 1.0.2
       devlop: 1.1.0
       micromark-core-commonmark: 2.0.3
@@ -38159,7 +38153,7 @@ snapshots:
     dependencies:
       '@tootallnate/quickjs-emscripten': 0.23.0
       agent-base: 7.1.4
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       get-uri: 6.0.1
       http-proxy-agent: 7.0.2
       https-proxy-agent: 7.0.6
@@ -38918,7 +38912,7 @@ snapshots:
   proxy-agent@6.5.0:
     dependencies:
       agent-base: 7.1.4
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       http-proxy-agent: 7.0.2
       https-proxy-agent: 7.0.6
       lru-cache: 7.18.3
@@ -38958,7 +38952,7 @@ snapshots:
     dependencies:
       '@puppeteer/browsers': 2.10.6
       chromium-bidi: 7.2.0(devtools-protocol@0.0.1464554)
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.1
       devtools-protocol: 0.0.1464554
       typed-query-selector: 2.12.0
       ws: 8.18.3(bufferutil@4.0.9)
@@ -39779,7 +39773,7 @@ snapshots:
   remix-auth-oauth2@1.11.0(@remix-run/server-runtime@2.1.0(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.1.0(typescript@5.5.4))):
     dependencies:
       '@remix-run/server-runtime': 2.1.0(typescript@5.5.4)
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       remix-auth: 3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.1.0(typescript@5.5.4))
     transitivePeerDependencies:
       - supports-color
@@ -39843,7 +39837,7 @@ snapshots:
 
   require-in-the-middle@7.1.1(supports-color@10.0.0):
     dependencies:
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       module-details-from-path: 1.0.3
       resolve: 1.22.8
     transitivePeerDependencies:
@@ -39974,7 +39968,7 @@ snapshots:
 
   router@2.2.0:
     dependencies:
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       depd: 2.0.0
       is-promise: 4.0.0
       parseurl: 1.3.3
@@ -40128,7 +40122,7 @@ snapshots:
 
   send@1.1.0(supports-color@10.0.0):
     dependencies:
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       destroy: 1.2.0
       encodeurl: 2.0.0
       escape-html: 1.0.3
@@ -40145,7 +40139,7 @@ snapshots:
 
   send@1.2.1:
     dependencies:
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@10.0.0)
       encodeurl: 2.0.0
       escape-html: 1.0.3
       etag: 1.8.1
@@ -40471,7 +40465,7 @@ snapshots:
   socks-proxy-agent@8.0.5:
     dependencies:
       agent-base: 7.1.4
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       socks: 2.8.3
     transitivePeerDependencies:
       - supports-color
@@ -40843,7 +40837,7 @@ snapshots:
     dependencies:
       component-emitter: 1.3.1
       cookiejar: 2.1.4
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       fast-safe-stringify: 2.1.1
       form-data: 4.0.4
       formidable: 3.5.1
@@ -41963,7 +41957,7 @@ snapshots:
   vite-node@0.28.5(@types/node@20.14.14)(lightningcss@1.29.2)(terser@5.44.1):
     dependencies:
       cac: 6.7.14
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       mlly: 1.7.4
       pathe: 1.1.2
       picocolors: 1.1.1
@@ -41983,7 +41977,7 @@ snapshots:
   vite-node@3.1.4(@types/node@20.14.14)(lightningcss@1.29.2)(terser@5.44.1):
     dependencies:
       cac: 6.7.14
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       es-module-lexer: 1.7.0
       pathe: 2.0.3
       vite: 5.4.21(@types/node@20.14.14)(lightningcss@1.29.2)(terser@5.44.1)
@@ -42039,7 +42033,7 @@ snapshots:
       '@vitest/spy': 3.1.4
       '@vitest/utils': 3.1.4
       chai: 5.2.0
-      debug: 4.4.1(supports-color@10.0.0)
+      debug: 4.4.1
       expect-type: 1.2.1
       magic-string: 0.30.21
       pathe: 2.0.3
