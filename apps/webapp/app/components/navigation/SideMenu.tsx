@@ -24,6 +24,7 @@ import {
   Squares2X2Icon,
   TableCellsIcon,
   UsersIcon,
+  BugAntIcon,
 } from "@heroicons/react/20/solid";
 import { Link, useFetcher, useNavigation } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
@@ -477,9 +478,9 @@ export function SideMenu({
                 )}
                 <SideMenuItem
                   name="Errors"
-                  icon={ExclamationTriangleIcon}
-                  activeIconColor="text-rose-500"
-                  inactiveIconColor="text-rose-500"
+                  icon={BugAntIcon}
+                  activeIconColor="text-amber-500"
+                  inactiveIconColor="text-amber-500"
                   to={v3ErrorsPath(organization, project, environment)}
                   data-action="errors"
                   isCollapsed={isCollapsed}

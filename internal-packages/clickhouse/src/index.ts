@@ -32,6 +32,7 @@ import {
   getErrorInstances,
   getErrorGroupsListQueryBuilder,
   getErrorInstancesListQueryBuilder,
+  getErrorHourlyOccurrences,
 } from "./errors.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
@@ -241,6 +242,7 @@ export class ClickHouse {
     return {
       getGroups: getErrorGroups(this.reader),
       getInstances: getErrorInstances(this.reader),
+      getHourlyOccurrences: getErrorHourlyOccurrences(this.reader),
       listQueryBuilder: getErrorGroupsListQueryBuilder(this.reader),
       instancesQueryBuilder: getErrorInstancesListQueryBuilder(this.reader),
     };

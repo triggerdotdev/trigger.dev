@@ -46,6 +46,10 @@ const DEFAULT_PAGE_SIZE = 50;
 export type ErrorsList = Awaited<ReturnType<ErrorsListPresenter["call"]>>;
 export type ErrorGroup = ErrorsList["errorGroups"][0];
 export type ErrorsListAppliedFilters = ErrorsList["filters"];
+export type ErrorHourlyOccurrences = Awaited<
+  ReturnType<ErrorsListPresenter["getHourlyOccurrences"]>
+>;
+export type ErrorHourlyActivity = ErrorHourlyOccurrences[string];
 
 // Cursor for error groups pagination
 type ErrorGroupCursor = {
@@ -74,6 +78,15 @@ function decodeCursor(cursor: string): ErrorGroupCursor | null {
   } catch {
     return null;
   }
+}
+
+function parseClickHouseDateTime(value: string): Date {
+  const asNum = Number(value);
+  if (!isNaN(asNum) && asNum > 1e12) {
+    return new Date(asNum);
+  }
+  // ClickHouse returns 'YYYY-MM-DD HH:mm:ss.SSS' in UTC
+  return new Date(value.replace(" ", "T") + "Z");
 }
 
 function escapeClickHouseString(val: string): string {
@@ -156,17 +169,18 @@ export class ErrorsListPresenter extends BasePresenter {
     queryBuilder.where("project_id = {projectId: String}", { projectId });
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
 
-    // Group by error_fingerprint to merge partial aggregations
-    queryBuilder.groupBy("error_fingerprint");
-
-    // Apply HAVING filters (filters on aggregated columns)
-    // Time range filter - use last_seen_date regular column instead of aggregate
-    queryBuilder.having("max(last_seen_date) >= now() - INTERVAL {days: Int64} DAY", { days: daysAgo });
-
-    // Task filter
+    // Task filter (task_identifier is part of the key, so use WHERE)
     if (tasks && tasks.length > 0) {
-      queryBuilder.having("anyMerge(sample_task_identifier) IN {tasks: Array(String)}", { tasks });
+      queryBuilder.where("task_identifier IN {tasks: Array(String)}", { tasks });
     }
+
+    // Group by key columns to merge partial aggregations
+    queryBuilder.groupBy("error_fingerprint, task_identifier");
+
+    // Time range filter
+    queryBuilder.having("max(last_seen_date) >= now() - INTERVAL {days: Int64} DAY", {
+      days: daysAgo,
+    });
 
     // Search filter - searches in error type and message
     if (search && search.trim() !== "") {
@@ -219,13 +233,12 @@ export class ErrorsListPresenter extends BasePresenter {
       errorType: error.error_type,
       errorMessage: error.error_message,
       fingerprint: error.error_fingerprint,
-      firstSeen: new Date(parseInt(error.first_seen) * 1000),
-      lastSeen: new Date(parseInt(error.last_seen) * 1000),
+      taskIdentifier: error.task_identifier,
+      firstSeen: parseClickHouseDateTime(error.first_seen),
+      lastSeen: parseClickHouseDateTime(error.last_seen),
       count: error.occurrence_count,
-      affectedTasks: error.affected_tasks,
       sampleRunId: error.sample_run_id,
       sampleFriendlyId: error.sample_friendly_id,
-      sampleTaskIdentifier: error.sample_task_identifier,
     }));
 
     return {
@@ -243,5 +256,60 @@ export class ErrorsListPresenter extends BasePresenter {
         wasClampedByRetention,
       },
     };
+  }
+
+  public async getHourlyOccurrences(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    fingerprints: string[]
+  ): Promise<Record<string, Array<{ date: Date; count: number }>>> {
+    if (fingerprints.length === 0) {
+      return {};
+    }
+
+    const hours = 24;
+
+    const [queryError, records] = await this.clickhouse.errors.getHourlyOccurrences({
+      organizationId,
+      projectId,
+      environmentId,
+      fingerprints,
+      hours,
+    });
+
+    if (queryError) {
+      throw queryError;
+    }
+
+    // Build 24 hourly buckets as epoch seconds (UTC, floored to hour)
+    const buckets: number[] = [];
+    const nowMs = Date.now();
+    for (let i = hours - 1; i >= 0; i--) {
+      const hourStart = Math.floor((nowMs - i * 3_600_000) / 3_600_000) * 3_600;
+      buckets.push(hourStart);
+    }
+
+    // Index ClickHouse results by fingerprint → epoch → count
+    const grouped = new Map<string, Map<number, number>>();
+    for (const row of records ?? []) {
+      let byHour = grouped.get(row.error_fingerprint);
+      if (!byHour) {
+        byHour = new Map();
+        grouped.set(row.error_fingerprint, byHour);
+      }
+      byHour.set(row.hour_epoch, row.count);
+    }
+
+    const result: Record<string, Array<{ date: Date; count: number }>> = {};
+    for (const fp of fingerprints) {
+      const byHour = grouped.get(fp);
+      result[fp] = buckets.map((epoch) => ({
+        date: new Date(epoch * 1000),
+        count: byHour?.get(epoch) ?? 0,
+      }));
+    }
+
+    return result;
   }
 }

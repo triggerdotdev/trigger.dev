@@ -4,15 +4,14 @@ import { ClickhouseReader } from "./client/types.js";
 
 export const ErrorGroupsListQueryResult = z.object({
   error_fingerprint: z.string(),
+  task_identifier: z.string(),
   error_type: z.string(),
   error_message: z.string(),
   first_seen: z.string(),
   last_seen: z.string(),
   occurrence_count: z.number(),
-  affected_tasks: z.number(),
   sample_run_id: z.string(),
   sample_friendly_id: z.string(),
-  sample_task_identifier: z.string(),
 });
 
 export type ErrorGroupsListQueryResult = z.infer<typeof ErrorGroupsListQueryResult>;
@@ -30,15 +29,14 @@ export function getErrorGroupsListQueryBuilder(
     baseQuery: `
       SELECT
         error_fingerprint,
+        task_identifier,
         any(error_type) as error_type,
         any(error_message) as error_message,
-        toString(minMerge(first_seen)) as first_seen,
-        toString(maxMerge(last_seen)) as last_seen,
+        toString(toUnixTimestamp64Milli(min(first_seen))) as first_seen,
+        toString(toUnixTimestamp64Milli(max(last_seen))) as last_seen,
         toUInt64(sumMerge(occurrence_count)) as occurrence_count,
-        toUInt64(uniqMerge(affected_tasks)) as affected_tasks,
         anyMerge(sample_run_id) as sample_run_id,
-        anyMerge(sample_friendly_id) as sample_friendly_id,
-        anyMerge(sample_task_identifier) as sample_task_identifier
+        anyMerge(sample_friendly_id) as sample_friendly_id
       FROM trigger_dev.errors_v1
     `,
     schema: ErrorGroupsListQueryResult,
@@ -48,15 +46,14 @@ export function getErrorGroupsListQueryBuilder(
 
 export const ErrorGroupQueryResult = z.object({
   error_fingerprint: z.string(),
+  task_identifier: z.string(),
   error_type: z.string(),
   error_message: z.string(),
   first_seen: z.string(),
   last_seen: z.string(),
   occurrence_count: z.number(),
-  affected_tasks: z.number(),
   sample_run_id: z.string(),
   sample_friendly_id: z.string(),
-  sample_task_identifier: z.string(),
 });
 
 export type ErrorGroupQueryResult = z.infer<typeof ErrorGroupQueryResult>;
@@ -82,22 +79,21 @@ export function getErrorGroups(ch: ClickhouseReader, settings?: ClickHouseSettin
     query: `
       SELECT
         error_fingerprint,
+        task_identifier,
         any(error_type) as error_type,
         any(error_message) as error_message,
-        toString(minMerge(first_seen)) as first_seen,
-        toString(maxMerge(last_seen)) as last_seen,
+        toString(toUnixTimestamp64Milli(min(first_seen))) as first_seen,
+        toString(toUnixTimestamp64Milli(max(last_seen))) as last_seen,
         toUInt64(sumMerge(occurrence_count)) as occurrence_count,
-        toUInt64(uniqMerge(affected_tasks)) as affected_tasks,
         anyMerge(sample_run_id) as sample_run_id,
-        anyMerge(sample_friendly_id) as sample_friendly_id,
-        anyMerge(sample_task_identifier) as sample_task_identifier
+        anyMerge(sample_friendly_id) as sample_friendly_id
       FROM trigger_dev.errors_v1
       WHERE
         organization_id = {organizationId: String}
         AND project_id = {projectId: String}
         AND environment_id = {environmentId: String}
-        AND maxMerge(last_seen) >= now() - INTERVAL {days: Int64} DAY
-      GROUP BY error_fingerprint
+      GROUP BY error_fingerprint, task_identifier
+      HAVING max(last_seen) >= now() - INTERVAL {days: Int64} DAY
       ORDER BY last_seen DESC
       LIMIT {limit: Int64}
       OFFSET {offset: Int64}
@@ -168,6 +164,58 @@ export function getErrorInstancesListQueryBuilder(
       FROM trigger_dev.task_runs_v2 FINAL
     `,
     schema: ErrorInstancesListQueryResult,
+    settings,
+  });
+}
+
+export const ErrorHourlyOccurrencesQueryResult = z.object({
+  error_fingerprint: z.string(),
+  hour_epoch: z.number(),
+  count: z.number(),
+});
+
+export type ErrorHourlyOccurrencesQueryResult = z.infer<typeof ErrorHourlyOccurrencesQueryResult>;
+
+export const ErrorHourlyOccurrencesQueryParams = z.object({
+  organizationId: z.string(),
+  projectId: z.string(),
+  environmentId: z.string(),
+  fingerprints: z.array(z.string()),
+  hours: z.number().int().default(24),
+});
+
+export type ErrorHourlyOccurrencesQueryParams = z.infer<typeof ErrorHourlyOccurrencesQueryParams>;
+
+/**
+ * Gets hourly occurrence counts for specific error fingerprints over the past N hours.
+ * Queries task_runs_v2 directly, grouped by fingerprint and hour.
+ */
+export function getErrorHourlyOccurrences(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.query({
+    name: "getErrorHourlyOccurrences",
+    query: `
+      SELECT
+        error_fingerprint,
+        toUnixTimestamp(toStartOfHour(created_at)) as hour_epoch,
+        count() as count
+      FROM trigger_dev.task_runs_v2 FINAL
+      WHERE
+        organization_id = {organizationId: String}
+        AND project_id = {projectId: String}
+        AND environment_id = {environmentId: String}
+        AND created_at >= now() - INTERVAL {hours: Int64} HOUR
+        AND error_fingerprint IN {fingerprints: Array(String)}
+        AND status IN ('SYSTEM_FAILURE', 'CRASHED', 'INTERRUPTED', 'COMPLETED_WITH_ERRORS')
+        AND _is_deleted = 0
+      GROUP BY
+        error_fingerprint,
+        hour_epoch
+      ORDER BY
+        error_fingerprint ASC,
+        hour_epoch ASC
+    `,
+    schema: ErrorHourlyOccurrencesQueryResult,
+    params: ErrorHourlyOccurrencesQueryParams,
     settings,
   });
 }

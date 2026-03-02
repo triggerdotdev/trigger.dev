@@ -2,23 +2,33 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type MetaFunction, Form, Link, Outlet } from "@remix-run/react";
 import { XMarkIcon } from "@heroicons/react/20/solid";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
-import {
-  TypedAwait,
-  typeddefer,
-  type UseDataFunctionReturn,
-  useTypedLoaderData,
-} from "remix-typedjson";
+import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { requireUser } from "~/services/session.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 import { EnvironmentParamSchema, v3ErrorPath } from "~/utils/pathBuilder";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { ErrorsListPresenter, type ErrorGroup } from "~/presenters/v3/ErrorsListPresenter.server";
+import {
+  ErrorsListPresenter,
+  type ErrorsList,
+  type ErrorHourlyOccurrences,
+  type ErrorHourlyActivity,
+  type ErrorGroup,
+} from "~/presenters/v3/ErrorsListPresenter.server";
 import { $replica } from "~/db.server";
 import { logsClickhouseClient } from "~/services/clickhouseInstance.server";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Suspense, useMemo } from "react";
+import { Suspense } from "react";
+import {
+  Bar,
+  BarChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  type TooltipProps,
+  YAxis,
+} from "recharts";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -29,8 +39,11 @@ import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { Button } from "~/components/primitives/Buttons";
 import { Badge } from "~/components/primitives/Badge";
 import { Header1, Header3 } from "~/components/primitives/Headers";
+import { formatDateTime } from "~/components/primitives/DateTime";
+import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "~/utils/cn";
+import { formatNumberCompact } from "~/utils/numberFormatter";
 import {
   CopyableTableCell,
   Table,
@@ -103,8 +116,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       throw error;
     });
 
+  const hourlyOccurrencesPromise = listPromise.then((result) => {
+    if ("error" in result) return {} as ErrorHourlyOccurrences;
+    const fingerprints = result.errorGroups.map((g) => g.fingerprint);
+    if (fingerprints.length === 0) return {} as ErrorHourlyOccurrences;
+    return presenter.getHourlyOccurrences(
+      project.organizationId,
+      project.id,
+      environment.id,
+      fingerprints
+    );
+  });
+
   return typeddefer({
     data: listPromise,
+    hourlyOccurrences: hourlyOccurrencesPromise,
     defaultPeriod: "7d",
     retentionLimitDays,
     organizationSlug,
@@ -114,8 +140,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { data, defaultPeriod, retentionLimitDays, organizationSlug, projectParam, envParam } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    data,
+    hourlyOccurrences,
+    defaultPeriod,
+    retentionLimitDays,
+    organizationSlug,
+    projectParam,
+    envParam,
+  } = useTypedLoaderData<typeof loader>();
 
   return (
     <>
@@ -180,6 +213,7 @@ export default function Page() {
                     />
                     <ErrorsList
                       errorGroups={result.errorGroups}
+                      hourlyOccurrences={hourlyOccurrences}
                       organizationSlug={organizationSlug}
                       projectParam={projectParam}
                       envParam={envParam}
@@ -201,7 +235,7 @@ function FiltersBar({
   defaultPeriod,
   retentionLimitDays,
 }: {
-  list?: Exclude<Awaited<UseDataFunctionReturn<typeof loader>["data"]>, { error: string }>;
+  list?: ErrorsList;
   defaultPeriod?: string;
   retentionLimitDays: number;
 }) {
@@ -255,11 +289,13 @@ function FiltersBar({
 
 function ErrorsList({
   errorGroups,
+  hourlyOccurrences,
   organizationSlug,
   projectParam,
   envParam,
 }: {
   errorGroups: ErrorGroup[];
+  hourlyOccurrences: Promise<ErrorHourlyOccurrences>;
   organizationSlug: string;
   projectParam: string;
   envParam: string;
@@ -284,7 +320,8 @@ function ErrorsList({
           <TableHeaderCell>ID</TableHeaderCell>
           <TableHeaderCell>Error</TableHeaderCell>
           <TableHeaderCell>Occurrences</TableHeaderCell>
-          <TableHeaderCell>Tasks</TableHeaderCell>
+          <TableHeaderCell>Past 24h</TableHeaderCell>
+          <TableHeaderCell>Task</TableHeaderCell>
           <TableHeaderCell>First seen</TableHeaderCell>
           <TableHeaderCell>Last seen</TableHeaderCell>
           <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
@@ -295,6 +332,7 @@ function ErrorsList({
           <ErrorGroupRow
             key={errorGroup.fingerprint}
             errorGroup={errorGroup}
+            hourlyOccurrences={hourlyOccurrences}
             organizationSlug={organizationSlug}
             projectParam={projectParam}
             envParam={envParam}
@@ -307,11 +345,13 @@ function ErrorsList({
 
 function ErrorGroupRow({
   errorGroup,
+  hourlyOccurrences,
   organizationSlug,
   projectParam,
   envParam,
 }: {
   errorGroup: ErrorGroup;
+  hourlyOccurrences: Promise<ErrorHourlyOccurrences>;
   organizationSlug: string;
   projectParam: string;
   envParam: string;
@@ -323,18 +363,32 @@ function ErrorGroupRow({
     { fingerprint: errorGroup.fingerprint }
   );
 
-  const errorMessage = `${errorGroup.errorType}: ${errorGroup.errorMessage}`;
+  const errorMessage = `${errorGroup.errorMessage}`;
 
   return (
     <TableRow>
       <CopyableTableCell to={errorPath} value={errorGroup.fingerprint}>
         {errorGroup.fingerprint.slice(-8)}
       </CopyableTableCell>
+      <TableCell to={errorPath}>{errorGroup.taskIdentifier}</TableCell>
       <CopyableTableCell to={errorPath} className="font-mono" value={errorMessage}>
         {errorMessage}
       </CopyableTableCell>
       <TableCell to={errorPath}>{errorGroup.count.toLocaleString()}</TableCell>
-      <TableCell to={errorPath}>{errorGroup.affectedTasks}</TableCell>
+      <TableCell to={errorPath} actionClassName="py-1.5">
+        <Suspense fallback={<ErrorActivityBlankState />}>
+          <TypedAwait resolve={hourlyOccurrences} errorElement={<ErrorActivityBlankState />}>
+            {(data) => {
+              const activity = data[errorGroup.fingerprint];
+              return activity ? (
+                <ErrorActivityGraph activity={activity} />
+              ) : (
+                <ErrorActivityBlankState />
+              );
+            }}
+          </TypedAwait>
+        </Suspense>
+      </TableCell>
       <TableCell to={errorPath}>
         {formatDistanceToNow(errorGroup.firstSeen, { addSuffix: true })}
       </TableCell>
@@ -343,5 +397,75 @@ function ErrorGroupRow({
       </TableCell>
       <TableCellChevron to={errorPath} isSticky />
     </TableRow>
+  );
+}
+
+function ErrorActivityGraph({ activity }: { activity: ErrorHourlyActivity }) {
+  const maxCount = Math.max(...activity.map((d) => d.count));
+
+  return (
+    <div className="flex items-start gap-1.5">
+      <div className="h-6 w-[5.125rem] rounded-sm">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={activity} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+            <YAxis domain={[0, maxCount || 1]} hide />
+            <Tooltip
+              cursor={{ fill: "transparent" }}
+              content={<ErrorActivityTooltip />}
+              allowEscapeViewBox={{ x: true, y: true }}
+              wrapperStyle={{ zIndex: 1000 }}
+              animationDuration={0}
+            />
+            <Bar
+              dataKey="count"
+              fill="#4D525B"
+              strokeWidth={0}
+              isAnimationActive={false}
+              background={{ fill: "#212327" }}
+            />
+            {maxCount > 0 && (
+              <ReferenceLine y={maxCount} stroke="#4D525B" strokeDasharray="3 2" strokeWidth={1} />
+            )}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <span className="-mt-1 text-xxs tabular-nums text-text-dimmed">
+        {formatNumberCompact(maxCount)}
+      </span>
+    </div>
+  );
+}
+
+const ErrorActivityTooltip = ({ active, payload }: TooltipProps<number, string>) => {
+  if (active && payload && payload.length > 0) {
+    const entry = payload[0].payload as { date: Date; count: number };
+    const date = entry.date instanceof Date ? entry.date : new Date(entry.date);
+    const formattedDate = formatDateTime(date, "UTC", [], false, true);
+
+    return (
+      <TooltipPortal active={active}>
+        <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
+          <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
+          <div className="mt-2 text-xs text-text-bright">
+            <span className="tabular-nums">{entry.count}</span>{" "}
+            <span className="text-text-dimmed">
+              {entry.count === 1 ? "occurrence" : "occurrences"}
+            </span>
+          </div>
+        </div>
+      </TooltipPortal>
+    );
+  }
+
+  return null;
+};
+
+function ErrorActivityBlankState() {
+  return (
+    <div className="flex h-6 w-[5.125rem] items-end gap-px rounded-sm">
+      {[...Array(24)].map((_, i) => (
+        <div key={i} className="h-full flex-1 bg-[#212327]" />
+      ))}
+    </div>
   );
 }
