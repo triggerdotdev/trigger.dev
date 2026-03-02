@@ -1,36 +1,37 @@
+import { type LoaderFunctionArgs } from "@remix-run/node";
 import type { TaskTriggerSource } from "@trigger.dev/database";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ReactGridLayout from "react-grid-layout";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { LogsTaskFilter } from "~/components/logs/LogsTaskFilter";
+import { type WidgetData } from "~/components/metrics/QueryWidget";
+import { QueuesFilter } from "~/components/metrics/QueuesFilter";
+import { ScopeFilter } from "~/components/metrics/ScopeFilter";
+import { TitleWidget } from "~/components/metrics/TitleWidget";
+import { CreateDashboardPageButton } from "~/components/navigation/DashboardDialogs";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { $replica } from "~/db.server";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
-import { requireUser } from "~/services/session.server";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import {
   type LayoutItem,
   type Widget,
   MetricDashboardPresenter,
 } from "~/presenters/v3/MetricDashboardPresenter.server";
-import { type LoaderFunctionArgs } from "@remix-run/node";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
-import { z } from "zod";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import ReactGridLayout from "react-grid-layout";
-import { MetricWidget } from "../resources.metric";
-import { TitleWidget } from "~/components/metrics/TitleWidget";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { TimeFilter } from "~/components/runs/v3/SharedFilters";
-import { LogsTaskFilter } from "~/components/logs/LogsTaskFilter";
-import { ScopeFilter } from "~/components/metrics/ScopeFilter";
-import { QueuesFilter } from "~/components/metrics/QueuesFilter";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { useSearchParams } from "~/hooks/useSearchParam";
-import { type WidgetData } from "~/components/metrics/QueryWidget";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { QueryScopeSchema } from "~/v3/querySchemas";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { MetricWidget } from "../resources.metric";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardKey: z.string(),
@@ -82,10 +83,21 @@ export default function Page() {
     possibleTasks,
   } = useTypedLoaderData<typeof loader>();
 
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
   return (
     <PageContainer>
       <NavBar>
         <PageTitle title={title} />
+        <PageAccessories>
+          <CreateDashboardPageButton
+            organization={organization}
+            project={project}
+            environment={environment}
+          />
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <div className="h-full">
