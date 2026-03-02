@@ -64,6 +64,9 @@ model User {
   impersonationsReceived  ImpersonationAuditLog[] @relation("ImpersonationTarget")
   customerQueries         CustomerQuery[]
   metricsDashboards       MetricsDashboard[]
+
+  platformNotifications            PlatformNotification[]
+  platformNotificationInteractions PlatformNotificationInteraction[]
 }
 
 model MfaBackupCode {
@@ -225,6 +228,8 @@ model Organization {
   githubAppInstallations   GithubAppInstallation[]
   customerQueries          CustomerQuery[]
   metricsDashboards        MetricsDashboard[]
+
+  platformNotifications            PlatformNotification[]
 }
 
 model OrgMember {
@@ -413,6 +418,8 @@ model Project {
   buildSettings         Json?
   taskScheduleInstances TaskScheduleInstance[]
   metricsDashboards     MetricsDashboard[]
+
+  platformNotifications PlatformNotification[]
 }
 
 enum ProjectVersion {
@@ -2571,4 +2578,97 @@ model MetricsDashboard {
 
   /// Fast lookup for the list
   @@index([projectId, createdAt(sort: Desc)])
+}
+
+enum PlatformNotificationSurface {
+  WEBAPP
+  CLI
+}
+
+enum PlatformNotificationScope {
+  USER
+  PROJECT
+  ORGANIZATION
+  GLOBAL
+}
+
+/// Admin-created notification definitions
+model PlatformNotification {
+  id String @id @default(cuid())
+
+  friendlyId String @unique @default(cuid())
+
+  /// Admin-facing title for identification in admin tools
+  title String
+
+  /// Versioned JSON rendering content (see payload schema in spec)
+  payload Json
+
+  surface PlatformNotificationSurface
+  scope   PlatformNotificationScope
+
+  /// Set when scope = USER
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId String?
+
+  /// Set when scope = ORGANIZATION
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String?
+
+  /// Set when scope = PROJECT
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String?
+
+  /// When notification becomes active
+  startsAt DateTime
+
+  /// When notification expires. Null = persists until dismissed or archived
+  endsAt DateTime?
+
+  /// CLI: auto-expire N days after user first saw it
+  cliMaxDaysAfterFirstSeen Int?
+
+  /// CLI: auto-expire after shown N times to user
+  cliMaxShowCount Int?
+
+  /// Ordering within same scope level (higher = more important)
+  priority Int @default(0)
+
+  /// Soft delete
+  archivedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interactions PlatformNotificationInteraction[]
+
+  @@index([surface, scope, startsAt])
+}
+
+/// Per-user tracking of notification views and dismissals
+model PlatformNotificationInteraction {
+  id String @id @default(cuid())
+
+  notification   PlatformNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  notificationId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId String
+
+  /// Set by beacon/CLI GET on first impression
+  firstSeenAt DateTime @default(now())
+
+  /// Times shown (incremented per beacon/CLI view)
+  showCount Int @default(1)
+
+  /// User dismissed in webapp
+  webappDismissedAt DateTime?
+
+  /// Auto-dismissed or expired in CLI
+  cliDismissedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([notificationId, userId])
 }
