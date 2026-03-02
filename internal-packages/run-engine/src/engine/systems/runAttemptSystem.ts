@@ -799,16 +799,15 @@ export class RunAttemptSystem {
             },
           });
 
-          if (!run.associatedWaitpoint) {
-            throw new ServiceValidationError("No associated waitpoint found", 400);
+          // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint)
+          if (run.associatedWaitpoint) {
+            await this.waitpointSystem.completeWaitpoint({
+              id: run.associatedWaitpoint.id,
+              output: completion.output
+                ? { value: completion.output, type: completion.outputType, isError: false }
+                : undefined,
+            });
           }
-
-          await this.waitpointSystem.completeWaitpoint({
-            id: run.associatedWaitpoint.id,
-            output: completion.output
-              ? { value: completion.output, type: completion.outputType, isError: false }
-              : undefined,
-          });
 
           this.$.eventBus.emit("runSucceeded", {
             time: completedAt,
@@ -1484,15 +1483,13 @@ export class RunAttemptSystem {
           runnerId,
         });
 
-        if (!run.associatedWaitpoint) {
-          throw new ServiceValidationError("No associated waitpoint found", 400);
+        // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint)
+        if (run.associatedWaitpoint) {
+          await this.waitpointSystem.completeWaitpoint({
+            id: run.associatedWaitpoint.id,
+            output: { value: JSON.stringify(error), isError: true },
+          });
         }
-
-        //complete the waitpoint so the parent run can continue
-        await this.waitpointSystem.completeWaitpoint({
-          id: run.associatedWaitpoint.id,
-          output: { value: JSON.stringify(error), isError: true },
-        });
 
         await this.#finalizeRun(run);
 
@@ -1652,18 +1649,17 @@ export class RunAttemptSystem {
         runnerId,
       });
 
-      if (!run.associatedWaitpoint) {
-        throw new ServiceValidationError("No associated waitpoint found", 400);
-      }
-
       await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId, {
         removeFromWorkerQueue: true,
       });
 
-      await this.waitpointSystem.completeWaitpoint({
-        id: run.associatedWaitpoint.id,
-        output: { value: JSON.stringify(truncatedError), isError: true },
-      });
+      // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint)
+      if (run.associatedWaitpoint) {
+        await this.waitpointSystem.completeWaitpoint({
+          id: run.associatedWaitpoint.id,
+          output: { value: JSON.stringify(truncatedError), isError: true },
+        });
+      }
 
       this.$.eventBus.emit("runFailed", {
         time: failedAt,
@@ -1897,10 +1893,11 @@ export class RunAttemptSystem {
         });
 
       if (!queue) {
-        throw new ServiceValidationError(
-          `Could not resolve queue data for queue ${params.queueName}`,
-          404
-        );
+        // Return synthetic queue so run/span view still loads (e.g. createFailedTaskRun with fallback queue)
+        return {
+          id: params.queueName,
+          name: params.queueName,
+        };
       }
 
       return {

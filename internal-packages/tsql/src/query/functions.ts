@@ -347,18 +347,7 @@ export const TSQL_CLICKHOUSE_FUNCTIONS: Record<string, TSQLFunctionMeta> = {
   arrayFlatten: { clickhouseName: "arrayFlatten", minArgs: 1, maxArgs: 1 },
   arrayCompact: { clickhouseName: "arrayCompact", minArgs: 1, maxArgs: 1 },
   arrayZip: { clickhouseName: "arrayZip", minArgs: 1 },
-  arrayMap: { clickhouseName: "arrayMap", minArgs: 2, maxArgs: 2 },
-  arrayFilter: { clickhouseName: "arrayFilter", minArgs: 2, maxArgs: 2 },
-  arrayFill: { clickhouseName: "arrayFill", minArgs: 2, maxArgs: 2 },
-  arrayReverseFill: { clickhouseName: "arrayReverseFill", minArgs: 2, maxArgs: 2 },
-  arraySplit: { clickhouseName: "arraySplit", minArgs: 2, maxArgs: 2 },
-  arrayReverseSplit: { clickhouseName: "arrayReverseSplit", minArgs: 2, maxArgs: 2 },
-  arrayExists: { clickhouseName: "arrayExists", minArgs: 1, maxArgs: 2 },
-  arrayAll: { clickhouseName: "arrayAll", minArgs: 1, maxArgs: 2 },
-  arrayFirst: { clickhouseName: "arrayFirst", minArgs: 1, maxArgs: 2 },
-  arrayLast: { clickhouseName: "arrayLast", minArgs: 1, maxArgs: 2 },
-  arrayFirstIndex: { clickhouseName: "arrayFirstIndex", minArgs: 1, maxArgs: 2 },
-  arrayLastIndex: { clickhouseName: "arrayLastIndex", minArgs: 1, maxArgs: 2 },
+
   arrayMin: { clickhouseName: "arrayMin", minArgs: 1, maxArgs: 2 },
   arrayMax: { clickhouseName: "arrayMax", minArgs: 1, maxArgs: 2 },
   arraySum: { clickhouseName: "arraySum", minArgs: 1, maxArgs: 2 },
@@ -445,7 +434,7 @@ export const TSQL_CLICKHOUSE_FUNCTIONS: Record<string, TSQLFunctionMeta> = {
   // Other functions
   isFinite: { clickhouseName: "isFinite", minArgs: 1, maxArgs: 1 },
   isInfinite: { clickhouseName: "isInfinite", minArgs: 1, maxArgs: 1 },
-  ifNotFinite: { clickhouseName: "ifNotFinite", minArgs: 1, maxArgs: 1 },
+  ifNotFinite: { clickhouseName: "ifNotFinite", minArgs: 2, maxArgs: 2 },
   isNaN: { clickhouseName: "isNaN", minArgs: 1, maxArgs: 1 },
   bar: { clickhouseName: "bar", minArgs: 4, maxArgs: 4 },
   transform: { clickhouseName: "transform", minArgs: 3, maxArgs: 4 },
@@ -562,25 +551,45 @@ export const TSQL_AGGREGATIONS: Record<string, TSQLFunctionMeta> = {
 };
 
 /**
- * Find a function in the TSQL functions map
- * Supports case-insensitive lookup for non-case-sensitive functions
+ * Build a lowercase lookup map from a functions record.
+ * Uses a null-prototype object to avoid Object.prototype pollution (e.g. "toString").
+ */
+function buildLowercaseMap(
+  functions: Record<string, TSQLFunctionMeta>
+): Record<string, TSQLFunctionMeta> {
+  const map: Record<string, TSQLFunctionMeta> = Object.create(null);
+  for (const [key, value] of Object.entries(functions)) {
+    map[key.toLowerCase()] = value;
+  }
+  return map;
+}
+
+const FUNCTIONS_LOWERCASE = buildLowercaseMap(TSQL_CLICKHOUSE_FUNCTIONS);
+const AGGREGATIONS_LOWERCASE = buildLowercaseMap(TSQL_AGGREGATIONS);
+
+/**
+ * Find a function in the TSQL functions map.
+ * Supports case-insensitive lookup for non-case-sensitive functions.
+ *
+ * @param functions - The canonical functions record (exact-match lookup)
+ * @param lowercaseMap - Pre-computed lowercase lookup (null-prototype, safe from prototype pollution)
  */
 function findFunction(
   name: string,
-  functions: Record<string, TSQLFunctionMeta>
+  functions: Record<string, TSQLFunctionMeta>,
+  lowercaseMap: Record<string, TSQLFunctionMeta>
 ): TSQLFunctionMeta | undefined {
-  const func = functions[name];
-  if (func !== undefined) {
-    return func;
+  if (Object.prototype.hasOwnProperty.call(functions, name)) {
+    return functions[name];
   }
 
-  const lowerFunc = functions[name.toLowerCase()];
+  // Case-insensitive fallback using the pre-computed lowercase map
+  const lowerFunc = lowercaseMap[name.toLowerCase()];
   if (lowerFunc === undefined) {
     return undefined;
   }
 
-  // If we haven't found a function with the case preserved, but we have found it in lowercase,
-  // then the function names are different case-wise only.
+  // If the function is case-sensitive, only the exact-match above should find it
   if (lowerFunc.caseSensitive) {
     return undefined;
   }
@@ -592,14 +601,14 @@ function findFunction(
  * Find a TSQL aggregation function by name
  */
 export function findTSQLAggregation(name: string): TSQLFunctionMeta | undefined {
-  return findFunction(name, TSQL_AGGREGATIONS);
+  return findFunction(name, TSQL_AGGREGATIONS, AGGREGATIONS_LOWERCASE);
 }
 
 /**
  * Find a TSQL function by name
  */
 export function findTSQLFunction(name: string): TSQLFunctionMeta | undefined {
-  return findFunction(name, TSQL_CLICKHOUSE_FUNCTIONS);
+  return findFunction(name, TSQL_CLICKHOUSE_FUNCTIONS, FUNCTIONS_LOWERCASE);
 }
 
 /**

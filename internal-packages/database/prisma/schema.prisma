@@ -43,6 +43,7 @@ model User {
   confirmedBasicDetails Boolean @default(false)
 
   referralSource String?
+  onboardingData Json?
 
   orgMemberships OrgMember[]
   sentInvites    OrgMemberInvite[]
@@ -189,6 +190,8 @@ model Organization {
   deletedAt DateTime?
 
   companySize String?
+
+  onboardingData Json?
 
   avatar Json?
 
@@ -411,6 +414,7 @@ model Project {
   customerQueries                CustomerQuery[]
 
   buildSettings         Json?
+  onboardingData        Json?
   taskScheduleInstances TaskScheduleInstance[]
   metricsDashboards     MetricsDashboard[]
 }
@@ -777,6 +781,7 @@ model TaskRun {
   realtimeStreamsVersion String   @default("v1")
   /// Store the stream keys that are being used by the run
   realtimeStreams        String[] @default([])
+
 
   @@unique([oneTimeUseToken])
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])

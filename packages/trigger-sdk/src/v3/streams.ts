@@ -1,6 +1,7 @@
 import {
   type ApiRequestOptions,
   realtimeStreams,
+  inputStreams,
   taskContext,
   type RealtimeStreamOperationOptions,
   mergeRequestOptions,
@@ -15,7 +16,19 @@ import {
   AppendStreamOptions,
   RealtimeDefinedStream,
   InferStreamType,
+  ManualWaitpointPromise,
+  WaitpointTimeoutError,
+  runtime,
+  type RealtimeDefinedInputStream,
+  type InputStreamSubscription,
+  type InputStreamOnceOptions,
+  InputStreamOncePromise,
+  type InputStreamOnceResult,
+  type InputStreamWaitOptions,
+  type SendInputStreamOptions,
+  type InferInputStreamType,
 } from "@trigger.dev/core/v3";
+import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { tracer } from "./tracer.js";
 import { SpanStatusCode } from "@opentelemetry/api";
 
@@ -652,7 +665,191 @@ function define<TPart>(opts: RealtimeDefineStreamOptions): RealtimeDefinedStream
   };
 }
 
-export type { InferStreamType };
+export type { InferStreamType, InferInputStreamType };
+
+/**
+ * Define an input stream that can receive typed data from external callers.
+ *
+ * Inside a task, use `.on()`, `.once()`, or `.peek()` to receive data.
+ * Outside a task (e.g., from your backend), use `.send(runId, data)` to send data.
+ *
+ * @template TData - The type of data this input stream receives
+ * @param opts - Options including a unique `id` for this input stream
+ *
+ * @example
+ * ```ts
+ * import { streams, task } from "@trigger.dev/sdk";
+ *
+ * const approval = streams.input<{ approved: boolean; reviewer: string }>({ id: "approval" });
+ *
+ * export const myTask = task({
+ *   id: "my-task",
+ *   run: async (payload) => {
+ *     // Wait for the next approval
+ *     const data = await approval.once().unwrap();
+ *     console.log(data.approved, data.reviewer);
+ *   },
+ * });
+ *
+ * // From your backend:
+ * // await approval.send(runId, { approved: true, reviewer: "alice" });
+ * ```
+ */
+function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
+  return {
+    id: opts.id,
+    on(handler) {
+      return inputStreams.on(
+        opts.id,
+        handler as (data: unknown) => void | Promise<void>
+      );
+    },
+    once(options) {
+      const ctx = taskContext.ctx;
+      const runId = ctx?.run.id;
+
+      const innerPromise = inputStreams.once(opts.id, options);
+
+      return new InputStreamOncePromise<TData>((resolve, reject) => {
+        tracer
+          .startActiveSpan(
+            `inputStream.once()`,
+            async () => {
+              const result = await innerPromise;
+              resolve(result as InputStreamOnceResult<TData>);
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "streams",
+                [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
+                ...(runId
+                  ? { [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${opts.id}` }
+                  : {}),
+                streamId: opts.id,
+                ...accessoryAttributes({
+                  items: [{ text: opts.id, variant: "normal" }],
+                  style: "codepath",
+                }),
+              },
+            }
+          )
+          .catch(reject);
+      });
+    },
+    peek() {
+      return inputStreams.peek(opts.id) as TData | undefined;
+    },
+    wait(options) {
+      return new ManualWaitpointPromise<TData>(async (resolve, reject) => {
+        try {
+          const ctx = taskContext.ctx;
+
+          if (!ctx) {
+            throw new Error("inputStream.wait() can only be used from inside a task.run()");
+          }
+
+          const apiClient = apiClientManager.clientOrThrow();
+
+          const result = await tracer.startActiveSpan(
+            `inputStream.wait()`,
+            async (span) => {
+              // 1. Create a waitpoint linked to this input stream
+              const response = await apiClient.createInputStreamWaitpoint(ctx.run.id, {
+                streamId: opts.id,
+                timeout: options?.timeout,
+                idempotencyKey: options?.idempotencyKey,
+                idempotencyKeyTTL: options?.idempotencyKeyTTL,
+                tags: options?.tags,
+                lastSeqNum: inputStreams.lastSeqNum(opts.id),
+              });
+
+              // Set the entity ID now that we have the waitpoint ID
+              span.setAttribute(SemanticInternalAttributes.ENTITY_ID, response.waitpointId);
+
+              // 2. Block the run on the waitpoint
+              const waitResponse = await apiClient.waitForWaitpointToken({
+                runFriendlyId: ctx.run.id,
+                waitpointFriendlyId: response.waitpointId,
+              });
+
+              if (!waitResponse.success) {
+                throw new Error("Failed to block on input stream waitpoint");
+              }
+
+              // 3. Suspend the task
+              const waitResult = await runtime.waitUntil(response.waitpointId);
+
+              // 4. Parse the output
+              const data =
+                waitResult.output !== undefined
+                  ? await conditionallyImportAndParsePacket(
+                    {
+                      data: waitResult.output,
+                      dataType: waitResult.outputType ?? "application/json",
+                    },
+                    apiClient
+                  )
+                  : undefined;
+
+              if (waitResult.ok) {
+                return { ok: true as const, output: data as TData };
+              } else {
+                const error = new WaitpointTimeoutError(data?.message ?? "Timed out");
+
+                span.recordException(error);
+                span.setStatus({ code: SpanStatusCode.ERROR });
+
+                return { ok: false as const, error };
+              }
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "wait",
+                [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
+                streamId: opts.id,
+                ...accessoryAttributes({
+                  items: [
+                    {
+                      text: opts.id,
+                      variant: "normal",
+                    },
+                  ],
+                  style: "codepath",
+                }),
+              },
+            }
+          );
+
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    },
+    async send(runId, data, options) {
+      return tracer.startActiveSpan(
+        `inputStream.send()`,
+        async () => {
+          const apiClient = apiClientManager.clientOrThrow();
+          await apiClient.sendInputStream(runId, opts.id, data, options?.requestOptions);
+        },
+        {
+          attributes: {
+            [SemanticInternalAttributes.STYLE_ICON]: "streams",
+            [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
+            [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${opts.id}`,
+            streamId: opts.id,
+            runId,
+            ...accessoryAttributes({
+              items: [{ text: opts.id, variant: "normal" }],
+              style: "codepath",
+            }),
+          },
+        }
+      );
+    },
+  };
+}
 
 export const streams = {
   pipe,
@@ -660,6 +857,7 @@ export const streams = {
   append,
   writer,
   define,
+  input,
 };
 
 function getRunIdForOptions(options?: RealtimeStreamOperationOptions): string | undefined {

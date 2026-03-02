@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { GitMetadata } from "~/components/GitMetadata";
+import { VercelLink } from "~/components/integrations/VercelLink";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -197,17 +198,14 @@ export default function Page() {
 
         const readSession = await stream.readSession(
           {
-            seq_num: 0,
-            wait: 60,
-            as: "bytes",
+            start: { from: { seqNum: 0 }, clamp: true },
+            stop: { waitSecs: 60 },
           },
           { signal: abortController.signal }
         );
 
-        const decoder = new TextDecoder();
-
         for await (const record of readSession) {
-          const decoded = decoder.decode(record.body);
+          const decoded = record.body;
           const result = DeploymentEventFromString.safeParse(decoded);
 
           if (!result.success) {
@@ -216,8 +214,8 @@ export default function Page() {
               const headers: Record<string, string> = {};
 
               if (record.headers) {
-                for (const [nameBytes, valueBytes] of record.headers) {
-                  headers[decoder.decode(nameBytes)] = decoder.decode(valueBytes);
+                for (const [name, value] of record.headers) {
+                  headers[name] = value;
                 }
               }
               const level = (headers["level"]?.toLowerCase() as LogEntry["level"]) ?? "info";
@@ -516,6 +514,16 @@ export default function Page() {
                   })()}
                 </Property.Value>
               </Property.Item>
+              {deployment.vercelDeploymentUrl && (
+                <Property.Item>
+                  <Property.Label>Linked</Property.Label>
+                  <Property.Value>
+                    <div className="-ml-1 mt-0.5 flex flex-col">
+                      <VercelLink vercelDeploymentUrl={deployment.vercelDeploymentUrl} />
+                    </div>
+                  </Property.Value>
+                </Property.Item>
+              )}
             </Property.Table>
           </div>
 

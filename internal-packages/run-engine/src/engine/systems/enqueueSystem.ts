@@ -4,6 +4,7 @@ import {
   TaskRun,
   TaskRunExecutionStatus,
 } from "@trigger.dev/database";
+import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
@@ -34,6 +35,7 @@ export class EnqueueSystem {
     workerId,
     runnerId,
     skipRunLock,
+    includeTtl = false,
   }: {
     run: TaskRun;
     env: MinimalAuthenticatedEnvironment;
@@ -53,6 +55,8 @@ export class EnqueueSystem {
     workerId?: string;
     runnerId?: string;
     skipRunLock?: boolean;
+    /** When true, include TTL in the queued message (only for first enqueue from trigger). Default false. */
+    includeTtl?: boolean;
   }) {
     const prisma = tx ?? this.$.prisma;
 
@@ -81,6 +85,16 @@ export class EnqueueSystem {
 
       const timestamp = (run.queueTimestamp ?? run.createdAt).getTime() - run.priorityMs;
 
+      // Include TTL only when explicitly requested (first enqueue from trigger).
+      // Re-enqueues (waitpoint, checkpoint, delayed, pending version) must not add TTL.
+      let ttlExpiresAt: number | undefined;
+      if (includeTtl && run.ttl) {
+        const expireAt = parseNaturalLanguageDuration(run.ttl);
+        if (expireAt) {
+          ttlExpiresAt = expireAt.getTime();
+        }
+      }
+
       await this.$.runQueue.enqueueMessage({
         env,
         workerQueue,
@@ -95,6 +109,7 @@ export class EnqueueSystem {
           concurrencyKey: run.concurrencyKey ?? undefined,
           timestamp,
           attempt: 0,
+          ttlExpiresAt,
         },
       });
 

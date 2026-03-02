@@ -509,8 +509,7 @@ export class SpanPresenter extends BasePresenter {
         taskIdentifier: true,
         spanId: true,
         createdAt: true,
-        number: true,
-        taskVersion: true,
+        status: true,
       },
       where: {
         parentSpanId: spanId,
@@ -626,6 +625,41 @@ export class SpanPresenter extends BasePresenter {
               runId,
               streamKey,
               metadata,
+            },
+          },
+        };
+      }
+      case "input-stream": {
+        if (!span.entity.id) {
+          logger.error(`SpanPresenter: No input stream id`, {
+            spanId,
+            inputStreamId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        const [runId, streamId] = span.entity.id.split(":");
+
+        if (!runId || !streamId) {
+          logger.error(`SpanPresenter: Invalid input stream id`, {
+            spanId,
+            inputStreamId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        // Translate user-facing stream ID to internal S2 stream name
+        const s2StreamKey = `$trigger.input:${streamId}`;
+
+        return {
+          ...data,
+          entity: {
+            type: "realtime-stream" as const,
+            object: {
+              runId,
+              streamKey: s2StreamKey,
+              displayName: streamId,
+              metadata: undefined,
             },
           },
         };

@@ -2879,7 +2879,7 @@ export class ClickHousePrinter {
     }
 
     // Check if this is a comparison function
-    if (name in TSQL_COMPARISON_MAPPING) {
+    if (Object.prototype.hasOwnProperty.call(TSQL_COMPARISON_MAPPING, name)) {
       const op = TSQL_COMPARISON_MAPPING[name];
       if (node.args.length !== 2) {
         throw new QueryError(`Comparison '${name}' requires exactly two arguments`);
@@ -2926,7 +2926,7 @@ export class ClickHousePrinter {
     if (funcMeta) {
       validateFunctionArgs(node.args, funcMeta.minArgs, funcMeta.maxArgs, name);
 
-      const args = node.args.map((arg) => this.visit(arg));
+      const args = this.visitCallArgs(name, node.args);
       const params = node.params ? node.params.map((p) => this.visit(p)) : null;
       const paramsPart = params ? `(${params.join(", ")})` : "";
       return `${funcMeta.clickhouseName}${paramsPart}(${args.join(", ")})`;
@@ -2934,6 +2934,86 @@ export class ClickHousePrinter {
 
     // Unknown function - throw error
     throw new QueryError(`Unknown function: ${name}`);
+  }
+
+  /**
+   * Valid ClickHouse interval unit keywords used by date functions like dateAdd, dateDiff, etc.
+   */
+  private static readonly INTERVAL_UNITS = new Set([
+    "nanosecond",
+    "microsecond",
+    "millisecond",
+    "second",
+    "minute",
+    "hour",
+    "day",
+    "week",
+    "month",
+    "quarter",
+    "year",
+  ]);
+
+  /**
+   * Date functions whose first argument is an interval unit keyword.
+   * ClickHouse requires the unit as a bare keyword (e.g., `dateAdd(day, 7, col)`),
+   * not a string literal (e.g., `dateAdd('day', 7, col)` fails).
+   */
+  private static readonly DATE_FUNCTIONS_WITH_INTERVAL_UNIT = new Set([
+    "dateadd",
+    "datesub",
+    "datediff",
+    "date_add",
+    "date_sub",
+    "date_diff",
+  ]);
+
+  /**
+   * Visit function call arguments, handling date functions that require an interval unit
+   * keyword as their first argument. For these functions, the first arg is output as a
+   * bare keyword instead of being parameterized or resolved as a column reference.
+   */
+  private visitCallArgs(functionName: string, args: Expression[]): string[] {
+    const lowerName = functionName.toLowerCase();
+
+    if (
+      ClickHousePrinter.DATE_FUNCTIONS_WITH_INTERVAL_UNIT.has(lowerName) &&
+      args.length > 0
+    ) {
+      const firstArg = args[0];
+      const intervalUnit = this.extractIntervalUnit(firstArg);
+
+      if (intervalUnit) {
+        return [intervalUnit, ...args.slice(1).map((arg) => this.visit(arg))];
+      }
+    }
+
+    return args.map((arg) => this.visit(arg));
+  }
+
+  /**
+   * Try to extract a valid interval unit keyword from an expression.
+   * Handles both string constants ('day') and bare identifiers (day).
+   * Returns the bare keyword string if valid, or null if not an interval unit.
+   */
+  private extractIntervalUnit(expr: Expression): string | null {
+    if (expr.expression_type === "constant") {
+      const value = (expr as Constant).value;
+      if (typeof value === "string" && ClickHousePrinter.INTERVAL_UNITS.has(value.toLowerCase())) {
+        return value.toLowerCase();
+      }
+    }
+
+    if (expr.expression_type === "field") {
+      const chain = (expr as Field).chain;
+      if (chain.length === 1 && typeof chain[0] === "string") {
+        const name = chain[0].toLowerCase();
+        if (ClickHousePrinter.INTERVAL_UNITS.has(name)) {
+          return name;
+        }
+      }
+    }
+
+    return null;
   }
 
   private visitJoinConstraint(node: JoinConstraint): string {

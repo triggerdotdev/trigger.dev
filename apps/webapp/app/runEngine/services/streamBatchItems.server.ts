@@ -1,5 +1,4 @@
 import {
-  type BatchItemNDJSON,
   type StreamBatchItemsResponse,
   BatchItemNDJSON as BatchItemNDJSONSchema,
 } from "@trigger.dev/core/v3";
@@ -13,6 +12,14 @@ import { BatchPayloadProcessor } from "../concerns/batchPayloads.server";
 
 export type StreamBatchItemsServiceOptions = {
   maxItemBytes: number;
+};
+
+export type OversizedItemMarker = {
+  __batchItemError: "OVERSIZED";
+  index: number;
+  task: string;
+  actualSize: number;
+  maxSize: number;
 };
 
 export type StreamBatchItemsServiceConstructorOptions = {
@@ -111,6 +118,41 @@ export class StreamBatchItemsService extends WithRunEngine {
 
         // Process items from the stream
         for await (const rawItem of itemsIterator) {
+          // Check for oversized item markers from the NDJSON parser
+          if (rawItem && typeof rawItem === "object" && "__batchItemError" in rawItem) {
+            const marker = rawItem as OversizedItemMarker;
+            const itemIndex = marker.index >= 0 ? marker.index : lastIndex + 1;
+
+            const errorMessage = `Batch item payload is too large (${(marker.actualSize / 1024).toFixed(1)} KB). Maximum allowed size is ${(marker.maxSize / 1024).toFixed(1)} KB. Reduce the payload size or offload large data to external storage.`;
+
+            // Enqueue with __error metadata - processItemCallback will detect this
+            // and use TriggerFailedTaskService to create a pre-failed run
+            const batchItem: BatchItem = {
+              task: marker.task,
+              payload: "{}",
+              payloadType: "application/json",
+              options: {
+                __error: errorMessage,
+                __errorCode: "PAYLOAD_TOO_LARGE",
+              },
+            };
+
+            const result = await this._engine.enqueueBatchItem(
+              batchId,
+              environment.id,
+              itemIndex,
+              batchItem
+            );
+
+            if (result.enqueued) {
+              itemsAccepted++;
+            } else {
+              itemsDeduplicated++;
+            }
+            lastIndex = itemIndex;
+            continue;
+          }
+
           // Parse and validate the item
           const parseResult = BatchItemNDJSONSchema.safeParse(rawItem);
           if (!parseResult.success) {
@@ -169,6 +211,34 @@ export class StreamBatchItemsService extends WithRunEngine {
 
         // Validate we received the expected number of items
         if (enqueuedCount !== batch.runCount) {
+          // The batch queue consumers may have already processed all items and
+          // cleaned up the Redis keys before we got here (especially likely when
+          // items include pre-failed runs that complete instantly). Check if the
+          // batch was already sealed/completed in Postgres.
+          const currentBatch = await this._prisma.batchTaskRun.findUnique({
+            where: { id: batchId },
+            select: { sealed: true, status: true },
+          });
+
+          if (currentBatch?.sealed) {
+            logger.info("Batch already sealed before count check (fast completion)", {
+              batchId: batchFriendlyId,
+              itemsAccepted,
+              itemsDeduplicated,
+              enqueuedCount,
+              expectedCount: batch.runCount,
+              batchStatus: currentBatch.status,
+            });
+
+            return {
+              id: batchFriendlyId,
+              itemsAccepted,
+              itemsDeduplicated,
+              sealed: true,
+              runCount: batch.runCount,
+            };
+          }
+
           logger.warn("Batch item count mismatch", {
             batchId: batchFriendlyId,
             expected: batch.runCount,
@@ -186,6 +256,7 @@ export class StreamBatchItemsService extends WithRunEngine {
             sealed: false,
             enqueuedCount,
             expectedCount: batch.runCount,
+            runCount: batch.runCount,
           };
         }
 
@@ -237,6 +308,7 @@ export class StreamBatchItemsService extends WithRunEngine {
               itemsAccepted,
               itemsDeduplicated,
               sealed: true,
+              runCount: batch.runCount,
             };
           }
 
@@ -273,10 +345,126 @@ export class StreamBatchItemsService extends WithRunEngine {
           itemsAccepted,
           itemsDeduplicated,
           sealed: true,
+          runCount: batch.runCount,
         };
       }
     );
   }
+}
+
+/**
+ * Extract `index` and `task` from raw JSON bytes without decoding the full line.
+ * Scans at most 512 bytes, tracking JSON nesting depth to only match top-level keys.
+ */
+export function extractIndexAndTask(bytes: Uint8Array): { index: number; task: string } {
+  let index = -1;
+  let task = "unknown";
+  let depth = 0;
+  let foundIndex = false;
+  let foundTask = false;
+  const limit = Math.min(bytes.byteLength, 512);
+
+  const QUOTE = 0x22; // "
+  const COLON = 0x3a; // :
+  const LBRACE = 0x7b; // {
+  const RBRACE = 0x7d; // }
+  const LBRACKET = 0x5b; // [
+  const RBRACKET = 0x5d; // ]
+  const BACKSLASH = 0x5c; // \
+
+  // Byte patterns for "index" and "task" (without quotes)
+  const INDEX_BYTES = [0x69, 0x6e, 0x64, 0x65, 0x78]; // index
+  const TASK_BYTES = [0x74, 0x61, 0x73, 0x6b]; // task
+
+  let i = 0;
+  while (i < limit && !(foundIndex && foundTask)) {
+    const b = bytes[i];
+
+    if (b === LBRACE || b === LBRACKET) {
+      depth++;
+      i++;
+      continue;
+    }
+    if (b === RBRACE || b === RBRACKET) {
+      depth--;
+      i++;
+      continue;
+    }
+
+    // Only match keys at depth 1 (top-level object)
+    if (b === QUOTE && depth === 1) {
+      // Read the key inside quotes
+      const keyStart = i + 1;
+      let keyEnd = keyStart;
+      while (keyEnd < limit && bytes[keyEnd] !== QUOTE) {
+        if (bytes[keyEnd] === BACKSLASH) keyEnd++; // skip escaped char
+        keyEnd++;
+      }
+
+      const keyLen = keyEnd - keyStart;
+
+      // Check if this key matches "index" or "task"
+      const isIndex =
+        !foundIndex &&
+        keyLen === INDEX_BYTES.length &&
+        INDEX_BYTES.every((b, j) => bytes[keyStart + j] === b);
+      const isTask =
+        !foundTask &&
+        keyLen === TASK_BYTES.length &&
+        TASK_BYTES.every((b, j) => bytes[keyStart + j] === b);
+
+      if (isIndex || isTask) {
+        // Skip past closing quote and find colon
+        let pos = keyEnd + 1;
+        while (pos < limit && bytes[pos] !== COLON) pos++;
+        pos++; // skip colon
+        // Skip whitespace
+        while (pos < limit && (bytes[pos] === 0x20 || bytes[pos] === 0x09)) pos++;
+
+        if (isIndex) {
+          // Parse digits
+          let num = 0;
+          let hasDigit = false;
+          while (pos < limit && bytes[pos] >= 0x30 && bytes[pos] <= 0x39) {
+            num = num * 10 + (bytes[pos] - 0x30);
+            hasDigit = true;
+            pos++;
+          }
+          if (hasDigit) {
+            index = num;
+            foundIndex = true;
+          }
+        } else {
+          // Parse quoted string value
+          if (pos < limit && bytes[pos] === QUOTE) {
+            const valStart = pos + 1;
+            let valEnd = valStart;
+            while (valEnd < limit && bytes[valEnd] !== QUOTE) {
+              if (bytes[valEnd] === BACKSLASH) valEnd++;
+              valEnd++;
+            }
+            // Decode just this slice
+            try {
+              task = new TextDecoder("utf-8", { fatal: true }).decode(
+                bytes.slice(valStart, valEnd)
+              );
+              foundTask = true;
+            } catch {
+              // Leave as "unknown"
+            }
+          }
+        }
+      }
+
+      // Skip past the key's closing quote
+      i = keyEnd + 1;
+      continue;
+    }
+
+    i++;
+  }
+
+  return { index, task };
 }
 
 /**
@@ -303,6 +491,9 @@ export function createNdjsonParserStream(
   let chunks: Uint8Array[] = [];
   let totalBytes = 0;
   let lineNumber = 0;
+  // When an oversized incomplete line is detected (Case 2), we must discard
+  // all remaining bytes of that line until the next newline delimiter.
+  let skipUntilNewline = false;
 
   const NEWLINE_BYTE = 0x0a; // '\n'
 
@@ -396,6 +587,24 @@ export function createNdjsonParserStream(
 
   return new TransformStream<Uint8Array, unknown>({
     transform(chunk, controller) {
+      // If we're skipping the remainder of an oversized line, scan for the
+      // next newline in this chunk and discard everything before it.
+      if (skipUntilNewline) {
+        const nlPos = chunk.indexOf(NEWLINE_BYTE);
+        if (nlPos === -1) {
+          // Entire chunk is still part of the oversized line — discard it
+          return;
+        }
+        // Found the newline — keep everything after it
+        skipUntilNewline = false;
+        const remaining = chunk.slice(nlPos + 1);
+        if (remaining.byteLength === 0) {
+          return;
+        }
+        // Replace chunk with the remainder and fall through to normal processing
+        chunk = remaining;
+      }
+
       // Append chunk to buffer
       chunks.push(chunk);
       totalBytes += chunk.byteLength;
@@ -405,11 +614,19 @@ export function createNdjsonParserStream(
       while ((newlineIndex = findNewlineIndex()) !== -1) {
         // Check size limit BEFORE extracting/decoding (bytes up to newline)
         if (newlineIndex > maxItemBytes) {
-          throw new Error(
-            `Item at line ${
-              lineNumber + 1
-            } exceeds maximum size of ${maxItemBytes} bytes (actual: ${newlineIndex})`
-          );
+          // Case 1: Complete line exceeds limit - emit marker instead of throwing
+          const lineBytes = extractLine(newlineIndex);
+          const extracted = extractIndexAndTask(lineBytes);
+          const marker: OversizedItemMarker = {
+            __batchItemError: "OVERSIZED",
+            index: extracted.index,
+            task: extracted.task,
+            actualSize: newlineIndex,
+            maxSize: maxItemBytes,
+          };
+          controller.enqueue(marker);
+          lineNumber++;
+          continue;
         }
 
         const lineBytes = extractLine(newlineIndex);
@@ -419,11 +636,23 @@ export function createNdjsonParserStream(
       // Check if the remaining buffer (incomplete line) exceeds the limit
       // This prevents OOM from a single huge line without newlines
       if (totalBytes > maxItemBytes) {
-        throw new Error(
-          `Item at line ${
-            lineNumber + 1
-          } exceeds maximum size of ${maxItemBytes} bytes (buffered: ${totalBytes}, no newline found)`
-        );
+        // Case 2: Incomplete line exceeds limit - emit marker instead of throwing
+        const extracted = extractIndexAndTask(concatenateChunks());
+        const marker: OversizedItemMarker = {
+          __batchItemError: "OVERSIZED",
+          index: extracted.index,
+          task: extracted.task,
+          actualSize: totalBytes,
+          maxSize: maxItemBytes,
+        };
+        controller.enqueue(marker);
+        lineNumber++;
+        // Clear buffer and skip remaining bytes of this oversized line
+        // until the next newline delimiter is found in a subsequent chunk
+        chunks = [];
+        totalBytes = 0;
+        skipUntilNewline = true;
+        return;
       }
     },
 
@@ -439,11 +668,17 @@ export function createNdjsonParserStream(
 
       // Check size limit before processing final line
       if (totalBytes > maxItemBytes) {
-        throw new Error(
-          `Item at line ${
-            lineNumber + 1
-          } exceeds maximum size of ${maxItemBytes} bytes (actual: ${totalBytes})`
-        );
+        // Case 3: Flush with oversized remaining - emit marker instead of throwing
+        const extracted = extractIndexAndTask(concatenateChunks());
+        const marker: OversizedItemMarker = {
+          __batchItemError: "OVERSIZED",
+          index: extracted.index,
+          task: extracted.task,
+          actualSize: totalBytes,
+          maxSize: maxItemBytes,
+        };
+        controller.enqueue(marker);
+        return;
       }
 
       const finalBytes = concatenateChunks();

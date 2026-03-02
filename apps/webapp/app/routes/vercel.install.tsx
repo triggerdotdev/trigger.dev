@@ -4,6 +4,7 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import { logger } from "~/services/logger.server";
+import { loopsClient } from "~/services/loops.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 import { findProjectBySlug } from "~/models/project.server";
@@ -64,6 +65,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     organizationSlug: org_slug,
     projectSlug: project_slug,
   });
+
+  // Send Loops.so event (fire-and-forget, don't block the redirect)
+  loopsClient
+    ?.vercelIntegrationStarted({
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+    })
+    .catch(() => {});
 
   // Generate Vercel install URL
   const vercelInstallUrl = OrgIntegrationRepository.vercelInstallUrl(stateToken);

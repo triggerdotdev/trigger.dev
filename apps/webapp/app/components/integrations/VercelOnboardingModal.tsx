@@ -44,7 +44,7 @@ import {
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { type VercelCustomEnvironment } from "~/models/vercelIntegration.server";
 import { type VercelOnboardingData } from "~/presenters/v3/VercelSettingsPresenter.server";
-import { vercelAppInstallPath, v3ProjectSettingsPath, githubAppInstallPath, vercelResourcePath } from "~/utils/pathBuilder";
+import { vercelAppInstallPath, v3ProjectSettingsIntegrationsPath, githubAppInstallPath, vercelResourcePath } from "~/utils/pathBuilder";
 import type { loader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { usePostHogTracking } from "~/hooks/usePostHog";
@@ -102,6 +102,7 @@ export function VercelOnboardingModal({
   hasOrgIntegration,
   nextUrl,
   onDataReload,
+  vercelManageAccessUrl,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -114,6 +115,7 @@ export function VercelOnboardingModal({
   hasOrgIntegration: boolean;
   nextUrl?: string;
   onDataReload?: (vercelStagingEnvironment?: string) => void;
+  vercelManageAccessUrl?: string;
 }) {
   const { capture, startSessionRecording } = usePostHogTracking();
   const navigation = useNavigation();
@@ -122,7 +124,8 @@ export function VercelOnboardingModal({
   const completeOnboardingFetcher = useFetcher();
   const { Form: CompleteOnboardingForm } = completeOnboardingFetcher;
   const [searchParams] = useSearchParams();
-  const fromMarketplaceContext = searchParams.get("origin") === "marketplace";
+  const origin = searchParams.get("origin");
+  const fromMarketplaceContext = origin === "marketplace";
 
   const availableProjects = onboardingData?.availableProjects || [];
   const hasProjectSelected = onboardingData?.hasProjectSelected ?? false;
@@ -543,8 +546,15 @@ export function VercelOnboardingModal({
 
     if (!isGitHubConnectedForOnboarding) {
       setState("github-connection");
+      capture("vercel onboarding github step viewed", {
+        origin: fromMarketplaceContext ? "marketplace" : "dashboard",
+        step: "github-connection",
+        organization_slug: organizationSlug,
+        project_slug: projectSlug,
+        github_app_installed: gitHubAppInstallations.length > 0,
+      });
     }
-  }, [vercelStagingEnvironment, pullEnvVarsBeforeBuild, atomicBuilds, discoverEnvVars, syncEnvVarsMapping, nextUrl, fromMarketplaceContext, isGitHubConnectedForOnboarding, completeOnboardingFetcher, actionUrl, trackOnboarding]);
+  }, [vercelStagingEnvironment, pullEnvVarsBeforeBuild, atomicBuilds, discoverEnvVars, syncEnvVarsMapping, nextUrl, fromMarketplaceContext, isGitHubConnectedForOnboarding, completeOnboardingFetcher, actionUrl, trackOnboarding, capture, organizationSlug, projectSlug, gitHubAppInstallations.length]);
 
   const handleFinishOnboarding = useCallback((e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -639,7 +649,7 @@ export function VercelOnboardingModal({
           onClose();
         }
       }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <div className="flex items-center gap-2">
               <VercelLogo className="size-5" />
@@ -669,7 +679,7 @@ export function VercelOnboardingModal({
         onClose();
       }
     }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <div className="flex items-center gap-2">
             <VercelLogo className="size-5" />
@@ -727,14 +737,25 @@ export function VercelOnboardingModal({
 
               <FormButtons
                 confirmButton={
-                  <Button
-                    variant="primary/medium"
-                    onClick={handleProjectSelection}
-                    disabled={!selectedVercelProject || fetcher.state !== "idle"}
-                    LeadingIcon={fetcher.state !== "idle" ? SpinnerWhite : undefined}
-                  >
-                    {fetcher.state !== "idle" ? "Connecting..." : "Connect Project"}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {vercelManageAccessUrl && !origin && (
+                      <LinkButton
+                        to={vercelManageAccessUrl}
+                        variant="tertiary/medium"
+                        target="_self"
+                      >
+                        Manage access
+                      </LinkButton>
+                    )}
+                    <Button
+                      variant="primary/medium"
+                      onClick={handleProjectSelection}
+                      disabled={!selectedVercelProject || fetcher.state !== "idle"}
+                      LeadingIcon={fetcher.state !== "idle" ? SpinnerWhite : undefined}
+                    >
+                      {fetcher.state !== "idle" ? "Connecting..." : "Connect Project"}
+                    </Button>
+                  </div>
                 }
                 cancelButton={
                   <Button
@@ -779,6 +800,20 @@ export function VercelOnboardingModal({
                 ))}
               </Select>
 
+              <Callout variant="info">
+                <p className="text-xs">
+                  If you skip this step, the{" "}
+                  <code className="rounded bg-charcoal-700 px-1 py-0.5 text-text-bright">TRIGGER_SECRET_KEY</code>{" "}
+                  will not be installed for the staging environment in Vercel. You can configure this later in
+                  project settings.
+                </p>
+              </Callout>
+
+              <Paragraph className="text-xs text-text-dimmed">
+                Make sure the staging branch in your Vercel project's Git settings matches the staging branch
+                configured in your GitHub integration.
+              </Paragraph>
+
               <div className="flex items-center justify-between gap-2">
                 <Button
                   variant="tertiary/medium"
@@ -813,6 +848,7 @@ export function VercelOnboardingModal({
               <Header3>Pull Environment Variables</Header3>
               <Paragraph className="text-sm">
                 Select which environment variables to pull from Vercel now. This is a one-time pull.
+                Later on environment variables can be pulled before each build.
               </Paragraph>
 
               <div className="flex gap-4 text-sm">
@@ -1057,7 +1093,7 @@ export function VercelOnboardingModal({
               </Callout>
 
               {(() => {
-                const baseSettingsPath = v3ProjectSettingsPath(
+                const baseSettingsPath = v3ProjectSettingsIntegrationsPath(
                   { slug: organizationSlug },
                   { slug: projectSlug },
                   { slug: environmentSlug }
@@ -1081,6 +1117,7 @@ export function VercelOnboardingModal({
                       )}
                       variant="secondary/medium"
                       LeadingIcon={OctoKitty}
+                      onClick={() => trackOnboarding("vercel onboarding github app install clicked")}
                     >
                       Install GitHub app
                     </LinkButton>
@@ -1110,6 +1147,7 @@ export function VercelOnboardingModal({
                     <Button
                       variant="primary/medium"
                       onClick={() => {
+                        trackOnboarding("vercel onboarding github completed");
                         setState("completed");
                         const validUrl = safeRedirectUrl(nextUrl);
                         if (validUrl) {
@@ -1123,6 +1161,7 @@ export function VercelOnboardingModal({
                     <Button
                       variant="tertiary/medium"
                       onClick={() => {
+                        trackOnboarding("vercel onboarding github skipped");
                         setState("completed");
                         if (fromMarketplaceContext && nextUrl) {
                           const validUrl = safeRedirectUrl(nextUrl);
@@ -1141,6 +1180,7 @@ export function VercelOnboardingModal({
                     <Button
                       variant="tertiary/medium"
                       onClick={() => {
+                        trackOnboarding("vercel onboarding github skipped");
                         setState("completed");
                       }}
                     >

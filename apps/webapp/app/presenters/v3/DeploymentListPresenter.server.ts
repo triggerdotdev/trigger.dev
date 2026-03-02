@@ -10,7 +10,10 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type User } from "~/models/user.server";
 import { processGitMetadata } from "./BranchesPresenter.server";
 import { BranchTrackingConfigSchema, getTrackedBranchForEnvironment } from "~/v3/github";
-import { VercelProjectIntegrationDataSchema } from "~/v3/vercel/vercelProjectIntegrationSchema";
+import {
+  VercelProjectIntegrationDataSchema,
+  buildVercelDeploymentUrl,
+} from "~/v3/vercel/vercelProjectIntegrationSchema";
 
 const pageSize = 20;
 
@@ -232,8 +235,11 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
 
         let vercelDeploymentUrl: string | null = null;
         if (hasVercelIntegration && deployment.integrationDeploymentId && vercelTeamSlug && vercelProjectName) {
-          const vercelId = deployment.integrationDeploymentId.replace(/^dpl_/, "");
-          vercelDeploymentUrl = `https://vercel.com/${vercelTeamSlug}/${vercelProjectName}/${vercelId}`;
+          vercelDeploymentUrl = buildVercelDeploymentUrl(
+            vercelTeamSlug,
+            vercelProjectName,
+            deployment.integrationDeploymentId
+          );
         }
 
         return {

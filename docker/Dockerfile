@@ -1,7 +1,7 @@
 ARG NODE_IMAGE=node:20.20-bullseye-slim@sha256:d6c3903e556d4161f63af4550e76244908b6668e1a7d2983eff4873a0c2b0413
 
 FROM golang:1.23-alpine AS goose_builder
-RUN go install github.com/pressly/goose/v3/cmd/goose@latest
+RUN go install github.com/pressly/goose/v3/cmd/goose@v3.26.0
 
 FROM ${NODE_IMAGE} AS pruner
 

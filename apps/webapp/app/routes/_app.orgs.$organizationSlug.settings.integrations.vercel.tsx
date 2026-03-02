@@ -28,7 +28,7 @@ import { requireOrganization } from "~/services/org.server";
 import { OrganizationParamsSchema } from "~/utils/pathBuilder";
 import { logger } from "~/services/logger.server";
 import { TrashIcon } from "@heroicons/react/20/solid";
-import { v3ProjectSettingsPath } from "~/utils/pathBuilder";
+import { v3ProjectSettingsIntegrationsPath } from "~/utils/pathBuilder";
 import { LinkButton } from "~/components/primitives/Buttons";
 
 function formatDate(date: Date): string {
@@ -354,7 +354,7 @@ export default function VercelIntegrationPage() {
                     <TableCell>
                       <LinkButton
                         variant="minimal/small"
-                        to={v3ProjectSettingsPath(
+                        to={v3ProjectSettingsIntegrationsPath(
                           organization,
                           projectIntegration.project,
                           { slug: "prod" } // Default to production environment

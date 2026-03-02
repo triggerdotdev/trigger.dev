@@ -6,6 +6,7 @@ import { setInterval } from "node:timers/promises";
 import { type z } from "zod";
 import { ConcurrencyManager } from "./concurrency.js";
 import { MasterQueue } from "./masterQueue.js";
+import { TenantDispatch } from "./tenantDispatch.js";
 import { type RetryStrategy, ExponentialBackoffRetry } from "./retry.js";
 import { isAbortError } from "../utils.js";
 import {
@@ -17,6 +18,7 @@ import {
 import type {
   ConcurrencyGroupConfig,
   DeadLetterMessage,
+  DispatchSchedulerContext,
   EnqueueBatchOptions,
   EnqueueOptions,
   FairQueueKeyProducer,
@@ -27,6 +29,7 @@ import type {
   QueueDescriptor,
   SchedulerContext,
   StoredMessage,
+  TenantQueues,
 } from "./types.js";
 import { VisibilityManager } from "./visibility.js";
 import { WorkerQueueManager } from "./workerQueue.js";
@@ -42,6 +45,7 @@ export * from "./scheduler.js";
 export * from "./schedulers/index.js";
 export * from "./retry.js";
 export * from "./telemetry.js";
+export * from "./tenantDispatch.js";
 
 /**
  * FairQueue is the main orchestrator for fair queue message routing.
@@ -109,6 +113,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
   // Queue descriptor cache for message processing
   private queueDescriptorCache = new Map<string, QueueDescriptor>();
+
+  // Two-level tenant dispatch
+  private tenantDispatch: TenantDispatch;
 
   constructor(private options: FairQueueOptions<TPayloadSchema>) {
     this.redis = createRedisClient(options.redis);
@@ -178,6 +185,13 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       shardCount: this.shardCount,
     });
 
+    this.tenantDispatch = new TenantDispatch({
+      redis: options.redis,
+      keys: options.keys,
+      shardCount: this.shardCount,
+    });
+
+
     if (options.concurrencyGroups && options.concurrencyGroups.length > 0) {
       this.concurrencyManager = new ConcurrencyManager({
         redis: options.redis,
@@ -230,6 +244,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       getMasterQueueLength: async (shardId: number) => {
         return await this.masterQueue.getShardQueueCount(shardId);
       },
+      getDispatchLength: async (shardId: number) => {
+        return await this.tenantDispatch.getShardTenantCount(shardId);
+      },
       getInflightCount: async (shardId: number) => {
         return await this.visibilityManager.getInflightCount(shardId);
       },
@@ -256,8 +273,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         const timestamp = options.timestamp ?? Date.now();
         const queueKey = this.keys.queueKey(options.queueId);
         const queueItemsKey = this.keys.queueItemsKey(options.queueId);
-        const shardId = this.masterQueue.getShardForQueue(options.queueId);
-        const masterQueueKey = this.keys.masterQueueKey(shardId);
+        const dispatchShardId = this.tenantDispatch.getShardForTenant(options.tenantId);
+        const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(options.tenantId);
+        const dispatchKey = this.keys.dispatchKey(dispatchShardId);
 
         // Validate payload if schema provided and validation enabled
         if (this.validateOnEnqueue && this.payloadSchema) {
@@ -297,22 +315,24 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           metadata: options.metadata,
         };
 
-        // Use atomic Lua script to enqueue and update master queue
-        await this.redis.enqueueMessageAtomic(
+        // Use atomic Lua script to enqueue and update tenant dispatch indexes
+        await this.redis.enqueueMessageAtomicV2(
           queueKey,
           queueItemsKey,
-          masterQueueKey,
+          tenantQueueIndexKey,
+          dispatchKey,
           options.queueId,
           messageId,
           timestamp.toString(),
-          JSON.stringify(storedMessage)
+          JSON.stringify(storedMessage),
+          options.tenantId
         );
 
         span.setAttributes({
           [FairQueueAttributes.QUEUE_ID]: options.queueId,
           [FairQueueAttributes.TENANT_ID]: options.tenantId,
           [FairQueueAttributes.MESSAGE_ID]: messageId,
-          [FairQueueAttributes.SHARD_ID]: shardId.toString(),
+          [FairQueueAttributes.SHARD_ID]: dispatchShardId.toString(),
         });
 
         this.telemetry.recordEnqueue();
@@ -343,8 +363,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       async (span) => {
         const queueKey = this.keys.queueKey(options.queueId);
         const queueItemsKey = this.keys.queueItemsKey(options.queueId);
-        const shardId = this.masterQueue.getShardForQueue(options.queueId);
-        const masterQueueKey = this.keys.masterQueueKey(shardId);
+        const dispatchShardId = this.tenantDispatch.getShardForTenant(options.tenantId);
+        const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(options.tenantId);
+        const dispatchKey = this.keys.dispatchKey(dispatchShardId);
         const now = Date.now();
 
         // Store queue descriptor
@@ -397,12 +418,14 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           args.push(messageId, timestamp.toString(), JSON.stringify(storedMessage));
         }
 
-        // Use atomic Lua script for batch enqueue
-        await this.redis.enqueueBatchAtomic(
+        // Use atomic Lua script for batch enqueue with tenant dispatch indexes
+        await this.redis.enqueueBatchAtomicV2(
           queueKey,
           queueItemsKey,
-          masterQueueKey,
+          tenantQueueIndexKey,
+          dispatchKey,
           options.queueId,
+          options.tenantId,
           ...args
         );
 
@@ -410,7 +433,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           [FairQueueAttributes.QUEUE_ID]: options.queueId,
           [FairQueueAttributes.TENANT_ID]: options.tenantId,
           [FairQueueAttributes.MESSAGE_COUNT]: messageIds.length,
-          [FairQueueAttributes.SHARD_ID]: shardId.toString(),
+          [FairQueueAttributes.SHARD_ID]: dispatchShardId.toString(),
         });
 
         this.telemetry.recordEnqueueBatch(messageIds.length);
@@ -672,6 +695,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     await Promise.all([
       this.masterQueue.close(),
+      this.tenantDispatch.close(),
       this.concurrencyManager?.close(),
       this.visibilityManager.close(),
       this.workerQueueManager.close(),
@@ -693,10 +717,14 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   }
 
   /**
-   * Get total queue count across all shards.
+   * Get total tenant count across dispatch shards plus any legacy queues still draining.
    */
   async getTotalQueueCount(): Promise<number> {
-    return await this.masterQueue.getTotalQueueCount();
+    const [dispatchCount, legacyCount] = await Promise.all([
+      this.tenantDispatch.getTotalTenantCount(),
+      this.masterQueue.getTotalQueueCount(),
+    ]);
+    return dispatchCount + legacyCount;
   }
 
   /**
@@ -736,7 +764,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
             loopId,
             async (span) => {
               span.setAttribute("shard_id", shardId);
-              return await this.#processMasterQueueShard(loopId, shardId, span);
+              return await this.#processShardIteration(loopId, shardId, span);
             },
             {
               iterationSpanName: "processMasterQueueShard",
@@ -781,44 +809,198 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     }
   }
 
-  async #processMasterQueueShard(
+  /**
+   * Process a shard iteration. Runs both the new tenant dispatch path
+   * and the legacy master queue drain path.
+   */
+  async #processShardIteration(
     loopId: string,
     shardId: number,
     parentSpan?: Span
   ): Promise<boolean> {
-    const masterQueueKey = this.keys.masterQueueKey(shardId);
+    let hadWork = false;
 
-    // Get total queues in this master queue shard for observability
-    const masterQueueSize = await this.masterQueue.getShardQueueCount(shardId);
-    parentSpan?.setAttribute("master_queue_size", masterQueueSize);
-    this.batchedSpanManager.incrementStat(loopId, "master_queue_size_sum", masterQueueSize);
+    // Main path: new two-level tenant dispatch (gets full DRR scheduling)
+    hadWork = await this.#processDispatchShard(loopId, shardId, parentSpan);
 
-    // Create scheduler context
-    const schedulerContext = this.#createSchedulerContext();
+    // Drain path: legacy master queue (simple scheduling, no DRR)
+    // Check ZCARD first (O(1)) to skip the drain path when empty
+    const legacyCount = await this.masterQueue.getShardQueueCount(shardId);
+    if (legacyCount > 0) {
+      const drainHadWork = await this.#drainLegacyMasterQueueShard(loopId, shardId, parentSpan);
+      hadWork = hadWork || drainHadWork;
+    }
+
+    return hadWork;
+  }
+
+  /**
+   * Main path: process queues using the two-level tenant dispatch index.
+   * Level 1: dispatch index → tenantIds. Level 2: per-tenant → queueIds.
+   */
+  async #processDispatchShard(
+    loopId: string,
+    shardId: number,
+    parentSpan?: Span
+  ): Promise<boolean> {
+    const dispatchKey = this.keys.dispatchKey(shardId);
+
+    // Get dispatch index size for observability
+    const dispatchSize = await this.tenantDispatch.getShardTenantCount(shardId);
+    parentSpan?.setAttribute("dispatch_size", dispatchSize);
+    this.batchedSpanManager.incrementStat(loopId, "dispatch_size_sum", dispatchSize);
+
+    // Create dispatch-aware scheduler context
+    const schedulerContext: DispatchSchedulerContext = {
+      ...this.#createSchedulerContext(),
+      getQueuesForTenant: async (tenantId: string, limit?: number) => {
+        return this.tenantDispatch.getQueuesForTenant(tenantId, limit);
+      },
+    };
 
     // Get queues to process from scheduler
-    const tenantQueues = await this.telemetry.trace(
-      "selectQueues",
-      async (span) => {
-        span.setAttribute(FairQueueAttributes.SHARD_ID, shardId.toString());
-        span.setAttribute(FairQueueAttributes.CONSUMER_ID, loopId);
-        span.setAttribute("master_queue_size", masterQueueSize);
-        const result = await this.scheduler.selectQueues(masterQueueKey, loopId, schedulerContext);
-        span.setAttribute("tenant_count", result.length);
-        span.setAttribute(
-          "queue_count",
-          result.reduce((acc, t) => acc + t.queues.length, 0)
-        );
-        return result;
-      },
-      { kind: SpanKind.INTERNAL }
-    );
+    let tenantQueues: TenantQueues[];
+
+    if (this.scheduler.selectQueuesFromDispatch) {
+      // Use dispatch-aware scheduler method (DRR with two-level lookup)
+      tenantQueues = await this.telemetry.trace(
+        "selectQueuesFromDispatch",
+        async (span) => {
+          span.setAttribute(FairQueueAttributes.SHARD_ID, shardId.toString());
+          span.setAttribute(FairQueueAttributes.CONSUMER_ID, loopId);
+          span.setAttribute("dispatch_size", dispatchSize);
+          const result = await this.scheduler.selectQueuesFromDispatch!(
+            dispatchKey,
+            loopId,
+            schedulerContext
+          );
+          span.setAttribute("tenant_count", result.length);
+          span.setAttribute(
+            "queue_count",
+            result.reduce((acc, t) => acc + t.queues.length, 0)
+          );
+          return result;
+        },
+        { kind: SpanKind.INTERNAL }
+      );
+    } else {
+      // Fallback: read dispatch index, build flat queue list, use legacy selectQueues
+      tenantQueues = await this.#fallbackDispatchToLegacyScheduler(
+        loopId,
+        shardId,
+        schedulerContext,
+        parentSpan
+      );
+    }
 
     if (tenantQueues.length === 0) {
       this.batchedSpanManager.incrementStat(loopId, "empty_iterations");
       return false;
     }
 
+    return this.#processSelectedQueues(loopId, shardId, tenantQueues);
+  }
+
+  /**
+   * Drain path: process remaining messages from the legacy master queue shard.
+   * Uses simple ZRANGEBYSCORE without DRR - just flushing pre-deploy messages.
+   */
+  async #drainLegacyMasterQueueShard(
+    loopId: string,
+    shardId: number,
+    parentSpan?: Span
+  ): Promise<boolean> {
+    const masterQueueKey = this.keys.masterQueueKey(shardId);
+    const now = Date.now();
+
+    // Simple fetch from old master queue - no DRR needed for drain
+    const results = await this.redis.zrangebyscore(
+      masterQueueKey,
+      "-inf",
+      now,
+      "WITHSCORES",
+      "LIMIT",
+      0,
+      100
+    );
+
+    if (results.length === 0) {
+      return false;
+    }
+
+    // Parse results into QueueWithScore, group by tenant
+    const byTenant = new Map<string, string[]>();
+    for (let i = 0; i < results.length; i += 2) {
+      const queueId = results[i];
+      const _score = results[i + 1];
+      if (queueId && _score) {
+        const tenantId = this.keys.extractTenantId(queueId);
+        const existing = byTenant.get(tenantId) ?? [];
+        existing.push(queueId);
+        byTenant.set(tenantId, existing);
+      }
+    }
+
+    // Build TenantQueues, filter at-capacity tenants
+    const tenantQueues: TenantQueues[] = [];
+    for (const [tenantId, queueIds] of byTenant) {
+      if (this.concurrencyManager) {
+        const atCapacity = await this.concurrencyManager.isAtCapacity("tenant", tenantId);
+        if (atCapacity) continue;
+      }
+      tenantQueues.push({ tenantId, queues: queueIds });
+    }
+
+    if (tenantQueues.length === 0) {
+      return false;
+    }
+
+    parentSpan?.setAttribute("drain_tenants", tenantQueues.length);
+    this.batchedSpanManager.incrementStat(loopId, "drain_tenants", tenantQueues.length);
+
+    return this.#processSelectedQueues(loopId, shardId, tenantQueues);
+  }
+
+  /**
+   * Fallback for schedulers that don't implement selectQueuesFromDispatch.
+   * Reads dispatch index, fetches per-tenant queues, groups by tenant,
+   * and filters at-capacity tenants. No DRR deficit tracking in this path.
+   */
+  async #fallbackDispatchToLegacyScheduler(
+    loopId: string,
+    shardId: number,
+    context: DispatchSchedulerContext,
+    parentSpan?: Span
+  ): Promise<TenantQueues[]> {
+    // Get tenants from dispatch
+    const tenants = await this.tenantDispatch.getTenantsFromShard(shardId);
+    if (tenants.length === 0) return [];
+
+    // For each tenant, get their queues and build grouped result
+    const tenantQueues: TenantQueues[] = [];
+    for (const { tenantId } of tenants) {
+      if (this.concurrencyManager) {
+        const atCapacity = await this.concurrencyManager.isAtCapacity("tenant", tenantId);
+        if (atCapacity) continue;
+      }
+      const queues = await this.tenantDispatch.getQueuesForTenant(tenantId);
+      if (queues.length > 0) {
+        tenantQueues.push({ tenantId, queues: queues.map((q) => q.queueId) });
+      }
+    }
+
+    return tenantQueues;
+  }
+
+  /**
+   * Shared claim loop: process selected queues from either dispatch or drain path.
+   * Claims messages and pushes to worker queues.
+   */
+  async #processSelectedQueues(
+    loopId: string,
+    shardId: number,
+    tenantQueues: TenantQueues[]
+  ): Promise<boolean> {
     // Track stats
     this.batchedSpanManager.incrementStat(loopId, "tenants_selected", tenantQueues.length);
     this.batchedSpanManager.incrementStat(
@@ -829,7 +1011,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     let messagesProcessed = 0;
 
-    // Process queues and push to worker queues
     for (const { tenantId, queues } of tenantQueues) {
       for (const queueId of queues) {
         // Check cooloff
@@ -839,12 +1020,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         }
 
         // Check tenant capacity before attempting to process
-        // If tenant is at capacity, skip ALL remaining queues for this tenant
         if (this.concurrencyManager) {
           const isAtCapacity = await this.concurrencyManager.isAtCapacity("tenant", tenantId);
           if (isAtCapacity) {
             this.batchedSpanManager.incrementStat(loopId, "tenant_capacity_skipped");
-            break; // Skip remaining queues for this tenant
+            break;
           }
         }
 
@@ -865,8 +1045,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           messagesProcessed += processedFromQueue;
           this.batchedSpanManager.incrementStat(loopId, "messages_claimed", processedFromQueue);
 
-          // Record processed messages for DRR deficit tracking
-          // Use batch variant if available for efficiency, otherwise fall back to single calls
           if (this.scheduler.recordProcessedBatch) {
             await this.telemetry.trace(
               "recordProcessedBatch",
@@ -892,16 +1070,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
             }
           }
         } else {
-          // Don't increment cooloff here - the queue was either:
-          // 1. Empty (removed from master, cache cleaned up)
-          // 2. Concurrency blocked (message released back to queue)
-          // Neither case warrants cooloff as they're not failures
           this.batchedSpanManager.incrementStat(loopId, "claim_skipped");
         }
       }
     }
 
-    // Return true if we processed any messages (had work)
     return messagesProcessed > 0;
   }
 
@@ -909,11 +1082,13 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     loopId: string,
     queueId: string,
     tenantId: string,
-    shardId: number
+    _consumerShardId: number
   ): Promise<number> {
+    // Dispatch shard is tenant-based (tenantId hash), not queue-based.
+    // In-flight/master queue shard is queue-based.
+    const dispatchShardId = this.tenantDispatch.getShardForTenant(tenantId);
     const queueKey = this.keys.queueKey(queueId);
     const queueItemsKey = this.keys.queueItemsKey(queueId);
-    const masterQueueKey = this.keys.masterQueueKey(shardId);
     const descriptor = this.queueDescriptorCache.get(queueId) ?? {
       id: queueId,
       tenantId,
@@ -925,8 +1100,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     if (this.concurrencyManager) {
       const availableCapacity = await this.concurrencyManager.getAvailableCapacity(descriptor);
       if (availableCapacity === 0) {
-        // Queue at max concurrency, back off to avoid repeated attempts
-        this.#incrementCooloff(queueId);
+        // Queue at max concurrency - don't increment cooloff here.
+        // The outer loop already handles this case (concurrency blocked)
+        // and explicitly avoids cooloff for it. Cooloff here causes
+        // spurious 5s stalls when capacity races between the tenant
+        // pre-check and this per-queue check.
         return 0;
       }
       maxClaimCount = Math.min(maxClaimCount, availableCapacity);
@@ -950,12 +1128,10 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     >(queueId, queueKey, queueItemsKey, loopId, maxClaimCount, this.visibilityTimeoutMs);
 
     if (claimedMessages.length === 0) {
-      // Queue is empty, update master queue and clean up caches
-      const removed = await this.redis.updateMasterQueueIfEmpty(masterQueueKey, queueKey, queueId);
-      if (removed === 1) {
-        this.queueDescriptorCache.delete(queueId);
-        this.queueCooloffStates.delete(queueId);
-      }
+      // Queue is empty, update both old and new indexes and clean up caches
+      await this.#updateAllIndexesAfterDequeue(queueId, tenantId);
+      this.queueDescriptorCache.delete(queueId);
+      this.queueCooloffStates.delete(queueId);
       return 0;
     }
 
@@ -971,12 +1147,16 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         if (!reserved) {
           // Release ALL remaining messages (from index i onward) back to queue
           // This prevents messages from being stranded in the in-flight set
+          const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(tenantId);
+          const dispatchKey = this.keys.dispatchKey(dispatchShardId);
           await this.visibilityManager.releaseBatch(
             claimedMessages.slice(i),
             queueId,
             queueKey,
             queueItemsKey,
-            masterQueueKey
+            tenantQueueIndexKey,
+            dispatchKey,
+            tenantId
           );
           // Stop processing more messages from this queue since we're at capacity
           break;
@@ -1052,8 +1232,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
    */
   async completeMessage(messageId: string, queueId: string): Promise<void> {
     const shardId = this.masterQueue.getShardForQueue(queueId);
-    const queueKey = this.keys.queueKey(queueId);
-    const masterQueueKey = this.keys.masterQueueKey(shardId);
     const inflightDataKey = this.keys.inflightDataKey(shardId);
 
     // Get stored message for concurrency release
@@ -1073,7 +1251,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           tenantId: storedMessage.tenantId,
           metadata: storedMessage.metadata ?? {},
         }
-      : { id: queueId, tenantId: "", metadata: {} };
+      : { id: queueId, tenantId: this.keys.extractTenantId(queueId), metadata: {} };
 
     // Complete in visibility manager
     await this.visibilityManager.complete(messageId, queueId);
@@ -1083,9 +1261,12 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       await this.concurrencyManager.release(descriptor, messageId);
     }
 
-    // Update master queue if queue is now empty, and clean up caches
-    const removed = await this.redis.updateMasterQueueIfEmpty(masterQueueKey, queueKey, queueId);
-    if (removed === 1) {
+    // Update both old and new indexes, clean up caches if queue is empty
+    const { queueEmpty } = await this.#updateAllIndexesAfterDequeue(
+      queueId,
+      descriptor.tenantId
+    );
+    if (queueEmpty) {
       this.queueDescriptorCache.delete(queueId);
       this.queueCooloffStates.delete(queueId);
     }
@@ -1109,7 +1290,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     const shardId = this.masterQueue.getShardForQueue(queueId);
     const queueKey = this.keys.queueKey(queueId);
     const queueItemsKey = this.keys.queueItemsKey(queueId);
-    const masterQueueKey = this.keys.masterQueueKey(shardId);
     const inflightDataKey = this.keys.inflightDataKey(shardId);
 
     // Get stored message for concurrency release
@@ -1129,15 +1309,21 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           tenantId: storedMessage.tenantId,
           metadata: storedMessage.metadata ?? {},
         }
-      : { id: queueId, tenantId: "", metadata: {} };
+      : { id: queueId, tenantId: this.keys.extractTenantId(queueId), metadata: {} };
 
-    // Release back to queue
+    // Release back to queue (visibility manager updates dispatch indexes atomically)
+    // Dispatch shard is tenant-based, not queue-based
+    const dispatchShardId = this.tenantDispatch.getShardForTenant(descriptor.tenantId);
+    const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(descriptor.tenantId);
+    const dispatchKey = this.keys.dispatchKey(dispatchShardId);
     await this.visibilityManager.release(
       messageId,
       queueId,
       queueKey,
       queueItemsKey,
-      masterQueueKey,
+      tenantQueueIndexKey,
+      dispatchKey,
+      descriptor.tenantId,
       Date.now() // Put at back of queue
     );
 
@@ -1164,7 +1350,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     const shardId = this.masterQueue.getShardForQueue(queueId);
     const queueKey = this.keys.queueKey(queueId);
     const queueItemsKey = this.keys.queueItemsKey(queueId);
-    const masterQueueKey = this.keys.masterQueueKey(shardId);
     const inflightDataKey = this.keys.inflightDataKey(shardId);
 
     // Get stored message
@@ -1191,12 +1376,13 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       metadata: storedMessage.metadata ?? {},
     };
 
+    const dispatchShardId = this.tenantDispatch.getShardForTenant(descriptor.tenantId);
     await this.#handleMessageFailure(
       storedMessage,
       queueId,
       queueKey,
       queueItemsKey,
-      masterQueueKey,
+      dispatchShardId,
       descriptor,
       error
     );
@@ -1211,7 +1397,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     queueId: string,
     queueKey: string,
     queueItemsKey: string,
-    masterQueueKey: string,
+    dispatchShardId: number,
     descriptor: QueueDescriptor,
     error?: Error
   ): Promise<void> {
@@ -1228,18 +1414,21 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           attempt: storedMessage.attempt + 1,
         };
 
-        // Release with delay (and ensure queue is in master queue)
+        // Release with delay, passing the updated message data so the Lua script
+        // atomically writes the incremented attempt count when re-queuing.
+        const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(descriptor.tenantId);
+        const dispatchKey = this.keys.dispatchKey(dispatchShardId);
         await this.visibilityManager.release(
           storedMessage.id,
           queueId,
           queueKey,
           queueItemsKey,
-          masterQueueKey,
-          Date.now() + nextDelay
+          tenantQueueIndexKey,
+          dispatchKey,
+          descriptor.tenantId,
+          Date.now() + nextDelay,
+          JSON.stringify(updatedMessage)
         );
-
-        // Update message in items hash with new attempt count
-        await this.redis.hset(queueItemsKey, storedMessage.id, JSON.stringify(updatedMessage));
 
         // Release concurrency
         if (this.concurrencyManager) {
@@ -1343,33 +1532,44 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     let totalReclaimed = 0;
 
     for (let shardId = 0; shardId < this.shardCount; shardId++) {
-      const reclaimedMessages = await this.visibilityManager.reclaimTimedOut(shardId, (queueId) => ({
-        queueKey: this.keys.queueKey(queueId),
-        queueItemsKey: this.keys.queueItemsKey(queueId),
-        masterQueueKey: this.keys.masterQueueKey(this.masterQueue.getShardForQueue(queueId)),
-      }));
+      const reclaimedMessages = await this.visibilityManager.reclaimTimedOut(shardId, (queueId) => {
+        const tenantId = this.keys.extractTenantId(queueId);
+        const dispatchShardId = this.tenantDispatch.getShardForTenant(tenantId);
+        return {
+          queueKey: this.keys.queueKey(queueId),
+          queueItemsKey: this.keys.queueItemsKey(queueId),
+          tenantQueueIndexKey: this.keys.tenantQueueIndexKey(tenantId),
+          dispatchKey: this.keys.dispatchKey(dispatchShardId),
+          tenantId,
+        };
+      });
 
-      // Release concurrency for all reclaimed messages in a single batch
-      // This is critical: when a message times out, its concurrency slot must be freed
-      // so the message can be processed again when it's re-claimed from the queue
-      if (this.concurrencyManager && reclaimedMessages.length > 0) {
-        try {
-          await this.concurrencyManager.releaseBatch(
-            reclaimedMessages.map((msg) => ({
-              queue: {
-                id: msg.queueId,
-                tenantId: msg.tenantId,
-                metadata: msg.metadata ?? {},
-              },
-              messageId: msg.messageId,
-            }))
-          );
-        } catch (error) {
-          this.logger.error("Failed to release concurrency for reclaimed messages", {
-            count: reclaimedMessages.length,
-            error: error instanceof Error ? error.message : String(error),
-          });
+      if (reclaimedMessages.length > 0) {
+        // Release concurrency for all reclaimed messages in a single batch
+        // This is critical: when a message times out, its concurrency slot must be freed
+        // so the message can be processed again when it's re-claimed from the queue
+        if (this.concurrencyManager) {
+          try {
+            await this.concurrencyManager.releaseBatch(
+              reclaimedMessages.map((msg) => ({
+                queue: {
+                  id: msg.queueId,
+                  tenantId: msg.tenantId,
+                  metadata: msg.metadata ?? {},
+                },
+                messageId: msg.messageId,
+              }))
+            );
+          } catch (error) {
+            this.logger.error("Failed to release concurrency for reclaimed messages", {
+              count: reclaimedMessages.length,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
         }
+
+        // Dispatch indexes are updated atomically by the releaseMessage Lua script
+        // inside reclaimTimedOut, so no separate index update needed here.
       }
 
       totalReclaimed += reclaimedMessages.length;
@@ -1443,6 +1643,41 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   // Private - Helpers
   // ============================================================================
 
+  /**
+   * Update both old master queue and new dispatch indexes after a dequeue/complete.
+   * Both calls are idempotent - ZREM on a non-existent member is a no-op.
+   * This handles the transition period where queues may exist in either or both indexes.
+   */
+  async #updateAllIndexesAfterDequeue(
+    queueId: string,
+    tenantId: string
+  ): Promise<{ queueEmpty: boolean }> {
+    const queueShardId = this.masterQueue.getShardForQueue(queueId);
+    const dispatchShardId = this.tenantDispatch.getShardForTenant(tenantId);
+    const queueKey = this.keys.queueKey(queueId);
+    const masterQueueKey = this.keys.masterQueueKey(queueShardId);
+    const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(tenantId);
+    const dispatchKey = this.keys.dispatchKey(dispatchShardId);
+
+    // Update legacy master queue (drain path, no-op if queue not there)
+    const removedFromMaster = await this.redis.updateMasterQueueIfEmpty(
+      masterQueueKey,
+      queueKey,
+      queueId
+    );
+
+    // Update new dispatch indexes
+    const removedFromDispatch = await this.redis.updateDispatchIndexes(
+      queueKey,
+      tenantQueueIndexKey,
+      dispatchKey,
+      queueId,
+      tenantId
+    );
+
+    return { queueEmpty: removedFromMaster === 1 || removedFromDispatch === 1 };
+  }
+
   #createSchedulerContext(): SchedulerContext {
     return {
       getCurrentConcurrency: async (groupName, groupId) => {
@@ -1474,7 +1709,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   // ============================================================================
 
   #registerCommands(): void {
-    // Atomic single message enqueue with master queue update
+    // ---- Legacy Lua scripts (kept for drain of old master queue) ----
+
+    // Atomic single message enqueue with master queue update (legacy, used for drain only)
     this.redis.defineCommand("enqueueMessageAtomic", {
       numberOfKeys: 3,
       lua: `
@@ -1487,13 +1724,9 @@ local messageId = ARGV[2]
 local timestamp = tonumber(ARGV[3])
 local payload = ARGV[4]
 
--- Add to sorted set (score = timestamp)
 redis.call('ZADD', queueKey, timestamp, messageId)
-
--- Store payload in hash
 redis.call('HSET', queueItemsKey, messageId, payload)
 
--- Update master queue with oldest message timestamp
 local oldest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
 if #oldest >= 2 then
   redis.call('ZADD', masterQueueKey, oldest[2], queueId)
@@ -1503,7 +1736,7 @@ return 1
       `,
     });
 
-    // Atomic batch message enqueue with master queue update
+    // Atomic batch message enqueue with master queue update (legacy, used for drain only)
     this.redis.defineCommand("enqueueBatchAtomic", {
       numberOfKeys: 3,
       lua: `
@@ -1513,20 +1746,14 @@ local masterQueueKey = KEYS[3]
 
 local queueId = ARGV[1]
 
--- Args after queueId are triples: [messageId, timestamp, payload, ...]
 for i = 2, #ARGV, 3 do
   local messageId = ARGV[i]
   local timestamp = tonumber(ARGV[i + 1])
   local payload = ARGV[i + 2]
-  
-  -- Add to sorted set
   redis.call('ZADD', queueKey, timestamp, messageId)
-  
-  -- Store payload in hash
   redis.call('HSET', queueItemsKey, messageId, payload)
 end
 
--- Update master queue with oldest message timestamp
 local oldest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
 if #oldest >= 2 then
   redis.call('ZADD', masterQueueKey, oldest[2], queueId)
@@ -1536,7 +1763,7 @@ return (#ARGV - 1) / 3
       `,
     });
 
-    // Update master queue if queue is empty
+    // Remove queue from legacy master queue if empty (drain-only, never re-adds)
     this.redis.defineCommand("updateMasterQueueIfEmpty", {
       numberOfKeys: 2,
       lua: `
@@ -1548,11 +1775,128 @@ local count = redis.call('ZCARD', queueKey)
 if count == 0 then
   redis.call('ZREM', masterQueueKey, queueId)
   return 1
+end
+
+-- Queue still has messages but don't re-add to legacy master queue.
+-- New enqueues go through the V2 dispatch path, so we only drain here.
+-- Just remove it so it doesn't linger.
+redis.call('ZREM', masterQueueKey, queueId)
+return 0
+      `,
+    });
+
+    // ---- New V2 Lua scripts (two-level tenant dispatch) ----
+
+    // Atomic single message enqueue with tenant dispatch index update
+    this.redis.defineCommand("enqueueMessageAtomicV2", {
+      numberOfKeys: 4,
+      lua: `
+local queueKey = KEYS[1]
+local queueItemsKey = KEYS[2]
+local tenantQueueIndexKey = KEYS[3]
+local dispatchKey = KEYS[4]
+
+local queueId = ARGV[1]
+local messageId = ARGV[2]
+local timestamp = tonumber(ARGV[3])
+local payload = ARGV[4]
+local tenantId = ARGV[5]
+
+-- Add to per-queue storage (same as before)
+redis.call('ZADD', queueKey, timestamp, messageId)
+redis.call('HSET', queueItemsKey, messageId, payload)
+
+-- Update tenant queue index (Level 2) with queue's oldest message
+local oldest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+if #oldest >= 2 then
+  redis.call('ZADD', tenantQueueIndexKey, oldest[2], queueId)
+end
+
+-- Update dispatch index (Level 1) with tenant's oldest across all queues
+local tenantOldest = redis.call('ZRANGE', tenantQueueIndexKey, 0, 0, 'WITHSCORES')
+if #tenantOldest >= 2 then
+  redis.call('ZADD', dispatchKey, tenantOldest[2], tenantId)
+end
+
+return 1
+      `,
+    });
+
+    // Atomic batch message enqueue with tenant dispatch index update
+    this.redis.defineCommand("enqueueBatchAtomicV2", {
+      numberOfKeys: 4,
+      lua: `
+local queueKey = KEYS[1]
+local queueItemsKey = KEYS[2]
+local tenantQueueIndexKey = KEYS[3]
+local dispatchKey = KEYS[4]
+
+local queueId = ARGV[1]
+local tenantId = ARGV[2]
+
+-- Args after queueId and tenantId are triples: [messageId, timestamp, payload, ...]
+for i = 3, #ARGV, 3 do
+  local messageId = ARGV[i]
+  local timestamp = tonumber(ARGV[i + 1])
+  local payload = ARGV[i + 2]
+  redis.call('ZADD', queueKey, timestamp, messageId)
+  redis.call('HSET', queueItemsKey, messageId, payload)
+end
+
+-- Update tenant queue index (Level 2)
+local oldest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+if #oldest >= 2 then
+  redis.call('ZADD', tenantQueueIndexKey, oldest[2], queueId)
+end
+
+-- Update dispatch index (Level 1)
+local tenantOldest = redis.call('ZRANGE', tenantQueueIndexKey, 0, 0, 'WITHSCORES')
+if #tenantOldest >= 2 then
+  redis.call('ZADD', dispatchKey, tenantOldest[2], tenantId)
+end
+
+return (#ARGV - 2) / 3
+      `,
+    });
+
+    // Update tenant dispatch indexes after dequeue/complete
+    // Handles both queue-empty (remove from indexes) and queue-has-messages (update scores)
+    this.redis.defineCommand("updateDispatchIndexes", {
+      numberOfKeys: 3,
+      lua: `
+local queueKey = KEYS[1]
+local tenantQueueIndexKey = KEYS[2]
+local dispatchKey = KEYS[3]
+local queueId = ARGV[1]
+local tenantId = ARGV[2]
+
+local count = redis.call('ZCARD', queueKey)
+if count == 0 then
+  -- Queue is empty: remove from tenant queue index
+  redis.call('ZREM', tenantQueueIndexKey, queueId)
+
+  -- Check if tenant has any queues left
+  local tenantQueueCount = redis.call('ZCARD', tenantQueueIndexKey)
+  if tenantQueueCount == 0 then
+    -- No more queues: remove tenant from dispatch
+    redis.call('ZREM', dispatchKey, tenantId)
+  else
+    -- Update dispatch score to tenant's new oldest
+    local tenantOldest = redis.call('ZRANGE', tenantQueueIndexKey, 0, 0, 'WITHSCORES')
+    if #tenantOldest >= 2 then
+      redis.call('ZADD', dispatchKey, tenantOldest[2], tenantId)
+    end
+  end
+  return 1
 else
-  -- Update with oldest message timestamp
+  -- Queue still has messages: update scores
   local oldest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
   if #oldest >= 2 then
-    redis.call('ZADD', masterQueueKey, oldest[2], queueId)
+    redis.call('ZADD', tenantQueueIndexKey, oldest[2], queueId)
+  end
+  local tenantOldest = redis.call('ZRANGE', tenantQueueIndexKey, 0, 0, 'WITHSCORES')
+  if #tenantOldest >= 2 then
+    redis.call('ZADD', dispatchKey, tenantOldest[2], tenantId)
   end
   return 0
 end
@@ -1569,6 +1913,7 @@ end
 // Extend Redis interface for custom commands
 declare module "@internal/redis" {
   interface RedisCommander<Context> {
+    // Legacy commands (kept for drain of old master queue)
     enqueueMessageAtomic(
       queueKey: string,
       queueItemsKey: string,
@@ -1591,6 +1936,37 @@ declare module "@internal/redis" {
       masterQueueKey: string,
       queueKey: string,
       queueId: string
+    ): Promise<number>;
+
+    // V2 commands (two-level tenant dispatch)
+    enqueueMessageAtomicV2(
+      queueKey: string,
+      queueItemsKey: string,
+      tenantQueueIndexKey: string,
+      dispatchKey: string,
+      queueId: string,
+      messageId: string,
+      timestamp: string,
+      payload: string,
+      tenantId: string
+    ): Promise<number>;
+
+    enqueueBatchAtomicV2(
+      queueKey: string,
+      queueItemsKey: string,
+      tenantQueueIndexKey: string,
+      dispatchKey: string,
+      queueId: string,
+      tenantId: string,
+      ...args: string[]
+    ): Promise<number>;
+
+    updateDispatchIndexes(
+      queueKey: string,
+      tenantQueueIndexKey: string,
+      dispatchKey: string,
+      queueId: string,
+      tenantId: string
     ): Promise<number>;
   }
 }

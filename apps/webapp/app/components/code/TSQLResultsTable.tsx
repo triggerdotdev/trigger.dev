@@ -133,6 +133,7 @@ function getFormattedValue(value: unknown, column: OutputColumnMetadata): string
           hour: "2-digit",
           minute: "2-digit",
           second: "2-digit",
+          timeZone: "UTC",
         });
       } catch {
         return String(value);
@@ -667,7 +668,7 @@ function CellValue({
 
   if (isDateTimeType(type)) {
     if (typeof value === "string") {
-      return <DateTimeAccurate date={value} showTooltip={hovered} />;
+      return <DateTimeAccurate date={value} showTooltip={hovered} timeZone="UTC" />;
     }
     return <span>{String(value)}</span>;
   }

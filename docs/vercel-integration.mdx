@@ -113,6 +113,34 @@ You can control sync behavior per-variable from your project's Vercel settings. 
 
 Atomic deployments ensure your Vercel app and Trigger.dev tasks are deployed in sync. When enabled, Trigger.dev gates your Vercel deployment until the task build completes, then triggers a Vercel redeployment with the correct `TRIGGER_VERSION` set. This guarantees your app always uses the matching version of your tasks.
 
+```mermaid
+sequenceDiagram
+  participant Dev as Developer
+  participant GH as GitHub
+  participant V as Vercel
+  participant TD as Trigger.dev
+
+  Dev->>GH: Push code
+  GH->>V: Webhook: new commit
+  V->>V: Start deployment
+  V->>TD: Deployment created
+  Dev->>GH: Create pull request
+  GH->>TD: Pull request created
+  TD->>TD: Start task build
+
+  V->>TD: Deployment check
+  TD-->>V: Check pending (gate deployment)
+  TD->>TD: Build completes
+  TD->>V: Set TRIGGER_VERSION env var
+  TD->>V: Trigger redeployment
+  V->>V: Redeploy with correct TRIGGER_VERSION
+  V->>TD: Deployment check (redeployment)
+  TD-->>V: Check passed
+  V->>V: Promote deployment
+  V->>TD: Deployment promoted
+  TD->>TD: Promote build
+```
+
 Atomic deployments are enabled for the production environment by default.
 
 <Note>
