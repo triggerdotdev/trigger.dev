@@ -49,6 +49,10 @@ When adding indexes to **existing tables**:
 
 Indexes on **newly created tables** (in the same migration as `CREATE TABLE`) do not need CONCURRENTLY and can be in the same migration file.
 
+When adding an index on a **new column on an existing table**, use two migrations:
+1. First migration: `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...` (the column)
+2. Second migration: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ...` (the index, in its own file)
+
 See `README.md` in this directory and `ai/references/migrations.md` for the full index workflow.
 
 ## Read Replicas
