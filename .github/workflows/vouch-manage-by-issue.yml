@@ -16,7 +16,7 @@ jobs:
       contains(github.event.comment.body, 'denounce') ||
       contains(github.event.comment.body, 'unvouch')
     steps:
-      - uses: mitchellh/vouch/action/manage-by-issue@v1.4.2
+      - uses: mitchellh/vouch/action/manage-by-issue@c6d80ead49839655b61b422700b7a3bc9d0804a9 # v1.4.2
         with:
           comment-id: ${{ github.event.comment.id }}
           issue-id: ${{ github.event.issue.number }}
