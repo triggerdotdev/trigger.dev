@@ -945,11 +945,9 @@ export function QueryEditor({
           <ResizableHandle id="query-handle" />
           <ResizablePanel
             id="query-help"
-            min="200px"
-            collapsible
-            collapsedSize="20px"
+            min="380px"
             default="400px"
-            max="500px"
+            max="800px"
             className="w-full"
           >
             <QueryHelpSidebar
@@ -1175,9 +1173,9 @@ function QueryResultsCallouts({
     <div className="flex flex-col gap-2 px-2 pt-2">
       {hiddenColumns && hiddenColumns.length > 0 && (
         <Callout variant="warning" className="shrink-0 text-sm">
-          <code>SELECT *</code> doesn't return all columns because it's slow. The following columns
-          are not shown: <span className="font-mono text-xs">{hiddenColumns.join(", ")}</span>.
-          Specify them explicitly to include them.
+          <code>SELECT *</code> returns core columns only. To include{" "}
+          <span className="font-mono text-xs">{hiddenColumns.join(", ")}</span>, add them to your
+          SELECT explicitly.
         </Callout>
       )}
       {periodClipped && (

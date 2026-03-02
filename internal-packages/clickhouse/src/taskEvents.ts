@@ -19,6 +19,7 @@ export const TaskEventV1Input = z.object({
   attributes: z.unknown(),
   metadata: z.string(),
   expires_at: z.string(),
+  machine_id: z.string().optional(),
 });
 
 export type TaskEventV1Input = z.input<typeof TaskEventV1Input>;
@@ -153,6 +154,7 @@ export const TaskEventV2Input = z.object({
   attributes: z.unknown(),
   metadata: z.string(),
   expires_at: z.string(),
+  machine_id: z.string().optional(),
   // inserted_at has a default value in the table, so it's optional for inserts
   inserted_at: z.string().optional(),
 });

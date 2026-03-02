@@ -275,7 +275,9 @@ export class VisibilityManager {
    * @param queueId - The queue ID
    * @param queueKey - The Redis key for the queue
    * @param queueItemsKey - The Redis key for the queue items hash
-   * @param masterQueueKey - The Redis key for the master queue
+   * @param tenantQueueIndexKey - The Redis key for the tenant queue index (Level 2)
+   * @param dispatchKey - The Redis key for the dispatch index (Level 1)
+   * @param tenantId - The tenant ID
    * @param score - Optional score for the message (defaults to now)
    */
   async release<TPayload = unknown>(
@@ -283,8 +285,11 @@ export class VisibilityManager {
     queueId: string,
     queueKey: string,
     queueItemsKey: string,
-    masterQueueKey: string,
-    score?: number
+    tenantQueueIndexKey: string,
+    dispatchKey: string,
+    tenantId: string,
+    score?: number,
+    updatedData?: string
   ): Promise<void> {
     const shardId = this.#getShardForQueue(queueId);
     const inflightKey = this.keys.inflightKey(shardId);
@@ -293,20 +298,23 @@ export class VisibilityManager {
     const messageScore = score ?? Date.now();
 
     // Use Lua script to atomically:
-    // 1. Get message data from in-flight
+    // 1. Get message data from in-flight (or use updatedData if provided)
     // 2. Remove from in-flight
     // 3. Add back to queue
-    // 4. Update master queue to ensure queue is picked up
+    // 4. Update dispatch indexes to ensure queue is picked up
     await this.redis.releaseMessage(
       inflightKey,
       inflightDataKey,
       queueKey,
       queueItemsKey,
-      masterQueueKey,
+      tenantQueueIndexKey,
+      dispatchKey,
       member,
       messageId,
       messageScore.toString(),
-      queueId
+      queueId,
+      updatedData ?? "",
+      tenantId
     );
 
     this.logger.debug("Message released", {
@@ -325,7 +333,9 @@ export class VisibilityManager {
    * @param queueId - The queue ID
    * @param queueKey - The Redis key for the queue
    * @param queueItemsKey - The Redis key for the queue items hash
-   * @param masterQueueKey - The Redis key for the master queue
+   * @param tenantQueueIndexKey - The Redis key for the tenant queue index (Level 2)
+   * @param dispatchKey - The Redis key for the dispatch index (Level 1)
+   * @param tenantId - The tenant ID
    * @param score - Optional score for the messages (defaults to now)
    */
   async releaseBatch(
@@ -333,7 +343,9 @@ export class VisibilityManager {
     queueId: string,
     queueKey: string,
     queueItemsKey: string,
-    masterQueueKey: string,
+    tenantQueueIndexKey: string,
+    dispatchKey: string,
+    tenantId: string,
     score?: number
   ): Promise<void> {
     if (messages.length === 0) {
@@ -354,9 +366,11 @@ export class VisibilityManager {
       inflightDataKey,
       queueKey,
       queueItemsKey,
-      masterQueueKey,
+      tenantQueueIndexKey,
+      dispatchKey,
       messageScore.toString(),
       queueId,
+      tenantId,
       ...members,
       ...messageIds
     );
@@ -381,7 +395,9 @@ export class VisibilityManager {
     getQueueKeys: (queueId: string) => {
       queueKey: string;
       queueItemsKey: string;
-      masterQueueKey: string;
+      tenantQueueIndexKey: string;
+      dispatchKey: string;
+      tenantId: string;
     }
   ): Promise<ReclaimedMessageInfo[]> {
     const inflightKey = this.keys.inflightKey(shardId);
@@ -408,7 +424,8 @@ export class VisibilityManager {
         continue;
       }
       const { messageId, queueId } = this.#parseMember(member);
-      const { queueKey, queueItemsKey, masterQueueKey } = getQueueKeys(queueId);
+      const { queueKey, queueItemsKey, tenantQueueIndexKey, dispatchKey, tenantId } =
+        getQueueKeys(queueId);
 
       try {
         // Get message data BEFORE releasing so we can extract tenantId for concurrency release
@@ -430,11 +447,14 @@ export class VisibilityManager {
           inflightDataKey,
           queueKey,
           queueItemsKey,
-          masterQueueKey,
+          tenantQueueIndexKey,
+          dispatchKey,
           member,
           messageId,
           score.toString(),
-          queueId
+          queueId,
+          "",
+          tenantId
         );
 
         // Track reclaimed message for concurrency release
@@ -666,26 +686,35 @@ return results
       `,
     });
 
-    // Atomic release: remove from in-flight, add back to queue, update master queue
+    // Atomic release: remove from in-flight, add back to queue, update dispatch indexes
     this.redis.defineCommand("releaseMessage", {
-      numberOfKeys: 5,
+      numberOfKeys: 6,
       lua: `
 local inflightKey = KEYS[1]
 local inflightDataKey = KEYS[2]
 local queueKey = KEYS[3]
 local queueItemsKey = KEYS[4]
-local masterQueueKey = KEYS[5]
+local tenantQueueIndexKey = KEYS[5]
+local dispatchKey = KEYS[6]
 
 local member = ARGV[1]
 local messageId = ARGV[2]
 local score = tonumber(ARGV[3])
 local queueId = ARGV[4]
+local updatedData = ARGV[5]
+local tenantId = ARGV[6]
 
 -- Get message data from in-flight
 local payload = redis.call('HGET', inflightDataKey, messageId)
 if not payload then
   -- Message not in in-flight or already released
   return 0
+end
+
+-- Use updatedData if provided (e.g. incremented attempt count for retries),
+-- otherwise use the original in-flight data
+if updatedData and updatedData ~= "" then
+  payload = updatedData
 end
 
 -- Remove from in-flight
@@ -696,12 +725,16 @@ redis.call('HDEL', inflightDataKey, messageId)
 redis.call('ZADD', queueKey, score, messageId)
 redis.call('HSET', queueItemsKey, messageId, payload)
 
--- Update master queue with oldest message timestamp
--- This ensures delayed messages don't push the queue priority to the future
--- when there are other ready messages in the queue
+-- Update tenant queue index (Level 2) with queue's oldest message
 local oldest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
 if #oldest >= 2 then
-  redis.call('ZADD', masterQueueKey, oldest[2], queueId)
+  redis.call('ZADD', tenantQueueIndexKey, oldest[2], queueId)
+end
+
+-- Update dispatch index (Level 1) with tenant's oldest across all queues
+local tenantOldest = redis.call('ZRANGE', tenantQueueIndexKey, 0, 0, 'WITHSCORES')
+if #tenantOldest >= 2 then
+  redis.call('ZADD', dispatchKey, tenantOldest[2], tenantId)
 end
 
 return 1
@@ -710,21 +743,23 @@ return 1
 
     // Atomic batch release: release multiple messages back to queue
     this.redis.defineCommand("releaseMessageBatch", {
-      numberOfKeys: 5,
+      numberOfKeys: 6,
       lua: `
 local inflightKey = KEYS[1]
 local inflightDataKey = KEYS[2]
 local queueKey = KEYS[3]
 local queueItemsKey = KEYS[4]
-local masterQueueKey = KEYS[5]
+local tenantQueueIndexKey = KEYS[5]
+local dispatchKey = KEYS[6]
 
 local score = tonumber(ARGV[1])
 local queueId = ARGV[2]
+local tenantId = ARGV[3]
 
 -- Remaining args are: members..., messageIds...
 -- Calculate how many messages we have
-local numMessages = (table.getn(ARGV) - 2) / 2
-local membersStart = 3
+local numMessages = (table.getn(ARGV) - 3) / 2
+local membersStart = 4
 local messageIdsStart = membersStart + numMessages
 
 local releasedCount = 0
@@ -732,27 +767,33 @@ local releasedCount = 0
 for i = 0, numMessages - 1 do
   local member = ARGV[membersStart + i]
   local messageId = ARGV[messageIdsStart + i]
-  
+
   -- Get message data from in-flight
   local payload = redis.call('HGET', inflightDataKey, messageId)
   if payload then
     -- Remove from in-flight
     redis.call('ZREM', inflightKey, member)
     redis.call('HDEL', inflightDataKey, messageId)
-    
+
     -- Add back to queue
     redis.call('ZADD', queueKey, score, messageId)
     redis.call('HSET', queueItemsKey, messageId, payload)
-    
+
     releasedCount = releasedCount + 1
   end
 end
 
--- Update master queue with oldest message timestamp (only once at the end)
+-- Update dispatch indexes (only once at the end)
 if releasedCount > 0 then
+  -- Update tenant queue index (Level 2)
   local oldest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
   if #oldest >= 2 then
-    redis.call('ZADD', masterQueueKey, oldest[2], queueId)
+    redis.call('ZADD', tenantQueueIndexKey, oldest[2], queueId)
+  end
+  -- Update dispatch index (Level 1)
+  local tenantOldest = redis.call('ZRANGE', tenantQueueIndexKey, 0, 0, 'WITHSCORES')
+  if #tenantOldest >= 2 then
+    redis.call('ZADD', dispatchKey, tenantOldest[2], tenantId)
   end
 end
 
@@ -812,11 +853,14 @@ declare module "@internal/redis" {
       inflightDataKey: string,
       queueKey: string,
       queueItemsKey: string,
-      masterQueueKey: string,
+      tenantQueueIndexKey: string,
+      dispatchKey: string,
       member: string,
       messageId: string,
       score: string,
-      queueId: string
+      queueId: string,
+      updatedData: string,
+      tenantId: string
     ): Promise<number>;
 
     releaseMessageBatch(
@@ -824,9 +868,11 @@ declare module "@internal/redis" {
       inflightDataKey: string,
       queueKey: string,
       queueItemsKey: string,
-      masterQueueKey: string,
+      tenantQueueIndexKey: string,
+      dispatchKey: string,
       score: string,
       queueId: string,
+      tenantId: string,
       ...membersAndMessageIds: string[]
     ): Promise<number>;
 

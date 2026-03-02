@@ -180,8 +180,8 @@
             ]
           },
           {
-            "group": "Insights",
-            "pages": ["insights/query", "insights/metrics"]
+            "group": "Observability",
+            "pages": ["observability/query", "observability/dashboards"]
           },
           {
             "group": "Using the Dashboard",
@@ -239,11 +239,20 @@
           },
           {
             "group": "Tasks API",
-            "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
+            "pages": [
+              "management/tasks/trigger",
+              "management/tasks/batch-trigger",
+              "management/tasks/trigger-batch"
+            ]
           },
           {
             "group": "Batches API",
-            "pages": ["management/batches/create", "management/batches/stream-items"]
+            "pages": [
+              "management/batches/create",
+              "management/batches/retrieve",
+              "management/batches/retrieve-results",
+              "management/batches/stream-items"
+            ]
           },
           {
             "group": "Runs API",
@@ -253,7 +262,11 @@
               "management/runs/replay",
               "management/runs/cancel",
               "management/runs/reschedule",
-              "management/runs/update-metadata"
+              "management/runs/update-metadata",
+              "management/runs/add-tags",
+              "management/runs/retrieve-events",
+              "management/runs/retrieve-trace",
+              "management/runs/retrieve-result"
             ]
           },
           {
@@ -296,6 +309,16 @@
               "management/deployments/retrieve",
               "management/deployments/get-latest",
               "management/deployments/promote"
+            ]
+          },
+          {
+            "group": "Waitpoints API",
+            "pages": [
+              "management/waitpoints/create",
+              "management/waitpoints/list",
+              "management/waitpoints/retrieve",
+              "management/waitpoints/complete",
+              "management/waitpoints/complete-callback"
             ]
           },
           {
@@ -698,6 +721,14 @@
     {
       "source": "/upgrade-to-v4",
       "destination": "/migrating-from-v3"
+    },
+    {
+      "source": "/insights/query",
+      "destination": "/observability/query"
+    },
+    {
+      "source": "/insights/metrics",
+      "destination": "/observability/dashboards"
     }
   ]
 }

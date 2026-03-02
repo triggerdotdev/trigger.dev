@@ -166,7 +166,7 @@ async function responseHeaders(
   const claims = {
     sub: environment.id,
     pub: true,
-    scopes: [`read:runs:${run.friendlyId}`],
+    scopes: [`read:runs:${run.friendlyId}`, `write:inputStreams:${run.friendlyId}`],
     realtime,
   };
 

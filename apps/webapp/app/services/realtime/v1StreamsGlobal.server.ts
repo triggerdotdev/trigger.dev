@@ -36,10 +36,16 @@ export function getRealtimeStreamInstance(
   if (streamVersion === "v1") {
     return v1RealtimeStreams;
   } else {
-    if (env.REALTIME_STREAMS_S2_BASIN && env.REALTIME_STREAMS_S2_ACCESS_TOKEN) {
+    if (
+      env.REALTIME_STREAMS_S2_BASIN &&
+      (env.REALTIME_STREAMS_S2_ACCESS_TOKEN ||
+        env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true")
+    ) {
       return new S2RealtimeStreams({
         basin: env.REALTIME_STREAMS_S2_BASIN,
-        accessToken: env.REALTIME_STREAMS_S2_ACCESS_TOKEN,
+        accessToken: env.REALTIME_STREAMS_S2_ACCESS_TOKEN ?? "",
+        endpoint: env.REALTIME_STREAMS_S2_ENDPOINT,
+        skipAccessTokens: env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true",
         streamPrefix: [
           "org",
           environment.organization.id,
@@ -68,7 +74,7 @@ export function determineRealtimeStreamsVersion(streamVersion?: string): "v1" | 
   if (
     streamVersion === "v2" &&
     env.REALTIME_STREAMS_S2_BASIN &&
-    env.REALTIME_STREAMS_S2_ACCESS_TOKEN
+    (env.REALTIME_STREAMS_S2_ACCESS_TOKEN || env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true")
   ) {
     return "v2";
   }

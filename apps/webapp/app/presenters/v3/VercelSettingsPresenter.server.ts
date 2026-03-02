@@ -40,6 +40,8 @@ export type VercelSettingsResult = {
   customEnvironments: VercelCustomEnvironment[];
   /** Whether autoAssignCustomDomains is enabled on the Vercel project. null if unknown. */
   autoAssignCustomDomains?: boolean | null;
+  /** URL to manage Vercel integration access (project sharing) on vercel.com */
+  vercelManageAccessUrl?: string;
 };
 
 export type VercelAvailableProject = {
@@ -242,11 +244,12 @@ export class VercelSettingsPresenter extends BasePresenter {
       checkPreviewEnvironment(),
       getVercelProjectIntegration(),
     ]).andThen(([hasOrgIntegration, isGitHubConnected, hasStagingEnvironment, hasPreviewEnvironment, connectedProject]) => {
-        const fetchCustomEnvsAndProjectSettings = async (): Promise<{
+        const fetchVercelData = async (): Promise<{
           customEnvironments: VercelCustomEnvironment[];
           autoAssignCustomDomains: boolean | null;
+          vercelManageAccessUrl?: string;
         }> => {
-          if (!connectedProject || !orgIntegration) {
+          if (!orgIntegration) {
             return { customEnvironments: [], autoAssignCustomDomains: null };
           }
           const clientResult = await VercelIntegrationRepository.getVercelClient(orgIntegration);
@@ -255,6 +258,26 @@ export class VercelSettingsPresenter extends BasePresenter {
           }
           const client = clientResult.value;
           const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
+
+          // Build manage access URL
+          let vercelManageAccessUrl: string | undefined;
+          const appSlug = env.VERCEL_INTEGRATION_APP_SLUG;
+          const integrationData = orgIntegration.integrationData as Record<string, unknown> | null;
+          const installationId =
+            typeof integrationData?.installationId === "string"
+              ? integrationData.installationId
+              : undefined;
+          if (appSlug && installationId && teamId) {
+            const teamSlugResult = await VercelIntegrationRepository.getTeamSlug(client, teamId);
+            if (teamSlugResult.isOk()) {
+              vercelManageAccessUrl = `https://vercel.com/${teamSlugResult.value}/~/integrations/${appSlug}/${installationId}`;
+            }
+          }
+
+          if (!connectedProject) {
+            return { customEnvironments: [], autoAssignCustomDomains: null, vercelManageAccessUrl };
+          }
+
           const [customEnvsResult, autoAssignResult] = await Promise.all([
             VercelIntegrationRepository.getVercelCustomEnvironments(
               client,
@@ -270,13 +293,14 @@ export class VercelSettingsPresenter extends BasePresenter {
           return {
             customEnvironments: customEnvsResult.isOk() ? customEnvsResult.value : [],
             autoAssignCustomDomains: autoAssignResult.isOk() ? autoAssignResult.value : null,
+            vercelManageAccessUrl,
           };
         };
 
         return fromPromise(
-          fetchCustomEnvsAndProjectSettings(),
+          fetchVercelData(),
           (error) => ({ type: "other" as const, cause: error })
-        ).map(({ customEnvironments, autoAssignCustomDomains }) => ({
+        ).map(({ customEnvironments, autoAssignCustomDomains, vercelManageAccessUrl }) => ({
           enabled: true,
           hasOrgIntegration,
           authInvalid: false,
@@ -286,6 +310,7 @@ export class VercelSettingsPresenter extends BasePresenter {
           hasPreviewEnvironment,
           customEnvironments,
           autoAssignCustomDomains,
+          vercelManageAccessUrl,
         } as VercelSettingsResult));
       }).mapErr((error) => {
         // Log the error and return a safe fallback

@@ -535,6 +535,13 @@ export const cancelExampleTask = task({
   point the process will be killed.
 </Note>
 
+<Warning>
+  `onCancel` only runs if the run is actively executing. If a run is cancelled while queued or
+  suspended (e.g. waiting for a token), no machine is spun up and `onCancel` will not be called.
+  This is a known limitation we're planning to address. Follow the progress on our [feedback
+  board](https://feedback.trigger.dev/p/call-the-onfailure-hook-for-runs-that-were-canceled-expired).
+</Warning>
+
 ### `onStart` function (deprecated)
 
 <Info>The `onStart` function was deprecated in v4.1.0. Use `onStartAttempt` instead.</Info>

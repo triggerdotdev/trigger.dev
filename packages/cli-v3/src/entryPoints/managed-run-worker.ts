@@ -32,6 +32,7 @@ import {
   traceContext,
   heartbeats,
   realtimeStreams,
+  inputStreams,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -59,6 +60,7 @@ import {
   StandardTraceContextManager,
   StandardHeartbeatsManager,
   StandardRealtimeStreamsManager,
+  StandardInputStreamManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -140,6 +142,14 @@ const standardRealtimeStreamsManager = new StandardRealtimeStreamsManager(
 );
 realtimeStreams.setGlobalManager(standardRealtimeStreamsManager);
 
+const standardInputStreamManager = new StandardInputStreamManager(
+  apiClientManager.clientOrThrow(),
+  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+  (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
+    false
+);
+inputStreams.setGlobalManager(standardInputStreamManager);
+
 const waitUntilTimeoutInMs = getNumberEnvVar("TRIGGER_WAIT_UNTIL_TIMEOUT_MS", 60_000);
 const waitUntilManager = new StandardWaitUntilManager(waitUntilTimeoutInMs);
 waitUntil.setGlobalManager(waitUntilManager);
@@ -183,12 +193,23 @@ async function doBootstrap() {
 
     const tracingSDK = new TracingSDK({
       url: env.TRIGGER_OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
-      instrumentations: config.instrumentations ?? [],
+      metricsUrl: env.TRIGGER_OTEL_METRICS_ENDPOINT,
+      instrumentations: config.telemetry?.instrumentations ?? config.instrumentations ?? [],
       diagLogLevel: (env.TRIGGER_OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
       forceFlushTimeoutMillis: 30_000,
       exporters: config.telemetry?.exporters ?? [],
       logExporters: config.telemetry?.logExporters ?? [],
+      metricExporters: config.telemetry?.metricExporters ?? [],
+      metricReaders: config.telemetry?.metricReaders ?? [],
       resource: config.telemetry?.resource,
+      hostMetrics: true,
+      hostMetricGroups:
+        getEnvVar("TRIGGER_SYSTEM_METRICS_ENABLED") === "1"
+          ? undefined
+          : ["process.cpu", "process.memory"],
+      nodejsRuntimeMetrics: true,
+      filesystemMetrics: getEnvVar("TRIGGER_SYSTEM_METRICS_ENABLED") === "1",
+      diskIoMetrics: getEnvVar("TRIGGER_SYSTEM_METRICS_ENABLED") === "1",
     });
 
     const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);
@@ -302,6 +323,7 @@ function resetExecutionEnvironment() {
   runMetadataManager.reset();
   waitUntilManager.reset();
   standardRealtimeStreamsManager.reset();
+  standardInputStreamManager.reset();
   _sharedWorkerRuntime?.reset();
   durableClock.reset();
   taskContext.disable();
@@ -353,6 +375,7 @@ const zodIpc = new ZodIpcConnection({
       }
 
       resetExecutionEnvironment();
+      standardInputStreamManager.setRunId(execution.run.id, execution.run.realtimeStreamsVersion);
 
       standardTraceContextManager.traceContext = traceContext;
 
@@ -607,8 +630,11 @@ const zodIpc = new ZodIpcConnection({
       }
       await flushAll(timeoutInMs);
     },
-    FLUSH: async ({ timeoutInMs }) => {
+    FLUSH: async ({ timeoutInMs, disableContext }) => {
       await flushAll(timeoutInMs);
+      if (disableContext) {
+        taskContext.disable();
+      }
     },
     RESOLVE_WAITPOINT: async ({ waitpoint }) => {
       _sharedWorkerRuntime?.resolveWaitpoints([waitpoint]);

@@ -936,7 +936,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
           ctx,
         });
 
-        const runs = await handleBatchTaskRunExecutionResultV2(result.items);
+        const runs = await handleBatchTaskRunExecutionResultV2(result.items, response.taskIdentifiers);
 
         return {
           id: result.id,
@@ -980,7 +980,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
           ctx,
         });
 
-        const runs = await handleBatchTaskRunExecutionResultV2(result.items);
+        const runs = await handleBatchTaskRunExecutionResultV2(result.items, response.taskIdentifiers);
 
         return {
           id: result.id,
@@ -1457,7 +1457,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
           ctx,
         });
 
-        const runs = await handleBatchTaskRunExecutionResultV2(result.items);
+        const runs = await handleBatchTaskRunExecutionResultV2(result.items, response.taskIdentifiers);
 
         return {
           id: result.id,
@@ -1504,7 +1504,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
           ctx,
         });
 
-        const runs = await handleBatchTaskRunExecutionResultV2(result.items);
+        const runs = await handleBatchTaskRunExecutionResultV2(result.items, response.taskIdentifiers);
 
         return {
           id: result.id,
@@ -1545,7 +1545,7 @@ async function executeBatchTwoPhase(
     spanParentAsLink?: boolean;
   },
   requestOptions?: TriggerApiRequestOptions
-): Promise<{ id: string; runCount: number; publicAccessToken: string }> {
+): Promise<{ id: string; runCount: number; publicAccessToken: string; taskIdentifiers: string[] }> {
   let batch: Awaited<ReturnType<typeof apiClient.createBatch>> | undefined;
 
   try {
@@ -1588,6 +1588,7 @@ async function executeBatchTwoPhase(
     id: batch.id,
     runCount: batch.runCount,
     publicAccessToken: batch.publicAccessToken,
+    taskIdentifiers: items.map((item) => item.task),
   };
 }
 
@@ -1703,7 +1704,7 @@ async function executeBatchTwoPhaseStreaming(
     spanParentAsLink?: boolean;
   },
   requestOptions?: TriggerApiRequestOptions
-): Promise<{ id: string; runCount: number; publicAccessToken: string }> {
+): Promise<{ id: string; runCount: number; publicAccessToken: string; taskIdentifiers: string[] }> {
   // For streaming, we need to buffer items to get the count first
   // This is because createBatch requires runCount upfront
   // In the future, we could add a streaming-first endpoint that doesn't require this
@@ -2676,7 +2677,8 @@ async function handleBatchTaskRunExecutionResult<TIdentifier extends string, TOu
 }
 
 async function handleBatchTaskRunExecutionResultV2(
-  items: Array<TaskRunExecutionResult>
+  items: Array<TaskRunExecutionResult>,
+  taskIdentifiers?: string[]
 ): Promise<Array<AnyTaskRunResult>> {
   const someObjectStoreOutputs = items.some(
     (item) => item.ok && item.outputType === "application/store"
@@ -2684,8 +2686,11 @@ async function handleBatchTaskRunExecutionResultV2(
 
   if (!someObjectStoreOutputs) {
     const results = await Promise.all(
-      items.map(async (item) => {
-        return await handleTaskRunExecutionResult(item, item.taskIdentifier ?? "unknown");
+      items.map(async (item, index) => {
+        return await handleTaskRunExecutionResult(
+          item,
+          item.taskIdentifier ?? taskIdentifiers?.[index] ?? "unknown"
+        );
       })
     );
 
@@ -2696,8 +2701,11 @@ async function handleBatchTaskRunExecutionResultV2(
     "store.downloadPayloads",
     async (span) => {
       const results = await Promise.all(
-        items.map(async (item) => {
-          return await handleTaskRunExecutionResult(item, item.taskIdentifier ?? "unknown");
+        items.map(async (item, index) => {
+          return await handleTaskRunExecutionResult(
+            item,
+            item.taskIdentifier ?? taskIdentifiers?.[index] ?? "unknown"
+          );
         })
       );
 

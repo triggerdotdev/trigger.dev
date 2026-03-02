@@ -360,6 +360,285 @@ paths:
 
             const handle = await runs.replay("run_1234");
 
+  "/api/v1/runs/{runId}/tags":
+    parameters:
+      - $ref: "#/components/parameters/runId"
+    post:
+      operationId: add_run_tags_v1
+      summary: Add tags to a run
+      description: Adds one or more tags to a run. Runs can have a maximum of 10 tags. Duplicate tags are ignored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tags
+              properties:
+                tags:
+                  $ref: "#/components/schemas/RunTags"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Successfully set 2 new tags."
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API Key
+        "422":
+          description: Too many tags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Runs can only have 10 tags.
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: SDK
+          source: |-
+            import { runs } from "@trigger.dev/sdk";
+
+            await runs.addTags("run_1234", ["tag-1", "tag-2"]);
+        - lang: typescript
+          label: Fetch
+          source: |-
+            await fetch("https://api.trigger.dev/api/v1/runs/run_1234/tags", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ tags: ["tag-1", "tag-2"] }),
+            });
+
+  "/api/v1/runs/{runId}/trace":
+    parameters:
+      - $ref: "#/components/parameters/runId"
+    get:
+      operationId: get_run_trace_v1
+      summary: Retrieve run trace
+      description: Returns the full OTel trace tree for a run, including all spans and their children.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trace:
+                    type: object
+                    properties:
+                      traceId:
+                        type: string
+                        description: The OTel trace ID.
+                      rootSpan:
+                        $ref: "#/components/schemas/SpanDetailedSummary"
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API key
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Run not found
+                      - Trace not found
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            const response = await fetch("https://api.trigger.dev/api/v1/runs/run_1234/trace", {
+              headers: {
+                Authorization: `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+              },
+            });
+
+            const { trace } = await response.json();
+
+  "/api/v1/runs/{runId}/events":
+    parameters:
+      - $ref: "#/components/parameters/runId"
+    get:
+      operationId: get_run_events_v1
+      summary: Retrieve run events
+      description: Returns all OTel span events for a run. Useful for debugging and observability.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        spanId:
+                          type: string
+                          description: The span ID of the event.
+                        parentId:
+                          type: string
+                          nullable: true
+                          description: The parent span ID, if any.
+                        runId:
+                          type: string
+                          nullable: true
+                          description: The run ID associated with this event.
+                        message:
+                          type: string
+                          description: The event message.
+                        startTime:
+                          type: string
+                          description: The start time of the event as a bigint string (nanoseconds since epoch).
+                        duration:
+                          type: number
+                          description: The duration of the event in nanoseconds.
+                        isError:
+                          type: boolean
+                          description: Whether this event represents an error.
+                        isPartial:
+                          type: boolean
+                          description: Whether this event is partial (still in progress).
+                        isCancelled:
+                          type: boolean
+                          description: Whether this event was cancelled.
+                        level:
+                          type: string
+                          enum: [TRACE, DEBUG, LOG, INFO, WARN, ERROR]
+                          description: The log level of the event.
+                        kind:
+                          type: string
+                          enum: [UNSPECIFIED, INTERNAL, SERVER, CLIENT, PRODUCER, CONSUMER, UNRECOGNIZED, LOG]
+                          description: The kind of span event.
+                        attemptNumber:
+                          type: number
+                          nullable: true
+                          description: The attempt number this event belongs to.
+                        taskSlug:
+                          type: string
+                          description: The task identifier.
+                        events:
+                          type: array
+                          description: Span events (e.g. exceptions, cancellations) that occurred during this event.
+                          items:
+                            type: object
+                            properties:
+                              name:
+                                type: string
+                                description: The event name (e.g. "exception", "cancellation", "attempt_failed").
+                              time:
+                                type: string
+                                format: date-time
+                                description: The time the event occurred.
+                              properties:
+                                type: object
+                                description: Event-specific properties.
+                        style:
+                          type: object
+                          description: Display style metadata for the event.
+                          properties:
+                            icon:
+                              type: string
+                              description: Icon identifier for display.
+                            variant:
+                              type: string
+                              description: Visual variant (e.g. "success", "failure").
+                            accessory:
+                              type: object
+                              description: Accessory display element.
+                              properties:
+                                text:
+                                  type: string
+                                style:
+                                  type: string
+                                  enum: [codepath]
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API key
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Run not found
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            const response = await fetch("https://api.trigger.dev/api/v1/runs/run_1234/events", {
+              headers: {
+                Authorization: `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+              },
+            });
+
+            const { events } = await response.json();
+
   "/api/v1/runs/{runId}/metadata":
     parameters:
       - $ref: "#/components/parameters/runId"
@@ -933,6 +1212,84 @@ paths:
             import { runs } from "@trigger.dev/sdk";
 
             const handle = await runs.reschedule("run_1234", { delay: new Date("2024-06-29T20:45:56.340Z") });
+
+  "/api/v1/runs/{runId}/result":
+    parameters:
+      - $ref: "#/components/parameters/runId"
+    get:
+      operationId: get_run_result_v1
+      summary: Retrieve run result
+      description: Returns the execution result of a completed run. Returns 404 if the run doesn't exist or hasn't finished yet.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, id]
+                properties:
+                  ok:
+                    type: boolean
+                    description: Whether the run completed successfully.
+                  id:
+                    type: string
+                    description: The run ID.
+                  output:
+                    type: string
+                    description: The serialized output as a string (present when ok is true). Use outputType to determine how to parse it — for "application/json" use JSON.parse().
+                  outputType:
+                    type: string
+                    description: The content type of the serialized output, e.g. "application/json".
+                  error:
+                    type: object
+                    description: Error details (present when ok is false).
+                  usage:
+                    type: object
+                    description: Execution usage stats.
+                    properties:
+                      durationMs:
+                        type: number
+                        description: Duration of the run in milliseconds.
+                  taskIdentifier:
+                    type: string
+                    description: The task identifier.
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API Key
+        "404":
+          description: Run not found or not yet finished
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Run either doesn't exist or is not finished
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: Fetch
+          source: |-
+            const response = await fetch("https://api.trigger.dev/api/v1/runs/run_1234/result", {
+              headers: {
+                "Authorization": `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+              },
+            });
+            const result = await response.json();
 
   "/api/v3/runs/{runId}":
     parameters:
@@ -1661,6 +2018,85 @@ paths:
             response = requests.post(url, headers=headers, json=data)
             print(response.json())
 
+  "/api/v1/tasks/{taskIdentifier}/batch":
+    parameters:
+      - $ref: "#/components/parameters/taskIdentifier"
+    post:
+      operationId: batch_trigger_task_by_id_v1
+      summary: Batch trigger a specific task
+      description: Batch trigger a specific task with up to 1,000 payloads. All items in the batch run the same task.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["items"]
+              properties:
+                items:
+                  type: array
+                  description: An array of payloads to trigger the task with (max 1,000 items).
+                  maxItems: 1000
+                  items:
+                    $ref: "#/components/schemas/TriggerTaskRequestBody"
+      responses:
+        "200":
+          description: Batch triggered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchTriggerTaskResponse"
+        "400":
+          description: Invalid request parameters or body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      tags:
+        - tasks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { task } from "@trigger.dev/sdk";
+
+            export const myTask = task({
+              id: "my-task",
+              run: async (payload: { message: string }) => {
+                console.log("Hello, world!");
+              }
+            });
+
+            // Somewhere else in your code
+            await myTask.batchTrigger([
+              { payload: { message: "Hello, world!" } },
+              { payload: { message: "Hello again!" } },
+            ]);
+        - lang: curl
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/tasks/my-task/batch" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer tr_dev_1234" \
+              -d '{
+                    "items": [
+                      { "payload": { "message": "Hello, world!" } },
+                      { "payload": { "message": "Hello again!" } }
+                    ]
+                  }'
+
   "/api/v1/tasks/batch":
     post:
       operationId: batch_trigger_task_v1
@@ -1753,6 +2189,177 @@ paths:
                       }
                     ]
                   }'
+
+  "/api/v1/batches/{batchId}":
+    parameters:
+      - $ref: "#/components/parameters/batchId"
+    get:
+      operationId: retrieve_batch_v1
+      summary: Retrieve a batch
+      description: Retrieve a batch by its ID, including its status and the IDs of all runs in the batch.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: The batch ID.
+                  status:
+                    type: string
+                    enum: [PENDING, PROCESSING, COMPLETED, PARTIAL_FAILED, ABORTED]
+                    description: The current status of the batch.
+                  idempotencyKey:
+                    type: string
+                    nullable: true
+                    description: The idempotency key provided when triggering, if any.
+                  createdAt:
+                    type: string
+                    format: date-time
+                  updatedAt:
+                    type: string
+                    format: date-time
+                  runCount:
+                    type: integer
+                    description: The total number of runs in the batch.
+                  runs:
+                    type: array
+                    items:
+                      type: string
+                    description: Array of run IDs in the batch.
+                  successfulRunCount:
+                    type: integer
+                    nullable: true
+                    description: Number of successful runs (populated after completion).
+                  failedRunCount:
+                    type: integer
+                    nullable: true
+                    description: Number of failed runs (populated after completion).
+                  errors:
+                    type: array
+                    nullable: true
+                    description: Error details for failed items (present for PARTIAL_FAILED batches).
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                          description: The index of the failed item.
+                        taskIdentifier:
+                          type: string
+                          description: The task identifier of the failed item.
+                        error:
+                          type: object
+                          description: The error details.
+                        errorCode:
+                          type: string
+                          nullable: true
+                          description: An optional error code.
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Batch not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      tags:
+        - batches
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: Fetch
+          source: |-
+            const response = await fetch("https://api.trigger.dev/api/v1/batches/batch_1234", {
+              headers: {
+                "Authorization": `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+              },
+            });
+            const batch = await response.json();
+
+  "/api/v1/batches/{batchId}/results":
+    parameters:
+      - $ref: "#/components/parameters/batchId"
+    get:
+      operationId: get_batch_results_v1
+      summary: Retrieve batch results
+      description: Returns the execution results of all completed runs in a batch. Only finished runs (successful or failed) are included in the items array — runs that are still executing are omitted. Returns 404 if the batch doesn't exist.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: The batch ID.
+                  items:
+                    type: array
+                    description: Execution results for each run in the batch.
+                    items:
+                      type: object
+                      required: [ok, id]
+                      properties:
+                        ok:
+                          type: boolean
+                          description: Whether this run completed successfully.
+                        id:
+                          type: string
+                          description: The run ID.
+                        output:
+                          type: string
+                          description: The serialized output as a string (present when ok is true). Use outputType to determine how to parse it — for "application/json" use JSON.parse().
+                        outputType:
+                          type: string
+                          description: The content type of the serialized output, e.g. "application/json".
+                        error:
+                          type: object
+                          description: Error details (present when ok is false).
+                        usage:
+                          type: object
+                          properties:
+                            durationMs:
+                              type: number
+                              description: Duration of the run in milliseconds.
+                        taskIdentifier:
+                          type: string
+                          description: The task identifier.
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Batch not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      tags:
+        - batches
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: Fetch
+          source: |-
+            const response = await fetch("https://api.trigger.dev/api/v1/batches/batch_1234/results", {
+              headers: {
+                "Authorization": `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+              },
+            });
+            const results = await response.json();
 
   "/api/v1/queues":
     get:
@@ -2049,6 +2656,348 @@ paths:
               name: "my-task-id",
             });
 
+  "/api/v1/waitpoints/tokens":
+    post:
+      operationId: create_waitpoint_token_v1
+      summary: Create a waitpoint token
+      description: >-
+        Creates a new waitpoint token that can be used to pause a run until an external event completes it.
+        The token includes a `url` which can be called via HTTP POST to complete the waitpoint.
+        Use the token ID with `wait.forToken()` inside a task to pause execution until the token is completed.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/CreateWaitpointTokenRequest"
+      responses:
+        "200":
+          description: Waitpoint token created successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/CreateWaitpointTokenResponse"
+        "401":
+          description: Unauthorized
+        "422":
+          description: Unprocessable Entity
+        "500":
+          description: Internal Server Error
+      tags:
+        - waitpoints
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { wait } from "@trigger.dev/sdk";
+
+            const token = await wait.createToken({
+              timeout: "1h",
+              tags: ["user:1234567"],
+            });
+
+            console.log(token.id);  // e.g. "waitpoint_abc123"
+            console.log(token.url); // HTTP callback URL to complete externally
+
+    get:
+      operationId: list_waitpoint_tokens_v1
+      summary: List waitpoint tokens
+      description: >-
+        Returns a paginated list of waitpoint tokens for the current environment.
+        Results are ordered by creation date, newest first. Use cursor-based pagination
+        with `page[after]` and `page[before]` to navigate pages.
+      parameters:
+        - in: query
+          name: "page[size]"
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+          required: false
+          description: Number of tokens to return per page (1–100).
+        - in: query
+          name: "page[after]"
+          schema:
+            type: string
+          required: false
+          description: Return tokens after this cursor (from `pagination.next` in a previous response).
+        - in: query
+          name: "page[before]"
+          schema:
+            type: string
+          required: false
+          description: Return tokens before this cursor (from `pagination.previous` in a previous response).
+        - in: query
+          name: "filter[status]"
+          schema:
+            type: string
+          required: false
+          description: >-
+            Comma-separated list of statuses to filter by.
+            Allowed values: `WAITING`, `COMPLETED`, `TIMED_OUT`.
+          example: "WAITING,COMPLETED"
+        - in: query
+          name: "filter[idempotencyKey]"
+          schema:
+            type: string
+          required: false
+          description: Filter by idempotency key.
+        - in: query
+          name: "filter[tags]"
+          schema:
+            type: string
+          required: false
+          description: Comma-separated list of tags to filter by.
+          example: "user:1234567,org:9876543"
+        - in: query
+          name: "filter[createdAt][period]"
+          schema:
+            type: string
+          required: false
+          description: >-
+            Shorthand time period to filter by creation date (e.g. `1h`, `24h`, `7d`).
+            Cannot be combined with `filter[createdAt][from]` or `filter[createdAt][to]`.
+          example: "24h"
+        - in: query
+          name: "filter[createdAt][from]"
+          schema:
+            type: string
+            format: date-time
+          required: false
+          description: Filter tokens created at or after this ISO 8601 timestamp.
+        - in: query
+          name: "filter[createdAt][to]"
+          schema:
+            type: string
+            format: date-time
+          required: false
+          description: Filter tokens created at or before this ISO 8601 timestamp.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ListWaitpointTokensResult"
+        "401":
+          description: Unauthorized
+        "422":
+          description: Invalid query parameters (e.g. unrecognised status value)
+        "500":
+          description: Internal Server Error
+      tags:
+        - waitpoints
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { wait } from "@trigger.dev/sdk";
+
+            // Iterate over all tokens (auto-paginated)
+            for await (const token of wait.listTokens()) {
+              console.log(token.id, token.status);
+            }
+
+            // Filter by status and tags
+            for await (const token of wait.listTokens({
+              status: ["WAITING"],
+              tags: ["user:1234567"],
+            })) {
+              console.log(token.id);
+            }
+
+  "/api/v1/waitpoints/tokens/{waitpointId}/callback/{callbackHash}":
+    post:
+      operationId: complete_waitpoint_token_callback_v1
+      summary: Complete a waitpoint token via HTTP callback
+      description: >-
+        Completes a waitpoint token using the pre-signed callback URL returned in the `url`
+        field when the token was created. No API key is required — the `callbackHash` in
+        the URL acts as the authentication token.
+
+
+        This is designed to be given directly to external services (e.g. as a webhook URL)
+        so they can unblock a waiting run without needing access to your API key.
+        The entire request body is passed as the output data to the waiting run.
+
+
+        If the token is already completed, this is a no-op and returns `success: true`.
+      parameters:
+        - in: path
+          name: waitpointId
+          required: true
+          schema:
+            type: string
+          description: The ID of the waitpoint token.
+          example: waitpoint_abc123
+        - in: path
+          name: callbackHash
+          required: true
+          schema:
+            type: string
+          description: >-
+            The HMAC hash that authenticates the request. This is embedded in the `url`
+            returned when creating the token — do not construct it manually.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              description: >-
+                Any JSON object. The entire body is passed as the output data to the run
+                waiting on this token. If the body is not valid JSON, an empty object is used.
+              example:
+                status: approved
+                comment: Looks good to me!
+      responses:
+        "200":
+          description: Waitpoint token completed successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/CompleteWaitpointTokenResponse"
+        "401":
+          description: Invalid callback URL or hash mismatch
+        "404":
+          description: Waitpoint token not found
+        "405":
+          description: Method not allowed
+        "411":
+          description: Content-Length header is required
+        "413":
+          description: Request body too large
+        "500":
+          description: Internal Server Error
+      tags:
+        - waitpoints
+      x-codeSamples:
+        - lang: Shell
+          label: cURL
+          source: |-
+            # The full URL is returned as `url` when you create a token
+            curl -X POST "https://api.trigger.dev/api/v1/waitpoints/tokens/waitpoint_abc123/callback/abc123hash" \
+              -H "Content-Type: application/json" \
+              -d '{"status": "approved", "comment": "Looks good to me!"}'
+        - lang: typescript
+          source: |-
+            import { wait } from "@trigger.dev/sdk";
+
+            // In your task: create the token and send the URL to an external service
+            const token = await wait.createToken({ timeout: "1h" });
+
+            await sendApprovalRequestEmail({
+              callbackUrl: token.url, // give this URL to the external service
+            });
+
+            // The external service POSTs to token.url to unblock the run
+            const result = await wait.forToken<{ status: string }>(token);
+
+  "/api/v1/waitpoints/tokens/{waitpointId}/complete":
+    post:
+      operationId: complete_waitpoint_token_v1
+      summary: Complete a waitpoint token
+      description: >-
+        Completes a waitpoint token, unblocking any run that is waiting for it via `wait.forToken()`.
+        An optional `data` payload can be passed and will be returned to the waiting run.
+        If the token is already completed, this is a no-op and returns `success: true`.
+
+
+        This endpoint accepts both secret API keys and short-lived JWTs (public access tokens),
+        making it safe to call from frontend clients.
+      parameters:
+        - in: path
+          name: waitpointId
+          required: true
+          schema:
+            type: string
+          description: The ID of the waitpoint token to complete.
+          example: waitpoint_abc123
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/CompleteWaitpointTokenRequest"
+      responses:
+        "200":
+          description: Waitpoint token completed successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/CompleteWaitpointTokenResponse"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Waitpoint token not found
+        "500":
+          description: Internal Server Error
+      tags:
+        - waitpoints
+      security:
+        - secretKey: []
+        - publicAccessToken: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { wait } from "@trigger.dev/sdk";
+
+            // Complete with data (returned to the waiting run)
+            await wait.completeToken(token, {
+              status: "approved",
+              comment: "Looks good to me!",
+            });
+
+            // Complete with no data
+            await wait.completeToken(token, {});
+
+  "/api/v1/waitpoints/tokens/{waitpointId}":
+    get:
+      operationId: retrieve_waitpoint_token_v1
+      summary: Retrieve a waitpoint token
+      description: >-
+        Retrieves a waitpoint token by its ID, including its current status and output
+        if it has been completed.
+      parameters:
+        - in: path
+          name: waitpointId
+          required: true
+          schema:
+            type: string
+          description: The ID of the waitpoint token.
+          example: waitpoint_abc123
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/WaitpointTokenObject"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Waitpoint token not found
+        "500":
+          description: Internal Server Error
+      tags:
+        - waitpoints
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { wait } from "@trigger.dev/sdk";
+
+            const token = await wait.retrieveToken("waitpoint_abc123");
+
+            console.log(token.status); // "WAITING" | "COMPLETED" | "TIMED_OUT"
+
+            if (token.status === "COMPLETED") {
+              console.log(token.output);
+            }
+
 components:
   parameters:
     taskIdentifier:
@@ -2120,6 +3069,14 @@ components:
       description: |
         The ID of an run, starts with `run_`. The run ID will be returned when you trigger a run on a task.
       example: run_1234
+    batchId:
+      in: path
+      name: batchId
+      required: true
+      schema:
+        type: string
+      description: The ID of the batch, starts with `batch_`.
+      example: batch_1234
     projectRef:
       in: path
       name: projectRef
@@ -2175,7 +3132,98 @@ components:
 
         configure({ accessToken: "tr_pat_1234" });
         ```
+
+    publicAccessToken:
+      type: http
+      scheme: bearer
+      description: |
+        A short-lived JWT scoped to a specific waitpoint token. Returned as `publicAccessToken`
+        when you call `wait.createToken()` or `POST /api/v1/waitpoints/tokens`.
+
+        This token is safe to embed in frontend clients — it can only complete the specific
+        waitpoint it was issued for and cannot be used for any other API operations.
+
   schemas:
+    RunTag:
+      type: string
+      maxLength: 128
+      description: A single run tag. Must be less than 128 characters.
+      example: "user_123456"
+    RunTags:
+      oneOf:
+        - $ref: "#/components/schemas/RunTag"
+        - type: array
+          items:
+            $ref: "#/components/schemas/RunTag"
+          maxItems: 10
+          uniqueItems: true
+          example: ["user_123456", "product_4629101"]
+      description: One or more tags to attach to a run. Runs can have a maximum of 10 tags.
+    SpanDetailedSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The span ID.
+        parentId:
+          type: string
+          nullable: true
+          description: The parent span ID, if any.
+        runId:
+          type: string
+          description: The run ID this span belongs to.
+        data:
+          type: object
+          properties:
+            message:
+              type: string
+              description: The span message.
+            taskSlug:
+              type: string
+              description: The task identifier, if applicable.
+            startTime:
+              type: string
+              format: date-time
+              description: The start time of the span.
+            duration:
+              type: number
+              description: The duration of the span in nanoseconds.
+            isError:
+              type: boolean
+            isPartial:
+              type: boolean
+            isCancelled:
+              type: boolean
+            level:
+              type: string
+              enum: [TRACE, DEBUG, LOG, INFO, WARN, ERROR]
+            attemptNumber:
+              type: number
+              nullable: true
+            properties:
+              type: object
+              description: Arbitrary OTel attributes attached to the span.
+            events:
+              type: array
+              description: Span events (e.g. exceptions, cancellations) that occurred during this span.
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: The event name (e.g. "exception", "cancellation", "attempt_failed").
+                  time:
+                    type: string
+                    format: date-time
+                    description: The time the event occurred.
+                  properties:
+                    type: object
+                    description: Event-specific properties.
+        children:
+          type: array
+          description: Nested child spans. Each child has the same structure as the parent span.
+          items:
+            $ref: "#/components/schemas/SpanDetailedSummary"
     TriggerTaskResponse:
       type: object
       properties:
@@ -2350,18 +3398,14 @@ components:
             delay:
               $ref: "#/components/schemas/Delay"
             tags:
-              type:
-                - array
-                - string
-              example: ["user_123456", "product_4629101"]
+              allOf:
+                - $ref: "#/components/schemas/RunTags"
               description: |
                 Tags to attach to the run. Tags can be used to filter runs in the dashboard and using the SDK.
 
-                You can set up to 5 tags per run, they must be less than 64 characters each.
+                You can set up to 10 tags per run, each must be less than 128 characters.
 
                 We recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`. Stripe uses underscores.
-              items:
-                type: string
             machine:
               type: string
               enum:
@@ -3525,3 +4569,174 @@ components:
             results:
               type: string
               description: CSV-formatted results
+    CompleteWaitpointTokenRequest:
+      type: object
+      properties:
+        data:
+          description: >-
+            Any JSON-serializable value to pass back to the run waiting on this token.
+            The data will be returned from `wait.forToken()` as the result payload.
+          example:
+            status: approved
+            comment: Looks good to me!
+    CompleteWaitpointTokenResponse:
+      type: object
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+          description: Always `true` when the request succeeds.
+    ListWaitpointTokensResult:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            "$ref": "#/components/schemas/WaitpointTokenObject"
+          description: An array of waitpoint token objects.
+        pagination:
+          type: object
+          properties:
+            next:
+              type: string
+              nullable: true
+              description: >-
+                Cursor for the next page. Pass as `page[after]` in the next request.
+              example: waitpoint_abc123
+            previous:
+              type: string
+              nullable: true
+              description: >-
+                Cursor for the previous page. Pass as `page[before]` in the next request.
+              example: waitpoint_xyz789
+    WaitpointTokenObject:
+      type: object
+      required:
+        - id
+        - url
+        - status
+        - tags
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: The unique ID of the waitpoint token.
+          example: waitpoint_abc123
+        url:
+          type: string
+          description: >-
+            An HTTP callback URL. A POST request to this URL (with an optional JSON body)
+            will complete the waitpoint without needing an API key.
+          example: https://api.trigger.dev/api/v1/waitpoints/tokens/waitpoint_abc123/callback/abc123hash
+        status:
+          type: string
+          enum:
+            - WAITING
+            - COMPLETED
+            - TIMED_OUT
+          description: The current status of the waitpoint token.
+        idempotencyKey:
+          type: string
+          nullable: true
+          description: The idempotency key used when creating the token, if any.
+        idempotencyKeyExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the idempotency key expires.
+        timeoutAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the token will time out, if a timeout was set.
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the token was completed, if it has been completed.
+        output:
+          type: string
+          nullable: true
+          description: >-
+            The serialized output data passed when completing the token.
+            Only present when `status` is `COMPLETED`.
+        outputType:
+          type: string
+          nullable: true
+          description: The content type of the output (e.g. `"application/json"`).
+        outputIsError:
+          type: boolean
+          nullable: true
+          description: Whether the output represents an error (e.g. a timeout).
+        tags:
+          type: array
+          items:
+            type: string
+          description: Tags attached to the waitpoint.
+        createdAt:
+          type: string
+          format: date-time
+          description: When the waitpoint token was created.
+    CreateWaitpointTokenRequest:
+      type: object
+      properties:
+        idempotencyKey:
+          type: string
+          description: >-
+            An optional idempotency key. If you pass the same key twice before it expires,
+            you will receive the original token back. The returned token may already be completed,
+            in which case `wait.forToken()` will continue immediately.
+          example: approval-user-1234567
+        idempotencyKeyTTL:
+          type: string
+          description: >-
+            How long the idempotency key is valid, after which passing the same key
+            creates a new waitpoint. Accepts durations like "30s", "1m", "2h", "3d".
+          example: 1h
+        timeout:
+          type: string
+          description: >-
+            How long to wait before the token times out. When a run is waiting for a timed-out
+            token, `wait.forToken()` returns with `ok: false`. Accepts an ISO 8601 date string
+            or duration shorthand like "30s", "1m", "2h", "3d", "4w".
+          example: 1h
+        tags:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: >-
+            Tags to attach to the waitpoint. You can set up to 10 tags, each under 128 characters.
+            We recommend namespacing tags with a prefix like `user:1234567` or `org_9876543`.
+          example:
+            - "user:1234567"
+            - "org:9876543"
+    CreateWaitpointTokenResponse:
+      type: object
+      required:
+        - id
+        - isCached
+        - url
+      properties:
+        id:
+          type: string
+          description: The unique ID of the waitpoint token.
+          example: waitpoint_abc123
+        isCached:
+          type: boolean
+          description: >-
+            `true` if an existing token was returned because the same `idempotencyKey`
+            was used within its TTL window.
+        url:
+          type: string
+          description: >-
+            An HTTP callback URL. A POST request to this URL (with an optional JSON body)
+            will complete the waitpoint without needing an API key.
+          example: https://api.trigger.dev/api/v1/waitpoints/tokens/waitpoint_abc123/callback/abc123hash

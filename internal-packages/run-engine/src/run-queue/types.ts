@@ -13,6 +13,8 @@ export const InputPayload = z.object({
   concurrencyKey: z.string().optional(),
   timestamp: z.number(),
   attempt: z.number(),
+  /** TTL expiration timestamp (unix ms). If set, run will be expired when this time is reached. */
+  ttlExpiresAt: z.number().optional(),
 });
 export type InputPayload = z.infer<typeof InputPayload>;
 
@@ -120,6 +122,9 @@ export interface RunQueueKeyProducer {
   // Concurrency sweeper methods
   markedForAckKey(): string;
   currentConcurrencySetKeyScanPattern(): string;
+
+  // TTL system methods
+  ttlQueueKeyForShard(shard: number): string;
 }
 
 export type EnvQueues = {

@@ -20,7 +20,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "~/components/primitives/I
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { authenticator } from "~/services/auth.server";
-import { commitSession, getUserSession, sessionStorage } from "~/services/sessionStorage.server";
+import { commitSession, getUserSession } from "~/services/sessionStorage.server";
 import { getSession as getMessageSession } from "~/models/message.server";
 import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuthentication.server";
 import { redirectWithErrorMessage, redirectBackWithErrorMessage } from "~/models/message.server";
@@ -152,9 +152,9 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 async function completeLogin(request: Request, session: Session, userId: string) {
-  // Create a new authenticated session
-  const authSession = await sessionStorage.getSession(request.headers.get("Cookie"));
-  authSession.set(authenticator.sessionKey, { userId });
+  // Set the auth key on the same session object to avoid conflicting Set-Cookie headers
+  // (both authSession and session share the same __session cookie name)
+  session.set(authenticator.sessionKey, { userId });
 
   // Get the redirect URL and clean up pending MFA data
   const redirectTo = session.get("pending-mfa-redirect-to") ?? "/";
@@ -162,7 +162,6 @@ async function completeLogin(request: Request, session: Session, userId: string)
   session.unset("pending-mfa-redirect-to");
 
   const headers = new Headers();
-  headers.append("Set-Cookie", await sessionStorage.commitSession(authSession));
   headers.append("Set-Cookie", await commitSession(session));
 
   await trackAndClearReferralSource(request, userId, headers);

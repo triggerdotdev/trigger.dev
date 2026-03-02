@@ -210,7 +210,7 @@ const pricingDefinitions = {
   },
   additionalRealtimeConnections: {
     title: "Additional Realtime connections",
-    content: "Then $10/month per 100",
+    content: "Then $10/month per 1000",
   },
   additionalSeats: {
     title: "Additional seats",

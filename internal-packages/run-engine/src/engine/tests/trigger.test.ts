@@ -90,14 +90,13 @@ describe("RunEngine trigger()", () => {
       assertNonNullable(executionData);
       expect(executionData.snapshot.executionStatus).toBe("QUEUED");
 
-      //check the waitpoint is created
+      //standalone triggers don't create waitpoints eagerly (lazy creation when needed)
       const runWaitpoint = await prisma.waitpoint.findMany({
         where: {
           completedByTaskRunId: run.id,
         },
       });
-      expect(runWaitpoint.length).toBe(1);
-      expect(runWaitpoint[0].type).toBe("RUN");
+      expect(runWaitpoint.length).toBe(0);
 
       //check the queue length
       const queueLength = await engine.runQueue.lengthOfQueue(authenticatedEnvironment, run.queue);
@@ -192,15 +191,13 @@ describe("RunEngine trigger()", () => {
       );
       expect(envConcurrencyCompleted).toBe(0);
 
-      //waitpoint should have been completed, with the output
+      //standalone triggers don't create waitpoints, so none should exist
       const runWaitpointAfter = await prisma.waitpoint.findMany({
         where: {
           completedByTaskRunId: run.id,
         },
       });
-      expect(runWaitpointAfter.length).toBe(1);
-      expect(runWaitpointAfter[0].type).toBe("RUN");
-      expect(runWaitpointAfter[0].output).toBe(`{"foo":"bar"}`);
+      expect(runWaitpointAfter.length).toBe(0);
     } finally {
       await engine.quit();
     }
@@ -320,17 +317,13 @@ describe("RunEngine trigger()", () => {
       );
       expect(envConcurrencyCompleted).toBe(0);
 
-      //waitpoint should have been completed, with the output
+      //standalone triggers don't create waitpoints, so none should exist
       const runWaitpointAfter = await prisma.waitpoint.findMany({
         where: {
           completedByTaskRunId: run.id,
         },
       });
-      expect(runWaitpointAfter.length).toBe(1);
-      expect(runWaitpointAfter[0].type).toBe("RUN");
-      const output = JSON.parse(runWaitpointAfter[0].output as string);
-      expect(output.type).toBe(error.type);
-      expect(runWaitpointAfter[0].outputIsError).toBe(true);
+      expect(runWaitpointAfter.length).toBe(0);
     } finally {
       await engine.quit();
     }

@@ -332,13 +332,15 @@ export function updateUser({
   email,
   marketingEmails,
   referralSource,
+  onboardingData,
 }: Pick<User, "id" | "name" | "email"> & {
   marketingEmails?: boolean;
   referralSource?: string;
+  onboardingData?: Prisma.InputJsonValue;
 }) {
   return prisma.user.update({
     where: { id },
-    data: { name, email, marketingEmails, referralSource, confirmedBasicDetails: true },
+    data: { name, email, marketingEmails, referralSource, onboardingData, confirmedBasicDetails: true },
   });
 }
 

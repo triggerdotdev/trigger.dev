@@ -465,7 +465,8 @@ describe("VisibilityManager", () => {
         const queueId = "tenant:t1:queue:release-batch";
         const queueKey = keys.queueKey(queueId);
         const queueItemsKey = keys.queueItemsKey(queueId);
-        const masterQueueKey = keys.masterQueueKey(0);
+        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const dispatchKey = keys.dispatchKey(0);
 
         // Add messages to queue and claim them
         for (let i = 1; i <= 5; i++) {
@@ -501,7 +502,9 @@ describe("VisibilityManager", () => {
           queueId,
           queueKey,
           queueItemsKey,
-          masterQueueKey
+          tenantQueueIndexKey,
+          dispatchKey,
+          "t1"
         );
 
         // Verify 2 messages still in-flight
@@ -539,17 +542,18 @@ describe("VisibilityManager", () => {
         const queueId = "tenant:t1:queue:empty-release";
         const queueKey = keys.queueKey(queueId);
         const queueItemsKey = keys.queueItemsKey(queueId);
-        const masterQueueKey = keys.masterQueueKey(0);
+        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const dispatchKey = keys.dispatchKey(0);
 
         // Should not throw when releasing empty array
-        await manager.releaseBatch([], queueId, queueKey, queueItemsKey, masterQueueKey);
+        await manager.releaseBatch([], queueId, queueKey, queueItemsKey, tenantQueueIndexKey, dispatchKey, "t1");
 
         await manager.close();
       }
     );
 
     redisTest(
-      "should update master queue with oldest message timestamp",
+      "should update dispatch indexes with oldest message timestamp",
       { timeout: 10000 },
       async ({ redisOptions }) => {
         keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
@@ -562,10 +566,11 @@ describe("VisibilityManager", () => {
         });
 
         const redis = createRedisClient(redisOptions);
-        const queueId = "tenant:t1:queue:master-update";
+        const queueId = "tenant:t1:queue:dispatch-update";
         const queueKey = keys.queueKey(queueId);
         const queueItemsKey = keys.queueItemsKey(queueId);
-        const masterQueueKey = keys.masterQueueKey(0);
+        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const dispatchKey = keys.dispatchKey(0);
 
         // Add and claim messages
         const baseTime = Date.now();
@@ -586,11 +591,15 @@ describe("VisibilityManager", () => {
         const claimed = await manager.claimBatch(queueId, queueKey, queueItemsKey, "consumer-1", 3);
 
         // Release all messages back
-        await manager.releaseBatch(claimed, queueId, queueKey, queueItemsKey, masterQueueKey);
+        await manager.releaseBatch(claimed, queueId, queueKey, queueItemsKey, tenantQueueIndexKey, dispatchKey, "t1");
 
-        // Master queue should have been updated
-        const masterScore = await redis.zscore(masterQueueKey, queueId);
-        expect(masterScore).not.toBeNull();
+        // Tenant queue index should have the queue with correct score
+        const tenantQueueScore = await redis.zscore(tenantQueueIndexKey, queueId);
+        expect(tenantQueueScore).not.toBeNull();
+
+        // Dispatch index should have the tenant
+        const dispatchScore = await redis.zscore(dispatchKey, "t1");
+        expect(dispatchScore).not.toBeNull();
 
         await manager.close();
         await redis.quit();
@@ -616,7 +625,8 @@ describe("VisibilityManager", () => {
         const queueId = "tenant:t1:queue:reclaim-test";
         const queueKey = keys.queueKey(queueId);
         const queueItemsKey = keys.queueItemsKey(queueId);
-        const masterQueueKey = keys.masterQueueKey(0);
+        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const dispatchKey = keys.dispatchKey(0);
 
         // Add and claim a message
         const messageId = "reclaim-msg";
@@ -644,7 +654,9 @@ describe("VisibilityManager", () => {
         const reclaimedMessages = await manager.reclaimTimedOut(0, (qId) => ({
           queueKey: keys.queueKey(qId),
           queueItemsKey: keys.queueItemsKey(qId),
-          masterQueueKey,
+          tenantQueueIndexKey: keys.tenantQueueIndexKey(keys.extractTenantId(qId)),
+          dispatchKey,
+          tenantId: keys.extractTenantId(qId),
         }));
 
         expect(reclaimedMessages).toHaveLength(1);
@@ -690,7 +702,8 @@ describe("VisibilityManager", () => {
         const queueId = "tenant:t1:queue:no-timeout";
         const queueKey = keys.queueKey(queueId);
         const queueItemsKey = keys.queueItemsKey(queueId);
-        const masterQueueKey = keys.masterQueueKey(0);
+        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const dispatchKey = keys.dispatchKey(0);
 
         // Add and claim a message with long timeout
         const messageId = "long-timeout-msg";
@@ -712,7 +725,9 @@ describe("VisibilityManager", () => {
         const reclaimedMessages = await manager.reclaimTimedOut(0, (qId) => ({
           queueKey: keys.queueKey(qId),
           queueItemsKey: keys.queueItemsKey(qId),
-          masterQueueKey,
+          tenantQueueIndexKey: keys.tenantQueueIndexKey(keys.extractTenantId(qId)),
+          dispatchKey,
+          tenantId: keys.extractTenantId(qId),
         }));
 
         expect(reclaimedMessages).toHaveLength(0);
@@ -736,7 +751,8 @@ describe("VisibilityManager", () => {
         });
 
         const redis = createRedisClient(redisOptions);
-        const masterQueueKey = keys.masterQueueKey(0);
+        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const dispatchKey = keys.dispatchKey(0);
 
         // Add and claim messages for two different tenants
         for (const tenant of ["t1", "t2"]) {
@@ -767,7 +783,9 @@ describe("VisibilityManager", () => {
         const reclaimedMessages = await manager.reclaimTimedOut(0, (qId) => ({
           queueKey: keys.queueKey(qId),
           queueItemsKey: keys.queueItemsKey(qId),
-          masterQueueKey,
+          tenantQueueIndexKey: keys.tenantQueueIndexKey(keys.extractTenantId(qId)),
+          dispatchKey,
+          tenantId: keys.extractTenantId(qId),
         }));
 
         expect(reclaimedMessages).toHaveLength(2);
@@ -798,7 +816,8 @@ describe("VisibilityManager", () => {
         const queueId = "tenant:t1:queue:fallback-test";
         const queueKey = keys.queueKey(queueId);
         const queueItemsKey = keys.queueItemsKey(queueId);
-        const masterQueueKey = keys.masterQueueKey(0);
+        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const dispatchKey = keys.dispatchKey(0);
         const inflightDataKey = keys.inflightDataKey(0);
 
         // Add and claim a message
@@ -830,7 +849,9 @@ describe("VisibilityManager", () => {
         const reclaimedMessages = await manager.reclaimTimedOut(0, (qId) => ({
           queueKey: keys.queueKey(qId),
           queueItemsKey: keys.queueItemsKey(qId),
-          masterQueueKey,
+          tenantQueueIndexKey: keys.tenantQueueIndexKey(keys.extractTenantId(qId)),
+          dispatchKey,
+          tenantId: keys.extractTenantId(qId),
         }));
 
         expect(reclaimedMessages).toHaveLength(1);

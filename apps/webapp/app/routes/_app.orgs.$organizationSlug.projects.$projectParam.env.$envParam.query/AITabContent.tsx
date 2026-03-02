@@ -30,6 +30,8 @@ export function AITabContent({
     "Top 50 most expensive runs this week",
     "Average execution duration by task this week",
     "Run counts by tag in the past 7 days",
+    "CPU utilization over time by task",
+    "Peak memory usage per run",
   ];
 
   return (

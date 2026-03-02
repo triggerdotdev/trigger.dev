@@ -2,7 +2,7 @@ import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   runtime: "bun",
-  project: "proj_uxbxncnbsyamyxeqtucu",
+  project: process.env.TRIGGER_PROJECT_REF!,
   maxDuration: 3600,
   machine: "small-2x",
   retries: {

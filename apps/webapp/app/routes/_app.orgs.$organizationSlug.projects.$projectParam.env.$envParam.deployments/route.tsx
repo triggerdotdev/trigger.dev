@@ -19,7 +19,7 @@ import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PromoteIcon } from "~/assets/icons/PromoteIcon";
-import { VercelLogo } from "~/components/integrations/VercelLogo";
+import { VercelLink } from "~/components/integrations/VercelLink";
 import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import { GitMetadata } from "~/components/GitMetadata";
@@ -56,7 +56,6 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import {
   DeploymentStatus,
   deploymentStatusDescription,
@@ -76,7 +75,7 @@ import {
   EnvironmentParamSchema,
   docsPath,
   v3DeploymentPath,
-  v3ProjectSettingsPath,
+  v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
@@ -314,20 +313,14 @@ export default function Page() {
                             {hasVercelIntegration && (
                               <TableCell isSelected={isSelected}>
                                 {deployment.vercelDeploymentUrl ? (
-                                  <SimpleTooltip
-                                    button={
-                                      <a
-                                        href={deployment.vercelDeploymentUrl}
-                                        target="_blank"
-                                        rel="noreferrer noopener"
-                                        className="flex items-center text-text-dimmed transition-colors hover:text-text-bright"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <VercelLogo className="size-3.5" />
-                                      </a>
-                                    }
-                                    content="View on Vercel"
-                                  />
+                                  <div
+                                    className="-ml-1 flex items-center"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <VercelLink
+                                      vercelDeploymentUrl={deployment.vercelDeploymentUrl}
+                                    />
+                                  </div>
                                 ) : (
                                   "–"
                                 )}
@@ -377,7 +370,7 @@ export default function Page() {
                       <LinkButton
                         variant="minimal/small"
                         LeadingIcon={CogIcon}
-                        to={v3ProjectSettingsPath(organization, project, environment)}
+                        to={v3ProjectSettingsIntegrationsPath(organization, project, environment)}
                       />
                     </div>
                   )}

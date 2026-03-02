@@ -152,7 +152,14 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     return { success: false, error: new QueryError(errorMessage, { query: options.query }) };
   }
 
-  // Build time filter fallback for triggered_at column
+  // Detect which table the query targets to determine the time column
+  // Each table schema declares its primary time column via timeConstraint
+  const matchedSchema = querySchemas.find((s) =>
+    new RegExp(`\\bFROM\\s+${s.name}\\b`, "i").test(options.query)
+  );
+  const timeColumn = matchedSchema?.timeConstraint ?? "triggered_at";
+
+  // Build time filter fallback for the table's time column
   const defaultPeriod = await getDefaultPeriod(organizationId);
   const timeFilter = timeFilters({
     period: period ?? undefined,
@@ -173,15 +180,15 @@ export async function executeQuery<TOut extends z.ZodSchema>(
   }
 
   // Build the fallback WHERE condition based on what the user specified
-  let triggeredAtFallback: WhereClauseCondition;
+  let timeFallback: WhereClauseCondition;
   if (timeFilter.from && timeFilter.to) {
-    triggeredAtFallback = { op: "between", low: timeFilter.from, high: timeFilter.to };
+    timeFallback = { op: "between", low: timeFilter.from, high: timeFilter.to };
   } else if (timeFilter.from) {
-    triggeredAtFallback = { op: "gte", value: timeFilter.from };
+    timeFallback = { op: "gte", value: timeFilter.from };
   } else if (timeFilter.to) {
-    triggeredAtFallback = { op: "lte", value: timeFilter.to };
+    timeFallback = { op: "lte", value: timeFilter.to };
   } else {
-    triggeredAtFallback = { op: "gte", value: requestedFromDate! };
+    timeFallback = { op: "gte", value: requestedFromDate! };
   }
 
   const maxQueryPeriod = await getLimit(organizationId, "queryPeriodDays", 30);
@@ -196,7 +203,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     project_id:
       scope === "project" || scope === "environment" ? { op: "eq", value: projectId } : undefined,
     environment_id: scope === "environment" ? { op: "eq", value: environmentId } : undefined,
-    triggered_at: { op: "gte", value: maxQueryPeriodDate },
+    [timeColumn]: { op: "gte", value: maxQueryPeriodDate },
     // Optional filters for tasks and queues
     task_identifier:
       taskIdentifiers && taskIdentifiers.length > 0
@@ -238,7 +245,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       enforcedWhereClause,
       fieldMappings,
       whereClauseFallback: {
-        triggered_at: triggeredAtFallback,
+        [timeColumn]: timeFallback,
       },
       timeRange,
       clickhouseSettings: {

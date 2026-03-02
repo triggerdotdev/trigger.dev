@@ -59,6 +59,7 @@ import {
   ClickHouseType,
   hasFieldMapping,
   getInternalValueFromMappingCaseInsensitive,
+  type ColumnFormatType,
 } from "./schema";
 
 /**
@@ -739,6 +740,14 @@ export class ClickHousePrinter {
         metadata.description = sourceColumn.description;
       }
 
+      // Set format hint from prettyFormat() or auto-populate from customRenderType
+      const sourceWithFormat = sourceColumn as (Partial<ColumnSchema> & { format?: ColumnFormatType }) | null;
+      if (sourceWithFormat?.format) {
+        metadata.format = sourceWithFormat.format;
+      } else if (sourceColumn?.customRenderType) {
+        metadata.format = sourceColumn.customRenderType as ColumnFormatType;
+      }
+
       this.outputColumns.push(metadata);
     }
 
@@ -930,6 +939,53 @@ export class ClickHousePrinter {
         sourceColumn: columnInfo.column,
         inferredType: columnInfo.column?.type ?? null,
       };
+    }
+
+    // Handle prettyFormat(expr, 'formatType') — metadata-only wrapper
+    if ((col as Call).expression_type === "call") {
+      const call = col as Call;
+      if (call.name.toLowerCase() === "prettyformat") {
+        if (call.args.length !== 2) {
+          throw new QueryError(
+            "prettyFormat() requires exactly 2 arguments: prettyFormat(expression, 'formatType')"
+          );
+        }
+        const formatArg = call.args[1];
+        if (
+          (formatArg as Constant).expression_type !== "constant" ||
+          typeof (formatArg as Constant).value !== "string"
+        ) {
+          throw new QueryError(
+            "prettyFormat() second argument must be a string literal format type"
+          );
+        }
+        const formatType = (formatArg as Constant).value as string;
+        const validFormats = [
+          "bytes",
+          "decimalBytes",
+          "quantity",
+          "percent",
+          "duration",
+          "durationSeconds",
+          "costInDollars",
+          "cost",
+        ];
+        if (!validFormats.includes(formatType)) {
+          throw new QueryError(
+            `Unknown format type '${formatType}'. Valid types: ${validFormats.join(", ")}`
+          );
+        }
+        const innerAnalysis = this.analyzeSelectColumn(call.args[0]);
+        return {
+          outputName: innerAnalysis.outputName,
+          sourceColumn: {
+            ...(innerAnalysis.sourceColumn ?? {}),
+            type: innerAnalysis.sourceColumn?.type ?? innerAnalysis.inferredType ?? undefined,
+            format: formatType as ColumnFormatType,
+          } as Partial<ColumnSchema> & { format?: ColumnFormatType },
+          inferredType: innerAnalysis.inferredType,
+        };
+      }
     }
 
     // Handle Call (function/aggregation) - infer type from function
@@ -1559,13 +1615,20 @@ export class ClickHousePrinter {
       joinStrings.push(`AS ${this.printIdentifier(node.alias)}`);
     }
 
-    // Always add FINAL for direct table references to ensure deduplicated results
-    // from ReplacingMergeTree tables in ClickHouse
+    // Add FINAL for direct table references to ReplacingMergeTree tables
+    // to ensure deduplicated results. Only applied when the table schema
+    // opts in via `useFinal: true` (not needed for plain MergeTree tables).
     if (node.table) {
       const tableExpr = node.table;
-      const isDirectTable = (tableExpr as Field).expression_type === "field";
-      if (isDirectTable) {
-        joinStrings.push("FINAL");
+      if ((tableExpr as Field).expression_type === "field") {
+        const field = tableExpr as Field;
+        const tableName = field.chain[0];
+        if (typeof tableName === "string") {
+          const tableSchema = this.lookupTable(tableName);
+          if (tableSchema.useFinal) {
+            joinStrings.push("FINAL");
+          }
+        }
       }
     }
 
@@ -2802,13 +2865,21 @@ export class ClickHousePrinter {
   private visitCall(node: Call): string {
     const name = node.name;
 
+    // Handle prettyFormat() — strip wrapper, only emit the inner expression
+    if (name.toLowerCase() === "prettyformat") {
+      if (node.args.length !== 2) {
+        throw new QueryError("prettyFormat() requires exactly 2 arguments");
+      }
+      return this.visit(node.args[0]);
+    }
+
     // Handle timeBucket() - special TSQL function for automatic time bucketing
     if (name.toLowerCase() === "timebucket") {
       return this.visitTimeBucket(node);
     }
 
     // Check if this is a comparison function
-    if (name in TSQL_COMPARISON_MAPPING) {
+    if (Object.prototype.hasOwnProperty.call(TSQL_COMPARISON_MAPPING, name)) {
       const op = TSQL_COMPARISON_MAPPING[name];
       if (node.args.length !== 2) {
         throw new QueryError(`Comparison '${name}' requires exactly two arguments`);
@@ -2855,7 +2926,7 @@ export class ClickHousePrinter {
     if (funcMeta) {
       validateFunctionArgs(node.args, funcMeta.minArgs, funcMeta.maxArgs, name);
 
-      const args = node.args.map((arg) => this.visit(arg));
+      const args = this.visitCallArgs(name, node.args);
       const params = node.params ? node.params.map((p) => this.visit(p)) : null;
       const paramsPart = params ? `(${params.join(", ")})` : "";
       return `${funcMeta.clickhouseName}${paramsPart}(${args.join(", ")})`;
@@ -2863,6 +2934,86 @@ export class ClickHousePrinter {
 
     // Unknown function - throw error
     throw new QueryError(`Unknown function: ${name}`);
+  }
+
+  /**
+   * Valid ClickHouse interval unit keywords used by date functions like dateAdd, dateDiff, etc.
+   */
+  private static readonly INTERVAL_UNITS = new Set([
+    "nanosecond",
+    "microsecond",
+    "millisecond",
+    "second",
+    "minute",
+    "hour",
+    "day",
+    "week",
+    "month",
+    "quarter",
+    "year",
+  ]);
+
+  /**
+   * Date functions whose first argument is an interval unit keyword.
+   * ClickHouse requires the unit as a bare keyword (e.g., `dateAdd(day, 7, col)`),
+   * not a string literal (e.g., `dateAdd('day', 7, col)` fails).
+   */
+  private static readonly DATE_FUNCTIONS_WITH_INTERVAL_UNIT = new Set([
+    "dateadd",
+    "datesub",
+    "datediff",
+    "date_add",
+    "date_sub",
+    "date_diff",
+  ]);
+
+  /**
+   * Visit function call arguments, handling date functions that require an interval unit
+   * keyword as their first argument. For these functions, the first arg is output as a
+   * bare keyword instead of being parameterized or resolved as a column reference.
+   */
+  private visitCallArgs(functionName: string, args: Expression[]): string[] {
+    const lowerName = functionName.toLowerCase();
+
+    if (
+      ClickHousePrinter.DATE_FUNCTIONS_WITH_INTERVAL_UNIT.has(lowerName) &&
+      args.length > 0
+    ) {
+      const firstArg = args[0];
+      const intervalUnit = this.extractIntervalUnit(firstArg);
+
+      if (intervalUnit) {
+        return [intervalUnit, ...args.slice(1).map((arg) => this.visit(arg))];
+      }
+    }
+
+    return args.map((arg) => this.visit(arg));
+  }
+
+  /**
+   * Try to extract a valid interval unit keyword from an expression.
+   * Handles both string constants ('day') and bare identifiers (day).
+   * Returns the bare keyword string if valid, or null if not an interval unit.
+   */
+  private extractIntervalUnit(expr: Expression): string | null {
+    if (expr.expression_type === "constant") {
+      const value = (expr as Constant).value;
+      if (typeof value === "string" && ClickHousePrinter.INTERVAL_UNITS.has(value.toLowerCase())) {
+        return value.toLowerCase();
+      }
+    }
+
+    if (expr.expression_type === "field") {
+      const chain = (expr as Field).chain;
+      if (chain.length === 1 && typeof chain[0] === "string") {
+        const name = chain[0].toLowerCase();
+        if (ClickHousePrinter.INTERVAL_UNITS.has(name)) {
+          return name;
+        }
+      }
+    }
+
+    return null;
   }
 
   private visitJoinConstraint(node: JoinConstraint): string {
@@ -2978,8 +3129,12 @@ export class ClickHousePrinter {
       );
     }
 
-    // Calculate the appropriate interval
-    const interval = calculateTimeBucketInterval(timeRange.from, timeRange.to);
+    // Calculate the appropriate interval (use table-specific thresholds if defined)
+    const interval = calculateTimeBucketInterval(
+      timeRange.from,
+      timeRange.to,
+      tableSchema.timeBucketThresholds
+    );
 
     // Emit toStartOfInterval(column, INTERVAL N UNIT)
     return `toStartOfInterval(${escapeClickHouseIdentifier(clickhouseColumnName)}, INTERVAL ${interval.value} ${interval.unit})`;
