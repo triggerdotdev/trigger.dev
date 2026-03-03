@@ -1282,4 +1282,76 @@ describe("FairQueue", () => {
     );
   });
 
+  describe("worker queue depth cap", () => {
+    redisTest(
+      "should respect worker queue max depth and resume after draining",
+      { timeout: 30000 },
+      async ({ redisOptions }) => {
+        const processed: string[] = [];
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 100,
+          maxDeficit: 1000,
+        });
+
+        const workerQueueManager = new WorkerQueueManager({
+          redis: redisOptions,
+          keys,
+        });
+
+        // Create FairQueue with a small depth cap
+        const maxDepth = 3;
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 50,
+          visibilityTimeoutMs: 30000,
+          workerQueueMaxDepth: maxDepth,
+          workerQueueDepthCheckId: TEST_WORKER_QUEUE_ID,
+          startConsumers: false,
+        });
+
+        // Use a slow handler to let the worker queue build up
+        queue.onMessage(async (ctx) => {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          processed.push(ctx.message.payload.value);
+          await ctx.complete();
+        });
+
+        // Enqueue 10 messages
+        const totalMessages = 10;
+        for (let i = 0; i < totalMessages; i++) {
+          await queue.enqueue({
+            queueId: "tenant:t1:queue:q1",
+            tenantId: "t1",
+            payload: { value: `msg-${i}` },
+          });
+        }
+
+        // Start processing
+        queue.start();
+
+        // Verify all messages eventually get processed (depth cap doesn't permanently block)
+        await vi.waitFor(
+          () => {
+            expect(processed.length).toBe(totalMessages);
+          },
+          { timeout: 25000 }
+        );
+
+        // Verify the worker queue is drained
+        const finalDepth = await workerQueueManager.getLength(TEST_WORKER_QUEUE_ID);
+        expect(finalDepth).toBe(0);
+
+        await workerQueueManager.close();
+        await queue.close();
+      }
+    );
+  });
+
 });

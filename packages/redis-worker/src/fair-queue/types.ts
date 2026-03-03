@@ -446,9 +446,23 @@ export interface FairQueueOptions<TPayloadSchema extends z.ZodTypeAny = z.ZodUnk
   /** Name for metrics/tracing (default: "fairqueue") */
   name?: string;
 
-  // Global rate limiting
-  /** Optional global rate limiter to limit processing across all consumers */
-  globalRateLimiter?: GlobalRateLimiter;
+  // Worker queue backpressure
+  /**
+   * Maximum number of items allowed in a worker queue before claiming pauses.
+   * When set, the claim phase checks worker queue depth and skips claiming if
+   * the queue is at or above this limit. This prevents unbounded worker queue
+   * growth which could cause visibility timeouts (claimed messages have a
+   * visibility timeout that ticks while they sit in the worker queue).
+   * Requires `workerQueueId` to know which queue to check.
+   * Disabled by default (0 = no limit).
+   */
+  workerQueueMaxDepth?: number;
+  /**
+   * The worker queue ID to check depth against when workerQueueMaxDepth is set.
+   * Required when workerQueueMaxDepth > 0 and the system uses a single shared worker queue.
+   * If not set, depth checking is disabled even if workerQueueMaxDepth is set.
+   */
+  workerQueueDepthCheckId?: string;
 }
 
 // ============================================================================

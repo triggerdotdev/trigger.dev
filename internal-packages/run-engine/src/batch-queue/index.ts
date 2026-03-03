@@ -18,6 +18,7 @@ import {
   isAbortError,
   WorkerQueueManager,
   type FairQueueOptions,
+  type GlobalRateLimiter,
 } from "@trigger.dev/redis-worker";
 import { BatchCompletionTracker } from "./completionTracker.js";
 import type {
@@ -76,6 +77,7 @@ export class BatchQueue {
   private abortController: AbortController;
   private workerQueueConsumerLoops: Promise<void>[] = [];
   private workerQueueBlockingTimeoutSeconds: number;
+  private globalRateLimiter?: GlobalRateLimiter;
   private batchedSpanManager: BatchedSpanManager;
 
   // Metrics
@@ -95,6 +97,7 @@ export class BatchQueue {
     this.maxAttempts = options.retry?.maxAttempts ?? 1;
     this.abortController = new AbortController();
     this.workerQueueBlockingTimeoutSeconds = options.workerQueueBlockingTimeoutSeconds ?? 10;
+    this.globalRateLimiter = options.globalRateLimiter;
 
     // Initialize metrics if meter is provided
     if (options.meter) {
@@ -174,8 +177,9 @@ export class BatchQueue {
           },
         },
       ],
-      // Optional global rate limiter to limit max items/sec across all consumers
-      globalRateLimiter: options.globalRateLimiter,
+      // Worker queue depth cap to prevent unbounded growth (protects visibility timeouts)
+      workerQueueMaxDepth: options.workerQueueMaxDepth,
+      workerQueueDepthCheckId: BATCH_WORKER_QUEUE_ID,
       // Enable retry with DLQ disabled when retry config is provided.
       // BatchQueue handles the "final failure" in its own processing loop,
       // so we don't need the DLQ - we just need the retry scheduling.
@@ -641,6 +645,17 @@ export class BatchQueue {
         }
 
         try {
+          // Rate limit per-item at the processing level (1 token per message)
+          if (this.globalRateLimiter) {
+            const result = await this.globalRateLimiter.limit();
+            if (!result.allowed && result.resetAt) {
+              const waitMs = Math.max(0, result.resetAt - Date.now());
+              if (waitMs > 0) {
+                await new Promise((resolve) => setTimeout(resolve, waitMs));
+              }
+            }
+          }
+
           await this.batchedSpanManager.withBatchedSpan(
             loopId,
             async (span) => {

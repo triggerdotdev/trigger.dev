@@ -24,7 +24,6 @@ import type {
   FairQueueKeyProducer,
   FairQueueOptions,
   FairScheduler,
-  GlobalRateLimiter,
   QueueCooloffState,
   QueueDescriptor,
   SchedulerContext,
@@ -97,8 +96,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   private maxCooloffStatesSize: number;
   private queueCooloffStates = new Map<string, QueueCooloffState>();
 
-  // Global rate limiter
-  private globalRateLimiter?: GlobalRateLimiter;
+  // Worker queue backpressure
+  private workerQueueMaxDepth: number;
+  private workerQueueDepthCheckId?: string;
 
   // Consumer tracing
   private consumerTraceMaxIterations: number;
@@ -152,8 +152,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     this.cooloffPeriodMs = options.cooloff?.periodMs ?? 10_000;
     this.maxCooloffStatesSize = options.cooloff?.maxStatesSize ?? 1000;
 
-    // Global rate limiter
-    this.globalRateLimiter = options.globalRateLimiter;
+    // Worker queue backpressure
+    this.workerQueueMaxDepth = options.workerQueueMaxDepth ?? 0;
+    this.workerQueueDepthCheckId = options.workerQueueDepthCheckId;
 
     // Consumer tracing
     this.consumerTraceMaxIterations = options.consumerTraceMaxIterations ?? 500;
@@ -1110,15 +1111,13 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       maxClaimCount = Math.min(maxClaimCount, availableCapacity);
     }
 
-    // Check global rate limit - wait if rate limited
-    if (this.globalRateLimiter) {
-      const result = await this.globalRateLimiter.limit();
-      if (!result.allowed && result.resetAt) {
-        const waitMs = Math.max(0, result.resetAt - Date.now());
-        if (waitMs > 0) {
-          this.logger.debug("Global rate limit reached, waiting", { waitMs, loopId });
-          await new Promise((resolve) => setTimeout(resolve, waitMs));
-        }
+    // Check worker queue depth to prevent unbounded growth.
+    // Messages in the worker queue are already in-flight with a visibility timeout.
+    // If the queue is too deep, consumers can't keep up, and messages risk timing out.
+    if (this.workerQueueMaxDepth > 0 && this.workerQueueDepthCheckId) {
+      const depth = await this.workerQueueManager.getLength(this.workerQueueDepthCheckId);
+      if (depth >= this.workerQueueMaxDepth) {
+        return 0;
       }
     }
 

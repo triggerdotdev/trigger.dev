@@ -109,6 +109,8 @@ export type RunEngineOptions = {
     defaultConcurrency?: number;
     /** Optional global rate limiter to limit processing across all consumers */
     globalRateLimiter?: GlobalRateLimiter;
+    /** Maximum worker queue depth before claiming pauses (protects visibility timeouts) */
+    workerQueueMaxDepth?: number;
     /** Retry configuration for failed batch items */
     retry?: {
       /** Maximum number of attempts (including the first). Default: 1 (no retries) */
