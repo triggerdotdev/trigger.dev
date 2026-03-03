@@ -4,7 +4,7 @@ import { useChat } from "@ai-sdk/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useState } from "react";
 import { getChatToken } from "@/app/actions";
-import type { chat } from "@/trigger/chat";
+import type { aiChat } from "@/trigger/chat";
 
 function ToolInvocation({ part }: { part: any }) {
   const [expanded, setExpanded] = useState(false);
@@ -73,7 +73,7 @@ function ToolInvocation({ part }: { part: any }) {
 export function Chat() {
   const [input, setInput] = useState("");
 
-  const transport = useTriggerChatTransport<typeof chat>({
+  const transport = useTriggerChatTransport<typeof aiChat>({
     task: "ai-chat",
     accessToken: getChatToken,
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
