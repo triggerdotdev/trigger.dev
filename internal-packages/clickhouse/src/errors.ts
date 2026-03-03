@@ -129,46 +129,6 @@ export const ErrorInstanceQueryParams = z.object({
 
 export type ErrorInstanceQueryParams = z.infer<typeof ErrorInstanceQueryParams>;
 
-export const ErrorInstancesListQueryResult = z.object({
-  run_id: z.string(),
-  friendly_id: z.string(),
-  task_identifier: z.string(),
-  created_at: z.string(),
-  status: z.string(),
-  error_text: z.string(),
-  trace_id: z.string(),
-  task_version: z.string(),
-});
-
-export type ErrorInstancesListQueryResult = z.infer<typeof ErrorInstancesListQueryResult>;
-
-/**
- * Gets a query builder for listing error instances from task_runs_v2.
- * Allows flexible filtering and pagination for runs with a specific error fingerprint.
- */
-export function getErrorInstancesListQueryBuilder(
-  ch: ClickhouseReader,
-  settings?: ClickHouseSettings
-) {
-  return ch.queryBuilder({
-    name: "getErrorInstancesList",
-    baseQuery: `
-      SELECT
-        run_id,
-        friendly_id,
-        task_identifier,
-        toString(created_at) as created_at,
-        status,
-        error_text,
-        trace_id,
-        task_version
-      FROM trigger_dev.task_runs_v2 FINAL
-    `,
-    schema: ErrorInstancesListQueryResult,
-    settings,
-  });
-}
-
 export const ErrorHourlyOccurrencesQueryResult = z.object({
   error_fingerprint: z.string(),
   hour_epoch: z.number(),
@@ -325,54 +285,3 @@ export function createErrorOccurrencesQueryBuilder(
   );
 }
 
-// ---------------------------------------------------------------------------
-// Time granularity helpers
-// ---------------------------------------------------------------------------
-
-export type TimeGranularity = "minutes" | "hours" | "days" | "weeks" | "months";
-
-const MINUTE_MS = 60 * 1000;
-const HOUR_MS = 60 * MINUTE_MS;
-const DAY_MS = 24 * HOUR_MS;
-const WEEK_MS = 7 * DAY_MS;
-const MONTH_MS = 30 * DAY_MS;
-
-/**
- * Determines the appropriate time granularity for bucketing based on the
- * span of a time range, following the same thresholds as the Query chart UI.
- */
-export function detectTimeGranularity(from: Date, to: Date): TimeGranularity {
-  const rangeMs = to.getTime() - from.getTime();
-
-  if (rangeMs <= 2 * HOUR_MS) return "minutes";
-  if (rangeMs <= 2 * DAY_MS) return "hours";
-  if (rangeMs <= 2 * WEEK_MS) return "days";
-  if (rangeMs <= 3 * MONTH_MS) return "weeks";
-  return "months";
-}
-
-const GRANULARITY_TO_INTERVAL: Record<TimeGranularity, string> = {
-  minutes: "INTERVAL 1 MINUTE",
-  hours: "INTERVAL 1 HOUR",
-  days: "INTERVAL 1 DAY",
-  weeks: "INTERVAL 1 WEEK",
-  months: "INTERVAL 1 MONTH",
-};
-
-const GRANULARITY_TO_STEP_MS: Record<TimeGranularity, number> = {
-  minutes: MINUTE_MS,
-  hours: HOUR_MS,
-  days: DAY_MS,
-  weeks: WEEK_MS,
-  months: MONTH_MS,
-};
-
-/** Returns a ClickHouse INTERVAL expression for use with toStartOfInterval(). */
-export function granularityToInterval(granularity: TimeGranularity): string {
-  return GRANULARITY_TO_INTERVAL[granularity];
-}
-
-/** Returns the step size in milliseconds for a granularity (approximate for months). */
-export function granularityToStepMs(granularity: TimeGranularity): number {
-  return GRANULARITY_TO_STEP_MS[granularity];
-}

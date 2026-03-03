@@ -1,69 +1,41 @@
 import { z } from "zod";
-import {
-  type ClickHouse,
-  type TimeGranularity,
-  detectTimeGranularity,
-  granularityToInterval,
-  granularityToStepMs,
-} from "@internal/clickhouse";
+import { type ClickHouse, msToClickHouseInterval } from "@internal/clickhouse";
+import { TimeGranularity } from "~/utils/timeGranularity";
+
+const errorGroupGranularity = new TimeGranularity([
+  { max: "1h", granularity: "1m" },
+  { max: "1d", granularity: "30m" },
+  { max: "1w", granularity: "8h" },
+  { max: "31d", granularity: "1d" },
+  { max: "45d", granularity: "1w" },
+  { max: "Infinity", granularity: "30d" },
+]);
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
-import { type Direction } from "~/components/ListPagination";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { BasePresenter } from "~/presenters/v3/basePresenter.server";
+import {
+  NextRunListPresenter,
+  type NextRunList,
+} from "~/presenters/v3/NextRunListPresenter.server";
 
 export type ErrorGroupOptions = {
   userId?: string;
   projectId: string;
   fingerprint: string;
-  // pagination
-  direction?: Direction;
-  cursor?: string;
-  pageSize?: number;
+  runsPageSize?: number;
 };
 
 export const ErrorGroupOptionsSchema = z.object({
   userId: z.string().optional(),
   projectId: z.string(),
   fingerprint: z.string(),
-  direction: z.enum(["forward", "backward"]).optional(),
-  cursor: z.string().optional(),
-  pageSize: z.number().int().positive().max(1000).optional(),
+  runsPageSize: z.number().int().positive().max(1000).optional(),
 });
 
-const DEFAULT_PAGE_SIZE = 50;
+const DEFAULT_RUNS_PAGE_SIZE = 25;
 
 export type ErrorGroupDetail = Awaited<ReturnType<ErrorGroupPresenter["call"]>>;
-export type ErrorInstance = ErrorGroupDetail["instances"][0];
-
-// Cursor for error instances pagination
-type ErrorInstanceCursor = {
-  createdAt: string;
-  runId: string;
-};
-
-const ErrorInstanceCursorSchema = z.object({
-  createdAt: z.string(),
-  runId: z.string(),
-});
-
-function encodeCursor(cursor: ErrorInstanceCursor): string {
-  return Buffer.from(JSON.stringify(cursor)).toString("base64");
-}
-
-function decodeCursor(cursor: string): ErrorInstanceCursor | null {
-  try {
-    const decoded = Buffer.from(cursor, "base64").toString("utf-8");
-    const parsed = JSON.parse(decoded);
-    const validated = ErrorInstanceCursorSchema.safeParse(parsed);
-    if (!validated.success) {
-      return null;
-    }
-    return validated.data as ErrorInstanceCursor;
-  } catch {
-    return null;
-  }
-}
 
 function parseClickHouseDateTime(value: string): Date {
   const asNum = Number(value);
@@ -77,7 +49,6 @@ export type ErrorGroupSummary = {
   fingerprint: string;
   errorType: string;
   errorMessage: string;
-  stackTrace?: string;
   taskIdentifier: string;
   count: number;
   firstSeen: Date;
@@ -90,6 +61,7 @@ export type ErrorGroupActivity = ErrorGroupOccurrences["data"];
 export class ErrorGroupPresenter extends BasePresenter {
   constructor(
     private readonly replica: PrismaClientOrTransaction,
+    private readonly logsClickhouse: ClickHouse,
     private readonly clickhouse: ClickHouse
   ) {
     super(undefined, replica);
@@ -98,7 +70,12 @@ export class ErrorGroupPresenter extends BasePresenter {
   public async call(
     organizationId: string,
     environmentId: string,
-    { userId, projectId, fingerprint, cursor, pageSize = DEFAULT_PAGE_SIZE }: ErrorGroupOptions
+    {
+      userId,
+      projectId,
+      fingerprint,
+      runsPageSize = DEFAULT_RUNS_PAGE_SIZE,
+    }: ErrorGroupOptions
   ) {
     const displayableEnvironment = await findDisplayableEnvironment(environmentId, userId);
 
@@ -106,59 +83,19 @@ export class ErrorGroupPresenter extends BasePresenter {
       throw new ServiceValidationError("No environment found");
     }
 
-    // Run summary (aggregated) and instances queries in parallel
-    const [summary, instancesResult] = await Promise.all([
+    const [summary, runList] = await Promise.all([
       this.getSummary(organizationId, projectId, environmentId, fingerprint),
-      this.getInstances(organizationId, projectId, environmentId, fingerprint, cursor, pageSize),
+      this.getRunList(organizationId, environmentId, {
+        userId,
+        projectId,
+        fingerprint,
+        pageSize: runsPageSize,
+      }),
     ]);
 
-    // Get stack trace from the most recent instance
-    let stackTrace: string | undefined;
-    if (instancesResult.instances.length > 0) {
-      const firstInstance = instancesResult.instances[0];
-      try {
-        const errorData = JSON.parse(firstInstance.error_text) as Record<string, unknown>;
-        stackTrace = (errorData.stack || errorData.stacktrace) as string | undefined;
-      } catch {
-        // no stack trace available
-      }
-    }
-
-    // Build error group combining aggregated summary with instance stack trace
-    let errorGroup: ErrorGroupSummary | undefined;
-    if (summary) {
-      errorGroup = {
-        ...summary,
-        stackTrace,
-      };
-    }
-
-    // Transform instances
-    const transformedInstances = instancesResult.instances.map((instance) => {
-      let parsedError: any;
-      try {
-        parsedError = JSON.parse(instance.error_text);
-      } catch {
-        parsedError = { message: instance.error_text };
-      }
-
-      return {
-        runId: instance.run_id,
-        friendlyId: instance.friendly_id,
-        taskIdentifier: instance.task_identifier,
-        createdAt: new Date(parseInt(instance.created_at) * 1000),
-        status: instance.status,
-        error: parsedError,
-        traceId: instance.trace_id,
-        taskVersion: instance.task_version,
-      };
-    });
-
     return {
-      errorGroup,
-      instances: transformedInstances,
-      runFriendlyIds: transformedInstances.map((i) => i.friendlyId),
-      pagination: instancesResult.pagination,
+      errorGroup: summary,
+      runList,
     };
   }
 
@@ -174,14 +111,12 @@ export class ErrorGroupPresenter extends BasePresenter {
     from: Date,
     to: Date
   ): Promise<{
-    granularity: TimeGranularity;
     data: Array<{ date: Date; count: number }>;
   }> {
-    const granularity = detectTimeGranularity(from, to);
-    const intervalExpr = granularityToInterval(granularity);
-    const stepMs = granularityToStepMs(granularity);
+    const granularityMs = errorGroupGranularity.getTimeGranularityMs(from, to);
+    const intervalExpr = msToClickHouseInterval(granularityMs);
 
-    const queryBuilder = this.clickhouse.errors.createOccurrencesQueryBuilder(intervalExpr);
+    const queryBuilder = this.logsClickhouse.errors.createOccurrencesQueryBuilder(intervalExpr);
 
     queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
     queryBuilder.where("project_id = {projectId: String}", { projectId });
@@ -205,9 +140,9 @@ export class ErrorGroupPresenter extends BasePresenter {
 
     // Build time buckets covering the full range
     const buckets: number[] = [];
-    const startEpoch = Math.floor(from.getTime() / stepMs) * (stepMs / 1000);
+    const startEpoch = Math.floor(from.getTime() / granularityMs) * (granularityMs / 1000);
     const endEpoch = Math.ceil(to.getTime() / 1000);
-    for (let epoch = startEpoch; epoch <= endEpoch; epoch += stepMs / 1000) {
+    for (let epoch = startEpoch; epoch <= endEpoch; epoch += granularityMs / 1000) {
       buckets.push(epoch);
     }
 
@@ -217,7 +152,6 @@ export class ErrorGroupPresenter extends BasePresenter {
     }
 
     return {
-      granularity,
       data: buckets.map((epoch) => ({
         date: new Date(epoch * 1000),
         count: byBucket.get(epoch) ?? 0,
@@ -230,8 +164,8 @@ export class ErrorGroupPresenter extends BasePresenter {
     projectId: string,
     environmentId: string,
     fingerprint: string
-  ): Promise<Omit<ErrorGroupSummary, "stackTrace"> | undefined> {
-    const queryBuilder = this.clickhouse.errors.listQueryBuilder();
+  ): Promise<ErrorGroupSummary | undefined> {
+    const queryBuilder = this.logsClickhouse.errors.listQueryBuilder();
 
     queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
     queryBuilder.where("project_id = {projectId: String}", { projectId });
@@ -263,63 +197,29 @@ export class ErrorGroupPresenter extends BasePresenter {
     };
   }
 
-  private async getInstances(
+  private async getRunList(
     organizationId: string,
-    projectId: string,
     environmentId: string,
-    fingerprint: string,
-    cursor: string | undefined,
-    pageSize: number
-  ) {
-    const queryBuilder = this.clickhouse.errors.instancesQueryBuilder();
+    options: {
+      userId?: string;
+      projectId: string;
+      fingerprint: string;
+      pageSize: number;
+    }
+  ): Promise<NextRunList | undefined> {
+    const runListPresenter = new NextRunListPresenter(this.replica, this.clickhouse);
 
-    queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
-    queryBuilder.where("project_id = {projectId: String}", { projectId });
-    queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
-    queryBuilder.where("error_fingerprint = {errorFingerprint: String}", {
-      errorFingerprint: fingerprint,
+    const result = await runListPresenter.call(organizationId, environmentId, {
+      userId: options.userId,
+      projectId: options.projectId,
+      errorFingerprint: options.fingerprint,
+      pageSize: options.pageSize,
     });
-    queryBuilder.where("_is_deleted = 0");
 
-    const decodedCursor = cursor ? decodeCursor(cursor) : null;
-    if (decodedCursor) {
-      queryBuilder.where(
-        `(created_at < {cursorCreatedAt: String} OR (created_at = {cursorCreatedAt: String} AND run_id < {cursorRunId: String}))`,
-        {
-          cursorCreatedAt: decodedCursor.createdAt,
-          cursorRunId: decodedCursor.runId,
-        }
-      );
+    if (result.runs.length === 0) {
+      return undefined;
     }
 
-    queryBuilder.orderBy("created_at DESC, run_id DESC");
-    queryBuilder.limit(pageSize + 1);
-
-    const [queryError, records] = await queryBuilder.execute();
-
-    if (queryError) {
-      throw queryError;
-    }
-
-    const results = records || [];
-    const hasMore = results.length > pageSize;
-    const instances = results.slice(0, pageSize);
-
-    let nextCursor: string | undefined;
-    if (hasMore && instances.length > 0) {
-      const lastInstance = instances[instances.length - 1];
-      nextCursor = encodeCursor({
-        createdAt: lastInstance.created_at,
-        runId: lastInstance.run_id,
-      });
-    }
-
-    return {
-      instances,
-      pagination: {
-        hasMore,
-        nextCursor,
-      },
-    };
+    return result;
   }
 }

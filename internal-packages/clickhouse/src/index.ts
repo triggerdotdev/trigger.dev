@@ -31,17 +31,11 @@ import {
   getErrorGroups,
   getErrorInstances,
   getErrorGroupsListQueryBuilder,
-  getErrorInstancesListQueryBuilder,
   getErrorHourlyOccurrences,
   getErrorOccurrencesListQueryBuilder,
   createErrorOccurrencesQueryBuilder,
 } from "./errors.js";
-export {
-  detectTimeGranularity,
-  granularityToInterval,
-  granularityToStepMs,
-  type TimeGranularity,
-} from "./errors.js";
+export { msToClickHouseInterval } from "./intervals.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
@@ -252,7 +246,6 @@ export class ClickHouse {
       getInstances: getErrorInstances(this.reader),
       getHourlyOccurrences: getErrorHourlyOccurrences(this.reader),
       listQueryBuilder: getErrorGroupsListQueryBuilder(this.reader),
-      instancesQueryBuilder: getErrorInstancesListQueryBuilder(this.reader),
       occurrencesListQueryBuilder: getErrorOccurrencesListQueryBuilder(this.reader),
       createOccurrencesQueryBuilder: (intervalExpr: string) =>
         createErrorOccurrencesQueryBuilder(this.reader, intervalExpr),

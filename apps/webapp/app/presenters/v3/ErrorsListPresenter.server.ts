@@ -1,11 +1,14 @@
 import { z } from "zod";
-import {
-  type ClickHouse,
-  type TimeGranularity,
-  detectTimeGranularity,
-  granularityToInterval,
-  granularityToStepMs,
-} from "@internal/clickhouse";
+import { type ClickHouse, msToClickHouseInterval } from "@internal/clickhouse";
+import { TimeGranularity } from "~/utils/timeGranularity";
+
+const errorsListGranularity = new TimeGranularity([
+  { max: "2h", granularity: "1m" },
+  { max: "2d", granularity: "1h" },
+  { max: "2w", granularity: "1d" },
+  { max: "3 months", granularity: "1w" },
+  { max: "Infinity", granularity: "30d" },
+]);
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { type Direction } from "~/components/ListPagination";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
@@ -275,16 +278,14 @@ export class ErrorsListPresenter extends BasePresenter {
     from: Date,
     to: Date
   ): Promise<{
-    granularity: TimeGranularity;
     data: Record<string, Array<{ date: Date; count: number }>>;
   }> {
     if (fingerprints.length === 0) {
-      return { granularity: "hours", data: {} };
+      return { data: {} };
     }
 
-    const granularity = detectTimeGranularity(from, to);
-    const intervalExpr = granularityToInterval(granularity);
-    const stepMs = granularityToStepMs(granularity);
+    const granularityMs = errorsListGranularity.getTimeGranularityMs(from, to);
+    const intervalExpr = msToClickHouseInterval(granularityMs);
 
     const queryBuilder = this.clickhouse.errors.createOccurrencesQueryBuilder(intervalExpr);
 
@@ -310,9 +311,9 @@ export class ErrorsListPresenter extends BasePresenter {
 
     // Build time buckets covering the full range
     const buckets: number[] = [];
-    const startEpoch = Math.floor(from.getTime() / stepMs) * (stepMs / 1000);
+    const startEpoch = Math.floor(from.getTime() / granularityMs) * (granularityMs / 1000);
     const endEpoch = Math.ceil(to.getTime() / 1000);
-    for (let epoch = startEpoch; epoch <= endEpoch; epoch += stepMs / 1000) {
+    for (let epoch = startEpoch; epoch <= endEpoch; epoch += granularityMs / 1000) {
       buckets.push(epoch);
     }
 
@@ -336,7 +337,7 @@ export class ErrorsListPresenter extends BasePresenter {
       }));
     }
 
-    return { granularity, data };
+    return { data };
   }
 
   /**

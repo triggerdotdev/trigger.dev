@@ -12,10 +12,7 @@ import {
   type ErrorGroupOccurrences,
   type ErrorGroupSummary,
 } from "~/presenters/v3/ErrorGroupPresenter.server";
-import {
-  NextRunListPresenter,
-  type NextRunList,
-} from "~/presenters/v3/NextRunListPresenter.server";
+import { type NextRunList } from "~/presenters/v3/NextRunListPresenter.server";
 import { $replica } from "~/db.server";
 import { logsClickhouseClient, clickhouseClient } from "~/services/clickhouseInstance.server";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
@@ -62,31 +59,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Environment not found", { status: 404 });
   }
 
-  const presenter = new ErrorGroupPresenter($replica, logsClickhouseClient);
+  const presenter = new ErrorGroupPresenter($replica, logsClickhouseClient, clickhouseClient);
 
   const detailPromise = presenter
     .call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,
       fingerprint,
-    })
-    .then(async (result) => {
-      if (result.runFriendlyIds.length === 0) {
-        return { ...result, runList: undefined };
-      }
-
-      const runListPresenter = new NextRunListPresenter($replica, clickhouseClient);
-      const runList = await runListPresenter.call(project.organizationId, environment.id, {
-        userId,
-        projectId: project.id,
-        runId: result.runFriendlyIds,
-        pageSize: 25,
-      });
-
-      return {
-        ...result,
-        runList,
-      };
     })
     .catch((error) => {
       if (error instanceof ServiceValidationError) {
@@ -107,7 +86,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       sevenDaysAgo,
       now
     )
-    .catch(() => ({ granularity: "hours" as const, data: [] as ErrorGroupActivity }));
+    .catch(() => ({ data: [] as ErrorGroupActivity }));
 
   return typeddefer({
     data: detailPromise,

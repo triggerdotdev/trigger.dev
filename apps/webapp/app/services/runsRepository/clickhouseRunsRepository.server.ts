@@ -328,4 +328,10 @@ function applyRunFiltersToQueryBuilder<T>(
       machines: options.machines,
     });
   }
+
+  if (options.errorFingerprint) {
+    queryBuilder.where("error_fingerprint = {errorFingerprint: String}", {
+      errorFingerprint: options.errorFingerprint,
+    });
+  }
 }

@@ -111,9 +111,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
 
   const occurrencesPromise = listPromise.then((result) => {
-    if ("error" in result) return { granularity: "hours" as const, data: {} };
+    if ("error" in result) return { data: {} };
     const fingerprints = result.errorGroups.map((g) => g.fingerprint);
-    if (fingerprints.length === 0) return { granularity: "hours" as const, data: {} };
+    if (fingerprints.length === 0) return { data: {} };
     return presenter.getOccurrences(
       project.organizationId,
       project.id,
