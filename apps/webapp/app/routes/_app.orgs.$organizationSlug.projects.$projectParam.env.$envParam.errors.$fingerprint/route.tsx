@@ -8,7 +8,8 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   ErrorGroupPresenter,
-  type ErrorGroupHourlyActivity,
+  type ErrorGroupActivity,
+  type ErrorGroupOccurrences,
   type ErrorGroupSummary,
 } from "~/presenters/v3/ErrorGroupPresenter.server";
 import {
@@ -94,13 +95,23 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       throw error;
     });
 
-  const hourlyActivityPromise = presenter
-    .getHourlyOccurrences(project.organizationId, project.id, environment.id, fingerprint)
-    .catch(() => [] as ErrorGroupHourlyActivity);
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const activityPromise = presenter
+    .getOccurrences(
+      project.organizationId,
+      project.id,
+      environment.id,
+      fingerprint,
+      sevenDaysAgo,
+      now
+    )
+    .catch(() => ({ granularity: "hours" as const, data: [] as ErrorGroupActivity }));
 
   return typeddefer({
     data: detailPromise,
-    hourlyActivity: hourlyActivityPromise,
+    activity: activityPromise,
     organizationSlug,
     projectParam,
     envParam,
@@ -109,7 +120,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { data, hourlyActivity, organizationSlug, projectParam, envParam, fingerprint } =
+  const { data, activity, organizationSlug, projectParam, envParam, fingerprint } =
     useTypedLoaderData<typeof loader>();
 
   const errorsPath = v3ErrorsPath(
@@ -165,7 +176,7 @@ export default function Page() {
                 <ErrorGroupDetail
                   errorGroup={result.errorGroup}
                   runList={result.runList}
-                  hourlyActivity={hourlyActivity}
+                  activity={activity}
                   organizationSlug={organizationSlug}
                   projectParam={projectParam}
                   envParam={envParam}
@@ -182,14 +193,14 @@ export default function Page() {
 function ErrorGroupDetail({
   errorGroup,
   runList,
-  hourlyActivity,
+  activity,
   organizationSlug,
   projectParam,
   envParam,
 }: {
   errorGroup: ErrorGroupSummary | undefined;
   runList: NextRunList | undefined;
-  hourlyActivity: Promise<ErrorGroupHourlyActivity>;
+  activity: Promise<ErrorGroupOccurrences>;
   organizationSlug: string;
   projectParam: string;
   envParam: string;
@@ -264,14 +275,14 @@ function ErrorGroupDetail({
         )}
       </div>
 
-      {/* Activity over past 7 days by hour */}
+      {/* Activity over past 7 days */}
       <div className="flex flex-col overflow-hidden border-b border-grid-bright px-4 py-3">
         <Header3 className="mb-2 shrink-0">Activity (past 7 days)</Header3>
         <Suspense fallback={<ActivityChartBlankState />}>
-          <TypedAwait resolve={hourlyActivity} errorElement={<ActivityChartBlankState />}>
-            {(activity) =>
-              activity.length > 0 ? (
-                <ActivityChart activity={activity} />
+          <TypedAwait resolve={activity} errorElement={<ActivityChartBlankState />}>
+            {(result) =>
+              result.data.length > 0 ? (
+                <ActivityChart activity={result.data} />
               ) : (
                 <ActivityChartBlankState />
               )
@@ -316,7 +327,7 @@ const activityChartConfig: ChartConfig = {
   },
 };
 
-function ActivityChart({ activity }: { activity: ErrorGroupHourlyActivity }) {
+function ActivityChart({ activity }: { activity: ErrorGroupActivity }) {
   const data = useMemo(
     () =>
       activity.map((d) => ({

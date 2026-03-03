@@ -42,8 +42,8 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   ErrorsListPresenter,
   type ErrorGroup,
-  type ErrorHourlyActivity,
-  type ErrorHourlyOccurrences,
+  type ErrorOccurrenceActivity,
+  type ErrorOccurrences,
   type ErrorsList,
 } from "~/presenters/v3/ErrorsListPresenter.server";
 import { logsClickhouseClient } from "~/services/clickhouseInstance.server";
@@ -77,7 +77,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Environment not found", { status: 404 });
   }
 
-  // Get filters from query params
   const url = new URL(request.url);
   const tasks = url.searchParams.getAll("tasks").filter((t) => t.length > 0);
   const search = url.searchParams.get("search") ?? undefined;
@@ -87,7 +86,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const from = fromStr ? parseInt(fromStr, 10) : undefined;
   const to = toStr ? parseInt(toStr, 10) : undefined;
 
-  // Get the user's plan to determine retention limit
   const plan = await getCurrentPlan(project.organizationId);
   const retentionLimitDays = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
 
@@ -112,21 +110,23 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       throw error;
     });
 
-  const hourlyOccurrencesPromise = listPromise.then((result) => {
-    if ("error" in result) return {} as ErrorHourlyOccurrences;
+  const occurrencesPromise = listPromise.then((result) => {
+    if ("error" in result) return { granularity: "hours" as const, data: {} };
     const fingerprints = result.errorGroups.map((g) => g.fingerprint);
-    if (fingerprints.length === 0) return {} as ErrorHourlyOccurrences;
-    return presenter.getHourlyOccurrences(
+    if (fingerprints.length === 0) return { granularity: "hours" as const, data: {} };
+    return presenter.getOccurrences(
       project.organizationId,
       project.id,
       environment.id,
-      fingerprints
+      fingerprints,
+      result.filters.from,
+      result.filters.to
     );
   });
 
   return typeddefer({
     data: listPromise,
-    hourlyOccurrences: hourlyOccurrencesPromise,
+    occurrences: occurrencesPromise,
     defaultPeriod: "1d",
     retentionLimitDays,
     organizationSlug,
@@ -138,7 +138,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export default function Page() {
   const {
     data,
-    hourlyOccurrences,
+    occurrences,
     defaultPeriod,
     retentionLimitDays,
     organizationSlug,
@@ -180,7 +180,6 @@ export default function Page() {
             }
           >
             {(result) => {
-              // Check if result contains an error
               if ("error" in result) {
                 return (
                   <div className="grid h-full max-h-full grid-rows-[2.5rem_auto_1fr] overflow-hidden">
@@ -205,7 +204,7 @@ export default function Page() {
                   />
                   <ErrorsList
                     errorGroups={result.errorGroups}
-                    hourlyOccurrences={hourlyOccurrences}
+                    occurrences={occurrences}
                     organizationSlug={organizationSlug}
                     projectParam={projectParam}
                     envParam={envParam}
@@ -279,13 +278,13 @@ function FiltersBar({
 
 function ErrorsList({
   errorGroups,
-  hourlyOccurrences,
+  occurrences,
   organizationSlug,
   projectParam,
   envParam,
 }: {
   errorGroups: ErrorGroup[];
-  hourlyOccurrences: Promise<ErrorHourlyOccurrences>;
+  occurrences: Promise<ErrorOccurrences>;
   organizationSlug: string;
   projectParam: string;
   envParam: string;
@@ -311,7 +310,7 @@ function ErrorsList({
           <TableHeaderCell>Task</TableHeaderCell>
           <TableHeaderCell>Error</TableHeaderCell>
           <TableHeaderCell>Occurrences</TableHeaderCell>
-          <TableHeaderCell>Past 24h</TableHeaderCell>
+          <TableHeaderCell>Activity</TableHeaderCell>
           <TableHeaderCell>First seen</TableHeaderCell>
           <TableHeaderCell>Last seen</TableHeaderCell>
         </TableRow>
@@ -321,7 +320,7 @@ function ErrorsList({
           <ErrorGroupRow
             key={errorGroup.fingerprint}
             errorGroup={errorGroup}
-            hourlyOccurrences={hourlyOccurrences}
+            occurrences={occurrences}
             organizationSlug={organizationSlug}
             projectParam={projectParam}
             envParam={envParam}
@@ -334,13 +333,13 @@ function ErrorsList({
 
 function ErrorGroupRow({
   errorGroup,
-  hourlyOccurrences,
+  occurrences,
   organizationSlug,
   projectParam,
   envParam,
 }: {
   errorGroup: ErrorGroup;
-  hourlyOccurrences: Promise<ErrorHourlyOccurrences>;
+  occurrences: Promise<ErrorOccurrences>;
   organizationSlug: string;
   projectParam: string;
   envParam: string;
@@ -366,9 +365,9 @@ function ErrorGroupRow({
       <TableCell to={errorPath}>{errorGroup.count.toLocaleString()}</TableCell>
       <TableCell to={errorPath} actionClassName="py-1.5">
         <Suspense fallback={<ErrorActivityBlankState />}>
-          <TypedAwait resolve={hourlyOccurrences} errorElement={<ErrorActivityBlankState />}>
-            {(data) => {
-              const activity = data[errorGroup.fingerprint];
+          <TypedAwait resolve={occurrences} errorElement={<ErrorActivityBlankState />}>
+            {(result) => {
+              const activity = result.data[errorGroup.fingerprint];
               return activity ? (
                 <ErrorActivityGraph activity={activity} />
               ) : (
@@ -388,7 +387,11 @@ function ErrorGroupRow({
   );
 }
 
-function ErrorActivityGraph({ activity }: { activity: ErrorHourlyActivity }) {
+function ErrorActivityGraph({
+  activity,
+}: {
+  activity: ErrorOccurrenceActivity;
+}) {
   const maxCount = Math.max(...activity.map((d) => d.count));
 
   return (

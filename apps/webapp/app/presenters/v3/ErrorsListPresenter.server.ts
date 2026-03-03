@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { type ClickHouse } from "@internal/clickhouse";
+import {
+  type ClickHouse,
+  type TimeGranularity,
+  detectTimeGranularity,
+  granularityToInterval,
+  granularityToStepMs,
+} from "@internal/clickhouse";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { type Direction } from "~/components/ListPagination";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
@@ -46,12 +52,9 @@ const DEFAULT_PAGE_SIZE = 50;
 export type ErrorsList = Awaited<ReturnType<ErrorsListPresenter["call"]>>;
 export type ErrorGroup = ErrorsList["errorGroups"][0];
 export type ErrorsListAppliedFilters = ErrorsList["filters"];
-export type ErrorHourlyOccurrences = Awaited<
-  ReturnType<ErrorsListPresenter["getHourlyOccurrences"]>
->;
-export type ErrorHourlyActivity = ErrorHourlyOccurrences[string];
+export type ErrorOccurrences = Awaited<ReturnType<ErrorsListPresenter["getOccurrences"]>>;
+export type ErrorOccurrenceActivity = ErrorOccurrences["data"][string];
 
-// Cursor for error groups pagination
 type ErrorGroupCursor = {
   occurrenceCount: number;
   fingerprint: string;
@@ -85,7 +88,6 @@ function parseClickHouseDateTime(value: string): Date {
   if (!isNaN(asNum) && asNum > 1e12) {
     return new Date(asNum);
   }
-  // ClickHouse returns 'YYYY-MM-DD HH:mm:ss.SSS' in UTC
   return new Date(value.replace(" ", "T") + "Z");
 }
 
@@ -122,13 +124,12 @@ export class ErrorsListPresenter extends BasePresenter {
       period,
       from,
       to,
-      defaultPeriod: defaultPeriod ?? "7d",
+      defaultPeriod: defaultPeriod ?? "1d",
     });
 
     let effectiveFrom = time.from;
     let effectiveTo = time.to;
 
-    // Apply retention limit if provided
     let wasClampedByRetention = false;
     if (retentionLimitDays !== undefined && effectiveFrom) {
       const retentionCutoffDate = new Date(Date.now() - retentionLimitDays * 24 * 60 * 60 * 1000);
@@ -155,38 +156,32 @@ export class ErrorsListPresenter extends BasePresenter {
       throw new ServiceValidationError("No environment found");
     }
 
-    // Calculate days parameter for ClickHouse query
-    const now = new Date();
-    const daysAgo = effectiveFrom
-      ? Math.ceil((now.getTime() - effectiveFrom.getTime()) / (1000 * 60 * 60 * 24))
-      : 30;
+    // Query the per-minute error_occurrences_v1 table for time-scoped counts
+    const queryBuilder = this.clickhouse.errors.occurrencesListQueryBuilder();
 
-    // Query the pre-aggregated errors_v1 table
-    const queryBuilder = this.clickhouse.errors.listQueryBuilder();
-
-    // Apply base WHERE filters
     queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
     queryBuilder.where("project_id = {projectId: String}", { projectId });
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
 
-    // Task filter (task_identifier is part of the key, so use WHERE)
+    // Precise time range filtering via WHERE on the minute column
+    queryBuilder.where("minute >= toStartOfMinute(fromUnixTimestamp64Milli({fromTimeMs: Int64}))", {
+      fromTimeMs: effectiveFrom.getTime(),
+    });
+    queryBuilder.where("minute <= toStartOfMinute(fromUnixTimestamp64Milli({toTimeMs: Int64}))", {
+      toTimeMs: effectiveTo.getTime(),
+    });
+
     if (tasks && tasks.length > 0) {
       queryBuilder.where("task_identifier IN {tasks: Array(String)}", { tasks });
     }
 
-    // Group by key columns to merge partial aggregations
     queryBuilder.groupBy("error_fingerprint, task_identifier");
 
-    // Time range filter
-    queryBuilder.having("max(last_seen_date) >= now() - INTERVAL {days: Int64} DAY", {
-      days: daysAgo,
-    });
-
-    // Search filter - searches in error type and message
+    // Text search via HAVING (operates on aggregated values)
     if (search && search.trim() !== "") {
       const searchTerm = escapeClickHouseString(search.trim()).toLowerCase();
       queryBuilder.having(
-        "(lower(any(error_type)) like {searchPattern: String} OR lower(any(error_message)) like {searchPattern: String})",
+        "(lower(error_type) like {searchPattern: String} OR lower(error_message) like {searchPattern: String})",
         {
           searchPattern: `%${searchTerm}%`,
         }
@@ -218,7 +213,6 @@ export class ErrorsListPresenter extends BasePresenter {
     const hasMore = results.length > pageSize;
     const errorGroups = results.slice(0, pageSize);
 
-    // Build next cursor from the last item
     let nextCursor: string | undefined;
     if (hasMore && errorGroups.length > 0) {
       const lastError = errorGroups[errorGroups.length - 1];
@@ -228,18 +222,27 @@ export class ErrorsListPresenter extends BasePresenter {
       });
     }
 
-    // Transform results
-    const transformedErrorGroups = errorGroups.map((error) => ({
-      errorType: error.error_type,
-      errorMessage: error.error_message,
-      fingerprint: error.error_fingerprint,
-      taskIdentifier: error.task_identifier,
-      firstSeen: parseClickHouseDateTime(error.first_seen),
-      lastSeen: parseClickHouseDateTime(error.last_seen),
-      count: error.occurrence_count,
-      sampleRunId: error.sample_run_id,
-      sampleFriendlyId: error.sample_friendly_id,
-    }));
+    // Fetch global first_seen / last_seen from the errors_v1 summary table
+    const fingerprints = errorGroups.map((e) => e.error_fingerprint);
+    const globalSummaryMap = await this.getGlobalSummary(
+      organizationId,
+      projectId,
+      environmentId,
+      fingerprints
+    );
+
+    const transformedErrorGroups = errorGroups.map((error) => {
+      const global = globalSummaryMap.get(error.error_fingerprint);
+      return {
+        errorType: error.error_type,
+        errorMessage: error.error_message,
+        fingerprint: error.error_fingerprint,
+        taskIdentifier: error.task_identifier,
+        firstSeen: global?.firstSeen ?? new Date(),
+        lastSeen: global?.lastSeen ?? new Date(),
+        count: error.occurrence_count,
+      };
+    });
 
     return {
       errorGroups: transformedErrorGroups,
@@ -251,6 +254,8 @@ export class ErrorsListPresenter extends BasePresenter {
         tasks,
         search,
         period: time,
+        from: effectiveFrom,
+        to: effectiveTo,
         hasFilters,
         possibleTasks,
         wasClampedByRetention,
@@ -258,56 +263,110 @@ export class ErrorsListPresenter extends BasePresenter {
     };
   }
 
-  public async getHourlyOccurrences(
+  /**
+   * Returns bucketed occurrence counts for the given fingerprints over a time range.
+   * Granularity is determined automatically from the range span.
+   */
+  public async getOccurrences(
     organizationId: string,
     projectId: string,
     environmentId: string,
-    fingerprints: string[]
-  ): Promise<Record<string, Array<{ date: Date; count: number }>>> {
+    fingerprints: string[],
+    from: Date,
+    to: Date
+  ): Promise<{
+    granularity: TimeGranularity;
+    data: Record<string, Array<{ date: Date; count: number }>>;
+  }> {
     if (fingerprints.length === 0) {
-      return {};
+      return { granularity: "hours", data: {} };
     }
 
-    const hours = 24;
+    const granularity = detectTimeGranularity(from, to);
+    const intervalExpr = granularityToInterval(granularity);
+    const stepMs = granularityToStepMs(granularity);
 
-    const [queryError, records] = await this.clickhouse.errors.getHourlyOccurrences({
-      organizationId,
-      projectId,
-      environmentId,
-      fingerprints,
-      hours,
+    const queryBuilder = this.clickhouse.errors.createOccurrencesQueryBuilder(intervalExpr);
+
+    queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
+    queryBuilder.where("project_id = {projectId: String}", { projectId });
+    queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
+    queryBuilder.where("error_fingerprint IN {fingerprints: Array(String)}", { fingerprints });
+    queryBuilder.where("minute >= toStartOfMinute(fromUnixTimestamp64Milli({fromTimeMs: Int64}))", {
+      fromTimeMs: from.getTime(),
     });
+    queryBuilder.where("minute <= toStartOfMinute(fromUnixTimestamp64Milli({toTimeMs: Int64}))", {
+      toTimeMs: to.getTime(),
+    });
+
+    queryBuilder.groupBy("error_fingerprint, bucket_epoch");
+    queryBuilder.orderBy("error_fingerprint ASC, bucket_epoch ASC");
+
+    const [queryError, records] = await queryBuilder.execute();
 
     if (queryError) {
       throw queryError;
     }
 
-    // Build 24 hourly buckets as epoch seconds (UTC, floored to hour)
+    // Build time buckets covering the full range
     const buckets: number[] = [];
-    const nowMs = Date.now();
-    for (let i = hours - 1; i >= 0; i--) {
-      const hourStart = Math.floor((nowMs - i * 3_600_000) / 3_600_000) * 3_600;
-      buckets.push(hourStart);
+    const startEpoch = Math.floor(from.getTime() / stepMs) * (stepMs / 1000);
+    const endEpoch = Math.ceil(to.getTime() / 1000);
+    for (let epoch = startEpoch; epoch <= endEpoch; epoch += stepMs / 1000) {
+      buckets.push(epoch);
     }
 
-    // Index ClickHouse results by fingerprint → epoch → count
+    // Index results by fingerprint -> epoch -> count
     const grouped = new Map<string, Map<number, number>>();
     for (const row of records ?? []) {
-      let byHour = grouped.get(row.error_fingerprint);
-      if (!byHour) {
-        byHour = new Map();
-        grouped.set(row.error_fingerprint, byHour);
+      let byBucket = grouped.get(row.error_fingerprint);
+      if (!byBucket) {
+        byBucket = new Map();
+        grouped.set(row.error_fingerprint, byBucket);
       }
-      byHour.set(row.hour_epoch, row.count);
+      byBucket.set(row.bucket_epoch, (byBucket.get(row.bucket_epoch) ?? 0) + row.count);
     }
 
-    const result: Record<string, Array<{ date: Date; count: number }>> = {};
+    const data: Record<string, Array<{ date: Date; count: number }>> = {};
     for (const fp of fingerprints) {
-      const byHour = grouped.get(fp);
-      result[fp] = buckets.map((epoch) => ({
+      const byBucket = grouped.get(fp);
+      data[fp] = buckets.map((epoch) => ({
         date: new Date(epoch * 1000),
-        count: byHour?.get(epoch) ?? 0,
+        count: byBucket?.get(epoch) ?? 0,
       }));
+    }
+
+    return { granularity, data };
+  }
+
+  /**
+   * Fetches global first_seen / last_seen for a set of fingerprints from errors_v1.
+   */
+  private async getGlobalSummary(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    fingerprints: string[]
+  ): Promise<Map<string, { firstSeen: Date; lastSeen: Date }>> {
+    const result = new Map<string, { firstSeen: Date; lastSeen: Date }>();
+    if (fingerprints.length === 0) return result;
+
+    const queryBuilder = this.clickhouse.errors.listQueryBuilder();
+    queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
+    queryBuilder.where("project_id = {projectId: String}", { projectId });
+    queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
+    queryBuilder.where("error_fingerprint IN {fingerprints: Array(String)}", { fingerprints });
+    queryBuilder.groupBy("error_fingerprint, task_identifier");
+
+    const [queryError, records] = await queryBuilder.execute();
+
+    if (queryError || !records) return result;
+
+    for (const record of records) {
+      result.set(record.error_fingerprint, {
+        firstSeen: parseClickHouseDateTime(record.first_seen),
+        lastSeen: parseClickHouseDateTime(record.last_seen),
+      });
     }
 
     return result;

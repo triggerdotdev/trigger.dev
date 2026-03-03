@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { type ClickHouse } from "@internal/clickhouse";
+import {
+  type ClickHouse,
+  type TimeGranularity,
+  detectTimeGranularity,
+  granularityToInterval,
+  granularityToStepMs,
+} from "@internal/clickhouse";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { type Direction } from "~/components/ListPagination";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
@@ -78,7 +84,8 @@ export type ErrorGroupSummary = {
   lastSeen: Date;
 };
 
-export type ErrorGroupHourlyActivity = Array<{ date: Date; count: number }>;
+export type ErrorGroupOccurrences = Awaited<ReturnType<ErrorGroupPresenter["getOccurrences"]>>;
+export type ErrorGroupActivity = ErrorGroupOccurrences["data"];
 
 export class ErrorGroupPresenter extends BasePresenter {
   constructor(
@@ -155,42 +162,67 @@ export class ErrorGroupPresenter extends BasePresenter {
     };
   }
 
-  public async getHourlyOccurrences(
+  /**
+   * Returns bucketed occurrence counts for a single fingerprint over a time range.
+   * Granularity is determined automatically from the range span.
+   */
+  public async getOccurrences(
     organizationId: string,
     projectId: string,
     environmentId: string,
-    fingerprint: string
-  ): Promise<ErrorGroupHourlyActivity> {
-    const hours = 168; // 7 days
+    fingerprint: string,
+    from: Date,
+    to: Date
+  ): Promise<{
+    granularity: TimeGranularity;
+    data: Array<{ date: Date; count: number }>;
+  }> {
+    const granularity = detectTimeGranularity(from, to);
+    const intervalExpr = granularityToInterval(granularity);
+    const stepMs = granularityToStepMs(granularity);
 
-    const [queryError, records] = await this.clickhouse.errors.getHourlyOccurrences({
-      organizationId,
-      projectId,
-      environmentId,
-      fingerprints: [fingerprint],
-      hours,
+    const queryBuilder = this.clickhouse.errors.createOccurrencesQueryBuilder(intervalExpr);
+
+    queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
+    queryBuilder.where("project_id = {projectId: String}", { projectId });
+    queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
+    queryBuilder.where("error_fingerprint = {fingerprint: String}", { fingerprint });
+    queryBuilder.where("minute >= toStartOfMinute(fromUnixTimestamp64Milli({fromTimeMs: Int64}))", {
+      fromTimeMs: from.getTime(),
     });
+    queryBuilder.where("minute <= toStartOfMinute(fromUnixTimestamp64Milli({toTimeMs: Int64}))", {
+      toTimeMs: to.getTime(),
+    });
+
+    queryBuilder.groupBy("error_fingerprint, bucket_epoch");
+    queryBuilder.orderBy("bucket_epoch ASC");
+
+    const [queryError, records] = await queryBuilder.execute();
 
     if (queryError) {
       throw queryError;
     }
 
+    // Build time buckets covering the full range
     const buckets: number[] = [];
-    const nowMs = Date.now();
-    for (let i = hours - 1; i >= 0; i--) {
-      const hourStart = Math.floor((nowMs - i * 3_600_000) / 3_600_000) * 3_600;
-      buckets.push(hourStart);
+    const startEpoch = Math.floor(from.getTime() / stepMs) * (stepMs / 1000);
+    const endEpoch = Math.ceil(to.getTime() / 1000);
+    for (let epoch = startEpoch; epoch <= endEpoch; epoch += stepMs / 1000) {
+      buckets.push(epoch);
     }
 
-    const byHour = new Map<number, number>();
+    const byBucket = new Map<number, number>();
     for (const row of records ?? []) {
-      byHour.set(row.hour_epoch, row.count);
+      byBucket.set(row.bucket_epoch, (byBucket.get(row.bucket_epoch) ?? 0) + row.count);
     }
 
-    return buckets.map((epoch) => ({
-      date: new Date(epoch * 1000),
-      count: byHour.get(epoch) ?? 0,
-    }));
+    return {
+      granularity,
+      data: buckets.map((epoch) => ({
+        date: new Date(epoch * 1000),
+        count: byBucket.get(epoch) ?? 0,
+      })),
+    };
   }
 
   private async getSummary(
