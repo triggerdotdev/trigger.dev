@@ -15,6 +15,7 @@
 type PatternPredicate = (eventSlug: string) => boolean;
 
 const patternCache = new Map<string, PatternPredicate>();
+const PATTERN_CACHE_MAX = 1000;
 
 /**
  * Compile a wildcard pattern into a reusable predicate.
@@ -25,6 +26,14 @@ export function compilePattern(pattern: string): PatternPredicate {
   if (cached) return cached;
 
   const fn = buildPatternFn(pattern);
+  if (patternCache.size >= PATTERN_CACHE_MAX) {
+    const toDelete = Math.floor(PATTERN_CACHE_MAX / 2);
+    let i = 0;
+    for (const key of patternCache.keys()) {
+      if (i++ >= toDelete) break;
+      patternCache.delete(key);
+    }
+  }
   patternCache.set(pattern, fn);
   return fn;
 }

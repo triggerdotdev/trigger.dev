@@ -6,8 +6,9 @@ import { BaseService, ServiceValidationError } from "../baseService.server";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 
-/** Cached compiled validators keyed by EventDefinition.id */
+/** Cached compiled validators keyed by EventDefinition.id (bounded to prevent memory leaks) */
 const validatorCache = new Map<string, ValidateFunction>();
+const VALIDATOR_CACHE_MAX = 1000;
 
 export type SchemaValidationResult =
   | { success: true }
@@ -176,6 +177,15 @@ export class SchemaRegistryService extends BaseService {
 
       if (!validate) {
         validate = ajv.compile(schema as object);
+        if (validatorCache.size >= VALIDATOR_CACHE_MAX) {
+          // Evict oldest entries (Map iterates in insertion order)
+          const toDelete = Math.floor(VALIDATOR_CACHE_MAX / 2);
+          let i = 0;
+          for (const key of validatorCache.keys()) {
+            if (i++ >= toDelete) break;
+            validatorCache.delete(key);
+          }
+        }
         validatorCache.set(eventDefinitionId, validate);
       }
 

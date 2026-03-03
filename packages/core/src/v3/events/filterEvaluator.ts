@@ -4,6 +4,7 @@ import { eventFilterMatches } from "../../eventFilterMatches.js";
 type CompiledFilter = (payload: unknown) => boolean;
 
 const filterCache = new Map<string, CompiledFilter>();
+const FILTER_CACHE_MAX = 1000;
 
 /**
  * Compile an EventFilter into a reusable predicate function.
@@ -20,6 +21,14 @@ export function compileFilter(filter: EventFilter, cacheKey?: string): CompiledF
   const fn: CompiledFilter = (payload: unknown) => eventFilterMatches(payload, filter);
 
   if (cacheKey) {
+    if (filterCache.size >= FILTER_CACHE_MAX) {
+      const toDelete = Math.floor(FILTER_CACHE_MAX / 2);
+      let i = 0;
+      for (const key of filterCache.keys()) {
+        if (i++ >= toDelete) break;
+        filterCache.delete(key);
+      }
+    }
     filterCache.set(cacheKey, fn);
   }
 
