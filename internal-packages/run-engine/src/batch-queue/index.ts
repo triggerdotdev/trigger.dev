@@ -645,14 +645,33 @@ export class BatchQueue {
         }
 
         try {
-          // Rate limit per-item at the processing level (1 token per message)
+          // Rate limit per-item at the processing level (1 token per message).
+          // Loop until allowed so multiple consumers don't all rush through after one sleep.
           if (this.globalRateLimiter) {
-            const result = await this.globalRateLimiter.limit();
-            if (!result.allowed && result.resetAt) {
-              const waitMs = Math.max(0, result.resetAt - Date.now());
-              if (waitMs > 0) {
-                await new Promise((resolve) => setTimeout(resolve, waitMs));
+            while (this.isRunning) {
+              const result = await this.globalRateLimiter.limit();
+              if (result.allowed) {
+                break;
               }
+              const waitMs = Math.max(0, (result.resetAt ?? Date.now()) - Date.now());
+              if (waitMs > 0) {
+                await new Promise<void>((resolve, reject) => {
+                  const timer = setTimeout(resolve, waitMs);
+                  const onAbort = () => {
+                    clearTimeout(timer);
+                    reject(this.abortController.signal.reason);
+                  };
+                  if (this.abortController.signal.aborted) {
+                    clearTimeout(timer);
+                    reject(this.abortController.signal.reason);
+                    return;
+                  }
+                  this.abortController.signal.addEventListener("abort", onAbort, { once: true });
+                });
+              }
+            }
+            if (!this.isRunning) {
+              break;
             }
           }
 
