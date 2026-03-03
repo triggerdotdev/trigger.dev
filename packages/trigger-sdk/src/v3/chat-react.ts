@@ -51,7 +51,7 @@ export type UseTriggerChatTransportOptions<TTask extends AnyTask = AnyTask> = Om
  *
  * The transport is created once on first render and reused for the lifetime
  * of the component. This avoids the need for `useMemo` and ensures the
- * transport's internal session state (waitpoint tokens, lastEventId, etc.)
+ * transport's internal session state (run IDs, lastEventId, etc.)
  * is preserved across re-renders.
  *
  * For dynamic access tokens, pass a function — it will be called on each

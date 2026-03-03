@@ -1,6 +1,6 @@
 "use server";
 
-import { createChatAccessToken } from "@trigger.dev/sdk/ai";
-import type { chat } from "@/trigger/chat";
+import { chat } from "@trigger.dev/sdk/ai";
+import type { aiChat } from "@/trigger/chat";
 
-export const getChatToken = async () => createChatAccessToken<typeof chat>("ai-chat");
+export const getChatToken = async () => chat.createAccessToken<typeof aiChat>("ai-chat");
