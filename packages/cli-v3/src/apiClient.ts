@@ -563,7 +563,17 @@ export class CliApiClient {
     });
   }
 
-  async publishEvent(projectRef: string, eventId: string, payload: unknown) {
+  async publishEvent(
+    projectRef: string,
+    eventId: string,
+    payload: unknown,
+    options?: {
+      idempotencyKey?: string;
+      delay?: string;
+      tags?: string[];
+      orderingKey?: string;
+    }
+  ) {
     if (!this.accessToken) {
       throw new Error("publishEvent: No access token");
     }
@@ -579,7 +589,17 @@ export class CliApiClient {
           ...this.getHeaders(),
           "x-trigger-project-ref": projectRef,
         },
-        body: JSON.stringify({ payload }),
+        body: JSON.stringify({
+          payload,
+          options: options
+            ? {
+                idempotencyKey: options.idempotencyKey,
+                delay: options.delay,
+                tags: options.tags,
+                orderingKey: options.orderingKey,
+              }
+            : undefined,
+        }),
       }
     );
   }

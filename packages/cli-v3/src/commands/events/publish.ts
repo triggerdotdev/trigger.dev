@@ -21,6 +21,10 @@ const EventsPublishOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   envFile: z.string().optional(),
   payload: z.string(),
+  delay: z.string().optional(),
+  tags: z.string().optional(),
+  idempotencyKey: z.string().optional(),
+  orderingKey: z.string().optional(),
 });
 
 type EventsPublishOptions = z.infer<typeof EventsPublishOptions>;
@@ -34,6 +38,10 @@ export function configureEventsPublishCommand(program: Command) {
       .option("-c, --config <config file>", "The name of the config file")
       .option("-p, --project-ref <project ref>", "The project ref")
       .option("--env-file <env file>", "Path to the .env file")
+      .option("--delay <delay>", "Delay before execution (e.g. '30s', '5m', ISO date)")
+      .option("--tags <tags>", "Comma-separated tags to attach")
+      .option("--idempotency-key <key>", "Idempotency key for deduplication")
+      .option("--ordering-key <key>", "Ordering key for sequential processing")
   ).action(async (eventId: string, options) => {
     await handleTelemetry(async () => {
       await printInitialBanner(false, options.profile);
@@ -96,7 +104,19 @@ async function _eventsPublishCommand(options: EventsPublishCommandInput) {
   loadingSpinner.start("Publishing event...");
 
   const apiClient = new CliApiClient(authentication.auth.apiUrl, authentication.auth.accessToken);
-  const result = await apiClient.publishEvent(resolvedConfig.project, options.eventId, payload);
+  const publishOptions = {
+    idempotencyKey: options.idempotencyKey,
+    delay: options.delay,
+    tags: options.tags ? options.tags.split(",").map((t: string) => t.trim()) : undefined,
+    orderingKey: options.orderingKey,
+  };
+  const hasOptions = Object.values(publishOptions).some((v) => v !== undefined);
+  const result = await apiClient.publishEvent(
+    resolvedConfig.project,
+    options.eventId,
+    payload,
+    hasOptions ? publishOptions : undefined
+  );
 
   if (!result.success) {
     loadingSpinner.stop("Failed to publish event");

@@ -171,6 +171,16 @@ export class PublishEventService extends BaseService {
         }
       }
 
+      // 2b. Check payload size (512KB limit — larger payloads require object store)
+      const payloadBytes = Buffer.byteLength(JSON.stringify(payload), "utf-8");
+      const MAX_PAYLOAD_BYTES = 512 * 1024; // 512KB
+      if (payloadBytes > MAX_PAYLOAD_BYTES) {
+        throw new ServiceValidationError(
+          `Payload size ${payloadBytes} bytes exceeds the 512KB limit. Use smaller payloads or configure the object store for large payloads.`,
+          413
+        );
+      }
+
       // 3. Find all active subscriptions: exact match + pattern-based
       const [exactSubscriptions, patternSubscriptions] = await Promise.all([
         // Exact subscriptions: tied to this specific EventDefinition

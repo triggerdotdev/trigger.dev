@@ -136,9 +136,26 @@ export class DeadLetterManagementService extends BaseService {
     let retriedCount = 0;
     let failedCount = 0;
 
+    const triggerService = new TriggerTaskService();
+
     for (const dle of pendingItems) {
       try {
-        await this.retry(dle.id, params.environment);
+        const body: TriggerTaskRequestBody = {
+          payload: dle.payload,
+          options: {
+            idempotencyKey: `dlq-retry:${dle.id}`,
+          },
+        };
+
+        await triggerService.call(dle.taskSlug, params.environment, body, {
+          idempotencyKey: `dlq-retry:${dle.id}`,
+        });
+
+        await this._prisma.deadLetterEvent.update({
+          where: { id: dle.id },
+          data: { status: "RETRIED", processedAt: new Date() },
+        });
+
         retriedCount++;
       } catch {
         failedCount++;
