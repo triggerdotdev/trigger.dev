@@ -213,8 +213,15 @@ export type BatchQueueOptions = {
   /**
    * Optional global rate limiter to limit processing across all consumers.
    * When configured, limits the max items/second processed globally.
+   * Rate limiting happens at the worker queue consumer level (1 token per item).
    */
   globalRateLimiter?: GlobalRateLimiter;
+  /**
+   * Maximum number of items allowed in the worker queue before claiming pauses.
+   * Prevents unbounded worker queue growth which could cause visibility timeouts.
+   * Disabled by default (undefined = no limit).
+   */
+  workerQueueMaxDepth?: number;
   /** Logger instance */
   logger?: Logger;
   logLevel?: LogLevel;

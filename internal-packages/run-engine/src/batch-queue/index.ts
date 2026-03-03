@@ -18,6 +18,7 @@ import {
   isAbortError,
   WorkerQueueManager,
   type FairQueueOptions,
+  type GlobalRateLimiter,
 } from "@trigger.dev/redis-worker";
 import { BatchCompletionTracker } from "./completionTracker.js";
 import type {
@@ -76,6 +77,7 @@ export class BatchQueue {
   private abortController: AbortController;
   private workerQueueConsumerLoops: Promise<void>[] = [];
   private workerQueueBlockingTimeoutSeconds: number;
+  private globalRateLimiter?: GlobalRateLimiter;
   private batchedSpanManager: BatchedSpanManager;
 
   // Metrics
@@ -87,6 +89,7 @@ export class BatchQueue {
   private batchProcessingDurationHistogram?: Histogram;
   private itemQueueTimeHistogram?: Histogram;
   private workerQueueLengthGauge?: ObservableGauge;
+  private rateLimitDeniedCounter?: Counter;
 
   constructor(private options: BatchQueueOptions) {
     this.logger = options.logger ?? new Logger("BatchQueue", options.logLevel ?? "info");
@@ -95,6 +98,7 @@ export class BatchQueue {
     this.maxAttempts = options.retry?.maxAttempts ?? 1;
     this.abortController = new AbortController();
     this.workerQueueBlockingTimeoutSeconds = options.workerQueueBlockingTimeoutSeconds ?? 10;
+    this.globalRateLimiter = options.globalRateLimiter;
 
     // Initialize metrics if meter is provided
     if (options.meter) {
@@ -174,8 +178,9 @@ export class BatchQueue {
           },
         },
       ],
-      // Optional global rate limiter to limit max items/sec across all consumers
-      globalRateLimiter: options.globalRateLimiter,
+      // Worker queue depth cap to prevent unbounded growth (protects visibility timeouts)
+      workerQueueMaxDepth: options.workerQueueMaxDepth,
+      workerQueueDepthCheckId: BATCH_WORKER_QUEUE_ID,
       // Enable retry with DLQ disabled when retry config is provided.
       // BatchQueue handles the "final failure" in its own processing loop,
       // so we don't need the DLQ - we just need the retry scheduling.
@@ -608,6 +613,11 @@ export class BatchQueue {
       unit: "ms",
     });
 
+    this.rateLimitDeniedCounter = meter.createCounter("batch_queue.rate_limit_denied", {
+      description: "Number of times the global rate limiter denied processing",
+      unit: "denials",
+    });
+
     this.workerQueueLengthGauge = meter.createObservableGauge("batch_queue.worker_queue.length", {
       description: "Number of items waiting in the batch worker queue",
       unit: "items",
@@ -641,6 +651,42 @@ export class BatchQueue {
         }
 
         try {
+          // Rate limit per-item at the processing level (1 token per message).
+          // Loop until allowed so multiple consumers don't all rush through after one sleep.
+          if (this.globalRateLimiter) {
+            while (this.isRunning) {
+              const result = await this.globalRateLimiter.limit();
+              if (result.allowed) {
+                break;
+              }
+              this.rateLimitDeniedCounter?.add(1);
+              const waitMs = Math.max(10, (result.resetAt ?? Date.now()) - Date.now());
+              if (waitMs > 0) {
+                await new Promise<void>((resolve, reject) => {
+                  const onAbort = () => {
+                    clearTimeout(timer);
+                    reject(this.abortController.signal.reason);
+                  };
+                  const timer = setTimeout(() => {
+                    // Must remove listener when timeout fires, otherwise listeners accumulate
+                    // (the { once: true } option only removes on abort, not on timeout)
+                    this.abortController.signal.removeEventListener("abort", onAbort);
+                    resolve();
+                  }, waitMs);
+                  if (this.abortController.signal.aborted) {
+                    clearTimeout(timer);
+                    reject(this.abortController.signal.reason);
+                    return;
+                  }
+                  this.abortController.signal.addEventListener("abort", onAbort, { once: true });
+                });
+              }
+            }
+            if (!this.isRunning) {
+              break;
+            }
+          }
+
           await this.batchedSpanManager.withBatchedSpan(
             loopId,
             async (span) => {
