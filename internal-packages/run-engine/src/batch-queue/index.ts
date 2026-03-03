@@ -89,6 +89,7 @@ export class BatchQueue {
   private batchProcessingDurationHistogram?: Histogram;
   private itemQueueTimeHistogram?: Histogram;
   private workerQueueLengthGauge?: ObservableGauge;
+  private rateLimitDeniedCounter?: Counter;
 
   constructor(private options: BatchQueueOptions) {
     this.logger = options.logger ?? new Logger("BatchQueue", options.logLevel ?? "info");
@@ -612,6 +613,11 @@ export class BatchQueue {
       unit: "ms",
     });
 
+    this.rateLimitDeniedCounter = meter.createCounter("batch_queue.rate_limit_denied", {
+      description: "Number of times the global rate limiter denied processing",
+      unit: "denials",
+    });
+
     this.workerQueueLengthGauge = meter.createObservableGauge("batch_queue.worker_queue.length", {
       description: "Number of items waiting in the batch worker queue",
       unit: "items",
@@ -653,6 +659,7 @@ export class BatchQueue {
               if (result.allowed) {
                 break;
               }
+              this.rateLimitDeniedCounter?.add(1);
               const waitMs = Math.max(0, (result.resetAt ?? Date.now()) - Date.now());
               if (waitMs > 0) {
                 await new Promise<void>((resolve, reject) => {
