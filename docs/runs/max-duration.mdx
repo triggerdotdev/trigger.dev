@@ -7,7 +7,7 @@ description: "Set a maximum compute time limit for a task to run."
 The `maxComputeSeconds` parameter sets a maximum compute time limit for tasks. When a task exceeds this duration, it will be automatically stopped. This helps prevent runaway tasks and manage compute resources effectively.
 
 <Note>
-  `maxComputeSeconds` replaces the deprecated `maxComputeSeconds` parameter. Both work the same way, but we recommend using `maxComputeSeconds` for clarity.
+  `maxDuration` replaces the deprecated `maxComputeSeconds` parameter. Both work the same way, but we recommend using `maxDuration` for clarity.
 </Note>
 
 You must set a default maxComputeSeconds in your `trigger.config.ts` file, which will apply to all tasks unless overridden:
