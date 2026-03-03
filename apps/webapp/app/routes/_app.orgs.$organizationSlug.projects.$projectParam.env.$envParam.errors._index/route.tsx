@@ -102,7 +102,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       period,
       from,
       to,
-      defaultPeriod: "7d",
+      defaultPeriod: "1d",
       retentionLimitDays,
     })
     .catch((error) => {
@@ -127,7 +127,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typeddefer({
     data: listPromise,
     hourlyOccurrences: hourlyOccurrencesPromise,
-    defaultPeriod: "7d",
+    defaultPeriod: "1d",
     retentionLimitDays,
     organizationSlug,
     projectParam,
