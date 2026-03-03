@@ -120,21 +120,21 @@ export const heavyTask = task({
 });
 ```
 
-### `maxDuration` option
+### `maxComputeSeconds` option
 
-By default tasks can execute indefinitely, which can be great! But you also might want to set a `maxDuration` to prevent a task from running too long. You can set the `maxDuration` on a task, and all runs of that task will be stopped if they exceed the duration.
+By default tasks can execute indefinitely, which can be great! But you also might want to set a `maxComputeSeconds` to prevent a task from running too long. You can set the `maxComputeSeconds` on a task, and all runs of that task will be stopped if they exceed the duration.
 
 ```ts /trigger/long-task.ts
 export const longTask = task({
   id: "long-task",
-  maxDuration: 300, // 300 seconds or 5 minutes
+  maxComputeSeconds: 300, // 300 seconds or 5 minutes
   run: async (payload: any, { ctx }) => {
     //...
   },
 });
 ```
 
-See our [maxDuration guide](/runs/max-duration) for more information.
+See our [maxComputeSeconds guide](/runs/max-duration) for more information.
 
 ## Global lifecycle hooks
 

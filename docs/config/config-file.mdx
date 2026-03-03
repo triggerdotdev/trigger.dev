@@ -334,9 +334,9 @@ export default defineConfig({
 });
 ```
 
-## Max duration
+## Max compute time
 
-You can set the default `maxDuration` for all tasks in your project:
+You can set the default `maxComputeSeconds` for all tasks in your project:
 
 ```ts trigger.config.ts
 import { defineConfig } from "@trigger.dev/sdk";
@@ -344,11 +344,11 @@ import { defineConfig } from "@trigger.dev/sdk";
 export default defineConfig({
   project: "<project ref>",
   // Your other config settings...
-  maxDuration: 60, // 60 seconds
+  maxComputeSeconds: 60, // 60 seconds
 });
 ```
 
-See our [maxDuration guide](/runs/max-duration) for more information.
+See our [maxComputeSeconds guide](/runs/max-duration) for more information.
 
 ## Process keep alive
 
