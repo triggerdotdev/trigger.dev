@@ -24,6 +24,7 @@
 
 import type { ChatTransport, UIMessage, UIMessageChunk, ChatRequestOptions } from "ai";
 import { ApiClient, SSEStreamSubscription } from "@trigger.dev/core/v3";
+import { CHAT_MESSAGES_STREAM_ID, CHAT_STOP_STREAM_ID } from "./chat-constants.js";
 
 const DEFAULT_STREAM_KEY = "chat";
 const DEFAULT_BASE_URL = "https://api.trigger.dev";
@@ -88,10 +89,6 @@ export type TriggerChatTransportOptions = {
 type ChatSessionState = {
   runId: string;
   publicAccessToken: string;
-  /** Token ID from the `__trigger_waitpoint_ready` control chunk. */
-  waitpointTokenId?: string;
-  /** Access token scoped to complete the waitpoint (separate from the run's PAT). */
-  waitpointAccessToken?: string;
   /** Last SSE event ID — used to resume the stream without replaying old events. */
   lastEventId?: string;
 };
@@ -100,9 +97,12 @@ type ChatSessionState = {
  * A custom AI SDK `ChatTransport` that runs chat completions as durable Trigger.dev tasks.
  *
  * When `sendMessages` is called, the transport:
- * 1. Triggers a Trigger.dev task with the chat messages as payload
+ * 1. Triggers a Trigger.dev task (or sends to an existing run via input streams)
  * 2. Subscribes to the task's realtime stream to receive `UIMessageChunk` data
  * 3. Returns a `ReadableStream<UIMessageChunk>` that the AI SDK processes natively
+ *
+ * Calling `stop()` from `useChat` sends a stop signal via input streams, which
+ * aborts the current `streamText` call in the task without ending the run.
  *
  * @example
  * ```tsx
@@ -110,33 +110,15 @@ type ChatSessionState = {
  * import { TriggerChatTransport } from "@trigger.dev/sdk/chat";
  *
  * function Chat({ accessToken }: { accessToken: string }) {
- *   const { messages, sendMessage, status } = useChat({
+ *   const { messages, sendMessage, stop, status } = useChat({
  *     transport: new TriggerChatTransport({
  *       task: "my-chat-task",
  *       accessToken,
  *     }),
  *   });
  *
- *   // ... render messages
+ *   // stop() sends a stop signal — the task aborts streamText but keeps the run alive
  * }
- * ```
- *
- * On the backend, define the task using `chatTask` from `@trigger.dev/sdk/ai`:
- *
- * @example
- * ```ts
- * import { chatTask } from "@trigger.dev/sdk/ai";
- * import { streamText, convertToModelMessages } from "ai";
- *
- * export const myChatTask = chatTask({
- *   id: "my-chat-task",
- *   run: async ({ messages }) => {
- *     return streamText({
- *       model: openai("gpt-4o"),
- *       messages: convertToModelMessages(messages),
- *     });
- *   },
- * });
  * ```
  */
 export class TriggerChatTransport implements ChatTransport<UIMessage> {
@@ -183,19 +165,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     const session = this.sessions.get(chatId);
 
-    // If we have a waitpoint token from a previous turn, complete it to
-    // resume the existing run instead of triggering a new one.
-    if (session?.waitpointTokenId && session.waitpointAccessToken) {
-      const tokenId = session.waitpointTokenId;
-      const tokenAccessToken = session.waitpointAccessToken;
-
-      // Clear the used waitpoint so we don't try to reuse it
-      session.waitpointTokenId = undefined;
-      session.waitpointAccessToken = undefined;
-
+    // If we have an existing run, send the message via input stream
+    // to resume the conversation in the same run.
+    if (session?.runId) {
       try {
-        const wpClient = new ApiClient(this.baseURL, tokenAccessToken);
-        await wpClient.completeWaitpointToken(tokenId, { data: payload });
+        const apiClient = new ApiClient(this.baseURL, session.publicAccessToken);
+        await apiClient.sendInputStream(session.runId, CHAT_MESSAGES_STREAM_ID, payload);
 
         return this.subscribeToStream(
           session.runId,
@@ -204,12 +179,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           chatId
         );
       } catch {
-        // If completing the waitpoint fails (run died, token expired, etc.),
-        // fall through to trigger a new run.
+        // If sending fails (run died, etc.), fall through to trigger a new run.
         this.sessions.delete(chatId);
       }
     }
 
+    // First message or run has ended — trigger a new run
     const currentToken = await this.resolveAccessToken();
     const apiClient = new ApiClient(this.baseURL, currentToken);
 
@@ -263,7 +238,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       ...this.extraHeaders,
     };
 
-    // When resuming a run via waitpoint, skip past previously-seen events
+    // When resuming a run, skip past previously-seen events
     // so we only receive the new turn's response.
     const session = chatId ? this.sessions.get(chatId) : undefined;
 
@@ -274,6 +249,24 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     const combinedSignal = abortSignal
       ? AbortSignal.any([abortSignal, internalAbort.signal])
       : internalAbort.signal;
+
+    // When the caller aborts (user calls stop()), send a stop signal to the
+    // running task via input streams, then close the SSE connection.
+    if (abortSignal) {
+      abortSignal.addEventListener(
+        "abort",
+        () => {
+          if (session?.runId) {
+            const api = new ApiClient(this.baseURL, session.publicAccessToken);
+            api
+              .sendInputStream(session.runId, CHAT_STOP_STREAM_ID, { stop: true })
+              .catch(() => {}); // Best-effort
+          }
+          internalAbort.abort();
+        },
+        { once: true }
+      );
+    }
 
     const subscription = new SSEStreamSubscription(
       `${this.baseURL}/realtime/v1/streams/${runId}/${this.streamKey}`,
@@ -300,11 +293,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 // ended (or was killed). Clear the session so that the
                 // next message triggers a fresh run.
                 if (chatId) {
-                  const s = this.sessions.get(chatId);
-                  if (s) {
-                    s.waitpointTokenId = undefined;
-                    s.waitpointAccessToken = undefined;
-                  }
+                  this.sessions.delete(chatId);
                 }
                 controller.close();
                 return;
@@ -326,16 +315,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               if (value.chunk != null && typeof value.chunk === "object") {
                 const chunk = value.chunk as Record<string, unknown>;
 
-                // Intercept the waitpoint-ready control chunk emitted by
+                // Intercept the turn-complete control chunk emitted by
                 // `chatTask` after the AI response stream completes. This
                 // chunk is never forwarded to the AI SDK consumer.
-                if (chunk.type === "__trigger_waitpoint_ready" && chatId) {
-                  const s = this.sessions.get(chatId);
-                  if (s) {
-                    s.waitpointTokenId = chunk.tokenId as string;
-                    s.waitpointAccessToken = chunk.publicAccessToken as string;
-                  }
-
+                if (chunk.type === "__trigger_turn_complete" && chatId) {
                   // Abort the underlying fetch to close the SSE connection
                   internalAbort.abort();
                   try {
@@ -391,4 +374,3 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 export function createChatTransport(options: TriggerChatTransportOptions): TriggerChatTransport {
   return new TriggerChatTransport(options);
 }
-
