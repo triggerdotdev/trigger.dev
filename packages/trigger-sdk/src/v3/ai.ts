@@ -15,7 +15,11 @@ import { auth } from "./auth.js";
 import { metadata } from "./metadata.js";
 import { streams } from "./streams.js";
 import { createTask } from "./shared.js";
-import { wait } from "./wait.js";
+import {
+  CHAT_STREAM_KEY as _CHAT_STREAM_KEY,
+  CHAT_MESSAGES_STREAM_ID,
+  CHAT_STOP_STREAM_ID,
+} from "./chat-constants.js";
 
 const METADATA_KEY = "tool.execute.options";
 
@@ -136,13 +140,13 @@ export const ai = {
  * ```ts
  * // actions.ts
  * "use server";
- * import { createChatAccessToken } from "@trigger.dev/sdk/ai";
- * import type { chat } from "@/trigger/chat";
+ * import { chat } from "@trigger.dev/sdk/ai";
+ * import type { myChat } from "@/trigger/chat";
  *
- * export const getChatToken = () => createChatAccessToken<typeof chat>("ai-chat");
+ * export const getChatToken = () => chat.createAccessToken<typeof myChat>("my-chat");
  * ```
  */
-export async function createChatAccessToken<TTask extends AnyTask>(
+function createChatAccessToken<TTask extends AnyTask>(
   taskId: TaskIdentifier<TTask>
 ): Promise<string> {
   return auth.createTriggerPublicToken(taskId as string, { multipleUse: true });
@@ -157,7 +161,10 @@ export async function createChatAccessToken<TTask extends AnyTask>(
  * Both `TriggerChatTransport` (frontend) and `pipeChat`/`chatTask` (backend)
  * use this key by default.
  */
-export const CHAT_STREAM_KEY = "chat";
+export const CHAT_STREAM_KEY = _CHAT_STREAM_KEY;
+
+// Re-export input stream IDs for advanced usage
+export { CHAT_MESSAGES_STREAM_ID, CHAT_STOP_STREAM_ID };
 
 /**
  * The payload shape that the chat transport sends to the triggered task.
@@ -186,6 +193,28 @@ export type ChatTaskPayload<TMessage extends UIMessage = UIMessage> = {
   /** Custom metadata from the frontend */
   metadata?: unknown;
 };
+
+/**
+ * Abort signals provided to the `chatTask` run function.
+ */
+export type ChatTaskSignals = {
+  /** Combined signal — fires on run cancel OR stop generation. Pass to `streamText`. */
+  signal: AbortSignal;
+  /** Fires only when the run is cancelled, expired, or exceeds maxDuration. */
+  cancelSignal: AbortSignal;
+  /** Fires only when the frontend stops generation for this turn (per-turn, reset each turn). */
+  stopSignal: AbortSignal;
+};
+
+/**
+ * The full payload passed to a `chatTask` run function.
+ * Extends `ChatTaskPayload` (the wire payload) with abort signals.
+ */
+export type ChatTaskRunPayload = ChatTaskPayload & ChatTaskSignals;
+
+// Input streams for bidirectional chat communication
+const messagesInput = streams.input<ChatTaskPayload>({ id: CHAT_MESSAGES_STREAM_ID });
+const stopInput = streams.input<{ stop: true; message?: string }>({ id: CHAT_STOP_STREAM_ID });
 
 /**
  * Tracks how many times `pipeChat` has been called in the current `chatTask` run.
@@ -253,7 +282,7 @@ function isReadableStream(value: unknown): value is ReadableStream<unknown> {
  * @example
  * ```ts
  * import { task } from "@trigger.dev/sdk";
- * import { pipeChat, type ChatTaskPayload } from "@trigger.dev/sdk/ai";
+ * import { chat, type ChatTaskPayload } from "@trigger.dev/sdk/ai";
  * import { streamText, convertToModelMessages } from "ai";
  *
  * export const myChatTask = task({
@@ -264,7 +293,7 @@ function isReadableStream(value: unknown): value is ReadableStream<unknown> {
  *       messages: convertToModelMessages(payload.messages),
  *     });
  *
- *     await pipeChat(result);
+ *     await chat.pipe(result);
  *   },
  * });
  * ```
@@ -274,11 +303,11 @@ function isReadableStream(value: unknown): value is ReadableStream<unknown> {
  * // Works from anywhere inside a task — even deep in your agent code
  * async function runAgentLoop(messages: CoreMessage[]) {
  *   const result = streamText({ model, messages });
- *   await pipeChat(result);
+ *   await chat.pipe(result);
  * }
  * ```
  */
-export async function pipeChat(
+async function pipeChat(
   source: UIMessageStreamable | AsyncIterable<unknown> | ReadableStream<unknown>,
   options?: PipeChatOptions
 ): Promise<void> {
@@ -314,16 +343,15 @@ export async function pipeChat(
  * Options for defining a chat task.
  *
  * Extends the standard `TaskOptions` but pre-types the payload as `ChatTaskPayload`
- * and overrides `run` to accept `ChatTaskPayload` directly.
+ * and overrides `run` to accept `ChatTaskRunPayload` (with abort signals).
  *
  * **Auto-piping:** If the `run` function returns a value with `.toUIMessageStream()`
  * (like a `StreamTextResult`), the stream is automatically piped to the frontend.
- * For complex flows, use `pipeChat()` manually from anywhere in your code.
  *
- * **Single-run mode:** By default, the task runs a waitpoint loop so that the
+ * **Single-run mode:** By default, the task uses input streams so that the
  * entire conversation lives inside one run. After each AI response, the task
- * emits a control chunk and pauses via `wait.forToken`. The frontend transport
- * resumes the same run by completing the token with the next set of messages.
+ * emits a control chunk and suspends via `messagesInput.wait()`. The frontend
+ * transport resumes the same run by sending the next message via input streams.
  */
 export type ChatTaskOptions<TIdentifier extends string> = Omit<
   TaskOptions<TIdentifier, ChatTaskPayload, unknown>,
@@ -332,13 +360,13 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
   /**
    * The run function for the chat task.
    *
-   * Receives a `ChatTaskPayload` with the conversation messages, chat session ID,
-   * and trigger type.
+   * Receives a `ChatTaskRunPayload` with the conversation messages, chat session ID,
+   * trigger type, and abort signals (`signal`, `cancelSignal`, `stopSignal`).
    *
    * **Auto-piping:** If this function returns a value with `.toUIMessageStream()`,
    * the stream is automatically piped to the frontend.
    */
-  run: (payload: ChatTaskPayload) => Promise<unknown>;
+  run: (payload: ChatTaskRunPayload) => Promise<unknown>;
 
   /**
    * Maximum number of conversational turns (message round-trips) a single run
@@ -351,7 +379,7 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
 
   /**
    * How long to wait for the next message before timing out and ending the run.
-   * Accepts any duration string recognised by `wait.createToken` (e.g. `"1h"`, `"30m"`).
+   * Accepts any duration string (e.g. `"1h"`, `"30m"`).
    *
    * @default "1h"
    */
@@ -361,87 +389,164 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
 /**
  * Creates a Trigger.dev task pre-configured for AI SDK chat.
  *
- * - **Pre-types the payload** as `ChatTaskPayload` — no manual typing needed
+ * - **Pre-types the payload** as `ChatTaskRunPayload` — includes abort signals
  * - **Auto-pipes the stream** if `run` returns a `StreamTextResult`
+ * - **Multi-turn**: keeps the conversation in a single run using input streams
+ * - **Stop support**: frontend can stop generation mid-stream via the stop input stream
  * - For complex flows, use `pipeChat()` from anywhere inside your task code
  *
  * @example
  * ```ts
- * import { chatTask } from "@trigger.dev/sdk/ai";
+ * import { chat } from "@trigger.dev/sdk/ai";
  * import { streamText, convertToModelMessages } from "ai";
  * import { openai } from "@ai-sdk/openai";
  *
- * // Simple: return streamText result — auto-piped to the frontend
- * export const myChatTask = chatTask({
- *   id: "my-chat-task",
- *   run: async ({ messages }) => {
+ * export const myChat = chat.task({
+ *   id: "my-chat",
+ *   run: async ({ messages, signal }) => {
  *     return streamText({
  *       model: openai("gpt-4o"),
  *       messages: convertToModelMessages(messages),
+ *       abortSignal: signal, // fires on stop or run cancel
  *     });
  *   },
  * });
  * ```
- *
- * @example
- * ```ts
- * import { chatTask, pipeChat } from "@trigger.dev/sdk/ai";
- *
- * // Complex: pipeChat() from deep in your agent code
- * export const myAgentTask = chatTask({
- *   id: "my-agent-task",
- *   run: async ({ messages }) => {
- *     await runComplexAgentLoop(messages);
- *   },
- * });
- * ```
  */
-export function chatTask<TIdentifier extends string>(
+function chatTask<TIdentifier extends string>(
   options: ChatTaskOptions<TIdentifier>
 ): Task<TIdentifier, ChatTaskPayload, unknown> {
   const { run: userRun, maxTurns = 100, turnTimeout = "1h", ...restOptions } = options;
 
   return createTask<TIdentifier, ChatTaskPayload, unknown>({
     ...restOptions,
-    run: async (payload: ChatTaskPayload) => {
+    run: async (payload: ChatTaskPayload, { signal: runSignal }) => {
       let currentPayload = payload;
 
-      for (let turn = 0; turn < maxTurns; turn++) {
-        _chatPipeCount = 0;
+      // Mutable reference to the current turn's stop controller so the
+      // stop input stream listener (registered once) can abort the right turn.
+      let currentStopController: AbortController | undefined;
 
-        const result = await userRun(currentPayload);
+      // Listen for stop signals for the lifetime of the run
+      const stopSub = stopInput.on((data) => {
+        currentStopController?.abort(data?.message || "stopped");
+      });
 
-        // Auto-pipe if the run function returned a StreamTextResult or similar,
-        // but only if pipeChat() wasn't already called manually during this turn
-        if (_chatPipeCount === 0 && isUIMessageStreamable(result)) {
-          await pipeChat(result);
-        }
+      try {
+        for (let turn = 0; turn < maxTurns; turn++) {
+          _chatPipeCount = 0;
 
-        // Create a waitpoint token and emit a control chunk so the frontend
-        // knows to resume this run instead of triggering a new one.
-        const token = await wait.createToken({ timeout: turnTimeout });
+          // Per-turn stop controller (reset each turn)
+          const stopController = new AbortController();
+          currentStopController = stopController;
 
-        const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
-          execute: ({ write }) => {
-            write({
-              type: "__trigger_waitpoint_ready",
-              tokenId: token.id,
-              publicAccessToken: token.publicAccessToken,
+          // Three signals for the user's run function
+          const stopSignal = stopController.signal;
+          const cancelSignal = runSignal;
+          const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
+
+          // Buffer messages that arrive during streaming
+          const pendingMessages: ChatTaskPayload[] = [];
+          const msgSub = messagesInput.on((msg) => {
+            pendingMessages.push(msg as ChatTaskPayload);
+          });
+
+          try {
+            const result = await userRun({
+              ...currentPayload,
+              signal: combinedSignal,
+              cancelSignal,
+              stopSignal,
             });
-          },
-        });
-        await waitUntilComplete();
 
-        // Pause until the frontend completes the token with the next message
-        const next = await wait.forToken<ChatTaskPayload>(token);
+            // Auto-pipe if the run function returned a StreamTextResult or similar,
+            // but only if pipeChat() wasn't already called manually during this turn
+            if (_chatPipeCount === 0 && isUIMessageStreamable(result)) {
+              await pipeChat(result, { signal: combinedSignal });
+            }
+          } catch (error) {
+            // Handle AbortError from streamText gracefully
+            if (error instanceof Error && error.name === "AbortError") {
+              if (runSignal.aborted) {
+                return; // Full run cancellation — exit
+              }
+              // Stop generation — fall through to continue the loop
+            } else {
+              throw error;
+            }
+          } finally {
+            msgSub.off();
+          }
 
-        if (!next.ok) {
-          // Timed out waiting for the next message — end the conversation
-          return;
+          if (runSignal.aborted) return;
+
+          // Write turn-complete control chunk so frontend closes its stream
+          await writeTurnCompleteChunk();
+
+          // If messages arrived during streaming, use the first one immediately
+          if (pendingMessages.length > 0) {
+            currentPayload = pendingMessages[0]!;
+            continue;
+          }
+
+          // Suspend the task (frees compute) until the next message arrives
+          const next = await messagesInput.wait({ timeout: turnTimeout });
+
+          if (!next.ok) {
+            // Timed out waiting for the next message — end the conversation
+            return;
+          }
+
+          currentPayload = next.output as ChatTaskPayload;
         }
-
-        currentPayload = next.output;
+      } finally {
+        stopSub.off();
       }
     },
   });
+}
+
+/**
+ * Namespace for AI SDK chat integration.
+ *
+ * @example
+ * ```ts
+ * import { chat } from "@trigger.dev/sdk/ai";
+ *
+ * // Define a chat task
+ * export const myChat = chat.task({
+ *   id: "my-chat",
+ *   run: async ({ messages, signal }) => {
+ *     return streamText({ model, messages, abortSignal: signal });
+ *   },
+ * });
+ *
+ * // Pipe a stream manually (from inside a task)
+ * await chat.pipe(streamTextResult);
+ *
+ * // Create an access token (from a server action)
+ * const token = await chat.createAccessToken("my-chat");
+ * ```
+ */
+export const chat = {
+  /** Create a chat task. See {@link chatTask}. */
+  task: chatTask,
+  /** Pipe a stream to the chat transport. See {@link pipeChat}. */
+  pipe: pipeChat,
+  /** Create a public access token for a chat task. See {@link createChatAccessToken}. */
+  createAccessToken: createChatAccessToken,
+};
+
+/**
+ * Writes a turn-complete control chunk to the chat output stream.
+ * The frontend transport intercepts this to close the ReadableStream for the current turn.
+ * @internal
+ */
+async function writeTurnCompleteChunk(): Promise<void> {
+  const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+    execute: ({ write }) => {
+      write({ type: "__trigger_turn_complete" });
+    },
+  });
+  await waitUntilComplete();
 }
