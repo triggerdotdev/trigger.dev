@@ -19,7 +19,7 @@ import { $replica } from "~/db.server";
 import { logsClickhouseClient, clickhouseClient } from "~/services/clickhouseInstance.server";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Suspense } from "react";
+import { Suspense, useMemo } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Callout } from "~/components/primitives/Callout";
@@ -28,18 +28,9 @@ import { formatDistanceToNow } from "date-fns";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import * as Property from "~/components/primitives/PropertyTable";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
-import { DateTime, formatDateTime } from "~/components/primitives/DateTime";
+import { DateTime } from "~/components/primitives/DateTime";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
-import {
-  Bar,
-  BarChart,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  YAxis,
-  type TooltipProps,
-} from "recharts";
-import TooltipPortal from "~/components/primitives/TooltipPortal";
+import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
@@ -217,12 +208,12 @@ function ErrorGroupDetail({
   }
 
   return (
-    <div className="grid h-full grid-rows-[auto_auto_1fr] overflow-hidden">
+    <div className="grid h-full grid-rows-[auto_16rem_1fr] overflow-hidden">
       {/* Error Summary */}
       <div className="border-b border-grid-bright p-4">
         <Header2 className="mb-4">{errorGroup.errorMessage}</Header2>
 
-        <div className="grid grid-cols-2 gap-x-12 gap-y-1">
+        <div className="grid grid-cols-3 gap-x-12 gap-y-1">
           <Property.Table>
             <Property.Item>
               <Property.Label>ID</Property.Label>
@@ -243,6 +234,9 @@ function ErrorGroupDetail({
               <Property.Label>Occurrences</Property.Label>
               <Property.Value>{formatNumberCompact(errorGroup.count)}</Property.Value>
             </Property.Item>
+          </Property.Table>
+
+          <Property.Table>
             <Property.Item>
               <Property.Label>First seen</Property.Label>
               <Property.Value>
@@ -271,13 +265,10 @@ function ErrorGroupDetail({
       </div>
 
       {/* Activity over past 7 days by hour */}
-      <div className="border-b border-grid-bright px-4 py-3">
-        <Header3 className="mb-2">Activity (past 7 days)</Header3>
+      <div className="flex flex-col overflow-hidden border-b border-grid-bright px-4 py-3">
+        <Header3 className="mb-2 shrink-0">Activity (past 7 days)</Header3>
         <Suspense fallback={<ActivityChartBlankState />}>
-          <TypedAwait
-            resolve={hourlyActivity}
-            errorElement={<ActivityChartBlankState />}
-          >
+          <TypedAwait resolve={hourlyActivity} errorElement={<ActivityChartBlankState />}>
             {(activity) =>
               activity.length > 0 ? (
                 <ActivityChart activity={activity} />
@@ -291,7 +282,7 @@ function ErrorGroupDetail({
 
       {/* Runs Table */}
       <div className="flex flex-col gap-1 overflow-y-hidden">
-        <Header3 className="mt-2 mb-1 px-4">Recent runs</Header3>
+        <Header3 className="mb-1 mt-2 px-4">Recent runs</Header3>
         {runList ? (
           <TaskRunsTable
             total={runList.runs.length}
@@ -318,69 +309,92 @@ function ErrorGroupDetail({
   );
 }
 
+const activityChartConfig: ChartConfig = {
+  count: {
+    label: "Occurrences",
+    color: "#EC003F",
+  },
+};
+
 function ActivityChart({ activity }: { activity: ErrorGroupHourlyActivity }) {
-  const maxCount = Math.max(...activity.map((d) => d.count));
+  const data = useMemo(
+    () =>
+      activity.map((d) => ({
+        ...d,
+        __timestamp: d.date instanceof Date ? d.date.getTime() : new Date(d.date).getTime(),
+      })),
+    [activity]
+  );
+
+  const midnightTicks = useMemo(() => {
+    const ticks: number[] = [];
+    for (const d of data) {
+      const date = new Date(d.__timestamp);
+      if (date.getHours() === 0 && date.getMinutes() === 0) {
+        ticks.push(d.__timestamp);
+      }
+    }
+    return ticks;
+  }, [data]);
+
+  const xAxisFormatter = useMemo(() => {
+    return (value: number) => {
+      const date = new Date(value);
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+    };
+  }, []);
+
+  const tooltipLabelFormatter = useMemo(() => {
+    return (_label: string, payload: Array<{ payload?: Record<string, unknown> }>) => {
+      const timestamp = payload[0]?.payload?.__timestamp as number | undefined;
+      if (timestamp) {
+        const date = new Date(timestamp);
+        return date.toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        });
+      }
+      return _label;
+    };
+  }, []);
 
   return (
-    <div className="flex items-start gap-2">
-      <div className="h-16 flex-1 rounded-sm">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={activity} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-            <YAxis domain={[0, maxCount || 1]} hide />
-            <Tooltip
-              cursor={{ fill: "transparent" }}
-              content={<ActivityChartTooltip />}
-              allowEscapeViewBox={{ x: true, y: true }}
-              wrapperStyle={{ zIndex: 1000 }}
-              animationDuration={0}
-            />
-            <Bar dataKey="count" fill="#EC003F" strokeWidth={0} isAnimationActive={false} />
-            <ReferenceLine y={0} stroke="#B5B8C0" strokeWidth={1} />
-            {maxCount > 0 && (
-              <ReferenceLine
-                y={maxCount}
-                stroke="#B5B8C0"
-                strokeDasharray="3 2"
-                strokeWidth={1}
-              />
-            )}
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-      <span className="text-xxs tabular-nums text-text-dimmed">
-        {formatNumberCompact(maxCount)}
-      </span>
-    </div>
+    <Chart.Root
+      config={activityChartConfig}
+      data={data}
+      dataKey="__timestamp"
+      series={["count"]}
+      fillContainer
+    >
+      <Chart.Bar
+        xAxisProps={{
+          tickFormatter: xAxisFormatter,
+          ticks: midnightTicks,
+          height: 40,
+        }}
+        yAxisProps={{
+          width: 30,
+          tickMargin: 4,
+        }}
+        tooltipLabelFormatter={tooltipLabelFormatter}
+      />
+    </Chart.Root>
   );
 }
 
-const ActivityChartTooltip = ({ active, payload }: TooltipProps<number, string>) => {
-  if (active && payload && payload.length > 0) {
-    const entry = payload[0].payload as { date: Date; count: number };
-    const date = entry.date instanceof Date ? entry.date : new Date(entry.date);
-    const formattedDate = formatDateTime(date, "UTC", [], false, true);
-
-    return (
-      <TooltipPortal active={active}>
-        <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-          <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
-          <div className="mt-2 text-xs text-text-bright">
-            <span className="tabular-nums">{entry.count}</span>{" "}
-            <span className="text-text-dimmed">
-              {entry.count === 1 ? "occurrence" : "occurrences"}
-            </span>
-          </div>
-        </div>
-      </TooltipPortal>
-    );
-  }
-
-  return null;
-};
-
 function ActivityChartBlankState() {
   return (
-    <div className="flex h-16 w-full items-end gap-px rounded-sm">
+    <div className="flex min-h-0 flex-1 items-end gap-px rounded-sm">
       {[...Array(42)].map((_, i) => (
         <div key={i} className="h-full flex-1 bg-charcoal-850" />
       ))}

@@ -114,6 +114,7 @@ import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
 import { type SideMenuSectionId } from "./sideMenuTypes";
+import { IconBugFilled } from "@tabler/icons-react";
 
 /** Get the collapsed state for a specific side menu section from user preferences */
 function getSectionCollapsed(
@@ -478,7 +479,7 @@ export function SideMenu({
                 )}
                 <SideMenuItem
                   name="Errors"
-                  icon={BugAntIcon}
+                  icon={IconBugFilled}
                   activeIconColor="text-amber-500"
                   inactiveIconColor="text-amber-500"
                   to={v3ErrorsPath(organization, project, environment)}
