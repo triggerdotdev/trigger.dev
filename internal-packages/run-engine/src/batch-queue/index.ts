@@ -656,11 +656,16 @@ export class BatchQueue {
               const waitMs = Math.max(0, (result.resetAt ?? Date.now()) - Date.now());
               if (waitMs > 0) {
                 await new Promise<void>((resolve, reject) => {
-                  const timer = setTimeout(resolve, waitMs);
                   const onAbort = () => {
                     clearTimeout(timer);
                     reject(this.abortController.signal.reason);
                   };
+                  const timer = setTimeout(() => {
+                    // Must remove listener when timeout fires, otherwise listeners accumulate
+                    // (the { once: true } option only removes on abort, not on timeout)
+                    this.abortController.signal.removeEventListener("abort", onAbort);
+                    resolve();
+                  }, waitMs);
                   if (this.abortController.signal.aborted) {
                     clearTimeout(timer);
                     reject(this.abortController.signal.reason);
