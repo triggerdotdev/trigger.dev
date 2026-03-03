@@ -398,6 +398,7 @@ export class RunEngine {
       consumerIntervalMs: options.batchQueue?.consumerIntervalMs ?? 100,
       defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
       globalRateLimiter: options.batchQueue?.globalRateLimiter,
+      workerQueueMaxDepth: options.batchQueue?.workerQueueMaxDepth,
       startConsumers: startBatchQueueConsumers,
       retry: options.batchQueue?.retry,
       tracer: options.tracer,

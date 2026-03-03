@@ -993,6 +993,9 @@ const EnvironmentSchema = z
     // Global rate limit: max items processed per second across all consumers
     // If not set, no global rate limiting is applied
     BATCH_QUEUE_GLOBAL_RATE_LIMIT: z.coerce.number().int().positive().optional(),
+    // Max items in the worker queue before claiming pauses (protects visibility timeouts)
+    // If not set, no depth limit is applied
+    BATCH_QUEUE_WORKER_QUEUE_MAX_DEPTH: z.coerce.number().int().positive().optional(),
 
     ADMIN_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     ADMIN_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
