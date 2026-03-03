@@ -34,10 +34,13 @@ const { action, loader } = createActionApiRoute(
       eventPublishRateLimitChecker
     );
 
-    try {
-      const results: PublishEventResult[] = [];
+    const results: Array<
+      | { ok: true; eventId: string; runs: PublishEventResult["runs"] }
+      | { ok: false; error: string }
+    > = [];
 
-      for (const item of body.items) {
+    for (const item of body.items) {
+      try {
         const result = await service.call(
           params.eventId,
           authentication.environment,
@@ -52,31 +55,23 @@ const { action, loader } = createActionApiRoute(
           }
         );
 
-        results.push(result);
+        results.push({ ok: true, eventId: result.eventId, runs: result.runs });
+      } catch (error) {
+        if (error instanceof EventPublishRateLimitError) {
+          results.push({ ok: false, error: error.message });
+        } else if (error instanceof ServiceValidationError) {
+          results.push({ ok: false, error: error.message });
+        } else {
+          results.push({
+            ok: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
       }
-
-      return json({ results }, { status: 200 });
-    } catch (error) {
-      if (error instanceof EventPublishRateLimitError) {
-        return json(
-          { error: error.message },
-          {
-            status: 429,
-            headers: {
-              "x-ratelimit-limit": String(error.limit),
-              "x-ratelimit-remaining": String(error.remaining),
-              "retry-after": String(Math.ceil(error.retryAfterMs / 1000)),
-            },
-          }
-        );
-      } else if (error instanceof ServiceValidationError) {
-        return json({ error: error.message }, { status: error.status ?? 422 });
-      } else if (error instanceof Error) {
-        return json({ error: error.message }, { status: 500 });
-      }
-
-      return json({ error: "Something went wrong" }, { status: 500 });
     }
+
+    const hasErrors = results.some((r) => !r.ok);
+    return json({ results }, { status: hasErrors ? 207 : 200 });
   }
 );
 

@@ -154,6 +154,10 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     return [this.queueKey(env, queue), constants.GLOBAL_CONCURRENCY_LIMIT_PART].join(":");
   }
 
+  queueGlobalCurrentConcurrencyKey(env: RunQueueKeyProducerEnvironment, queue: string) {
+    return [this.queueKey(env, queue), constants.GLOBAL_CURRENT_CONCURRENCY_PART].join(":");
+  }
+
   queueCurrentConcurrencyKeyFromQueue(queue: string) {
     return `${queue}:${constants.CURRENT_CONCURRENCY_PART}`;
   }

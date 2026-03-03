@@ -239,6 +239,7 @@ export function createEvent<TId extends string, TSchema extends Schema | undefin
 
       const response = await apiClient.publishAndWaitEvent(id, {
         payload: validatedPayload,
+        parentRunId: ctx.run.id,
         options: options
           ? {
               idempotencyKey: options.idempotencyKey,
@@ -246,11 +247,8 @@ export function createEvent<TId extends string, TSchema extends Schema | undefin
               tags: options.tags,
               metadata: options.metadata,
               orderingKey: options.orderingKey,
-              parentRunId: ctx.run.id,
             }
-          : {
-              parentRunId: ctx.run.id,
-            },
+          : undefined,
       });
 
       if (response.runs.length === 0) {

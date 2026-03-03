@@ -2106,7 +2106,7 @@ export class RunQueue {
       envCurrentConcurrencyKey,
       queueCurrentDequeuedKey,
       envCurrentDequeuedKey,
-      this.keys.queueGlobalCurrentConcurrencyKeyFromQueue(queue),
+      this.keys.queueGlobalCurrentConcurrencyKey(env, queue),
       messageId
     );
   }
@@ -2697,6 +2697,11 @@ for i, member in ipairs(expiredMembers) do
       local dequeuedKey = queueKey .. ":currentDequeued"
       redis.call('SREM', concurrencyKey, runId)
       redis.call('SREM', dequeuedKey, runId)
+
+      -- Remove from global concurrency set (strip :ck:* suffix to get base queue key)
+      local globalQueueKey = string.gsub(rawQueueKey, ":ck:.+$", "")
+      local globalCurrentConcurrencyKey = keyPrefix .. globalQueueKey .. ":globalCurrentConcurrency"
+      redis.call('SREM', globalCurrentConcurrencyKey, runId)
 
       -- Env concurrency (derive from rawQueueKey; must match RunQueueKeyProducer: org + proj + env)
       -- rawQueueKey format: {org:X}:proj:Y:env:Z:queue:Q[:ck:C]

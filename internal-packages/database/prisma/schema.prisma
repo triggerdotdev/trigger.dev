@@ -644,7 +644,7 @@ model EventSubscription {
 
   @@unique([eventDefinitionId, taskSlug, environmentId])
   @@index([eventDefinitionId, environmentId, enabled])
-  @@index([projectId, environmentId])
+  @@index([projectId, environmentId, enabled])
 }
 
 enum DeadLetterStatus {

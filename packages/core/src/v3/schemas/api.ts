@@ -1602,14 +1602,14 @@ export type AppendToStreamResponseBody = z.infer<typeof AppendToStreamResponseBo
 // ---- Event publish schemas ----
 
 export const PublishEventRequestBody = z.object({
-  payload: z.any(),
+  payload: z.unknown(),
   options: z
     .object({
-      idempotencyKey: z.string().optional(),
+      idempotencyKey: z.string().max(256).optional(),
       delay: z.string().or(z.coerce.date()).optional(),
       tags: RunTags.optional(),
-      metadata: z.any().optional(),
-      context: z.any().optional(),
+      metadata: z.record(z.unknown()).optional(),
+      context: z.unknown().optional(),
       orderingKey: z.string().optional(),
     })
     .optional(),
@@ -1630,21 +1630,23 @@ export const PublishEventResponseBody = z.object({
 export type PublishEventResponseBody = z.infer<typeof PublishEventResponseBody>;
 
 export const BatchPublishEventRequestBody = z.object({
-  items: z.array(
-    z.object({
-      payload: z.any(),
-      options: z
-        .object({
-          idempotencyKey: z.string().optional(),
-          delay: z.string().or(z.coerce.date()).optional(),
-          tags: RunTags.optional(),
-          metadata: z.any().optional(),
-          context: z.any().optional(),
-          orderingKey: z.string().optional(),
-        })
-        .optional(),
-    })
-  ),
+  items: z
+    .array(
+      z.object({
+        payload: z.unknown(),
+        options: z
+          .object({
+            idempotencyKey: z.string().max(256).optional(),
+            delay: z.string().or(z.coerce.date()).optional(),
+            tags: RunTags.optional(),
+            metadata: z.record(z.unknown()).optional(),
+            context: z.unknown().optional(),
+            orderingKey: z.string().optional(),
+          })
+          .optional(),
+      })
+    )
+    .max(100),
 });
 
 export type BatchPublishEventRequestBody = z.infer<typeof BatchPublishEventRequestBody>;
@@ -1656,16 +1658,16 @@ export const BatchPublishEventResponseBody = z.object({
 export type BatchPublishEventResponseBody = z.infer<typeof BatchPublishEventResponseBody>;
 
 export const PublishAndWaitEventRequestBody = z.object({
-  payload: z.any(),
+  payload: z.unknown(),
+  parentRunId: z.string(),
   options: z
     .object({
-      idempotencyKey: z.string().optional(),
+      idempotencyKey: z.string().max(256).optional(),
       delay: z.string().or(z.coerce.date()).optional(),
       tags: RunTags.optional(),
-      metadata: z.any().optional(),
-      context: z.any().optional(),
+      metadata: z.record(z.unknown()).optional(),
+      context: z.unknown().optional(),
       orderingKey: z.string().optional(),
-      parentRunId: z.string(),
     })
     .optional(),
 });

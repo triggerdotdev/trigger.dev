@@ -26,13 +26,7 @@ const { action, loader } = createActionApiRoute(
     },
   },
   async ({ body, params, authentication }) => {
-    const parentRunId = body.options?.parentRunId;
-    if (!parentRunId) {
-      return json(
-        { error: "parentRunId is required for publishAndWait" },
-        { status: 400 }
-      );
-    }
+    const parentRunId = body.parentRunId;
 
     const service = new PublishEventService(
       undefined,
