@@ -1333,7 +1333,19 @@ describe("FairQueue", () => {
           });
         }
 
-        // Start processing
+        // Start processing and track peak worker queue depth
+        let peakDepth = 0;
+        let polling = true;
+        const depthPoller = (async () => {
+          while (polling) {
+            const depth = await workerQueueManager.getLength(TEST_WORKER_QUEUE_ID);
+            if (depth > peakDepth) {
+              peakDepth = depth;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 25));
+          }
+        })();
+
         queue.start();
 
         // Verify all messages eventually get processed (depth cap doesn't permanently block)
@@ -1343,6 +1355,12 @@ describe("FairQueue", () => {
           },
           { timeout: 25000 }
         );
+
+        polling = false;
+        await depthPoller;
+
+        // Verify the depth cap was respected during processing
+        expect(peakDepth).toBeLessThanOrEqual(maxDepth);
 
         // Verify the worker queue is drained
         const finalDepth = await workerQueueManager.getLength(TEST_WORKER_QUEUE_ID);

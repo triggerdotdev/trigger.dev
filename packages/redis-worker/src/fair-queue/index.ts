@@ -1119,6 +1119,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       if (depth >= this.workerQueueMaxDepth) {
         return 0;
       }
+      // Cap claim size to remaining capacity so we don't overshoot the depth limit
+      const remainingCapacity = this.workerQueueMaxDepth - depth;
+      maxClaimCount = Math.min(maxClaimCount, remainingCapacity);
     }
 
     // Claim batch of messages with visibility timeout
