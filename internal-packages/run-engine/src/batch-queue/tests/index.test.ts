@@ -662,7 +662,7 @@ describe("BatchQueue", () => {
 
   describe("global rate limiter at worker queue consumer level", () => {
     redisTest(
-      "should call rate limiter once per item processed",
+      "should call rate limiter before each processing attempt",
       async ({ redisContainer }) => {
         let limitCallCount = 0;
         const rateLimiter: GlobalRateLimiter = {
@@ -708,8 +708,8 @@ describe("BatchQueue", () => {
           );
 
           expect(completionResult!.successfulRunCount).toBe(itemCount);
-          // Rate limiter should be called at least once per item processed
-          // (may be called more due to consumer loop iterations with empty pops)
+          // Rate limiter is called before each blockingPop, including iterations
+          // where no message is available, so count >= items processed
           expect(limitCallCount).toBeGreaterThanOrEqual(itemCount);
         } finally {
           await queue.close();
