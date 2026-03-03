@@ -479,7 +479,7 @@ function ReplayForm({
                 <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label variant="small">Max duration</Label>
+                <Label variant="small">Max compute time</Label>
                 <DurationPicker
                   name={maxDurationSeconds.name}
                   id={maxDurationSeconds.id}

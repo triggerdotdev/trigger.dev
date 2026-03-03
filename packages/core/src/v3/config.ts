@@ -170,11 +170,22 @@ export type TriggerConfig = {
    *
    * Minimum value is 5 seconds
    *
-   * Setting this value will effect all tasks in the project.
+   * Setting this value will affect all tasks in the project.
    *
-   * @see https://trigger.dev/docs/tasks/overview#maxduration-option
+   * @see https://trigger.dev/docs/tasks/overview#maxcomputeseconds-option
    */
-  maxDuration: number;
+  maxComputeSeconds?: number;
+
+  /**
+   * @deprecated Use `maxComputeSeconds` instead. This property will be removed in a future version.
+   *
+   * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
+   *
+   * Minimum value is 5 seconds
+   *
+   * Setting this value will affect all tasks in the project.
+   */
+  maxDuration?: number;
 
   /**
    * Enable console logging while running the dev CLI. This will print out logs from console.log, console.warn, and console.error. By default all logs are sent to the trigger.dev backend, and not logged to the console.

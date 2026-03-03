@@ -869,7 +869,7 @@ function RunBody({
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
-                  <Property.Label>Max duration</Property.Label>
+                  <Property.Label>Max compute time</Property.Label>
                   <Property.Value>
                     {run.maxDurationInSeconds
                       ? `${run.maxDurationInSeconds}s (${formatDurationMilliseconds(

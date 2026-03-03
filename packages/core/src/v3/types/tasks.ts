@@ -275,6 +275,15 @@ type CommonTaskOptions<
    *
    * Minimum value is 5 seconds
    */
+  maxComputeSeconds?: number;
+
+  /**
+   * @deprecated Use `maxComputeSeconds` instead. This property will be removed in a future version.
+   *
+   * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
+   *
+   * Minimum value is 5 seconds
+   */
   maxDuration?: number;
 
   /** This gets called when a task is triggered. It's where you put the code you want to execute.
@@ -853,6 +862,17 @@ export type TriggerOptions = {
   metadata?: Record<string, SerializableJson>;
 
   /**
+   * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
+   *
+   * This will override the task's maxComputeSeconds.
+   *
+   * Minimum value is 5 seconds
+   */
+  maxComputeSeconds?: number;
+
+  /**
+   * @deprecated Use `maxComputeSeconds` instead. This property will be removed in a future version.
+   *
    * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
    *
    * This will override the task's maxDuration.
