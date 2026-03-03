@@ -1,5 +1,18 @@
 # @trigger.dev/sdk
 
+## 4.4.2
+
+### Patch Changes
+
+- Add input streams for bidirectional communication with running tasks. Define typed input streams with `streams.input<T>({ id })`, then consume inside tasks via `.wait()` (suspends the process), `.once()` (waits for next message), or `.on()` (subscribes to a continuous stream). Send data from backends with `.send(runId, data)` or from frontends with the new `useInputStreamSend` React hook. ([#3146](https://github.com/triggerdotdev/trigger.dev/pull/3146))
+
+  Upgrade S2 SDK from 0.17 to 0.22 with support for custom endpoints (s2-lite) via the new `endpoints` configuration, `AppendRecord.string()` API, and `maxInflightBytes` session option.
+
+- fix(sdk): batch triggerAndWait variants now return correct run.taskIdentifier instead of unknown ([#3080](https://github.com/triggerdotdev/trigger.dev/pull/3080))
+- Add PAYLOAD_TOO_LARGE error to handle graceful recovery of sending batch trigger items with payloads that exceed the maximum payload size ([#3137](https://github.com/triggerdotdev/trigger.dev/pull/3137))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.2`
+
 ## 4.4.1
 
 ### Patch Changes
