@@ -215,6 +215,36 @@ export function getErrorInstances(ch: ClickhouseReader, settings?: ClickHouseSet
 }
 
 // ---------------------------------------------------------------------------
+// Affected versions – distinct task_version from error_occurrences_v1
+// ---------------------------------------------------------------------------
+
+export const ErrorAffectedVersionsQueryResult = z.object({
+  task_version: z.string(),
+});
+
+export type ErrorAffectedVersionsQueryResult = z.infer<typeof ErrorAffectedVersionsQueryResult>;
+
+/**
+ * Query builder for fetching distinct task_version values for an error fingerprint
+ * from the error_occurrences_v1 SummingMergeTree table.
+ * task_version is part of the ORDER BY key, so this is efficient.
+ */
+export function getErrorAffectedVersionsQueryBuilder(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilder({
+    name: "getErrorAffectedVersions",
+    baseQuery: `
+      SELECT DISTINCT task_version
+      FROM trigger_dev.error_occurrences_v1
+    `,
+    schema: ErrorAffectedVersionsQueryResult,
+    settings,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // error_occurrences_v1 – per-minute bucketed error counts
 // ---------------------------------------------------------------------------
 
@@ -284,4 +314,3 @@ export function createErrorOccurrencesQueryBuilder(
     settings
   );
 }
-

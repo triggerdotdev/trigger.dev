@@ -34,6 +34,7 @@ import {
   getErrorHourlyOccurrences,
   getErrorOccurrencesListQueryBuilder,
   createErrorOccurrencesQueryBuilder,
+  getErrorAffectedVersionsQueryBuilder,
 } from "./errors.js";
 export { msToClickHouseInterval } from "./intervals.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
@@ -245,6 +246,7 @@ export class ClickHouse {
       getGroups: getErrorGroups(this.reader),
       getInstances: getErrorInstances(this.reader),
       getHourlyOccurrences: getErrorHourlyOccurrences(this.reader),
+      affectedVersionsQueryBuilder: getErrorAffectedVersionsQueryBuilder(this.reader),
       listQueryBuilder: getErrorGroupsListQueryBuilder(this.reader),
       occurrencesListQueryBuilder: getErrorOccurrencesListQueryBuilder(this.reader),
       createOccurrencesQueryBuilder: (intervalExpr: string) =>

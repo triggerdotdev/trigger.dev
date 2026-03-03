@@ -2,7 +2,7 @@ import { XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
-import { Suspense } from "react";
+import { Suspense, useMemo } from "react";
 import {
   Bar,
   BarChart,
@@ -243,7 +243,11 @@ function FiltersBar({
         {list ? (
           <>
             <LogsTaskFilter possibleTasks={list.filters.possibleTasks} />
-            <TimeFilter defaultPeriod={defaultPeriod} maxPeriodDays={retentionLimitDays} />
+            <TimeFilter
+              defaultPeriod={defaultPeriod}
+              maxPeriodDays={retentionLimitDays}
+              labelName="Occurred"
+            />
             <LogsSearchInput placeholder="Search errors..." />
             {hasFilters && (
               <Form className="h-6">
@@ -344,12 +348,26 @@ function ErrorGroupRow({
   projectParam: string;
   envParam: string;
 }) {
-  const errorPath = v3ErrorPath(
-    { slug: organizationSlug },
-    { slug: projectParam },
-    { slug: envParam },
-    { fingerprint: errorGroup.fingerprint }
-  );
+  const location = useOptimisticLocation();
+  const searchParams = new URLSearchParams(location.search);
+
+  const errorPath = useMemo(() => {
+    const base = v3ErrorPath(
+      { slug: organizationSlug },
+      { slug: projectParam },
+      { slug: envParam },
+      { fingerprint: errorGroup.fingerprint }
+    );
+    const carry = new URLSearchParams();
+    const period = searchParams.get("period");
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    if (period) carry.set("period", period);
+    if (from) carry.set("from", from);
+    if (to) carry.set("to", to);
+    const qs = carry.toString();
+    return qs ? `${base}?${qs}` : base;
+  }, [organizationSlug, projectParam, envParam, errorGroup.fingerprint, searchParams.toString()]);
 
   const errorMessage = `${errorGroup.errorMessage}`;
 
@@ -387,11 +405,7 @@ function ErrorGroupRow({
   );
 }
 
-function ErrorActivityGraph({
-  activity,
-}: {
-  activity: ErrorOccurrenceActivity;
-}) {
+function ErrorActivityGraph({ activity }: { activity: ErrorOccurrenceActivity }) {
   const maxCount = Math.max(...activity.map((d) => d.count));
 
   return (

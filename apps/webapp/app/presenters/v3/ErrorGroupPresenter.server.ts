@@ -11,6 +11,7 @@ const errorGroupGranularity = new TimeGranularity([
   { max: "Infinity", granularity: "30d" },
 ]);
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { BasePresenter } from "~/presenters/v3/basePresenter.server";
@@ -18,12 +19,16 @@ import {
   NextRunListPresenter,
   type NextRunList,
 } from "~/presenters/v3/NextRunListPresenter.server";
+import { sortVersionsDescending } from "~/utils/semver";
 
 export type ErrorGroupOptions = {
   userId?: string;
   projectId: string;
   fingerprint: string;
   runsPageSize?: number;
+  period?: string;
+  from?: number;
+  to?: number;
 };
 
 export const ErrorGroupOptionsSchema = z.object({
@@ -31,6 +36,9 @@ export const ErrorGroupOptionsSchema = z.object({
   projectId: z.string(),
   fingerprint: z.string(),
   runsPageSize: z.number().int().positive().max(1000).optional(),
+  period: z.string().optional(),
+  from: z.number().int().nonnegative().optional(),
+  to: z.number().int().nonnegative().optional(),
 });
 
 const DEFAULT_RUNS_PAGE_SIZE = 25;
@@ -53,6 +61,7 @@ export type ErrorGroupSummary = {
   count: number;
   firstSeen: Date;
   lastSeen: Date;
+  affectedVersions: string[];
 };
 
 export type ErrorGroupOccurrences = Awaited<ReturnType<ErrorGroupPresenter["getOccurrences"]>>;
@@ -75,6 +84,9 @@ export class ErrorGroupPresenter extends BasePresenter {
       projectId,
       fingerprint,
       runsPageSize = DEFAULT_RUNS_PAGE_SIZE,
+      period,
+      from,
+      to,
     }: ErrorGroupOptions
   ) {
     const displayableEnvironment = await findDisplayableEnvironment(environmentId, userId);
@@ -83,19 +95,37 @@ export class ErrorGroupPresenter extends BasePresenter {
       throw new ServiceValidationError("No environment found");
     }
 
-    const [summary, runList] = await Promise.all([
+    const time = timeFilterFromTo({
+      period,
+      from,
+      to,
+      defaultPeriod: "7d",
+    });
+
+    const [summary, affectedVersions, runList] = await Promise.all([
       this.getSummary(organizationId, projectId, environmentId, fingerprint),
+      this.getAffectedVersions(organizationId, projectId, environmentId, fingerprint),
       this.getRunList(organizationId, environmentId, {
         userId,
         projectId,
         fingerprint,
         pageSize: runsPageSize,
+        from: time.from.getTime(),
+        to: time.to.getTime(),
       }),
     ]);
+
+    if (summary) {
+      summary.affectedVersions = affectedVersions;
+    }
 
     return {
       errorGroup: summary,
       runList,
+      filters: {
+        from: time.from,
+        to: time.to,
+      },
     };
   }
 
@@ -194,7 +224,38 @@ export class ErrorGroupPresenter extends BasePresenter {
       count: record.occurrence_count,
       firstSeen: parseClickHouseDateTime(record.first_seen),
       lastSeen: parseClickHouseDateTime(record.last_seen),
+      affectedVersions: [],
     };
+  }
+
+  /**
+   * Returns the most recent distinct task_version values for an error fingerprint,
+   * sorted by semantic version descending (newest first).
+   * Queries error_occurrences_v1 where task_version is part of the ORDER BY key.
+   */
+  private async getAffectedVersions(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    fingerprint: string
+  ): Promise<string[]> {
+    const queryBuilder = this.logsClickhouse.errors.affectedVersionsQueryBuilder();
+
+    queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
+    queryBuilder.where("project_id = {projectId: String}", { projectId });
+    queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
+    queryBuilder.where("error_fingerprint = {fingerprint: String}", { fingerprint });
+    queryBuilder.where("task_version != ''");
+    queryBuilder.limit(100);
+
+    const [queryError, records] = await queryBuilder.execute();
+
+    if (queryError || !records) {
+      return [];
+    }
+
+    const versions = records.map((r) => r.task_version).filter((v) => v.length > 0);
+    return sortVersionsDescending(versions).slice(0, 5);
   }
 
   private async getRunList(
@@ -205,6 +266,8 @@ export class ErrorGroupPresenter extends BasePresenter {
       projectId: string;
       fingerprint: string;
       pageSize: number;
+      from?: number;
+      to?: number;
     }
   ): Promise<NextRunList | undefined> {
     const runListPresenter = new NextRunListPresenter(this.replica, this.clickhouse);
@@ -214,6 +277,8 @@ export class ErrorGroupPresenter extends BasePresenter {
       projectId: options.projectId,
       errorFingerprint: options.fingerprint,
       pageSize: options.pageSize,
+      from: options.from,
+      to: options.to,
     });
 
     if (result.runs.length === 0) {

@@ -29,6 +29,8 @@ import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { DateTime } from "~/components/primitives/DateTime";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
+import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
@@ -59,6 +61,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Environment not found", { status: 404 });
   }
 
+  const url = new URL(request.url);
+  const period = url.searchParams.get("period") ?? undefined;
+  const fromStr = url.searchParams.get("from");
+  const toStr = url.searchParams.get("to");
+  const from = fromStr ? parseInt(fromStr, 10) : undefined;
+  const to = toStr ? parseInt(toStr, 10) : undefined;
+
   const presenter = new ErrorGroupPresenter($replica, logsClickhouseClient, clickhouseClient);
 
   const detailPromise = presenter
@@ -66,6 +75,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       userId,
       projectId: project.id,
       fingerprint,
+      period,
+      from,
+      to,
     })
     .catch((error) => {
       if (error instanceof ServiceValidationError) {
@@ -74,8 +86,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       throw error;
     });
 
-  const now = new Date();
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const time = timeFilterFromTo({ period, from, to, defaultPeriod: "7d" });
 
   const activityPromise = presenter
     .getOccurrences(
@@ -83,8 +94,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       project.id,
       environment.id,
       fingerprint,
-      sevenDaysAgo,
-      now
+      time.from,
+      time.to
     )
     .catch(() => ({ data: [] as ErrorGroupActivity }));
 
@@ -102,11 +113,25 @@ export default function Page() {
   const { data, activity, organizationSlug, projectParam, envParam, fingerprint } =
     useTypedLoaderData<typeof loader>();
 
-  const errorsPath = v3ErrorsPath(
-    { slug: organizationSlug },
-    { slug: projectParam },
-    { slug: envParam }
-  );
+  const location = useOptimisticLocation();
+  const searchParams = new URLSearchParams(location.search);
+
+  const errorsPath = useMemo(() => {
+    const base = v3ErrorsPath(
+      { slug: organizationSlug },
+      { slug: projectParam },
+      { slug: envParam }
+    );
+    const carry = new URLSearchParams();
+    const period = searchParams.get("period");
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    if (period) carry.set("period", period);
+    if (from) carry.set("from", from);
+    if (to) carry.set("to", to);
+    const qs = carry.toString();
+    return qs ? `${base}?${qs}` : base;
+  }, [organizationSlug, projectParam, envParam, searchParams.toString()]);
 
   return (
     <PageContainer>
@@ -203,6 +228,10 @@ function ErrorGroupDetail({
       <div className="border-b border-grid-bright p-4">
         <Header2 className="mb-4">{errorGroup.errorMessage}</Header2>
 
+        <div className="mb-4">
+          <TimeFilter defaultPeriod="7d" labelName="Occurred" />
+        </div>
+
         <div className="grid grid-cols-3 gap-x-12 gap-y-1">
           <Property.Table>
             <Property.Item>
@@ -224,6 +253,16 @@ function ErrorGroupDetail({
               <Property.Label>Occurrences</Property.Label>
               <Property.Value>{formatNumberCompact(errorGroup.count)}</Property.Value>
             </Property.Item>
+            {errorGroup.affectedVersions.length > 0 && (
+              <Property.Item>
+                <Property.Label>Affected versions</Property.Label>
+                <Property.Value>
+                  <span className="font-mono text-xs">
+                    {errorGroup.affectedVersions.join(", ")}
+                  </span>
+                </Property.Value>
+              </Property.Item>
+            )}
           </Property.Table>
 
           <Property.Table>
@@ -241,22 +280,11 @@ function ErrorGroupDetail({
             </Property.Item>
           </Property.Table>
         </div>
-
-        {errorGroup.stackTrace && (
-          <div className="mt-4 rounded-md bg-charcoal-900 p-4">
-            <Paragraph variant="small" className="mb-2 font-semibold text-text-bright">
-              Stack Trace
-            </Paragraph>
-            <pre className="overflow-x-auto text-xs text-text-dimmed">
-              <code>{errorGroup.stackTrace}</code>
-            </pre>
-          </div>
-        )}
       </div>
 
-      {/* Activity over past 7 days */}
+      {/* Activity chart */}
       <div className="flex flex-col overflow-hidden border-b border-grid-bright px-4 py-3">
-        <Header3 className="mb-2 shrink-0">Activity (past 7 days)</Header3>
+        <Header3 className="mb-2 shrink-0">Activity</Header3>
         <Suspense fallback={<ActivityChartBlankState />}>
           <TypedAwait resolve={activity} errorElement={<ActivityChartBlankState />}>
             {(result) =>
