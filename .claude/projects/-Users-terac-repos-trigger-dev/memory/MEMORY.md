@@ -4,6 +4,7 @@
 - [Roadmap & Status](pubsub-roadmap.md) — phases 0-8 complete, pending items identified
 - [Detailed Progress](pubsub-progress.md) — per-phase notes, commits, decisions
 - [Pending Items](pubsub-pending.md) — Redis rate limiter, consumer groups, dashboard, etc.
+- [Audit Fix Plan](pubsub-audit-fixes.md) — Phases 10-13: CRITICAL/HIGH/MEDIUM/LOW fixes + test coverage
 - Repo conventions: [repo-conventions.md](repo-conventions.md)
 - Branch: `feat/pubsub-event-system`
 

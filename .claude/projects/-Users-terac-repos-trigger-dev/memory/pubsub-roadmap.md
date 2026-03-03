@@ -30,7 +30,12 @@ First-class pub/sub event system within Trigger.dev that enables:
 | 9.3 | Integration tests verified | DONE (24/24 pass) |
 | 9.4 | Dashboard UI, CLI, docs, reference project | PARTIAL (CLI + docs + ref done, dashboard UI pending) |
 | 9.5 | Consumer-side rate limiting + backpressure | NOT STARTED |
+| 10 | Audit fixes — CRITICAL + HIGH (7 items) | NOT STARTED |
+| 11 | Audit fixes — MEDIUM (7 items) | NOT STARTED |
+| 12 | Test coverage gaps (5 test suites) | NOT STARTED |
+| 13 | Audit fixes — LOW (4 items) | NOT STARTED |
 
+See [pubsub-audit-fixes.md](pubsub-audit-fixes.md) for the full audit fix plan (Phases 10-13).
 See [pubsub-pending.md](pubsub-pending.md) for details on remaining items.
 See [pubsub-progress.md](pubsub-progress.md) for per-phase implementation notes.
 
