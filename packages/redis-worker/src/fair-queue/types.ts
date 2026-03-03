@@ -453,7 +453,7 @@ export interface FairQueueOptions<TPayloadSchema extends z.ZodTypeAny = z.ZodUnk
    * the queue is at or above this limit. This prevents unbounded worker queue
    * growth which could cause visibility timeouts (claimed messages have a
    * visibility timeout that ticks while they sit in the worker queue).
-   * Requires `workerQueueId` to know which queue to check.
+   * Requires `workerQueueDepthCheckId` to know which queue to check.
    * Disabled by default (0 = no limit).
    */
   workerQueueMaxDepth?: number;

@@ -660,7 +660,7 @@ export class BatchQueue {
                 break;
               }
               this.rateLimitDeniedCounter?.add(1);
-              const waitMs = Math.max(0, (result.resetAt ?? Date.now()) - Date.now());
+              const waitMs = Math.max(10, (result.resetAt ?? Date.now()) - Date.now());
               if (waitMs > 0) {
                 await new Promise<void>((resolve, reject) => {
                   const onAbort = () => {
