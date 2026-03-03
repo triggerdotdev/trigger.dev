@@ -24,22 +24,24 @@ No custom API routes needed. Your chat backend is a Trigger.dev task.
 
 ### 1. Define a chat task
 
-Use `chatTask` from `@trigger.dev/sdk/ai` to define a task that handles chat messages. The payload is automatically typed as `ChatTaskPayload`.
+Use `chat.task` from `@trigger.dev/sdk/ai` to define a task that handles chat messages. The payload is automatically typed as `ChatTaskPayload` with abort signals.
 
 If you return a `StreamTextResult` from `run`, it's **automatically piped** to the frontend.
 
 ```ts trigger/chat.ts
-import { chatTask } from "@trigger.dev/sdk/ai";
+import { chat } from "@trigger.dev/sdk/ai";
 import { streamText, convertToModelMessages } from "ai";
 import { openai } from "@ai-sdk/openai";
 
-export const myChat = chatTask({
+export const myChat = chat.task({
   id: "my-chat",
-  run: async ({ messages }) => {
+  run: async ({ messages, signal }) => {
     // messages is UIMessage[] from the frontend
+    // signal fires on stop or run cancel
     return streamText({
       model: openai("gpt-4o"),
       messages: convertToModelMessages(messages),
+      abortSignal: signal,
     });
     // Returning a StreamTextResult auto-pipes it to the frontend
   },
@@ -116,35 +118,36 @@ export function Chat({ accessToken }: { accessToken: string }) {
 The easiest approach — return the `streamText` result from `run` and it's automatically piped to the frontend:
 
 ```ts
-import { chatTask } from "@trigger.dev/sdk/ai";
+import { chat } from "@trigger.dev/sdk/ai";
 import { streamText, convertToModelMessages } from "ai";
 import { openai } from "@ai-sdk/openai";
 
-export const simpleChat = chatTask({
+export const simpleChat = chat.task({
   id: "simple-chat",
-  run: async ({ messages }) => {
+  run: async ({ messages, signal }) => {
     return streamText({
       model: openai("gpt-4o"),
       system: "You are a helpful assistant.",
       messages: convertToModelMessages(messages),
+      abortSignal: signal,
     });
   },
 });
 ```
 
-### Complex: use pipeChat() from anywhere
+### Complex: use chat.pipe() from anywhere
 
-For complex agent flows where `streamText` is called deep inside your code, use `pipeChat()`. It works from **anywhere inside a task** — even nested function calls.
+For complex agent flows where `streamText` is called deep inside your code, use `chat.pipe()`. It works from **anywhere inside a task** — even nested function calls.
 
 ```ts trigger/agent-chat.ts
-import { chatTask, pipeChat } from "@trigger.dev/sdk/ai";
+import { chat } from "@trigger.dev/sdk/ai";
 import { streamText, convertToModelMessages } from "ai";
 import { openai } from "@ai-sdk/openai";
 
-export const agentChat = chatTask({
+export const agentChat = chat.task({
   id: "agent-chat",
   run: async ({ messages }) => {
-    // Don't return anything — pipeChat is called inside
+    // Don't return anything — chat.pipe is called inside
     await runAgentLoop(convertToModelMessages(messages));
   },
 });
@@ -159,17 +162,17 @@ async function runAgentLoop(messages: CoreMessage[]) {
   });
 
   // Pipe from anywhere — no need to return it
-  await pipeChat(result);
+  await chat.pipe(result);
 }
 ```
 
-### Manual: use task() with pipeChat()
+### Manual: use task() with chat.pipe()
 
-If you need full control over task options, use the standard `task()` with `ChatTaskPayload` and `pipeChat()`:
+If you need full control over task options, use the standard `task()` with `ChatTaskPayload` and `chat.pipe()`:
 
 ```ts
 import { task } from "@trigger.dev/sdk";
-import { pipeChat, type ChatTaskPayload } from "@trigger.dev/sdk/ai";
+import { chat, type ChatTaskPayload } from "@trigger.dev/sdk/ai";
 import { streamText, convertToModelMessages } from "ai";
 import { openai } from "@ai-sdk/openai";
 
@@ -183,7 +186,7 @@ export const manualChat = task({
       messages: convertToModelMessages(payload.messages),
     });
 
-    await pipeChat(result);
+    await chat.pipe(result);
   },
 });
 ```
