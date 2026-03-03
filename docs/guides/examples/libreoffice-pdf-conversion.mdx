@@ -12,12 +12,12 @@ import LocalDevelopment from "/snippets/local-development-extensions.mdx";
 - [LibreOffice](https://www.libreoffice.org/download/libreoffice-fresh/) installed on your machine
 - A [Cloudflare R2](https://developers.cloudflare.com) account and bucket
 
-### Using our `aptGet` build extension to add the LibreOffice package
+### Using the `libreoffice` build extension
 
-To deploy this task, you'll need to add LibreOffice to your project configuration, like this:
+To deploy this task, add the dedicated `libreoffice` build extension to your project configuration. It installs LibreOffice in headless mode (no X11 required) along with the fonts needed for accurate document rendering:
 
 ```ts trigger.config.ts
-import { aptGet } from "@trigger.dev/build/extensions/core";
+import { libreoffice } from "@trigger.dev/build/extensions/libreoffice";
 import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
@@ -25,12 +25,21 @@ export default defineConfig({
   // Your other config settings...
   build: {
     extensions: [
-      aptGet({
-        packages: ["libreoffice"],
-      }),
+      libreoffice(),
     ],
   },
 });
+```
+
+By default this installs `libreoffice-writer` (for `.docx`) and `libreoffice-impress` (for `.pptx`) together with `fonts-liberation` and `fonts-dejavu-core`. You can customise which components are installed:
+
+```ts trigger.config.ts
+libreoffice({
+  // Only install the writer component (smaller image)
+  components: ["writer"],
+  // Add extra font packages if needed
+  extraFonts: ["fonts-noto"],
+})
 ```
 
 <Note>
