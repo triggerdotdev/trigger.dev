@@ -225,9 +225,10 @@ export function VercelOnboardingModal({
     () => availableEnvSlugsForOnboardingBuildSettings
   );
 
-  // Sync pullEnvVarsBeforeBuild and discoverEnvVars when hasStagingEnvironment becomes true (once)
+  // Sync pullEnvVarsBeforeBuild and discoverEnvVars when hasStagingEnvironment becomes true
+  // AND a custom Vercel environment is mapped (once)
   useEffect(() => {
-    if (hasStagingEnvironment && !hasSyncedStagingRef.current) {
+    if (hasStagingEnvironment && vercelStagingEnvironment && !hasSyncedStagingRef.current) {
       hasSyncedStagingRef.current = true;
       setPullEnvVarsBeforeBuild((prev) => {
         if (!prev.includes("stg")) {
@@ -242,7 +243,15 @@ export function VercelOnboardingModal({
         return prev;
       });
     }
-  }, [hasStagingEnvironment]);
+  }, [hasStagingEnvironment, vercelStagingEnvironment]);
+
+  // Strip "stg" from build settings when the staging environment mapping is cleared
+  useEffect(() => {
+    if (!vercelStagingEnvironment) {
+      setPullEnvVarsBeforeBuild((prev) => prev.filter((s) => s !== "stg"));
+      setDiscoverEnvVars((prev) => prev.filter((s) => s !== "stg"));
+    }
+  }, [vercelStagingEnvironment]);
 
   // Sync pullEnvVarsBeforeBuild and discoverEnvVars when hasPreviewEnvironment becomes true (once)
   useEffect(() => {
@@ -671,6 +680,11 @@ export function VercelOnboardingModal({
   const showBuildSettings = state === "build-settings";
   const showGitHubConnection = state === "github-connection";
 
+  const disabledEnvSlugsForBuildSettings =
+    hasStagingEnvironment && !vercelStagingEnvironment
+      ? ({ stg: "Map a custom Vercel environment to Staging to enable this" } as Partial<Record<EnvSlug, string>>)
+      : undefined;
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => {
       if (!open && !fromMarketplaceContext) {
@@ -1036,6 +1050,7 @@ export function VercelOnboardingModal({
                 onDiscoverEnvVarsChange={setDiscoverEnvVars}
                 atomicBuilds={atomicBuilds}
                 onAtomicBuildsChange={setAtomicBuilds}
+                disabledEnvSlugs={disabledEnvSlugsForBuildSettings}
               />
 
               <FormButtons
