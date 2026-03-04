@@ -49,6 +49,7 @@ import {
 import { logsClickhouseClient } from "~/services/clickhouseInstance.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUser } from "~/services/session.server";
+import { ListPagination } from "~/components/ListPagination";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import { EnvironmentParamSchema, v3ErrorPath } from "~/utils/pathBuilder";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -85,6 +86,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const toStr = url.searchParams.get("to");
   const from = fromStr ? parseInt(fromStr, 10) : undefined;
   const to = toStr ? parseInt(toStr, 10) : undefined;
+  const cursor = url.searchParams.get("cursor") ?? undefined;
+  const directionRaw = url.searchParams.get("direction");
+  const direction =
+    directionRaw === "forward" || directionRaw === "backward" ? directionRaw : undefined;
 
   const plan = await getCurrentPlan(project.organizationId);
   const retentionLimitDays = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
@@ -100,6 +105,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       period,
       from,
       to,
+      cursor,
+      direction,
       defaultPeriod: "1d",
       retentionLimitDays,
     })
@@ -276,6 +283,7 @@ function FiltersBar({
           </>
         )}
       </div>
+      {list && <ListPagination list={list} />}
     </div>
   );
 }

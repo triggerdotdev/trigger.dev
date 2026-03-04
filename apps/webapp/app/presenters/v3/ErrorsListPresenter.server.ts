@@ -50,7 +50,7 @@ export const ErrorsListOptionsSchema = z.object({
   pageSize: z.number().int().positive().max(1000).optional(),
 });
 
-const DEFAULT_PAGE_SIZE = 50;
+const DEFAULT_PAGE_SIZE = 25;
 
 export type ErrorsList = Awaited<ReturnType<ErrorsListPresenter["call"]>>;
 export type ErrorGroup = ErrorsList["errorGroups"][0];
@@ -88,6 +88,14 @@ function decodeCursor(cursor: string): ErrorGroupCursor | null {
   }
 }
 
+function cursorFromRow(row: { occurrence_count: number; error_fingerprint: string; task_identifier: string }): string {
+  return encodeCursor({
+    occurrenceCount: row.occurrence_count,
+    fingerprint: row.error_fingerprint,
+    taskIdentifier: row.task_identifier,
+  });
+}
+
 function parseClickHouseDateTime(value: string): Date {
   const asNum = Number(value);
   if (!isNaN(asNum) && asNum > 1e12) {
@@ -119,6 +127,7 @@ export class ErrorsListPresenter extends BasePresenter {
       search,
       from,
       to,
+      direction,
       cursor,
       pageSize = DEFAULT_PAGE_SIZE,
       defaultPeriod,
@@ -193,13 +202,15 @@ export class ErrorsListPresenter extends BasePresenter {
       );
     }
 
-    // Cursor-based pagination (sorted by occurrence_count DESC, then fingerprint, then task)
+    const isBackward = direction === "backward";
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
+
     if (decodedCursor) {
+      const cmp = isBackward ? ">" : "<";
       queryBuilder.having(
-        `(occurrence_count < {cursorOccurrenceCount: UInt64}
-          OR (occurrence_count = {cursorOccurrenceCount: UInt64} AND error_fingerprint < {cursorFingerprint: String})
-          OR (occurrence_count = {cursorOccurrenceCount: UInt64} AND error_fingerprint = {cursorFingerprint: String} AND task_identifier < {cursorTaskIdentifier: String}))`,
+        `(occurrence_count ${cmp} {cursorOccurrenceCount: UInt64}
+          OR (occurrence_count = {cursorOccurrenceCount: UInt64} AND error_fingerprint ${cmp} {cursorFingerprint: String})
+          OR (occurrence_count = {cursorOccurrenceCount: UInt64} AND error_fingerprint = {cursorFingerprint: String} AND task_identifier ${cmp} {cursorTaskIdentifier: String}))`,
         {
           cursorOccurrenceCount: decodedCursor.occurrenceCount,
           cursorFingerprint: decodedCursor.fingerprint,
@@ -208,7 +219,10 @@ export class ErrorsListPresenter extends BasePresenter {
       );
     }
 
-    queryBuilder.orderBy("task_identifier DESC, error_fingerprint DESC, occurrence_count DESC");
+    const sortDir = isBackward ? "ASC" : "DESC";
+    queryBuilder.orderBy(
+      `occurrence_count ${sortDir}, error_fingerprint ${sortDir}, task_identifier ${sortDir}`
+    );
     queryBuilder.limit(pageSize + 1);
 
     const [queryError, records] = await queryBuilder.execute();
@@ -219,17 +233,24 @@ export class ErrorsListPresenter extends BasePresenter {
 
     const results = records || [];
     const hasMore = results.length > pageSize;
-    const errorGroups = results.slice(0, pageSize);
+    const page = results.slice(0, pageSize);
+
+    if (isBackward) {
+      page.reverse();
+    }
 
     let nextCursor: string | undefined;
-    if (hasMore && errorGroups.length > 0) {
-      const lastError = errorGroups[errorGroups.length - 1];
-      nextCursor = encodeCursor({
-        occurrenceCount: lastError.occurrence_count,
-        fingerprint: lastError.error_fingerprint,
-        taskIdentifier: lastError.task_identifier,
-      });
+    let previousCursor: string | undefined;
+
+    if (isBackward) {
+      previousCursor = hasMore && page.length > 0 ? cursorFromRow(page[0]) : undefined;
+      nextCursor = page.length > 0 ? cursorFromRow(page[page.length - 1]) : undefined;
+    } else {
+      previousCursor = decodedCursor && page.length > 0 ? cursorFromRow(page[0]) : undefined;
+      nextCursor = hasMore && page.length > 0 ? cursorFromRow(page[page.length - 1]) : undefined;
     }
+
+    const errorGroups = page;
 
     // Fetch global first_seen / last_seen from the errors_v1 summary table
     const fingerprints = errorGroups.map((e) => e.error_fingerprint);
@@ -256,8 +277,8 @@ export class ErrorsListPresenter extends BasePresenter {
     return {
       errorGroups: transformedErrorGroups,
       pagination: {
-        hasMore,
-        nextCursor,
+        next: nextCursor,
+        previous: previousCursor,
       },
       filters: {
         tasks,
