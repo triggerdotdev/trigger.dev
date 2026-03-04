@@ -1,5 +1,5 @@
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, convertToModelMessages, tool } from "ai";
+import { streamText, convertToModelMessages, tool, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import os from "node:os";
@@ -64,14 +64,14 @@ declare const Deno: unknown;
 
 export const aiChat = chat.task({
   id: "ai-chat",
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, stopSignal }) => {
     return streamText({
       model: openai("gpt-4o-mini"),
       system: "You are a helpful assistant. Be concise and friendly.",
       messages: await convertToModelMessages(messages),
       tools: { inspectEnvironment },
-      maxSteps: 3,
-      abortSignal: signal,
+      stopWhen: stepCountIs(10),
+      abortSignal: stopSignal,
     });
   },
 });
