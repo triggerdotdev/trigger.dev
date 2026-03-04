@@ -406,6 +406,18 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
    * @default "1h"
    */
   turnTimeout?: string;
+
+  /**
+   * How long (in seconds) to keep the run warm after each turn before suspending.
+   * During this window the run stays active and can respond instantly to the
+   * next message. After this timeout, the run suspends (frees compute) and waits
+   * via `inputStream.wait()`.
+   *
+   * Set to `0` to suspend immediately after each turn.
+   *
+   * @default 30
+   */
+  warmTimeoutInSeconds?: number;
 };
 
 /**
@@ -438,7 +450,13 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
 function chatTask<TIdentifier extends string>(
   options: ChatTaskOptions<TIdentifier>
 ): Task<TIdentifier, ChatTaskPayload, unknown> {
-  const { run: userRun, maxTurns = 100, turnTimeout = "1h", ...restOptions } = options;
+  const {
+    run: userRun,
+    maxTurns = 100,
+    turnTimeout = "1h",
+    warmTimeoutInSeconds = 30,
+    ...restOptions
+  } = options;
 
   return createTask<TIdentifier, ChatTaskPayload, unknown>({
     ...restOptions,
@@ -512,7 +530,21 @@ function chatTask<TIdentifier extends string>(
             continue;
           }
 
-          // Suspend the task (frees compute) until the next message arrives
+          // Phase 1: Keep the run warm for quick response to the next message.
+          // The run stays active (using compute) during this window.
+          if (warmTimeoutInSeconds > 0) {
+            const warm = await messagesInput.once({
+              timeoutMs: warmTimeoutInSeconds * 1000,
+            });
+
+            if (warm.ok) {
+              // Message arrived while warm — respond instantly
+              currentPayload = warm.output;
+              continue;
+            }
+          }
+
+          // Phase 2: Suspend the task (frees compute) until the next message arrives
           const next = await messagesInput.wait({ timeout: turnTimeout });
 
           if (!next.ok) {
@@ -520,7 +552,7 @@ function chatTask<TIdentifier extends string>(
             return;
           }
 
-          currentPayload = next.output as ChatTaskPayload;
+          currentPayload = next.output;
         }
       } finally {
         stopSub.off();
