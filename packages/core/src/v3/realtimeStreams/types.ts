@@ -71,6 +71,10 @@ export type PipeStreamOptions = {
    * Additional request options for the API call.
    */
   requestOptions?: ApiRequestOptions;
+  /** Override the default span name for this operation. */
+  spanName?: string;
+  /** When true, the span will be collapsed in the dashboard. */
+  collapsed?: boolean;
 };
 
 /**
@@ -199,6 +203,8 @@ export type InputStreamSubscription = {
 export type InputStreamOnceOptions = {
   signal?: AbortSignal;
   timeoutMs?: number;
+  /** Override the default span name for this operation. */
+  spanName?: string;
 };
 
 export type SendInputStreamOptions = {
@@ -234,6 +240,9 @@ export type InputStreamWaitOptions = {
    * and filtering waitpoints via `wait.listTokens()`.
    */
   tags?: string[];
+
+  /** Override the default span name for this operation. */
+  spanName?: string;
 };
 
 export type InferInputStreamType<T> = T extends RealtimeDefinedInputStream<infer TData>
