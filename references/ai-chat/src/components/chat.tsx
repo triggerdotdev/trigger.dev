@@ -79,7 +79,7 @@ export function Chat() {
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
   });
 
-  const { messages, sendMessage, status, error } = useChat({
+  const { messages, sendMessage, stop, status, error } = useChat({
     transport,
   });
 
@@ -152,13 +152,23 @@ export function Chat() {
           placeholder="Type a message…"
           className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
         />
-        <button
-          type="submit"
-          disabled={!input.trim() || status === "streaming"}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          Send
-        </button>
+        {status === "streaming" ? (
+          <button
+            type="button"
+            onClick={stop}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+          >
+            Stop
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            Send
+          </button>
+        )}
       </form>
     </div>
   );
