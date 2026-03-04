@@ -1,5 +1,14 @@
 import { Attributes } from "@opentelemetry/api";
 
+function escapeKey(key: string): string {
+  return key.replace(/\./g, "\\.");
+}
+
+function unescapeKey(key: string): string {
+  return key.replace(/\\\./g, ".");
+}
+
+
 export const NULL_SENTINEL = "$@null((";
 export const CIRCULAR_REFERENCE_SENTINEL = "$@circular((";
 
@@ -24,7 +33,7 @@ class AttributeFlattener {
   constructor(
     private maxAttributeCount?: number,
     private maxDepth: number = DEFAULT_MAX_DEPTH
-  ) {}
+  ) { }
 
   get attributes(): Attributes {
     return this.result;
@@ -117,7 +126,8 @@ class AttributeFlattener {
         if (!this.canAddMoreAttributes()) break;
         // Use the key directly if it's a string, otherwise convert it
         const keyStr = typeof key === "string" ? key : String(key);
-        this.#processValue(value, `${prefix || "map"}.${keyStr}`, depth);
+        this.#processValue(value, `${prefix || "map"}.${escapeKey(keyStr)}`, depth);
+
       }
       return;
     }
@@ -200,7 +210,9 @@ class AttributeFlattener {
         break;
       }
 
-      const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
+      const escapedKey = Array.isArray(obj) ? `[${key}]` : escapeKey(key);
+      const newPrefix = `${prefix ? `${prefix}.` : ""}${escapedKey}`;
+
 
       if (Array.isArray(value)) {
         for (let i = 0; i < value.length; i++) {
@@ -278,24 +290,26 @@ export function unflattenAttributes(
       continue;
     }
 
-    const parts = key.split(".").reduce(
+    const parts = key.split(/(?<!\\)\./).reduce(
       (acc, part) => {
-        if (part.startsWith("[") && part.endsWith("]")) {
+        const unescapedPart = unescapeKey(part);
+        if (unescapedPart.startsWith("[") && unescapedPart.endsWith("]")) {
           // Handle array indices more precisely
-          const match = part.match(/^\[(\d+)\]$/);
+          const match = unescapedPart.match(/^\[(\d+)\]$/);
           if (match && match[1]) {
             acc.push(parseInt(match[1]));
           } else {
             // Remove brackets for non-numeric array keys
-            acc.push(part.slice(1, -1));
+            acc.push(unescapedPart.slice(1, -1));
           }
         } else {
-          acc.push(part);
+          acc.push(unescapedPart);
         }
         return acc;
       },
       [] as (string | number)[]
     );
+
 
     // Skip keys that exceed max depth to prevent memory exhaustion
     if (parts.length > maxDepth) {

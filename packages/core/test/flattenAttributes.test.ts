@@ -1,4 +1,6 @@
+import { describe, it, expect } from "vitest";
 import { flattenAttributes, unflattenAttributes } from "../src/v3/utils/flattenAttributes.js";
+
 
 describe("flattenAttributes", () => {
   it("handles number keys correctly", () => {
@@ -14,6 +16,19 @@ describe("flattenAttributes", () => {
     expect(flattenAttributes({ bar: { 25: "foo" } })).toEqual({ "bar.25": "foo" });
     expect(unflattenAttributes({ "bar.25": "foo" })).toEqual({ bar: { 25: "foo" } });
   });
+
+  it("handles keys with periods correctly", () => {
+    const obj = { "Key 0.002mm": 31.4 };
+    const flattened = flattenAttributes(obj);
+    expect(flattened).toEqual({ "Key 0\\.002mm": 31.4 });
+    expect(unflattenAttributes(flattened)).toEqual(obj);
+
+    const nestedObj = { parent: { "child.key": "value" } };
+    const nestedFlattened = flattenAttributes(nestedObj);
+    expect(nestedFlattened).toEqual({ "parent.child\\.key": "value" });
+    expect(unflattenAttributes(nestedFlattened)).toEqual(nestedObj);
+  });
+
 
   it("handles null correctly", () => {
     expect(flattenAttributes(null)).toEqual({ "": "$@null((" });
@@ -297,9 +312,9 @@ describe("flattenAttributes", () => {
   });
 
   it("handles function values correctly", () => {
-    function namedFunction() {}
-    const anonymousFunction = function () {};
-    const arrowFunction = () => {};
+    function namedFunction() { }
+    const anonymousFunction = function () { };
+    const arrowFunction = () => { };
 
     const result = flattenAttributes({
       named: namedFunction,
@@ -317,7 +332,7 @@ describe("flattenAttributes", () => {
   it("handles mixed problematic types", () => {
     const complexObj = {
       error: new Error("Mixed error"),
-      func: function testFunc() {},
+      func: function testFunc() { },
       date: new Date("2023-01-01"),
       normal: "string",
       number: 42,
@@ -415,10 +430,10 @@ describe("flattenAttributes", () => {
   it("handles Promise objects correctly", () => {
     const resolvedPromise = Promise.resolve("value");
     const rejectedPromise = Promise.reject(new Error("failed"));
-    const pendingPromise = new Promise(() => {}); // Never resolves
+    const pendingPromise = new Promise(() => { }); // Never resolves
 
     // Catch the rejection to avoid unhandled promise rejection warnings
-    rejectedPromise.catch(() => {});
+    rejectedPromise.catch(() => { });
 
     const result = flattenAttributes({
       resolved: resolvedPromise,
@@ -481,7 +496,7 @@ describe("flattenAttributes", () => {
   it("handles complex mixed object with all special types", () => {
     const complexObj = {
       error: new Error("Test error"),
-      func: function testFunc() {},
+      func: function testFunc() { },
       date: new Date("2023-01-01"),
       mySet: new Set([1, 2, 3]),
       myMap: new Map([["key", "value"]]),
@@ -628,6 +643,34 @@ describe("unflattenAttributes", () => {
       blogPosts: [{ title: "Post 1", author: "[Circular Reference]" }],
     });
   });
+
+  it("handles keys with periods correctly (literal keys vs. nested paths)", () => {
+    const flattened = {
+      "user.name": "John Doe",
+      "user\\.email": "john.doe@example.com",
+      "data.version": "1.0",
+      "file.name.with\\.dots": "document.pdf",
+    };
+
+    const expected = {
+      user: {
+        name: "John Doe",
+      },
+      "user.email": "john.doe@example.com",
+      data: {
+        version: "1.0",
+      },
+      file: {
+        name: {
+          "with.dots": "document.pdf",
+        },
+      },
+    };
+
+
+    expect(unflattenAttributes(flattened)).toEqual(expected);
+  });
+
 
   it("respects maxDepth limit and skips overly deep keys", () => {
     // Create a flattened object with keys at various depths
