@@ -30,6 +30,8 @@ const DEFAULT_STREAM_KEY = "chat";
 const DEFAULT_BASE_URL = "https://api.trigger.dev";
 const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
 
+
+
 /**
  * Options for creating a TriggerChatTransport.
  */
@@ -91,6 +93,8 @@ type ChatSessionState = {
   publicAccessToken: string;
   /** Last SSE event ID — used to resume the stream without replaying old events. */
   lastEventId?: string;
+  /** Set when the stream was aborted mid-turn (stop). On reconnect, skip chunks until __trigger_turn_complete. */
+  skipToTurnComplete?: boolean;
 };
 
 /**
@@ -164,14 +168,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     };
 
     const session = this.sessions.get(chatId);
-
     // If we have an existing run, send the message via input stream
     // to resume the conversation in the same run.
     if (session?.runId) {
       try {
         const apiClient = new ApiClient(this.baseURL, session.publicAccessToken);
         await apiClient.sendInputStream(session.runId, CHAT_MESSAGES_STREAM_ID, payload);
-
         return this.subscribeToStream(
           session.runId,
           session.publicAccessToken,
@@ -205,7 +207,6 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       runId,
       publicAccessToken: publicAccessToken ?? currentToken,
     });
-
     return this.subscribeToStream(
       runId,
       publicAccessToken ?? currentToken,
@@ -256,7 +257,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       abortSignal.addEventListener(
         "abort",
         () => {
-          if (session?.runId) {
+          if (session) {
+            session.skipToTurnComplete = true;
             const api = new ApiClient(this.baseURL, session.publicAccessToken);
             api
               .sendInputStream(session.runId, CHAT_STOP_STREAM_ID, { stop: true })
@@ -283,16 +285,18 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         try {
           const sseStream = await subscription.subscribe();
           const reader = sseStream.getReader();
+          let chunkCount = 0;
 
           try {
             while (true) {
               const { done, value } = await reader.read();
 
               if (done) {
-                // Stream closed without a control chunk — the run has
-                // ended (or was killed). Clear the session so that the
-                // next message triggers a fresh run.
-                if (chatId) {
+                // Only delete session if the stream ended naturally (not aborted by stop).
+                // When the user clicks stop, the abort closes the SSE reader which
+                // returns done=true, but the run is still alive and waiting for
+                // the next message via input streams.
+                if (chatId && !combinedSignal.aborted) {
                   this.sessions.delete(chatId);
                 }
                 controller.close();
@@ -315,11 +319,17 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               if (value.chunk != null && typeof value.chunk === "object") {
                 const chunk = value.chunk as Record<string, unknown>;
 
-                // Intercept the turn-complete control chunk emitted by
-                // `chatTask` after the AI response stream completes. This
-                // chunk is never forwarded to the AI SDK consumer.
+                // After a stop, skip leftover chunks from the stopped turn
+                // until we see the __trigger_turn_complete marker.
+                if (session?.skipToTurnComplete) {
+                  if (chunk.type === "__trigger_turn_complete") {
+                    session.skipToTurnComplete = false;
+                    chunkCount = 0;
+                  }
+                  continue;
+                }
+
                 if (chunk.type === "__trigger_turn_complete" && chatId) {
-                  // Abort the underlying fetch to close the SSE connection
                   internalAbort.abort();
                   try {
                     controller.close();
@@ -329,6 +339,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                   return;
                 }
 
+                chunkCount++;
                 controller.enqueue(chunk as unknown as UIMessageChunk);
               }
             }
