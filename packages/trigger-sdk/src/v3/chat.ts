@@ -82,6 +82,24 @@ export type TriggerChatTransportOptions = {
    * @default 120
    */
   streamTimeoutSeconds?: number;
+
+  /**
+   * Default metadata included in every request payload.
+   * Merged with per-call `metadata` from `sendMessage()` — per-call values
+   * take precedence over transport-level defaults.
+   *
+   * Useful for data that should accompany every message, like a user ID.
+   *
+   * @example
+   * ```ts
+   * new TriggerChatTransport({
+   *   task: "my-chat",
+   *   accessToken,
+   *   metadata: { userId: currentUser.id },
+   * });
+   * ```
+   */
+  metadata?: Record<string, unknown>;
 };
 
 /**
@@ -132,6 +150,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly streamKey: string;
   private readonly extraHeaders: Record<string, string>;
   private readonly streamTimeoutSeconds: number;
+  private readonly defaultMetadata: Record<string, unknown> | undefined;
 
   private sessions: Map<string, ChatSessionState> = new Map();
 
@@ -145,6 +164,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.streamKey = options.streamKey ?? DEFAULT_STREAM_KEY;
     this.extraHeaders = options.headers ?? {};
     this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? DEFAULT_STREAM_TIMEOUT_SECONDS;
+    this.defaultMetadata = options.metadata;
   }
 
   sendMessages = async (
@@ -158,13 +178,18 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   ): Promise<ReadableStream<UIMessageChunk>> => {
     const { trigger, chatId, messageId, messages, abortSignal, body, metadata } = options;
 
+    const mergedMetadata =
+      this.defaultMetadata || metadata
+        ? { ...(this.defaultMetadata ?? {}), ...((metadata as Record<string, unknown>) ?? {}) }
+        : undefined;
+
     const payload = {
       ...(body ?? {}),
       messages,
       chatId,
       trigger,
       messageId,
-      metadata,
+      metadata: mergedMetadata,
     };
 
     const session = this.sessions.get(chatId);

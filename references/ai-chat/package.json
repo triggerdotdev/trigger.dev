@@ -9,6 +9,7 @@
     "dev:trigger": "trigger dev"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.0",
     "@ai-sdk/openai": "^3.0.0",
     "@ai-sdk/react": "^3.0.0",
     "@trigger.dev/sdk": "workspace:*",
@@ -16,6 +17,7 @@
     "next": "15.3.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "streamdown": "^2.3.0",
     "zod": "3.25.76"
   },
   "devDependencies": {
