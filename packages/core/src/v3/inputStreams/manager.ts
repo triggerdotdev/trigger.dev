@@ -40,6 +40,26 @@ export class StandardInputStreamManager implements InputStreamManager {
     return this.seqNums.get(streamId);
   }
 
+  setLastSeqNum(streamId: string, seqNum: number): void {
+    const current = this.seqNums.get(streamId);
+    // Only advance forward, never backward
+    if (current === undefined || seqNum > current) {
+      this.seqNums.set(streamId, seqNum);
+    }
+  }
+
+  shiftBuffer(streamId: string): boolean {
+    const buffered = this.buffer.get(streamId);
+    if (buffered && buffered.length > 0) {
+      buffered.shift();
+      if (buffered.length === 0) {
+        this.buffer.delete(streamId);
+      }
+      return true;
+    }
+    return false;
+  }
+
   setRunId(runId: string, streamsVersion?: string): void {
     this.currentRunId = runId;
     this.streamsVersion = streamsVersion;
@@ -156,6 +176,15 @@ export class StandardInputStreamManager implements InputStreamManager {
         this.tails.delete(streamId);
       }
     }
+  }
+
+  disconnectStream(streamId: string): void {
+    const tail = this.tails.get(streamId);
+    if (tail) {
+      tail.abortController.abort();
+      this.tails.delete(streamId);
+    }
+    this.buffer.delete(streamId);
   }
 
   connectTail(runId: string, _fromSeq?: number): void {
