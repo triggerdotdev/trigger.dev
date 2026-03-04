@@ -190,6 +190,13 @@ export const EventOrderingManifest = z.object({
 
 export type EventOrderingManifest = z.infer<typeof EventOrderingManifest>;
 
+export const EventDLQManifest = z.object({
+  /** Whether to store failed event-triggered runs in the DLQ (default: true) */
+  enabled: z.boolean().optional(),
+});
+
+export type EventDLQManifest = z.infer<typeof EventDLQManifest>;
+
 export const EventManifest = z.object({
   /** Unique event identifier (e.g. "order.created") */
   id: z.string(),
@@ -203,6 +210,8 @@ export const EventManifest = z.object({
   rateLimit: EventRateLimitManifest.optional(),
   /** Ordering configuration — creates a dedicated queue with per-key serialization */
   ordering: EventOrderingManifest.optional(),
+  /** Dead letter queue configuration */
+  dlq: EventDLQManifest.optional(),
 });
 
 export type EventManifest = z.infer<typeof EventManifest>;

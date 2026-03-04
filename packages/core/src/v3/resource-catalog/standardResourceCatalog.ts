@@ -192,6 +192,7 @@ export class StandardResourceCatalog implements ResourceCatalog {
       description: event.description,
       rateLimit: event.rateLimit,
       ordering: event.ordering,
+      dlq: event.dlq,
     }));
   }
 

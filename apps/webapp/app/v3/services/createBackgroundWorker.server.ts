@@ -353,12 +353,14 @@ async function syncWorkerEvents(
           description: event.description,
           schema: event.schema as any ?? undefined,
           rateLimit: event.rateLimit as any ?? undefined,
+          dlqConfig: event.dlq as any ?? undefined,
           projectId: worker.projectId,
         },
         update: {
           description: event.description,
           schema: event.schema as any ?? undefined,
           rateLimit: event.rateLimit as any ?? undefined,
+          dlqConfig: event.dlq as any ?? undefined,
         },
       });
 

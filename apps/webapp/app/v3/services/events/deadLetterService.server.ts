@@ -21,6 +21,16 @@ export class DeadLetterService extends BaseService {
       return; // Not an event-triggered run
     }
 
+    // Check if DLQ is disabled for this event type
+    const dlqEnabled = await this.isDLQEnabled(eventContext.eventType, run.projectId);
+    if (!dlqEnabled) {
+      logger.debug("DLQ disabled for event type, skipping", {
+        runId: run.id,
+        eventType: eventContext.eventType,
+      });
+      return;
+    }
+
     try {
       await this._prisma.deadLetterEvent.create({
         data: {
@@ -49,6 +59,24 @@ export class DeadLetterService extends BaseService {
         runId: run.id,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  private async isDLQEnabled(eventType: string, projectId: string): Promise<boolean> {
+    try {
+      const eventDef = await this._prisma.eventDefinition.findFirst({
+        where: { slug: eventType, projectId },
+        select: { dlqConfig: true },
+      });
+
+      if (!eventDef?.dlqConfig) {
+        return true; // Default: DLQ enabled
+      }
+
+      const config = eventDef.dlqConfig as Record<string, unknown>;
+      return config.enabled !== false;
+    } catch {
+      return true; // On error, default to enabled
     }
   }
 

@@ -51,12 +51,35 @@ export interface EventOptions<TId extends string, TSchema extends Schema | undef
    * ```
    */
   ordering?: EventOrdering;
+  /**
+   * Dead letter queue configuration. Controls what happens when event-triggered runs fail.
+   * By default, all failed runs are stored in the DLQ for inspection and retry.
+   *
+   * @example
+   * ```ts
+   * event({
+   *   id: "order.created",
+   *   dlq: { enabled: false }, // Don't store failures in DLQ
+   * });
+   * ```
+   */
+  dlq?: EventDLQConfig;
 }
 
 /** Ordering configuration for an event */
 export interface EventOrdering {
   /** Maximum number of ordering keys processed in parallel (default: environment limit) */
   concurrencyLimit?: number;
+}
+
+/** Dead letter queue configuration for an event */
+export interface EventDLQConfig {
+  /**
+   * Whether to store failed event-triggered runs in the DLQ.
+   * When false, failed runs are discarded silently.
+   * @default true
+   */
+  enabled?: boolean;
 }
 
 /** Options for publishing an event */
@@ -189,7 +212,7 @@ export function createEvent<TId extends string>(
 export function createEvent<TId extends string, TSchema extends Schema | undefined = undefined>(
   options: EventOptions<TId, TSchema>
 ): EventDefinition<TId, any> {
-  const { id, schema, description, version = "1.0", rateLimit, ordering } = options;
+  const { id, schema, description, version = "1.0", rateLimit, ordering, dlq } = options;
 
   // Build the parse function if a schema is provided
   let parseFn: SchemaParseFn<any> | undefined;
@@ -318,6 +341,7 @@ export function createEvent<TId extends string, TSchema extends Schema | undefin
     rawSchema: schema,
     rateLimit,
     ordering,
+    dlq,
   });
 
   // Mark as event for runtime detection

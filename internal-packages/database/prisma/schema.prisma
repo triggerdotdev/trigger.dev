@@ -604,6 +604,9 @@ model EventDefinition {
   // Rate limiting (Phase 7) — JSON config e.g. { "limit": 100, "window": "1m" }
   rateLimit Json?
 
+  // DLQ configuration (Phase 4.4) — JSON config e.g. { "enabled": false }
+  dlqConfig Json?
+
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 

@@ -11,6 +11,8 @@ export interface EventMetadata {
   rateLimit?: { limit: number; window: string };
   /** Ordering configuration — enables per-key serialization with global concurrency limit */
   ordering?: { concurrencyLimit?: number };
+  /** Dead letter queue configuration */
+  dlq?: { enabled?: boolean };
 }
 
 export interface ResourceCatalog {
