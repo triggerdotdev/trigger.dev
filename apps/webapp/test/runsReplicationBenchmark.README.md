@@ -84,14 +84,13 @@ cd apps/webapp
 BENCHMARK_NUM_RUNS=50000 pnpm run test ./test/runsReplicationBenchmark.test.ts --run
 ```
 
-**Note:** The test is marked with `.skip` by default. To run it, remove the `.skip` from the test:
+**Note:** The benchmark is gated by the `BENCHMARKS_ENABLED` environment variable
+(via `containerTest.skipIf`), so you don't need to edit the test file. Set
+`BENCHMARKS_ENABLED=1` (and optionally `BENCHMARK_NUM_RUNS`) then run:
 
-```typescript
-// Change this:
-containerTest.skip("should benchmark...", async () => {
-
-// To this:
-containerTest("should benchmark...", async () => {
+```bash
+cd apps/webapp
+BENCHMARKS_ENABLED=1 pnpm run test ./test/runsReplicationBenchmark.test.ts --run
 ```
 
 ## What Gets Measured

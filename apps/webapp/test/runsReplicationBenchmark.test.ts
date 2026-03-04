@@ -344,36 +344,39 @@ async function runBenchmark(
   const eluMonitor = new ELUMonitor();
   eluMonitor.start(100);
 
-  // Run producer in separate process
-  console.log("\n[Benchmark] Starting producer...");
-  const producerStats = await runProducer({
-    postgresUrl: postgresContainer.getConnectionUri(),
-    organizationId: organization.id,
-    projectId: project.id,
-    environmentId: runtimeEnvironment.id,
-    numRuns: BENCHMARK_CONFIG.NUM_RUNS,
-    errorRate: BENCHMARK_CONFIG.ERROR_RATE,
-    batchSize: BENCHMARK_CONFIG.PRODUCER_BATCH_SIZE,
-  });
+  let producerStats!: BenchmarkResult["producerStats"];
+  let replicationResult!: { duration: number; replicatedRuns: number };
+  let metricsStats!: BenchmarkResult["metricsStats"];
+  let eluStats!: BenchmarkResult["eluStats"];
 
-  console.log("\n[Benchmark] Waiting for replication to complete...");
-  const replicationResult = await waitForReplication(
-    clickhouse,
-    organization.id,
-    producerStats.created,
-    BENCHMARK_CONFIG.REPLICATION_TIMEOUT_MS
-  );
+  try {
+    // Run producer in separate process
+    console.log("\n[Benchmark] Starting producer...");
+    producerStats = await runProducer({
+      postgresUrl: postgresContainer.getConnectionUri(),
+      organizationId: organization.id,
+      projectId: project.id,
+      environmentId: runtimeEnvironment.id,
+      numRuns: BENCHMARK_CONFIG.NUM_RUNS,
+      errorRate: BENCHMARK_CONFIG.ERROR_RATE,
+      batchSize: BENCHMARK_CONFIG.PRODUCER_BATCH_SIZE,
+    });
 
-  // Stop ELU monitoring
-  const eluStats = eluMonitor.stop();
+    console.log("\n[Benchmark] Waiting for replication to complete...");
+    replicationResult = await waitForReplication(
+      clickhouse,
+      organization.id,
+      producerStats.created,
+      BENCHMARK_CONFIG.REPLICATION_TIMEOUT_MS
+    );
 
-  // Get metrics
-  const metrics = await metricsHelper.getMetrics();
-  const metricsStats = extractMetrics(metrics);
-
-  // Cleanup
-  await runsReplicationService.stop();
-  await metricsHelper.shutdown();
+    const metrics = await metricsHelper.getMetrics();
+    metricsStats = extractMetrics(metrics);
+  } finally {
+    eluStats = eluMonitor.stop();
+    await runsReplicationService.stop();
+    await metricsHelper.shutdown();
+  }
 
   const throughput = (replicationResult.replicatedRuns / replicationResult.duration) * 1000;
 
