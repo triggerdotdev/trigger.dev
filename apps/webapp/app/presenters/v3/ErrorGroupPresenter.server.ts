@@ -1,15 +1,6 @@
 import { z } from "zod";
 import { type ClickHouse, msToClickHouseInterval } from "@internal/clickhouse";
 import { TimeGranularity } from "~/utils/timeGranularity";
-
-const errorGroupGranularity = new TimeGranularity([
-  { max: "1h", granularity: "1m" },
-  { max: "1d", granularity: "30m" },
-  { max: "1w", granularity: "8h" },
-  { max: "31d", granularity: "1d" },
-  { max: "45d", granularity: "1w" },
-  { max: "Infinity", granularity: "30d" },
-]);
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
@@ -22,6 +13,15 @@ import {
   type NextRunList,
 } from "~/presenters/v3/NextRunListPresenter.server";
 import { sortVersionsDescending } from "~/utils/semver";
+
+const errorGroupGranularity = new TimeGranularity([
+  { max: "1h", granularity: "1m" },
+  { max: "1d", granularity: "20m" },
+  { max: "1w", granularity: "2h" },
+  { max: "31d", granularity: "12h" },
+  { max: "60d", granularity: "1w" },
+  { max: "Infinity", granularity: "30d" },
+]);
 
 export type ErrorGroupOptions = {
   userId?: string;
@@ -287,6 +287,7 @@ export class ErrorGroupPresenter extends BasePresenter {
     const result = await runListPresenter.call(organizationId, environmentId, {
       userId: options.userId,
       projectId: options.projectId,
+      rootOnly: false,
       errorId: ErrorId.toFriendlyId(options.fingerprint),
       pageSize: options.pageSize,
       from: options.from,

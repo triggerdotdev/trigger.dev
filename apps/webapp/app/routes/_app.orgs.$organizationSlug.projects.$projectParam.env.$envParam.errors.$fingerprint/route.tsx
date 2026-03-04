@@ -3,7 +3,12 @@ import { type MetaFunction } from "@remix-run/react";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { requireUser } from "~/services/session.server";
-import { EnvironmentParamSchema, v3ErrorsPath } from "~/utils/pathBuilder";
+import {
+  EnvironmentParamSchema,
+  v3CreateBulkActionPath,
+  v3ErrorsPath,
+  v3RunsPath,
+} from "~/utils/pathBuilder";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -21,17 +26,26 @@ import { Suspense, useMemo } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Callout } from "~/components/primitives/Callout";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
 import { formatDistanceToNow } from "date-fns";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import * as Property from "~/components/primitives/PropertyTable";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
-import { DateTime } from "~/components/primitives/DateTime";
+import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { useSearchParams } from "~/hooks/useSearchParam";
+import { CopyableText } from "~/components/primitives/CopyableText";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
@@ -218,6 +232,11 @@ function ErrorGroupDetail({
   envParam: string;
   fingerprint: string;
 }) {
+  const { value } = useSearchParams();
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
   if (!errorGroup) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -231,47 +250,40 @@ function ErrorGroupDetail({
     );
   }
 
-  return (
-    <div className="grid h-full grid-rows-[auto_16rem_1fr] overflow-hidden">
-      {/* Error Summary */}
-      <div className="border-b border-grid-bright p-4">
-        <Header2 className="mb-4">{errorGroup.errorMessage}</Header2>
+  const fromValue = value("from") ?? undefined;
+  const toValue = value("to") ?? undefined;
 
-        <div className="mb-4">
-          <TimeFilter defaultPeriod="7d" labelName="Occurred" />
+  const filters: TaskRunListSearchFilters = {
+    period: value("period") ?? undefined,
+    from: fromValue ? parseInt(fromValue, 10) : undefined,
+    to: toValue ? parseInt(toValue, 10) : undefined,
+    rootOnly: false,
+    errorId: ErrorId.toFriendlyId(fingerprint),
+  };
+
+  return (
+    <div className="grid h-full grid-rows-[auto_12rem_1fr] overflow-hidden">
+      {/* Error Summary */}
+      <div className="flex flex-col gap-2 border-b border-grid-bright bg-background-bright p-4">
+        <div className="flex flex-col gap-0.5">
+          <Header2>{errorGroup.errorMessage}</Header2>
+          <Header3>{formatNumberCompact(errorGroup.count)} total occurrences</Header3>
         </div>
 
-        <div className="grid grid-cols-3 gap-x-12 gap-y-1">
+        <div className="grid grid-cols-[auto_auto_auto_1fr] gap-x-12 gap-y-0.5">
           <Property.Table>
             <Property.Item>
               <Property.Label>ID</Property.Label>
               <Property.Value>
-                <span className="font-mono">{ErrorId.toFriendlyId(errorGroup.fingerprint)}</span>
+                <CopyableText value={ErrorId.toFriendlyId(errorGroup.fingerprint)} />
               </Property.Value>
             </Property.Item>
             <Property.Item>
               <Property.Label>Task</Property.Label>
               <Property.Value>
-                <span className="font-mono">{errorGroup.taskIdentifier}</span>
+                <CopyableText value={errorGroup.taskIdentifier} />
               </Property.Value>
             </Property.Item>
-          </Property.Table>
-
-          <Property.Table>
-            <Property.Item>
-              <Property.Label>Total occurrences</Property.Label>
-              <Property.Value>{formatNumberCompact(errorGroup.count)}</Property.Value>
-            </Property.Item>
-            {errorGroup.affectedVersions.length > 0 && (
-              <Property.Item>
-                <Property.Label>Affected versions</Property.Label>
-                <Property.Value>
-                  <span className="font-mono text-xs">
-                    {errorGroup.affectedVersions.join(", ")}
-                  </span>
-                </Property.Value>
-              </Property.Item>
-            )}
           </Property.Table>
 
           <Property.Table>
@@ -284,16 +296,32 @@ function ErrorGroupDetail({
             <Property.Item>
               <Property.Label>Last seen</Property.Label>
               <Property.Value>
-                {formatDistanceToNow(errorGroup.lastSeen, { addSuffix: true })}
+                <RelativeDateTime date={errorGroup.lastSeen} />
               </Property.Value>
             </Property.Item>
+          </Property.Table>
+
+          <Property.Table>
+            {errorGroup.affectedVersions.length > 0 && (
+              <Property.Item>
+                <Property.Label>Affected versions</Property.Label>
+                <Property.Value>
+                  <span className="font-mono text-xs">
+                    {errorGroup.affectedVersions.join(", ")}
+                  </span>
+                </Property.Value>
+              </Property.Item>
+            )}
           </Property.Table>
         </div>
       </div>
 
       {/* Activity chart */}
-      <div className="flex flex-col overflow-hidden border-b border-grid-bright px-4 py-3">
-        <Header3 className="mb-2 shrink-0">Activity</Header3>
+      <div className="flex flex-col gap-3 overflow-hidden border-b border-grid-bright px-4 py-3">
+        <div className="flex items-center">
+          <TimeFilter defaultPeriod="7d" labelName="Occurred" />
+        </div>
+
         <Suspense fallback={<ActivityChartBlankState />}>
           <TypedAwait resolve={activity} errorElement={<ActivityChartBlankState />}>
             {(result) =>
@@ -311,7 +339,32 @@ function ErrorGroupDetail({
       <div className="flex flex-col gap-1 overflow-y-hidden">
         <div className="flex items-center justify-between px-4">
           <Header3 className="mb-1 mt-2">Runs</Header3>
-          {runList && <ListPagination list={runList} />}
+          {runList && (
+            <div className="flex items-center gap-2">
+              <LinkButton
+                variant="secondary/small"
+                to={v3RunsPath(organization, project, environment, filters)}
+                LeadingIcon={RunsIcon}
+              >
+                View all runs
+              </LinkButton>
+              <LinkButton
+                variant="secondary/small"
+                to={v3CreateBulkActionPath(
+                  organization,
+                  project,
+                  environment,
+                  filters,
+                  "filter",
+                  "replay"
+                )}
+                LeadingIcon={ListCheckedIcon}
+              >
+                Bulk replay…
+              </LinkButton>
+              <ListPagination list={runList} />
+            </div>
+          )}
         </div>
         {runList ? (
           <TaskRunsTable

@@ -1,6 +1,5 @@
 import * as Ariakit from "@ariakit/react";
 import {
-  BugAntIcon,
   CalendarIcon,
   ClockIcon,
   FingerPrintIcon,
@@ -10,7 +9,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
-import { IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
+import { IconBugFilled, IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { ListFilterIcon } from "lucide-react";
@@ -263,7 +262,7 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
     case "versions":
       return <IconRotateClockwise2 className="size-4" />;
     case "errorId":
-      return <BugAntIcon className="size-4" />;
+      return <IconBugFilled className="size-4" />;
     default:
       return undefined;
   }
@@ -388,7 +387,7 @@ const filterTypes = [
   { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
   { name: "schedule", title: "Schedule ID", icon: <ClockIcon className="size-4" /> },
   { name: "bulk", title: "Bulk action", icon: <ListCheckedIcon className="size-4" /> },
-  { name: "error", title: "Error ID", icon: <BugAntIcon className="size-4" /> },
+  { name: "error", title: "Error ID", icon: <IconBugFilled className="size-4" /> },
 ] as const;
 
 type FilterType = (typeof filterTypes)[number]["name"];
@@ -667,7 +666,7 @@ function TasksDropdown({
                 <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
               }
             >
-              <MiddleTruncate text={item.slug}/>
+              <MiddleTruncate text={item.slug} />
             </SelectItem>
           ))}
         </SelectList>
