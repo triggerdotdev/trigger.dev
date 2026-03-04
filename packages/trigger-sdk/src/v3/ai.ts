@@ -217,6 +217,28 @@ const messagesInput = streams.input<ChatTaskPayload>({ id: CHAT_MESSAGES_STREAM_
 const stopInput = streams.input<{ stop: true; message?: string }>({ id: CHAT_STOP_STREAM_ID });
 
 /**
+ * Strips provider-specific IDs from message parts so that partial/stopped
+ * assistant responses don't cause 404s when sent back to the provider
+ * (e.g. OpenAI Responses API message IDs).
+ * @internal
+ */
+function sanitizeMessages<TMessage extends UIMessage>(messages: TMessage[]): TMessage[] {
+  return messages.map((msg) => {
+    if (msg.role !== "assistant" || !msg.parts) return msg;
+    return {
+      ...msg,
+      parts: msg.parts.map((part: any) => {
+        // Strip provider-specific metadata (e.g. OpenAI Responses API itemId)
+        // and streaming state from assistant message parts. These cause 404s
+        // when partial/stopped responses are sent back to the provider.
+        const { providerMetadata, state, id, ...rest } = part;
+        return rest;
+      }),
+    };
+  });
+}
+
+/**
  * Tracks how many times `pipeChat` has been called in the current `chatTask` run.
  * Used to prevent double-piping when a user both calls `pipeChat()` manually
  * and returns a streamable from their `run` function.
@@ -454,6 +476,7 @@ function chatTask<TIdentifier extends string>(
           try {
             const result = await userRun({
               ...currentPayload,
+              messages: sanitizeMessages(currentPayload.messages),
               signal: combinedSignal,
               cancelSignal,
               stopSignal,
