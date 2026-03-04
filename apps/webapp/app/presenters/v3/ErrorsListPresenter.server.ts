@@ -61,11 +61,13 @@ export type ErrorOccurrenceActivity = ErrorOccurrences["data"][string];
 type ErrorGroupCursor = {
   occurrenceCount: number;
   fingerprint: string;
+  taskIdentifier: string;
 };
 
 const ErrorGroupCursorSchema = z.object({
   occurrenceCount: z.number(),
   fingerprint: z.string(),
+  taskIdentifier: z.string(),
 });
 
 function encodeCursor(cursor: ErrorGroupCursor): string {
@@ -191,19 +193,22 @@ export class ErrorsListPresenter extends BasePresenter {
       );
     }
 
-    // Cursor-based pagination (sorted by occurrence_count DESC)
+    // Cursor-based pagination (sorted by occurrence_count DESC, then fingerprint, then task)
     const decodedCursor = cursor ? decodeCursor(cursor) : null;
     if (decodedCursor) {
       queryBuilder.having(
-        "(occurrence_count < {cursorOccurrenceCount: UInt64} OR (occurrence_count = {cursorOccurrenceCount: UInt64} AND error_fingerprint < {cursorFingerprint: String}))",
+        `(occurrence_count < {cursorOccurrenceCount: UInt64}
+          OR (occurrence_count = {cursorOccurrenceCount: UInt64} AND error_fingerprint < {cursorFingerprint: String})
+          OR (occurrence_count = {cursorOccurrenceCount: UInt64} AND error_fingerprint = {cursorFingerprint: String} AND task_identifier < {cursorTaskIdentifier: String}))`,
         {
           cursorOccurrenceCount: decodedCursor.occurrenceCount,
           cursorFingerprint: decodedCursor.fingerprint,
+          cursorTaskIdentifier: decodedCursor.taskIdentifier,
         }
       );
     }
 
-    queryBuilder.orderBy("occurrence_count DESC, error_fingerprint DESC");
+    queryBuilder.orderBy("task_identifier DESC, error_fingerprint DESC, occurrence_count DESC");
     queryBuilder.limit(pageSize + 1);
 
     const [queryError, records] = await queryBuilder.execute();
@@ -222,6 +227,7 @@ export class ErrorsListPresenter extends BasePresenter {
       nextCursor = encodeCursor({
         occurrenceCount: lastError.occurrence_count,
         fingerprint: lastError.error_fingerprint,
+        taskIdentifier: lastError.task_identifier,
       });
     }
 
@@ -364,10 +370,16 @@ export class ErrorsListPresenter extends BasePresenter {
     if (queryError || !records) return result;
 
     for (const record of records) {
-      result.set(record.error_fingerprint, {
-        firstSeen: parseClickHouseDateTime(record.first_seen),
-        lastSeen: parseClickHouseDateTime(record.last_seen),
-      });
+      const firstSeen = parseClickHouseDateTime(record.first_seen);
+      const lastSeen = parseClickHouseDateTime(record.last_seen);
+      const existing = result.get(record.error_fingerprint);
+
+      if (existing) {
+        if (firstSeen < existing.firstSeen) existing.firstSeen = firstSeen;
+        if (lastSeen > existing.lastSeen) existing.lastSeen = lastSeen;
+      } else {
+        result.set(record.error_fingerprint, { firstSeen, lastSeen });
+      }
     }
 
     return result;
