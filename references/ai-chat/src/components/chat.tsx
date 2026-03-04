@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import { getChatToken } from "@/app/actions";
 import { MODEL_OPTIONS, DEFAULT_MODEL } from "@/trigger/chat";
@@ -87,6 +87,21 @@ export function Chat() {
     transport,
   });
 
+  // Pending message to send after the current turn completes
+  const [pendingMessage, setPendingMessage] = useState<{ text: string; model: string } | null>(null);
+
+  // Auto-send the pending message when the turn completes
+  const prevStatus = useRef(status);
+  useEffect(() => {
+    if (prevStatus.current === "streaming" && status === "ready" && pendingMessage) {
+      const { text, model: pendingMsgModel } = pendingMessage;
+      setPendingMessage(null);
+      pendingModel.current = pendingMsgModel;
+      sendMessage({ text }, { metadata: { model: pendingMsgModel } });
+    }
+    prevStatus.current = status;
+  }, [status, sendMessage, pendingMessage]);
+
   // Build a map of assistant message index -> model used
   // Each assistant message follows a user message, so we track by position
   function getModelForAssistantAt(index: number): string | undefined {
@@ -118,11 +133,11 @@ export function Chat() {
   }
 
   return (
-    <div className="flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm">
+    <div className="flex h-full flex-col bg-white">
       {/* Messages */}
-      <div className="flex-1 space-y-4 overflow-y-auto p-4" style={{ maxHeight: "60vh" }}>
+      <div className="flex-1 space-y-4 overflow-y-auto p-4">
         {messages.length === 0 && (
-          <p className="text-center text-sm text-gray-400">Send a message to start chatting.</p>
+          <p className="pt-20 text-center text-sm text-gray-400">Send a message to start chatting.</p>
         )}
 
         {messages.map((message, messageIndex) => (
@@ -183,11 +198,25 @@ export function Chat() {
             </div>
           </div>
         )}
+
+        {/* Queued message indicator */}
+        {pendingMessage && (
+          <div className="flex justify-end">
+            <div className="max-w-[80%]">
+              <div className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white opacity-60">
+                {pendingMessage.text}
+              </div>
+              <div className="mt-1 text-right text-[10px] text-gray-400">
+                Queued — will send when current response finishes
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Error */}
       {error && (
-        <div className="border-t border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">
+        <div className="shrink-0 border-t border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">
           {error.message}
         </div>
       )}
@@ -196,11 +225,16 @@ export function Chat() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (!input.trim() || status === "streaming") return;
-          trackedSendMessage({ text: input }, { metadata: { model } });
+          if (!input.trim()) return;
+          if (status === "streaming") {
+            // Buffer the message — it will be sent when the current turn completes
+            setPendingMessage({ text: input, model });
+          } else {
+            trackedSendMessage({ text: input }, { metadata: { model } });
+          }
           setInput("");
         }}
-        className="border-t border-gray-200 p-4"
+        className="shrink-0 border-t border-gray-200 bg-white p-4"
       >
         <div className="flex gap-2">
           <input
@@ -210,21 +244,20 @@ export function Chat() {
             placeholder="Type a message..."
             className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
           />
-          {status === "streaming" ? (
+          <button
+            type="submit"
+            disabled={!input.trim() || !!pendingMessage}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {status === "streaming" ? "Queue" : "Send"}
+          </button>
+          {status === "streaming" && (
             <button
               type="button"
               onClick={stop}
               className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
             >
               Stop
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={!input.trim()}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              Send
             </button>
           )}
         </div>
