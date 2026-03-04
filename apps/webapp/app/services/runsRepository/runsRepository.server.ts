@@ -44,7 +44,7 @@ const RunListInputOptionsSchema = z.object({
   bulkId: z.string().optional(),
   queues: z.array(z.string()).optional(),
   machines: MachinePresetName.array().optional(),
-  errorFingerprint: z.string().optional(),
+  errorId: z.string().optional(),
 });
 
 export type RunListInputOptions = z.infer<typeof RunListInputOptionsSchema>;

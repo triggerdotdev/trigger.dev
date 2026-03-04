@@ -1,5 +1,5 @@
 import { type ClickhouseQueryBuilder } from "@internal/clickhouse";
-import { RunId } from "@trigger.dev/core/v3/isomorphic";
+import { ErrorId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import {
   type FilterRunsOptions,
   type IRunsRepository,
@@ -329,9 +329,9 @@ function applyRunFiltersToQueryBuilder<T>(
     });
   }
 
-  if (options.errorFingerprint) {
+  if (options.errorId) {
     queryBuilder.where("error_fingerprint = {errorFingerprint: String}", {
-      errorFingerprint: options.errorFingerprint,
+      errorFingerprint: ErrorId.toId(options.errorId),
     });
   }
 }

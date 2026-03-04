@@ -33,7 +33,7 @@ export type RunListOptions = {
   runId?: string[];
   queues?: string[];
   machines?: MachinePresetName[];
-  errorFingerprint?: string;
+  errorId?: string;
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -71,7 +71,7 @@ export class NextRunListPresenter {
       runId,
       queues,
       machines,
-      errorFingerprint,
+      errorId,
       from,
       to,
       direction = "forward",
@@ -184,7 +184,7 @@ export class NextRunListPresenter {
       bulkId,
       queues,
       machines,
-      errorFingerprint,
+      errorId,
       page: {
         size: pageSize,
         cursor,

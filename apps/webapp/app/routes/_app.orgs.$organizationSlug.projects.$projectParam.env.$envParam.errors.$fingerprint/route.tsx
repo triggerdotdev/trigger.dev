@@ -190,6 +190,7 @@ export default function Page() {
                   organizationSlug={organizationSlug}
                   projectParam={projectParam}
                   envParam={envParam}
+                  fingerprint={fingerprint}
                 />
               );
             }}
@@ -207,6 +208,7 @@ function ErrorGroupDetail({
   organizationSlug,
   projectParam,
   envParam,
+  fingerprint,
 }: {
   errorGroup: ErrorGroupSummary | undefined;
   runList: NextRunList | undefined;
@@ -214,6 +216,7 @@ function ErrorGroupDetail({
   organizationSlug: string;
   projectParam: string;
   envParam: string;
+  fingerprint: string;
 }) {
   if (!errorGroup) {
     return (
@@ -324,7 +327,7 @@ function ErrorGroupDetail({
             runs={runList.runs}
             isLoading={false}
             variant="dimmed"
-            disableAdjacentRows
+            additionalTableState={{ errorId: ErrorId.toFriendlyId(fingerprint) }}
           />
         ) : (
           <Paragraph variant="small" className="p-4 text-text-dimmed">

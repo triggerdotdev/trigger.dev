@@ -10,6 +10,7 @@ const errorGroupGranularity = new TimeGranularity([
   { max: "45d", granularity: "1w" },
   { max: "Infinity", granularity: "30d" },
 ]);
+import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { type Direction, DirectionSchema } from "~/components/ListPagination";
@@ -286,7 +287,7 @@ export class ErrorGroupPresenter extends BasePresenter {
     const result = await runListPresenter.call(organizationId, environmentId, {
       userId: options.userId,
       projectId: options.projectId,
-      errorFingerprint: options.fingerprint,
+      errorId: ErrorId.toFriendlyId(options.fingerprint),
       pageSize: options.pageSize,
       from: options.from,
       to: options.to,
