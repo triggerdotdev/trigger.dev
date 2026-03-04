@@ -189,10 +189,10 @@ jobs:
           # Get current release body and replace the generic link with the tag-specific one.
           # Use word boundary after GENERIC_URL (closing paren) to avoid matching URLs that
           # already have a version ID appended (idempotent on re-runs).
-          gh release view "${TAG}" --json body --jq '.body' > /tmp/release-body.md
+          gh release view "${TAG}" --repo triggerdotdev/trigger.dev --json body --jq '.body' > /tmp/release-body.md
           sed -i "s|${GENERIC_URL})|${DOCKER_URL})|g" /tmp/release-body.md
 
-          gh release edit "${TAG}" --notes-file /tmp/release-body.md
+          gh release edit "${TAG}" --repo triggerdotdev/trigger.dev --notes-file /tmp/release-body.md
 
   # Dispatch changelog entry creation to the marketing site repo.
   # Runs after update-release so the GitHub release body already has the exact Docker image URL.
