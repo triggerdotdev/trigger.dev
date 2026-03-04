@@ -2,13 +2,14 @@
 
 import { useChat } from "@ai-sdk/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { Streamdown } from "streamdown";
 import { getChatToken } from "@/app/actions";
+import { MODEL_OPTIONS, DEFAULT_MODEL } from "@/trigger/chat";
 import type { aiChat } from "@/trigger/chat";
 
 function ToolInvocation({ part }: { part: any }) {
   const [expanded, setExpanded] = useState(false);
-  // Static tools: type is "tool-{name}", dynamic tools have toolName property
   const toolName =
     part.type === "dynamic-tool"
       ? (part.toolName ?? "tool")
@@ -72,6 +73,9 @@ function ToolInvocation({ part }: { part: any }) {
 
 export function Chat() {
   const [input, setInput] = useState("");
+  const [model, setModel] = useState(DEFAULT_MODEL);
+  // Track which model was used for each assistant message (keyed by the preceding user message ID)
+  const modelByUserMsgId = useRef<Map<string, string>>(new Map());
 
   const transport = useTriggerChatTransport<typeof aiChat>({
     task: "ai-chat",
@@ -83,12 +87,34 @@ export function Chat() {
     transport,
   });
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!input.trim() || status === "streaming") return;
+  // Build a map of assistant message index -> model used
+  // Each assistant message follows a user message, so we track by position
+  function getModelForAssistantAt(index: number): string | undefined {
+    // Walk backwards to find the preceding user message
+    for (let i = index - 1; i >= 0; i--) {
+      if (messages[i]?.role === "user") {
+        return modelByUserMsgId.current.get(messages[i].id);
+      }
+    }
+    return undefined;
+  }
 
-    sendMessage({ text: input });
-    setInput("");
+  // When sending, record which model is selected for this user message
+  const originalSendMessage = sendMessage;
+  function trackedSendMessage(msg: Parameters<typeof sendMessage>[0], opts?: Parameters<typeof sendMessage>[1]) {
+    // We'll track it after the message appears — use a ref to store the pending model
+    pendingModel.current = model;
+    originalSendMessage(msg, opts);
+  }
+  const pendingModel = useRef<string>(model);
+
+  // Track model for new user messages as they appear
+  const trackedUserIds = useRef<Set<string>>(new Set());
+  for (const msg of messages) {
+    if (msg.role === "user" && !trackedUserIds.current.has(msg.id)) {
+      trackedUserIds.current.add(msg.id);
+      modelByUserMsgId.current.set(msg.id, pendingModel.current);
+    }
   }
 
   return (
@@ -99,38 +125,61 @@ export function Chat() {
           <p className="text-center text-sm text-gray-400">Send a message to start chatting.</p>
         )}
 
-        {messages.map((message) => (
+        {messages.map((message, messageIndex) => (
           <div
             key={message.id}
             className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
           >
-            <div
-              className={`max-w-[80%] rounded-lg px-4 py-2 text-sm ${
-                message.role === "user"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-900"
-              }`}
-            >
-              {message.parts.map((part, i) => {
-                if (part.type === "text") {
-                  return <span key={i}>{part.text}</span>;
-                }
+            <div className={`max-w-[80%] ${message.role === "user" ? "" : "w-full"}`}>
+              {/* Model badge for assistant messages */}
+              {message.role === "assistant" && (
+                <div className="mb-1 flex items-center gap-2 text-[10px] text-gray-400">
+                  <span className="rounded bg-gray-200 px-1.5 py-0.5 font-medium text-gray-500">
+                    {getModelForAssistantAt(messageIndex) ?? DEFAULT_MODEL}
+                  </span>
+                </div>
+              )}
+              <div
+                className={`rounded-lg px-4 py-2 text-sm ${
+                  message.role === "user"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-900"
+                }`}
+              >
+                {message.parts.map((part, i) => {
+                  if (part.type === "text") {
+                    if (message.role === "assistant") {
+                      return (
+                        <Streamdown
+                          key={i}
+                          animated
+                          isAnimating={
+                            status === "streaming" &&
+                            messageIndex === messages.length - 1
+                          }
+                        >
+                          {part.text}
+                        </Streamdown>
+                      );
+                    }
+                    return <span key={i}>{part.text}</span>;
+                  }
 
-                // Static tools: "tool-{toolName}", dynamic tools: "dynamic-tool"
-                if (part.type.startsWith("tool-") || part.type === "dynamic-tool") {
-                  return <ToolInvocation key={i} part={part} />;
-                }
+                  if (part.type.startsWith("tool-") || part.type === "dynamic-tool") {
+                    return <ToolInvocation key={i} part={part} />;
+                  }
 
-                return null;
-              })}
+                  return null;
+                })}
+              </div>
             </div>
           </div>
         ))}
 
-        {status === "streaming" && (
+        {status === "streaming" && messages[messages.length - 1]?.role !== "assistant" && (
           <div className="flex justify-start">
             <div className="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-400">
-              Thinking…
+              Thinking...
             </div>
           </div>
         )}
@@ -144,31 +193,54 @@ export function Chat() {
       )}
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="flex gap-2 border-t border-gray-200 p-4">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message…"
-          className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-        />
-        {status === "streaming" ? (
-          <button
-            type="button"
-            onClick={stop}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!input.trim() || status === "streaming") return;
+          trackedSendMessage({ text: input }, { metadata: { model } });
+          setInput("");
+        }}
+        className="border-t border-gray-200 p-4"
+      >
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type a message..."
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          />
+          {status === "streaming" ? (
+            <button
+              type="button"
+              onClick={stop}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!input.trim()}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              Send
+            </button>
+          )}
+        </div>
+        <div className="mt-2">
+          <select
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
           >
-            Stop
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!input.trim()}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            Send
-          </button>
-        )}
+            {MODEL_OPTIONS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
       </form>
     </div>
   );

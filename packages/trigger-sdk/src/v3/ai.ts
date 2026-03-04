@@ -167,11 +167,23 @@ export const CHAT_STREAM_KEY = _CHAT_STREAM_KEY;
 export { CHAT_MESSAGES_STREAM_ID, CHAT_STOP_STREAM_ID };
 
 /**
- * The payload shape that the chat transport sends to the triggered task.
+ * The wire payload shape sent by `TriggerChatTransport`.
+ * Uses `metadata` to match the AI SDK's `ChatRequestOptions` field name.
+ * @internal
+ */
+type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage> = {
+  messages: TMessage[];
+  chatId: string;
+  trigger: "submit-message" | "regenerate-message";
+  messageId?: string;
+  metadata?: unknown;
+};
+
+/**
+ * The payload shape passed to the `chatTask` run function.
  *
- * When using `chatTask()`, the payload is automatically typed — you don't need
- * to import this type. Use this type only if you're using `task()` directly
- * with `pipeChat()`.
+ * The `metadata` field from the AI SDK transport is exposed as `clientData`
+ * to avoid confusion with Trigger.dev's run metadata.
  */
 export type ChatTaskPayload<TMessage extends UIMessage = UIMessage> = {
   /** The conversation messages */
@@ -190,8 +202,8 @@ export type ChatTaskPayload<TMessage extends UIMessage = UIMessage> = {
   /** The ID of the message to regenerate (only for `"regenerate-message"`) */
   messageId?: string;
 
-  /** Custom metadata from the frontend */
-  metadata?: unknown;
+  /** Custom data from the frontend (passed via `metadata` on `sendMessage()` or the transport). */
+  clientData?: unknown;
 };
 
 /**
@@ -213,7 +225,7 @@ export type ChatTaskSignals = {
 export type ChatTaskRunPayload = ChatTaskPayload & ChatTaskSignals;
 
 // Input streams for bidirectional chat communication
-const messagesInput = streams.input<ChatTaskPayload>({ id: CHAT_MESSAGES_STREAM_ID });
+const messagesInput = streams.input<ChatTaskWirePayload>({ id: CHAT_MESSAGES_STREAM_ID });
 const stopInput = streams.input<{ stop: true; message?: string }>({ id: CHAT_STOP_STREAM_ID });
 
 /**
@@ -449,7 +461,7 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
  */
 function chatTask<TIdentifier extends string>(
   options: ChatTaskOptions<TIdentifier>
-): Task<TIdentifier, ChatTaskPayload, unknown> {
+): Task<TIdentifier, ChatTaskWirePayload, unknown> {
   const {
     run: userRun,
     maxTurns = 100,
@@ -458,10 +470,10 @@ function chatTask<TIdentifier extends string>(
     ...restOptions
   } = options;
 
-  return createTask<TIdentifier, ChatTaskPayload, unknown>({
+  return createTask<TIdentifier, ChatTaskWirePayload, unknown>({
     ...restOptions,
-    run: async (payload: ChatTaskPayload, { signal: runSignal }) => {
-      let currentPayload = payload;
+    run: async (payload: ChatTaskWirePayload, { signal: runSignal }) => {
+      let currentWirePayload = payload;
 
       // Mutable reference to the current turn's stop controller so the
       // stop input stream listener (registered once) can abort the right turn.
@@ -486,15 +498,19 @@ function chatTask<TIdentifier extends string>(
           const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
 
           // Buffer messages that arrive during streaming
-          const pendingMessages: ChatTaskPayload[] = [];
+          const pendingMessages: ChatTaskWirePayload[] = [];
           const msgSub = messagesInput.on((msg) => {
-            pendingMessages.push(msg as ChatTaskPayload);
+            pendingMessages.push(msg);
           });
+
+          // Remap wire payload to user-facing payload (metadata -> clientData)
+          const { metadata: wireMetadata, ...restWire } = currentWirePayload;
 
           try {
             const result = await userRun({
-              ...currentPayload,
-              messages: sanitizeMessages(currentPayload.messages),
+              ...restWire,
+              clientData: wireMetadata,
+              messages: sanitizeMessages(currentWirePayload.messages),
               signal: combinedSignal,
               cancelSignal,
               stopSignal,
@@ -526,7 +542,7 @@ function chatTask<TIdentifier extends string>(
 
           // If messages arrived during streaming, use the first one immediately
           if (pendingMessages.length > 0) {
-            currentPayload = pendingMessages[0]!;
+            currentWirePayload = pendingMessages[0]!;
             continue;
           }
 
@@ -539,7 +555,7 @@ function chatTask<TIdentifier extends string>(
 
             if (warm.ok) {
               // Message arrived while warm — respond instantly
-              currentPayload = warm.output;
+              currentWirePayload = warm.output;
               continue;
             }
           }
@@ -552,7 +568,7 @@ function chatTask<TIdentifier extends string>(
             return;
           }
 
-          currentPayload = next.output;
+          currentWirePayload = next.output;
         }
       } finally {
         stopSub.off();
