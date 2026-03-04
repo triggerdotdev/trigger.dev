@@ -43,20 +43,22 @@ export function normalizeErrorMessage(message: string): string {
       .replace(/run_[a-zA-Z0-9]+/g, "<run-id>")
       // Task run friendly IDs (task_xxxxx or similar)
       .replace(/\b[a-z]+_[a-zA-Z0-9]{8,}\b/g, "<id>")
-      // Standalone numeric IDs (4+ digits)
-      .replace(/\b\d{4,}\b/g, "<id>")
+      // --- Specific patterns must run before generic numeric/path replacements ---
       // ISO 8601 timestamps
       .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?/g, "<timestamp>")
       // Unix timestamps (10 or 13 digits)
       .replace(/\b\d{10,13}\b/g, "<timestamp>")
+      // URLs (before path regex, which would strip the URL's path component)
+      .replace(/https?:\/\/[^\s]+/g, "<url>")
+      // --- Generic replacements ---
+      // Standalone numeric IDs (4+ digits)
+      .replace(/\b\d{4,}\b/g, "<id>")
       // File paths (Unix style)
       .replace(/(?:\/[^\/\s]+){2,}/g, "<path>")
       // File paths (Windows style)
       .replace(/[A-Z]:\\(?:[^\\]+\\)+[^\\]+/g, "<path>")
       // Email addresses
       .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, "<email>")
-      // URLs
-      .replace(/https?:\/\/[^\s]+/g, "<url>")
       // Memory addresses (0x...)
       .replace(/0x[0-9a-fA-F]{8,}/g, "<addr>")
       // Quoted strings with dynamic content

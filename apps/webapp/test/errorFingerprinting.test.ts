@@ -118,6 +118,89 @@ describe("normalizeErrorMessage", () => {
     const normalized = normalizeErrorMessage(message);
     expect(normalized).toBe("Connection timeout");
   });
+
+  describe("ordering: specific patterns before generic ones", () => {
+    it("ISO timestamp year should not be consumed by numeric ID regex", () => {
+      const message = "Deadline was 2025-12-31T23:59:59Z";
+      expect(normalizeErrorMessage(message)).toBe("Deadline was <timestamp>");
+    });
+
+    it("ISO timestamp without trailing Z should normalize correctly", () => {
+      const message = "Started at 2024-01-15T08:00:00";
+      expect(normalizeErrorMessage(message)).toBe("Started at <timestamp>");
+    });
+
+    it("Unix timestamp (10 digits) should not become <id>", () => {
+      const message = "Token expires 1700000000";
+      expect(normalizeErrorMessage(message)).toBe("Token expires <timestamp>");
+    });
+
+    it("Unix timestamp (13 digits) should not become <id>", () => {
+      const message = "Sent at 1700000000000";
+      expect(normalizeErrorMessage(message)).toBe("Sent at <timestamp>");
+    });
+
+    it("URL path should not be stripped before URL regex runs", () => {
+      const message = "Webhook failed for https://hooks.example.com/webhook/abc";
+      expect(normalizeErrorMessage(message)).toBe("Webhook failed for <url>");
+    });
+
+    it("URL with port and path should normalize to <url>", () => {
+      const message = "Cannot reach http://localhost:8080/health/ready";
+      expect(normalizeErrorMessage(message)).toBe("Cannot reach <url>");
+    });
+
+    it("URL with query string should normalize to <url>", () => {
+      const message = "GET https://api.example.com/v2/users?page=1&limit=50 returned 500";
+      expect(normalizeErrorMessage(message)).toBe("GET <url> returned 500");
+    });
+
+    it("message with both a URL and a timestamp", () => {
+      const message =
+        "Request to https://api.example.com/data failed at 2025-06-15T10:30:00Z";
+      expect(normalizeErrorMessage(message)).toBe(
+        "Request to <url> failed at <timestamp>"
+      );
+    });
+
+    it("message with a URL and a unix timestamp", () => {
+      const message = "Callback to https://example.com/hook timed out after 1700000000";
+      expect(normalizeErrorMessage(message)).toBe(
+        "Callback to <url> timed out after <timestamp>"
+      );
+    });
+
+    it("path-like string that is NOT a URL should still become <path>", () => {
+      const message = "Cannot read /var/log/app/error.log";
+      expect(normalizeErrorMessage(message)).toBe("Cannot read <path>");
+    });
+  });
+
+  describe("fingerprint stability: same error class groups together despite dynamic values", () => {
+    it("errors differing only in ISO timestamp should share a fingerprint", () => {
+      const e1 = { type: "TimeoutError", message: "Timed out at 2025-01-01T00:00:00Z" };
+      const e2 = { type: "TimeoutError", message: "Timed out at 2026-06-15T12:30:00Z" };
+      expect(calculateErrorFingerprint(e1)).toBe(calculateErrorFingerprint(e2));
+    });
+
+    it("errors differing only in URL path should share a fingerprint", () => {
+      const e1 = {
+        type: "FetchError",
+        message: "Failed to fetch https://api.example.com/users/123",
+      };
+      const e2 = {
+        type: "FetchError",
+        message: "Failed to fetch https://api.example.com/orders/456",
+      };
+      expect(calculateErrorFingerprint(e1)).toBe(calculateErrorFingerprint(e2));
+    });
+
+    it("errors differing only in unix timestamp should share a fingerprint", () => {
+      const e1 = { type: "ExpiredError", message: "Token expired at 1700000000" };
+      const e2 = { type: "ExpiredError", message: "Token expired at 1800000000" };
+      expect(calculateErrorFingerprint(e1)).toBe(calculateErrorFingerprint(e2));
+    });
+  });
 });
 
 describe("normalizeStackTrace", () => {
