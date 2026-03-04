@@ -1,6 +1,9 @@
 import { Command } from "commander";
+import { configureEventsDlqCommand } from "./dlq.js";
+import { configureEventsHistoryCommand } from "./history.js";
 import { configureEventsListCommand } from "./list.js";
 import { configureEventsPublishCommand } from "./publish.js";
+import { configureEventsReplayCommand } from "./replay.js";
 
 export function configureEventsCommand(program: Command) {
   const events = program
@@ -9,6 +12,9 @@ export function configureEventsCommand(program: Command) {
 
   configureEventsListCommand(events);
   configureEventsPublishCommand(events);
+  configureEventsHistoryCommand(events);
+  configureEventsReplayCommand(events);
+  configureEventsDlqCommand(events);
 
   return events;
 }
