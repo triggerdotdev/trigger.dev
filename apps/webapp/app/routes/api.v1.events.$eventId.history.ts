@@ -40,11 +40,13 @@ export const loader = createLoaderApiRoute(
       });
 
     if (from) {
-      queryBuilder.where("published_at >= {from: DateTime64(3)}", { from });
+      queryBuilder.where("published_at >= {from: DateTime64(3)}", {
+        from: from.replace("Z", ""),
+      });
     }
 
     if (to) {
-      queryBuilder.where("published_at <= {to: DateTime64(3)}", { to });
+      queryBuilder.where("published_at <= {to: DateTime64(3)}", { to: to.replace("Z", "") });
     }
 
     if (publisherRunId) {
@@ -52,7 +54,9 @@ export const loader = createLoaderApiRoute(
     }
 
     if (cursor) {
-      queryBuilder.where("published_at < {cursor: DateTime64(3)}", { cursor });
+      queryBuilder.where("published_at < {cursor: DateTime64(3)}", {
+        cursor: cursor.replace("Z", ""),
+      });
     }
 
     queryBuilder.orderBy("published_at DESC, event_id DESC").limit(limit + 1);

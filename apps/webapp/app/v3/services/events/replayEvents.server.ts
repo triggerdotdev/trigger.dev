@@ -66,10 +66,10 @@ export class ReplayEventsService extends BaseService {
           eventType: params.eventSlug,
         })
         .where("published_at >= {from: DateTime64(3)}", {
-          from: params.from.toISOString(),
+          from: params.from.toISOString().replace("Z", ""),
         })
         .where("published_at <= {to: DateTime64(3)}", {
-          to: params.to.toISOString(),
+          to: params.to.toISOString().replace("Z", ""),
         })
         .orderBy("published_at ASC, event_id ASC")
         .limit(MAX_REPLAY_EVENTS);
