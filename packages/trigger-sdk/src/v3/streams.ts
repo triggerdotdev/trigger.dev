@@ -750,23 +750,20 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
 
           const apiClient = apiClientManager.clientOrThrow();
 
+          // Create the waitpoint before the span so we have the entity ID upfront
+          const response = await apiClient.createInputStreamWaitpoint(ctx.run.id, {
+            streamId: opts.id,
+            timeout: options?.timeout,
+            idempotencyKey: options?.idempotencyKey,
+            idempotencyKeyTTL: options?.idempotencyKeyTTL,
+            tags: options?.tags,
+            lastSeqNum: inputStreams.lastSeqNum(opts.id),
+          });
+
           const result = await tracer.startActiveSpan(
             `inputStream.wait()`,
             async (span) => {
-              // 1. Create a waitpoint linked to this input stream
-              const response = await apiClient.createInputStreamWaitpoint(ctx.run.id, {
-                streamId: opts.id,
-                timeout: options?.timeout,
-                idempotencyKey: options?.idempotencyKey,
-                idempotencyKeyTTL: options?.idempotencyKeyTTL,
-                tags: options?.tags,
-                lastSeqNum: inputStreams.lastSeqNum(opts.id),
-              });
-
-              // Set the entity ID now that we have the waitpoint ID
-              span.setAttribute(SemanticInternalAttributes.ENTITY_ID, response.waitpointId);
-
-              // 2. Block the run on the waitpoint
+              // 1. Block the run on the waitpoint
               const waitResponse = await apiClient.waitForWaitpointToken({
                 runFriendlyId: ctx.run.id,
                 waitpointFriendlyId: response.waitpointId,
@@ -776,10 +773,10 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
                 throw new Error("Failed to block on input stream waitpoint");
               }
 
-              // 3. Suspend the task
+              // 2. Suspend the task
               const waitResult = await runtime.waitUntil(response.waitpointId);
 
-              // 4. Parse the output
+              // 3. Parse the output
               const data =
                 waitResult.output !== undefined
                   ? await conditionallyImportAndParsePacket(
@@ -806,6 +803,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "wait",
                 [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
+                [SemanticInternalAttributes.ENTITY_ID]: response.waitpointId,
                 streamId: opts.id,
                 ...accessoryAttributes({
                   items: [
