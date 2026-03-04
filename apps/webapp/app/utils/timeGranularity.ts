@@ -4,8 +4,11 @@ import parseDuration from "parse-duration";
 const DurationString = z
   .string()
   .refine(
-    (val) => parseDuration(val) !== null,
-    (val) => ({ message: `Invalid duration string: "${val}"` })
+    (val) => {
+      const ms = parseDuration(val);
+      return ms !== null && ms > 0;
+    },
+    (val) => ({ message: `Invalid or non-positive duration string: "${val}"` })
   );
 
 const BracketSchema = z.object({
@@ -26,8 +29,8 @@ type ParsedBracket = {
 
 function requireParsedDuration(input: string): number {
   const ms = parseDuration(input);
-  if (ms === null) {
-    throw new Error(`Failed to parse duration string: "${input}"`);
+  if (ms === null || ms <= 0) {
+    throw new Error(`Duration must be strictly positive, got "${input}" (${ms}ms)`);
   }
   return ms;
 }
