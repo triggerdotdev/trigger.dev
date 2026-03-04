@@ -30,7 +30,7 @@ ORDER BY
     minute
   ) TTL minute + INTERVAL 90 DAY SETTINGS index_granularity = 8192;
 
-CREATE MATERIALIZED VIEW trigger_dev.mv_error_occurrences_v1 TO trigger_dev.error_occurrences_v1 AS
+CREATE MATERIALIZED VIEW trigger_dev.error_occurrences_mv_v1 TO trigger_dev.error_occurrences_v1 AS
 SELECT
   organization_id,
   project_id,
@@ -83,6 +83,6 @@ GROUP BY
   minute;
 
 -- +goose Down
-DROP VIEW IF EXISTS trigger_dev.mv_error_occurrences_v1;
+DROP VIEW IF EXISTS trigger_dev.error_occurrences_mv_v1;
 
 DROP TABLE IF EXISTS trigger_dev.error_occurrences_v1;

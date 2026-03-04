@@ -36,7 +36,7 @@ TTL last_seen_date + INTERVAL 90 DAY
 SETTINGS index_granularity = 8192;
 
 -- Materialized view to auto-populate from task_runs_v2
-CREATE MATERIALIZED VIEW trigger_dev.mv_errors_v1
+CREATE MATERIALIZED VIEW trigger_dev.errors_mv_v1
 TO trigger_dev.errors_v1
 AS
 SELECT
@@ -74,5 +74,5 @@ GROUP BY
   error_fingerprint;
 
 -- +goose Down
-DROP VIEW IF EXISTS trigger_dev.mv_errors_v1;
+DROP VIEW IF EXISTS trigger_dev.errors_mv_v1;
 DROP TABLE IF EXISTS trigger_dev.errors_v1;
