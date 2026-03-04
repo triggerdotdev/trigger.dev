@@ -374,7 +374,7 @@ export const RelativeDateTime = ({ date, timeZone }: RelativeDateTimeProps) => {
 
   const realDate = useMemo(() => (typeof date === "string" ? new Date(date) : date), [date]);
 
-  const [relativeText, setRelativeText] = useState("");
+  const [relativeText, setRelativeText] = useState(() => getRelativeText(realDate));
 
   // Every 60s refresh
   useEffect(() => {
