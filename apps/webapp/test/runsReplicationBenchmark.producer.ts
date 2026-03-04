@@ -100,7 +100,11 @@ async function runProducer(config: ProducerConfig) {
   });
 
   try {
-    console.log(`[Producer] Starting - will create ${config.numRuns} runs (${(config.errorRate * 100).toFixed(1)}% with errors)`);
+    console.log(
+      `[Producer] Starting - will create ${config.numRuns} runs (${(config.errorRate * 100).toFixed(
+        1
+      )}% with errors)`
+    );
     const startTime = performance.now();
     let created = 0;
     let withErrors = 0;
@@ -151,7 +155,9 @@ async function runProducer(config: ProducerConfig) {
       if (batch % 10 === 0 || batch === Math.ceil(config.numRuns / config.batchSize) - 1) {
         const elapsed = performance.now() - startTime;
         const rate = (created / elapsed) * 1000;
-        console.log(`[Producer] Progress: ${created}/${config.numRuns} runs (${rate.toFixed(0)} runs/sec)`);
+        console.log(
+          `[Producer] Progress: ${created}/${config.numRuns} runs (${rate.toFixed(0)} runs/sec)`
+        );
       }
     }
 
@@ -198,7 +204,8 @@ if (!configArg) {
   process.exit(1);
 }
 
-const config: ProducerConfig = JSON.parse(configArg);
+// This is ok for a benchmark script, but not for production code.
+const config = JSON.parse(configArg) as ProducerConfig;
 runProducer(config).catch((error) => {
   console.error("Fatal error:", error);
   process.exit(1);
