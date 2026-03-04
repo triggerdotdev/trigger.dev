@@ -44,7 +44,7 @@ import {
   type ErrorGroup,
   type ErrorOccurrenceActivity,
   type ErrorOccurrences,
-  type ErrorsList,
+  type ErrorsList as ErrorsListData,
 } from "~/presenters/v3/ErrorsListPresenter.server";
 import { logsClickhouseClient } from "~/services/clickhouseInstance.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
@@ -224,7 +224,7 @@ function FiltersBar({
   defaultPeriod,
   retentionLimitDays,
 }: {
-  list?: ErrorsList;
+  list?: ErrorsListData;
   defaultPeriod?: string;
   retentionLimitDays: number;
 }) {
