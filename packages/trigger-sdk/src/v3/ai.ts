@@ -9,8 +9,8 @@ import {
   type TaskSchema,
   type TaskWithSchema,
 } from "@trigger.dev/core/v3";
-import type { UIMessage } from "ai";
-import { dynamicTool, jsonSchema, JSONSchema7, Schema, Tool, ToolCallOptions, zodSchema } from "ai";
+import type { ModelMessage, UIMessage } from "ai";
+import { convertToModelMessages, dynamicTool, jsonSchema, JSONSchema7, Schema, Tool, ToolCallOptions, zodSchema } from "ai";
 import { auth } from "./auth.js";
 import { metadata } from "./metadata.js";
 import { streams } from "./streams.js";
@@ -182,12 +182,17 @@ type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage> = {
 /**
  * The payload shape passed to the `chatTask` run function.
  *
- * The `metadata` field from the AI SDK transport is exposed as `clientData`
- * to avoid confusion with Trigger.dev's run metadata.
+ * - `messages` contains model-ready messages (converted via `convertToModelMessages`) —
+ *   pass these directly to `streamText`.
+ * - `uiMessages` contains the raw `UIMessage[]` from the frontend.
+ * - `clientData` contains custom data from the frontend (the `metadata` field from `sendMessage()`).
  */
-export type ChatTaskPayload<TMessage extends UIMessage = UIMessage> = {
-  /** The conversation messages */
-  messages: TMessage[];
+export type ChatTaskPayload = {
+  /** Model-ready messages — pass directly to `streamText({ messages })`. */
+  messages: ModelMessage[];
+
+  /** Raw UI messages from the frontend. */
+  uiMessages: UIMessage[];
 
   /** The unique identifier for the chat session */
   chatId: string;
@@ -324,7 +329,7 @@ function isReadableStream(value: unknown): value is ReadableStream<unknown> {
  *   run: async (payload: ChatTaskPayload) => {
  *     const result = streamText({
  *       model: openai("gpt-4o"),
- *       messages: convertToModelMessages(payload.messages),
+ *       messages: payload.messages,
  *     });
  *
  *     await chat.pipe(result);
@@ -388,7 +393,7 @@ async function pipeChat(
  * transport resumes the same run by sending the next message via input streams.
  */
 export type ChatTaskOptions<TIdentifier extends string> = Omit<
-  TaskOptions<TIdentifier, ChatTaskPayload, unknown>,
+  TaskOptions<TIdentifier, ChatTaskWirePayload, unknown>,
   "run"
 > & {
   /**
@@ -452,8 +457,8 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
  *   run: async ({ messages, signal }) => {
  *     return streamText({
  *       model: openai("gpt-4o"),
- *       messages: convertToModelMessages(messages),
- *       abortSignal: signal, // fires on stop or run cancel
+ *       messages, // already converted via convertToModelMessages
+ *       abortSignal: signal,
  *     });
  *   },
  * });
@@ -503,14 +508,17 @@ function chatTask<TIdentifier extends string>(
             pendingMessages.push(msg);
           });
 
-          // Remap wire payload to user-facing payload (metadata -> clientData)
-          const { metadata: wireMetadata, ...restWire } = currentWirePayload;
+          // Convert wire payload to user-facing payload
+          const { metadata: wireMetadata, messages: uiMessages, ...restWire } = currentWirePayload;
+          const sanitized = sanitizeMessages(uiMessages);
+          const modelMessages = await convertToModelMessages(sanitized);
 
           try {
             const result = await userRun({
               ...restWire,
+              messages: modelMessages,
+              uiMessages: sanitized,
               clientData: wireMetadata,
-              messages: sanitizeMessages(currentWirePayload.messages),
               signal: combinedSignal,
               cancelSignal,
               stopSignal,
