@@ -64,6 +64,7 @@ declare const Deno: unknown;
 
 export const aiChat = chat.task({
   id: "ai-chat",
+  warmTimeoutInSeconds: 10,
   run: async ({ messages, stopSignal }) => {
     return streamText({
       model: openai("gpt-4o-mini"),
@@ -72,6 +73,9 @@ export const aiChat = chat.task({
       tools: { inspectEnvironment },
       stopWhen: stepCountIs(10),
       abortSignal: stopSignal,
+      experimental_telemetry: {
+        isEnabled: true,
+      }
     });
   },
 });
