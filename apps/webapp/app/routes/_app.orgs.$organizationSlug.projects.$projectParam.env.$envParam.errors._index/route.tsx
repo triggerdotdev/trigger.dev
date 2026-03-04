@@ -421,10 +421,10 @@ function ErrorActivityGraph({ activity }: { activity: ErrorOccurrenceActivity })
               wrapperStyle={{ zIndex: 1000 }}
               animationDuration={0}
             />
-            <Bar dataKey="count" fill="#EC003F" strokeWidth={0} isAnimationActive={false} />
-            <ReferenceLine y={0} stroke="#B5B8C0" strokeWidth={1} />
+            <Bar dataKey="count" fill="#6366F1" strokeWidth={0} isAnimationActive={false} />
+            <ReferenceLine y={0} stroke="#2C3034" strokeWidth={1} />
             {maxCount > 0 && (
-              <ReferenceLine y={maxCount} stroke="#B5B8C0" strokeDasharray="3 2" strokeWidth={1} />
+              <ReferenceLine y={maxCount} stroke="#4D525B" strokeDasharray="4 4" strokeWidth={1} />
             )}
           </BarChart>
         </ResponsiveContainer>

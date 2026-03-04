@@ -12,6 +12,7 @@ const errorGroupGranularity = new TimeGranularity([
 ]);
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
+import { type Direction, DirectionSchema } from "~/components/ListPagination";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { BasePresenter } from "~/presenters/v3/basePresenter.server";
@@ -29,6 +30,8 @@ export type ErrorGroupOptions = {
   period?: string;
   from?: number;
   to?: number;
+  cursor?: string;
+  direction?: Direction;
 };
 
 export const ErrorGroupOptionsSchema = z.object({
@@ -39,6 +42,8 @@ export const ErrorGroupOptionsSchema = z.object({
   period: z.string().optional(),
   from: z.number().int().nonnegative().optional(),
   to: z.number().int().nonnegative().optional(),
+  cursor: z.string().optional(),
+  direction: DirectionSchema.optional(),
 });
 
 const DEFAULT_RUNS_PAGE_SIZE = 25;
@@ -87,6 +92,8 @@ export class ErrorGroupPresenter extends BasePresenter {
       period,
       from,
       to,
+      cursor,
+      direction,
     }: ErrorGroupOptions
   ) {
     const displayableEnvironment = await findDisplayableEnvironment(environmentId, userId);
@@ -112,6 +119,8 @@ export class ErrorGroupPresenter extends BasePresenter {
         pageSize: runsPageSize,
         from: time.from.getTime(),
         to: time.to.getTime(),
+        cursor,
+        direction,
       }),
     ]);
 
@@ -268,6 +277,8 @@ export class ErrorGroupPresenter extends BasePresenter {
       pageSize: number;
       from?: number;
       to?: number;
+      cursor?: string;
+      direction?: Direction;
     }
   ): Promise<NextRunList | undefined> {
     const runListPresenter = new NextRunListPresenter(this.replica, this.clickhouse);
@@ -279,6 +290,8 @@ export class ErrorGroupPresenter extends BasePresenter {
       pageSize: options.pageSize,
       from: options.from,
       to: options.to,
+      cursor: options.cursor,
+      direction: options.direction,
     });
 
     if (result.runs.length === 0) {

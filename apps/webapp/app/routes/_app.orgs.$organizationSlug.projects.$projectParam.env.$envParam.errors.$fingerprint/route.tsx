@@ -31,6 +31,7 @@ import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
@@ -67,6 +68,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const toStr = url.searchParams.get("to");
   const from = fromStr ? parseInt(fromStr, 10) : undefined;
   const to = toStr ? parseInt(toStr, 10) : undefined;
+  const cursor = url.searchParams.get("cursor") ?? undefined;
+  const directionRaw = url.searchParams.get("direction") ?? undefined;
+  const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
 
   const presenter = new ErrorGroupPresenter($replica, logsClickhouseClient, clickhouseClient);
 
@@ -78,6 +82,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       period,
       from,
       to,
+      cursor,
+      direction,
     })
     .catch((error) => {
       if (error instanceof ServiceValidationError) {
@@ -250,7 +256,7 @@ function ErrorGroupDetail({
 
           <Property.Table>
             <Property.Item>
-              <Property.Label>Occurrences</Property.Label>
+              <Property.Label>Total occurrences</Property.Label>
               <Property.Value>{formatNumberCompact(errorGroup.count)}</Property.Value>
             </Property.Item>
             {errorGroup.affectedVersions.length > 0 && (
@@ -300,7 +306,10 @@ function ErrorGroupDetail({
 
       {/* Runs Table */}
       <div className="flex flex-col gap-1 overflow-y-hidden">
-        <Header3 className="mb-1 mt-2 px-4">Recent runs</Header3>
+        <div className="flex items-center justify-between px-4">
+          <Header3 className="mb-1 mt-2">Runs</Header3>
+          {runList && <ListPagination list={runList} />}
+        </div>
         {runList ? (
           <TaskRunsTable
             total={runList.runs.length}
@@ -318,7 +327,7 @@ function ErrorGroupDetail({
             disableAdjacentRows
           />
         ) : (
-          <Paragraph variant="small" className="text-text-dimmed">
+          <Paragraph variant="small" className="p-4 text-text-dimmed">
             No runs found for this error.
           </Paragraph>
         )}
@@ -330,7 +339,7 @@ function ErrorGroupDetail({
 const activityChartConfig: ChartConfig = {
   count: {
     label: "Occurrences",
-    color: "#EC003F",
+    color: "#6366F1",
   },
 };
 
