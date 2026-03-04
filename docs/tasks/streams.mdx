@@ -610,7 +610,7 @@ cancelSignal.on((data) => {
   console.log("Cancelled:", data.reason);
   controller.abort();
 });
-const result = await streamText({ ..., abortSignal: controller.signal });
+const result = streamText({ ..., abortSignal: controller.signal });
 ```
 
 #### `peek()` — Non-blocking check
