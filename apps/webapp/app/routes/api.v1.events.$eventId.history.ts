@@ -13,7 +13,7 @@ export const loader = createLoaderApiRoute(
     corsStrategy: "all",
     authorization: {
       action: "read",
-      resource: (params) => ({ tasks: params.eventId }),
+      resource: (_resource, params) => ({ tasks: params.eventId }),
       superScopes: ["read:runs", "read:all", "admin"],
     },
     findResource: async () => 1 as const,

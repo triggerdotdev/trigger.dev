@@ -75,7 +75,8 @@ export class DeadLetterService extends BaseService {
   private extractPayload(run: TaskRun): object {
     try {
       if (typeof run.payload === "string") {
-        return JSON.parse(run.payload);
+        const parsed: unknown = JSON.parse(run.payload);
+        return typeof parsed === "object" && parsed !== null ? (parsed as object) : { raw: parsed };
       }
       return { raw: run.payload };
     } catch {
