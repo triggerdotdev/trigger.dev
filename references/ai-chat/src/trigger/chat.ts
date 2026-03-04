@@ -1,5 +1,5 @@
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, convertToModelMessages, tool, stepCountIs } from "ai";
+import { streamText, tool, stepCountIs } from "ai";
 import type { LanguageModel } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -91,7 +91,7 @@ export const aiChat = chat.task({
     return streamText({
       model: getModel(modelId),
       system: "You are a helpful assistant. Be concise and friendly.",
-      messages: await convertToModelMessages(messages),
+      messages,
       tools: { inspectEnvironment },
       stopWhen: stepCountIs(10),
       abortSignal: stopSignal,
