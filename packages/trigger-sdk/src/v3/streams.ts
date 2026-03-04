@@ -774,7 +774,13 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
                 throw new Error("Failed to block on input stream waitpoint");
               }
 
-              // 2. Suspend the task
+              // 2. Disconnect the SSE tail and clear the buffer before suspending.
+              // Without this, the tail stays alive during the suspension window and
+              // may buffer a copy of the same message that will be delivered via the
+              // waitpoint, causing a duplicate on resume.
+              inputStreams.disconnectStream(opts.id);
+
+              // 3. Suspend the task
               const waitResult = await runtime.waitUntil(response.waitpointId);
 
               // 3. Parse the output
@@ -790,6 +796,12 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
                   : undefined;
 
               if (waitResult.ok) {
+                // Advance the seq counter so the SSE tail doesn't replay
+                // the record that was consumed via the waitpoint path when
+                // it lazily reconnects on the next on()/once() call.
+                const prevSeq = inputStreams.lastSeqNum(opts.id);
+                inputStreams.setLastSeqNum(opts.id, (prevSeq ?? -1) + 1);
+
                 return { ok: true as const, output: data as TData };
               } else {
                 const error = new WaitpointTimeoutError(data?.message ?? "Timed out");
