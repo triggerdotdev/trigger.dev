@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
+import { redisTest } from "@internal/testcontainers";
+import { createRedisClient } from "@internal/redis";
 import {
   InMemoryEventRateLimitChecker,
+  RedisEventRateLimitChecker,
   windowToMs,
   parseEventRateLimitConfig,
 } from "../../app/v3/services/events/eventRateLimiter.server";
@@ -112,3 +115,104 @@ describe("InMemoryEventRateLimitChecker", () => {
     expect(afterReset.allowed).toBe(true);
   });
 });
+
+// ─── RedisEventRateLimitChecker (needs Redis container) ───
+
+function createUpstashAdapter(redis: ReturnType<typeof createRedisClient>) {
+  return {
+    sadd: async <TData>(key: string, ...members: TData[]): Promise<number> => {
+      return redis.sadd(key, members as (string | number | Buffer)[]);
+    },
+    hset: <TValue>(
+      key: string,
+      obj: {
+        [key: string]: TValue;
+      }
+    ): Promise<number> => {
+      return redis.hset(key, obj);
+    },
+    eval: <TArgs extends unknown[], TData = unknown>(
+      ...args: [script: string, keys: string[], args: TArgs]
+    ): Promise<TData> => {
+      const script = args[0];
+      const keys = args[1];
+      const argsArray = args[2];
+      return redis.eval(
+        script,
+        keys.length,
+        ...keys,
+        ...(argsArray as (string | Buffer | number)[])
+      ) as Promise<TData>;
+    },
+  };
+}
+
+redisTest(
+  "RedisEventRateLimitChecker allows requests within limit",
+  { timeout: 30_000 },
+  async ({ redisOptions }) => {
+    const redis = createRedisClient("test:rateLimiter", redisOptions);
+
+    try {
+      const checker = new RedisEventRateLimitChecker(createUpstashAdapter(redis));
+      const config = { limit: 3, window: "10s" };
+
+      const r1 = await checker.check("redis-key-1", config);
+      expect(r1.allowed).toBe(true);
+
+      const r2 = await checker.check("redis-key-1", config);
+      expect(r2.allowed).toBe(true);
+
+      const r3 = await checker.check("redis-key-1", config);
+      expect(r3.allowed).toBe(true);
+    } finally {
+      redis.disconnect();
+    }
+  }
+);
+
+redisTest(
+  "RedisEventRateLimitChecker blocks requests exceeding limit",
+  { timeout: 30_000 },
+  async ({ redisOptions }) => {
+    const redis = createRedisClient("test:rateLimiter", redisOptions);
+
+    try {
+      const checker = new RedisEventRateLimitChecker(createUpstashAdapter(redis));
+      const config = { limit: 2, window: "10s" };
+
+      await checker.check("redis-key-2", config);
+      await checker.check("redis-key-2", config);
+
+      const result = await checker.check("redis-key-2", config);
+      expect(result.allowed).toBe(false);
+      expect(result.remaining).toBe(0);
+    } finally {
+      redis.disconnect();
+    }
+  }
+);
+
+redisTest(
+  "RedisEventRateLimitChecker isolates keys",
+  { timeout: 30_000 },
+  async ({ redisOptions }) => {
+    const redis = createRedisClient("test:rateLimiter", redisOptions);
+
+    try {
+      const checker = new RedisEventRateLimitChecker(createUpstashAdapter(redis));
+      const config = { limit: 1, window: "10s" };
+
+      const r1 = await checker.check("redis-key-a", config);
+      expect(r1.allowed).toBe(true);
+
+      const r2 = await checker.check("redis-key-b", config);
+      expect(r2.allowed).toBe(true);
+
+      const r3 = await checker.check("redis-key-a", config);
+      expect(r3.allowed).toBe(false);
+    } finally {
+      redis.disconnect();
+    }
+  }
+);
