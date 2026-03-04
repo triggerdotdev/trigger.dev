@@ -1,6 +1,8 @@
 import {
+  accessoryAttributes,
   AnyTask,
   isSchemaZodEsque,
+  SemanticInternalAttributes,
   Task,
   type inferSchemaIn,
   type PipeStreamOptions,
@@ -11,10 +13,12 @@ import {
 } from "@trigger.dev/core/v3";
 import type { ModelMessage, UIMessage } from "ai";
 import { convertToModelMessages, dynamicTool, jsonSchema, JSONSchema7, Schema, Tool, ToolCallOptions, zodSchema } from "ai";
+import { type Attributes, trace } from "@opentelemetry/api";
 import { auth } from "./auth.js";
 import { metadata } from "./metadata.js";
 import { streams } from "./streams.js";
 import { createTask } from "./shared.js";
+import { tracer } from "./tracer.js";
 import {
   CHAT_STREAM_KEY as _CHAT_STREAM_KEY,
   CHAT_MESSAGES_STREAM_ID,
@@ -281,6 +285,9 @@ export type PipeChatOptions = {
    * @default "self" (current run)
    */
   target?: string;
+
+  /** Override the default span name for this operation. */
+  spanName?: string;
 };
 
 /**
@@ -372,6 +379,9 @@ async function pipeChat(
   }
   if (options?.target) {
     pipeOptions.target = options.target;
+  }
+  if (options?.spanName) {
+    pipeOptions.spanName = options.spanName;
   }
 
   const { waitUntilComplete } = streams.pipe(streamKey, stream, pipeOptions);
@@ -478,6 +488,12 @@ function chatTask<TIdentifier extends string>(
   return createTask<TIdentifier, ChatTaskWirePayload, unknown>({
     ...restOptions,
     run: async (payload: ChatTaskWirePayload, { signal: runSignal }) => {
+      // Set gen_ai.conversation.id on the run-level span for dashboard context
+      const activeSpan = trace.getActiveSpan();
+      if (activeSpan) {
+        activeSpan.setAttribute("gen_ai.conversation.id", payload.chatId);
+      }
+
       let currentWirePayload = payload;
 
       // Mutable reference to the current turn's stop controller so the
@@ -491,92 +507,142 @@ function chatTask<TIdentifier extends string>(
 
       try {
         for (let turn = 0; turn < maxTurns; turn++) {
-          _chatPipeCount = 0;
-
-          // Per-turn stop controller (reset each turn)
-          const stopController = new AbortController();
-          currentStopController = stopController;
-
-          // Three signals for the user's run function
-          const stopSignal = stopController.signal;
-          const cancelSignal = runSignal;
-          const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
-
-          // Buffer messages that arrive during streaming
-          const pendingMessages: ChatTaskWirePayload[] = [];
-          const msgSub = messagesInput.on((msg) => {
-            pendingMessages.push(msg);
-          });
-
-          // Convert wire payload to user-facing payload
+          // Extract turn-level context before entering the span
           const { metadata: wireMetadata, messages: uiMessages, ...restWire } = currentWirePayload;
-          const sanitized = sanitizeMessages(uiMessages);
-          const modelMessages = await convertToModelMessages(sanitized);
+          const lastUserMessage = extractLastUserMessageText(uiMessages);
 
-          try {
-            const result = await userRun({
-              ...restWire,
-              messages: modelMessages,
-              uiMessages: sanitized,
-              clientData: wireMetadata,
-              signal: combinedSignal,
-              cancelSignal,
-              stopSignal,
-            });
+          const turnAttributes: Attributes = {
+            "turn.number": turn + 1,
+            "gen_ai.conversation.id": currentWirePayload.chatId,
+            "gen_ai.operation.name": "chat",
+            "chat.trigger": currentWirePayload.trigger,
+            [SemanticInternalAttributes.STYLE_ICON]: "tabler-message-chatbot",
+            [SemanticInternalAttributes.ENTITY_TYPE]: "chat-turn",
+          };
 
-            // Auto-pipe if the run function returned a StreamTextResult or similar,
-            // but only if pipeChat() wasn't already called manually during this turn
-            if (_chatPipeCount === 0 && isUIMessageStreamable(result)) {
-              await pipeChat(result, { signal: combinedSignal });
-            }
-          } catch (error) {
-            // Handle AbortError from streamText gracefully
-            if (error instanceof Error && error.name === "AbortError") {
-              if (runSignal.aborted) {
-                return; // Full run cancellation — exit
+          if (lastUserMessage) {
+            turnAttributes["chat.user_message"] = lastUserMessage;
+
+            // Show a truncated preview of the user message as an accessory
+            const preview =
+              lastUserMessage.length > 80
+                ? lastUserMessage.slice(0, 80) + "..."
+                : lastUserMessage;
+            Object.assign(
+              turnAttributes,
+              accessoryAttributes({
+                items: [{ text: preview, variant: "normal" }],
+                style: "codepath",
+              })
+            );
+          }
+
+          if (wireMetadata !== undefined) {
+            turnAttributes["chat.client_data"] =
+              typeof wireMetadata === "string" ? wireMetadata : JSON.stringify(wireMetadata);
+          }
+
+          const turnResult = await tracer.startActiveSpan(
+            `chat turn ${turn + 1}`,
+            async () => {
+              _chatPipeCount = 0;
+
+              // Per-turn stop controller (reset each turn)
+              const stopController = new AbortController();
+              currentStopController = stopController;
+
+              // Three signals for the user's run function
+              const stopSignal = stopController.signal;
+              const cancelSignal = runSignal;
+              const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
+
+              // Buffer messages that arrive during streaming
+              const pendingMessages: ChatTaskWirePayload[] = [];
+              const msgSub = messagesInput.on((msg) => {
+                pendingMessages.push(msg);
+              });
+
+              // Convert wire payload to user-facing payload
+              const sanitized = sanitizeMessages(uiMessages);
+              const modelMessages = await convertToModelMessages(sanitized);
+
+              try {
+                const result = await userRun({
+                  ...restWire,
+                  messages: modelMessages,
+                  uiMessages: sanitized,
+                  clientData: wireMetadata,
+                  signal: combinedSignal,
+                  cancelSignal,
+                  stopSignal,
+                });
+
+                // Auto-pipe if the run function returned a StreamTextResult or similar,
+                // but only if pipeChat() wasn't already called manually during this turn
+                if (_chatPipeCount === 0 && isUIMessageStreamable(result)) {
+                  await pipeChat(result, { signal: combinedSignal, spanName: "stream response" });
+                }
+              } catch (error) {
+                // Handle AbortError from streamText gracefully
+                if (error instanceof Error && error.name === "AbortError") {
+                  if (runSignal.aborted) {
+                    return "exit"; // Full run cancellation — exit
+                  }
+                  // Stop generation — fall through to continue the loop
+                } else {
+                  throw error;
+                }
+              } finally {
+                msgSub.off();
               }
-              // Stop generation — fall through to continue the loop
-            } else {
-              throw error;
+
+              if (runSignal.aborted) return "exit";
+
+              // Write turn-complete control chunk so frontend closes its stream
+              await writeTurnCompleteChunk(currentWirePayload.chatId);
+
+              // If messages arrived during streaming, use the first one immediately
+              if (pendingMessages.length > 0) {
+                currentWirePayload = pendingMessages[0]!;
+                return "continue";
+              }
+
+              // Phase 1: Keep the run warm for quick response to the next message.
+              // The run stays active (using compute) during this window.
+              if (warmTimeoutInSeconds > 0) {
+                const warm = await messagesInput.once({
+                  timeoutMs: warmTimeoutInSeconds * 1000,
+                  spanName: "waiting (warm)",
+                });
+
+                if (warm.ok) {
+                  // Message arrived while warm — respond instantly
+                  currentWirePayload = warm.output;
+                  return "continue";
+                }
+              }
+
+              // Phase 2: Suspend the task (frees compute) until the next message arrives
+              const next = await messagesInput.wait({
+                timeout: turnTimeout,
+                spanName: "waiting (suspended)",
+              });
+
+              if (!next.ok) {
+                // Timed out waiting for the next message — end the conversation
+                return "exit";
+              }
+
+              currentWirePayload = next.output;
+              return "continue";
+            },
+            {
+              attributes: turnAttributes,
             }
-          } finally {
-            msgSub.off();
-          }
+          );
 
-          if (runSignal.aborted) return;
-
-          // Write turn-complete control chunk so frontend closes its stream
-          await writeTurnCompleteChunk();
-
-          // If messages arrived during streaming, use the first one immediately
-          if (pendingMessages.length > 0) {
-            currentWirePayload = pendingMessages[0]!;
-            continue;
-          }
-
-          // Phase 1: Keep the run warm for quick response to the next message.
-          // The run stays active (using compute) during this window.
-          if (warmTimeoutInSeconds > 0) {
-            const warm = await messagesInput.once({
-              timeoutMs: warmTimeoutInSeconds * 1000,
-            });
-
-            if (warm.ok) {
-              // Message arrived while warm — respond instantly
-              currentWirePayload = warm.output;
-              continue;
-            }
-          }
-
-          // Phase 2: Suspend the task (frees compute) until the next message arrives
-          const next = await messagesInput.wait({ timeout: turnTimeout });
-
-          if (!next.ok) {
-            // Timed out waiting for the next message — end the conversation
-            return;
-          }
-
-          currentWirePayload = next.output;
+          if (turnResult === "exit") return;
+          // "continue" means proceed to next iteration
         }
       } finally {
         stopSub.off();
@@ -621,11 +687,39 @@ export const chat = {
  * The frontend transport intercepts this to close the ReadableStream for the current turn.
  * @internal
  */
-async function writeTurnCompleteChunk(): Promise<void> {
+async function writeTurnCompleteChunk(chatId?: string): Promise<void> {
   const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+    spanName: "turn complete",
+    collapsed: true,
     execute: ({ write }) => {
       write({ type: "__trigger_turn_complete" });
     },
   });
   await waitUntilComplete();
+}
+
+/**
+ * Extracts the text content of the last user message from a UIMessage array.
+ * Returns undefined if no user message is found.
+ * @internal
+ */
+function extractLastUserMessageText(messages: UIMessage[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]!;
+    if (msg.role !== "user") continue;
+
+    // UIMessage uses parts array
+    if (msg.parts) {
+      const textParts = msg.parts
+        .filter((p: any) => p.type === "text" && p.text)
+        .map((p: any) => p.text as string);
+      if (textParts.length > 0) {
+        return textParts.join("\n");
+      }
+    }
+
+    break;
+  }
+
+  return undefined;
 }
