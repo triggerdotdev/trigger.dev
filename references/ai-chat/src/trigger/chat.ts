@@ -1,8 +1,26 @@
 import { chat } from "@trigger.dev/sdk/ai";
 import { streamText, convertToModelMessages, tool, stepCountIs } from "ai";
+import type { LanguageModel } from "ai";
 import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import os from "node:os";
+
+const MODELS: Record<string, () => LanguageModel> = {
+  "gpt-4o-mini": () => openai("gpt-4o-mini"),
+  "gpt-4o": () => openai("gpt-4o"),
+  "claude-sonnet-4-6": () => anthropic("claude-sonnet-4-6"),
+  "claude-opus-4-6": () => anthropic("claude-opus-4-6"),
+};
+
+export const MODEL_OPTIONS = Object.keys(MODELS);
+export const DEFAULT_MODEL = "gpt-4o-mini";
+
+function getModel(modelId?: string): LanguageModel {
+  const factory = MODELS[modelId ?? DEFAULT_MODEL];
+  if (!factory) return MODELS[DEFAULT_MODEL]!();
+  return factory();
+}
 
 const inspectEnvironment = tool({
   description:
@@ -65,9 +83,13 @@ declare const Deno: unknown;
 export const aiChat = chat.task({
   id: "ai-chat",
   warmTimeoutInSeconds: 10,
-  run: async ({ messages, stopSignal }) => {
+  run: async ({ messages, clientData, stopSignal }) => {
+    const { model: modelId } = z
+      .object({ model: z.string().optional() })
+      .parse(clientData ?? {});
+
     return streamText({
-      model: openai("gpt-4o-mini"),
+      model: getModel(modelId),
       system: "You are a helpful assistant. Be concise and friendly.",
       messages: await convertToModelMessages(messages),
       tools: { inspectEnvironment },
