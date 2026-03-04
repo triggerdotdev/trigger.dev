@@ -8,6 +8,8 @@ import { singleton } from "~/utils/singleton";
 import { tracer } from "../tracer.server";
 import { $replica } from "~/db.server";
 import { RunsBackfillerService } from "../../services/runsBackfiller.server";
+import { CleanupStaleSubscriptionsService } from "./events/cleanupStaleSubscriptions.server";
+import { prisma } from "~/db.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -26,6 +28,13 @@ function initializeWorker() {
     name: "admin-worker",
     redisOptions,
     catalog: {
+      "admin.cleanupStaleSubscriptions": {
+        schema: z.object({}),
+        visibilityTimeoutMs: 60_000 * 5, // 5 minutes
+        retry: { maxAttempts: 3 },
+        cron: "0 3 * * *", // Daily at 3 AM UTC
+        jitterInMs: 60_000, // 1 minute jitter
+      },
       "admin.backfillRunsToReplication": {
         schema: z.object({
           from: z.coerce.date(),
@@ -50,6 +59,10 @@ function initializeWorker() {
     shutdownTimeoutMs: env.ADMIN_WORKER_SHUTDOWN_TIMEOUT_MS,
     logger: new Logger("AdminWorker", env.ADMIN_WORKER_LOG_LEVEL),
     jobs: {
+      "admin.cleanupStaleSubscriptions": async () => {
+        const service = new CleanupStaleSubscriptionsService(prisma);
+        await service.call();
+      },
       "admin.backfillRunsToReplication": async ({ payload, id }) => {
         if (!runsReplicationInstance) {
           logger.error("Runs replication instance not found");
