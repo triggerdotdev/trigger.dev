@@ -19,6 +19,10 @@ export const TaskResource = z.object({
   onEventFilter: z.unknown().optional(),
   onEventPattern: z.string().optional(),
   onEventConsumerGroup: z.string().optional(),
+  onEventConsumerRateLimit: z.object({
+    limit: z.number().int().positive(),
+    window: z.string(),
+  }).optional(),
 });
 
 export type TaskResource = z.infer<typeof TaskResource>;

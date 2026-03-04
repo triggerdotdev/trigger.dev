@@ -639,6 +639,7 @@ model EventSubscription {
   filter        Json?    // EventFilter (Phase 2)
   pattern       String?  // Wildcard pattern (Phase 2)
   consumerGroup String?  // Consumer group name (Phase 5)
+  rateLimit     Json?    // Per-subscriber rate limit { limit, window }
   enabled       Boolean  @default(true)
   priority      Int      @default(0)
 

@@ -278,11 +278,34 @@ export class PublishEventService extends BaseService {
         );
       }
 
-      // 7. Fan out: trigger each matching subscribed task
+      // 7. Check per-subscriber rate limits and fan out
       const runs: PublishEventResult["runs"] = [];
 
       for (const subscription of subscriptionsToTrigger) {
         try {
+          // Check per-subscriber rate limit (if configured)
+          if (this._rateLimitChecker && subscription.rateLimit) {
+            const subRateLimitConfig = parseEventRateLimitConfig(subscription.rateLimit);
+            if (subRateLimitConfig) {
+              const subRateLimitKey = `consumer:${subscription.taskSlug}:${eventSlug}`;
+              const subRateLimitResult = await this._rateLimitChecker.check(
+                subRateLimitKey,
+                subRateLimitConfig
+              );
+              if (!subRateLimitResult.allowed) {
+                logger.warn("Subscriber rate limit exceeded, skipping", {
+                  eventSlug,
+                  eventId,
+                  taskSlug: subscription.taskSlug,
+                  limit: subRateLimitResult.limit,
+                  retryAfter: subRateLimitResult.retryAfter,
+                });
+                span.setAttribute("consumerRateLimited", true);
+                continue;
+              }
+            }
+          }
+
           // Derive per-consumer idempotency key if a global one was provided
           const consumerIdempotencyKey = options.idempotencyKey
             ? `${options.idempotencyKey}:${subscription.taskSlug}`
@@ -396,7 +419,7 @@ export class PublishEventService extends BaseService {
    * Different eventIds distribute evenly across group members.
    */
   private applyConsumerGroups(
-    subscriptions: Array<{ id: string; consumerGroup: string | null; taskSlug: string }>,
+    subscriptions: Array<{ id: string; consumerGroup: string | null; taskSlug: string; rateLimit: unknown }>,
     eventId?: string
   ): typeof subscriptions {
     const ungrouped: typeof subscriptions = [];

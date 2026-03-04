@@ -460,6 +460,7 @@ async function syncWorkerEvents(
         filter: (task.onEventFilter as any) ?? undefined,
         pattern: task.onEventPattern ?? undefined,
         consumerGroup: task.onEventConsumerGroup ?? undefined,
+        rateLimit: (task.onEventConsumerRateLimit as any) ?? undefined,
       },
       update: {
         workerId: worker.id,
@@ -467,6 +468,7 @@ async function syncWorkerEvents(
         filter: (task.onEventFilter as any) ?? undefined,
         pattern: task.onEventPattern ?? undefined,
         consumerGroup: task.onEventConsumerGroup ?? undefined,
+        rateLimit: (task.onEventConsumerRateLimit as any) ?? undefined,
       },
     });
 

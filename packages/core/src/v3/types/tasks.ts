@@ -424,6 +424,8 @@ export type TaskOptionsWithEvent<
   filter?: import("../schemas/eventFilter.js").EventFilter;
   /** Consumer group — within a group, only one task receives each event */
   consumerGroup?: string;
+  /** Per-subscriber rate limit — controls how fast this task receives events */
+  consumerRateLimit?: { limit: number; window: string };
 };
 
 declare const __output: unique symbol;

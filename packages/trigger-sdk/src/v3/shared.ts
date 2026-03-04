@@ -250,6 +250,7 @@ export function createTask<
   const onEventFilter = "filter" in params && params.filter ? params.filter : undefined;
   const onEventPattern = eventSource && "pattern" in eventSource ? eventSource.pattern : undefined;
   const onEventConsumerGroup = "consumerGroup" in params && params.consumerGroup ? params.consumerGroup as string : undefined;
+  const onEventConsumerRateLimit = "consumerRateLimit" in params && params.consumerRateLimit ? params.consumerRateLimit as { limit: number; window: string } : undefined;
 
   resourceCatalog.registerTaskMetadata({
     id: params.id,
@@ -263,6 +264,7 @@ export function createTask<
     onEventFilter,
     onEventPattern,
     onEventConsumerGroup,
+    onEventConsumerRateLimit,
     fns: {
       run: params.run,
     },

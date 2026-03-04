@@ -240,6 +240,11 @@ const taskMetadata = {
   onEventPattern: z.string().optional(),
   /** Consumer group name — within a group, only one task receives each event */
   onEventConsumerGroup: z.string().optional(),
+  /** Per-subscriber rate limit — controls how fast this task receives events */
+  onEventConsumerRateLimit: z.object({
+    limit: z.number().int().positive(),
+    window: z.string(),
+  }).optional(),
 };
 
 export const TaskMetadata = z.object(taskMetadata);

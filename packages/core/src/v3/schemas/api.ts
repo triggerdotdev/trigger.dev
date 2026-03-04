@@ -1859,3 +1859,38 @@ export const GetEventStatsResponseBody = z.object({
 });
 
 export type GetEventStatsResponseBody = z.infer<typeof GetEventStatsResponseBody>;
+
+// ---- Event Metrics schemas ----
+
+export const EventMetricsSubscriber = z.object({
+  taskSlug: z.string(),
+  enabled: z.boolean(),
+  hasRateLimit: z.boolean(),
+  hasFilter: z.boolean(),
+  consumerGroup: z.string().nullable(),
+});
+
+export type EventMetricsSubscriber = z.infer<typeof EventMetricsSubscriber>;
+
+export const GetEventMetricsResponseBody = z.object({
+  eventType: z.string(),
+  subscribers: z.object({
+    total: z.number().int(),
+    active: z.number().int(),
+    disabled: z.number().int(),
+    list: z.array(EventMetricsSubscriber),
+  }),
+  dlq: z.object({
+    pending: z.number().int(),
+    retried: z.number().int(),
+    discarded: z.number().int(),
+  }),
+  rateLimit: z
+    .object({
+      limit: z.number().int(),
+      window: z.string(),
+    })
+    .nullable(),
+});
+
+export type GetEventMetricsResponseBody = z.infer<typeof GetEventMetricsResponseBody>;
