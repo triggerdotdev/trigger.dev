@@ -21,7 +21,7 @@ import { type NextRunList } from "~/presenters/v3/NextRunListPresenter.server";
 import { $replica } from "~/db.server";
 import { logsClickhouseClient, clickhouseClient } from "~/services/clickhouseInstance.server";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { PageBody } from "~/components/layout/AppLayout";
 import { Suspense, useMemo } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -154,7 +154,7 @@ export default function Page() {
   }, [organizationSlug, projectParam, envParam, searchParams.toString()]);
 
   return (
-    <PageContainer>
+    <>
       <NavBar>
         <PageTitle
           backButton={{
@@ -211,7 +211,7 @@ export default function Page() {
           </TypedAwait>
         </Suspense>
       </PageBody>
-    </PageContainer>
+    </>
   );
 }
 
