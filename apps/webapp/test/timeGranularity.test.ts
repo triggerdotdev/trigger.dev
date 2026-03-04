@@ -48,6 +48,12 @@ describe("TimeGranularity", () => {
     expect(granularity.getTimeGranularityMs(date, date)).toBe(10 * SECOND);
   });
 
+  it("returns the broadest granularity for an inverted range (from > to)", () => {
+    const from = new Date("2025-01-01T01:00:00Z");
+    const to = new Date("2025-01-01T00:00:00Z");
+    expect(granularity.getTimeGranularityMs(from, to)).toBe(10 * MINUTE);
+  });
+
   it("throws when constructed with an empty array", () => {
     expect(() => new TimeGranularity([])).toThrow("at least one bracket");
   });
