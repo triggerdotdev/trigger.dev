@@ -139,7 +139,7 @@ function pipe<T>(
     opts = valueOrOptions as PipeStreamOptions | undefined;
   }
 
-  return pipeInternal(key, value, opts, "streams.pipe()");
+  return pipeInternal(key, value, opts, opts?.spanName ?? "streams.pipe()");
 }
 
 /**
@@ -167,6 +167,7 @@ function pipeInternal<T>(
       [SemanticInternalAttributes.ENTITY_TYPE]: "realtime-stream",
       [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${key}`,
       [SemanticInternalAttributes.STYLE_ICON]: "streams",
+      ...(opts?.collapsed ? { [SemanticInternalAttributes.COLLAPSED]: true } : {}),
       ...accessoryAttributes({
         items: [
           {
@@ -640,7 +641,7 @@ function writerInternal<TPart>(key: string, options: WriterStreamOptions<TPart>)
     }
   });
 
-  return pipeInternal(key, stream, options, "streams.writer()");
+  return pipeInternal(key, stream, options, options.spanName ?? "streams.writer()");
 }
 
 export type RealtimeDefineStreamOptions = {
@@ -713,7 +714,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
       return new InputStreamOncePromise<TData>((resolve, reject) => {
         tracer
           .startActiveSpan(
-            `inputStream.once()`,
+            options?.spanName ?? `inputStream.once()`,
             async () => {
               const result = await innerPromise;
               resolve(result as InputStreamOnceResult<TData>);
@@ -761,7 +762,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
           });
 
           const result = await tracer.startActiveSpan(
-            `inputStream.wait()`,
+            options?.spanName ?? `inputStream.wait()`,
             async (span) => {
               // 1. Block the run on the waitpoint
               const waitResponse = await apiClient.waitForWaitpointToken({
