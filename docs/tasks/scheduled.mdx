@@ -176,7 +176,7 @@ These are the options when creating a schedule:
 | Cron pattern      | The schedule in cron format.                                                                  |
 | Timezone          | The timezone the schedule will run in. Defaults to "UTC"                                      |
 | External id       | An optional external id, usually you'd use a userId.                                          |
-| Deduplication key | An optional deduplication key. If you pass the same value, it will update rather than create. |
+| Deduplication key | An optional deduplication key. If you pass the same value, it will update rather than create. Scoped per project, not per environment. |
 | Environments      | The environments this schedule will run in.                                                   |
 
 </Step>
@@ -201,6 +201,10 @@ const createdSchedule = await schedules.create({
 <Note>The `task` id must be a task that you defined using `schedules.task()`.</Note>
 
 You can create many schedules with the same `task`, `cron`, and `externalId` but only one with the same `deduplicationKey`.
+
+<Note>
+  The deduplication key is **per project**, not per environment. Using the same key in Production and Staging creates a single schedule; the last create/update decides which environment it appears in. For fixed schedules, prefer **declarative** (cron on the task). If using imperative across environments, use a different deduplication key per environment (e.g. include the env name in the key).
+</Note>
 
 This means you can have thousands of schedules attached to a single task, but only one schedule per `deduplicationKey`. Here's an example with all the options:
 
