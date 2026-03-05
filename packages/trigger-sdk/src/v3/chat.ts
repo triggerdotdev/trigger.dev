@@ -210,6 +210,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     | undefined;
 
   private sessions: Map<string, ChatSessionState> = new Map();
+  private activeReconnects: Map<string, AbortController> = new Map();
 
   constructor(options: TriggerChatTransportOptions) {
     this.taskId = options.task;
@@ -330,7 +331,21 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       return null;
     }
 
-    return this.subscribeToStream(session.runId, session.publicAccessToken, undefined, options.chatId);
+    // Abort any previous reconnect for this chatId (e.g. React strict mode
+    // double-firing the effect) to avoid duplicate SSE connections.
+    const prev = this.activeReconnects.get(options.chatId);
+    if (prev) {
+      prev.abort();
+    }
+    const reconnectAbort = new AbortController();
+    this.activeReconnects.set(options.chatId, reconnectAbort);
+
+    return this.subscribeToStream(
+      session.runId,
+      session.publicAccessToken,
+      reconnectAbort.signal,
+      options.chatId
+    );
   };
 
   /**
@@ -493,7 +508,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 }
 
                 if (chunk.type === "__trigger_turn_complete" && chatId) {
-                  // Notify with updated lastEventId before closing
+                  // Update token if a refreshed one was provided in the chunk
+                  if (session && typeof chunk.publicAccessToken === "string") {
+                    session.publicAccessToken = chunk.publicAccessToken;
+                  }
+                  // Notify with updated session (including refreshed token)
                   if (session) {
                     this.notifySessionChange(chatId, session);
                   }

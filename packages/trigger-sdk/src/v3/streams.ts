@@ -27,6 +27,7 @@ import {
   type InputStreamWaitOptions,
   type SendInputStreamOptions,
   type InferInputStreamType,
+  type StreamWriteResult,
 } from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { tracer } from "./tracer.js";
@@ -195,7 +196,9 @@ function pipeInternal<T>(
 
     return {
       stream: instance.stream,
-      waitUntilComplete: () => instance.wait(),
+      waitUntilComplete: async () => {
+        return instance.wait();
+      },
     };
   } catch (error) {
     // if the error is a signal abort error, we need to end the span but not record an exception

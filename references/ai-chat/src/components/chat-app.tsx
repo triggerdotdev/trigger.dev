@@ -12,9 +12,7 @@ import {
   getChatMessages,
   deleteChat as deleteChatAction,
   updateChatTitle,
-  saveSessionAction,
   deleteSessionAction,
-  saveChatMessages,
 } from "@/app/actions";
 
 type ChatMeta = {
@@ -49,9 +47,9 @@ export function ChatApp({
       chatId: string,
       session: { runId: string; publicAccessToken: string; lastEventId?: string } | null
     ) => {
-      if (session) {
-        saveSessionAction(chatId, session);
-      } else {
+      // Session creation and token updates are handled server-side via onChatStart/onTurnComplete.
+      // We only need to clean up when the run ends (session = null).
+      if (!session) {
         deleteSessionAction(chatId);
       }
     },
@@ -132,6 +130,7 @@ export function ChatApp({
             chatId={activeChatId}
             initialMessages={messages}
             transport={transport}
+            resume={messages.length > 0}
             onFirstMessage={handleFirstMessage}
             onMessagesChange={handleMessagesChange}
           />
