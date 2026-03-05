@@ -7,6 +7,9 @@ import { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 export type PythonOptions = {
   requirements?: string[];
   requirementsFile?: string;
+  pyprojectFile?: string;
+  useUv?: boolean;
+
   /**
    * [Dev-only] The path to the python binary.
    *
@@ -54,6 +57,14 @@ class PythonExtension implements BuildExtension {
         fs.readFileSync(this.options.requirementsFile, "utf-8")
       );
     }
+
+    if (this.options.pyprojectFile) {
+      assert(
+        fs.existsSync(this.options.pyprojectFile),
+        `pyproject.toml not found: ${this.options.pyprojectFile}`
+      );
+    }
+
   }
 
   async onBuildComplete(context: BuildContext, manifest: BuildManifest) {
@@ -88,6 +99,8 @@ class PythonExtension implements BuildExtension {
           # Set up Python environment
           RUN python3 -m venv /opt/venv
           ENV PATH="/opt/venv/bin:$PATH"
+
+          ${this.options.useUv ? "RUN pip install uv" : ""}
         `),
       },
       deploy: {
@@ -123,7 +136,36 @@ class PythonExtension implements BuildExtension {
             # Copy the requirements file
             COPY ${this.options.requirementsFile} .
             # Install dependencies
-            RUN pip install --no-cache-dir -r ${this.options.requirementsFile}
+            ${this.options.useUv
+              ? `RUN uv pip install --no-cache -r ${this.options.requirementsFile}`
+              : `RUN pip install --no-cache-dir -r ${this.options.requirementsFile}`
+            }
+          `),
+        },
+        deploy: {
+          override: true,
+        },
+      });
+    } else if (this.options.pyprojectFile) {
+      // Copy pyproject file to the container
+      await addAdditionalFilesToBuild(
+        "pythonExtension",
+        {
+          files: [this.options.pyprojectFile],
+        },
+        context,
+        manifest
+      );
+
+      // Add a layer to the build that installs the dependencies
+      context.addLayer({
+        id: "python-dependencies",
+        image: {
+          instructions: splitAndCleanComments(`
+            # Copy the pyproject file
+            COPY ${this.options.pyprojectFile} .
+            # Install dependencies
+            ${this.options.useUv ? "RUN uv pip install ." : "RUN pip install ."}
           `),
         },
         deploy: {
@@ -144,7 +186,10 @@ class PythonExtension implements BuildExtension {
           RUN echo "$REQUIREMENTS_CONTENT" > requirements.txt
 
           # Install dependencies
-          RUN pip install --no-cache-dir -r requirements.txt
+          ${this.options.useUv
+              ? "RUN uv pip install --no-cache -r requirements.txt"
+              : "RUN pip install --no-cache-dir -r requirements.txt"
+            }
         `),
         },
         deploy: {
