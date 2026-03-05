@@ -101,7 +101,11 @@ export class ClickHouseRunsRepository implements IRunsRepository {
           previousCursor = reversedRunIds.at(1) ?? null;
           nextCursor = reversedRunIds.at(options.page.size) ?? null;
         } else {
-          nextCursor = reversedRunIds.at(options.page.size - 1) ?? null;
+          // Use the last item (oldest run) as the forward cursor.
+          // We can't use a fixed index (pageSize - 1) because the result set
+          // may have fewer items than pageSize (e.g., when new runs were created
+          // while the user was browsing, shifting page boundaries).
+          nextCursor = reversedRunIds.at(reversedRunIds.length - 1) ?? null;
         }
 
         break;
