@@ -9,8 +9,7 @@
     "dev:trigger": "trigger dev",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
-    "db:generate": "prisma generate",
-    "postinstall": "prisma generate"
+    "db:generate": "prisma generate"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.0",
