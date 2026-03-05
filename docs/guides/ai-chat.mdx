@@ -1,7 +1,7 @@
 ---
 title: "AI Chat with useChat"
 sidebarTitle: "AI Chat (useChat)"
-description: "Run AI SDK chat completions as durable Trigger.dev tasks with built-in realtime streaming."
+description: "Run AI SDK chat completions as durable Trigger.dev tasks with built-in realtime streaming, multi-turn conversations, and message persistence."
 ---
 
 ## Overview
@@ -9,10 +9,11 @@ description: "Run AI SDK chat completions as durable Trigger.dev tasks with buil
 The `@trigger.dev/sdk` provides a custom [ChatTransport](https://sdk.vercel.ai/docs/ai-sdk-ui/transport) for the Vercel AI SDK's `useChat` hook. This lets you run chat completions as **durable Trigger.dev tasks** instead of fragile API routes — with automatic retries, observability, and realtime streaming built in.
 
 **How it works:**
-1. The frontend sends messages via `useChat` → `TriggerChatTransport`
-2. The transport triggers a Trigger.dev task with the conversation as payload
+1. The frontend sends messages via `useChat` through `TriggerChatTransport`
+2. The first message triggers a Trigger.dev task; subsequent messages resume the **same run** via input streams
 3. The task streams `UIMessageChunk` events back via Trigger.dev's realtime streams
 4. The AI SDK's `useChat` processes the stream natively — text, tool calls, reasoning, etc.
+5. Between turns, the run stays warm briefly then suspends (freeing compute) until the next message
 
 No custom API routes needed. Your chat backend is a Trigger.dev task.
 
@@ -22,62 +23,501 @@ No custom API routes needed. Your chat backend is a Trigger.dev task.
 
 ## Quick start
 
-### 1. Define a chat task
+<Steps>
+  <Step title="Define a chat task">
+    Use `chat.task` from `@trigger.dev/sdk/ai` to define a task that handles chat messages. The `run` function receives `ModelMessage[]` (already converted from the frontend's `UIMessage[]`) — pass them directly to `streamText`.
 
-Use `chat.task` from `@trigger.dev/sdk/ai` to define a task that handles chat messages. The payload is automatically typed as `ChatTaskPayload` with abort signals.
+    If you return a `StreamTextResult`, it's **automatically piped** to the frontend.
 
-If you return a `StreamTextResult` from `run`, it's **automatically piped** to the frontend.
+    ```ts trigger/chat.ts
+    import { chat } from "@trigger.dev/sdk/ai";
+    import { streamText } from "ai";
+    import { openai } from "@ai-sdk/openai";
 
-```ts trigger/chat.ts
+    export const myChat = chat.task({
+      id: "my-chat",
+      run: async ({ messages, signal }) => {
+        // messages is ModelMessage[] — pass directly to streamText
+        // signal fires on stop or run cancel
+        return streamText({
+          model: openai("gpt-4o"),
+          messages,
+          abortSignal: signal,
+        });
+      },
+    });
+    ```
+  </Step>
+
+  <Step title="Generate an access token">
+    On your server (e.g. a Next.js server action), create a trigger public token scoped to your chat task:
+
+    ```ts app/actions.ts
+    "use server";
+
+    import { chat } from "@trigger.dev/sdk/ai";
+    import type { myChat } from "@/trigger/chat";
+
+    export const getChatToken = () =>
+      chat.createAccessToken<typeof myChat>("my-chat");
+    ```
+  </Step>
+
+  <Step title="Use in the frontend">
+    Use the `useTriggerChatTransport` hook from `@trigger.dev/sdk/chat/react` to create a memoized transport instance, then pass it to `useChat`:
+
+    ```tsx app/components/chat.tsx
+    "use client";
+
+    import { useChat } from "@ai-sdk/react";
+    import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+    import type { myChat } from "@/trigger/chat";
+    import { getChatToken } from "@/app/actions";
+
+    export function Chat() {
+      const transport = useTriggerChatTransport<typeof myChat>({
+        task: "my-chat",
+        accessToken: getChatToken,
+      });
+
+      const { messages, sendMessage, stop, status } = useChat({ transport });
+
+      return (
+        <div>
+          {messages.map((m) => (
+            <div key={m.id}>
+              <strong>{m.role}:</strong>
+              {m.parts.map((part, i) =>
+                part.type === "text" ? <span key={i}>{part.text}</span> : null
+              )}
+            </div>
+          ))}
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const input = e.currentTarget.querySelector("input");
+              if (input?.value) {
+                sendMessage({ text: input.value });
+                input.value = "";
+              }
+            }}
+          >
+            <input placeholder="Type a message..." />
+            <button type="submit" disabled={status === "streaming"}>
+              Send
+            </button>
+            {status === "streaming" && (
+              <button type="button" onClick={stop}>
+                Stop
+              </button>
+            )}
+          </form>
+        </div>
+      );
+    }
+    ```
+  </Step>
+</Steps>
+
+## How multi-turn works
+
+### One run, many turns
+
+The entire conversation lives in a **single Trigger.dev run**. After each AI response, the run waits for the next message via input streams. The frontend transport handles this automatically — it triggers a new run for the first message, and sends subsequent messages to the existing run.
+
+This means your conversation has full observability in the Trigger.dev dashboard: every turn is a span inside the same run.
+
+### Warm and suspended states
+
+After each turn, the run goes through two phases of waiting:
+
+1. **Warm phase** (default 30s) — The run stays active and responds instantly to the next message. Uses compute.
+2. **Suspended phase** (default up to 1h) — The run suspends, freeing compute. It wakes when the next message arrives. There's a brief delay as the run resumes.
+
+If no message arrives within the turn timeout, the run ends gracefully. The next message from the frontend will automatically start a fresh run.
+
+<Info>
+  You are not charged for compute during the suspended phase. Only the warm phase uses compute resources.
+</Info>
+
+### What the backend accumulates
+
+The backend automatically accumulates the full conversation history across turns. After the first turn, the frontend transport only sends the new user message — not the entire history. This is handled transparently by the transport and task.
+
+The accumulated messages are available in:
+- `run()` as `messages` (`ModelMessage[]`) — for passing to `streamText`
+- `onTurnComplete()` as `uiMessages` (`UIMessage[]`) — for persistence
+
+## Backend patterns
+
+### Simple: return a StreamTextResult
+
+The easiest approach — return the `streamText` result from `run` and it's automatically piped to the frontend:
+
+```ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, convertToModelMessages } from "ai";
+import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
 
-export const myChat = chat.task({
-  id: "my-chat",
+export const simpleChat = chat.task({
+  id: "simple-chat",
   run: async ({ messages, signal }) => {
-    // messages is UIMessage[] from the frontend
-    // signal fires on stop or run cancel
     return streamText({
       model: openai("gpt-4o"),
-      messages: convertToModelMessages(messages),
+      system: "You are a helpful assistant.",
+      messages,
       abortSignal: signal,
     });
-    // Returning a StreamTextResult auto-pipes it to the frontend
   },
 });
 ```
 
-### 2. Generate an access token
+### Using chat.pipe() for complex flows
 
-On your server (e.g. a Next.js API route or server action), create a trigger public token:
+For complex agent flows where `streamText` is called deep inside your code, use `chat.pipe()`. It works from **anywhere inside a task** — even nested function calls.
+
+```ts trigger/agent-chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+import type { ModelMessage } from "ai";
+
+export const agentChat = chat.task({
+  id: "agent-chat",
+  run: async ({ messages }) => {
+    // Don't return anything — chat.pipe is called inside
+    await runAgentLoop(messages);
+  },
+});
+
+async function runAgentLoop(messages: ModelMessage[]) {
+  // ... agent logic, tool calls, etc.
+
+  const result = streamText({
+    model: openai("gpt-4o"),
+    messages,
+  });
+
+  // Pipe from anywhere — no need to return it
+  await chat.pipe(result);
+}
+```
+
+### Manual mode with task()
+
+If you need full control over task options, use the standard `task()` with `ChatTaskPayload` and `chat.pipe()`:
+
+```ts
+import { task } from "@trigger.dev/sdk";
+import { chat, type ChatTaskPayload } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+export const manualChat = task({
+  id: "manual-chat",
+  retry: { maxAttempts: 3 },
+  queue: { concurrencyLimit: 10 },
+  run: async (payload: ChatTaskPayload) => {
+    const result = streamText({
+      model: openai("gpt-4o"),
+      messages: payload.messages,
+    });
+
+    await chat.pipe(result);
+  },
+});
+```
+
+<Warning>
+  Manual mode does not get automatic message accumulation or the `onTurnComplete`/`onChatStart` lifecycle hooks. The `responseMessage` field in `onTurnComplete` will be `undefined` when using `chat.pipe()` directly. Use `chat.task()` for the full multi-turn experience.
+</Warning>
+
+## Lifecycle hooks
+
+### onChatStart
+
+Fires once on the first turn (turn 0) before `run()` executes. Use it to create a chat record in your database.
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  onChatStart: async ({ chatId, clientData }) => {
+    const { userId } = clientData as { userId: string };
+    await db.chat.create({
+      data: { id: chatId, userId, title: "New chat" },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+<Tip>
+  `clientData` contains custom data from the frontend — either the `metadata` option on the transport constructor (sent with every message) or the `metadata` option on `sendMessage()` (per-message). See [Client data and metadata](#client-data-and-metadata).
+</Tip>
+
+### onTurnComplete
+
+Fires after each turn completes — after the response is captured, before waiting for the next message. This is the primary hook for persisting conversations.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `chatId` | `string` | Chat session ID |
+| `messages` | `ModelMessage[]` | Full accumulated conversation (model format) |
+| `uiMessages` | `UIMessage[]` | Full accumulated conversation (UI format) |
+| `newMessages` | `ModelMessage[]` | Only this turn's messages (model format) |
+| `newUIMessages` | `UIMessage[]` | Only this turn's messages (UI format) |
+| `responseMessage` | `UIMessage \| undefined` | The assistant's response for this turn |
+| `turn` | `number` | Turn number (0-indexed) |
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  onTurnComplete: async ({ chatId, uiMessages }) => {
+    await db.chat.update({
+      where: { id: chatId },
+      data: { messages: uiMessages },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+<Tip>
+  Use `uiMessages` to overwrite the full conversation each turn (simplest). Use `newUIMessages` if you prefer to store messages individually — for example, one database row per message.
+</Tip>
+
+## Persistence
+
+### What needs to be persisted
+
+To build a chat app that survives page refreshes, you need to persist two things:
+
+1. **Messages** — The conversation history. Persisted **server-side** in the task via `onTurnComplete`.
+2. **Sessions** — The transport's connection state (`runId`, `publicAccessToken`, `lastEventId`). Persisted **client-side** via `onSessionChange`.
+
+<Note>
+  Sessions let the transport reconnect to an existing run after a page refresh. Without them, every page load would start a new run — losing the conversation context that was accumulated in the previous run.
+</Note>
+
+### Persisting messages (server-side)
+
+Messages are stored inside the task itself, so they're durable even if the frontend disconnects mid-conversation.
+
+```ts trigger/chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { db } from "@/lib/db";
+
+export const myChat = chat.task({
+  id: "my-chat",
+  onChatStart: async ({ chatId, clientData }) => {
+    await db.chat.create({
+      data: { id: chatId, title: "New chat", messages: [] },
+    });
+  },
+  onTurnComplete: async ({ chatId, uiMessages }) => {
+    await db.chat.update({
+      where: { id: chatId },
+      data: { messages: uiMessages },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: openai("gpt-4o"),
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+### Persisting sessions (frontend)
+
+The `onSessionChange` callback on the transport fires whenever a session's state changes:
+
+- **Session created** — After triggering a new task run
+- **Turn completed** — The `lastEventId` is updated (used for stream resumption)
+- **Session removed** — The run ended or failed. `session` is `null`.
+
+```tsx
+const transport = useTriggerChatTransport<typeof myChat>({
+  task: "my-chat",
+  accessToken: getChatToken,
+  sessions: loadedSessions, // Restored from DB on page load
+  onSessionChange: (chatId, session) => {
+    if (session) {
+      saveSession(chatId, session); // Server action
+    } else {
+      deleteSession(chatId); // Server action
+    }
+  },
+});
+```
+
+### Restoring on page load
+
+On page load, fetch both the messages and the session from your database, then pass them to `useChat` and the transport:
+
+```tsx app/page.tsx
+"use client";
+
+import { useEffect, useState } from "react";
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import { useChat } from "@ai-sdk/react";
+import { getChatToken, getChatMessages, getSession } from "@/app/actions";
+
+export default function ChatPage({ chatId }: { chatId: string }) {
+  const [initialMessages, setInitialMessages] = useState([]);
+  const [initialSession, setInitialSession] = useState(undefined);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      const [messages, session] = await Promise.all([
+        getChatMessages(chatId),
+        getSession(chatId),
+      ]);
+      setInitialMessages(messages);
+      setInitialSession(session ? { [chatId]: session } : undefined);
+      setLoaded(true);
+    }
+    load();
+  }, [chatId]);
+
+  if (!loaded) return null;
+
+  return (
+    <ChatClient
+      chatId={chatId}
+      initialMessages={initialMessages}
+      initialSessions={initialSession}
+    />
+  );
+}
+
+function ChatClient({ chatId, initialMessages, initialSessions }) {
+  const transport = useTriggerChatTransport({
+    task: "my-chat",
+    accessToken: getChatToken,
+    sessions: initialSessions,
+    onSessionChange: (id, session) => {
+      if (session) saveSession(id, session);
+      else deleteSession(id);
+    },
+  });
+
+  const { messages, sendMessage, stop, status } = useChat({
+    id: chatId,
+    messages: initialMessages,
+    transport,
+  });
+
+  // ... render UI
+}
+```
+
+### Full example
+
+Putting it all together — a complete chat app with server-side message persistence and session reconnection:
+
+<CodeGroup>
+```ts trigger/chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { db } from "@/lib/db";
+
+export const myChat = chat.task({
+  id: "my-chat",
+  onChatStart: async ({ chatId }) => {
+    await db.chat.create({
+      data: { id: chatId, title: "New chat", messages: [] },
+    });
+  },
+  onTurnComplete: async ({ chatId, uiMessages }) => {
+    await db.chat.update({
+      where: { id: chatId },
+      data: { messages: uiMessages },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: openai("gpt-4o"),
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
 
 ```ts app/actions.ts
 "use server";
 
-import { auth } from "@trigger.dev/sdk";
+import { chat } from "@trigger.dev/sdk/ai";
+import type { myChat } from "@/trigger/chat";
+import { db } from "@/lib/db";
 
-export async function getChatToken() {
-  return await auth.createTriggerPublicToken("my-chat");
+export const getChatToken = () =>
+  chat.createAccessToken<typeof myChat>("my-chat");
+
+export async function getChatMessages(chatId: string) {
+  const found = await db.chat.findUnique({ where: { id: chatId } });
+  return found?.messages ?? [];
+}
+
+export async function getSession(chatId: string) {
+  return await db.chatSession.findUnique({ where: { id: chatId } });
+}
+
+export async function saveSession(
+  chatId: string,
+  session: { runId: string; publicAccessToken: string; lastEventId?: string }
+) {
+  await db.chatSession.upsert({
+    where: { id: chatId },
+    create: { id: chatId, ...session },
+    update: session,
+  });
+}
+
+export async function deleteSession(chatId: string) {
+  await db.chatSession.delete({ where: { id: chatId } }).catch(() => {});
 }
 ```
-
-### 3. Use in the frontend
-
-Import `TriggerChatTransport` from `@trigger.dev/sdk/chat` (browser-safe — no server dependencies).
 
 ```tsx app/components/chat.tsx
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { TriggerChatTransport } from "@trigger.dev/sdk/chat";
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import type { myChat } from "@/trigger/chat";
+import {
+  getChatToken,
+  saveSession,
+  deleteSession,
+} from "@/app/actions";
 
-export function Chat({ accessToken }: { accessToken: string }) {
-  const { messages, sendMessage, status, error } = useChat({
-    transport: new TriggerChatTransport({
-      task: "my-chat",
-      accessToken,
-    }),
+export function Chat({ chatId, initialMessages, initialSessions }) {
+  const transport = useTriggerChatTransport<typeof myChat>({
+    task: "my-chat",
+    accessToken: getChatToken,
+    sessions: initialSessions,
+    onSessionChange: (id, session) => {
+      if (session) saveSession(id, session);
+      else deleteSession(id);
+    },
+  });
+
+  const { messages, sendMessage, stop, status } = useChat({
+    id: chatId,
+    messages: initialMessages,
+    transport,
   });
 
   return (
@@ -105,158 +545,228 @@ export function Chat({ accessToken }: { accessToken: string }) {
         <button type="submit" disabled={status === "streaming"}>
           Send
         </button>
+        {status === "streaming" && (
+          <button type="button" onClick={stop}>Stop</button>
+        )}
       </form>
     </div>
   );
 }
 ```
+</CodeGroup>
 
-## Backend patterns
+## Stop generation
 
-### Simple: return a StreamTextResult
+### How stop works
 
-The easiest approach — return the `streamText` result from `run` and it's automatically piped to the frontend:
+Calling `stop()` from `useChat` sends a stop signal to the running task via input streams. The task's `streamText` call aborts (if you passed `signal` or `stopSignal`), but the **run stays alive** and waits for the next message. The partial response is captured and accumulated normally.
+
+### Abort signals
+
+The `run` function receives three abort signals:
+
+| Signal | Fires when | Use for |
+|--------|-----------|---------|
+| `signal` | Stop **or** cancel | Pass to `streamText` — handles both cases. **Use this in most cases.** |
+| `stopSignal` | Stop only (per-turn, reset each turn) | Custom logic that should only run on user stop, not cancellation |
+| `cancelSignal` | Run cancel, expire, or maxDuration exceeded | Cleanup that should only happen on full cancellation |
 
 ```ts
-import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, convertToModelMessages } from "ai";
-import { openai } from "@ai-sdk/openai";
-
-export const simpleChat = chat.task({
-  id: "simple-chat",
-  run: async ({ messages, signal }) => {
+export const myChat = chat.task({
+  id: "my-chat",
+  run: async ({ messages, signal, stopSignal, cancelSignal }) => {
     return streamText({
       model: openai("gpt-4o"),
-      system: "You are a helpful assistant.",
-      messages: convertToModelMessages(messages),
+      messages,
+      abortSignal: signal, // Handles both stop and cancel
+    });
+  },
+});
+```
+
+<Tip>
+  Use `signal` (the combined signal) in most cases. The separate `stopSignal` and `cancelSignal` are only needed if you want different behavior for stop vs cancel.
+</Tip>
+
+## Client data and metadata
+
+### Transport-level metadata
+
+Set default metadata on the transport that's included in every request:
+
+```ts
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken: getChatToken,
+  metadata: { userId: currentUser.id },
+});
+```
+
+### Per-message metadata
+
+Pass metadata with individual messages. Per-message values are merged with transport-level metadata (per-message wins on conflicts):
+
+```ts
+sendMessage(
+  { text: "Hello" },
+  { metadata: { model: "gpt-4o", priority: "high" } }
+);
+```
+
+### Accessing client data in the task
+
+Both transport-level and per-message metadata are available as `clientData` in the `run` function and in `onChatStart`:
+
+```ts
+import { z } from "zod";
+
+export const myChat = chat.task({
+  id: "my-chat",
+  run: async ({ messages, clientData, signal }) => {
+    const { model, userId } = z.object({
+      model: z.string().optional(),
+      userId: z.string(),
+    }).parse(clientData);
+
+    return streamText({
+      model: openai(model ?? "gpt-4o"),
+      messages,
       abortSignal: signal,
     });
   },
 });
 ```
 
-### Complex: use chat.pipe() from anywhere
+## Runtime configuration
 
-For complex agent flows where `streamText` is called deep inside your code, use `chat.pipe()`. It works from **anywhere inside a task** — even nested function calls.
+### chat.setTurnTimeout()
 
-```ts trigger/agent-chat.ts
-import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, convertToModelMessages } from "ai";
-import { openai } from "@ai-sdk/openai";
-
-export const agentChat = chat.task({
-  id: "agent-chat",
-  run: async ({ messages }) => {
-    // Don't return anything — chat.pipe is called inside
-    await runAgentLoop(convertToModelMessages(messages));
-  },
-});
-
-// This could be deep inside your agent library
-async function runAgentLoop(messages: CoreMessage[]) {
-  // ... agent logic, tool calls, etc.
-
-  const result = streamText({
-    model: openai("gpt-4o"),
-    messages,
-  });
-
-  // Pipe from anywhere — no need to return it
-  await chat.pipe(result);
-}
-```
-
-### Manual: use task() with chat.pipe()
-
-If you need full control over task options, use the standard `task()` with `ChatTaskPayload` and `chat.pipe()`:
+Override how long the run stays suspended waiting for the next message. Call from inside `run()`:
 
 ```ts
-import { task } from "@trigger.dev/sdk";
-import { chat, type ChatTaskPayload } from "@trigger.dev/sdk/ai";
-import { streamText, convertToModelMessages } from "ai";
-import { openai } from "@ai-sdk/openai";
-
-export const manualChat = task({
-  id: "manual-chat",
-  retry: { maxAttempts: 3 },
-  queue: { concurrencyLimit: 10 },
-  run: async (payload: ChatTaskPayload) => {
-    const result = streamText({
-      model: openai("gpt-4o"),
-      messages: convertToModelMessages(payload.messages),
-    });
-
-    await chat.pipe(result);
-  },
-});
+run: async ({ messages, signal }) => {
+  chat.setTurnTimeout("2h"); // Wait longer for this conversation
+  return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+},
 ```
 
-## Frontend options
+### chat.setWarmTimeoutInSeconds()
+
+Override how long the run stays warm (active, using compute) after each turn:
+
+```ts
+run: async ({ messages, signal }) => {
+  chat.setWarmTimeoutInSeconds(60); // Stay warm for 1 minute
+  return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+},
+```
+
+<Info>
+  Longer warm timeout means faster responses but more compute usage. Set to `0` to suspend immediately after each turn (minimum latency cost, slight delay on next message).
+</Info>
+
+## Frontend reference
 
 ### TriggerChatTransport options
 
-```ts
-new TriggerChatTransport({
-  // Required
-  task: "my-chat",           // Task ID to trigger
-  accessToken: token,         // Trigger public token or secret key
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `task` | `string` | required | Task ID to trigger |
+| `accessToken` | `string \| () => string \| Promise<string>` | required | Auth token or function that returns one |
+| `baseURL` | `string` | `"https://api.trigger.dev"` | API base URL (for self-hosted) |
+| `streamKey` | `string` | `"chat"` | Stream key (only change if using custom key) |
+| `headers` | `Record<string, string>` | — | Extra headers for API requests |
+| `streamTimeoutSeconds` | `number` | `120` | How long to wait for stream data |
+| `metadata` | `Record<string, unknown>` | — | Default metadata for every request |
+| `sessions` | `Record<string, {...}>` | — | Restore sessions from storage |
+| `onSessionChange` | `(chatId, session \| null) => void` | — | Fires when session state changes |
 
-  // Optional
-  baseURL: "https://...",     // Custom API URL (self-hosted)
-  streamKey: "chat",          // Custom stream key (default: "chat")
-  headers: { ... },           // Extra headers for API requests
-  streamTimeoutSeconds: 120,  // Stream timeout (default: 120s)
+### useTriggerChatTransport
+
+React hook that creates and memoizes a `TriggerChatTransport` instance. Import from `@trigger.dev/sdk/chat/react`.
+
+```tsx
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import type { myChat } from "@/trigger/chat";
+
+const transport = useTriggerChatTransport<typeof myChat>({
+  task: "my-chat",
+  accessToken: () => getChatToken(),
+  sessions: savedSessions,
+  onSessionChange: handleSessionChange,
 });
 ```
+
+The transport is created once on first render and reused across re-renders. Pass a type parameter for compile-time validation of the task ID.
+
+<Tip>
+  The hook keeps `onSessionChange` up to date via a ref internally, so you don't need to memoize the callback or worry about stale closures.
+</Tip>
 
 ### Dynamic access tokens
 
-For token refresh patterns, pass a function:
+For token refresh, pass a function instead of a string. It's called on each `sendMessage`:
 
 ```ts
-new TriggerChatTransport({
+const transport = useTriggerChatTransport({
   task: "my-chat",
-  accessToken: () => getLatestToken(), // Called on each sendMessage
-});
-```
-
-### Passing extra data
-
-Use the `body` option on `sendMessage` to pass additional data to the task:
-
-```ts
-sendMessage({
-  text: "Hello",
-}, {
-  body: {
-    systemPrompt: "You are a pirate.",
-    temperature: 0.9,
+  accessToken: async () => {
+    const res = await fetch("/api/chat-token");
+    return res.text();
   },
 });
 ```
 
-The `body` fields are merged into the `ChatTaskPayload` and available in your task's `run` function.
+## Backend reference
 
-## ChatTaskPayload
+### ChatTaskOptions
 
-The payload sent to the task has this shape:
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `id` | `string` | required | Task identifier |
+| `run` | `(payload: ChatTaskRunPayload) => Promise<unknown>` | required | Handler for each turn |
+| `onChatStart` | `(event: ChatStartEvent) => Promise<void> \| void` | — | Fires on turn 0 before `run()` |
+| `onTurnComplete` | `(event: TurnCompleteEvent) => Promise<void> \| void` | — | Fires after each turn completes |
+| `maxTurns` | `number` | `100` | Max conversational turns per run |
+| `turnTimeout` | `string` | `"1h"` | How long to wait for next message |
+| `warmTimeoutInSeconds` | `number` | `30` | Seconds to stay warm before suspending |
+
+Plus all standard [TaskOptions](/tasks/overview) — `retry`, `queue`, `machine`, `maxDuration`, etc.
+
+### ChatTaskRunPayload
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `messages` | `UIMessage[]` | The conversation history |
+| `messages` | `ModelMessage[]` | Model-ready messages — pass directly to `streamText` |
 | `chatId` | `string` | Unique chat session ID |
 | `trigger` | `"submit-message" \| "regenerate-message"` | What triggered the request |
-| `messageId` | `string \| undefined` | Message ID to regenerate (if applicable) |
-| `metadata` | `unknown` | Custom metadata from the frontend |
+| `messageId` | `string \| undefined` | Message ID (for regenerate) |
+| `clientData` | `unknown` | Custom data from frontend metadata |
+| `signal` | `AbortSignal` | Combined stop + cancel signal |
+| `cancelSignal` | `AbortSignal` | Cancel-only signal |
+| `stopSignal` | `AbortSignal` | Stop-only signal (per-turn) |
 
-Plus any extra fields from the `body` option.
+### TurnCompleteEvent
+
+See [onTurnComplete](#onturncomplete) for the full field reference.
+
+### chat namespace
+
+| Method | Description |
+|--------|-------------|
+| `chat.task(options)` | Create a chat task |
+| `chat.pipe(source, options?)` | Pipe a stream to the frontend (from anywhere inside a task) |
+| `chat.createAccessToken(taskId)` | Create a public access token for a chat task |
+| `chat.setTurnTimeout(duration)` | Override turn timeout at runtime (e.g. `"2h"`) |
+| `chat.setTurnTimeoutInSeconds(seconds)` | Override turn timeout at runtime (in seconds) |
+| `chat.setWarmTimeoutInSeconds(seconds)` | Override warm timeout at runtime |
 
 ## Self-hosting
 
 If you're self-hosting Trigger.dev, pass the `baseURL` option:
 
 ```ts
-new TriggerChatTransport({
+const transport = useTriggerChatTransport({
   task: "my-chat",
   accessToken,
   baseURL: "https://your-trigger-instance.com",
