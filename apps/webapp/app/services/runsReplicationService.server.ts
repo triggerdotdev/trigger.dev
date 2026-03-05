@@ -861,7 +861,7 @@ export class RunsReplicationService {
     // Calculate error fingerprint for failed runs
     const errorFingerprint = (
       !this._disableErrorFingerprinting &&
-      ['SYSTEM_FAILURE', 'CRASHED', 'INTERRUPTED', 'COMPLETED_WITH_ERRORS'].includes(run.status)
+      ['SYSTEM_FAILURE', 'CRASHED', 'INTERRUPTED', 'COMPLETED_WITH_ERRORS', 'TIMED_OUT'].includes(run.status)
     )
       ? calculateErrorFingerprint(run.error)
       : '';

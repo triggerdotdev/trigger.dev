@@ -64,7 +64,7 @@ SELECT
 FROM trigger_dev.task_runs_v2
 WHERE
   error_fingerprint != ''
-  AND status IN ('SYSTEM_FAILURE', 'CRASHED', 'INTERRUPTED', 'COMPLETED_WITH_ERRORS')
+  AND status IN ('SYSTEM_FAILURE', 'CRASHED', 'INTERRUPTED', 'COMPLETED_WITH_ERRORS', 'TIMED_OUT')
   AND _is_deleted = 0
 GROUP BY
   organization_id,

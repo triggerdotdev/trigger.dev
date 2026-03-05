@@ -166,7 +166,7 @@ export function getErrorHourlyOccurrences(ch: ClickhouseReader, settings?: Click
         AND environment_id = {environmentId: String}
         AND created_at >= now() - INTERVAL {hours: Int64} HOUR
         AND error_fingerprint IN {fingerprints: Array(String)}
-        AND status IN ('SYSTEM_FAILURE', 'CRASHED', 'INTERRUPTED', 'COMPLETED_WITH_ERRORS')
+        AND status IN ('SYSTEM_FAILURE', 'CRASHED', 'INTERRUPTED', 'COMPLETED_WITH_ERRORS', 'TIMED_OUT')
         AND _is_deleted = 0
       GROUP BY
         error_fingerprint,
