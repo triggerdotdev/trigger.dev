@@ -29,6 +29,7 @@ export const TaskRunV2 = z.object({
   base_cost_in_cents: z.number().default(0),
   output: z.unknown(),
   error: z.unknown(),
+  error_fingerprint: z.string().default(""),
   tags: z.array(z.string()).default([]),
   task_version: z.string(),
   sdk_version: z.string(),
@@ -82,6 +83,7 @@ export const TASK_RUN_COLUMNS = [
   "base_cost_in_cents",
   "output",
   "error",
+  "error_fingerprint",
   "tags",
   "task_version",
   "sdk_version",
@@ -144,6 +146,7 @@ export type TaskRunFieldTypes = {
   base_cost_in_cents: number;
   output: { data: unknown };
   error: { data: unknown };
+  error_fingerprint: string;
   tags: string[];
   task_version: string;
   sdk_version: string;
@@ -277,6 +280,7 @@ export type TaskRunInsertArray = [
   base_cost_in_cents: number,
   output: { data: unknown },
   error: { data: unknown },
+  error_fingerprint: string,
   tags: string[],
   task_version: string,
   sdk_version: string,

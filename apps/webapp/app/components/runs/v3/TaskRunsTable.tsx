@@ -69,6 +69,7 @@ type RunsTableProps = {
   allowSelection?: boolean;
   variant?: TableVariant;
   disableAdjacentRows?: boolean;
+  additionalTableState?: Record<string, string>;
 };
 
 export function TaskRunsTable({
@@ -81,6 +82,7 @@ export function TaskRunsTable({
   isLoading = false,
   allowSelection = false,
   variant = "dimmed",
+  additionalTableState,
 }: RunsTableProps) {
   const organization = useOrganization();
   const project = useProject();
@@ -89,8 +91,16 @@ export function TaskRunsTable({
   const { isManagedCloud } = useFeatures();
   const { value } = useSearchParams();
   const location = useOptimisticLocation();
-  const rootOnly = value("rootOnly") ? `` : `rootOnly=${rootOnlyDefault}`;
-  const search = rootOnly ? `${rootOnly}&${location.search}` : location.search;
+  const params = new URLSearchParams(location.search || "");
+  if (!value("rootOnly")) {
+    params.set("rootOnly", String(rootOnlyDefault));
+  }
+  if (additionalTableState) {
+    for (const [key, val] of Object.entries(additionalTableState)) {
+      params.set(key, val);
+    }
+  }
+  const search = params.toString();
   /** TableState has to be encoded as a separate URI component, so it's merged under one, 'tableState' param */
   const tableStateParam = disableAdjacentRows ? '' : encodeURIComponent(search);
 

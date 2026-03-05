@@ -632,6 +632,11 @@ function ConnectedVercelProjectForm({
   const availableEnvSlugs = getAvailableEnvSlugs(hasStagingEnvironment, hasPreviewEnvironment);
   const availableEnvSlugsForBuildSettings = getAvailableEnvSlugsForBuildSettings(hasStagingEnvironment, hasPreviewEnvironment);
 
+  const disabledEnvSlugsForBuildSettings: Partial<Record<EnvSlug, string>> | undefined =
+    hasStagingEnvironment && !configValues.vercelStagingEnvironment
+      ? { stg: "Map a custom Vercel environment to Staging to enable this" }
+      : undefined;
+
   const formatSelectedEnvs = (selected: EnvSlug[], availableSlugs: EnvSlug[] = availableEnvSlugs): string => {
     if (selected.length === 0) return "None selected";
     if (selected.length === availableSlugs.length) return "All environments";
@@ -727,12 +732,24 @@ function ConnectedVercelProjectForm({
                     setValue={(value) => {
                       if (!Array.isArray(value)) {
                         const env = customEnvironments?.find((e) => e.id === value);
-                        setConfigValues((prev) => ({
-                          ...prev,
-                          vercelStagingEnvironment: env
-                            ? { environmentId: env.id, displayName: env.slug }
-                            : null,
-                        }));
+                        setConfigValues((prev) => {
+                          const next = {
+                            ...prev,
+                            vercelStagingEnvironment: env
+                              ? { environmentId: env.id, displayName: env.slug }
+                              : null,
+                          };
+                          // When clearing the staging mapping, strip "stg" from build settings
+                          if (!env) {
+                            next.pullEnvVarsBeforeBuild = prev.pullEnvVarsBeforeBuild.filter(
+                              (s) => s !== "stg"
+                            );
+                            next.discoverEnvVars = prev.discoverEnvVars.filter(
+                              (s) => s !== "stg"
+                            );
+                          }
+                          return next;
+                        });
                       }
                     }}
                     items={[{ id: "", slug: "None" }, ...customEnvironments]}
@@ -770,6 +787,7 @@ function ConnectedVercelProjectForm({
                   setConfigValues((prev) => ({ ...prev, atomicBuilds: slugs }))
                 }
                 envVarsConfigLink={`/orgs/${organizationSlug}/projects/${projectSlug}/env/${environmentSlug}/environment-variables`}
+                disabledEnvSlugs={disabledEnvSlugsForBuildSettings}
               />
 
               {/* Warning: autoAssignCustomDomains must be disabled for atomic deployments */}

@@ -27,6 +27,7 @@ import { nanoid } from "nanoid";
 import EventEmitter from "node:events";
 import pLimit from "p-limit";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
+import { calculateErrorFingerprint } from "~/utils/errorFingerprinting";
 
 interface TransactionEvent<T = any> {
   tag: "insert" | "update" | "delete";
@@ -70,6 +71,7 @@ export type RunsReplicationServiceOptions = {
   insertBaseDelayMs?: number;
   insertMaxDelayMs?: number;
   disablePayloadInsert?: boolean;
+  disableErrorFingerprinting?: boolean;
 };
 
 type PostgresTaskRun = TaskRun & { masterQueue: string };
@@ -115,6 +117,7 @@ export class RunsReplicationService {
   private _insertMaxDelayMs: number;
   private _insertStrategy: "insert" | "insert_async";
   private _disablePayloadInsert: boolean;
+  private _disableErrorFingerprinting: boolean;
 
   // Metrics
   private _replicationLagHistogram: Histogram;
@@ -189,6 +192,7 @@ export class RunsReplicationService {
 
     this._insertStrategy = options.insertStrategy ?? "insert";
     this._disablePayloadInsert = options.disablePayloadInsert ?? false;
+    this._disableErrorFingerprinting = options.disableErrorFingerprinting ?? false;
 
     this._replicationClient = new LogicalReplicationClient({
       pgConfig: {
@@ -852,6 +856,15 @@ export class RunsReplicationService {
     _version: bigint
   ): Promise<TaskRunInsertArray> {
     const output = await this.#prepareJson(run.output, run.outputType);
+    const errorData = { data: run.error };
+
+    // Calculate error fingerprint for failed runs
+    const errorFingerprint = (
+      !this._disableErrorFingerprinting &&
+      ['SYSTEM_FAILURE', 'CRASHED', 'INTERRUPTED', 'COMPLETED_WITH_ERRORS', 'TIMED_OUT'].includes(run.status)
+    )
+      ? calculateErrorFingerprint(run.error)
+      : '';
 
     // Return array matching TASK_RUN_COLUMNS order
     return [
@@ -880,7 +893,8 @@ export class RunsReplicationService {
       run.costInCents ?? 0, // cost_in_cents
       run.baseCostInCents ?? 0, // base_cost_in_cents
       output, // output
-      { data: run.error }, // error
+      errorData, // error
+      errorFingerprint, // error_fingerprint
       run.runTags ?? [], // tags
       run.taskVersion ?? "", // task_version
       run.sdkVersion ?? "", // sdk_version
