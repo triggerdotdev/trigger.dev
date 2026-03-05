@@ -117,13 +117,14 @@ if (config.retries?.default) {
   });
 }
 
-// If the config has a maxDuration, we need to apply it to all tasks that don't have a maxDuration
-if (typeof config.maxDuration === "number") {
+// If the config has a maxComputeSeconds or maxDuration, we need to apply it to all tasks that don't have a maxDuration
+const configMaxDuration = config.maxComputeSeconds ?? config.maxDuration;
+if (typeof configMaxDuration === "number") {
   tasks = tasks.map((task) => {
     if (typeof task.maxDuration !== "number") {
       return {
         ...task,
-        maxDuration: config.maxDuration,
+        maxDuration: configMaxDuration,
       } satisfies TaskManifest;
     }
 

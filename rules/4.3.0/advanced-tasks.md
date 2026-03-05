@@ -166,7 +166,7 @@ In trailing mode, these options update with each trigger:
 - `metadata` — run metadata
 - `tags` — run tags (replaces existing)
 - `maxAttempts` — retry attempts
-- `maxDuration` — maximum compute time
+- `maxComputeSeconds` — maximum compute time in seconds
 - `machine` — machine preset
 
 ### Important Notes
@@ -274,7 +274,7 @@ export const resilientTask = task({
 export const heavyTask = task({
   id: "heavy-computation",
   machine: { preset: "large-2x" }, // 8 vCPU, 16 GB RAM
-  maxDuration: 1800, // 30 minutes timeout
+  maxComputeSeconds: 1800, // 30 minutes timeout
   run: async (payload, { ctx }) => {
     // Resource-intensive computation
     if (ctx.machine.preset === "large-2x") {

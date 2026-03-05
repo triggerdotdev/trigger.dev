@@ -742,7 +742,7 @@ function StandardTaskForm({
                 <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label variant="small">Max duration</Label>
+                <Label variant="small">Max compute time</Label>
                 <DurationPicker
                   name={maxDurationSeconds.name}
                   id={maxDurationSeconds.id}
@@ -1318,7 +1318,7 @@ function ScheduledTaskForm({
           </InputGroup>
           <InputGroup>
             <Label htmlFor={maxDurationSeconds.id} variant="small">
-              Max duration
+              Max compute time
             </Label>
             <DurationPicker
               name={maxDurationSeconds.name}

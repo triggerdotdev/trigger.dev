@@ -295,7 +295,7 @@ export default defineConfig({
 export default defineConfig({
   // ... other config
   defaultMachine: "large-1x", // Default machine for all tasks
-  maxDuration: 300, // Default max duration (seconds)
+  maxComputeSeconds: 300, // Default max compute time (seconds)
   enableConsoleLogging: true, // Console logging in development
 });
 ```

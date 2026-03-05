@@ -932,7 +932,7 @@ Without `maxDelay`, continuous triggers would prevent the run from ever executin
 
 By default, debounce uses **leading mode** - the run executes with data from the **first** trigger.
 
-With **trailing mode**, each subsequent trigger updates the run's data (payload, metadata, tags, maxAttempts, maxDuration, and machine), so the run executes with data from the **last** trigger:
+With **trailing mode**, each subsequent trigger updates the run's data (payload, metadata, tags, maxAttempts, maxComputeSeconds, and machine), so the run executes with data from the **last** trigger:
 
 ```ts
 // Leading mode (default): runs with first payload
@@ -1090,9 +1090,9 @@ View our [tags doc](/tags) for more information.
 
 View our [metadata doc](/runs/metadata) for more information.
 
-### `maxDuration`
+### `maxComputeSeconds`
 
-View our [maxDuration doc](/runs/max-duration) for more information.
+View our [maxComputeSeconds doc](/runs/max-duration) for more information.
 
 ### `priority`
 
