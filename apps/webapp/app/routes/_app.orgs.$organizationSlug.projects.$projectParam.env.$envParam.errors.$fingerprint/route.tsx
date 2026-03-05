@@ -479,14 +479,6 @@ function ActivityChart({
       dataKey="__timestamp"
       series={versions}
       fillContainer
-      showLegend={versions.length > 1}
-      legendScrollable
-      legendClassName="w-48 shrink-0 pt-0 max-h-full"
-      className={
-        versions.length > 1
-          ? "!flex-row gap-x-3 [&>div:first-child]:min-w-0"
-          : undefined
-      }
     >
       <Chart.Bar
         stackId="versions"
