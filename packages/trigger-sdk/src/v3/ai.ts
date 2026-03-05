@@ -4,6 +4,7 @@ import {
   isSchemaZodEsque,
   SemanticInternalAttributes,
   Task,
+  taskContext,
   type inferSchemaIn,
   type PipeStreamOptions,
   type TaskIdentifier,
@@ -12,7 +13,8 @@ import {
   type TaskWithSchema,
 } from "@trigger.dev/core/v3";
 import type { ModelMessage, UIMessage } from "ai";
-import { convertToModelMessages, dynamicTool, jsonSchema, JSONSchema7, Schema, Tool, ToolCallOptions, zodSchema } from "ai";
+import type { StreamWriteResult } from "@trigger.dev/core/v3";
+import { convertToModelMessages, dynamicTool, generateId as generateMessageId, jsonSchema, JSONSchema7, Schema, Tool, ToolCallOptions, zodSchema } from "ai";
 import { type Attributes, trace } from "@opentelemetry/api";
 import { auth } from "./auth.js";
 import { metadata } from "./metadata.js";
@@ -153,7 +155,7 @@ export const ai = {
 function createChatAccessToken<TTask extends AnyTask>(
   taskId: TaskIdentifier<TTask>
 ): Promise<string> {
-  return auth.createTriggerPublicToken(taskId as string, { multipleUse: true });
+  return auth.createTriggerPublicToken(taskId as string, { expirationTime: "24h" });
 }
 
 // ---------------------------------------------------------------------------
@@ -389,6 +391,28 @@ export type ChatStartEvent = {
   messages: ModelMessage[];
   /** Custom data from the frontend (passed via `metadata` on `sendMessage()` or the transport). */
   clientData: unknown;
+  /** The Trigger.dev run ID for this conversation. */
+  runId: string;
+  /** A scoped access token for this chat run. Persist this for frontend reconnection. */
+  chatAccessToken: string;
+};
+
+/**
+ * Event passed to the `onTurnStart` callback.
+ */
+export type TurnStartEvent = {
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The accumulated model-ready messages (all turns so far, including new user message). */
+  messages: ModelMessage[];
+  /** The accumulated UI messages (all turns so far, including new user message). */
+  uiMessages: UIMessage[];
+  /** The turn number (0-indexed). */
+  turn: number;
+  /** The Trigger.dev run ID for this conversation. */
+  runId: string;
+  /** A scoped access token for this chat run. */
+  chatAccessToken: string;
 };
 
 /**
@@ -418,6 +442,12 @@ export type TurnCompleteEvent = {
   responseMessage: UIMessage | undefined;
   /** The turn number (0-indexed). */
   turn: number;
+  /** The Trigger.dev run ID for this conversation. */
+  runId: string;
+  /** A fresh scoped access token for this chat run (renewed each turn). Persist this for frontend reconnection. */
+  chatAccessToken: string;
+  /** The last event ID from the stream writer. Use this with `resume: true` to avoid replaying events after refresh. */
+  lastEventId?: string;
 };
 
 export type ChatTaskOptions<TIdentifier extends string> = Omit<
@@ -448,6 +478,22 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
    * ```
    */
   onChatStart?: (event: ChatStartEvent) => Promise<void> | void;
+
+  /**
+   * Called at the start of every turn, after message accumulation and `onChatStart` (turn 0),
+   * but before the `run` function executes.
+   *
+   * Use this to persist messages before streaming begins, so a mid-stream page refresh
+   * still shows the user's message.
+   *
+   * @example
+   * ```ts
+   * onTurnStart: async ({ chatId, uiMessages }) => {
+   *   await db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } });
+   * }
+   * ```
+   */
+  onTurnStart?: (event: TurnStartEvent) => Promise<void> | void;
 
   /**
    * Called after each turn completes (after the response is captured, before waiting
@@ -492,6 +538,17 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
    * @default 30
    */
   warmTimeoutInSeconds?: number;
+
+  /**
+   * How long the `chatAccessToken` (scoped to this run) remains valid.
+   * A fresh token is minted after each turn, so this only needs to cover
+   * the gap between turns.
+   *
+   * Accepts a duration string (e.g. `"1h"`, `"30m"`, `"2h"`).
+   *
+   * @default "1h"
+   */
+  chatAccessTokenTTL?: string;
 };
 
 /**
@@ -527,10 +584,12 @@ function chatTask<TIdentifier extends string>(
   const {
     run: userRun,
     onChatStart,
+    onTurnStart,
     onTurnComplete,
     maxTurns = 100,
     turnTimeout = "1h",
     warmTimeoutInSeconds = 30,
+    chatAccessTokenTTL = "1h",
     ...restOptions
   } = options;
 
@@ -653,6 +712,24 @@ function chatTask<TIdentifier extends string>(
                 turnNewUIMessages.push(...uiMessages);
               }
 
+              // Mint a scoped public access token once per turn, reused for
+              // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
+              const currentRunId = taskContext.ctx?.run.id ?? "";
+              let turnAccessToken = "";
+              if (currentRunId) {
+                try {
+                  turnAccessToken = await auth.createPublicToken({
+                    scopes: {
+                      read: { runs: currentRunId },
+                      write: { inputStreams: currentRunId },
+                    },
+                    expirationTime: chatAccessTokenTTL,
+                  });
+                } catch {
+                  // Token creation failed
+                }
+              }
+
               // Fire onChatStart on the first turn
               if (turn === 0 && onChatStart) {
                 await tracer.startActiveSpan(
@@ -662,6 +739,32 @@ function chatTask<TIdentifier extends string>(
                       chatId: currentWirePayload.chatId,
                       messages: accumulatedMessages,
                       clientData: wireMetadata,
+                      runId: currentRunId,
+                      chatAccessToken: turnAccessToken,
+                    });
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                      [SemanticInternalAttributes.COLLAPSED]: true,
+                    },
+                  }
+                );
+              }
+
+              // Fire onTurnStart before running user code — persist messages
+              // so a mid-stream page refresh still shows the user's message.
+              if (onTurnStart) {
+                await tracer.startActiveSpan(
+                  "onTurnStart()",
+                  async () => {
+                    await onTurnStart({
+                      chatId: currentWirePayload.chatId,
+                      messages: accumulatedMessages,
+                      uiMessages: accumulatedUIMessages,
+                      turn,
+                      runId: currentRunId,
+                      chatAccessToken: turnAccessToken,
                     });
                   },
                   {
@@ -715,6 +818,12 @@ function chatTask<TIdentifier extends string>(
               // The onFinish callback fires even on abort/stop, so partial responses
               // from stopped generation are captured correctly.
               if (capturedResponseMessage) {
+                // Ensure the response message has an ID (the stream's onFinish
+                // may produce a message with an empty ID since IDs are normally
+                // assigned by the frontend's useChat).
+                if (!capturedResponseMessage.id) {
+                  capturedResponseMessage = { ...capturedResponseMessage, id: generateMessageId() };
+                }
                 accumulatedUIMessages.push(capturedResponseMessage);
                 turnNewUIMessages.push(capturedResponseMessage);
                 try {
@@ -734,6 +843,13 @@ function chatTask<TIdentifier extends string>(
 
               if (runSignal.aborted) return "exit";
 
+              // Write turn-complete control chunk so frontend closes its stream.
+              // Capture the lastEventId from the stream writer for resume support.
+              const turnCompleteResult = await writeTurnCompleteChunk(
+                currentWirePayload.chatId,
+                turnAccessToken
+              );
+
               // Fire onTurnComplete after response capture
               if (onTurnComplete) {
                 await tracer.startActiveSpan(
@@ -747,6 +863,9 @@ function chatTask<TIdentifier extends string>(
                       newUIMessages: turnNewUIMessages,
                       responseMessage: capturedResponseMessage,
                       turn,
+                      runId: currentRunId,
+                      chatAccessToken: turnAccessToken,
+                      lastEventId: turnCompleteResult.lastEventId,
                     });
                   },
                   {
@@ -757,9 +876,6 @@ function chatTask<TIdentifier extends string>(
                   }
                 );
               }
-
-              // Write turn-complete control chunk so frontend closes its stream
-              await writeTurnCompleteChunk(currentWirePayload.chatId);
 
               // If messages arrived during streaming, use the first one immediately
               if (pendingMessages.length > 0) {
@@ -927,15 +1043,18 @@ export const chat = {
  * The frontend transport intercepts this to close the ReadableStream for the current turn.
  * @internal
  */
-async function writeTurnCompleteChunk(chatId?: string): Promise<void> {
+async function writeTurnCompleteChunk(chatId?: string, publicAccessToken?: string): Promise<StreamWriteResult> {
   const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
     spanName: "turn complete",
     collapsed: true,
     execute: ({ write }) => {
-      write({ type: "__trigger_turn_complete" });
+      write({
+        type: "__trigger_turn_complete",
+        ...(publicAccessToken ? { publicAccessToken } : {}),
+      });
     },
   });
-  await waitUntilComplete();
+  return await waitUntilComplete();
 }
 
 /**
