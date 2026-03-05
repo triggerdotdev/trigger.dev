@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
-import { rootPath, v3RunPath } from "~/utils/pathBuilder";
+import { impersonate, rootPath, v3RunPath } from "~/utils/pathBuilder";
 
 const ParamsSchema = z.object({
   runParam: z.string(),
@@ -14,18 +14,22 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const { runParam } = ParamsSchema.parse(params);
 
+  const isAdmin = user.admin || user.isImpersonating;
+
+  if (!isAdmin) {
+    return redirectWithErrorMessage(
+      rootPath(),
+      request,
+      "You're not an admin and cannot impersonate",
+      {
+        ephemeral: false,
+      }
+    );
+  }
+
   const run = await prisma.taskRun.findFirst({
     where: {
       friendlyId: runParam,
-      project: {
-        organization: {
-          members: {
-            some: {
-              userId: user.id,
-            },
-          },
-        },
-      },
     },
     select: {
       runtimeEnvironment: {
@@ -47,14 +51,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   });
 
   if (!run) {
-    return redirectWithErrorMessage(
-      rootPath(),
-      request,
-      "Run either doesn't exist or you don't have permission to view it",
-      {
-        ephemeral: false,
-      }
-    );
+    return redirectWithErrorMessage(rootPath(), request, "Run doesn't exist", {
+      ephemeral: false,
+    });
   }
 
   const path = v3RunPath(
@@ -64,5 +63,5 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     { friendlyId: runParam }
   );
 
-  return redirect(path);
+  return redirect(impersonate(path));
 }
