@@ -652,6 +652,8 @@ describe("TriggerChatTransport", () => {
     it("should track multiple chat sessions independently", async () => {
       let callCount = 0;
 
+      const turnCompleteChunk = { type: "__trigger_turn_complete" };
+
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
@@ -670,7 +672,9 @@ describe("TriggerChatTransport", () => {
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
-          return new Response(createSSEStream(""), {
+          // Include turn-complete chunk so the session is preserved
+          const chunks = [...sampleChunks, turnCompleteChunk];
+          return new Response(createSSEStream(sseEncode(chunks)), {
             status: 200,
             headers: {
               "content-type": "text/event-stream",
@@ -688,22 +692,26 @@ describe("TriggerChatTransport", () => {
         baseURL: "https://api.test.trigger.dev",
       });
 
-      // Start two independent chat sessions
-      await transport.sendMessages({
+      // Start two independent chat sessions and consume the streams
+      const s1 = await transport.sendMessages({
         trigger: "submit-message",
         chatId: "session-a",
         messageId: undefined,
         messages: [createUserMessage("Hello A")],
         abortSignal: undefined,
       });
+      const r1 = s1.getReader();
+      while (!(await r1.read()).done) {}
 
-      await transport.sendMessages({
+      const s2 = await transport.sendMessages({
         trigger: "submit-message",
         chatId: "session-b",
         messageId: undefined,
         messages: [createUserMessage("Hello B")],
         abortSignal: undefined,
       });
+      const r2 = s2.getReader();
+      while (!(await r2.read()).done) {}
 
       // Both sessions should be independently reconnectable
       const streamA = await transport.reconnectToStream({ chatId: "session-a" });
@@ -918,11 +926,7 @@ describe("TriggerChatTransport", () => {
 
   describe("lastEventId tracking", () => {
     it("should pass lastEventId to SSE subscription on subsequent turns", async () => {
-      const controlChunk = {
-        type: "__trigger_waitpoint_ready",
-        tokenId: "wp_token_eid",
-        publicAccessToken: "wp_access_eid",
-      };
+      const turnCompleteChunk = { type: "__trigger_turn_complete" };
 
       let triggerCallCount = 0;
       const streamFetchCalls: { url: string; headers: Record<string, string> }[] = [];
@@ -944,14 +948,12 @@ describe("TriggerChatTransport", () => {
           );
         }
 
-        if (urlStr.includes("/api/v1/waitpoints/tokens/") && urlStr.includes("/complete")) {
-          return new Response(
-            JSON.stringify({ success: true }),
-            {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            }
-          );
+        // Handle input stream sends (for second message)
+        if (urlStr.includes("/realtime/v1/streams/") && urlStr.includes("/input/")) {
+          return new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -963,7 +965,7 @@ describe("TriggerChatTransport", () => {
           const chunks = [
             ...sampleChunks,
             { type: "finish" as const, id: "part-1" } as UIMessageChunk,
-            controlChunk,
+            turnCompleteChunk,
           ];
           return new Response(createSSEStream(sseEncode(chunks)), {
             status: 200,
@@ -998,7 +1000,7 @@ describe("TriggerChatTransport", () => {
         if (done) break;
       }
 
-      // Second message — completes the waitpoint
+      // Second message — sends via input stream
       const stream2 = await transport.sendMessages({
         trigger: "submit-message",
         chatId: "chat-eid",
@@ -1021,13 +1023,151 @@ describe("TriggerChatTransport", () => {
     });
   });
 
+  describe("minimal wire payloads", () => {
+    it("should send only new messages via input stream on turn 2+", async () => {
+      const turnCompleteChunk = { type: "__trigger_turn_complete" };
+      const inputStreamPayloads: any[] = [];
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+          return new Response(
+            JSON.stringify({ id: "run_minimal" }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "x-trigger-jwt": "pub_token_minimal",
+              },
+            }
+          );
+        }
+
+        // Capture input stream payloads (ApiClient wraps in { data: ... })
+        if (urlStr.includes("/realtime/v1/streams/") && urlStr.includes("/input/")) {
+          const body = JSON.parse(init?.body as string);
+          inputStreamPayloads.push(body.data);
+          return new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          const chunks = [
+            ...sampleChunks,
+            turnCompleteChunk,
+          ];
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      const userMsg1 = createUserMessage("Hello");
+      const assistantMsg = createAssistantMessage("Hi there!");
+      const userMsg2 = createUserMessage("What's up?");
+
+      // Turn 1 — triggers a new run with full history
+      const stream1 = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-minimal",
+        messageId: undefined,
+        messages: [userMsg1],
+        abortSignal: undefined,
+      });
+      const r1 = stream1.getReader();
+      while (!(await r1.read()).done) {}
+
+      // Turn 2 — sends via input stream, should only include NEW messages
+      const stream2 = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-minimal",
+        messageId: undefined,
+        messages: [userMsg1, assistantMsg, userMsg2],
+        abortSignal: undefined,
+      });
+      const r2 = stream2.getReader();
+      while (!(await r2.read()).done) {}
+
+      // Verify: the input stream payload should only contain the new user message
+      expect(inputStreamPayloads).toHaveLength(1);
+      const sentPayload = inputStreamPayloads[0];
+      // Only the new user message should be sent (backend already has the assistant response)
+      expect(sentPayload.messages).toHaveLength(1);
+      expect(sentPayload.messages[0]).toEqual(userMsg2);
+    });
+
+    it("should send full history on first message (trigger)", async () => {
+      let triggerPayload: any;
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+          triggerPayload = JSON.parse(init?.body as string);
+          return new Response(
+            JSON.stringify({ id: "run_full" }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "x-trigger-jwt": "pub_token_full",
+              },
+            }
+          );
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          return new Response(createSSEStream(sseEncode(sampleChunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      const messages = [createUserMessage("Hello"), createAssistantMessage("Hi!"), createUserMessage("More")];
+
+      await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-full",
+        messageId: undefined,
+        messages,
+        abortSignal: undefined,
+      });
+
+      // First message always sends full history via trigger
+      expect(triggerPayload.payload.messages).toHaveLength(3);
+    });
+  });
+
   describe("AbortController cleanup", () => {
     it("should terminate SSE connection after intercepting control chunk", async () => {
-      const controlChunk = {
-        type: "__trigger_waitpoint_ready",
-        tokenId: "wp_token_abort",
-        publicAccessToken: "wp_access_abort",
-      };
+      const controlChunk = { type: "__trigger_turn_complete" };
 
       let streamAborted = false;
 
@@ -1158,15 +1298,11 @@ describe("TriggerChatTransport", () => {
       expect(tokenCallCount).toBe(1);
     });
 
-    it("should resolve async token for waitpoint completion flow", async () => {
-      const controlChunk = {
-        type: "__trigger_waitpoint_ready",
-        tokenId: "wp_token_async",
-        publicAccessToken: "wp_access_async",
-      };
+    it("should not resolve async token for input stream send flow", async () => {
+      const turnCompleteChunk = { type: "__trigger_turn_complete" };
 
       let tokenCallCount = 0;
-      let completeWaitpointCalled = false;
+      let inputStreamSendCalled = false;
 
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
@@ -1184,22 +1320,20 @@ describe("TriggerChatTransport", () => {
           );
         }
 
-        if (urlStr.includes("/api/v1/waitpoints/tokens/") && urlStr.includes("/complete")) {
-          completeWaitpointCalled = true;
-          return new Response(
-            JSON.stringify({ success: true }),
-            {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            }
-          );
+        // Handle input stream sends
+        if (urlStr.includes("/realtime/v1/streams/") && urlStr.includes("/input/")) {
+          inputStreamSendCalled = true;
+          return new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
           const chunks = [
             ...sampleChunks,
             { type: "finish" as const, id: "part-1" } as UIMessageChunk,
-            controlChunk,
+            turnCompleteChunk,
           ];
           return new Response(createSSEStream(sseEncode(chunks)), {
             status: 200,
@@ -1240,7 +1374,7 @@ describe("TriggerChatTransport", () => {
 
       const firstTokenCount = tokenCallCount;
 
-      // Second message — should complete waitpoint (does NOT call async token)
+      // Second message — should send via input stream (does NOT call async token)
       const stream2 = await transport.sendMessages({
         trigger: "submit-message",
         chatId: "chat-async-wp",
@@ -1255,19 +1389,15 @@ describe("TriggerChatTransport", () => {
         if (done) break;
       }
 
-      // Token function should NOT have been called again for the waitpoint path
+      // Token function should NOT have been called again for the input stream path
       expect(tokenCallCount).toBe(firstTokenCount);
-      expect(completeWaitpointCalled).toBe(true);
+      expect(inputStreamSendCalled).toBe(true);
     });
   });
 
-  describe("single-run mode (waitpoint loop)", () => {
-    it("should store waitpoint token from control chunk and not forward it to consumer", async () => {
-      const controlChunk = {
-        type: "__trigger_waitpoint_ready",
-        tokenId: "wp_token_123",
-        publicAccessToken: "wp_access_abc",
-      };
+  describe("single-run mode (input stream loop)", () => {
+    it("should not forward turn-complete control chunk to consumer", async () => {
+      const turnCompleteChunk = { type: "__trigger_turn_complete" };
 
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
@@ -1289,7 +1419,7 @@ describe("TriggerChatTransport", () => {
           const chunks = [
             ...sampleChunks,
             { type: "finish" as const, id: "part-1" } as UIMessageChunk,
-            controlChunk,
+            turnCompleteChunk,
           ];
           return new Response(createSSEStream(sseEncode(chunks)), {
             status: 200,
@@ -1329,18 +1459,14 @@ describe("TriggerChatTransport", () => {
       // All AI SDK chunks should be forwarded
       expect(receivedChunks.length).toBe(sampleChunks.length + 1); // +1 for the finish chunk
       // Control chunk should not be in the output
-      expect(receivedChunks.every((c) => c.type !== ("__trigger_waitpoint_ready" as any))).toBe(true);
+      expect(receivedChunks.every((c) => c.type !== ("__trigger_turn_complete" as any))).toBe(true);
     });
 
-    it("should complete waitpoint token on second message instead of triggering a new run", async () => {
-      const controlChunk = {
-        type: "__trigger_waitpoint_ready",
-        tokenId: "wp_token_456",
-        publicAccessToken: "wp_access_def",
-      };
+    it("should send via input stream on second message instead of triggering a new run", async () => {
+      const turnCompleteChunk = { type: "__trigger_turn_complete" };
 
       let triggerCallCount = 0;
-      let completeWaitpointCalled = false;
+      let inputStreamSendCalled = false;
 
       global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
         const urlStr = typeof url === "string" ? url : url.toString();
@@ -1359,23 +1485,20 @@ describe("TriggerChatTransport", () => {
           );
         }
 
-        // Handle waitpoint token completion
-        if (urlStr.includes("/api/v1/waitpoints/tokens/") && urlStr.includes("/complete")) {
-          completeWaitpointCalled = true;
-          return new Response(
-            JSON.stringify({ success: true }),
-            {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            }
-          );
+        // Handle input stream sends
+        if (urlStr.includes("/realtime/v1/streams/") && urlStr.includes("/input/")) {
+          inputStreamSendCalled = true;
+          return new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
           const chunks = [
             ...sampleChunks,
             { type: "finish" as const, id: "part-1" } as UIMessageChunk,
-            controlChunk,
+            turnCompleteChunk,
           ];
           return new Response(createSSEStream(sseEncode(chunks)), {
             status: 200,
@@ -1404,7 +1527,7 @@ describe("TriggerChatTransport", () => {
         abortSignal: undefined,
       });
 
-      // Consume stream to capture the control chunk
+      // Consume stream
       const reader1 = stream1.getReader();
       while (true) {
         const { done } = await reader1.read();
@@ -1413,7 +1536,7 @@ describe("TriggerChatTransport", () => {
 
       expect(triggerCallCount).toBe(1);
 
-      // Second message — should complete the waitpoint instead of triggering
+      // Second message — should send via input stream instead of triggering
       const stream2 = await transport.sendMessages({
         trigger: "submit-message",
         chatId: "chat-resume",
@@ -1431,8 +1554,8 @@ describe("TriggerChatTransport", () => {
 
       // Should NOT have triggered a second run
       expect(triggerCallCount).toBe(1);
-      // Should have completed the waitpoint
-      expect(completeWaitpointCalled).toBe(true);
+      // Should have sent via input stream
+      expect(inputStreamSendCalled).toBe(true);
     });
 
     it("should fall back to triggering a new run if stream closes without control chunk", async () => {
@@ -1510,12 +1633,8 @@ describe("TriggerChatTransport", () => {
       expect(triggerCallCount).toBe(2);
     });
 
-    it("should fall back to new run when completing waitpoint fails", async () => {
-      const controlChunk = {
-        type: "__trigger_waitpoint_ready",
-        tokenId: "wp_token_fail",
-        publicAccessToken: "wp_access_fail",
-      };
+    it("should fall back to new run when sendInputStream fails", async () => {
+      const turnCompleteChunk = { type: "__trigger_turn_complete" };
 
       let triggerCallCount = 0;
 
@@ -1536,27 +1655,23 @@ describe("TriggerChatTransport", () => {
           );
         }
 
-        // Waitpoint completion fails
-        if (urlStr.includes("/api/v1/waitpoints/tokens/") && urlStr.includes("/complete")) {
+        // Input stream send fails
+        if (urlStr.includes("/realtime/v1/streams/") && urlStr.includes("/input/")) {
           return new Response(
-            JSON.stringify({ error: "Token expired" }),
+            JSON.stringify({ error: "Run not found" }),
             {
-              status: 400,
+              status: 404,
               headers: { "content-type": "application/json" },
             }
           );
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
-          // First call has control chunk, subsequent calls don't
           const chunks: (UIMessageChunk | Record<string, unknown>)[] = [
             ...sampleChunks,
             { type: "finish" as const, id: "part-1" } as UIMessageChunk,
+            turnCompleteChunk,
           ];
-
-          if (triggerCallCount <= 1) {
-            chunks.push(controlChunk);
-          }
 
           return new Response(createSSEStream(sseEncode(chunks)), {
             status: 200,
@@ -1593,7 +1708,7 @@ describe("TriggerChatTransport", () => {
 
       expect(triggerCallCount).toBe(1);
 
-      // Second message — waitpoint completion will fail, should fall back to new run
+      // Second message — sendInputStream will fail, should fall back to new run
       const stream2 = await transport.sendMessages({
         trigger: "submit-message",
         chatId: "chat-fail",
