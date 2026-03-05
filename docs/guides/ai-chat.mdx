@@ -147,7 +147,8 @@ The backend automatically accumulates the full conversation history across turns
 
 The accumulated messages are available in:
 - `run()` as `messages` (`ModelMessage[]`) — for passing to `streamText`
-- `onTurnComplete()` as `uiMessages` (`UIMessage[]`) — for persistence
+- `onTurnStart()` as `uiMessages` (`UIMessage[]`) — for persisting before streaming
+- `onTurnComplete()` as `uiMessages` (`UIMessage[]`) — for persisting after the response
 
 ## Backend patterns
 
@@ -258,9 +259,46 @@ export const myChat = chat.task({
   `clientData` contains custom data from the frontend — either the `metadata` option on the transport constructor (sent with every message) or the `metadata` option on `sendMessage()` (per-message). See [Client data and metadata](#client-data-and-metadata).
 </Tip>
 
+### onTurnStart
+
+Fires at the start of every turn, after message accumulation and `onChatStart` (turn 0), but **before** `run()` executes. Use it to persist messages before streaming begins — so a mid-stream page refresh still shows the user's message.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `chatId` | `string` | Chat session ID |
+| `messages` | `ModelMessage[]` | Full accumulated conversation (model format) |
+| `uiMessages` | `UIMessage[]` | Full accumulated conversation (UI format) |
+| `turn` | `number` | Turn number (0-indexed) |
+| `runId` | `string` | The Trigger.dev run ID |
+| `chatAccessToken` | `string` | Scoped access token for this run |
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  onTurnStart: async ({ chatId, uiMessages, runId, chatAccessToken }) => {
+    await db.chat.update({
+      where: { id: chatId },
+      data: { messages: uiMessages },
+    });
+    await db.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+      update: { runId, publicAccessToken: chatAccessToken },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+<Tip>
+  By persisting in `onTurnStart`, the user's message is saved to your database before the AI starts streaming. If the user refreshes mid-stream, the message is already there.
+</Tip>
+
 ### onTurnComplete
 
-Fires after each turn completes — after the response is captured, before waiting for the next message. This is the primary hook for persisting conversations.
+Fires after each turn completes — after the response is captured, before waiting for the next message. This is the primary hook for persisting the assistant's response.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -271,14 +309,22 @@ Fires after each turn completes — after the response is captured, before waiti
 | `newUIMessages` | `UIMessage[]` | Only this turn's messages (UI format) |
 | `responseMessage` | `UIMessage \| undefined` | The assistant's response for this turn |
 | `turn` | `number` | Turn number (0-indexed) |
+| `runId` | `string` | The Trigger.dev run ID |
+| `chatAccessToken` | `string` | Scoped access token for this run |
+| `lastEventId` | `string \| undefined` | Stream position for resumption. Persist this with the session. |
 
 ```ts
 export const myChat = chat.task({
   id: "my-chat",
-  onTurnComplete: async ({ chatId, uiMessages }) => {
+  onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
     await db.chat.update({
       where: { id: chatId },
       data: { messages: uiMessages },
+    });
+    await db.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
+      update: { runId, publicAccessToken: chatAccessToken, lastEventId },
     });
   },
   run: async ({ messages, signal }) => {
@@ -291,22 +337,26 @@ export const myChat = chat.task({
   Use `uiMessages` to overwrite the full conversation each turn (simplest). Use `newUIMessages` if you prefer to store messages individually — for example, one database row per message.
 </Tip>
 
+<Tip>
+  Persist `lastEventId` alongside the session. When the transport reconnects after a page refresh, it uses this to skip past already-seen events — preventing duplicate messages.
+</Tip>
+
 ## Persistence
 
 ### What needs to be persisted
 
 To build a chat app that survives page refreshes, you need to persist two things:
 
-1. **Messages** — The conversation history. Persisted **server-side** in the task via `onTurnComplete`.
-2. **Sessions** — The transport's connection state (`runId`, `publicAccessToken`, `lastEventId`). Persisted **client-side** via `onSessionChange`.
+1. **Messages** — The conversation history. Persisted **server-side** in the task via `onTurnStart` and `onTurnComplete`.
+2. **Sessions** — The transport's connection state (`runId`, `publicAccessToken`, `lastEventId`). Persisted **server-side** via `onTurnStart` and `onTurnComplete`.
 
 <Note>
   Sessions let the transport reconnect to an existing run after a page refresh. Without them, every page load would start a new run — losing the conversation context that was accumulated in the previous run.
 </Note>
 
-### Persisting messages (server-side)
+### Persisting messages and sessions (server-side)
 
-Messages are stored inside the task itself, so they're durable even if the frontend disconnects mid-conversation.
+Both messages and sessions are persisted server-side in the lifecycle hooks. `onTurnStart` saves the user's message before streaming begins, while `onTurnComplete` saves the assistant's response and the `lastEventId` for stream resumption.
 
 ```ts trigger/chat.ts
 import { chat } from "@trigger.dev/sdk/ai";
@@ -316,15 +366,33 @@ import { db } from "@/lib/db";
 
 export const myChat = chat.task({
   id: "my-chat",
-  onChatStart: async ({ chatId, clientData }) => {
+  onChatStart: async ({ chatId }) => {
     await db.chat.create({
       data: { id: chatId, title: "New chat", messages: [] },
     });
   },
-  onTurnComplete: async ({ chatId, uiMessages }) => {
+  onTurnStart: async ({ chatId, uiMessages, runId, chatAccessToken }) => {
+    // Save user message + session before streaming starts
     await db.chat.update({
       where: { id: chatId },
       data: { messages: uiMessages },
+    });
+    await db.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+      update: { runId, publicAccessToken: chatAccessToken },
+    });
+  },
+  onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
+    // Save assistant response + stream position after turn completes
+    await db.chat.update({
+      where: { id: chatId },
+      data: { messages: uiMessages },
+    });
+    await db.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
+      update: { runId, publicAccessToken: chatAccessToken, lastEventId },
     });
   },
   run: async ({ messages, signal }) => {
@@ -337,13 +405,9 @@ export const myChat = chat.task({
 });
 ```
 
-### Persisting sessions (frontend)
+### Session cleanup (frontend)
 
-The `onSessionChange` callback on the transport fires whenever a session's state changes:
-
-- **Session created** — After triggering a new task run
-- **Turn completed** — The `lastEventId` is updated (used for stream resumption)
-- **Session removed** — The run ended or failed. `session` is `null`.
+Since session creation and updates are handled server-side, the frontend only needs to handle session deletion when a run ends:
 
 ```tsx
 const transport = useTriggerChatTransport<typeof myChat>({
@@ -351,10 +415,8 @@ const transport = useTriggerChatTransport<typeof myChat>({
   accessToken: getChatToken,
   sessions: loadedSessions, // Restored from DB on page load
   onSessionChange: (chatId, session) => {
-    if (session) {
-      saveSession(chatId, session); // Server action
-    } else {
-      deleteSession(chatId); // Server action
+    if (!session) {
+      deleteSession(chatId); // Server action — run ended
     }
   },
 });
@@ -362,7 +424,7 @@ const transport = useTriggerChatTransport<typeof myChat>({
 
 ### Restoring on page load
 
-On page load, fetch both the messages and the session from your database, then pass them to `useChat` and the transport:
+On page load, fetch both the messages and the session from your database, then pass them to `useChat` and the transport. Pass `resume: true` to `useChat` when there's an existing conversation — this tells the AI SDK to reconnect to the stream via the transport.
 
 ```tsx app/page.tsx
 "use client";
@@ -370,7 +432,7 @@ On page load, fetch both the messages and the session from your database, then p
 import { useEffect, useState } from "react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useChat } from "@ai-sdk/react";
-import { getChatToken, getChatMessages, getSession } from "@/app/actions";
+import { getChatToken, getChatMessages, getSession, deleteSession } from "@/app/actions";
 
 export default function ChatPage({ chatId }: { chatId: string }) {
   const [initialMessages, setInitialMessages] = useState([]);
@@ -407,8 +469,7 @@ function ChatClient({ chatId, initialMessages, initialSessions }) {
     accessToken: getChatToken,
     sessions: initialSessions,
     onSessionChange: (id, session) => {
-      if (session) saveSession(id, session);
-      else deleteSession(id);
+      if (!session) deleteSession(id);
     },
   });
 
@@ -416,15 +477,20 @@ function ChatClient({ chatId, initialMessages, initialSessions }) {
     id: chatId,
     messages: initialMessages,
     transport,
+    resume: initialMessages.length > 0, // Resume if there's an existing conversation
   });
 
   // ... render UI
 }
 ```
 
+<Info>
+  `resume: true` causes `useChat` to call `reconnectToStream` on the transport when the component mounts. The transport uses the session's `lastEventId` to skip past already-seen stream events, so the frontend only receives new data. Only enable `resume` when there are existing messages — for brand new chats, there's nothing to reconnect to.
+</Info>
+
 ### Full example
 
-Putting it all together — a complete chat app with server-side message persistence and session reconnection:
+Putting it all together — a complete chat app with server-side persistence, session reconnection, and stream resumption:
 
 <CodeGroup>
 ```ts trigger/chat.ts
@@ -440,10 +506,28 @@ export const myChat = chat.task({
       data: { id: chatId, title: "New chat", messages: [] },
     });
   },
-  onTurnComplete: async ({ chatId, uiMessages }) => {
+  onTurnStart: async ({ chatId, uiMessages, runId, chatAccessToken }) => {
+    // Persist messages + session before streaming
     await db.chat.update({
       where: { id: chatId },
       data: { messages: uiMessages },
+    });
+    await db.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+      update: { runId, publicAccessToken: chatAccessToken },
+    });
+  },
+  onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
+    // Persist assistant response + stream position
+    await db.chat.update({
+      where: { id: chatId },
+      data: { messages: uiMessages },
+    });
+    await db.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
+      update: { runId, publicAccessToken: chatAccessToken, lastEventId },
     });
   },
   run: async ({ messages, signal }) => {
@@ -471,19 +555,21 @@ export async function getChatMessages(chatId: string) {
   return found?.messages ?? [];
 }
 
-export async function getSession(chatId: string) {
-  return await db.chatSession.findUnique({ where: { id: chatId } });
-}
-
-export async function saveSession(
-  chatId: string,
-  session: { runId: string; publicAccessToken: string; lastEventId?: string }
-) {
-  await db.chatSession.upsert({
-    where: { id: chatId },
-    create: { id: chatId, ...session },
-    update: session,
-  });
+export async function getAllSessions() {
+  const sessions = await db.chatSession.findMany();
+  const result: Record<string, {
+    runId: string;
+    publicAccessToken: string;
+    lastEventId?: string;
+  }> = {};
+  for (const s of sessions) {
+    result[s.id] = {
+      runId: s.runId,
+      publicAccessToken: s.publicAccessToken,
+      lastEventId: s.lastEventId ?? undefined,
+    };
+  }
+  return result;
 }
 
 export async function deleteSession(chatId: string) {
@@ -497,11 +583,7 @@ export async function deleteSession(chatId: string) {
 import { useChat } from "@ai-sdk/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { myChat } from "@/trigger/chat";
-import {
-  getChatToken,
-  saveSession,
-  deleteSession,
-} from "@/app/actions";
+import { getChatToken, deleteSession } from "@/app/actions";
 
 export function Chat({ chatId, initialMessages, initialSessions }) {
   const transport = useTriggerChatTransport<typeof myChat>({
@@ -509,8 +591,7 @@ export function Chat({ chatId, initialMessages, initialSessions }) {
     accessToken: getChatToken,
     sessions: initialSessions,
     onSessionChange: (id, session) => {
-      if (session) saveSession(id, session);
-      else deleteSession(id);
+      if (!session) deleteSession(id);
     },
   });
 
@@ -518,6 +599,7 @@ export function Chat({ chatId, initialMessages, initialSessions }) {
     id: chatId,
     messages: initialMessages,
     transport,
+    resume: initialMessages.length > 0,
   });
 
   return (
@@ -726,6 +808,7 @@ const transport = useTriggerChatTransport({
 | `id` | `string` | required | Task identifier |
 | `run` | `(payload: ChatTaskRunPayload) => Promise<unknown>` | required | Handler for each turn |
 | `onChatStart` | `(event: ChatStartEvent) => Promise<void> \| void` | — | Fires on turn 0 before `run()` |
+| `onTurnStart` | `(event: TurnStartEvent) => Promise<void> \| void` | — | Fires every turn before `run()` |
 | `onTurnComplete` | `(event: TurnCompleteEvent) => Promise<void> \| void` | — | Fires after each turn completes |
 | `maxTurns` | `number` | `100` | Max conversational turns per run |
 | `turnTimeout` | `string` | `"1h"` | How long to wait for next message |

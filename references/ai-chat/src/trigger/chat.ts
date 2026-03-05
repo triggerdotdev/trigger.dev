@@ -86,18 +86,42 @@ declare const Deno: unknown;
 
 export const aiChat = chat.task({
   id: "ai-chat",
-  warmTimeoutInSeconds: 10,
-  onChatStart: async ({ chatId }) => {
+  warmTimeoutInSeconds: 60,
+  chatAccessTokenTTL: "2h",
+  onChatStart: async ({ chatId, runId, chatAccessToken }) => {
     await prisma.chat.upsert({
       where: { id: chatId },
       create: { id: chatId, title: "New chat" },
       update: {},
     });
+    await prisma.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+      update: { runId, publicAccessToken: chatAccessToken },
+    });
   },
-  onTurnComplete: async ({ chatId, uiMessages }) => {
+  onTurnStart: async ({ chatId, uiMessages, runId, chatAccessToken }) => {
+    // Persist messages BEFORE streaming so mid-stream refresh has the user message
     await prisma.chat.update({
       where: { id: chatId },
       data: { messages: uiMessages as any },
+    });
+    await prisma.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+      update: { runId, publicAccessToken: chatAccessToken },
+    });
+  },
+  onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
+    // Persist final messages + assistant response + stream position
+    await prisma.chat.update({
+      where: { id: chatId },
+      data: { messages: uiMessages as any },
+    });
+    await prisma.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
+      update: { runId, publicAccessToken: chatAccessToken, lastEventId },
     });
   },
   run: async ({ messages, clientData, stopSignal }) => {

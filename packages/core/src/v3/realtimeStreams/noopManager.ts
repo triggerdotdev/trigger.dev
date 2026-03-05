@@ -15,7 +15,7 @@ export class NoopRealtimeStreamsManager implements RealtimeStreamsManager {
     options?: RealtimeStreamOperationOptions
   ): RealtimeStreamInstance<T> {
     return {
-      wait: () => Promise.resolve(),
+      wait: () => Promise.resolve({}),
       get stream(): AsyncIterableStream<T> {
         return createAsyncIterableStreamFromAsyncIterable(source);
       },
