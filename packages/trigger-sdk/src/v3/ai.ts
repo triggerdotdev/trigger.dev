@@ -188,15 +188,14 @@ type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage> = {
  *
  * - `messages` contains model-ready messages (converted via `convertToModelMessages`) —
  *   pass these directly to `streamText`.
- * - `uiMessages` contains the raw `UIMessage[]` from the frontend.
  * - `clientData` contains custom data from the frontend (the `metadata` field from `sendMessage()`).
+ *
+ * The backend accumulates the full conversation history across turns, so the frontend
+ * only needs to send new messages after the first turn.
  */
 export type ChatTaskPayload = {
   /** Model-ready messages — pass directly to `streamText({ messages })`. */
   messages: ModelMessage[];
-
-  /** Raw UI messages from the frontend. */
-  uiMessages: UIMessage[];
 
   /** The unique identifier for the chat session */
   chatId: string;
@@ -236,28 +235,6 @@ export type ChatTaskRunPayload = ChatTaskPayload & ChatTaskSignals;
 // Input streams for bidirectional chat communication
 const messagesInput = streams.input<ChatTaskWirePayload>({ id: CHAT_MESSAGES_STREAM_ID });
 const stopInput = streams.input<{ stop: true; message?: string }>({ id: CHAT_STOP_STREAM_ID });
-
-/**
- * Strips provider-specific IDs from message parts so that partial/stopped
- * assistant responses don't cause 404s when sent back to the provider
- * (e.g. OpenAI Responses API message IDs).
- * @internal
- */
-function sanitizeMessages<TMessage extends UIMessage>(messages: TMessage[]): TMessage[] {
-  return messages.map((msg) => {
-    if (msg.role !== "assistant" || !msg.parts) return msg;
-    return {
-      ...msg,
-      parts: msg.parts.map((part: any) => {
-        // Strip provider-specific metadata (e.g. OpenAI Responses API itemId)
-        // and streaming state from assistant message parts. These cause 404s
-        // when partial/stopped responses are sent back to the provider.
-        const { providerMetadata, state, id, ...rest } = part;
-        return rest;
-      }),
-    };
-  });
-}
 
 /**
  * Tracks how many times `pipeChat` has been called in the current `chatTask` run.
@@ -496,6 +473,11 @@ function chatTask<TIdentifier extends string>(
 
       let currentWirePayload = payload;
 
+      // Accumulated model messages across turns. Turn 1 initialises from the
+      // full history the frontend sends; subsequent turns append only the new
+      // user message(s) and the captured assistant response.
+      let accumulatedMessages: ModelMessage[] = [];
+
       // Mutable reference to the current turn's stop controller so the
       // stop input stream listener (registered once) can abort the right turn.
       let currentStopController: AbortController | undefined;
@@ -562,15 +544,29 @@ function chatTask<TIdentifier extends string>(
                 pendingMessages.push(msg);
               });
 
-              // Convert wire payload to user-facing payload
-              const sanitized = sanitizeMessages(uiMessages);
-              const modelMessages = await convertToModelMessages(sanitized);
+              // Convert the incoming UIMessages to model messages and update the accumulator.
+              // Turn 1: full history from the frontend → replaces the accumulator.
+              // Turn 2+: only the new message(s) → appended to the accumulator.
+              const incomingModelMessages = await convertToModelMessages(uiMessages);
+
+              if (turn === 0) {
+                accumulatedMessages = incomingModelMessages;
+              } else if (currentWirePayload.trigger === "regenerate-message") {
+                // Regenerate: frontend sent full history with last assistant message
+                // removed. Reset the accumulator to match.
+                accumulatedMessages = incomingModelMessages;
+              } else {
+                // Submit: frontend sent only the new user message(s). Append to accumulator.
+                accumulatedMessages.push(...incomingModelMessages);
+              }
+
+              // Captured by the onFinish callback below — works even on abort/stop.
+              let capturedResponseMessage: UIMessage | undefined;
 
               try {
                 const result = await userRun({
                   ...restWire,
-                  messages: modelMessages,
-                  uiMessages: sanitized,
+                  messages: accumulatedMessages,
                   clientData: wireMetadata,
                   signal: combinedSignal,
                   cancelSignal,
@@ -578,9 +574,15 @@ function chatTask<TIdentifier extends string>(
                 });
 
                 // Auto-pipe if the run function returned a StreamTextResult or similar,
-                // but only if pipeChat() wasn't already called manually during this turn
+                // but only if pipeChat() wasn't already called manually during this turn.
+                // We call toUIMessageStream ourselves to attach onFinish for response capture.
                 if (_chatPipeCount === 0 && isUIMessageStreamable(result)) {
-                  await pipeChat(result, { signal: combinedSignal, spanName: "stream response" });
+                  const uiStream = result.toUIMessageStream({
+                    onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
+                      capturedResponseMessage = responseMessage;
+                    },
+                  });
+                  await pipeChat(uiStream, { signal: combinedSignal, spanName: "stream response" });
                 }
               } catch (error) {
                 // Handle AbortError from streamText gracefully
@@ -595,6 +597,24 @@ function chatTask<TIdentifier extends string>(
               } finally {
                 msgSub.off();
               }
+
+              // Append the assistant's response (partial or complete) to the accumulator.
+              // The onFinish callback fires even on abort/stop, so partial responses
+              // from stopped generation are captured correctly.
+              if (capturedResponseMessage) {
+                try {
+                  const responseModelMessages = await convertToModelMessages([
+                    stripProviderMetadata(capturedResponseMessage),
+                  ]);
+                  accumulatedMessages.push(...responseModelMessages);
+                } catch {
+                  // Conversion failed — skip accumulation for this turn
+                }
+              }
+              // TODO: When the user calls `pipeChat` manually instead of returning a
+              // StreamTextResult, we don't have access to onFinish. A future iteration
+              // should let manual-mode users report back response messages for
+              // accumulation (e.g. via a `chat.addMessages()` helper).
 
               if (runSignal.aborted) return "exit";
 
@@ -722,4 +742,35 @@ function extractLastUserMessageText(messages: UIMessage[]): string | undefined {
   }
 
   return undefined;
+}
+
+/**
+ * Strips ephemeral OpenAI Responses API `itemId` from a UIMessage's parts.
+ *
+ * The OpenAI Responses provider attaches `itemId` to message parts via
+ * `providerMetadata.openai.itemId`. These IDs are ephemeral — sending them
+ * back in a subsequent `streamText` call causes 404s because the provider
+ * can't find the referenced item (especially for stopped/partial responses).
+ *
+ * @internal
+ */
+function stripProviderMetadata(message: UIMessage): UIMessage {
+  if (!message.parts) return message;
+  return {
+    ...message,
+    parts: message.parts.map((part: any) => {
+      const openai = part.providerMetadata?.openai;
+      if (!openai?.itemId) return part;
+
+      const { itemId, ...restOpenai } = openai;
+      const { openai: _, ...restProviders } = part.providerMetadata;
+      return {
+        ...part,
+        providerMetadata: {
+          ...restProviders,
+          ...(Object.keys(restOpenai).length > 0 ? { openai: restOpenai } : {}),
+        },
+      };
+    }),
+  };
 }
