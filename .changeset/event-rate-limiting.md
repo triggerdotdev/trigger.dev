@@ -1,8 +1,8 @@
 ---
-"@trigger.dev/core": patch
-"@trigger.dev/sdk": patch
-"@trigger.dev/database": patch
-"apps-webapp": patch
+"@trigger.dev/core": minor
+"@trigger.dev/sdk": minor
+"@trigger.dev/database": minor
+"apps-webapp": minor
 ---
 
 Add per-event rate limiting to the pub/sub system. Events can now be configured

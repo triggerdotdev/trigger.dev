@@ -1,7 +1,7 @@
 ---
-"@trigger.dev/core": patch
-"@trigger.dev/sdk": patch
-"apps-webapp": patch
+"@trigger.dev/core": minor
+"@trigger.dev/sdk": minor
+"apps-webapp": minor
 ---
 
 Add publishAndWait support to the event system. Events can now be published

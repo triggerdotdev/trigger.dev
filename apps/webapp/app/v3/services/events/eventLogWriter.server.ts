@@ -27,7 +27,7 @@ export function writeEventLog(entry: EventLogEntry): void {
   insertFn(row).then(
     ([error]) => {
       if (error) {
-        logger.warn("Failed to insert event into ClickHouse event log", {
+        logger.error("Failed to insert event into ClickHouse event log", {
           eventId: entry.eventId,
           eventType: entry.eventType,
           error: error.message,
@@ -35,7 +35,7 @@ export function writeEventLog(entry: EventLogEntry): void {
       }
     },
     (err) => {
-      logger.warn("Failed to insert event into ClickHouse event log", {
+      logger.error("Failed to insert event into ClickHouse event log", {
         eventId: entry.eventId,
         eventType: entry.eventType,
         error: err instanceof Error ? err.message : String(err),

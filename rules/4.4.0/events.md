@@ -219,6 +219,38 @@ try {
 }
 ```
 
+## DLQ Configuration Per Event
+
+Disable or configure the dead letter queue per event:
+
+```ts
+export const ephemeralEvent = event({
+  id: "ephemeral.notification",
+  schema: z.object({ message: z.string() }),
+  dlq: { enabled: false }, // Don't store failures in DLQ
+});
+```
+
+## Consumer Rate Limiting
+
+Limit how fast individual subscriber tasks consume events:
+
+```ts
+export const rateLimitedConsumer = task({
+  id: "limited-processor",
+  on: orderCreated,
+  consumerRateLimit: {
+    limit: 100,
+    window: "1m", // Max 100 events per minute for this subscriber
+  },
+  run: async (payload) => {
+    // Events exceeding the rate are skipped with a warning log
+  },
+});
+```
+
+> Consumer rate limits are per-subscriber. Events that exceed the limit are skipped (not queued). Use publish-level rate limiting to queue events instead.
+
 ## Dead Letter Queue
 
 Events that fail after all retries are captured in a DLQ. The DLQ is managed via API:
@@ -227,6 +259,12 @@ Events that fail after all retries are captured in a DLQ. The DLQ is managed via
 - `POST /api/v1/events/dlq/:id/retry` — retry a failed event
 - `POST /api/v1/events/dlq/:id/discard` — discard a failed event
 - `POST /api/v1/events/dlq/retry-all` — retry all pending failures
+
+## Event Metrics
+
+Get subscriber health, DLQ depth, and rate limit config for an event:
+
+- `GET /api/v1/events/:eventId/metrics` — returns subscriber counts (total/active/disabled, per-subscriber details), DLQ depth (pending/retried/discarded), and rate limit configuration
 
 ## Event History & Replay
 

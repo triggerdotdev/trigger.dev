@@ -1,12 +1,11 @@
-import { PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
+import { BaseService } from "../baseService.server";
 
 /**
  * Cleans up stale EventSubscriptions — disabled subscriptions whose associated
  * task no longer exists in any active worker for that environment.
  */
-export class CleanupStaleSubscriptionsService {
-  constructor(private readonly _prisma: PrismaClientOrTransaction) {}
+export class CleanupStaleSubscriptionsService extends BaseService {
 
   async call(): Promise<{ deletedCount: number; scannedCount: number }> {
     // Find all disabled subscriptions

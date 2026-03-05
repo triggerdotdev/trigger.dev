@@ -1,6 +1,6 @@
 ---
-"@trigger.dev/sdk": patch
-"trigger.dev": patch
+"@trigger.dev/sdk": minor
+"trigger.dev": minor
 ---
 
 Add event system documentation, CLI commands, and developer experience improvements.

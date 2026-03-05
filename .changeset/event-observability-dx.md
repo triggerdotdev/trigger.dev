@@ -1,8 +1,8 @@
 ---
-"@trigger.dev/core": patch
-"@trigger.dev/sdk": patch
-"@internal/clickhouse": patch
-"apps-webapp": patch
+"@trigger.dev/core": minor
+"@trigger.dev/sdk": minor
+"@internal/clickhouse": minor
+"apps-webapp": minor
 ---
 
 Add observability and developer experience improvements to the event system.

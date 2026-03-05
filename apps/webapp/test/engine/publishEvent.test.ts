@@ -1519,4 +1519,102 @@ describe("PublishEventService", () => {
       }
     }
   );
+
+  containerTest(
+    "payload exceeding 512KB throws 413 error",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+        await prisma.eventDefinition.create({
+          data: {
+            slug: "large.payload",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn);
+
+        // Create a payload that exceeds 512KB
+        const largePayload = { data: "x".repeat(512 * 1024 + 1) };
+
+        await expect(
+          service.call("large.payload", env, largePayload)
+        ).rejects.toThrow(ServiceValidationError);
+
+        await expect(
+          service.call("large.payload", env, largePayload)
+        ).rejects.toThrow("exceeds the 512KB limit");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "per-subscriber rate limit skips rate-limited subscriber but delivers to others",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { worker } = await setupBackgroundWorker(engine, env, [
+          "limited-consumer",
+          "unlimited-consumer",
+        ]);
+
+        const eventDef = await prisma.eventDefinition.create({
+          data: {
+            slug: "consumer.limited",
+            version: "1.0",
+            projectId: env.projectId,
+          },
+        });
+
+        // Subscriber with a very tight rate limit (1 per minute)
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: eventDef.id } },
+            taskSlug: "limited-consumer",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+            rateLimit: { limit: 1, window: "1m" },
+          },
+        });
+
+        // Subscriber without rate limit
+        await prisma.eventSubscription.create({
+          data: {
+            eventDefinition: { connect: { id: eventDef.id } },
+            taskSlug: "unlimited-consumer",
+            project: { connect: { id: env.projectId } },
+            environment: { connect: { id: env.id } },
+            worker: { connect: { id: worker.id } },
+            enabled: true,
+          },
+        });
+
+        const rateLimitChecker = new InMemoryEventRateLimitChecker();
+        const triggerFn = buildTriggerFn(prisma, engine);
+        const service = new PublishEventService(prisma, triggerFn, undefined, rateLimitChecker);
+
+        // First publish: both subscribers should receive
+        const result1 = await service.call("consumer.limited", env, { n: 1 });
+        expect(result1.runs).toHaveLength(2);
+
+        // Second publish: limited-consumer should be skipped (rate limited)
+        const result2 = await service.call("consumer.limited", env, { n: 2 });
+        expect(result2.runs).toHaveLength(1);
+        expect(result2.runs[0].taskIdentifier).toBe("unlimited-consumer");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 });

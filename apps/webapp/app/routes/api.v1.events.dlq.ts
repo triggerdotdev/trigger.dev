@@ -1,6 +1,9 @@
 import { json } from "@remix-run/server-runtime";
+import { z } from "zod";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { DeadLetterManagementService } from "~/v3/services/events/deadLetterManagement.server";
+
+const DeadLetterStatusEnum = z.enum(["PENDING", "RETRIED", "DISCARDED"]);
 
 export const loader = createLoaderApiRoute(
   {
@@ -15,14 +18,17 @@ export const loader = createLoaderApiRoute(
   async ({ authentication, request }) => {
     const url = new URL(request.url);
     const eventType = url.searchParams.get("eventType") ?? undefined;
-    const status = url.searchParams.get("status") as
-      | "PENDING"
-      | "RETRIED"
-      | "DISCARDED"
-      | undefined;
-    const limit = url.searchParams.get("limit")
-      ? parseInt(url.searchParams.get("limit")!, 10)
-      : undefined;
+    const rawStatus = url.searchParams.get("status");
+    const statusParse = rawStatus ? DeadLetterStatusEnum.safeParse(rawStatus) : undefined;
+    if (rawStatus && (!statusParse || !statusParse.success)) {
+      return json(
+        { error: `Invalid status "${rawStatus}". Use: PENDING, RETRIED, DISCARDED` },
+        { status: 400 }
+      );
+    }
+    const status = statusParse?.success ? statusParse.data : undefined;
+    const rawLimit = url.searchParams.get("limit");
+    const limit = rawLimit ? Math.max(1, Math.min(parseInt(rawLimit, 10) || 20, 200)) : undefined;
     const cursor = url.searchParams.get("cursor") ?? undefined;
 
     const service = new DeadLetterManagementService();

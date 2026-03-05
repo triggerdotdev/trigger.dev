@@ -22,7 +22,9 @@ export const loader = createLoaderApiRoute(
     const url = new URL(request.url);
     const period = url.searchParams.get("period") ?? "24h";
 
-    // Parse period to a ClickHouse interval
+    // SAFETY: interval is NOT user input — it comes from a closed allowlist below.
+    // Invalid periods are rejected with 400 before the value is used in the query.
+    // This is safe from SQL injection because only hardcoded strings can reach the query.
     const intervalMap: Record<string, string> = {
       "1h": "1 HOUR",
       "6h": "6 HOUR",

@@ -199,7 +199,7 @@ export const orderCreated = event({
 });
 
 // Subscribe task — payload typed from schema
-export const sendEmail = task({
+export const sendOrderEmail = task({
   id: "send-order-email",
   on: orderCreated,
   run: async (payload) => {

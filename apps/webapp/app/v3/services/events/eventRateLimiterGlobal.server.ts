@@ -35,6 +35,12 @@ function initializeRateLimitChecker(): EventRateLimitChecker {
     return new RedisEventRateLimitChecker(redisClient);
   }
 
-  logger.info("Event rate limiter: using in-memory implementation (no RATE_LIMIT_REDIS_HOST)");
+  if (env.NODE_ENV === "production") {
+    logger.warn(
+      "Event rate limiter: using in-memory implementation in production (no RATE_LIMIT_REDIS_HOST). Rate limits will be per-process and ineffective across multiple instances."
+    );
+  } else {
+    logger.info("Event rate limiter: using in-memory implementation (no RATE_LIMIT_REDIS_HOST)");
+  }
   return new InMemoryEventRateLimitChecker();
 }

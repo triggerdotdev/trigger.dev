@@ -141,15 +141,25 @@ export class PublishEventService extends BaseService {
         const rateLimitConfig = parseEventRateLimitConfig(eventDefinition.rateLimit);
         if (rateLimitConfig) {
           const rateLimitKey = `${environment.projectId}:${eventSlug}`;
-          const result = await this._rateLimitChecker.check(rateLimitKey, rateLimitConfig);
-          if (!result.allowed) {
-            span.setAttribute("rateLimited", true);
-            throw new EventPublishRateLimitError(
+          try {
+            const result = await this._rateLimitChecker.check(rateLimitKey, rateLimitConfig);
+            if (!result.allowed) {
+              span.setAttribute("rateLimited", true);
+              throw new EventPublishRateLimitError(
+                eventSlug,
+                result.limit ?? rateLimitConfig.limit,
+                result.remaining ?? 0,
+                result.retryAfter ?? 0
+              );
+            }
+          } catch (error) {
+            if (error instanceof EventPublishRateLimitError) throw error;
+            // Fail open: if rate limiter backend is down, allow the publish
+            logger.error("Rate limiter check failed, allowing publish (fail-open)", {
               eventSlug,
-              result.limit ?? rateLimitConfig.limit,
-              result.remaining ?? 0,
-              result.retryAfter ?? 0
-            );
+              rateLimitKey,
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
         }
       }
@@ -278,16 +288,14 @@ export class PublishEventService extends BaseService {
         );
       }
 
-      // 7. Check per-subscriber rate limits and fan out
-      const runs: PublishEventResult["runs"] = [];
-
-      for (const subscription of subscriptionsToTrigger) {
-        try {
-          // Check per-subscriber rate limit (if configured)
-          if (this._rateLimitChecker && subscription.rateLimit) {
-            const subRateLimitConfig = parseEventRateLimitConfig(subscription.rateLimit);
-            if (subRateLimitConfig) {
-              const subRateLimitKey = `consumer:${subscription.taskSlug}:${eventSlug}`;
+      // 7. Check per-subscriber rate limits and fan out (parallel)
+      const triggerPromises = subscriptionsToTrigger.map(async (subscription) => {
+        // Check per-subscriber rate limit (if configured)
+        if (this._rateLimitChecker && subscription.rateLimit) {
+          const subRateLimitConfig = parseEventRateLimitConfig(subscription.rateLimit);
+          if (subRateLimitConfig) {
+            const subRateLimitKey = `consumer:${subscription.taskSlug}:${eventSlug}`;
+            try {
               const subRateLimitResult = await this._rateLimitChecker.check(
                 subRateLimitKey,
                 subRateLimitConfig
@@ -301,53 +309,66 @@ export class PublishEventService extends BaseService {
                   retryAfter: subRateLimitResult.retryAfter,
                 });
                 span.setAttribute("consumerRateLimited", true);
-                continue;
+                return null;
               }
+            } catch (rateLimitError) {
+              // Fail open: if rate limiter backend is down, deliver the event
+              logger.error("Consumer rate limiter check failed, delivering event (fail-open)", {
+                eventSlug,
+                eventId,
+                taskSlug: subscription.taskSlug,
+                error:
+                  rateLimitError instanceof Error
+                    ? rateLimitError.message
+                    : String(rateLimitError),
+              });
             }
           }
+        }
 
-          // Derive per-consumer idempotency key if a global one was provided
-          const consumerIdempotencyKey = options.idempotencyKey
-            ? `${options.idempotencyKey}:${subscription.taskSlug}`
-            : undefined;
+        // Derive per-consumer idempotency key if a global one was provided
+        const consumerIdempotencyKey = options.idempotencyKey
+          ? `${options.idempotencyKey}:${subscription.taskSlug}`
+          : undefined;
 
-          // Merge event context into metadata so DLQ can identify event-triggered runs
-          const eventMetadata = {
-            ...(typeof options.metadata === "object" && options.metadata !== null
-              ? (options.metadata as Record<string, unknown>)
-              : {}),
-            $$event: {
-              eventId,
-              eventType: eventSlug,
-              sourceEventId: options.idempotencyKey
-                ? `${options.idempotencyKey}`
-                : undefined,
-            },
-          };
+        // Merge event context into metadata so DLQ can identify event-triggered runs
+        const eventMetadata = {
+          ...(typeof options.metadata === "object" && options.metadata !== null
+            ? (options.metadata as Record<string, unknown>)
+            : {}),
+          $$event: {
+            eventId,
+            eventType: eventSlug,
+            sourceEventId: options.idempotencyKey
+              ? `${options.idempotencyKey}`
+              : undefined,
+          },
+        };
 
-          const body: TriggerTaskRequestBody = {
-            payload,
-            context: options.context,
-            options: {
-              tags: options.tags
-                ? Array.isArray(options.tags)
-                  ? options.tags
-                  : [options.tags]
-                : undefined,
-              metadata: eventMetadata,
-              delay: options.delay,
-              concurrencyKey: options.orderingKey
-                ? `evt:${eventSlug}:${options.orderingKey}`
-                : undefined,
-              parentRunId: options.parentRunId,
-              resumeParentOnCompletion: options.parentRunId ? true : undefined,
-            },
-          };
+        const body: TriggerTaskRequestBody = {
+          payload,
+          context: options.context,
+          options: {
+            tags: options.tags
+              ? Array.isArray(options.tags)
+                ? options.tags
+                : [options.tags]
+              : undefined,
+            metadata: eventMetadata,
+            delay: options.delay,
+            concurrencyKey: options.orderingKey
+              ? `evt:${eventSlug}:${options.orderingKey}`
+              : undefined,
+            parentRunId: options.parentRunId,
+            resumeParentOnCompletion: options.parentRunId ? true : undefined,
+          },
+        };
 
-          const triggerOptions: TriggerTaskServiceOptions = {
-            idempotencyKey: consumerIdempotencyKey,
-          };
+        const triggerOptions: TriggerTaskServiceOptions = {
+          idempotencyKey: consumerIdempotencyKey,
+        };
 
+        try {
           const result = await this._triggerFn(
             subscription.taskSlug,
             environment,
@@ -356,14 +377,15 @@ export class PublishEventService extends BaseService {
           );
 
           if (result) {
-            runs.push({
+            return {
               taskIdentifier: subscription.taskSlug,
               runId: result.run.friendlyId,
               internalRunId: options.parentRunId ? result.run.id : undefined,
-            });
+            };
           }
+          return null;
         } catch (error) {
-          // Partial failure: log the error but continue with other subscribers
+          // Partial failure: log the error but don't block other subscribers
           logger.error("Failed to trigger task for event subscription", {
             eventSlug,
             eventId,
@@ -374,6 +396,15 @@ export class PublishEventService extends BaseService {
                 ? { name: error.name, message: error.message, stack: error.stack }
                 : String(error),
           });
+          return null;
+        }
+      });
+
+      const results = await Promise.allSettled(triggerPromises);
+      const runs: PublishEventResult["runs"] = [];
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value !== null) {
+          runs.push(r.value);
         }
       }
 

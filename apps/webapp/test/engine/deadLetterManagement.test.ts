@@ -267,4 +267,63 @@ describe("DeadLetterManagementService", () => {
       );
     }
   );
+
+  postgresTest(
+    "Retry nonexistent ID throws ServiceValidationError",
+    async ({ prisma }) => {
+      const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const service = new DeadLetterManagementService(prisma);
+
+      await expect(service.retry("dle_nonexistent_fake_id", env)).rejects.toThrow(
+        ServiceValidationError
+      );
+
+      await expect(service.retry("dle_nonexistent_fake_id", env)).rejects.toThrow(
+        "Dead letter event not found or already processed"
+      );
+    }
+  );
+
+  postgresTest(
+    "Retry already-discarded entry throws ServiceValidationError",
+    async ({ prisma }) => {
+      const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const run = await createTaskRun(prisma, env, "retry-discard-task");
+      await createDeadLetterEvent(prisma, env, run, {
+        eventType: "retry.discarded",
+        status: "DISCARDED",
+      });
+
+      const dle = await prisma.deadLetterEvent.findFirst({
+        where: { failedRunId: run.id },
+      });
+
+      const service = new DeadLetterManagementService(prisma);
+
+      // Discarded entries should not be retryable
+      await expect(service.retry(dle!.id, env)).rejects.toThrow(
+        "Dead letter event not found or already processed"
+      );
+    }
+  );
+
+  postgresTest(
+    "RetryAll with no pending items returns zero counts",
+    async ({ prisma }) => {
+      const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const service = new DeadLetterManagementService(prisma);
+
+      const result = await service.retryAll({
+        projectId: env.projectId,
+        environmentId: env.id,
+        environment: env,
+      });
+
+      expect(result.retriedCount).toBe(0);
+      expect(result.failedCount).toBe(0);
+    }
+  );
 });
