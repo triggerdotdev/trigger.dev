@@ -74,12 +74,15 @@
               "tags",
               "runs/metadata",
               "tasks/streams",
-              "guides/ai-chat",
               "run-usage",
               "context",
               "runs/priority",
               "hidden-tasks"
             ]
+          },
+          {
+            "group": "AI Chat",
+            "pages": ["guides/ai-chat"]
           },
           {
             "group": "Configuration",
