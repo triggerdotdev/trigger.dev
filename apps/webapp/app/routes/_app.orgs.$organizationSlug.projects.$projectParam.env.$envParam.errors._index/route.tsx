@@ -379,6 +379,9 @@ function ErrorGroupRow({
     if (period) carry.set("period", period);
     if (from) carry.set("from", from);
     if (to) carry.set("to", to);
+    for (const v of searchParams.getAll("versions")) {
+      if (v) carry.append("versions", v);
+    }
     const qs = carry.toString();
     return qs ? `${base}?${qs}` : base;
   }, [organizationSlug, projectParam, envParam, errorGroup.fingerprint, searchParams.toString()]);
