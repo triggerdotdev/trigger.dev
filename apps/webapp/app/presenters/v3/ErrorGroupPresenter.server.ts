@@ -27,6 +27,7 @@ export type ErrorGroupOptions = {
   userId?: string;
   projectId: string;
   fingerprint: string;
+  versions?: string[];
   runsPageSize?: number;
   period?: string;
   from?: number;
@@ -39,6 +40,7 @@ export const ErrorGroupOptionsSchema = z.object({
   userId: z.string().optional(),
   projectId: z.string(),
   fingerprint: z.string(),
+  versions: z.array(z.string()).optional(),
   runsPageSize: z.number().int().positive().max(1000).optional(),
   period: z.string().optional(),
   from: z.number().int().nonnegative().optional(),
@@ -89,6 +91,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       userId,
       projectId,
       fingerprint,
+      versions,
       runsPageSize = DEFAULT_RUNS_PAGE_SIZE,
       period,
       from,
@@ -117,6 +120,7 @@ export class ErrorGroupPresenter extends BasePresenter {
         userId,
         projectId,
         fingerprint,
+        versions,
         pageSize: runsPageSize,
         from: time.from.getTime(),
         to: time.to.getTime(),
@@ -149,7 +153,8 @@ export class ErrorGroupPresenter extends BasePresenter {
     environmentId: string,
     fingerprint: string,
     from: Date,
-    to: Date
+    to: Date,
+    versions?: string[]
   ): Promise<{
     data: Array<{ date: Date; count: number }>;
   }> {
@@ -168,6 +173,10 @@ export class ErrorGroupPresenter extends BasePresenter {
     queryBuilder.where("minute <= toStartOfMinute(fromUnixTimestamp64Milli({toTimeMs: Int64}))", {
       toTimeMs: to.getTime(),
     });
+
+    if (versions && versions.length > 0) {
+      queryBuilder.where("task_version IN {versions: Array(String)}", { versions });
+    }
 
     queryBuilder.groupBy("error_fingerprint, bucket_epoch");
     queryBuilder.orderBy("bucket_epoch ASC");
@@ -275,6 +284,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       userId?: string;
       projectId: string;
       fingerprint: string;
+      versions?: string[];
       pageSize: number;
       from?: number;
       to?: number;
@@ -289,6 +299,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       projectId: options.projectId,
       rootOnly: false,
       errorId: ErrorId.toFriendlyId(options.fingerprint),
+      versions: options.versions,
       pageSize: options.pageSize,
       from: options.from,
       to: options.to,
