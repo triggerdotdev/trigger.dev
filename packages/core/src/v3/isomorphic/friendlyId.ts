@@ -1,5 +1,4 @@
 import { customAlphabet } from "nanoid";
-import cuid from "@bugsnag/cuid";
 
 const idGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", 21);
 
@@ -8,7 +7,7 @@ export function generateFriendlyId(prefix: string, size?: number) {
 }
 
 export function generateInternalId() {
-  return cuid();
+  return idGenerator();
 }
 
 /** Convert an internal ID to a friendly ID */
@@ -58,7 +57,7 @@ export function fromFriendlyId(friendlyId: string, expectedEntityName?: string):
 }
 
 export class IdUtil {
-  constructor(private entityName: string) {}
+  constructor(private entityName: string) { }
 
   generate() {
     const internalId = generateInternalId();
