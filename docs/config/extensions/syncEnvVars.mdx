@@ -240,9 +240,9 @@ environment variable is present), this extension is skipped entirely.
 </AccordionGroup>
 
 <Note>
-  For `prod` and `dev` environments, this extension uses credentials from your default Supabase
+  For `prod` environments, this extension uses credentials from your default Supabase
   branch. For `preview` and `staging` environments, it matches the git branch name to a Supabase
-  branch and syncs the corresponding database connection strings and API keys.
+  branch and syncs the corresponding database connection strings and API keys. `dev` environments are skipped.
 </Note>
 
 ```ts
