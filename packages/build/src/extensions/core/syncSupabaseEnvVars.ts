@@ -95,6 +95,11 @@ export function syncSupabaseEnvVars(options?: {
   envVarPrefix?: string;
 }): BuildExtension {
   const sync = syncEnvVars(async (ctx) => {
+    // Skip for development environments
+    if (ctx.environment === "dev") {
+      return [];
+    }
+
     const projectId =
       options?.projectId ?? process.env.SUPABASE_PROJECT_ID ?? ctx.env.SUPABASE_PROJECT_ID;
     const supabaseAccessToken =
@@ -161,7 +166,7 @@ export function syncSupabaseEnvVars(options?: {
     // Step 2: Find the target branch based on environment
     let targetBranch: SupabaseBranch | undefined;
 
-    if (ctx.environment === "prod" || ctx.environment === "dev") {
+    if (ctx.environment === "prod") {
       targetBranch = branches.find((b) => b.is_default);
 
       if (!targetBranch) {
