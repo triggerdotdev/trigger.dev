@@ -99,6 +99,7 @@ export class NextRunListPresenter {
       (runId !== undefined && runId.length > 0) ||
       (queues !== undefined && queues.length > 0) ||
       (machines !== undefined && machines.length > 0) ||
+      (errorId !== undefined && errorId !== "") ||
       typeof isTest === "boolean" ||
       rootOnly === true ||
       !time.isDefault;
