@@ -1,12 +1,11 @@
 "use client";
 
+import type { UIMessage } from "ai";
 import { useChat } from "@ai-sdk/react";
-import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import type { TriggerChatTransport } from "@trigger.dev/sdk/chat";
 import { useEffect, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
-import { getChatToken } from "@/app/actions";
-import { MODEL_OPTIONS, DEFAULT_MODEL } from "@/trigger/chat";
-import type { aiChat } from "@/trigger/chat";
+import { MODEL_OPTIONS, DEFAULT_MODEL } from "@/lib/models";
 
 function ToolInvocation({ part }: { part: any }) {
   const [expanded, setExpanded] = useState(false);
@@ -71,41 +70,73 @@ function ToolInvocation({ part }: { part: any }) {
   );
 }
 
-export function Chat() {
+type ChatProps = {
+  chatId: string;
+  initialMessages: UIMessage[];
+  transport: TriggerChatTransport;
+  onFirstMessage?: (chatId: string, text: string) => void;
+  onMessagesChange?: (chatId: string, messages: UIMessage[]) => void;
+};
+
+export function Chat({
+  chatId,
+  initialMessages,
+  transport,
+  onFirstMessage,
+  onMessagesChange,
+}: ChatProps) {
   const [input, setInput] = useState("");
   const [model, setModel] = useState(DEFAULT_MODEL);
-  // Track which model was used for each assistant message (keyed by the preceding user message ID)
   const modelByUserMsgId = useRef<Map<string, string>>(new Map());
-
-  const transport = useTriggerChatTransport<typeof aiChat>({
-    task: "ai-chat",
-    accessToken: getChatToken,
-    baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
-  });
+  const hasCalledFirstMessage = useRef(false);
 
   const { messages, sendMessage, stop, status, error } = useChat({
+    id: chatId,
+    messages: initialMessages,
     transport,
   });
+
+  // Notify parent of first user message (for chat metadata creation)
+  useEffect(() => {
+    if (hasCalledFirstMessage.current) return;
+    const firstUser = messages.find((m) => m.role === "user");
+    if (firstUser) {
+      hasCalledFirstMessage.current = true;
+      const text = firstUser.parts
+        .filter((p: any) => p.type === "text")
+        .map((p: any) => p.text)
+        .join(" ");
+      onFirstMessage?.(chatId, text);
+    }
+  }, [messages, chatId, onFirstMessage]);
 
   // Pending message to send after the current turn completes
   const [pendingMessage, setPendingMessage] = useState<{ text: string; model: string } | null>(null);
 
-  // Auto-send the pending message when the turn completes
+  // Handle turn completion: persist messages and auto-send pending message
   const prevStatus = useRef(status);
   useEffect(() => {
-    if (prevStatus.current === "streaming" && status === "ready" && pendingMessage) {
+    const turnCompleted = prevStatus.current === "streaming" && status === "ready";
+    prevStatus.current = status;
+
+    if (!turnCompleted) return;
+
+    // Persist messages when a turn completes — this ensures the final assistant
+    // message content is saved (not the empty placeholder from mid-stream).
+    if (messages.length > 0) {
+      onMessagesChange?.(chatId, messages);
+    }
+
+    // Auto-send the pending message
+    if (pendingMessage) {
       const { text, model: pendingMsgModel } = pendingMessage;
       setPendingMessage(null);
       pendingModel.current = pendingMsgModel;
       sendMessage({ text }, { metadata: { model: pendingMsgModel } });
     }
-    prevStatus.current = status;
-  }, [status, sendMessage, pendingMessage]);
+  }, [status, messages, chatId, onMessagesChange, sendMessage, pendingMessage]);
 
-  // Build a map of assistant message index -> model used
-  // Each assistant message follows a user message, so we track by position
   function getModelForAssistantAt(index: number): string | undefined {
-    // Walk backwards to find the preceding user message
     for (let i = index - 1; i >= 0; i--) {
       if (messages[i]?.role === "user") {
         return modelByUserMsgId.current.get(messages[i].id);
@@ -114,16 +145,13 @@ export function Chat() {
     return undefined;
   }
 
-  // When sending, record which model is selected for this user message
   const originalSendMessage = sendMessage;
   function trackedSendMessage(msg: Parameters<typeof sendMessage>[0], opts?: Parameters<typeof sendMessage>[1]) {
-    // We'll track it after the message appears — use a ref to store the pending model
     pendingModel.current = model;
     originalSendMessage(msg, opts);
   }
   const pendingModel = useRef<string>(model);
 
-  // Track model for new user messages as they appear
   const trackedUserIds = useRef<Set<string>>(new Set());
   for (const msg of messages) {
     if (msg.role === "user" && !trackedUserIds.current.has(msg.id)) {
@@ -146,7 +174,6 @@ export function Chat() {
             className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div className={`max-w-[80%] ${message.role === "user" ? "" : "w-full"}`}>
-              {/* Model badge for assistant messages */}
               {message.role === "assistant" && (
                 <div className="mb-1 flex items-center gap-2 text-[10px] text-gray-400">
                   <span className="rounded bg-gray-200 px-1.5 py-0.5 font-medium text-gray-500">
@@ -199,7 +226,6 @@ export function Chat() {
           </div>
         )}
 
-        {/* Queued message indicator */}
         {pendingMessage && (
           <div className="flex justify-end">
             <div className="max-w-[80%]">
@@ -214,20 +240,17 @@ export function Chat() {
         )}
       </div>
 
-      {/* Error */}
       {error && (
         <div className="shrink-0 border-t border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">
           {error.message}
         </div>
       )}
 
-      {/* Input */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
           if (!input.trim()) return;
           if (status === "streaming") {
-            // Buffer the message — it will be sent when the current turn completes
             setPendingMessage({ text: input, model });
           } else {
             trackedSendMessage({ text: input }, { metadata: { model } });

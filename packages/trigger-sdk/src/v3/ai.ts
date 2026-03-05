@@ -379,6 +379,47 @@ async function pipeChat(
  * emits a control chunk and suspends via `messagesInput.wait()`. The frontend
  * transport resumes the same run by sending the next message via input streams.
  */
+/**
+ * Event passed to the `onChatStart` callback.
+ */
+export type ChatStartEvent = {
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The initial model-ready messages for this conversation. */
+  messages: ModelMessage[];
+  /** Custom data from the frontend (passed via `metadata` on `sendMessage()` or the transport). */
+  clientData: unknown;
+};
+
+/**
+ * Event passed to the `onTurnComplete` callback.
+ */
+export type TurnCompleteEvent = {
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The full accumulated conversation in model format (all turns so far). */
+  messages: ModelMessage[];
+  /**
+   * The full accumulated conversation in UI format (all turns so far).
+   * This is the format expected by `useChat` — store this for persistence.
+   */
+  uiMessages: UIMessage[];
+  /**
+   * Only the new model messages from this turn (user message(s) + assistant response).
+   * Useful for appending to an existing conversation record.
+   */
+  newMessages: ModelMessage[];
+  /**
+   * Only the new UI messages from this turn (user message(s) + assistant response).
+   * Useful for inserting individual message records instead of overwriting the full history.
+   */
+  newUIMessages: UIMessage[];
+  /** The assistant's response for this turn (undefined if `pipeChat` was used manually). */
+  responseMessage: UIMessage | undefined;
+  /** The turn number (0-indexed). */
+  turn: number;
+};
+
 export type ChatTaskOptions<TIdentifier extends string> = Omit<
   TaskOptions<TIdentifier, ChatTaskWirePayload, unknown>,
   "run"
@@ -393,6 +434,35 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
    * the stream is automatically piped to the frontend.
    */
   run: (payload: ChatTaskRunPayload) => Promise<unknown>;
+
+  /**
+   * Called on the first turn (turn 0) of a new run, before the `run` function executes.
+   *
+   * Use this to create the chat record in your database when a new conversation starts.
+   *
+   * @example
+   * ```ts
+   * onChatStart: async ({ chatId, messages, clientData }) => {
+   *   await db.chat.create({ data: { id: chatId, userId: clientData.userId } });
+   * }
+   * ```
+   */
+  onChatStart?: (event: ChatStartEvent) => Promise<void> | void;
+
+  /**
+   * Called after each turn completes (after the response is captured, before waiting
+   * for the next message). Also fires on the final turn.
+   *
+   * Use this to persist the conversation to your database after each assistant response.
+   *
+   * @example
+   * ```ts
+   * onTurnComplete: async ({ chatId, messages }) => {
+   *   await db.chat.update({ where: { id: chatId }, data: { messages } });
+   * }
+   * ```
+   */
+  onTurnComplete?: (event: TurnCompleteEvent) => Promise<void> | void;
 
   /**
    * Maximum number of conversational turns (message round-trips) a single run
@@ -456,6 +526,8 @@ function chatTask<TIdentifier extends string>(
 ): Task<TIdentifier, ChatTaskWirePayload, unknown> {
   const {
     run: userRun,
+    onChatStart,
+    onTurnComplete,
     maxTurns = 100,
     turnTimeout = "1h",
     warmTimeoutInSeconds = 30,
@@ -477,6 +549,10 @@ function chatTask<TIdentifier extends string>(
       // full history the frontend sends; subsequent turns append only the new
       // user message(s) and the captured assistant response.
       let accumulatedMessages: ModelMessage[] = [];
+
+      // Accumulated UI messages for persistence. Mirrors the model accumulator
+      // but in frontend-friendly UIMessage format (with parts, id, etc.).
+      let accumulatedUIMessages: UIMessage[] = [];
 
       // Mutable reference to the current turn's stop controller so the
       // stop input stream listener (registered once) can abort the right turn.
@@ -549,15 +625,52 @@ function chatTask<TIdentifier extends string>(
               // Turn 2+: only the new message(s) → appended to the accumulator.
               const incomingModelMessages = await convertToModelMessages(uiMessages);
 
+              // Track new messages for this turn (user input + assistant response).
+              const turnNewModelMessages: ModelMessage[] = [];
+              const turnNewUIMessages: UIMessage[] = [];
+
               if (turn === 0) {
                 accumulatedMessages = incomingModelMessages;
+                accumulatedUIMessages = [...uiMessages];
+                // On first turn, the "new" messages are just the last user message
+                // (the rest is history). We'll add the response after streaming.
+                if (uiMessages.length > 0) {
+                  turnNewUIMessages.push(uiMessages[uiMessages.length - 1]!);
+                  const lastModel = incomingModelMessages[incomingModelMessages.length - 1];
+                  if (lastModel) turnNewModelMessages.push(lastModel);
+                }
               } else if (currentWirePayload.trigger === "regenerate-message") {
                 // Regenerate: frontend sent full history with last assistant message
                 // removed. Reset the accumulator to match.
                 accumulatedMessages = incomingModelMessages;
+                accumulatedUIMessages = [...uiMessages];
+                // No new user messages for regenerate — just the response (added below)
               } else {
                 // Submit: frontend sent only the new user message(s). Append to accumulator.
                 accumulatedMessages.push(...incomingModelMessages);
+                accumulatedUIMessages.push(...uiMessages);
+                turnNewModelMessages.push(...incomingModelMessages);
+                turnNewUIMessages.push(...uiMessages);
+              }
+
+              // Fire onChatStart on the first turn
+              if (turn === 0 && onChatStart) {
+                await tracer.startActiveSpan(
+                  "onChatStart()",
+                  async () => {
+                    await onChatStart({
+                      chatId: currentWirePayload.chatId,
+                      messages: accumulatedMessages,
+                      clientData: wireMetadata,
+                    });
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                      [SemanticInternalAttributes.COLLAPSED]: true,
+                    },
+                  }
+                );
               }
 
               // Captured by the onFinish callback below — works even on abort/stop.
@@ -602,11 +715,14 @@ function chatTask<TIdentifier extends string>(
               // The onFinish callback fires even on abort/stop, so partial responses
               // from stopped generation are captured correctly.
               if (capturedResponseMessage) {
+                accumulatedUIMessages.push(capturedResponseMessage);
+                turnNewUIMessages.push(capturedResponseMessage);
                 try {
                   const responseModelMessages = await convertToModelMessages([
                     stripProviderMetadata(capturedResponseMessage),
                   ]);
                   accumulatedMessages.push(...responseModelMessages);
+                  turnNewModelMessages.push(...responseModelMessages);
                 } catch {
                   // Conversion failed — skip accumulation for this turn
                 }
@@ -617,6 +733,30 @@ function chatTask<TIdentifier extends string>(
               // accumulation (e.g. via a `chat.addMessages()` helper).
 
               if (runSignal.aborted) return "exit";
+
+              // Fire onTurnComplete after response capture
+              if (onTurnComplete) {
+                await tracer.startActiveSpan(
+                  "onTurnComplete()",
+                  async () => {
+                    await onTurnComplete({
+                      chatId: currentWirePayload.chatId,
+                      messages: accumulatedMessages,
+                      uiMessages: accumulatedUIMessages,
+                      newMessages: turnNewModelMessages,
+                      newUIMessages: turnNewUIMessages,
+                      responseMessage: capturedResponseMessage,
+                      turn,
+                    });
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                      [SemanticInternalAttributes.COLLAPSED]: true,
+                    },
+                  }
+                );
+              }
 
               // Write turn-complete control chunk so frontend closes its stream
               await writeTurnCompleteChunk(currentWirePayload.chatId);
@@ -629,9 +769,12 @@ function chatTask<TIdentifier extends string>(
 
               // Phase 1: Keep the run warm for quick response to the next message.
               // The run stays active (using compute) during this window.
-              if (warmTimeoutInSeconds > 0) {
+              const effectiveWarmTimeout =
+                (metadata.get(WARM_TIMEOUT_METADATA_KEY) as number | undefined) ?? warmTimeoutInSeconds;
+
+              if (effectiveWarmTimeout > 0) {
                 const warm = await messagesInput.once({
-                  timeoutMs: warmTimeoutInSeconds * 1000,
+                  timeoutMs: effectiveWarmTimeout * 1000,
                   spanName: "waiting (warm)",
                 });
 
@@ -643,8 +786,11 @@ function chatTask<TIdentifier extends string>(
               }
 
               // Phase 2: Suspend the task (frees compute) until the next message arrives
+              const effectiveTurnTimeout =
+                (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
+
               const next = await messagesInput.wait({
-                timeout: turnTimeout,
+                timeout: effectiveTurnTimeout,
                 spanName: "waiting (suspended)",
               });
 
@@ -693,6 +839,74 @@ function chatTask<TIdentifier extends string>(
  * const token = await chat.createAccessToken("my-chat");
  * ```
  */
+// ---------------------------------------------------------------------------
+// Runtime configuration helpers
+// ---------------------------------------------------------------------------
+
+const TURN_TIMEOUT_METADATA_KEY = "chat.turnTimeout";
+const WARM_TIMEOUT_METADATA_KEY = "chat.warmTimeout";
+
+/**
+ * Override the turn timeout for subsequent turns in the current run.
+ *
+ * The turn timeout controls how long the run stays suspended (freeing compute)
+ * waiting for the next user message. When it expires, the run completes
+ * gracefully and the next message starts a fresh run.
+ *
+ * Call from inside a `chatTask` run function to adjust based on context.
+ *
+ * @param duration - A duration string (e.g. `"5m"`, `"1h"`, `"30s"`)
+ *
+ * @example
+ * ```ts
+ * run: async ({ messages, signal }) => {
+ *   chat.setTurnTimeout("2h");
+ *   return streamText({ model, messages, abortSignal: signal });
+ * }
+ * ```
+ */
+function setTurnTimeout(duration: string): void {
+  metadata.set(TURN_TIMEOUT_METADATA_KEY, duration);
+}
+
+/**
+ * Override the turn timeout in seconds for subsequent turns in the current run.
+ *
+ * @param seconds - Number of seconds to wait for the next message before ending the run
+ *
+ * @example
+ * ```ts
+ * run: async ({ messages, signal }) => {
+ *   chat.setTurnTimeoutInSeconds(3600); // 1 hour
+ *   return streamText({ model, messages, abortSignal: signal });
+ * }
+ * ```
+ */
+function setTurnTimeoutInSeconds(seconds: number): void {
+  metadata.set(TURN_TIMEOUT_METADATA_KEY, `${seconds}s`);
+}
+
+/**
+ * Override the warm timeout for subsequent turns in the current run.
+ *
+ * The warm timeout controls how long the run stays active (using compute)
+ * after each turn, waiting for the next message. During this window,
+ * responses are instant. After it expires, the run suspends.
+ *
+ * @param seconds - Number of seconds to stay warm (0 to suspend immediately)
+ *
+ * @example
+ * ```ts
+ * run: async ({ messages, signal }) => {
+ *   chat.setWarmTimeoutInSeconds(60);
+ *   return streamText({ model, messages, abortSignal: signal });
+ * }
+ * ```
+ */
+function setWarmTimeoutInSeconds(seconds: number): void {
+  metadata.set(WARM_TIMEOUT_METADATA_KEY, seconds);
+}
+
 export const chat = {
   /** Create a chat task. See {@link chatTask}. */
   task: chatTask,
@@ -700,6 +914,12 @@ export const chat = {
   pipe: pipeChat,
   /** Create a public access token for a chat task. See {@link createChatAccessToken}. */
   createAccessToken: createChatAccessToken,
+  /** Override the turn timeout at runtime (duration string). See {@link setTurnTimeout}. */
+  setTurnTimeout,
+  /** Override the turn timeout at runtime (seconds). See {@link setTurnTimeoutInSeconds}. */
+  setTurnTimeoutInSeconds,
+  /** Override the warm timeout at runtime. See {@link setWarmTimeoutInSeconds}. */
+  setWarmTimeoutInSeconds,
 };
 
 /**

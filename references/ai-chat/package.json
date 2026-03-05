@@ -6,15 +6,22 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "dev:trigger": "trigger dev"
+    "dev:trigger": "trigger dev",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:generate": "prisma generate",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.0",
     "@ai-sdk/openai": "^3.0.0",
     "@ai-sdk/react": "^3.0.0",
+    "@prisma/adapter-pg": "^7.4.2",
+    "@prisma/client": "^7.4.2",
     "@trigger.dev/sdk": "workspace:*",
     "ai": "^6.0.0",
     "next": "15.3.3",
+    "pg": "^8.16.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "streamdown": "^2.3.0",
@@ -27,6 +34,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "tailwindcss": "^4",
+    "prisma": "^7.4.2",
     "trigger.dev": "workspace:*",
     "typescript": "^5"
   }
