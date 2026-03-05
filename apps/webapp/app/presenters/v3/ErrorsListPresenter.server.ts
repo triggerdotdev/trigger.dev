@@ -22,6 +22,7 @@ export type ErrorsListOptions = {
   projectId: string;
   // filters
   tasks?: string[];
+  versions?: string[];
   period?: string;
   from?: number;
   to?: number;
@@ -39,6 +40,7 @@ export const ErrorsListOptionsSchema = z.object({
   userId: z.string().optional(),
   projectId: z.string(),
   tasks: z.array(z.string()).optional(),
+  versions: z.array(z.string()).optional(),
   period: z.string().optional(),
   from: z.number().int().nonnegative().optional(),
   to: z.number().int().nonnegative().optional(),
@@ -123,6 +125,7 @@ export class ErrorsListPresenter extends BasePresenter {
       userId,
       projectId,
       tasks,
+      versions,
       period,
       search,
       from,
@@ -156,6 +159,7 @@ export class ErrorsListPresenter extends BasePresenter {
 
     const hasFilters =
       (tasks !== undefined && tasks.length > 0) ||
+      (versions !== undefined && versions.length > 0) ||
       (search !== undefined && search !== "") ||
       !time.isDefault;
 
@@ -187,6 +191,10 @@ export class ErrorsListPresenter extends BasePresenter {
 
     if (tasks && tasks.length > 0) {
       queryBuilder.where("task_identifier IN {tasks: Array(String)}", { tasks });
+    }
+
+    if (versions && versions.length > 0) {
+      queryBuilder.where("task_version IN {versions: Array(String)}", { versions });
     }
 
     queryBuilder.groupBy("error_fingerprint, task_identifier");
@@ -282,6 +290,7 @@ export class ErrorsListPresenter extends BasePresenter {
       },
       filters: {
         tasks,
+        versions,
         search,
         period: time,
         from: effectiveFrom,

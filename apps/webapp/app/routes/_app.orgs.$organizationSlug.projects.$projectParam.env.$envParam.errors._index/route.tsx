@@ -16,6 +16,7 @@ import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { PageBody } from "~/components/layout/AppLayout";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { LogsTaskFilter } from "~/components/logs/LogsTaskFilter";
+import { LogsVersionFilter } from "~/components/logs/LogsVersionFilter";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { formatDateTime, RelativeDateTime } from "~/components/primitives/DateTime";
@@ -80,6 +81,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const url = new URL(request.url);
   const tasks = url.searchParams.getAll("tasks").filter((t) => t.length > 0);
+  const versions = url.searchParams.getAll("versions").filter((v) => v.length > 0);
   const search = url.searchParams.get("search") ?? undefined;
   const period = url.searchParams.get("period") ?? undefined;
   const fromStr = url.searchParams.get("from");
@@ -101,6 +103,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       userId,
       projectId: project.id,
       tasks: tasks.length > 0 ? tasks : undefined,
+      versions: versions.length > 0 ? versions : undefined,
       search,
       period,
       from,
@@ -239,6 +242,7 @@ function FiltersBar({
   const searchParams = new URLSearchParams(location.search);
   const hasFilters =
     searchParams.has("tasks") ||
+    searchParams.has("versions") ||
     searchParams.has("search") ||
     searchParams.has("period") ||
     searchParams.has("from") ||
@@ -250,6 +254,7 @@ function FiltersBar({
         {list ? (
           <>
             <LogsTaskFilter possibleTasks={list.filters.possibleTasks} />
+            <LogsVersionFilter />
             <TimeFilter
               defaultPeriod={defaultPeriod}
               maxPeriodDays={retentionLimitDays}
@@ -269,6 +274,7 @@ function FiltersBar({
         ) : (
           <>
             <LogsTaskFilter possibleTasks={[]} />
+            <LogsVersionFilter />
             <TimeFilter defaultPeriod={defaultPeriod} maxPeriodDays={retentionLimitDays} />
             <SearchInput placeholder="Search errors…" />
             {hasFilters && (
