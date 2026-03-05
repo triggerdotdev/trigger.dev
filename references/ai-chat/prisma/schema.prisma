@@ -1,0 +1,23 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Chat {
+  id        String   @id
+  title     String
+  messages  Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ChatSession {
+  id                String  @id // chatId
+  runId             String
+  publicAccessToken String
+  lastEventId       String?
+}
