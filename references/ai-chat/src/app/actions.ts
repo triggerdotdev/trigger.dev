@@ -25,13 +25,6 @@ export async function getChatMessages(chatId: string) {
   return found.messages as any[];
 }
 
-export async function saveChatMessages(chatId: string, messages: unknown[]) {
-  await prisma.chat.update({
-    where: { id: chatId },
-    data: { messages: messages as any },
-  }).catch(() => {});
-}
-
 export async function deleteChat(chatId: string) {
   await prisma.chat.delete({ where: { id: chatId } }).catch(() => {});
   await prisma.chatSession.delete({ where: { id: chatId } }).catch(() => {});
@@ -41,24 +34,10 @@ export async function updateChatTitle(chatId: string, title: string) {
   await prisma.chat.update({ where: { id: chatId }, data: { title } }).catch(() => {});
 }
 
-export async function saveSessionAction(
-  chatId: string,
-  session: { runId: string; publicAccessToken: string; lastEventId?: string }
-) {
-  await prisma.chatSession.upsert({
-    where: { id: chatId },
-    create: {
-      id: chatId,
-      runId: session.runId,
-      publicAccessToken: session.publicAccessToken,
-      lastEventId: session.lastEventId,
-    },
-    update: {
-      runId: session.runId,
-      publicAccessToken: session.publicAccessToken,
-      lastEventId: session.lastEventId,
-    },
-  });
+export async function updateSessionLastEventId(chatId: string, lastEventId: string) {
+  await prisma.chatSession
+    .update({ where: { id: chatId }, data: { lastEventId } })
+    .catch(() => {});
 }
 
 export async function deleteSessionAction(chatId: string) {
