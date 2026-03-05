@@ -74,6 +74,7 @@ type ChatProps = {
   chatId: string;
   initialMessages: UIMessage[];
   transport: TriggerChatTransport;
+  resume?: boolean;
   onFirstMessage?: (chatId: string, text: string) => void;
   onMessagesChange?: (chatId: string, messages: UIMessage[]) => void;
 };
@@ -82,6 +83,7 @@ export function Chat({
   chatId,
   initialMessages,
   transport,
+  resume: resumeProp,
   onFirstMessage,
   onMessagesChange,
 }: ChatProps) {
@@ -94,6 +96,7 @@ export function Chat({
     id: chatId,
     messages: initialMessages,
     transport,
+    resume: resumeProp,
   });
 
   // Notify parent of first user message (for chat metadata creation)
