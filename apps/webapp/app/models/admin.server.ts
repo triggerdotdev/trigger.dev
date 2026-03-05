@@ -8,15 +8,13 @@ import {
   getImpersonationId,
   setImpersonationId,
 } from "~/services/impersonation.server";
+import { authenticator } from "~/services/auth.server";
 import { requireUser } from "~/services/session.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 
 const pageSize = 20;
 
-export async function adminGetUsers(
-  userId: string,
-  { page, search }: SearchParams,
-) {
+export async function adminGetUsers(userId: string, { page, search }: SearchParams) {
   page = page || 1;
 
   search = search ? decodeURIComponent(search) : undefined;
@@ -231,7 +229,11 @@ export async function redirectWithImpersonation(request: Request, userId: string
       },
     });
   } catch (error) {
-    logger.error("Failed to create impersonation audit log", { error, adminId: user.id, targetId: userId });
+    logger.error("Failed to create impersonation audit log", {
+      error,
+      adminId: user.id,
+      targetId: userId,
+    });
   }
 
   const session = await setImpersonationId(userId, request);
@@ -242,10 +244,10 @@ export async function redirectWithImpersonation(request: Request, userId: string
 }
 
 export async function clearImpersonation(request: Request, path: string) {
-  const user = await requireUser(request);
+  const authUser = await authenticator.isAuthenticated(request);
   const targetId = await getImpersonationId(request);
 
-  if (targetId) {
+  if (targetId && authUser?.userId) {
     const xff = request.headers.get("x-forwarded-for");
     const ipAddress = extractClientIp(xff);
 
@@ -253,13 +255,17 @@ export async function clearImpersonation(request: Request, path: string) {
       await prisma.impersonationAuditLog.create({
         data: {
           action: "STOP",
-          adminId: user.id,
+          adminId: authUser.userId,
           targetId,
           ipAddress,
         },
       });
     } catch (error) {
-      logger.error("Failed to create impersonation audit log", { error, adminId: user.id, targetId });
+      logger.error("Failed to create impersonation audit log", {
+        error,
+        adminId: authUser.userId,
+        targetId,
+      });
     }
   }
 
