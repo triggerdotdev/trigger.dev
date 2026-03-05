@@ -23,7 +23,7 @@
  * ```
  */
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import {
   TriggerChatTransport,
   type TriggerChatTransportOptions,
@@ -57,6 +57,9 @@ export type UseTriggerChatTransportOptions<TTask extends AnyTask = AnyTask> = Om
  * For dynamic access tokens, pass a function — it will be called on each
  * request without needing to recreate the transport.
  *
+ * The `onSessionChange` callback is kept in a ref so the transport always
+ * calls the latest version without needing to be recreated.
+ *
  * @example
  * ```tsx
  * import { useChat } from "@ai-sdk/react";
@@ -80,5 +83,12 @@ export function useTriggerChatTransport<TTask extends AnyTask = AnyTask>(
   if (ref.current === null) {
     ref.current = new TriggerChatTransport(options);
   }
+
+  // Keep onSessionChange up to date without recreating the transport
+  const { onSessionChange } = options;
+  useEffect(() => {
+    ref.current?.setOnSessionChange(onSessionChange);
+  }, [onSessionChange]);
+
   return ref.current;
 }

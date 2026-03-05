@@ -5,6 +5,13 @@ import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import os from "node:os";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "../../lib/generated/prisma/client";
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const prisma = new PrismaClient({ adapter });
+
+import { DEFAULT_MODEL } from "@/lib/models";
 
 const MODELS: Record<string, () => LanguageModel> = {
   "gpt-4o-mini": () => openai("gpt-4o-mini"),
@@ -12,9 +19,6 @@ const MODELS: Record<string, () => LanguageModel> = {
   "claude-sonnet-4-6": () => anthropic("claude-sonnet-4-6"),
   "claude-opus-4-6": () => anthropic("claude-opus-4-6"),
 };
-
-export const MODEL_OPTIONS = Object.keys(MODELS);
-export const DEFAULT_MODEL = "gpt-4o-mini";
 
 function getModel(modelId?: string): LanguageModel {
   const factory = MODELS[modelId ?? DEFAULT_MODEL];
@@ -83,6 +87,19 @@ declare const Deno: unknown;
 export const aiChat = chat.task({
   id: "ai-chat",
   warmTimeoutInSeconds: 10,
+  onChatStart: async ({ chatId }) => {
+    await prisma.chat.upsert({
+      where: { id: chatId },
+      create: { id: chatId, title: "New chat" },
+      update: {},
+    });
+  },
+  onTurnComplete: async ({ chatId, uiMessages }) => {
+    await prisma.chat.update({
+      where: { id: chatId },
+      data: { messages: uiMessages as any },
+    });
+  },
   run: async ({ messages, clientData, stopSignal }) => {
     const { model: modelId } = z
       .object({ model: z.string().optional() })

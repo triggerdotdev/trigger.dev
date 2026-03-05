@@ -1727,4 +1727,187 @@ describe("TriggerChatTransport", () => {
       expect(triggerCallCount).toBe(2);
     });
   });
+
+  describe("onSessionChange", () => {
+    it("should fire when a new session is created", async () => {
+      const onSessionChange = vi.fn();
+      const triggerRunId = "run_session_new";
+      const publicToken = "pub_session_new";
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/trigger")) {
+          return new Response(JSON.stringify({ id: triggerRunId }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": publicToken,
+            },
+          });
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          const chunks = [
+            ...sampleChunks,
+            { type: "__trigger_turn_complete" },
+          ];
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+        onSessionChange,
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-1",
+        messageId: undefined,
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+
+      // Session created notification should have fired
+      expect(onSessionChange).toHaveBeenCalledWith("chat-1", {
+        runId: triggerRunId,
+        publicAccessToken: publicToken,
+        lastEventId: undefined,
+      });
+
+      // Consume stream
+      const reader = stream.getReader();
+      while (!(await reader.read()).done) {}
+
+      // Should also fire with updated lastEventId on turn complete
+      const lastCall = onSessionChange.mock.calls[onSessionChange.mock.calls.length - 1]!;
+      expect(lastCall![0]).toBe("chat-1");
+      expect(lastCall![1]).not.toBeNull();
+      expect(lastCall![1].lastEventId).toBeDefined();
+    });
+
+    it("should fire with null when session is deleted (stream ends naturally)", async () => {
+      const onSessionChange = vi.fn();
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/trigger")) {
+          return new Response(JSON.stringify({ id: "run_end" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_end",
+            },
+          });
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          // No turn-complete chunk — stream ends naturally (run completed)
+          return new Response(createSSEStream(sseEncode(sampleChunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+        onSessionChange,
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-end",
+        messageId: undefined,
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+
+      // Consume the stream fully
+      const reader = stream.getReader();
+      while (!(await reader.read()).done) {}
+
+      // Session should have been created then deleted
+      expect(onSessionChange).toHaveBeenCalledWith("chat-end", expect.objectContaining({
+        runId: "run_end",
+      }));
+      expect(onSessionChange).toHaveBeenCalledWith("chat-end", null);
+    });
+
+    it("should be updatable via setOnSessionChange", async () => {
+      const onSessionChange1 = vi.fn();
+      const onSessionChange2 = vi.fn();
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/trigger")) {
+          return new Response(JSON.stringify({ id: "run_update" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_update",
+            },
+          });
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          const chunks = [
+            ...sampleChunks,
+            { type: "__trigger_turn_complete" },
+          ];
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+        onSessionChange: onSessionChange1,
+      });
+
+      // Update the callback before sending
+      transport.setOnSessionChange(onSessionChange2);
+
+      await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-update",
+        messageId: undefined,
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+
+      // Only onSessionChange2 should have been called
+      expect(onSessionChange1).not.toHaveBeenCalled();
+      expect(onSessionChange2).toHaveBeenCalled();
+    });
+  });
 });

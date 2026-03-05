@@ -100,6 +100,57 @@ export type TriggerChatTransportOptions = {
    * ```
    */
   metadata?: Record<string, unknown>;
+
+  /**
+   * Restore active chat sessions from external storage (e.g. localStorage).
+   *
+   * After a page refresh, pass previously persisted sessions here so the
+   * transport can reconnect to existing runs instead of starting new ones.
+   * Use `getSession()` to retrieve session state for persistence.
+   *
+   * @example
+   * ```ts
+   * new TriggerChatTransport({
+   *   task: "my-chat",
+   *   accessToken,
+   *   sessions: {
+   *     "chat-abc": { runId: "run_123", publicAccessToken: "...", lastEventId: "42" },
+   *   },
+   * });
+   * ```
+   */
+  sessions?: Record<string, { runId: string; publicAccessToken: string; lastEventId?: string }>;
+
+  /**
+   * Called whenever a chat session's state changes.
+   *
+   * Fires when:
+   * - A new session is created (after triggering a task)
+   * - A turn completes (lastEventId updated)
+   * - A session is removed (run ended or input stream send failed) — `session` will be `null`
+   *
+   * Use this to persist session state for reconnection after page refreshes,
+   * without needing to call `getSession()` manually.
+   *
+   * @example
+   * ```ts
+   * new TriggerChatTransport({
+   *   task: "my-chat",
+   *   accessToken,
+   *   onSessionChange: (chatId, session) => {
+   *     if (session) {
+   *       localStorage.setItem(`session:${chatId}`, JSON.stringify(session));
+   *     } else {
+   *       localStorage.removeItem(`session:${chatId}`);
+   *     }
+   *   },
+   * });
+   * ```
+   */
+  onSessionChange?: (
+    chatId: string,
+    session: { runId: string; publicAccessToken: string; lastEventId?: string } | null
+  ) => void;
 };
 
 /**
@@ -151,6 +202,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly extraHeaders: Record<string, string>;
   private readonly streamTimeoutSeconds: number;
   private readonly defaultMetadata: Record<string, unknown> | undefined;
+  private _onSessionChange:
+    | ((
+        chatId: string,
+        session: { runId: string; publicAccessToken: string; lastEventId?: string } | null
+      ) => void)
+    | undefined;
 
   private sessions: Map<string, ChatSessionState> = new Map();
 
@@ -165,6 +222,18 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.extraHeaders = options.headers ?? {};
     this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? DEFAULT_STREAM_TIMEOUT_SECONDS;
     this.defaultMetadata = options.metadata;
+    this._onSessionChange = options.onSessionChange;
+
+    // Restore sessions from external storage
+    if (options.sessions) {
+      for (const [chatId, session] of Object.entries(options.sessions)) {
+        this.sessions.set(chatId, {
+          runId: session.runId,
+          publicAccessToken: session.publicAccessToken,
+          lastEventId: session.lastEventId,
+        });
+      }
+    }
   }
 
   sendMessages = async (
@@ -216,6 +285,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       } catch {
         // If sending fails (run died, etc.), fall through to trigger a new run.
         this.sessions.delete(chatId);
+        this.notifySessionChange(chatId, null);
       }
     }
 
@@ -236,10 +306,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         ? (triggerResponse as { publicAccessToken?: string }).publicAccessToken
         : undefined;
 
-    this.sessions.set(chatId, {
+    const newSession: ChatSessionState = {
       runId,
       publicAccessToken: publicAccessToken ?? currentToken,
-    });
+    };
+    this.sessions.set(chatId, newSession);
+    this.notifySessionChange(chatId, newSession);
     return this.subscribeToStream(
       runId,
       publicAccessToken ?? currentToken,
@@ -260,6 +332,62 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     return this.subscribeToStream(session.runId, session.publicAccessToken, undefined, options.chatId);
   };
+
+  /**
+   * Get the current session state for a chat, suitable for external persistence.
+   *
+   * Returns `undefined` if no active session exists for this chatId.
+   * Persist the returned value to localStorage so it can be restored
+   * after a page refresh via `restoreSession()`.
+   *
+   * @example
+   * ```ts
+   * const session = transport.getSession(chatId);
+   * if (session) {
+   *   localStorage.setItem(`session:${chatId}`, JSON.stringify(session));
+   * }
+   * ```
+   */
+  getSession = (chatId: string): { runId: string; publicAccessToken: string; lastEventId?: string } | undefined => {
+    const session = this.sessions.get(chatId);
+    if (!session) return undefined;
+    return {
+      runId: session.runId,
+      publicAccessToken: session.publicAccessToken,
+      lastEventId: session.lastEventId,
+    };
+  };
+
+  /**
+   * Update the `onSessionChange` callback.
+   * Useful for React hooks that need to update the callback without recreating the transport.
+   */
+  setOnSessionChange(
+    callback:
+      | ((
+          chatId: string,
+          session: { runId: string; publicAccessToken: string; lastEventId?: string } | null
+        ) => void)
+      | undefined
+  ): void {
+    this._onSessionChange = callback;
+  }
+
+  private notifySessionChange(
+    chatId: string,
+    session: ChatSessionState | null
+  ): void {
+    if (!this._onSessionChange) return;
+    if (session) {
+      this._onSessionChange(chatId, {
+        runId: session.runId,
+        publicAccessToken: session.publicAccessToken,
+        lastEventId: session.lastEventId,
+      });
+    } else {
+      this._onSessionChange(chatId, null);
+    }
+  }
 
   private subscribeToStream(
     runId: string,
@@ -331,6 +459,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 // the next message via input streams.
                 if (chatId && !combinedSignal.aborted) {
                   this.sessions.delete(chatId);
+                  this.notifySessionChange(chatId, null);
                 }
                 controller.close();
                 return;
@@ -348,6 +477,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 session.lastEventId = value.id;
               }
 
+
               // Guard against heartbeat or malformed SSE events
               if (value.chunk != null && typeof value.chunk === "object") {
                 const chunk = value.chunk as Record<string, unknown>;
@@ -363,6 +493,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 }
 
                 if (chunk.type === "__trigger_turn_complete" && chatId) {
+                  // Notify with updated lastEventId before closing
+                  if (session) {
+                    this.notifySessionChange(chatId, session);
+                  }
                   internalAbort.abort();
                   try {
                     controller.close();
