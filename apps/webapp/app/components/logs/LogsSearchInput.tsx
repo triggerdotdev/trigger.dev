@@ -3,12 +3,14 @@ import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Input } from "~/components/primitives/Input";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
-import { cn } from "~/utils/cn";
-import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { cn } from "~/utils/cn";
 
-export function LogsSearchInput() {
-  const location = useOptimisticLocation();
+export type LogsSearchInputProps = {
+  placeholder?: string;
+};
+
+export function LogsSearchInput({ placeholder = "Search logs…" }: LogsSearchInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { value, replace, del } = useSearchParams();
@@ -61,7 +63,7 @@ export function LogsSearchInput() {
           type="text"
           ref={inputRef}
           variant="secondary-small"
-          placeholder="Search logs…"
+          placeholder={placeholder}
           value={text}
           onChange={(e) => setText(e.target.value)}
           fullWidth
