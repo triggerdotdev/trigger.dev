@@ -197,8 +197,16 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // to resume the conversation in the same run.
     if (session?.runId) {
       try {
+        // Keep wire payloads minimal — the backend accumulates the full history.
+        // For submit-message: only send the new user message (always the last one).
+        // For regenerate-message: send full history so the backend can reset its accumulator.
+        const minimalPayload = {
+          ...payload,
+          messages: trigger === "submit-message" ? messages.slice(-1) : messages,
+        };
+
         const apiClient = new ApiClient(this.baseURL, session.publicAccessToken);
-        await apiClient.sendInputStream(session.runId, CHAT_MESSAGES_STREAM_ID, payload);
+        await apiClient.sendInputStream(session.runId, CHAT_MESSAGES_STREAM_ID, minimalPayload);
         return this.subscribeToStream(
           session.runId,
           session.publicAccessToken,
