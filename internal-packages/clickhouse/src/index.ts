@@ -34,6 +34,7 @@ import {
   getErrorHourlyOccurrences,
   getErrorOccurrencesListQueryBuilder,
   createErrorOccurrencesQueryBuilder,
+  createErrorOccurrencesByVersionQueryBuilder,
   getErrorAffectedVersionsQueryBuilder,
 } from "./errors.js";
 export { msToClickHouseInterval } from "./intervals.js";
@@ -251,6 +252,8 @@ export class ClickHouse {
       occurrencesListQueryBuilder: getErrorOccurrencesListQueryBuilder(this.reader),
       createOccurrencesQueryBuilder: (intervalExpr: string) =>
         createErrorOccurrencesQueryBuilder(this.reader, intervalExpr),
+      createOccurrencesByVersionQueryBuilder: (intervalExpr: string) =>
+        createErrorOccurrencesByVersionQueryBuilder(this.reader, intervalExpr),
     };
   }
 }

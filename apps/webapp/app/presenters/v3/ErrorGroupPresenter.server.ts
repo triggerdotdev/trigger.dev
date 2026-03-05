@@ -74,6 +74,7 @@ export type ErrorGroupSummary = {
 
 export type ErrorGroupOccurrences = Awaited<ReturnType<ErrorGroupPresenter["getOccurrences"]>>;
 export type ErrorGroupActivity = ErrorGroupOccurrences["data"];
+export type ErrorGroupActivityVersions = ErrorGroupOccurrences["versions"];
 
 export class ErrorGroupPresenter extends BasePresenter {
   constructor(
@@ -144,8 +145,8 @@ export class ErrorGroupPresenter extends BasePresenter {
   }
 
   /**
-   * Returns bucketed occurrence counts for a single fingerprint over a time range.
-   * Granularity is determined automatically from the range span.
+   * Returns bucketed occurrence counts for a single fingerprint over a time range,
+   * grouped by task_version for stacked charts.
    */
   public async getOccurrences(
     organizationId: string,
@@ -156,12 +157,14 @@ export class ErrorGroupPresenter extends BasePresenter {
     to: Date,
     versions?: string[]
   ): Promise<{
-    data: Array<{ date: Date; count: number }>;
+    data: Array<Record<string, number | Date>>;
+    versions: string[];
   }> {
     const granularityMs = errorGroupGranularity.getTimeGranularityMs(from, to);
     const intervalExpr = msToClickHouseInterval(granularityMs);
 
-    const queryBuilder = this.logsClickhouse.errors.createOccurrencesQueryBuilder(intervalExpr);
+    const queryBuilder =
+      this.logsClickhouse.errors.createOccurrencesByVersionQueryBuilder(intervalExpr);
 
     queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
     queryBuilder.where("project_id = {projectId: String}", { projectId });
@@ -178,7 +181,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       queryBuilder.where("task_version IN {versions: Array(String)}", { versions });
     }
 
-    queryBuilder.groupBy("error_fingerprint, bucket_epoch");
+    queryBuilder.groupBy("error_fingerprint, task_version, bucket_epoch");
     queryBuilder.orderBy("bucket_epoch ASC");
 
     const [queryError, records] = await queryBuilder.execute();
@@ -195,17 +198,27 @@ export class ErrorGroupPresenter extends BasePresenter {
       buckets.push(epoch);
     }
 
-    const byBucket = new Map<number, number>();
+    // Collect distinct versions and index results by (epoch, version)
+    const versionSet = new Set<string>();
+    const byBucketVersion = new Map<string, number>();
     for (const row of records ?? []) {
-      byBucket.set(row.bucket_epoch, (byBucket.get(row.bucket_epoch) ?? 0) + row.count);
+      const version = row.task_version || "unknown";
+      versionSet.add(version);
+      const key = `${row.bucket_epoch}:${version}`;
+      byBucketVersion.set(key, (byBucketVersion.get(key) ?? 0) + row.count);
     }
 
-    return {
-      data: buckets.map((epoch) => ({
-        date: new Date(epoch * 1000),
-        count: byBucket.get(epoch) ?? 0,
-      })),
-    };
+    const sortedVersions = sortVersionsDescending([...versionSet]);
+
+    const data = buckets.map((epoch) => {
+      const point: Record<string, number | Date> = { date: new Date(epoch * 1000) };
+      for (const version of sortedVersions) {
+        point[version] = byBucketVersion.get(`${epoch}:${version}`) ?? 0;
+      }
+      return point;
+    });
+
+    return { data, versions: sortedVersions };
   }
 
   private async getSummary(

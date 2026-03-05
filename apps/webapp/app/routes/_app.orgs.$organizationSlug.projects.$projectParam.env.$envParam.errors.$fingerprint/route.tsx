@@ -14,6 +14,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   ErrorGroupPresenter,
   type ErrorGroupActivity,
+  type ErrorGroupActivityVersions,
   type ErrorGroupOccurrences,
   type ErrorGroupSummary,
 } from "~/presenters/v3/ErrorGroupPresenter.server";
@@ -43,10 +44,11 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { LogsVersionFilter } from "~/components/logs/LogsVersionFilter";
+import { getSeriesColor } from "~/components/code/chartColors";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
@@ -121,7 +123,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       time.to,
       versions.length > 0 ? versions : undefined
     )
-    .catch(() => ({ data: [] as ErrorGroupActivity }));
+    .catch(() => ({ data: [] as ErrorGroupActivity, versions: [] as string[] }));
 
   return typeddefer({
     data: detailPromise,
@@ -334,13 +336,12 @@ function ErrorGroupDetail({
 
         <Suspense fallback={<ActivityChartBlankState />}>
           <TypedAwait resolve={activity} errorElement={<ActivityChartBlankState />}>
-            {(result) =>
-              result.data.length > 0 ? (
-                <ActivityChart activity={result.data} />
-              ) : (
-                <ActivityChartBlankState />
-              )
-            }
+            {(result) => {
+              if (result.data.length > 0 && result.versions.length > 0) {
+                return <ActivityChart activity={result.data} versions={result.versions} />;
+              }
+              return <ActivityChartBlankState />;
+            }}
           </TypedAwait>
         </Suspense>
       </div>
@@ -402,14 +403,24 @@ function ErrorGroupDetail({
   );
 }
 
-const activityChartConfig: ChartConfig = {
-  count: {
-    label: "Occurrences",
-    color: "#6366F1",
-  },
-};
+function ActivityChart({
+  activity,
+  versions,
+}: {
+  activity: ErrorGroupActivity;
+  versions: ErrorGroupActivityVersions;
+}) {
+  const chartConfig = useMemo(() => {
+    const cfg: ChartConfig = {};
+    for (let i = 0; i < versions.length; i++) {
+      cfg[versions[i]] = {
+        label: versions[i],
+        color: getSeriesColor(i),
+      };
+    }
+    return cfg;
+  }, [versions]);
 
-function ActivityChart({ activity }: { activity: ErrorGroupActivity }) {
   const data = useMemo(
     () =>
       activity.map((d) => ({
@@ -463,13 +474,22 @@ function ActivityChart({ activity }: { activity: ErrorGroupActivity }) {
 
   return (
     <Chart.Root
-      config={activityChartConfig}
+      config={chartConfig}
       data={data}
       dataKey="__timestamp"
-      series={["count"]}
+      series={versions}
       fillContainer
+      showLegend={versions.length > 1}
+      legendScrollable
+      legendClassName="w-48 shrink-0 pt-0 max-h-full"
+      className={
+        versions.length > 1
+          ? "!flex-row gap-x-3 [&>div:first-child]:min-w-0"
+          : undefined
+      }
     >
       <Chart.Bar
+        stackId="versions"
         xAxisProps={{
           tickFormatter: xAxisFormatter,
           ticks: midnightTicks,
