@@ -104,10 +104,9 @@ The following variables are excluded from the Vercel → Trigger.dev sync:
 
 You can control sync behavior per-variable from your project's Vercel settings. Deselecting a variable prevents its value from being updated during future syncs.
 
-<Tip>
-  For dynamic environment variables (e.g., from NeonDB branching), use the `syncEnvVars` build
-  extension instead. Learn more about [environment variables](/deploy-environment-variables).
-</Tip>
+### Supabase and Neon database branching
+
+If you use [Supabase Branching](https://supabase.com/docs/guides/deployment/branching) or [Neon Database Branching](https://neon.tech/docs/guides/branching-intro) for preview environments, disable syncing for database env vars on the Environment Variables page and use the [syncSupabaseEnvVars](/config/extensions/syncEnvVars#syncsupabaseenvvars) or [syncNeonEnvVars](/config/extensions/syncEnvVars#syncneonenvvars) build extensions instead. These extensions automatically resolve the correct branch-specific credentials at build time.
 
 ## Atomic deployments
 

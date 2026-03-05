@@ -85,8 +85,8 @@ export function createDefaultVercelIntegrationData(
   return {
     config: {
       atomicBuilds: ["prod"],
-      pullEnvVarsBeforeBuild: ["prod", "stg", "preview"],
-      discoverEnvVars: ["prod", "stg", "preview"],
+      pullEnvVarsBeforeBuild: ["prod", "preview"],
+      discoverEnvVars: ["prod", "preview"],
       vercelStagingEnvironment: null,
     },
     syncEnvVarsMapping: {},

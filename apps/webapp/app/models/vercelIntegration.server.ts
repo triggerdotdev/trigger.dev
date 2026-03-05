@@ -1759,7 +1759,7 @@ export class VercelIntegrationRepository {
     vercelProjectId: string,
     teamId?: string | null
   ): ResultAsync<void, VercelApiError> {
-    return wrapVercelCall(
+    return wrapVercelCallWithRecovery(
       client.projects.updateProject({
         idOrName: vercelProjectId,
         ...(teamId && { teamId }),
@@ -1767,8 +1767,10 @@ export class VercelIntegrationRepository {
           autoAssignCustomDomains: false,
         },
       }),
+      VercelSchemas.updateProject,
       "Failed to disable autoAssignCustomDomains",
-      { vercelProjectId, teamId }
+      { vercelProjectId, teamId },
+      toVercelApiError
     ).map(() => undefined);
   }
 
