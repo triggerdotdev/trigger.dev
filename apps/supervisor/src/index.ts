@@ -14,6 +14,7 @@ import {
 } from "./resourceMonitor.js";
 import { KubernetesWorkloadManager } from "./workloadManager/kubernetes.js";
 import { DockerWorkloadManager } from "./workloadManager/docker.js";
+import { ComputeWorkloadManager } from "./workloadManager/compute.js";
 import {
   HttpServer,
   CheckpointClient,
@@ -35,9 +36,11 @@ class ManagedSupervisor {
   private readonly metricsServer?: HttpServer;
   private readonly workloadServer: WorkloadServer;
   private readonly workloadManager: WorkloadManager;
+  private readonly computeManager?: ComputeWorkloadManager;
   private readonly logger = new SimpleStructuredLogger("managed-supervisor");
   private readonly resourceMonitor: ResourceMonitor;
   private readonly checkpointClient?: CheckpointClient;
+  private readonly isComputeMode: boolean;
 
   private readonly podCleaner?: PodCleaner;
   private readonly failedPodHandler?: FailedPodHandler;
@@ -77,9 +80,22 @@ class ManagedSupervisor {
         : new DockerResourceMonitor(new Docker())
       : new NoopResourceMonitor();
 
-    this.workloadManager = this.isKubernetes
-      ? new KubernetesWorkloadManager(workloadManagerOptions)
-      : new DockerWorkloadManager(workloadManagerOptions);
+    this.isComputeMode = !!env.COMPUTE_GATEWAY_URL;
+
+    if (env.COMPUTE_GATEWAY_URL) {
+      const computeManager = new ComputeWorkloadManager({
+        ...workloadManagerOptions,
+        gatewayUrl: env.COMPUTE_GATEWAY_URL,
+        gatewayAuthToken: env.COMPUTE_GATEWAY_AUTH_TOKEN,
+        gatewayTimeoutMs: env.COMPUTE_GATEWAY_TIMEOUT_MS,
+      });
+      this.computeManager = computeManager;
+      this.workloadManager = computeManager;
+    } else {
+      this.workloadManager = this.isKubernetes
+        ? new KubernetesWorkloadManager(workloadManagerOptions)
+        : new DockerWorkloadManager(workloadManagerOptions);
+    }
 
     if (this.isKubernetes) {
       if (env.POD_CLEANER_ENABLED) {
@@ -187,7 +203,7 @@ class ManagedSupervisor {
       this.workloadServer.notifyRun({ run });
     });
 
-    this.workerSession.on("runQueueMessage", async ({ time, message }) => {
+    this.workerSession.on("runQueueMessage", async ({ time, message, dequeueResponseMs, pollingIntervalMs }) => {
       this.logger.log(`Received message with timestamp ${time.toLocaleString()}`, message);
 
       if (message.completedWaitpoints.length > 0) {
@@ -206,6 +222,33 @@ class ManagedSupervisor {
 
       if (checkpoint) {
         this.logger.log("Restoring run", { runId: message.run.id });
+
+        if (this.isComputeMode && this.computeManager && env.COMPUTE_SNAPSHOTS_ENABLED) {
+          try {
+            // Derive runnerId unique per restore cycle (matches iceman's pattern)
+            const runIdShort = message.run.friendlyId.replace("run_", "");
+            const checkpointSuffix = checkpoint.id.slice(-8);
+            const runnerId = `runner-${runIdShort}-${checkpointSuffix}`;
+
+            const didRestore = await this.computeManager.restore({
+              snapshotId: checkpoint.location,
+              runnerId,
+              runFriendlyId: message.run.friendlyId,
+              snapshotFriendlyId: message.snapshot.friendlyId,
+              machine: message.run.machine,
+            });
+
+            if (didRestore) {
+              this.logger.log("Compute restore successful", { runId: message.run.id, runnerId });
+            } else {
+              this.logger.error("Compute restore failed", { runId: message.run.id, runnerId });
+            }
+          } catch (error) {
+            this.logger.error("Failed to restore run (compute)", { error });
+          }
+
+          return;
+        }
 
         if (!this.checkpointClient) {
           this.logger.error("No checkpoint client", { runId: message.run.id });
@@ -236,7 +279,9 @@ class ManagedSupervisor {
 
       this.logger.log("Scheduling run", { runId: message.run.id });
 
+      const warmStartStart = performance.now();
       const didWarmStart = await this.tryWarmStart(message);
+      const warmStartCheckMs = Math.round(performance.now() - warmStartStart);
 
       if (didWarmStart) {
         this.logger.log("Warm start successful", { runId: message.run.id });
@@ -252,6 +297,9 @@ class ManagedSupervisor {
 
         await this.workloadManager.create({
           dequeuedAt: message.dequeuedAt,
+          dequeueResponseMs,
+          pollingIntervalMs,
+          warmStartCheckMs,
           envId: message.environment.id,
           envType: message.environment.type,
           image: message.image,
@@ -296,6 +344,7 @@ class ManagedSupervisor {
       host: env.TRIGGER_WORKLOAD_API_HOST_INTERNAL,
       workerClient: this.workerSession.httpClient,
       checkpointClient: this.checkpointClient,
+      computeManager: this.computeManager,
     });
 
     this.workloadServer.on("runConnected", this.onRunConnected.bind(this));
