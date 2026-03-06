@@ -1062,6 +1062,165 @@ function setWarmTimeoutInSeconds(seconds: number): void {
   metadata.set(WARM_TIMEOUT_METADATA_KEY, seconds);
 }
 
+// ---------------------------------------------------------------------------
+// chat.local — per-run typed data with Proxy access
+// ---------------------------------------------------------------------------
+
+/** @internal Symbol for storing the locals key on the proxy target. */
+const CHAT_LOCAL_KEY: unique symbol = Symbol("chatLocalKey");
+/** @internal Symbol for storing the dirty-tracking locals key. */
+const CHAT_LOCAL_DIRTY_KEY: unique symbol = Symbol("chatLocalDirtyKey");
+/** @internal Counter for generating unique locals IDs. */
+let chatLocalCounter = 0;
+
+/**
+ * A Proxy-backed, run-scoped data object that appears as `T` to users.
+ * Includes helper methods for initialization, dirty tracking, and serialization.
+ * Internal metadata is stored behind Symbols and invisible to
+ * `Object.keys()`, `JSON.stringify()`, and spread.
+ */
+export type ChatLocal<T extends Record<string, unknown>> = T & {
+  /** Initialize the local with a value. Call in `onChatStart` or `run()`. */
+  init(value: T): void;
+  /** Returns `true` if any property was set since the last check. Resets the dirty flag. */
+  hasChanged(): boolean;
+  /** Returns a plain object copy of the current value. Useful for persistence. */
+  get(): T;
+  readonly [CHAT_LOCAL_KEY]: ReturnType<typeof locals.create<T>>;
+  readonly [CHAT_LOCAL_DIRTY_KEY]: ReturnType<typeof locals.create<boolean>>;
+};
+
+/**
+ * Creates a per-run typed data object accessible from anywhere during task execution.
+ *
+ * Declare at module level, then initialize inside a lifecycle hook (e.g. `onChatStart`)
+ * using `chat.initLocal()`. Properties are accessible directly via the Proxy.
+ *
+ * Multiple locals can coexist — each gets its own isolated run-scoped storage.
+ *
+ * @example
+ * ```ts
+ * import { chat } from "@trigger.dev/sdk/ai";
+ *
+ * const userPrefs = chat.local<{ theme: string; language: string }>();
+ * const gameState = chat.local<{ score: number; streak: number }>();
+ *
+ * export const myChat = chat.task({
+ *   id: "my-chat",
+ *   onChatStart: async ({ clientData }) => {
+ *     const prefs = await db.prefs.findUnique({ where: { userId: clientData.userId } });
+ *     userPrefs.init(prefs ?? { theme: "dark", language: "en" });
+ *     gameState.init({ score: 0, streak: 0 });
+ *   },
+ *   onTurnComplete: async ({ chatId }) => {
+ *     if (gameState.hasChanged()) {
+ *       await db.save({ where: { chatId }, data: gameState.get() });
+ *     }
+ *   },
+ *   run: async ({ messages }) => {
+ *     gameState.score++;
+ *     return streamText({
+ *       system: `User prefers ${userPrefs.theme} theme. Score: ${gameState.score}`,
+ *       messages,
+ *     });
+ *   },
+ * });
+ * ```
+ */
+function chatLocal<T extends Record<string, unknown>>(): ChatLocal<T> {
+  const localKey = locals.create<T>(`chat.local.${chatLocalCounter++}`);
+  const dirtyKey = locals.create<boolean>(`chat.local.${chatLocalCounter++}.dirty`);
+
+  const target = {} as any;
+  target[CHAT_LOCAL_KEY] = localKey;
+  target[CHAT_LOCAL_DIRTY_KEY] = dirtyKey;
+
+  return new Proxy(target, {
+    get(_target, prop, _receiver) {
+      // Internal Symbol properties
+      if (prop === CHAT_LOCAL_KEY) return _target[CHAT_LOCAL_KEY];
+      if (prop === CHAT_LOCAL_DIRTY_KEY) return _target[CHAT_LOCAL_DIRTY_KEY];
+
+      // Instance methods
+      if (prop === "init") {
+        return (value: T) => {
+          locals.set(localKey, value);
+          locals.set(dirtyKey, false);
+        };
+      }
+      if (prop === "hasChanged") {
+        return () => {
+          const dirty = locals.get(dirtyKey) ?? false;
+          locals.set(dirtyKey, false);
+          return dirty;
+        };
+      }
+      if (prop === "get") {
+        return () => {
+          const current = locals.get(localKey);
+          if (current === undefined) {
+            throw new Error(
+              "local.get() called before initialization. Call local.init() first."
+            );
+          }
+          return { ...current };
+        };
+      }
+      // toJSON for serialization (JSON.stringify(local))
+      if (prop === "toJSON") {
+        return () => {
+          const current = locals.get(localKey);
+          return current ? { ...current } : undefined;
+        };
+      }
+
+      const current = locals.get(localKey);
+      if (current === undefined) return undefined;
+      return (current as any)[prop];
+    },
+
+    set(_target, prop, value) {
+      // Don't allow setting internal Symbols
+      if (typeof prop === "symbol") return false;
+
+      const current = locals.get(localKey);
+      if (current === undefined) {
+        throw new Error(
+          "chat.local can only be modified after initialization. " +
+            "Call local.init() in onChatStart or run() first."
+        );
+      }
+      locals.set(localKey, { ...current, [prop]: value });
+      locals.set(dirtyKey, true);
+      return true;
+    },
+
+    has(_target, prop) {
+      if (typeof prop === "symbol") return prop in _target;
+      const current = locals.get(localKey);
+      return current !== undefined && prop in current;
+    },
+
+    ownKeys() {
+      const current = locals.get(localKey);
+      return current ? Reflect.ownKeys(current) : [];
+    },
+
+    getOwnPropertyDescriptor(_target, prop) {
+      if (typeof prop === "symbol") return undefined;
+      const current = locals.get(localKey);
+      if (current === undefined || !(prop in current)) return undefined;
+      return {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value: (current as any)[prop],
+      };
+    },
+  }) as ChatLocal<T>;
+}
+
+
 /**
  * Extracts the client data (metadata) type from a chat task.
  * Use this to type the `metadata` option on the transport.
@@ -1088,6 +1247,8 @@ export const chat = {
   task: chatTask,
   /** Pipe a stream to the chat transport. See {@link pipeChat}. */
   pipe: pipeChat,
+  /** Create a per-run typed local. See {@link chatLocal}. */
+  local: chatLocal,
   /** Create a public access token for a chat task. See {@link createChatAccessToken}. */
   createAccessToken: createChatAccessToken,
   /** Override the turn timeout at runtime (duration string). See {@link setTurnTimeout}. */
