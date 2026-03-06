@@ -35,7 +35,7 @@ const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
 /**
  * Options for creating a TriggerChatTransport.
  */
-export type TriggerChatTransportOptions = {
+export type TriggerChatTransportOptions<TClientData = unknown> = {
   /**
    * The Trigger.dev task ID to trigger for chat completions.
    * This task should be defined using `chatTask()` from `@trigger.dev/sdk/ai`,
@@ -84,22 +84,23 @@ export type TriggerChatTransportOptions = {
   streamTimeoutSeconds?: number;
 
   /**
-   * Default metadata included in every request payload.
+   * Default client data included in every request payload.
    * Merged with per-call `metadata` from `sendMessage()` — per-call values
    * take precedence over transport-level defaults.
    *
-   * Useful for data that should accompany every message, like a user ID.
+   * When the task uses `clientDataSchema`, this is typed to match the schema.
    *
    * @example
    * ```ts
    * new TriggerChatTransport({
    *   task: "my-chat",
    *   accessToken,
-   *   metadata: { userId: currentUser.id },
+   *   clientData: { userId: currentUser.id },
    * });
    * ```
    */
-  metadata?: Record<string, unknown>;
+  clientData?: TClientData extends Record<string, unknown> ? TClientData : Record<string, unknown>;
+
 
   /**
    * Restore active chat sessions from external storage (e.g. localStorage).
@@ -254,7 +255,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.streamKey = options.streamKey ?? DEFAULT_STREAM_KEY;
     this.extraHeaders = options.headers ?? {};
     this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? DEFAULT_STREAM_TIMEOUT_SECONDS;
-    this.defaultMetadata = options.metadata;
+    this.defaultMetadata = options.clientData;
     this.triggerOptions = options.triggerOptions;
     this._onSessionChange = options.onSessionChange;
 
