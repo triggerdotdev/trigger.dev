@@ -4,7 +4,7 @@ import { ArrowRightIcon, EnvelopeIcon, UserGroupIcon, UserIcon } from "@heroicon
 import { HandRaisedIcon } from "@heroicons/react/24/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
 import { json, type ActionFunction } from "@remix-run/node";
-import { Form, useActionData } from "@remix-run/react";
+import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { forwardRef, useEffect, useState } from "react";
 import { z } from "zod";
@@ -201,6 +201,8 @@ export default function Page() {
   const lastSubmission = useActionData();
   const [enteredEmail, setEnteredEmail] = useState<string>(user.email ?? "");
   const { isManagedCloud } = useFeatures();
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === "submitting";
   const [selectedReferralSource, setSelectedReferralSource] = useState<string | undefined>();
   const [selectedRole, setSelectedRole] = useState<string>("");
 
@@ -384,7 +386,12 @@ export default function Page() {
 
               <FormButtons
                 confirmButton={
-                  <Button type="submit" variant={"primary/small"} TrailingIcon={ArrowRightIcon}>
+                  <Button
+                    type="submit"
+                    variant={"primary/small"}
+                    TrailingIcon={ArrowRightIcon}
+                    isLoading={isSubmitting}
+                  >
                     Continue
                   </Button>
                 }
