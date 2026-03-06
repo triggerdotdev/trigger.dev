@@ -151,6 +151,37 @@ export type TriggerChatTransportOptions = {
     chatId: string,
     session: { runId: string; publicAccessToken: string; lastEventId?: string } | null
   ) => void;
+
+  /**
+   * Options forwarded to the Trigger.dev API when starting a new run.
+   * Only applies to the first message — subsequent messages reuse the same run.
+   *
+   * A `chat:{chatId}` tag is automatically added to every run.
+   *
+   * @example
+   * ```ts
+   * new TriggerChatTransport({
+   *   task: "my-chat",
+   *   accessToken,
+   *   triggerOptions: {
+   *     tags: ["user:123"],
+   *     queue: "chat-queue",
+   *   },
+   * });
+   * ```
+   */
+  triggerOptions?: {
+    /** Additional tags for the run. A `chat:{chatId}` tag is always added automatically. */
+    tags?: string[];
+    /** Queue name for the run. */
+    queue?: string;
+    /** Maximum retry attempts. */
+    maxAttempts?: number;
+    /** Machine preset for the run. */
+    machine?: "micro" | "small-1x" | "small-2x" | "medium-1x" | "medium-2x" | "large-1x" | "large-2x";
+    /** Priority (lower = higher priority). */
+    priority?: number;
+  };
 };
 
 /**
@@ -202,6 +233,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly extraHeaders: Record<string, string>;
   private readonly streamTimeoutSeconds: number;
   private readonly defaultMetadata: Record<string, unknown> | undefined;
+  private readonly triggerOptions: TriggerChatTransportOptions["triggerOptions"];
   private _onSessionChange:
     | ((
         chatId: string,
@@ -223,6 +255,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.extraHeaders = options.headers ?? {};
     this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? DEFAULT_STREAM_TIMEOUT_SECONDS;
     this.defaultMetadata = options.metadata;
+    this.triggerOptions = options.triggerOptions;
     this._onSessionChange = options.onSessionChange;
 
     // Restore sessions from external storage
@@ -303,10 +336,20 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     const currentToken = await this.resolveAccessToken();
     const apiClient = new ApiClient(this.baseURL, currentToken);
 
+    // Auto-tag with chatId; merge with user-provided tags (API limit: 5 tags)
+    const autoTags = [`chat:${chatId}`];
+    const userTags = this.triggerOptions?.tags ?? [];
+    const tags = [...autoTags, ...userTags].slice(0, 5);
+
     const triggerResponse = await apiClient.triggerTask(this.taskId, {
       payload,
       options: {
         payloadType: "application/json",
+        tags,
+        queue: this.triggerOptions?.queue ? { name: this.triggerOptions.queue } : undefined,
+        maxAttempts: this.triggerOptions?.maxAttempts,
+        machine: this.triggerOptions?.machine,
+        priority: this.triggerOptions?.priority,
       },
     });
 
