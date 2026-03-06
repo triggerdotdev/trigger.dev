@@ -488,6 +488,10 @@ function ChatClient({ chatId, initialMessages, initialSessions }) {
   `resume: true` causes `useChat` to call `reconnectToStream` on the transport when the component mounts. The transport uses the session's `lastEventId` to skip past already-seen stream events, so the frontend only receives new data. Only enable `resume` when there are existing messages — for brand new chats, there's nothing to reconnect to.
 </Info>
 
+<Warning>
+  In React strict mode (enabled by default in Next.js dev), you may see a `TypeError: Cannot read properties of undefined (reading 'state')` in the console when using `resume`. This is a [known bug in the AI SDK](https://github.com/vercel/ai/issues/8477) caused by React strict mode double-firing the resume effect. The error is caught internally and **does not affect functionality** — streaming and message display work correctly. It only appears in development and will not occur in production builds.
+</Warning>
+
 ### Full example
 
 Putting it all together — a complete chat app with server-side persistence, session reconnection, and stream resumption:
@@ -762,6 +766,32 @@ run: async ({ messages, signal }) => {
 | `metadata` | `Record<string, unknown>` | — | Default metadata for every request |
 | `sessions` | `Record<string, {...}>` | — | Restore sessions from storage |
 | `onSessionChange` | `(chatId, session \| null) => void` | — | Fires when session state changes |
+| `triggerOptions` | `{...}` | — | Options for the initial task trigger (see below) |
+
+#### triggerOptions
+
+Options forwarded to the Trigger.dev API when starting a new run. Only applies to the first message — subsequent messages reuse the same run.
+
+A `chat:{chatId}` tag is automatically added to every run.
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `tags` | `string[]` | Additional tags for the run (merged with auto-tags, max 5 total) |
+| `queue` | `string` | Queue name for the run |
+| `maxAttempts` | `number` | Maximum retry attempts |
+| `machine` | `"micro" \| "small-1x" \| ...` | Machine preset for the run |
+| `priority` | `number` | Priority (lower = higher priority) |
+
+```ts
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken: getChatToken,
+  triggerOptions: {
+    tags: ["user:123"],
+    queue: "chat-queue",
+  },
+});
+```
 
 ### useTriggerChatTransport
 

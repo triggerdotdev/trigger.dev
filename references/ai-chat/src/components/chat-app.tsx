@@ -62,6 +62,9 @@ export function ChatApp({
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
     sessions: initialSessions,
     onSessionChange: handleSessionChange,
+    triggerOptions: {
+      tags: ["user:user_123"],
+    },
   });
 
   // Load messages when active chat changes
