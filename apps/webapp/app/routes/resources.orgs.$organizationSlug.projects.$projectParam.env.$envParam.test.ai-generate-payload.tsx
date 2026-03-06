@@ -7,16 +7,19 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
-import { inflateSync } from "node:zlib";
+import { inflate } from "node:zlib";
+import { promisify } from "node:util";
+
+const inflateAsync = promisify(inflate);
 import { $replica } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
 
 const RequestSchema = z.object({
-  prompt: z.string().min(1, "Prompt is required"),
-  taskIdentifier: z.string(),
-  payloadSchema: z.string().optional(),
-  currentPayload: z.string().optional(),
+  prompt: z.string().min(1, "Prompt is required").max(1000),
+  taskIdentifier: z.string().max(256),
+  payloadSchema: z.string().max(50_000).optional(),
+  currentPayload: z.string().max(50_000).optional(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -89,6 +92,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         const result = streamText({
           model: openai(env.AI_RUN_FILTER_MODEL ?? "gpt-5-mini"),
           temperature: 1,
+          abortSignal: request.signal,
           system: systemPrompt,
           prompt,
           tools: {
@@ -201,7 +205,7 @@ async function getTaskSourceCode(
     // File contents are zlib-deflated then base64-encoded by the CLI,
     // stored as Buffer.from(base64String) in Prisma Bytes
     const base64 = Buffer.from(file.contents).toString("utf-8");
-    const decompressed = inflateSync(Buffer.from(base64, "base64")).toString("utf-8");
+    const decompressed = (await inflateAsync(Buffer.from(base64, "base64"))).toString("utf-8");
 
     logger.info("[AI payload] Found task source code", {
       taskIdentifier,

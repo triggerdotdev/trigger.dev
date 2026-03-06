@@ -39,6 +39,7 @@ export function AIPayloadTabContent({
 }) {
   const [prompt, setPrompt] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const isLoadingRef = useRef(false);
   const [thinking, setThinking] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showThinking, setShowThinking] = useState(false);
@@ -54,8 +55,9 @@ export function AIPayloadTabContent({
 
   const submitGeneration = useCallback(
     async (queryPrompt: string) => {
-      if (!queryPrompt.trim() || isLoading) return;
+      if (!queryPrompt.trim() || isLoadingRef.current) return;
 
+      isLoadingRef.current = true;
       setIsLoading(true);
       setThinking("");
       setError(null);
@@ -138,10 +140,11 @@ export function AIPayloadTabContent({
         setError(err instanceof Error ? err.message : "An error occurred");
         setLastResult("error");
       } finally {
+        isLoadingRef.current = false;
         setIsLoading(false);
       }
     },
-    [isLoading, resourcePath, taskIdentifier, payloadSchema, getCurrentPayload]
+    [resourcePath, taskIdentifier, payloadSchema, getCurrentPayload]
   );
 
   const processStreamEvent = useCallback(
@@ -351,11 +354,12 @@ export function AIPayloadTabContent({
             <button
               key={example}
               type="button"
+              disabled={isLoading}
               onClick={() => {
                 setPrompt(example);
                 submitGeneration(example);
               }}
-              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-charcoal-600 px-4 py-2 transition-colors hover:border-solid hover:border-indigo-500 focus-custom focus-visible:!rounded-full"
+              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-charcoal-600 px-4 py-2 transition-colors hover:border-solid hover:border-indigo-500 focus-custom focus-visible:!rounded-full disabled:cursor-not-allowed disabled:opacity-50"
             >
               <SparkleListIcon className="size-4 shrink-0 text-text-dimmed transition group-hover:text-indigo-500" />
               <Paragraph
