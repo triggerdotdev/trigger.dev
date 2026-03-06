@@ -17,6 +17,7 @@ import type { StreamWriteResult } from "@trigger.dev/core/v3";
 import { convertToModelMessages, dynamicTool, generateId as generateMessageId, jsonSchema, JSONSchema7, Schema, Tool, ToolCallOptions, zodSchema } from "ai";
 import { type Attributes, trace } from "@opentelemetry/api";
 import { auth } from "./auth.js";
+import { locals } from "./locals.js";
 import { metadata } from "./metadata.js";
 import { streams } from "./streams.js";
 import { createTask } from "./shared.js";
@@ -239,12 +240,11 @@ const messagesInput = streams.input<ChatTaskWirePayload>({ id: CHAT_MESSAGES_STR
 const stopInput = streams.input<{ stop: true; message?: string }>({ id: CHAT_STOP_STREAM_ID });
 
 /**
- * Tracks how many times `pipeChat` has been called in the current `chatTask` run.
- * Used to prevent double-piping when a user both calls `pipeChat()` manually
- * and returns a streamable from their `run` function.
+ * Run-scoped pipe counter. Stored in locals so concurrent runs in the
+ * same worker don't share state.
  * @internal
  */
-let _chatPipeCount = 0;
+const chatPipeCountKey = locals.create<number>("chat.pipeCount");
 
 /**
  * Options for `pipeChat`.
@@ -336,7 +336,7 @@ async function pipeChat(
   source: UIMessageStreamable | AsyncIterable<unknown> | ReadableStream<unknown>,
   options?: PipeChatOptions
 ): Promise<void> {
-  _chatPipeCount++;
+  locals.set(chatPipeCountKey, (locals.get(chatPipeCountKey) ?? 0) + 1);
   const streamKey = options?.streamKey ?? CHAT_STREAM_KEY;
 
   let stream: AsyncIterable<unknown> | ReadableStream<unknown>;
@@ -662,7 +662,7 @@ function chatTask<TIdentifier extends string>(
           const turnResult = await tracer.startActiveSpan(
             `chat turn ${turn + 1}`,
             async () => {
-              _chatPipeCount = 0;
+              locals.set(chatPipeCountKey, 0);
 
               // Per-turn stop controller (reset each turn)
               const stopController = new AbortController();
@@ -792,7 +792,7 @@ function chatTask<TIdentifier extends string>(
                 // Auto-pipe if the run function returned a StreamTextResult or similar,
                 // but only if pipeChat() wasn't already called manually during this turn.
                 // We call toUIMessageStream ourselves to attach onFinish for response capture.
-                if (_chatPipeCount === 0 && isUIMessageStreamable(result)) {
+                if ((locals.get(chatPipeCountKey) ?? 0) === 0 && isUIMessageStreamable(result)) {
                   const uiStream = result.toUIMessageStream({
                     onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
                       capturedResponseMessage = responseMessage;
