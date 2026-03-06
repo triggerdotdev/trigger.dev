@@ -1,11 +1,13 @@
 import {
   accessoryAttributes,
   AnyTask,
+  getSchemaParseFn,
   isSchemaZodEsque,
   SemanticInternalAttributes,
   Task,
   taskContext,
   type inferSchemaIn,
+  type inferSchemaOut,
   type PipeStreamOptions,
   type TaskIdentifier,
   type TaskOptions,
@@ -178,12 +180,12 @@ export { CHAT_MESSAGES_STREAM_ID, CHAT_STOP_STREAM_ID };
  * Uses `metadata` to match the AI SDK's `ChatRequestOptions` field name.
  * @internal
  */
-type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage> = {
+type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unknown> = {
   messages: TMessage[];
   chatId: string;
   trigger: "submit-message" | "regenerate-message";
   messageId?: string;
-  metadata?: unknown;
+  metadata?: TMetadata;
 };
 
 /**
@@ -196,7 +198,7 @@ type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage> = {
  * The backend accumulates the full conversation history across turns, so the frontend
  * only needs to send new messages after the first turn.
  */
-export type ChatTaskPayload = {
+export type ChatTaskPayload<TClientData = unknown> = {
   /** Model-ready messages — pass directly to `streamText({ messages })`. */
   messages: ModelMessage[];
 
@@ -214,7 +216,7 @@ export type ChatTaskPayload = {
   messageId?: string;
 
   /** Custom data from the frontend (passed via `metadata` on `sendMessage()` or the transport). */
-  clientData?: unknown;
+  clientData?: TClientData;
 };
 
 /**
@@ -233,7 +235,7 @@ export type ChatTaskSignals = {
  * The full payload passed to a `chatTask` run function.
  * Extends `ChatTaskPayload` (the wire payload) with abort signals.
  */
-export type ChatTaskRunPayload = ChatTaskPayload & ChatTaskSignals;
+export type ChatTaskRunPayload<TClientData = unknown> = ChatTaskPayload<TClientData> & ChatTaskSignals;
 
 // Input streams for bidirectional chat communication
 const messagesInput = streams.input<ChatTaskWirePayload>({ id: CHAT_MESSAGES_STREAM_ID });
@@ -384,13 +386,13 @@ async function pipeChat(
 /**
  * Event passed to the `onChatStart` callback.
  */
-export type ChatStartEvent = {
+export type ChatStartEvent<TClientData = unknown> = {
   /** The unique identifier for the chat session. */
   chatId: string;
   /** The initial model-ready messages for this conversation. */
   messages: ModelMessage[];
   /** Custom data from the frontend (passed via `metadata` on `sendMessage()` or the transport). */
-  clientData: unknown;
+  clientData: TClientData;
   /** The Trigger.dev run ID for this conversation. */
   runId: string;
   /** A scoped access token for this chat run. Persist this for frontend reconnection. */
@@ -400,7 +402,7 @@ export type ChatStartEvent = {
 /**
  * Event passed to the `onTurnStart` callback.
  */
-export type TurnStartEvent = {
+export type TurnStartEvent<TClientData = unknown> = {
   /** The unique identifier for the chat session. */
   chatId: string;
   /** The accumulated model-ready messages (all turns so far, including new user message). */
@@ -413,12 +415,14 @@ export type TurnStartEvent = {
   runId: string;
   /** A scoped access token for this chat run. */
   chatAccessToken: string;
+  /** Custom data from the frontend. */
+  clientData?: TClientData;
 };
 
 /**
  * Event passed to the `onTurnComplete` callback.
  */
-export type TurnCompleteEvent = {
+export type TurnCompleteEvent<TClientData = unknown> = {
   /** The unique identifier for the chat session. */
   chatId: string;
   /** The full accumulated conversation in model format (all turns so far). */
@@ -448,12 +452,34 @@ export type TurnCompleteEvent = {
   chatAccessToken: string;
   /** The last event ID from the stream writer. Use this with `resume: true` to avoid replaying events after refresh. */
   lastEventId?: string;
+  /** Custom data from the frontend. */
+  clientData?: TClientData;
 };
 
-export type ChatTaskOptions<TIdentifier extends string> = Omit<
-  TaskOptions<TIdentifier, ChatTaskWirePayload, unknown>,
-  "run"
-> & {
+export type ChatTaskOptions<
+  TIdentifier extends string,
+  TClientDataSchema extends TaskSchema | undefined = undefined,
+> = Omit<TaskOptions<TIdentifier, ChatTaskWirePayload, unknown>, "run"> & {
+  /**
+   * Schema for validating `clientData` from the frontend.
+   * Accepts Zod, ArkType, Valibot, or any supported schema library.
+   * When provided, `clientData` is parsed and typed in all hooks and `run`.
+   *
+   * @example
+   * ```ts
+   * import { z } from "zod";
+   *
+   * chat.task({
+   *   id: "my-chat",
+   *   clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
+   *   run: async ({ messages, clientData, signal }) => {
+   *     // clientData is typed as { model?: string; userId: string }
+   *   },
+   * });
+   * ```
+   */
+  clientDataSchema?: TClientDataSchema;
+
   /**
    * The run function for the chat task.
    *
@@ -463,7 +489,7 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
    * **Auto-piping:** If this function returns a value with `.toUIMessageStream()`,
    * the stream is automatically piped to the frontend.
    */
-  run: (payload: ChatTaskRunPayload) => Promise<unknown>;
+  run: (payload: ChatTaskRunPayload<inferSchemaOut<TClientDataSchema>>) => Promise<unknown>;
 
   /**
    * Called on the first turn (turn 0) of a new run, before the `run` function executes.
@@ -477,7 +503,7 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
    * }
    * ```
    */
-  onChatStart?: (event: ChatStartEvent) => Promise<void> | void;
+  onChatStart?: (event: ChatStartEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void;
 
   /**
    * Called at the start of every turn, after message accumulation and `onChatStart` (turn 0),
@@ -493,7 +519,7 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
    * }
    * ```
    */
-  onTurnStart?: (event: TurnStartEvent) => Promise<void> | void;
+  onTurnStart?: (event: TurnStartEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void;
 
   /**
    * Called after each turn completes (after the response is captured, before waiting
@@ -508,7 +534,7 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
    * }
    * ```
    */
-  onTurnComplete?: (event: TurnCompleteEvent) => Promise<void> | void;
+  onTurnComplete?: (event: TurnCompleteEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void;
 
   /**
    * Maximum number of conversational turns (message round-trips) a single run
@@ -578,11 +604,15 @@ export type ChatTaskOptions<TIdentifier extends string> = Omit<
  * });
  * ```
  */
-function chatTask<TIdentifier extends string>(
-  options: ChatTaskOptions<TIdentifier>
-): Task<TIdentifier, ChatTaskWirePayload, unknown> {
+function chatTask<
+  TIdentifier extends string,
+  TClientDataSchema extends TaskSchema | undefined = undefined,
+>(
+  options: ChatTaskOptions<TIdentifier, TClientDataSchema>
+): Task<TIdentifier, ChatTaskWirePayload<UIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
   const {
     run: userRun,
+    clientDataSchema,
     onChatStart,
     onTurnStart,
     onTurnComplete,
@@ -593,7 +623,11 @@ function chatTask<TIdentifier extends string>(
     ...restOptions
   } = options;
 
-  return createTask<TIdentifier, ChatTaskWirePayload, unknown>({
+  const parseClientData = clientDataSchema
+    ? getSchemaParseFn(clientDataSchema)
+    : undefined;
+
+  return createTask<TIdentifier, ChatTaskWirePayload<UIMessage, inferSchemaIn<TClientDataSchema>>, unknown>({
     ...restOptions,
     run: async (payload: ChatTaskWirePayload, { signal: runSignal }) => {
       // Set gen_ai.conversation.id on the run-level span for dashboard context
@@ -626,6 +660,9 @@ function chatTask<TIdentifier extends string>(
         for (let turn = 0; turn < maxTurns; turn++) {
           // Extract turn-level context before entering the span
           const { metadata: wireMetadata, messages: uiMessages, ...restWire } = currentWirePayload;
+          const clientData = (parseClientData
+            ? await parseClientData(wireMetadata)
+            : wireMetadata) as inferSchemaOut<TClientDataSchema>;
           const lastUserMessage = extractLastUserMessageText(uiMessages);
 
           const turnAttributes: Attributes = {
@@ -738,7 +775,7 @@ function chatTask<TIdentifier extends string>(
                     await onChatStart({
                       chatId: currentWirePayload.chatId,
                       messages: accumulatedMessages,
-                      clientData: wireMetadata,
+                      clientData,
                       runId: currentRunId,
                       chatAccessToken: turnAccessToken,
                     });
@@ -765,6 +802,7 @@ function chatTask<TIdentifier extends string>(
                       turn,
                       runId: currentRunId,
                       chatAccessToken: turnAccessToken,
+                      clientData,
                     });
                   },
                   {
@@ -783,11 +821,11 @@ function chatTask<TIdentifier extends string>(
                 const result = await userRun({
                   ...restWire,
                   messages: accumulatedMessages,
-                  clientData: wireMetadata,
+                  clientData,
                   signal: combinedSignal,
                   cancelSignal,
                   stopSignal,
-                });
+                } as any);
 
                 // Auto-pipe if the run function returned a StreamTextResult or similar,
                 // but only if pipeChat() wasn't already called manually during this turn.
@@ -866,6 +904,7 @@ function chatTask<TIdentifier extends string>(
                       runId: currentRunId,
                       chatAccessToken: turnAccessToken,
                       lastEventId: turnCompleteResult.lastEventId,
+                      clientData,
                     });
                   },
                   {
@@ -1022,6 +1061,27 @@ function setTurnTimeoutInSeconds(seconds: number): void {
 function setWarmTimeoutInSeconds(seconds: number): void {
   metadata.set(WARM_TIMEOUT_METADATA_KEY, seconds);
 }
+
+/**
+ * Extracts the client data (metadata) type from a chat task.
+ * Use this to type the `metadata` option on the transport.
+ *
+ * @example
+ * ```ts
+ * import type { InferChatClientData } from "@trigger.dev/sdk/ai";
+ * import type { myChat } from "@/trigger/chat";
+ *
+ * type MyClientData = InferChatClientData<typeof myChat>;
+ * // { model?: string; userId: string }
+ * ```
+ */
+export type InferChatClientData<TTask extends AnyTask> = TTask extends Task<
+  string,
+  ChatTaskWirePayload<any, infer TMetadata>,
+  any
+>
+  ? TMetadata
+  : unknown;
 
 export const chat = {
   /** Create a chat task. See {@link chatTask}. */
