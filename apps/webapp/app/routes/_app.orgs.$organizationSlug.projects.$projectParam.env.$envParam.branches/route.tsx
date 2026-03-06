@@ -1,18 +1,13 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import {
-  ArrowRightIcon,
-  ArrowUpCircleIcon,
-  CheckIcon,
-  MagnifyingGlassIcon,
-  PlusIcon,
-} from "@heroicons/react/20/solid";
+import { ArrowRightIcon, ArrowUpCircleIcon, CheckIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useLocation, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { GitMeta } from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useState } from "react";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
@@ -62,7 +57,7 @@ import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip"
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useThrottle } from "~/hooks/useThrottle";
+
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { BranchesPresenter } from "~/presenters/v3/BranchesPresenter.server";
 import { logger } from "~/services/logger.server";
@@ -434,42 +429,23 @@ export default function Page() {
 
 export function BranchFilters() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { search, showArchived, page } = BranchesOptions.parse(
-    Object.fromEntries(searchParams.entries())
-  );
+  const { showArchived } = BranchesOptions.parse(Object.fromEntries(searchParams.entries()));
 
-  const handleFilterChange = useCallback((filterType: string, value: string | undefined) => {
+  const handleArchivedChange = useCallback((checked: boolean) => {
     setSearchParams((s) => {
-      if (value) {
-        searchParams.set(filterType, value);
+      if (checked) {
+        s.set("showArchived", "true");
       } else {
-        searchParams.delete(filterType);
+        s.delete("showArchived");
       }
-      searchParams.delete("page");
-      return searchParams;
+      s.delete("page");
+      return s;
     });
   }, []);
 
-  const handleArchivedChange = useCallback((checked: boolean) => {
-    handleFilterChange("showArchived", checked ? "true" : undefined);
-  }, []);
-
-  const handleSearchChange = useThrottle((value: string) => {
-    handleFilterChange("search", value.length === 0 ? undefined : value);
-  }, 300);
-
   return (
-    <div className="flex w-full gap-2">
-      <Input
-        name="search"
-        placeholder="Search branch name"
-        icon={MagnifyingGlassIcon}
-        variant="tertiary"
-        className="grow"
-        defaultValue={search}
-        onChange={(e) => handleSearchChange(e.target.value)}
-      />
-
+    <div className="flex w-full items-center justify-between gap-2">
+      <SearchInput placeholder="Search branch name" resetParams={["page"]} />
       <Switch
         checked={showArchived ?? false}
         onCheckedChange={handleArchivedChange}
