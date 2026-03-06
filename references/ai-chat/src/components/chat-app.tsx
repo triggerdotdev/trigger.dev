@@ -3,6 +3,7 @@
 import type { UIMessage } from "ai";
 import { generateId } from "ai";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import type { aiChat } from "@/trigger/chat";
 import { useCallback, useEffect, useState } from "react";
 import { Chat } from "@/components/chat";
 import { ChatSidebar } from "@/components/chat-sidebar";
@@ -56,12 +57,13 @@ export function ChatApp({
     []
   );
 
-  const transport = useTriggerChatTransport({
+  const transport = useTriggerChatTransport<typeof aiChat>({
     task: "ai-chat",
     accessToken: getChatToken,
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
     sessions: initialSessions,
     onSessionChange: handleSessionChange,
+    clientData: { userId: "user_123" },
     triggerOptions: {
       tags: ["user:user_123"],
     },
