@@ -54,6 +54,7 @@
     "@electric-sql/react": "^0.3.5",
     "@headlessui/react": "^1.7.8",
     "@heroicons/react": "^2.0.12",
+    "@jsonhero/schema-infer": "^0.1.5",
     "@internal/cache": "workspace:*",
     "@internal/redis": "workspace:*",
     "@internal/run-engine": "workspace:*",
