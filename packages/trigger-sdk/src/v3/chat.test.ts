@@ -1797,7 +1797,7 @@ describe("TriggerChatTransport", () => {
       expect(lastCall![1].lastEventId).toBeDefined();
     });
 
-    it("should fire with null when session is deleted (stream ends naturally)", async () => {
+    it("should preserve session when stream ends naturally (run stays alive between turns)", async () => {
       const onSessionChange = vi.fn();
 
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
@@ -1846,11 +1846,12 @@ describe("TriggerChatTransport", () => {
       const reader = stream.getReader();
       while (!(await reader.read()).done) {}
 
-      // Session should have been created then deleted
+      // Session should have been created but NOT deleted — the run stays
+      // alive between turns and the session is needed for reconnection.
       expect(onSessionChange).toHaveBeenCalledWith("chat-end", expect.objectContaining({
         runId: "run_end",
       }));
-      expect(onSessionChange).toHaveBeenCalledWith("chat-end", null);
+      expect(onSessionChange).not.toHaveBeenCalledWith("chat-end", null);
     });
 
     it("should be updatable via setOnSessionChange", async () => {
