@@ -256,7 +256,7 @@ export const myChat = chat.task({
 ```
 
 <Tip>
-  `clientData` contains custom data from the frontend — either the `metadata` option on the transport constructor (sent with every message) or the `metadata` option on `sendMessage()` (per-message). See [Client data and metadata](#client-data-and-metadata).
+  `clientData` contains custom data from the frontend — either the `clientData` option on the transport constructor (sent with every message) or the `metadata` option on `sendMessage()` (per-message). See [Client data and metadata](#client-data-and-metadata).
 </Tip>
 
 ### onTurnStart
@@ -501,13 +501,17 @@ Putting it all together — a complete chat app with server-side persistence, se
 import { chat } from "@trigger.dev/sdk/ai";
 import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
 import { db } from "@/lib/db";
 
 export const myChat = chat.task({
   id: "my-chat",
-  onChatStart: async ({ chatId }) => {
+  clientDataSchema: z.object({
+    userId: z.string(),
+  }),
+  onChatStart: async ({ chatId, clientData }) => {
     await db.chat.create({
-      data: { id: chatId, title: "New chat", messages: [] },
+      data: { id: chatId, userId: clientData.userId, title: "New chat", messages: [] },
     });
   },
   onTurnStart: async ({ chatId, uiMessages, runId, chatAccessToken }) => {
@@ -593,6 +597,7 @@ export function Chat({ chatId, initialMessages, initialSessions }) {
   const transport = useTriggerChatTransport<typeof myChat>({
     task: "my-chat",
     accessToken: getChatToken,
+    clientData: { userId: currentUser.id }, // Type-checked against clientDataSchema
     sessions: initialSessions,
     onSessionChange: (id, session) => {
       if (!session) deleteSession(id);
@@ -676,21 +681,21 @@ export const myChat = chat.task({
 
 ## Client data and metadata
 
-### Transport-level metadata
+### Transport-level client data
 
-Set default metadata on the transport that's included in every request:
+Set default client data on the transport that's included in every request. When the task uses `clientDataSchema`, this is type-checked to match:
 
 ```ts
-const transport = useTriggerChatTransport({
+const transport = useTriggerChatTransport<typeof myChat>({
   task: "my-chat",
   accessToken: getChatToken,
-  metadata: { userId: currentUser.id },
+  clientData: { userId: currentUser.id },
 });
 ```
 
 ### Per-message metadata
 
-Pass metadata with individual messages. Per-message values are merged with transport-level metadata (per-message wins on conflicts):
+Pass metadata with individual messages via `sendMessage`. Per-message values are merged with transport-level client data (per-message wins on conflicts):
 
 ```ts
 sendMessage(
@@ -699,29 +704,51 @@ sendMessage(
 );
 ```
 
-### Accessing client data in the task
+### Typed client data with `clientDataSchema`
 
-Both transport-level and per-message metadata are available as `clientData` in the `run` function and in `onChatStart`:
+Instead of manually parsing `clientData` with Zod in every hook, pass a `clientDataSchema` to `chat.task`. The schema validates the data once per turn, and `clientData` is typed in all hooks and `run`:
 
 ```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 
 export const myChat = chat.task({
   id: "my-chat",
+  clientDataSchema: z.object({
+    model: z.string().optional(),
+    userId: z.string(),
+  }),
+  onChatStart: async ({ chatId, clientData }) => {
+    // clientData is typed as { model?: string; userId: string }
+    await db.chat.create({
+      data: { id: chatId, userId: clientData.userId },
+    });
+  },
   run: async ({ messages, clientData, signal }) => {
-    const { model, userId } = z.object({
-      model: z.string().optional(),
-      userId: z.string(),
-    }).parse(clientData);
-
+    // Same typed clientData — no manual parsing needed
     return streamText({
-      model: openai(model ?? "gpt-4o"),
+      model: openai(clientData?.model ?? "gpt-4o"),
       messages,
       abortSignal: signal,
     });
   },
 });
 ```
+
+The schema also types the `clientData` option on the frontend transport:
+
+```ts
+// TypeScript enforces that clientData matches the schema
+const transport = useTriggerChatTransport<typeof myChat>({
+  task: "my-chat",
+  accessToken: getChatToken,
+  clientData: { userId: currentUser.id },
+});
+```
+
+Supports Zod, ArkType, Valibot, and other schema libraries supported by the SDK.
 
 ## Runtime configuration
 
@@ -763,7 +790,7 @@ run: async ({ messages, signal }) => {
 | `streamKey` | `string` | `"chat"` | Stream key (only change if using custom key) |
 | `headers` | `Record<string, string>` | — | Extra headers for API requests |
 | `streamTimeoutSeconds` | `number` | `120` | How long to wait for stream data |
-| `metadata` | `Record<string, unknown>` | — | Default metadata for every request |
+| `clientData` | Typed by `clientDataSchema` | — | Default client data for every request |
 | `sessions` | `Record<string, {...}>` | — | Restore sessions from storage |
 | `onSessionChange` | `(chatId, session \| null) => void` | — | Fires when session state changes |
 | `triggerOptions` | `{...}` | — | Options for the initial task trigger (see below) |
@@ -837,6 +864,7 @@ const transport = useTriggerChatTransport({
 |--------|------|---------|-------------|
 | `id` | `string` | required | Task identifier |
 | `run` | `(payload: ChatTaskRunPayload) => Promise<unknown>` | required | Handler for each turn |
+| `clientDataSchema` | `TaskSchema` | — | Schema for validating and typing `clientData` |
 | `onChatStart` | `(event: ChatStartEvent) => Promise<void> \| void` | — | Fires on turn 0 before `run()` |
 | `onTurnStart` | `(event: TurnStartEvent) => Promise<void> \| void` | — | Fires every turn before `run()` |
 | `onTurnComplete` | `(event: TurnCompleteEvent) => Promise<void> \| void` | — | Fires after each turn completes |
@@ -854,7 +882,7 @@ Plus all standard [TaskOptions](/tasks/overview) — `retry`, `queue`, `machine`
 | `chatId` | `string` | Unique chat session ID |
 | `trigger` | `"submit-message" \| "regenerate-message"` | What triggered the request |
 | `messageId` | `string \| undefined` | Message ID (for regenerate) |
-| `clientData` | `unknown` | Custom data from frontend metadata |
+| `clientData` | Typed by `clientDataSchema` | Custom data from the frontend (typed when schema is provided) |
 | `signal` | `AbortSignal` | Combined stop + cancel signal |
 | `cancelSignal` | `AbortSignal` | Cancel-only signal |
 | `stopSignal` | `AbortSignal` | Stop-only signal (per-turn) |
