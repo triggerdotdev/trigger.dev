@@ -86,6 +86,7 @@ declare const Deno: unknown;
 
 export const aiChat = chat.task({
   id: "ai-chat",
+  clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
   warmTimeoutInSeconds: 60,
   chatAccessTokenTTL: "2h",
   onChatStart: async ({ chatId, runId, chatAccessToken }) => {
@@ -125,20 +126,20 @@ export const aiChat = chat.task({
     });
   },
   run: async ({ messages, clientData, stopSignal }) => {
-    const { model: modelId } = z
-      .object({ model: z.string().optional() })
-      .parse(clientData ?? {});
-
     return streamText({
-      model: getModel(modelId),
+      model: getModel(clientData?.model),
       system: "You are a helpful assistant. Be concise and friendly.",
       messages,
       tools: { inspectEnvironment },
       stopWhen: stepCountIs(10),
       abortSignal: stopSignal,
+      providerOptions: {
+        openai: { user: clientData?.userId },
+        anthropic: { metadata: { user_id: clientData?.userId } },
+      },
       experimental_telemetry: {
         isEnabled: true,
-      }
+      },
     });
   },
 });

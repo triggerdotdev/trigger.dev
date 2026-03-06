@@ -29,6 +29,7 @@ import {
   type TriggerChatTransportOptions,
 } from "./chat.js";
 import type { AnyTask, TaskIdentifier } from "@trigger.dev/core/v3";
+import type { InferChatClientData } from "./ai.js";
 
 /**
  * Options for `useTriggerChatTransport`, with a type-safe `task` field.
@@ -39,7 +40,7 @@ import type { AnyTask, TaskIdentifier } from "@trigger.dev/core/v3";
  * ```
  */
 export type UseTriggerChatTransportOptions<TTask extends AnyTask = AnyTask> = Omit<
-  TriggerChatTransportOptions,
+  TriggerChatTransportOptions<InferChatClientData<TTask>>,
   "task"
 > & {
   /** The task ID. Strongly typed when a task type parameter is provided. */
