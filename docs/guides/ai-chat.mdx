@@ -778,6 +778,105 @@ run: async ({ messages, signal }) => {
   Longer warm timeout means faster responses but more compute usage. Set to `0` to suspend immediately after each turn (minimum latency cost, slight delay on next message).
 </Info>
 
+## Per-run data with `chat.local`
+
+Use `chat.local` to create typed, run-scoped data that persists across turns and is accessible from anywhere — the run function, tools, nested helpers. Each run gets its own isolated copy, and locals are automatically cleared between runs.
+
+### Declaring and initializing
+
+Declare locals at module level, then initialize them inside a lifecycle hook where you have context (chatId, clientData, etc.):
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText, tool } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+import { db } from "@/lib/db";
+
+// Declare at module level — multiple locals can coexist
+const userContext = chat.local<{
+  name: string;
+  plan: "free" | "pro";
+  messageCount: number;
+}>();
+
+export const myChat = chat.task({
+  id: "my-chat",
+  clientDataSchema: z.object({ userId: z.string() }),
+  onChatStart: async ({ clientData }) => {
+    // Initialize with real data from your database
+    const user = await db.user.findUnique({
+      where: { id: clientData.userId },
+    });
+    userContext.init({
+      name: user.name,
+      plan: user.plan,
+      messageCount: user.messageCount,
+    });
+  },
+  run: async ({ messages, signal }) => {
+    userContext.messageCount++;
+
+    return streamText({
+      model: openai("gpt-4o"),
+      system: `Helping ${userContext.name} (${userContext.plan} plan).`,
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+### Accessing from tools
+
+Locals are accessible from anywhere during task execution — including AI SDK tools:
+
+```ts
+const userContext = chat.local<{ plan: "free" | "pro" }>();
+
+const premiumTool = tool({
+  description: "Access premium features",
+  inputSchema: z.object({ feature: z.string() }),
+  execute: async ({ feature }) => {
+    if (userContext.plan !== "pro") {
+      return { error: "This feature requires a Pro plan." };
+    }
+    // ... premium logic
+  },
+});
+```
+
+### Dirty tracking and persistence
+
+The `hasChanged()` method returns `true` if any property was set since the last check, then resets the flag. Use it in lifecycle hooks to only persist when data actually changed:
+
+```ts
+onTurnComplete: async ({ chatId }) => {
+  if (userContext.hasChanged()) {
+    await db.user.update({
+      where: { id: userContext.get().userId },
+      data: {
+        messageCount: userContext.messageCount,
+      },
+    });
+  }
+},
+```
+
+### API reference
+
+| Method | Description |
+|--------|-------------|
+| `chat.local<T>()` | Create a typed local (declare at module level) |
+| `local.init(value)` | Initialize with a value (call in hooks or `run`) |
+| `local.hasChanged()` | Returns `true` if modified since last check, resets flag |
+| `local.get()` | Returns a plain object copy (for serialization) |
+| `local.property` | Direct property access (read/write via Proxy) |
+
+<Note>
+  Locals use shallow proxying. Nested object mutations like `local.prefs.theme = "dark"` won't trigger the dirty flag. Instead, replace the whole property: `local.prefs = { ...local.prefs, theme: "dark" }`.
+</Note>
+
 ## Frontend reference
 
 ### TriggerChatTransport options
@@ -897,6 +996,7 @@ See [onTurnComplete](#onturncomplete) for the full field reference.
 |--------|-------------|
 | `chat.task(options)` | Create a chat task |
 | `chat.pipe(source, options?)` | Pipe a stream to the frontend (from anywhere inside a task) |
+| `chat.local<T>()` | Create a per-run typed local (see [Per-run data](#per-run-data-with-chatlocal)) |
 | `chat.createAccessToken(taskId)` | Create a public access token for a chat task |
 | `chat.setTurnTimeout(duration)` | Override turn timeout at runtime (e.g. `"2h"`) |
 | `chat.setTurnTimeoutInSeconds(seconds)` | Override turn timeout at runtime (in seconds) |
