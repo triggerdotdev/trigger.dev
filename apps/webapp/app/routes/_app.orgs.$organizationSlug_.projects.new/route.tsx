@@ -22,7 +22,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Select, SelectItem } from "~/components/primitives/Select";
-import { ButtonSpinner } from "~/components/primitives/Spinner";
+
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -445,13 +445,8 @@ export default function Page() {
 
                 <FormButtons
                   confirmButton={
-                    <Button
-                      type="submit"
-                      variant={"primary/small"}
-                      disabled={isLoading}
-                      TrailingIcon={isLoading ? ButtonSpinner : undefined}
-                    >
-                      {isLoading ? "Creating…" : "Create"}
+                    <Button type="submit" variant={"primary/small"} isLoading={isLoading}>
+                      Create
                     </Button>
                   }
                   cancelButton={
