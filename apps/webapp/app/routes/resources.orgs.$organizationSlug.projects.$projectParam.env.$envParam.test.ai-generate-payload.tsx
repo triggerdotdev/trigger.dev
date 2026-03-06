@@ -222,7 +222,7 @@ async function getTaskSourceCode(
 
 async function getTaskFromDeployment(environmentId: string, taskIdentifier: string) {
   const deployment = await findCurrentWorkerDeployment({ environmentId });
-  if (!deployment) return null;
+  if (!deployment?.worker) return null;
 
   const task = deployment.worker.tasks.find((t) => t.slug === taskIdentifier);
   if (!task) return null;
