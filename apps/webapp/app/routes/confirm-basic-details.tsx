@@ -210,7 +210,7 @@ export default function Page() {
   const [enteredEmail, setEnteredEmail] = useState<string>(user.email ?? "");
   const { isManagedCloud } = useFeatures();
   const navigation = useNavigation();
-  const isSubmitting = navigation.state === "submitting";
+  const isSubmitting = navigation.state === "submitting" || navigation.state === "loading";
   const [selectedReferralSource, setSelectedReferralSource] = useState<string | undefined>();
   const [selectedRole, setSelectedRole] = useState<string>("");
 
