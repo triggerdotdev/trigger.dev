@@ -67,6 +67,7 @@ import { cn } from "~/utils/cn";
 import { branchesPath, docsPath, ProjectParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { ArchiveButton } from "../resources.branches.archive";
+import { IconArrowBearRight2, IconArrowMoveUpFilled } from "@tabler/icons-react";
 
 export const BranchesOptions = z.object({
   search: z.string().optional(),
@@ -319,7 +320,15 @@ export default function Page() {
                               isSticky
                               hiddenButtons={
                                 isSelected ? null : (
-                                  <PopoverMenuItem to={path} title="Switch to branch" />
+                                  <LinkButton
+                                    to={path}
+                                    variant="secondary/small"
+                                    LeadingIcon={IconArrowBearRight2}
+                                    leadingIconClassName="text-blue-500 -mr-2"
+                                    className="pl-1.5"
+                                  >
+                                    Switch to branch
+                                  </LinkButton>
                                 )
                               }
                               popoverContent={
@@ -328,8 +337,8 @@ export default function Page() {
                                     {isSelected ? null : (
                                       <PopoverMenuItem
                                         to={path}
-                                        icon={ArrowRightIcon}
-                                        leadingIconClassName="text-blue-500"
+                                        icon={IconArrowBearRight2}
+                                        leadingIconClassName="text-blue-500 -mr-0.5 -ml-1"
                                         title="Switch to branch"
                                       />
                                     )}
