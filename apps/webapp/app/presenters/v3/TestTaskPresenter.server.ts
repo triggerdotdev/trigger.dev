@@ -250,17 +250,17 @@ export class TestTaskPresenter {
     // Infer schema from existing run payloads when no explicit schema is defined
     let inferredPayloadSchema: unknown | undefined;
     if (!task.payloadSchema && latestRuns.length > 0 && task.triggerSource === "STANDARD") {
-      try {
-        let inference: ReturnType<typeof inferSchema> | undefined;
-        for (const run of latestRuns) {
+      let inference: ReturnType<typeof inferSchema> | undefined;
+      for (const run of latestRuns) {
+        try {
           const parsed = await parsePacket({ data: run.payload, dataType: run.payloadType });
           inference = inferSchema(parsed, inference);
+        } catch {
+          // Skip malformed runs — inference is best-effort
         }
-        if (inference) {
-          inferredPayloadSchema = inference.toJSONSchema();
-        }
-      } catch {
-        // Ignore inference errors — it's best-effort
+      }
+      if (inference) {
+        inferredPayloadSchema = inference.toJSONSchema();
       }
     }
 

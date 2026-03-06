@@ -66,7 +66,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     taskIdentifier,
     hasPayloadSchema: !!payloadSchema,
     hasCurrentPayload: !!currentPayload,
-    prompt,
+    promptLength: prompt.length,
   });
 
   const systemPrompt = buildSystemPrompt(taskIdentifier, payloadSchema, currentPayload);
@@ -207,7 +207,6 @@ async function getTaskSourceCode(
       taskIdentifier,
       filePath: file.filePath,
       contentLength: decompressed.length,
-      contents: decompressed,
     });
 
     return `File: ${file.filePath}\n\n${decompressed}`;
