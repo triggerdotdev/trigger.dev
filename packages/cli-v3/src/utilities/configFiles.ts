@@ -11,7 +11,7 @@ function getGlobalConfigFolderPath() {
   return configDir;
 }
 
-export const DEFFAULT_PROFILE = "default";
+export const DEFAULT_PROFILE = "default";
 
 const CONFIG_FILE = "config.json";
 const OLD_CONFIG_FILE = "default.json";
@@ -27,7 +27,7 @@ type OldCliConfigFile = z.infer<typeof OldCliConfigFile>;
 
 const CliConfigFile = z.object({
   version: z.literal(2),
-  currentProfile: z.string().default(DEFFAULT_PROFILE),
+  currentProfile: z.string().default(DEFAULT_PROFILE),
   profiles: z.record(CliConfigProfileSettings),
   settings: z
     .object({
@@ -55,7 +55,7 @@ function getAuthConfigFileBackupPath() {
 function getBlankConfig(): CliConfigFile {
   return {
     version: 2,
-    currentProfile: DEFFAULT_PROFILE,
+    currentProfile: DEFAULT_PROFILE,
     profiles: {},
     settings: {
       hasSeenMCPInstallPrompt: false,
@@ -83,7 +83,7 @@ export function readAuthConfigCurrentProfileName(): string {
 
 export function writeAuthConfigProfile(
   settings: CliConfigProfileSettings,
-  profile: string = DEFFAULT_PROFILE
+  profile: string = DEFAULT_PROFILE
 ) {
   const config = getConfig();
 
@@ -93,7 +93,7 @@ export function writeAuthConfigProfile(
 }
 
 export function readAuthConfigProfile(
-  profile: string = DEFFAULT_PROFILE
+  profile: string = DEFAULT_PROFILE
 ): CliConfigProfileSettings | undefined {
   try {
     const config = getConfig();
@@ -150,13 +150,13 @@ export function writeConfigLastRulesInstallPromptVersion(version: string) {
   writeAuthConfigFile(config);
 }
 
-export function deleteAuthConfigProfile(profile: string = DEFFAULT_PROFILE) {
+export function deleteAuthConfigProfile(profile: string = DEFAULT_PROFILE) {
   const config = getConfig();
 
   delete config.profiles[profile];
 
   if (config.currentProfile === profile) {
-    config.currentProfile = DEFFAULT_PROFILE;
+    config.currentProfile = DEFAULT_PROFILE;
   }
 
   writeAuthConfigFile(config);
@@ -182,7 +182,7 @@ export function readAuthConfigFile(): CliConfigFile | null {
 
     const newConfigFormat = {
       version: 2,
-      currentProfile: DEFFAULT_PROFILE,
+      currentProfile: DEFAULT_PROFILE,
       profiles: oldConfigFormat,
     } satisfies CliConfigFile;
 

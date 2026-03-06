@@ -257,7 +257,8 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   log.info("Next steps:");
   log.info(
     `   1. To start developing, run ${chalk.green(
-      `npx trigger.dev@${cliTag} dev${options.profile ? "" : ` --profile ${options.profile}`}`
+      `npx trigger.dev@${cliTag} dev${options.profile && options.profile !== "default" ? ` --profile ${options.profile}` : ""
+      }`
     )} in your project directory`
   );
   log.info(`   2. Visit your ${projectDashboard} to view your newly created tasks.`);
@@ -541,11 +542,11 @@ class CLIInstallPackagesOutputter implements InstallPackagesOutputter {
 }
 
 class SilentInstallPackagesOutputter implements InstallPackagesOutputter {
-  startSDK() {}
-  installedSDK() {}
-  startBuild() {}
-  installedBuild() {}
-  stoppedWithError() {}
+  startSDK() { }
+  installedSDK() { }
+  startBuild() { }
+  installedBuild() { }
+  stoppedWithError() { }
 }
 
 export async function installPackages(

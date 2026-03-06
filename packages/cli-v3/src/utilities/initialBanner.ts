@@ -5,7 +5,7 @@ import { chalkGrey, chalkRun, chalkTask, chalkWorker, logo } from "./cliOutput.j
 import { logger } from "./logger.js";
 import { spinner } from "./windows.js";
 import {
-  DEFFAULT_PROFILE,
+  DEFAULT_PROFILE,
   readAuthConfigCurrentProfileName,
   readAuthConfigProfile,
 } from "./configFiles.js";
@@ -15,21 +15,19 @@ function getProfileInfo(profileName?: string) {
   const currentProfile = profileName ?? readAuthConfigCurrentProfileName();
   const profile = readAuthConfigProfile(currentProfile);
 
-  if (currentProfile === DEFFAULT_PROFILE || !profile) {
+  if (currentProfile === DEFAULT_PROFILE || !profile) {
     return;
   }
 
-  return `Profile: ${currentProfile}${
-    profile.apiUrl === CLOUD_API_URL ? "" : ` - ${profile.apiUrl}`
-  }`;
+  return `Profile: ${currentProfile}${profile.apiUrl === CLOUD_API_URL ? "" : ` - ${profile.apiUrl}`
+    }`;
 }
 
 export async function printInitialBanner(performUpdateCheck = true, profile?: string) {
   const profileInfo = getProfileInfo(profile);
 
-  const text = `\n${logo()} ${chalkGrey(`(${VERSION})`)}${
-    profileInfo ? chalkGrey(` | ${profileInfo}`) : ""
-  }\n`;
+  const text = `\n${logo()} ${chalkGrey(`(${VERSION})`)}${profileInfo ? chalkGrey(` | ${profileInfo}`) : ""
+    }\n`;
 
   logger.info(text);
 
