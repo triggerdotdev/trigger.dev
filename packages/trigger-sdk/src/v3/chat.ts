@@ -210,7 +210,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     | undefined;
 
   private sessions: Map<string, ChatSessionState> = new Map();
-  private activeReconnects: Map<string, AbortController> = new Map();
+  private activeStreams: Map<string, AbortController> = new Map();
 
   constructor(options: TriggerChatTransportOptions) {
     this.taskId = options.task;
@@ -277,6 +277,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
         const apiClient = new ApiClient(this.baseURL, session.publicAccessToken);
         await apiClient.sendInputStream(session.runId, CHAT_MESSAGES_STREAM_ID, minimalPayload);
+
+        // Cancel any active reconnect stream for this chatId before
+        // opening a new subscription for the new turn.
+        const activeStream = this.activeStreams.get(chatId);
+        if (activeStream) {
+          activeStream.abort();
+          this.activeStreams.delete(chatId);
+        }
+
         return this.subscribeToStream(
           session.runId,
           session.publicAccessToken,
@@ -331,20 +340,21 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       return null;
     }
 
-    // Abort any previous reconnect for this chatId (e.g. React strict mode
-    // double-firing the effect) to avoid duplicate SSE connections.
-    const prev = this.activeReconnects.get(options.chatId);
-    if (prev) {
-      prev.abort();
+    // Deduplicate: if there's already an active stream for this chatId,
+    // return null so the second caller no-ops.
+    if (this.activeStreams.has(options.chatId)) {
+      return null;
     }
-    const reconnectAbort = new AbortController();
-    this.activeReconnects.set(options.chatId, reconnectAbort);
+
+    const abortController = new AbortController();
+    this.activeStreams.set(options.chatId, abortController);
 
     return this.subscribeToStream(
       session.runId,
       session.publicAccessToken,
-      reconnectAbort.signal,
-      options.chatId
+      abortController.signal,
+      options.chatId,
+      { sendStopOnAbort: false }
     );
   };
 
@@ -408,7 +418,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     runId: string,
     accessToken: string,
     abortSignal: AbortSignal | undefined,
-    chatId?: string
+    chatId?: string,
+    options?: { sendStopOnAbort?: boolean }
   ): ReadableStream<UIMessageChunk> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${accessToken}`,
@@ -427,13 +438,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       ? AbortSignal.any([abortSignal, internalAbort.signal])
       : internalAbort.signal;
 
-    // When the caller aborts (user calls stop()), send a stop signal to the
-    // running task via input streams, then close the SSE connection.
+    // When the caller aborts (user calls stop()), close the SSE connection.
+    // Only send a stop signal to the task if this is a user-initiated stop
+    // (sendStopOnAbort), not an internal stream management abort.
     if (abortSignal) {
       abortSignal.addEventListener(
         "abort",
         () => {
-          if (session) {
+          if (options?.sendStopOnAbort !== false && session) {
             session.skipToTurnComplete = true;
             const api = new ApiClient(this.baseURL, session.publicAccessToken);
             api
@@ -468,14 +480,6 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               const { done, value } = await reader.read();
 
               if (done) {
-                // Only delete session if the stream ended naturally (not aborted by stop).
-                // When the user clicks stop, the abort closes the SSE reader which
-                // returns done=true, but the run is still alive and waiting for
-                // the next message via input streams.
-                if (chatId && !combinedSignal.aborted) {
-                  this.sessions.delete(chatId);
-                  this.notifySessionChange(chatId, null);
-                }
                 controller.close();
                 return;
               }
