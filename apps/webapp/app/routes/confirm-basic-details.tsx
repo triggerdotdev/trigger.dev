@@ -99,6 +99,8 @@ function createSchema(
       referralSourceOther: z.string().optional(),
       role: z.string().optional(),
       roleOther: z.string().optional(),
+      referralSourcePosition: z.coerce.number().optional(),
+      rolePosition: z.coerce.number().optional(),
     })
     .refine((value) => value.email === value.confirmEmail, {
       message: "Emails must match",
@@ -141,6 +143,9 @@ export const action: ActionFunction = async ({ request }) => {
 
     if (submission.value.referralSource) {
       onboardingData.referralSource = submission.value.referralSource;
+      if (submission.value.referralSourcePosition) {
+        onboardingData.referralSourcePosition = String(submission.value.referralSourcePosition);
+      }
       if (submission.value.referralSource === "Other" && submission.value.referralSourceOther) {
         onboardingData.referralSourceOther = submission.value.referralSourceOther;
       }
@@ -148,6 +153,9 @@ export const action: ActionFunction = async ({ request }) => {
 
     if (submission.value.role) {
       onboardingData.role = submission.value.role;
+      if (submission.value.rolePosition) {
+        onboardingData.rolePosition = String(submission.value.rolePosition);
+      }
       if (submission.value.role === "Other" && submission.value.roleOther) {
         onboardingData.roleOther = submission.value.roleOther;
       }
@@ -319,6 +327,15 @@ export default function Page() {
                       name="referralSource"
                       value={selectedReferralSource ?? ""}
                     />
+                    <input
+                      type="hidden"
+                      name="referralSourcePosition"
+                      value={
+                        selectedReferralSource
+                          ? shuffledReferralSources.indexOf(selectedReferralSource) + 1
+                          : ""
+                      }
+                    />
                     <RadioGroup
                       value={selectedReferralSource}
                       onValueChange={setSelectedReferralSource}
@@ -350,6 +367,11 @@ export default function Page() {
                   <InputGroup className="mt-1">
                     <Label id="role-label">What role fits you best?</Label>
                     <input type="hidden" name="role" value={selectedRole} />
+                    <input
+                      type="hidden"
+                      name="rolePosition"
+                      value={selectedRole ? shuffledRoles.indexOf(selectedRole) + 1 : ""}
+                    />
                     <Select<string, string>
                       value={selectedRole}
                       setValue={setSelectedRole}
