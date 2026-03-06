@@ -220,7 +220,7 @@ export default function NewOrganizationPage() {
 
               <FormButtons
                 confirmButton={
-                  <Button type="submit" variant={"primary/small"} disabled={isLoading}>
+                  <Button type="submit" variant={"primary/small"} isLoading={isLoading}>
                     Create
                   </Button>
                 }
