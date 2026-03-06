@@ -1366,20 +1366,28 @@ export class ApiClient {
       });
   }
 
-  async appendToStream<TBody extends BodyInit>(
+  async appendToStream<TBody>(
     runId: string,
     target: string,
     streamId: string,
     part: TBody,
     requestOptions?: ZodFetchOptions
   ) {
+    // Serialize object payloads to JSON to prevent [object Object] coercion by fetch
+    const body =
+      typeof part === "string" || part instanceof ArrayBuffer || part instanceof Blob ||
+        part instanceof FormData || part instanceof URLSearchParams ||
+        (typeof ReadableStream !== "undefined" && part instanceof ReadableStream)
+        ? (part as BodyInit)
+        : JSON.stringify(part);
+
     return zodfetch(
       AppendToStreamResponseBody,
       `${this.baseUrl}/realtime/v1/streams/${runId}/${target}/${streamId}/append`,
       {
         method: "POST",
         headers: this.#getHeaders(false),
-        body: part,
+        body,
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );

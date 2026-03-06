@@ -514,7 +514,7 @@ export function ConnectGitHubRepoModal({
                   <TextLink
                     target="_blank"
                     rel="noreferrer noopener"
-                    to={`https://github.com/settings/installations/${selectedInstallation?.appInstallationId}`}
+                    to={`https://github.com/apps/trigger-dev-app/installations/${selectedInstallation?.appInstallationId}`}
                   >
                     GitHub
                   </TextLink>
@@ -632,9 +632,9 @@ export function ConnectedGitHubRepoForm({
   useEffect(() => {
     const hasChanges =
       gitSettingsValues.productionBranch !==
-        (connectedGitHubRepo.branchTracking?.prod?.branch || "") ||
+      (connectedGitHubRepo.branchTracking?.prod?.branch || "") ||
       gitSettingsValues.stagingBranch !==
-        (connectedGitHubRepo.branchTracking?.staging?.branch || "") ||
+      (connectedGitHubRepo.branchTracking?.staging?.branch || "") ||
       gitSettingsValues.previewDeploymentsEnabled !== connectedGitHubRepo.previewDeploymentsEnabled;
     setHasGitSettingsChanges(hasChanges);
   }, [gitSettingsValues, connectedGitHubRepo]);
@@ -898,6 +898,6 @@ export function GitHubSettingsPanel({
         </Hint>
       )}
     </div>
-    
+
   );
 }
