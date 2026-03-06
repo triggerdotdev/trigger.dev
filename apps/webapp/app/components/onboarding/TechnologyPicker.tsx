@@ -210,11 +210,22 @@ export function TechnologyPicker({
 
   const addCustomValue = useCallback(() => {
     const trimmed = otherInputValue.trim();
-    if (trimmed && !customValues.includes(trimmed) && !value.includes(trimmed)) {
+    if (!trimmed) return;
+
+    const matchedOption = TECHNOLOGY_OPTIONS.find(
+      (opt) => opt.toLowerCase() === trimmed.toLowerCase()
+    );
+
+    if (matchedOption) {
+      if (!value.includes(matchedOption)) {
+        onChange([...value, matchedOption]);
+      }
+    } else if (!customValues.includes(trimmed) && !value.includes(trimmed)) {
       onCustomValuesChange([...customValues, trimmed]);
-      setOtherInputValue("");
     }
-  }, [otherInputValue, customValues, onCustomValuesChange, value]);
+
+    setOtherInputValue("");
+  }, [otherInputValue, customValues, onCustomValuesChange, value, onChange]);
 
   const handleOtherKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
