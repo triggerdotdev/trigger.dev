@@ -84,15 +84,38 @@ const inspectEnvironment = tool({
 declare const Bun: unknown;
 declare const Deno: unknown;
 
+// Per-run user context — loaded from DB in onChatStart, accessible everywhere
+const userContext = chat.local<{
+  userId: string;
+  name: string;
+  plan: "free" | "pro";
+  preferredModel: string | null;
+  messageCount: number;
+}>();
+
 export const aiChat = chat.task({
   id: "ai-chat",
   clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
   warmTimeoutInSeconds: 60,
   chatAccessTokenTTL: "2h",
-  onChatStart: async ({ chatId, runId, chatAccessToken }) => {
+  onChatStart: async ({ chatId, runId, chatAccessToken, clientData }) => {
+    // Load user context from DB — available for the entire run
+    const user = await prisma.user.upsert({
+      where: { id: clientData.userId },
+      create: { id: clientData.userId, name: "User" },
+      update: {},
+    });
+    userContext.init({
+      userId: user.id,
+      name: user.name,
+      plan: user.plan as "free" | "pro",
+      preferredModel: user.preferredModel,
+      messageCount: user.messageCount,
+    });
+
     await prisma.chat.upsert({
       where: { id: chatId },
-      create: { id: chatId, title: "New chat" },
+      create: { id: chatId, title: "New chat", userId: user.id },
       update: {},
     });
     await prisma.chatSession.upsert({
@@ -113,7 +136,7 @@ export const aiChat = chat.task({
       update: { runId, publicAccessToken: chatAccessToken },
     });
   },
-  onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
+  onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId, clientData }) => {
     // Persist final messages + assistant response + stream position
     await prisma.chat.update({
       where: { id: chatId },
@@ -124,11 +147,33 @@ export const aiChat = chat.task({
       create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
       update: { runId, publicAccessToken: chatAccessToken, lastEventId },
     });
+
+    // Persist user context changes (message count, preferred model) if anything changed
+    if (userContext.hasChanged()) {
+      await prisma.user.update({
+        where: { id: userContext.userId },
+        data: {
+          messageCount: userContext.messageCount,
+          preferredModel: userContext.preferredModel,
+        },
+      });
+    }
   },
   run: async ({ messages, clientData, stopSignal }) => {
+    // Track usage
+    userContext.messageCount++;
+
+    // Remember their model choice
+    if (clientData?.model) {
+      userContext.preferredModel = clientData.model;
+    }
+
+    // Use preferred model if none specified
+    const modelId = clientData?.model ?? userContext.preferredModel ?? undefined;
+
     return streamText({
-      model: getModel(clientData?.model),
-      system: "You are a helpful assistant. Be concise and friendly.",
+      model: getModel(modelId),
+      system: `You are a helpful assistant for ${userContext.name} (${userContext.plan} plan). Be concise and friendly.`,
       messages,
       tools: { inspectEnvironment },
       stopWhen: stepCountIs(10),
