@@ -81,6 +81,10 @@
             ]
           },
           {
+            "group": "AI Chat",
+            "pages": ["guides/ai-chat"]
+          },
+          {
             "group": "Configuration",
             "pages": [
               "config/config-file",

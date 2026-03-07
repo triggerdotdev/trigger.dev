@@ -22,6 +22,12 @@ export class NoopInputStreamManager implements InputStreamManager {
     return undefined;
   }
 
+  setLastSeqNum(_streamId: string, _seqNum: number): void {}
+
+  shiftBuffer(_streamId: string): boolean { return false; }
+
+  disconnectStream(_streamId: string): void {}
+
   clearHandlers(): void {}
   reset(): void {}
   disconnect(): void {}

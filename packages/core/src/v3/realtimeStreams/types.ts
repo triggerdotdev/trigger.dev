@@ -26,13 +26,17 @@ export interface RealtimeStreamsManager {
   ): Promise<void>;
 }
 
+export type StreamWriteResult = {
+  lastEventId?: string;
+};
+
 export interface RealtimeStreamInstance<T> {
-  wait(): Promise<void>;
+  wait(): Promise<StreamWriteResult>;
   get stream(): AsyncIterableStream<T>;
 }
 
 export interface StreamsWriter {
-  wait(): Promise<void>;
+  wait(): Promise<StreamWriteResult>;
 }
 
 export type RealtimeDefinedStream<TPart> = {
@@ -71,6 +75,10 @@ export type PipeStreamOptions = {
    * Additional request options for the API call.
    */
   requestOptions?: ApiRequestOptions;
+  /** Override the default span name for this operation. */
+  spanName?: string;
+  /** When true, the span will be collapsed in the dashboard. */
+  collapsed?: boolean;
 };
 
 /**
@@ -89,7 +97,7 @@ export type PipeStreamResult<T> = {
    * to the realtime stream. Use this to wait for the stream to complete before
    * finishing your task.
    */
-  waitUntilComplete: () => Promise<void>;
+  waitUntilComplete: () => Promise<StreamWriteResult>;
 };
 
 /**
@@ -199,6 +207,8 @@ export type InputStreamSubscription = {
 export type InputStreamOnceOptions = {
   signal?: AbortSignal;
   timeoutMs?: number;
+  /** Override the default span name for this operation. */
+  spanName?: string;
 };
 
 export type SendInputStreamOptions = {
@@ -234,6 +244,9 @@ export type InputStreamWaitOptions = {
    * and filtering waitpoints via `wait.listTokens()`.
    */
   tags?: string[];
+
+  /** Override the default span name for this operation. */
+  spanName?: string;
 };
 
 export type InferInputStreamType<T> = T extends RealtimeDefinedInputStream<infer TData>

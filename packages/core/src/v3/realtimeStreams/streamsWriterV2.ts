@@ -1,5 +1,5 @@
 import { S2, AppendRecord, BatchTransform } from "@s2-dev/streamstore";
-import { StreamsWriter } from "./types.js";
+import { StreamsWriter, StreamWriteResult } from "./types.js";
 import { nanoid } from "nanoid";
 
 export type StreamsWriterV2Options<T = any> = {
@@ -54,6 +54,7 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
   private readonly maxInflightBytes: number;
   private aborted = false;
   private sessionWritable: WritableStream<any> | null = null;
+  private lastSeqNum: number | undefined;
 
   constructor(private options: StreamsWriterV2Options<T>) {
     this.debug = options.debug ?? false;
@@ -169,9 +170,9 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
       const lastAcked = session.lastAckedPosition();
 
       if (lastAcked?.end) {
-        const recordsWritten = lastAcked.end.seqNum;
+        this.lastSeqNum = lastAcked.end.seqNum;
         this.log(
-          `[S2MetadataStream] Written ${recordsWritten} records, ending at seqNum=${lastAcked.end.seqNum}`
+          `[S2MetadataStream] Written ${this.lastSeqNum} records, ending at seqNum=${this.lastSeqNum}`
         );
       }
     } catch (error) {
@@ -184,8 +185,9 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
     }
   }
 
-  public async wait(): Promise<void> {
+  public async wait(): Promise<StreamWriteResult> {
     await this.streamPromise;
+    return { lastEventId: this.lastSeqNum?.toString() };
   }
 
   public [Symbol.asyncIterator]() {
