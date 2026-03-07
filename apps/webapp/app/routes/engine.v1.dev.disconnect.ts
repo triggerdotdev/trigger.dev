@@ -46,8 +46,14 @@ const { action } = createActionApiRoute(
       );
     }
 
-    // Cap the number of runs
-    const runFriendlyIds = body.runFriendlyIds.slice(0, MAX_RUNS);
+    if (body.runFriendlyIds.length > MAX_RUNS) {
+      return json(
+        { error: `A maximum of ${MAX_RUNS} runs can be cancelled per request` },
+        { status: 400 }
+      );
+    }
+
+    const { runFriendlyIds } = body;
 
     if (runFriendlyIds.length === 0) {
       return json({ cancelled: 0 }, { status: 200 });
@@ -56,7 +62,6 @@ const { action } = createActionApiRoute(
     logger.info("Dev disconnect: cancelling runs", {
       environmentId,
       runCount: runFriendlyIds.length,
-      capped: body.runFriendlyIds.length > MAX_RUNS,
     });
 
     // For small numbers of runs, cancel inline
@@ -150,7 +155,7 @@ async function createBulkCancelAction(
       environmentId,
       name: "Dev session disconnect",
       type: BulkActionType.CANCEL,
-      params: { runId: runFriendlyIds },
+      params: { runId: runFriendlyIds, finalizeRun: true },
       queryName: "bulk_action_v1",
       totalCount: runFriendlyIds.length,
       completionNotification: BulkActionNotificationType.NONE,

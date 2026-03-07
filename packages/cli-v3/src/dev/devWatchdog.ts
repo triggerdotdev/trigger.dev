@@ -43,23 +43,28 @@ if (!existsSync(dir)) {
   mkdirSync(dir, { recursive: true });
 }
 
+const PID_FILE_PREFIX = "trigger-watchdog:";
+
 // Single instance: kill any existing watchdog
 try {
-  const existingPid = parseInt(readFileSync(pidFilePath, "utf8"), 10);
-  if (existingPid && existingPid !== process.pid) {
-    try {
-      process.kill(existingPid, 0); // Check if alive
-      process.kill(existingPid, "SIGTERM"); // Kill it
-    } catch {
-      // Already dead
+  const pidFileContent = readFileSync(pidFilePath, "utf8");
+  if (pidFileContent.startsWith(PID_FILE_PREFIX)) {
+    const existingPid = parseInt(pidFileContent.slice(PID_FILE_PREFIX.length), 10);
+    if (existingPid && existingPid !== process.pid) {
+      try {
+        process.kill(existingPid, 0); // Check if alive
+        process.kill(existingPid, "SIGTERM"); // Kill it
+      } catch {
+        // Already dead
+      }
     }
   }
 } catch {
-  // No PID file
+  // No PID file or invalid format
 }
 
-// Write our PID
-writeFileSync(pidFilePath, process.pid.toString());
+// Write our PID with prefix so we can verify ownership later
+writeFileSync(pidFilePath, `${PID_FILE_PREFIX}${process.pid}`);
 
 function cleanup() {
   try {

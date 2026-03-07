@@ -222,6 +222,7 @@ class DevSupervisor implements WorkerRuntime {
         detached: true,
         stdio: "ignore",
         env: {
+          ...process.env,
           WATCHDOG_PARENT_PID: process.pid.toString(),
           WATCHDOG_API_URL: this.options.client.apiURL,
           WATCHDOG_API_KEY: this.options.client.accessToken ?? "",
@@ -254,8 +255,12 @@ class DevSupervisor implements WorkerRuntime {
     // Also try via PID file in case the process reference is stale
     if (this.watchdogPidPath) {
       try {
-        const pid = parseInt(readFileSync(this.watchdogPidPath, "utf8"), 10);
-        process.kill(pid, "SIGTERM");
+        const content = readFileSync(this.watchdogPidPath, "utf8");
+        const prefix = "trigger-watchdog:";
+        if (content.startsWith(prefix)) {
+          const pid = parseInt(content.slice(prefix.length), 10);
+          if (pid) process.kill(pid, "SIGTERM");
+        }
       } catch {
         // Already dead or no file
       }
