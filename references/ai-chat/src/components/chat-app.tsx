@@ -7,6 +7,7 @@ import type { aiChat } from "@/trigger/chat";
 import { useCallback, useEffect, useState } from "react";
 import { Chat } from "@/components/chat";
 import { ChatSidebar } from "@/components/chat-sidebar";
+import { DEFAULT_MODEL } from "@/lib/models";
 import {
   getChatToken,
   getChatList,
@@ -19,18 +20,22 @@ import {
 type ChatMeta = {
   id: string;
   title: string;
+  model: string;
   createdAt: number;
   updatedAt: number;
+};
+
+type SessionInfo = {
+  runId: string;
+  publicAccessToken: string;
+  lastEventId?: string;
 };
 
 type ChatAppProps = {
   initialChatList: ChatMeta[];
   initialActiveChatId: string | null;
   initialMessages: UIMessage[];
-  initialSessions: Record<
-    string,
-    { runId: string; publicAccessToken: string; lastEventId?: string }
-  >;
+  initialSessions: Record<string, SessionInfo>;
 };
 
 export function ChatApp({
@@ -42,15 +47,21 @@ export function ChatApp({
   const [chatList, setChatList] = useState<ChatMeta[]>(initialChatList);
   const [activeChatId, setActiveChatId] = useState<string | null>(initialActiveChatId);
   const [messages, setMessages] = useState<UIMessage[]>(initialMessages);
+  const [sessions, setSessions] = useState<Record<string, SessionInfo>>(initialSessions);
+
+  // Model for new chats (before first message is sent)
+  const [newChatModel, setNewChatModel] = useState(DEFAULT_MODEL);
 
   const handleSessionChange = useCallback(
-    (
-      chatId: string,
-      session: { runId: string; publicAccessToken: string; lastEventId?: string } | null
-    ) => {
-      // Session creation and token updates are handled server-side via onChatStart/onTurnComplete.
-      // We only need to clean up when the run ends (session = null).
-      if (!session) {
+    (chatId: string, session: SessionInfo | null) => {
+      if (session) {
+        setSessions((prev) => ({ ...prev, [chatId]: session }));
+      } else {
+        setSessions((prev) => {
+          const next = { ...prev };
+          delete next[chatId];
+          return next;
+        });
         deleteSessionAction(chatId);
       }
     },
@@ -86,6 +97,7 @@ export function ChatApp({
     const id = generateId();
     setActiveChatId(id);
     setMessages([]);
+    setNewChatModel(DEFAULT_MODEL);
   }
 
   function handleSelectChat(id: string) {
@@ -119,6 +131,14 @@ export function ChatApp({
     setChatList(list);
   }, []);
 
+  // Determine the model for the active chat
+  const activeChatMeta = chatList.find((c) => c.id === activeChatId);
+  const isNewChat = activeChatId != null && !activeChatMeta;
+  const activeModel = isNewChat ? newChatModel : (activeChatMeta?.model ?? DEFAULT_MODEL);
+
+  // Get session for the active chat
+  const activeSession = activeChatId ? sessions[activeChatId] : undefined;
+
   return (
     <main className="flex h-screen">
       <ChatSidebar
@@ -136,6 +156,11 @@ export function ChatApp({
             initialMessages={messages}
             transport={transport}
             resume={messages.length > 0}
+            model={activeModel}
+            isNewChat={isNewChat}
+            onModelChange={isNewChat ? setNewChatModel : undefined}
+            session={activeSession}
+            dashboardUrl={process.env.NEXT_PUBLIC_TRIGGER_DASHBOARD_URL}
             onFirstMessage={handleFirstMessage}
             onMessagesChange={handleMessagesChange}
           />

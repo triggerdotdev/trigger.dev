@@ -5,7 +5,7 @@ import { useChat } from "@ai-sdk/react";
 import type { TriggerChatTransport } from "@trigger.dev/sdk/chat";
 import { useEffect, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
-import { MODEL_OPTIONS, DEFAULT_MODEL } from "@/lib/models";
+import { MODEL_OPTIONS } from "@/lib/models";
 
 function ToolInvocation({ part }: { part: any }) {
   const [expanded, setExpanded] = useState(false);
@@ -70,11 +70,112 @@ function ToolInvocation({ part }: { part: any }) {
   );
 }
 
+function DebugPanel({
+  chatId,
+  model,
+  status,
+  session,
+  dashboardUrl,
+  messageCount,
+}: {
+  chatId: string;
+  model: string;
+  status: string;
+  session?: { runId: string; publicAccessToken: string; lastEventId?: string };
+  dashboardUrl?: string;
+  messageCount: number;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const runUrl =
+    session?.runId && dashboardUrl
+      ? `${dashboardUrl}/runs/${session.runId}`
+      : undefined;
+
+  return (
+    <div className="shrink-0 border-t border-gray-200 bg-gray-50 text-xs text-gray-500">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2 px-4 py-1.5 hover:bg-gray-100"
+      >
+        <span className="font-medium">Debug</span>
+        <span
+          className={`inline-block h-1.5 w-1.5 rounded-full ${
+            status === "streaming"
+              ? "bg-green-500"
+              : session?.runId
+                ? "bg-yellow-500"
+                : "bg-gray-300"
+          }`}
+        />
+        <span>{status}</span>
+        {session?.runId && (
+          <span className="font-mono">{session.runId.slice(0, 16)}...</span>
+        )}
+        <span className="ml-auto text-gray-400">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-200 px-4 py-2 space-y-1">
+          <Row label="Chat ID" value={chatId} mono />
+          <Row label="Model" value={model} />
+          <Row label="Status" value={status} />
+          <Row label="Messages" value={String(messageCount)} />
+          {session ? (
+            <>
+              <Row label="Run ID" value={session.runId} mono link={runUrl} />
+              <Row label="Last Event ID" value={session.lastEventId ?? "—"} mono />
+            </>
+          ) : (
+            <Row label="Session" value="none" />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Row({
+  label,
+  value,
+  mono,
+  link,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  link?: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-24 shrink-0 text-gray-400">{label}</span>
+      {link ? (
+        <a
+          href={link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`truncate text-blue-600 underline ${mono ? "font-mono" : ""}`}
+        >
+          {value}
+        </a>
+      ) : (
+        <span className={`truncate ${mono ? "font-mono" : ""}`}>{value}</span>
+      )}
+    </div>
+  );
+}
+
 type ChatProps = {
   chatId: string;
   initialMessages: UIMessage[];
   transport: TriggerChatTransport;
   resume?: boolean;
+  model: string;
+  isNewChat: boolean;
+  onModelChange?: (model: string) => void;
+  session?: { runId: string; publicAccessToken: string; lastEventId?: string };
+  dashboardUrl?: string;
   onFirstMessage?: (chatId: string, text: string) => void;
   onMessagesChange?: (chatId: string, messages: UIMessage[]) => void;
 };
@@ -84,12 +185,15 @@ export function Chat({
   initialMessages,
   transport,
   resume: resumeProp,
+  model,
+  isNewChat,
+  onModelChange,
+  session,
+  dashboardUrl,
   onFirstMessage,
   onMessagesChange,
 }: ChatProps) {
   const [input, setInput] = useState("");
-  const [model, setModel] = useState(DEFAULT_MODEL);
-  const modelByUserMsgId = useRef<Map<string, string>>(new Map());
   const hasCalledFirstMessage = useRef(false);
 
   const { messages, sendMessage, stop, status, error } = useChat({
@@ -114,7 +218,7 @@ export function Chat({
   }, [messages, chatId, onFirstMessage]);
 
   // Pending message to send after the current turn completes
-  const [pendingMessage, setPendingMessage] = useState<{ text: string; model: string } | null>(null);
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
   // Handle turn completion: persist messages and auto-send pending message
   const prevStatus = useRef(status);
@@ -124,47 +228,48 @@ export function Chat({
 
     if (!turnCompleted) return;
 
-    // Persist messages when a turn completes — this ensures the final assistant
-    // message content is saved (not the empty placeholder from mid-stream).
+    // Persist messages when a turn completes
     if (messages.length > 0) {
       onMessagesChange?.(chatId, messages);
     }
 
     // Auto-send the pending message
     if (pendingMessage) {
-      const { text, model: pendingMsgModel } = pendingMessage;
+      const text = pendingMessage;
       setPendingMessage(null);
-      pendingModel.current = pendingMsgModel;
-      sendMessage({ text }, { metadata: { model: pendingMsgModel } });
+      sendMessage({ text }, { metadata: { model } });
     }
-  }, [status, messages, chatId, onMessagesChange, sendMessage, pendingMessage]);
-
-  function getModelForAssistantAt(index: number): string | undefined {
-    for (let i = index - 1; i >= 0; i--) {
-      if (messages[i]?.role === "user") {
-        return modelByUserMsgId.current.get(messages[i].id);
-      }
-    }
-    return undefined;
-  }
-
-  const originalSendMessage = sendMessage;
-  function trackedSendMessage(msg: Parameters<typeof sendMessage>[0], opts?: Parameters<typeof sendMessage>[1]) {
-    pendingModel.current = model;
-    originalSendMessage(msg, opts);
-  }
-  const pendingModel = useRef<string>(model);
-
-  const trackedUserIds = useRef<Set<string>>(new Set());
-  for (const msg of messages) {
-    if (msg.role === "user" && !trackedUserIds.current.has(msg.id)) {
-      trackedUserIds.current.add(msg.id);
-      modelByUserMsgId.current.set(msg.id, pendingModel.current);
-    }
-  }
+  }, [status, messages, chatId, onMessagesChange, sendMessage, pendingMessage, model]);
 
   return (
     <div className="flex h-full flex-col bg-white">
+      {/* Model selector for new chats */}
+      {isNewChat && messages.length === 0 && onModelChange && (
+        <div className="shrink-0 border-b border-gray-200 bg-gray-50 px-4 py-2 flex items-center gap-2">
+          <span className="text-xs text-gray-500">Model:</span>
+          <select
+            value={model}
+            onChange={(e) => onModelChange(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          >
+            {MODEL_OPTIONS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Model badge for existing chats */}
+      {(!isNewChat || messages.length > 0) && (
+        <div className="shrink-0 border-b border-gray-200 bg-gray-50 px-4 py-2">
+          <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+            {model}
+          </span>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
         {messages.length === 0 && (
@@ -177,13 +282,6 @@ export function Chat({
             className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div className={`max-w-[80%] ${message.role === "user" ? "" : "w-full"}`}>
-              {message.role === "assistant" && (
-                <div className="mb-1 flex items-center gap-2 text-[10px] text-gray-400">
-                  <span className="rounded bg-gray-200 px-1.5 py-0.5 font-medium text-gray-500">
-                    {getModelForAssistantAt(messageIndex) ?? DEFAULT_MODEL}
-                  </span>
-                </div>
-              )}
               <div
                 className={`rounded-lg px-4 py-2 text-sm ${
                   message.role === "user"
@@ -246,7 +344,7 @@ export function Chat({
           <div className="flex justify-end">
             <div className="max-w-[80%]">
               <div className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white opacity-60">
-                {pendingMessage.text}
+                {pendingMessage}
               </div>
               <div className="mt-1 text-right text-[10px] text-gray-400">
                 Queued — will send when current response finishes
@@ -262,14 +360,24 @@ export function Chat({
         </div>
       )}
 
+      {/* Debug panel */}
+      <DebugPanel
+        chatId={chatId}
+        model={model}
+        status={status}
+        session={session}
+        dashboardUrl={dashboardUrl}
+        messageCount={messages.length}
+      />
+
       <form
         onSubmit={(e) => {
           e.preventDefault();
           if (!input.trim()) return;
           if (status === "streaming") {
-            setPendingMessage({ text: input, model });
+            setPendingMessage(input);
           } else {
-            trackedSendMessage({ text: input }, { metadata: { model } });
+            sendMessage({ text: input }, { metadata: { model } });
           }
           setInput("");
         }}
@@ -299,19 +407,6 @@ export function Chat({
               Stop
             </button>
           )}
-        </div>
-        <div className="mt-2">
-          <select
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-          >
-            {MODEL_OPTIONS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
         </div>
       </form>
     </div>

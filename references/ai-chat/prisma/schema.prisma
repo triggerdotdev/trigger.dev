@@ -21,6 +21,7 @@ model User {
 model Chat {
   id        String   @id
   title     String
+  model     String   @default("gpt-4o-mini")
   messages  Json     @default("[]")
   userId    String?
   user      User?    @relation(fields: [userId], references: [id])

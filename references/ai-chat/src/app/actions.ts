@@ -8,12 +8,13 @@ export const getChatToken = async () => chat.createAccessToken<typeof aiChat>("a
 
 export async function getChatList() {
   const chats = await prisma.chat.findMany({
-    select: { id: true, title: true, createdAt: true, updatedAt: true },
+    select: { id: true, title: true, model: true, createdAt: true, updatedAt: true },
     orderBy: { updatedAt: "desc" },
   });
   return chats.map((c) => ({
     id: c.id,
     title: c.title,
+    model: c.model,
     createdAt: c.createdAt.getTime(),
     updatedAt: c.updatedAt.getTime(),
   }));

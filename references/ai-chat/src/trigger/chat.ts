@@ -156,10 +156,15 @@ export const aiChat = chat.task({
     });
 
     if (!continuation) {
-      // Brand new chat — create the record
+      // Brand new chat — create the record with the selected model
       await prisma.chat.upsert({
         where: { id: chatId },
-        create: { id: chatId, title: "New chat", userId: user.id },
+        create: {
+          id: chatId,
+          title: "New chat",
+          userId: user.id,
+          model: clientData.model ?? DEFAULT_MODEL,
+        },
         update: {},
       });
     }
