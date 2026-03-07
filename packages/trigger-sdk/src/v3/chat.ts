@@ -297,6 +297,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     };
 
     const session = this.sessions.get(chatId);
+    let isContinuation = false;
+    let previousRunId: string | undefined;
     // If we have an existing run, send the message via input stream
     // to resume the conversation in the same run.
     if (session?.runId) {
@@ -328,8 +330,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         );
       } catch {
         // If sending fails (run died, etc.), fall through to trigger a new run.
+        // Mark as continuation so the task knows this chat already existed.
+        previousRunId = session.runId;
         this.sessions.delete(chatId);
         this.notifySessionChange(chatId, null);
+        isContinuation = true;
       }
     }
 
@@ -343,7 +348,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     const tags = [...autoTags, ...userTags].slice(0, 5);
 
     const triggerResponse = await apiClient.triggerTask(this.taskId, {
-      payload,
+      payload: {
+        ...payload,
+        continuation: isContinuation,
+        ...(previousRunId ? { previousRunId } : {}),
+      },
       options: {
         payloadType: "application/json",
         tags,

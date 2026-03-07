@@ -210,6 +210,19 @@ export function Chat({
                     return <span key={i}>{part.text}</span>;
                   }
 
+                  if (part.type === "reasoning") {
+                    return (
+                      <details key={i} className="my-1">
+                        <summary className="cursor-pointer text-xs text-gray-400">
+                          Thinking...
+                        </summary>
+                        <div className="mt-1 rounded bg-gray-50 p-2 text-xs text-gray-500 whitespace-pre-wrap">
+                          {part.text}
+                        </div>
+                      </details>
+                    );
+                  }
+
                   if (part.type.startsWith("tool-") || part.type === "dynamic-tool") {
                     return <ToolInvocation key={i} part={part} />;
                   }
