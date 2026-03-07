@@ -81,6 +81,7 @@ export const CompletedWaitpoint = z.object({
     .object({
       id: z.string(),
       friendlyId: z.string(),
+      taskIdentifier: z.string().optional(),
       /** If the run has an associated batch */
       batch: z
         .object({
