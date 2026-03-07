@@ -7,6 +7,8 @@ import {
   DevConfigResponseBody,
   DevDequeueRequestBody,
   DevDequeueResponseBody,
+  DevDisconnectRequestBody,
+  DevDisconnectResponseBody,
   EnvironmentVariableResponseBody,
   FailDeploymentRequestBody,
   FailDeploymentResponseBody,
@@ -557,6 +559,7 @@ export class CliApiClient {
       heartbeatRun: this.devHeartbeatRun.bind(this),
       startRunAttempt: this.devStartRunAttempt.bind(this),
       completeRunAttempt: this.devCompleteRunAttempt.bind(this),
+      disconnect: this.devDisconnect.bind(this),
       setEngineURL: this.setEngineURL.bind(this),
     } as const;
   }
@@ -679,6 +682,23 @@ export class CliApiClient {
     };
 
     return eventSource;
+  }
+
+  private async devDisconnect(
+    body: DevDisconnectRequestBody
+  ): Promise<ApiResult<DevDisconnectResponseBody>> {
+    if (!this.accessToken) {
+      throw new Error("devDisconnect: No access token");
+    }
+
+    return wrapZodFetch(DevDisconnectResponseBody, `${this.engineURL}/engine/v1/dev/disconnect`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+    });
   }
 
   private async devDequeue(
