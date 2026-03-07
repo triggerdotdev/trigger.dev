@@ -186,6 +186,10 @@ type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unk
   trigger: "submit-message" | "regenerate-message";
   messageId?: string;
   metadata?: TMetadata;
+  /** Whether this run is continuing an existing chat whose previous run ended. */
+  continuation?: boolean;
+  /** The run ID of the previous run (only set when `continuation` is true). */
+  previousRunId?: string;
 };
 
 /**
@@ -217,6 +221,11 @@ export type ChatTaskPayload<TClientData = unknown> = {
 
   /** Custom data from the frontend (passed via `metadata` on `sendMessage()` or the transport). */
   clientData?: TClientData;
+
+  /** Whether this run is continuing an existing chat (previous run timed out or was cancelled). False for brand new chats. */
+  continuation: boolean;
+  /** The run ID of the previous run (only set when `continuation` is true). */
+  previousRunId?: string;
 };
 
 /**
@@ -247,6 +256,7 @@ const stopInput = streams.input<{ stop: true; message?: string }>({ id: CHAT_STO
  * @internal
  */
 const chatPipeCountKey = locals.create<number>("chat.pipeCount");
+const chatStopControllerKey = locals.create<AbortController>("chat.stopController");
 
 /**
  * Options for `pipeChat`.
@@ -397,6 +407,10 @@ export type ChatStartEvent<TClientData = unknown> = {
   runId: string;
   /** A scoped access token for this chat run. Persist this for frontend reconnection. */
   chatAccessToken: string;
+  /** Whether this run is continuing an existing chat (previous run timed out or was cancelled). False for brand new chats. */
+  continuation: boolean;
+  /** The run ID of the previous run (only set when `continuation` is true). */
+  previousRunId?: string;
 };
 
 /**
@@ -417,6 +431,10 @@ export type TurnStartEvent<TClientData = unknown> = {
   chatAccessToken: string;
   /** Custom data from the frontend. */
   clientData?: TClientData;
+  /** Whether this run is continuing an existing chat (previous run timed out or was cancelled). False for brand new chats. */
+  continuation: boolean;
+  /** The run ID of the previous run (only set when `continuation` is true). */
+  previousRunId?: string;
 };
 
 /**
@@ -442,8 +460,14 @@ export type TurnCompleteEvent<TClientData = unknown> = {
    * Useful for inserting individual message records instead of overwriting the full history.
    */
   newUIMessages: UIMessage[];
-  /** The assistant's response for this turn (undefined if `pipeChat` was used manually). */
+  /** The assistant's response for this turn, with aborted parts cleaned up when `stopped` is true. Undefined if `pipeChat` was used manually. */
   responseMessage: UIMessage | undefined;
+  /**
+   * The raw assistant response before abort cleanup. Includes incomplete tool parts
+   * (`input-available`, `partial-call`) and streaming reasoning/text parts.
+   * Use this if you need custom cleanup logic. Same as `responseMessage` when not stopped.
+   */
+  rawResponseMessage: UIMessage | undefined;
   /** The turn number (0-indexed). */
   turn: number;
   /** The Trigger.dev run ID for this conversation. */
@@ -454,6 +478,12 @@ export type TurnCompleteEvent<TClientData = unknown> = {
   lastEventId?: string;
   /** Custom data from the frontend. */
   clientData?: TClientData;
+  /** Whether the user stopped generation during this turn. */
+  stopped: boolean;
+  /** Whether this run is continuing an existing chat (previous run timed out or was cancelled). False for brand new chats. */
+  continuation: boolean;
+  /** The run ID of the previous run (only set when `continuation` is true). */
+  previousRunId?: string;
 };
 
 export type ChatTaskOptions<
@@ -637,6 +667,8 @@ function chatTask<
       }
 
       let currentWirePayload = payload;
+      const continuation = payload.continuation ?? false;
+      const previousRunId = payload.previousRunId;
 
       // Accumulated model messages across turns. Turn 1 initialises from the
       // full history the frontend sends; subsequent turns append only the new
@@ -704,6 +736,7 @@ function chatTask<
               // Per-turn stop controller (reset each turn)
               const stopController = new AbortController();
               currentStopController = stopController;
+              locals.set(chatStopControllerKey, stopController);
 
               // Three signals for the user's run function
               const stopSignal = stopController.signal;
@@ -716,10 +749,19 @@ function chatTask<
                 pendingMessages.push(msg);
               });
 
+              // Clean up any incomplete tool parts in the incoming history.
+              // When a previous run was stopped mid-tool-call, the frontend's
+              // useChat state may still contain assistant messages with tool parts
+              // in partial/input-available state. These cause API errors (e.g.
+              // Anthropic requires every tool_use to have a matching tool_result).
+              const cleanedUIMessages = uiMessages.map((msg) =>
+                msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
+              );
+
               // Convert the incoming UIMessages to model messages and update the accumulator.
               // Turn 1: full history from the frontend → replaces the accumulator.
               // Turn 2+: only the new message(s) → appended to the accumulator.
-              const incomingModelMessages = await convertToModelMessages(uiMessages);
+              const incomingModelMessages = await convertToModelMessages(cleanedUIMessages);
 
               // Track new messages for this turn (user input + assistant response).
               const turnNewModelMessages: ModelMessage[] = [];
@@ -727,11 +769,11 @@ function chatTask<
 
               if (turn === 0) {
                 accumulatedMessages = incomingModelMessages;
-                accumulatedUIMessages = [...uiMessages];
+                accumulatedUIMessages = [...cleanedUIMessages];
                 // On first turn, the "new" messages are just the last user message
                 // (the rest is history). We'll add the response after streaming.
-                if (uiMessages.length > 0) {
-                  turnNewUIMessages.push(uiMessages[uiMessages.length - 1]!);
+                if (cleanedUIMessages.length > 0) {
+                  turnNewUIMessages.push(cleanedUIMessages[cleanedUIMessages.length - 1]!);
                   const lastModel = incomingModelMessages[incomingModelMessages.length - 1];
                   if (lastModel) turnNewModelMessages.push(lastModel);
                 }
@@ -739,14 +781,14 @@ function chatTask<
                 // Regenerate: frontend sent full history with last assistant message
                 // removed. Reset the accumulator to match.
                 accumulatedMessages = incomingModelMessages;
-                accumulatedUIMessages = [...uiMessages];
+                accumulatedUIMessages = [...cleanedUIMessages];
                 // No new user messages for regenerate — just the response (added below)
               } else {
                 // Submit: frontend sent only the new user message(s). Append to accumulator.
                 accumulatedMessages.push(...incomingModelMessages);
-                accumulatedUIMessages.push(...uiMessages);
+                accumulatedUIMessages.push(...cleanedUIMessages);
                 turnNewModelMessages.push(...incomingModelMessages);
-                turnNewUIMessages.push(...uiMessages);
+                turnNewUIMessages.push(...cleanedUIMessages);
               }
 
               // Mint a scoped public access token once per turn, reused for
@@ -778,12 +820,18 @@ function chatTask<
                       clientData,
                       runId: currentRunId,
                       chatAccessToken: turnAccessToken,
+                      continuation,
+                      previousRunId,
                     });
                   },
                   {
                     attributes: {
                       [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
                       [SemanticInternalAttributes.COLLAPSED]: true,
+                      "chat.id": currentWirePayload.chatId,
+                      "chat.messages.count": accumulatedMessages.length,
+                      "chat.continuation": continuation,
+                      ...(previousRunId ? { "chat.previous_run_id": previousRunId } : {}),
                     },
                   }
                 );
@@ -803,12 +851,20 @@ function chatTask<
                       runId: currentRunId,
                       chatAccessToken: turnAccessToken,
                       clientData,
+                      continuation,
+                      previousRunId,
                     });
                   },
                   {
                     attributes: {
                       [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
                       [SemanticInternalAttributes.COLLAPSED]: true,
+                      "chat.id": currentWirePayload.chatId,
+                      "chat.turn": turn + 1,
+                      "chat.messages.count": accumulatedMessages.length,
+                      "chat.trigger": currentWirePayload.trigger,
+                      "chat.continuation": continuation,
+                      ...(previousRunId ? { "chat.previous_run_id": previousRunId } : {}),
                     },
                   }
                 );
@@ -817,11 +873,22 @@ function chatTask<
               // Captured by the onFinish callback below — works even on abort/stop.
               let capturedResponseMessage: UIMessage | undefined;
 
+              // Promise that resolves when the AI SDK's onFinish fires.
+              // On abort, the stream's cancel() handler calls onFinish
+              // asynchronously AFTER pipeChat resolves, so we must await
+              // this to avoid a race where we check capturedResponseMessage
+              // before it's been set.
+              let resolveOnFinish: () => void;
+              const onFinishPromise = new Promise<void>((r) => { resolveOnFinish = r; });
+              let onFinishAttached = false;
+
               try {
                 const result = await userRun({
                   ...restWire,
                   messages: accumulatedMessages,
                   clientData,
+                  continuation,
+                  previousRunId,
                   signal: combinedSignal,
                   cancelSignal,
                   stopSignal,
@@ -831,9 +898,11 @@ function chatTask<
                 // but only if pipeChat() wasn't already called manually during this turn.
                 // We call toUIMessageStream ourselves to attach onFinish for response capture.
                 if ((locals.get(chatPipeCountKey) ?? 0) === 0 && isUIMessageStreamable(result)) {
+                  onFinishAttached = true;
                   const uiStream = result.toUIMessageStream({
                     onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
                       capturedResponseMessage = responseMessage;
+                      resolveOnFinish!();
                     },
                   });
                   await pipeChat(uiStream, { signal: combinedSignal, spanName: "stream response" });
@@ -852,10 +921,26 @@ function chatTask<
                 msgSub.off();
               }
 
+              // Wait for onFinish to fire — on abort this may resolve slightly
+              // after pipeChat, since the stream's cancel() handler is async.
+              if (onFinishAttached) {
+                await onFinishPromise;
+              }
+
+              // Determine if the user stopped generation this turn (not a full run cancel).
+              const wasStopped = stopController.signal.aborted && !runSignal.aborted;
+
               // Append the assistant's response (partial or complete) to the accumulator.
               // The onFinish callback fires even on abort/stop, so partial responses
               // from stopped generation are captured correctly.
+              let rawResponseMessage: UIMessage | undefined;
               if (capturedResponseMessage) {
+                // Keep the raw message before cleanup for users who want custom handling
+                rawResponseMessage = capturedResponseMessage;
+                // Clean up aborted parts (streaming tool calls, reasoning) when stopped
+                if (wasStopped) {
+                  capturedResponseMessage = cleanupAbortedParts(capturedResponseMessage);
+                }
                 // Ensure the response message has an ID (the stream's onFinish
                 // may produce a message with an empty ID since IDs are normally
                 // assigned by the frontend's useChat).
@@ -900,17 +985,29 @@ function chatTask<
                       newMessages: turnNewModelMessages,
                       newUIMessages: turnNewUIMessages,
                       responseMessage: capturedResponseMessage,
+                      rawResponseMessage,
                       turn,
                       runId: currentRunId,
                       chatAccessToken: turnAccessToken,
                       lastEventId: turnCompleteResult.lastEventId,
                       clientData,
+                      stopped: wasStopped,
+                      continuation,
+                      previousRunId,
                     });
                   },
                   {
                     attributes: {
                       [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
                       [SemanticInternalAttributes.COLLAPSED]: true,
+                      "chat.id": currentWirePayload.chatId,
+                      "chat.turn": turn + 1,
+                      "chat.stopped": wasStopped,
+                      "chat.continuation": continuation,
+                      ...(previousRunId ? { "chat.previous_run_id": previousRunId } : {}),
+                      "chat.messages.count": accumulatedMessages.length,
+                      "chat.response.parts.count": capturedResponseMessage?.parts?.length ?? 0,
+                      "chat.new_messages.count": turnNewUIMessages.length,
                     },
                   }
                 );
@@ -1060,6 +1157,100 @@ function setTurnTimeoutInSeconds(seconds: number): void {
  */
 function setWarmTimeoutInSeconds(seconds: number): void {
   metadata.set(WARM_TIMEOUT_METADATA_KEY, seconds);
+}
+
+// ---------------------------------------------------------------------------
+// Stop detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Check whether the user stopped generation during the current turn.
+ *
+ * Works from **anywhere** inside a `chat.task` run — including inside
+ * `streamText`'s `onFinish` callback — without needing to thread the
+ * `stopSignal` through closures.
+ *
+ * This is especially useful when the AI SDK's `isAborted` flag is unreliable
+ * (e.g. when using `createUIMessageStream` + `writer.merge()`).
+ *
+ * @example
+ * ```ts
+ * onFinish: ({ isAborted }) => {
+ *   const wasStopped = isAborted || chat.isStopped();
+ *   if (wasStopped) {
+ *     // handle stop
+ *   }
+ * }
+ * ```
+ */
+function isStopped(): boolean {
+  const controller = locals.get(chatStopControllerKey);
+  return controller?.signal.aborted ?? false;
+}
+
+// ---------------------------------------------------------------------------
+// Aborted message cleanup
+// ---------------------------------------------------------------------------
+
+/**
+ * Clean up a UIMessage that was captured during an aborted/stopped turn.
+ *
+ * When generation is stopped mid-stream, the captured message may contain:
+ * - Tool parts stuck in incomplete states (`partial-call`, `input-available`,
+ *   `input-streaming`) that cause permanent UI spinners
+ * - Reasoning parts with `state: "streaming"` instead of `"done"`
+ * - Text parts with `state: "streaming"` instead of `"done"`
+ *
+ * This function returns a cleaned copy with:
+ * - Incomplete tool parts removed entirely
+ * - Reasoning and text parts marked as `"done"`
+ *
+ * `chat.task` calls this automatically when stop is detected before passing
+ * the response to `onTurnComplete`. Use this manually when calling `pipeChat`
+ * directly and capturing response messages yourself.
+ *
+ * @example
+ * ```ts
+ * onTurnComplete: async ({ responseMessage, stopped }) => {
+ *   // Already cleaned automatically by chat.task — but if you captured
+ *   // your own message via pipeChat, clean it manually:
+ *   const cleaned = chat.cleanupAbortedParts(myMessage);
+ *   await db.messages.save(cleaned);
+ * }
+ * ```
+ */
+function cleanupAbortedParts(message: UIMessage): UIMessage {
+  if (!message.parts) return message;
+
+  const isToolPart = (part: any) =>
+    part.type === "tool-invocation" ||
+    part.type?.startsWith("tool-") ||
+    part.type === "dynamic-tool";
+
+  return {
+    ...message,
+    parts: message.parts
+      .filter((part: any) => {
+        if (!isToolPart(part)) return true;
+        // Remove tool parts that never completed execution.
+        // partial-call: input was still streaming when aborted.
+        // input-available: input was complete but tool never ran.
+        // input-streaming: input was mid-stream.
+        const state = part.toolInvocation?.state ?? part.state;
+        return state !== "partial-call" && state !== "input-available" && state !== "input-streaming";
+      })
+      .map((part: any) => {
+        // Mark streaming reasoning as done
+        if (part.type === "reasoning" && part.state === "streaming") {
+          return { ...part, state: "done" };
+        }
+        // Mark streaming text as done
+        if (part.type === "text" && part.state === "streaming") {
+          return { ...part, state: "done" };
+        }
+        return part;
+      }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1257,6 +1448,10 @@ export const chat = {
   setTurnTimeoutInSeconds,
   /** Override the warm timeout at runtime. See {@link setWarmTimeoutInSeconds}. */
   setWarmTimeoutInSeconds,
+  /** Check if the current turn was stopped by the user. See {@link isStopped}. */
+  isStopped,
+  /** Clean up aborted parts from a UIMessage. See {@link cleanupAbortedParts}. */
+  cleanupAbortedParts,
 };
 
 /**

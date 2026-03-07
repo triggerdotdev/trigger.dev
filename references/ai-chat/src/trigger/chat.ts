@@ -11,7 +11,7 @@ import { PrismaClient } from "../../lib/generated/prisma/client";
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
-import { DEFAULT_MODEL } from "@/lib/models";
+import { DEFAULT_MODEL, REASONING_MODELS } from "@/lib/models";
 
 const MODELS: Record<string, () => LanguageModel> = {
   "gpt-4o-mini": () => openai("gpt-4o-mini"),
@@ -80,6 +80,48 @@ const inspectEnvironment = tool({
   },
 });
 
+const webFetch = tool({
+  description:
+    "Fetch a URL and return the response as text. " +
+    "Use this to retrieve web pages, APIs, or any HTTP resource.",
+  inputSchema: z.object({
+    url: z.string().url().describe("The URL to fetch"),
+  }),
+  execute: async ({ url }) => {
+    const latency = Number(process.env.WEBFETCH_LATENCY_MS);
+    if (latency > 0) {
+      await new Promise((r) => setTimeout(r, latency));
+    }
+
+    const response = await fetch(url);
+    let text = await response.text();
+    const contentType = response.headers.get("content-type") ?? "";
+
+    // Strip HTML to plain text for readability
+    if (contentType.includes("html")) {
+      text = text
+        .replace(/<script[\s\S]*?<\/script>/gi, "")
+        .replace(/<style[\s\S]*?<\/style>/gi, "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    return {
+      status: response.status,
+      contentType,
+      body: text.slice(0, 2000),
+      truncated: text.length > 2000,
+    };
+  },
+});
+
 // Silence TS errors for Bun/Deno global checks
 declare const Bun: unknown;
 declare const Deno: unknown;
@@ -98,7 +140,7 @@ export const aiChat = chat.task({
   clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
   warmTimeoutInSeconds: 60,
   chatAccessTokenTTL: "2h",
-  onChatStart: async ({ chatId, runId, chatAccessToken, clientData }) => {
+  onChatStart: async ({ chatId, runId, chatAccessToken, clientData, continuation }) => {
     // Load user context from DB — available for the entire run
     const user = await prisma.user.upsert({
       where: { id: clientData.userId },
@@ -113,11 +155,16 @@ export const aiChat = chat.task({
       messageCount: user.messageCount,
     });
 
-    await prisma.chat.upsert({
-      where: { id: chatId },
-      create: { id: chatId, title: "New chat", userId: user.id },
-      update: {},
-    });
+    if (!continuation) {
+      // Brand new chat — create the record
+      await prisma.chat.upsert({
+        where: { id: chatId },
+        create: { id: chatId, title: "New chat", userId: user.id },
+        update: {},
+      });
+    }
+
+    // Always update session for the new run
     await prisma.chatSession.upsert({
       where: { id: chatId },
       create: { id: chatId, runId, publicAccessToken: chatAccessToken },
@@ -136,7 +183,7 @@ export const aiChat = chat.task({
       update: { runId, publicAccessToken: chatAccessToken },
     });
   },
-  onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId, clientData }) => {
+  onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId, clientData, stopped }) => {
     // Persist final messages + assistant response + stream position
     await prisma.chat.update({
       where: { id: chatId },
@@ -170,17 +217,21 @@ export const aiChat = chat.task({
 
     // Use preferred model if none specified
     const modelId = clientData?.model ?? userContext.preferredModel ?? undefined;
+    const useReasoning = REASONING_MODELS.has(modelId ?? DEFAULT_MODEL);
 
     return streamText({
       model: getModel(modelId),
       system: `You are a helpful assistant for ${userContext.name} (${userContext.plan} plan). Be concise and friendly.`,
       messages,
-      tools: { inspectEnvironment },
+      tools: { inspectEnvironment, webFetch },
       stopWhen: stepCountIs(10),
       abortSignal: stopSignal,
       providerOptions: {
         openai: { user: clientData?.userId },
-        anthropic: { metadata: { user_id: clientData?.userId } },
+        anthropic: {
+          metadata: { user_id: clientData?.userId },
+          ...(useReasoning ? { thinking: { type: "enabled", budgetTokens: 10000 } } : {}),
+        },
       },
       experimental_telemetry: {
         isEnabled: true,
