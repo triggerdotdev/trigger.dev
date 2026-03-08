@@ -94,26 +94,40 @@ function readActiveRuns(): string[] {
 }
 
 async function callDisconnect(runFriendlyIds: string[]): Promise<void> {
-  try {
-    await fetch(`${apiUrl}/engine/v1/dev/disconnect`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({ runFriendlyIds }),
-      signal: AbortSignal.timeout(10_000),
-    });
-  } catch {
-    // Network error — runs will eventually time out via heartbeat
+  const response = await fetch(`${apiUrl}/engine/v1/dev/disconnect`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({ runFriendlyIds }),
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Disconnect failed with status ${response.status}`);
   }
 }
+
+const MAX_DISCONNECT_ATTEMPTS = 5;
+const INITIAL_BACKOFF_MS = 500;
 
 async function onParentDied(): Promise<void> {
   const runFriendlyIds = readActiveRuns();
 
   if (runFriendlyIds.length > 0) {
-    await callDisconnect(runFriendlyIds);
+    for (let attempt = 0; attempt < MAX_DISCONNECT_ATTEMPTS; attempt++) {
+      try {
+        await callDisconnect(runFriendlyIds);
+        break;
+      } catch {
+        if (attempt < MAX_DISCONNECT_ATTEMPTS - 1) {
+          const backoff = INITIAL_BACKOFF_MS * 2 ** attempt;
+          await new Promise((resolve) => setTimeout(resolve, backoff));
+        }
+        // Final attempt failed — runs will eventually time out via heartbeat
+      }
+    }
   }
 
   cleanup();
