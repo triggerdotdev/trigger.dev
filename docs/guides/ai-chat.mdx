@@ -750,6 +750,140 @@ This removes tool invocation parts stuck in `partial-call` state and marks any `
   Stop signal delivery is best-effort. There is a small race window where the model may finish before the stop signal arrives, in which case the turn completes normally with `stopped: false`. This is expected and does not require special handling.
 </Note>
 
+## Writing to the chat stream
+
+### Custom chunks with `chat.stream`
+
+`chat.stream` is a typed stream bound to the chat output. Use it to write custom `UIMessageChunk` data alongside the AI-generated response — for example, status updates or progress indicators.
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+
+export const myChat = chat.task({
+  id: "my-chat",
+  run: async ({ messages, signal }) => {
+    // Write a custom data part to the chat stream.
+    // The AI SDK's data-* chunk protocol adds this to message.parts
+    // on the frontend, where you can render it however you like.
+    const { waitUntilComplete } = chat.stream.writer({
+      execute: ({ write }) => {
+        write({
+          type: "data-status",
+          id: "search-progress",
+          data: { message: "Searching the web...", progress: 0.5 },
+        });
+      },
+    });
+    await waitUntilComplete();
+
+    // Then stream the AI response
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+<Tip>
+  Use `data-*` chunk types (e.g. `data-status`, `data-progress`) for custom data. The AI SDK processes these into `DataUIPart` objects in `message.parts` on the frontend. Writing the same `type` + `id` again updates the existing part instead of creating a new one — useful for live progress.
+</Tip>
+
+`chat.stream` exposes the full stream API:
+
+| Method | Description |
+|--------|-------------|
+| `chat.stream.writer(options)` | Write individual chunks via a callback |
+| `chat.stream.pipe(stream, options?)` | Pipe a `ReadableStream` or `AsyncIterable` |
+| `chat.stream.append(value, options?)` | Append raw data |
+| `chat.stream.read(runId, options?)` | Read the stream by run ID |
+
+### Streaming from subtasks
+
+When a tool invokes a subtask via `triggerAndWait`, the subtask can stream directly to the parent chat using `target: "root"`:
+
+```ts
+import { chat, ai } from "@trigger.dev/sdk/ai";
+import { schemaTask } from "@trigger.dev/sdk";
+import { streamText, generateId } from "ai";
+import { z } from "zod";
+
+// A subtask that streams progress back to the parent chat
+export const researchTask = schemaTask({
+  id: "research",
+  schema: z.object({ query: z.string() }),
+  run: async ({ query }) => {
+    const partId = generateId();
+
+    // Write a data-* chunk to the root run's chat stream.
+    // The frontend receives this as a DataUIPart in message.parts.
+    const { waitUntilComplete } = chat.stream.writer({
+      target: "root",
+      execute: ({ write }) => {
+        write({
+          type: "data-research-status",
+          id: partId,
+          data: { query, status: "in-progress" },
+        });
+      },
+    });
+    await waitUntilComplete();
+
+    // Do the work...
+    const result = await doResearch(query);
+
+    // Update the same part with the final status
+    const { waitUntilComplete: waitDone } = chat.stream.writer({
+      target: "root",
+      execute: ({ write }) => {
+        write({
+          type: "data-research-status",
+          id: partId,
+          data: { query, status: "done", resultCount: result.length },
+        });
+      },
+    });
+    await waitDone();
+
+    return result;
+  },
+});
+
+// The chat task uses it as a tool via ai.tool()
+export const myChat = chat.task({
+  id: "my-chat",
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: openai("gpt-4o"),
+      messages,
+      abortSignal: signal,
+      tools: {
+        research: ai.tool(researchTask),
+      },
+    });
+  },
+});
+```
+
+On the frontend, render the custom data part:
+
+```tsx
+{message.parts.map((part, i) => {
+  if (part.type === "data-research-status") {
+    const { query, status, resultCount } = part.data;
+    return (
+      <div key={i}>
+        {status === "done" ? `Found ${resultCount} results` : `Researching "${query}"...`}
+      </div>
+    );
+  }
+  // ...other part types
+})}
+```
+
+The `target` option accepts:
+- `"self"` — current run (default)
+- `"parent"` — parent task's run
+- `"root"` — root task's run (the chat task)
+- A specific run ID string
+
 ## Client data and metadata
 
 ### Transport-level client data
@@ -1075,6 +1209,7 @@ See [onTurnComplete](#onturncomplete) for the full field reference.
 | `chat.setWarmTimeoutInSeconds(seconds)` | Override warm timeout at runtime |
 | `chat.isStopped()` | Check if the current turn was stopped by the user (works anywhere during a turn) |
 | `chat.cleanupAbortedParts(message)` | Remove incomplete parts from a stopped response message |
+| `chat.stream` | Typed chat output stream — use `.writer()`, `.pipe()`, `.append()`, `.read()` |
 
 ## Self-hosting
 
