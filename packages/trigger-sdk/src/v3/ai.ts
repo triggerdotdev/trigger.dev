@@ -14,7 +14,7 @@ import {
   type TaskSchema,
   type TaskWithSchema,
 } from "@trigger.dev/core/v3";
-import type { ModelMessage, UIMessage } from "ai";
+import type { ModelMessage, UIMessage, UIMessageChunk } from "ai";
 import type { StreamWriteResult } from "@trigger.dev/core/v3";
 import { convertToModelMessages, dynamicTool, generateId as generateMessageId, jsonSchema, JSONSchema7, Schema, Tool, ToolCallOptions, zodSchema } from "ai";
 import { type Attributes, trace } from "@opentelemetry/api";
@@ -174,6 +174,29 @@ export const CHAT_STREAM_KEY = _CHAT_STREAM_KEY;
 
 // Re-export input stream IDs for advanced usage
 export { CHAT_MESSAGES_STREAM_ID, CHAT_STOP_STREAM_ID };
+
+/**
+ * Typed chat output stream. Provides `.writer()`, `.pipe()`, `.append()`,
+ * and `.read()` methods pre-bound to the chat stream key and typed to `UIMessageChunk`.
+ *
+ * Use from within a `chat.task` run to write custom chunks:
+ * ```ts
+ * const { waitUntilComplete } = chat.stream.writer({
+ *   execute: ({ write }) => {
+ *     write({ type: "text-start", id: "status-1" });
+ *     write({ type: "text-delta", id: "status-1", delta: "Processing..." });
+ *     write({ type: "text-end", id: "status-1" });
+ *   },
+ * });
+ * await waitUntilComplete();
+ * ```
+ *
+ * Use from a subtask to stream back to the parent chat:
+ * ```ts
+ * chat.stream.pipe(myStream, { target: "root" });
+ * ```
+ */
+const chatStream = streams.define<UIMessageChunk>({ id: _CHAT_STREAM_KEY });
 
 /**
  * The wire payload shape sent by `TriggerChatTransport`.
@@ -1452,6 +1475,8 @@ export const chat = {
   isStopped,
   /** Clean up aborted parts from a UIMessage. See {@link cleanupAbortedParts}. */
   cleanupAbortedParts,
+  /** Typed chat output stream for writing custom chunks or piping from subtasks. */
+  stream: chatStream,
 };
 
 /**
