@@ -1,5 +1,6 @@
-import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, tool, stepCountIs } from "ai";
+import { chat, ai } from "@trigger.dev/sdk/ai";
+import { schemaTask } from "@trigger.dev/sdk";
+import { streamText, tool, stepCountIs, generateId } from "ai";
 import type { LanguageModel } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -135,6 +136,105 @@ const userContext = chat.local<{
   messageCount: number;
 }>();
 
+// --------------------------------------------------------------------------
+// Subtask: deep research — fetches multiple URLs and streams progress
+// back to the parent chat via chat.stream using data-* chunks
+// --------------------------------------------------------------------------
+export const deepResearch = schemaTask({
+  id: "deep-research",
+  description:
+    "Research a topic by fetching multiple URLs and synthesizing the results. " +
+    "Streams progress updates to the chat as it works.",
+  schema: z.object({
+    query: z.string().describe("The research query or topic"),
+    urls: z.array(z.string().url()).describe("URLs to fetch and analyze"),
+  }),
+  run: async ({ query, urls }) => {
+    const partId = generateId();
+    const results: { url: string; status: number; snippet: string }[] = [];
+
+    // Stream progress using data-research-progress chunks.
+    // Using the same id means each write updates the same part in the message.
+    function streamProgress(progress: {
+      status: "fetching" | "done";
+      query: string;
+      current: number;
+      total: number;
+      currentUrl?: string;
+      completedUrls: string[];
+    }) {
+      return chat.stream.writer({
+        target: "root",
+        execute: ({ write }) => {
+          write({
+            type: "data-research-progress" as any,
+            id: partId,
+            data: progress,
+          });
+        },
+      });
+    }
+
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i]!;
+
+      // Update progress — fetching
+      const { waitUntilComplete } = streamProgress({
+        status: "fetching",
+        query,
+        current: i + 1,
+        total: urls.length,
+        currentUrl: url,
+        completedUrls: results.map((r) => r.url),
+      });
+      await waitUntilComplete();
+
+      try {
+        const response = await fetch(url);
+        let text = await response.text();
+        const contentType = response.headers.get("content-type") ?? "";
+
+        if (contentType.includes("html")) {
+          text = text
+            .replace(/<script[\s\S]*?<\/script>/gi, "")
+            .replace(/<style[\s\S]*?<\/style>/gi, "")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/&nbsp;/g, " ")
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/\s+/g, " ")
+            .trim();
+        }
+
+        results.push({
+          url,
+          status: response.status,
+          snippet: text.slice(0, 500),
+        });
+      } catch (err) {
+        results.push({
+          url,
+          status: 0,
+          snippet: `Error: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+    }
+
+    // Final progress update — done
+    const { waitUntilComplete: waitForDone } = streamProgress({
+      status: "done",
+      query,
+      current: urls.length,
+      total: urls.length,
+      completedUrls: results.map((r) => r.url),
+    });
+    await waitForDone();
+
+    return { query, results };
+  },
+});
+
 export const aiChat = chat.task({
   id: "ai-chat",
   clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
@@ -228,7 +328,11 @@ export const aiChat = chat.task({
       model: getModel(modelId),
       system: `You are a helpful assistant for ${userContext.name} (${userContext.plan} plan). Be concise and friendly.`,
       messages,
-      tools: { inspectEnvironment, webFetch },
+      tools: {
+        inspectEnvironment,
+        webFetch,
+        deepResearch: ai.tool(deepResearch),
+      },
       stopWhen: stepCountIs(10),
       abortSignal: stopSignal,
       providerOptions: {
