@@ -884,6 +884,50 @@ The `target` option accepts:
 - `"root"` — root task's run (the chat task)
 - A specific run ID string
 
+### Accessing tool context in subtasks
+
+When a subtask runs via `ai.tool()`, it can access the tool call context and chat context from the parent:
+
+```ts
+import { ai, chat } from "@trigger.dev/sdk/ai";
+import type { myChat } from "./chat";
+
+export const mySubtask = schemaTask({
+  id: "my-subtask",
+  schema: z.object({ query: z.string() }),
+  run: async ({ query }) => {
+    // Get the AI SDK's tool call ID (useful for data-* chunk IDs)
+    const toolCallId = ai.toolCallId();
+
+    // Get typed chat context — pass typeof yourChatTask for typed clientData
+    const { chatId, clientData } = ai.chatContextOrThrow<typeof myChat>();
+    // clientData is typed based on myChat's clientDataSchema
+
+    // Write a data chunk using the tool call ID
+    const { waitUntilComplete } = chat.stream.writer({
+      target: "root",
+      execute: ({ write }) => {
+        write({
+          type: "data-progress",
+          id: toolCallId,
+          data: { status: "working", query, userId: clientData?.userId },
+        });
+      },
+    });
+    await waitUntilComplete();
+
+    return { result: "done" };
+  },
+});
+```
+
+| Helper | Returns | Description |
+|--------|---------|-------------|
+| `ai.toolCallId()` | `string \| undefined` | The AI SDK tool call ID |
+| `ai.chatContext<typeof myChat>()` | `{ chatId, turn, continuation, clientData } \| undefined` | Chat context with typed `clientData`. Returns `undefined` if not in a chat context. |
+| `ai.chatContextOrThrow<typeof myChat>()` | `{ chatId, turn, continuation, clientData }` | Same as above but throws if not in a chat context |
+| `ai.currentToolOptions()` | `ToolCallExecutionOptions \| undefined` | Full tool execution options |
+
 ## Client data and metadata
 
 ### Transport-level client data
