@@ -70,6 +70,46 @@ function ToolInvocation({ part }: { part: any }) {
   );
 }
 
+function ResearchProgress({ part }: { part: any }) {
+  const data = part.data as {
+    status: "fetching" | "done";
+    query: string;
+    current: number;
+    total: number;
+    currentUrl?: string;
+    completedUrls: string[];
+  };
+
+  const isDone = data.status === "done";
+
+  return (
+    <div className="my-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs">
+      <div className="flex items-center gap-2 font-medium text-blue-700">
+        {isDone ? (
+          <span className="text-green-600">&#10003;</span>
+        ) : (
+          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" />
+        )}
+        <span>
+          {isDone
+            ? `Research complete — ${data.total} sources fetched`
+            : `Researching "${data.query}" (${data.current}/${data.total})`}
+        </span>
+      </div>
+      {data.currentUrl && !isDone && (
+        <div className="mt-1 truncate text-blue-500">Fetching {data.currentUrl}</div>
+      )}
+      {data.completedUrls.length > 0 && (
+        <div className="mt-1 space-y-0.5 text-blue-400">
+          {data.completedUrls.map((url, i) => (
+            <div key={i} className="truncate">&#10003; {url}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DebugPanel({
   chatId,
   model,
@@ -321,8 +361,23 @@ export function Chat({
                     );
                   }
 
+                  if (part.type === "data-research-progress") {
+                    return <ResearchProgress key={i} part={part} />;
+                  }
+
                   if (part.type.startsWith("tool-") || part.type === "dynamic-tool") {
                     return <ToolInvocation key={i} part={part} />;
+                  }
+
+                  if (part.type.startsWith("data-")) {
+                    return (
+                      <div key={i} className="my-1 rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-500">
+                        <span className="font-medium">{part.type}</span>
+                        <pre className="mt-1 overflow-x-auto whitespace-pre-wrap">
+                          {JSON.stringify((part as any).data, null, 2)}
+                        </pre>
+                      </div>
+                    );
                   }
 
                   return null;
