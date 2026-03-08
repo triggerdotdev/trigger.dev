@@ -547,6 +547,83 @@ describe("flattenAttributes", () => {
     // Should complete without stack overflow
     expect(() => flattenAttributes({ arr: deepArray })).not.toThrow();
   });
+
+  it("handles keys containing periods correctly", () => {
+    // The exact case from issue #1510
+    const obj = { "Key 0.002mm": 31.4 };
+    const flattened = flattenAttributes(obj);
+    expect(flattened).toEqual({ "Key 0\\.002mm": 31.4 });
+
+    const unflattened = unflattenAttributes(flattened);
+    expect(unflattened).toEqual({ "Key 0.002mm": 31.4 });
+  });
+
+  it("handles nested objects with dotted keys", () => {
+    const obj = {
+      measurements: {
+        "tolerance.min": 0.5,
+        "tolerance.max": 1.5,
+      },
+    };
+    const flattened = flattenAttributes(obj);
+    expect(flattened).toEqual({
+      "measurements.tolerance\\.min": 0.5,
+      "measurements.tolerance\\.max": 1.5,
+    });
+
+    const unflattened = unflattenAttributes(flattened);
+    expect(unflattened).toEqual(obj);
+  });
+
+  it("handles keys with multiple periods", () => {
+    const obj = { "a.b.c": "value" };
+    const flattened = flattenAttributes(obj);
+    expect(flattened).toEqual({ "a\\.b\\.c": "value" });
+
+    const unflattened = unflattenAttributes(flattened);
+    expect(unflattened).toEqual({ "a.b.c": "value" });
+  });
+
+  it("handles dotted keys mixed with normal nesting", () => {
+    const obj = {
+      parent: {
+        "key.with.dots": "dotted",
+        normalKey: "normal",
+      },
+    };
+    const flattened = flattenAttributes(obj);
+    expect(flattened).toEqual({
+      "parent.key\\.with\\.dots": "dotted",
+      "parent.normalKey": "normal",
+    });
+
+    const unflattened = unflattenAttributes(flattened);
+    expect(unflattened).toEqual(obj);
+  });
+
+  it("handles keys containing backslashes", () => {
+    const obj = { "back\\slash": "value" };
+    const flattened = flattenAttributes(obj);
+    expect(flattened).toEqual({ "back\\\\slash": "value" });
+
+    const unflattened = unflattenAttributes(flattened);
+    expect(unflattened).toEqual({ "back\\slash": "value" });
+  });
+
+  it("round-trips dotted keys with arrays", () => {
+    const obj = {
+      "config.v2": [10, 20, 30],
+    };
+    const flattened = flattenAttributes(obj);
+    expect(flattened).toEqual({
+      "config\\.v2.[0]": 10,
+      "config\\.v2.[1]": 20,
+      "config\\.v2.[2]": 30,
+    });
+
+    const unflattened = unflattenAttributes(flattened);
+    expect(unflattened).toEqual({ "config.v2": [10, 20, 30] });
+  });
 });
 
 describe("unflattenAttributes", () => {
@@ -666,5 +743,29 @@ describe("unflattenAttributes", () => {
       current = current?.x;
     }
     expect(current).toBeUndefined();
+  });
+
+  it("unflattens keys with escaped dots correctly", () => {
+    const flattened = {
+      "parent.dotted\\.key": "value",
+    };
+    const result = unflattenAttributes(flattened);
+    expect(result).toEqual({
+      parent: {
+        "dotted.key": "value",
+      },
+    });
+  });
+
+  it("unflattens keys with escaped backslashes correctly", () => {
+    const flattened = {
+      "parent.back\\\\slash": "value",
+    };
+    const result = unflattenAttributes(flattened);
+    expect(result).toEqual({
+      parent: {
+        "back\\slash": "value",
+      },
+    });
   });
 });

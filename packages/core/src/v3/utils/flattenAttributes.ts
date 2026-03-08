@@ -5,6 +5,40 @@ export const CIRCULAR_REFERENCE_SENTINEL = "$@circular((";
 
 const DEFAULT_MAX_DEPTH = 128;
 
+/** Escape literal dots in a key segment so they are not confused with the path delimiter. */
+function escapeKey(key: string): string {
+  return key.replace(/\\/g, "\\\\").replace(/\./g, "\\.");
+}
+
+/** Unescape a key segment that was escaped by `escapeKey`. */
+function unescapeKey(key: string): string {
+  return key.replace(/\\(.)/g, "$1");
+}
+
+/**
+ * Split a flattened attribute path on unescaped dots.
+ * Escaped dots (`\\.`) are preserved inside key segments and later unescaped.
+ */
+function splitKey(key: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  for (let i = 0; i < key.length; i++) {
+    const ch = key[i];
+    if (ch === "\\" && i + 1 < key.length) {
+      // Keep the escape sequence intact for now; unescapeKey will handle it
+      current += ch + key[i + 1];
+      i++;
+    } else if (ch === ".") {
+      parts.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  parts.push(current);
+  return parts;
+}
+
 export function flattenAttributes(
   obj: unknown,
   prefix?: string,
@@ -116,7 +150,7 @@ class AttributeFlattener {
       for (const [key, value] of obj) {
         if (!this.canAddMoreAttributes()) break;
         // Use the key directly if it's a string, otherwise convert it
-        const keyStr = typeof key === "string" ? key : String(key);
+        const keyStr = typeof key === "string" ? escapeKey(key) : escapeKey(String(key));
         this.#processValue(value, `${prefix || "map"}.${keyStr}`, depth);
       }
       return;
@@ -200,7 +234,8 @@ class AttributeFlattener {
         break;
       }
 
-      const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
+      const escapedKey = Array.isArray(obj) ? `[${key}]` : escapeKey(key);
+      const newPrefix = `${prefix ? `${prefix}.` : ""}${escapedKey}`;
 
       if (Array.isArray(value)) {
         for (let i = 0; i < value.length; i++) {
@@ -278,19 +313,20 @@ export function unflattenAttributes(
       continue;
     }
 
-    const parts = key.split(".").reduce(
+    const parts = splitKey(key).reduce(
       (acc, part) => {
         if (part.startsWith("[") && part.endsWith("]")) {
           // Handle array indices more precisely
-          const match = part.match(/^\[(\d+)\]$/);
-          if (match && match[1]) {
-            acc.push(parseInt(match[1]));
+          const inner = part.slice(1, -1);
+          const match = inner.match(/^\d+$/);
+          if (match) {
+            acc.push(parseInt(inner));
           } else {
             // Remove brackets for non-numeric array keys
-            acc.push(part.slice(1, -1));
+            acc.push(unescapeKey(inner));
           }
         } else {
-          acc.push(part);
+          acc.push(unescapeKey(part));
         }
         return acc;
       },
