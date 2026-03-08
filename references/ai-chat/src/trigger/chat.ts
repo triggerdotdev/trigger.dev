@@ -150,6 +150,10 @@ export const deepResearch = schemaTask({
     urls: z.array(z.string().url()).describe("URLs to fetch and analyze"),
   }),
   run: async ({ query, urls }) => {
+    // Access chat context from the parent chat.task — typed via typeof aiChat
+    const { chatId, clientData } = ai.chatContextOrThrow<typeof aiChat>();
+    console.log(`Deep research for chat ${chatId}, user ${clientData?.userId}`);
+
     const partId = generateId();
     const results: { url: string; status: number; snippet: string }[] = [];
 

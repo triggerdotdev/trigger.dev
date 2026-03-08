@@ -32,7 +32,24 @@ import {
 
 const METADATA_KEY = "tool.execute.options";
 
-export type ToolCallExecutionOptions = Omit<ToolCallOptions, "abortSignal">;
+export type ToolCallExecutionOptions = {
+  toolCallId: string;
+  experimental_context?: unknown;
+  /** Chat context — only present when the tool runs inside a chat.task turn. */
+  chatId?: string;
+  turn?: number;
+  continuation?: boolean;
+  clientData?: unknown;
+};
+
+/** Chat context stored in locals during each chat.task turn for auto-detection. */
+type ChatTurnContext<TClientData = unknown> = {
+  chatId: string;
+  turn: number;
+  continuation: boolean;
+  clientData?: TClientData;
+};
+const chatTurnContextKey = locals.create<ChatTurnContext>("chat.turnContext");
 
 type ToolResultContent = Array<
   | {
@@ -83,13 +100,33 @@ function toolFromTask<
     description: task.description,
     inputSchema: convertTaskSchemaToToolParameters(task),
     execute: async (input, options) => {
-      const serializedOptions = options ? JSON.parse(JSON.stringify(options)) : undefined;
+      // Build tool metadata — skip messages (can be large) and abortSignal (non-serializable)
+      const toolMeta: ToolCallExecutionOptions = {
+        toolCallId: options?.toolCallId ?? "",
+      };
+      if (options?.experimental_context !== undefined) {
+        try {
+          toolMeta.experimental_context = JSON.parse(JSON.stringify(options.experimental_context));
+        } catch {
+          // Non-serializable context — skip
+        }
+      }
+
+      // Auto-detect chat context from the parent turn
+      const chatCtx = locals.get(chatTurnContextKey);
+      if (chatCtx) {
+        toolMeta.chatId = chatCtx.chatId;
+        toolMeta.turn = chatCtx.turn;
+        toolMeta.continuation = chatCtx.continuation;
+        toolMeta.clientData = chatCtx.clientData;
+      }
 
       return await task
         .triggerAndWait(input as inferSchemaIn<TTaskSchema>, {
           metadata: {
-            [METADATA_KEY]: serializedOptions,
+            [METADATA_KEY]: toolMeta as any,
           },
+          tags: options?.toolCallId ? [`toolCallId:${options.toolCallId}`] : undefined,
         })
         .unwrap();
     },
@@ -107,6 +144,57 @@ function getToolOptionsFromMetadata(): ToolCallExecutionOptions | undefined {
     return undefined;
   }
   return tool as ToolCallExecutionOptions;
+}
+
+/**
+ * Get the current tool call ID from inside a subtask invoked via `ai.tool()`.
+ * Returns `undefined` if not running as a tool subtask.
+ */
+function getToolCallId(): string | undefined {
+  return getToolOptionsFromMetadata()?.toolCallId;
+}
+
+/**
+ * Get the chat context from inside a subtask invoked via `ai.tool()` within a `chat.task`.
+ * Pass `typeof yourChatTask` as the type parameter to get typed `clientData`.
+ * Returns `undefined` if the parent is not a chat task.
+ *
+ * @example
+ * ```ts
+ * const ctx = ai.chatContext<typeof myChat>();
+ * // ctx?.clientData is typed based on myChat's clientDataSchema
+ * ```
+ */
+function getToolChatContext<TChatTask extends AnyTask = AnyTask>(): ChatTurnContext<InferChatClientData<TChatTask>> | undefined {
+  const opts = getToolOptionsFromMetadata();
+  if (!opts?.chatId) return undefined;
+  return {
+    chatId: opts.chatId,
+    turn: opts.turn ?? 0,
+    continuation: opts.continuation ?? false,
+    clientData: opts.clientData as InferChatClientData<TChatTask>,
+  };
+}
+
+/**
+ * Get the chat context from inside a subtask, throwing if not in a chat context.
+ * Pass `typeof yourChatTask` as the type parameter to get typed `clientData`.
+ *
+ * @example
+ * ```ts
+ * const ctx = ai.chatContextOrThrow<typeof myChat>();
+ * // ctx.chatId, ctx.clientData are guaranteed non-null
+ * ```
+ */
+function getToolChatContextOrThrow<TChatTask extends AnyTask = AnyTask>(): ChatTurnContext<InferChatClientData<TChatTask>> {
+  const ctx = getToolChatContext<TChatTask>();
+  if (!ctx) {
+    throw new Error(
+      "ai.chatContextOrThrow() called outside of a chat.task context. " +
+        "This helper can only be used inside a subtask invoked via ai.tool() from a chat.task."
+    );
+  }
+  return ctx;
 }
 
 function convertTaskSchemaToToolParameters(
@@ -136,6 +224,12 @@ function convertTaskSchemaToToolParameters(
 export const ai = {
   tool: toolFromTask,
   currentToolOptions: getToolOptionsFromMetadata,
+  /** Get the tool call ID from inside a subtask invoked via `ai.tool()`. */
+  toolCallId: getToolCallId,
+  /** Get chat context (chatId, turn, clientData, etc.) from inside a subtask of a `chat.task`. Returns undefined if not in a chat context. */
+  chatContext: getToolChatContext,
+  /** Get chat context or throw if not in a chat context. Pass `typeof yourChatTask` for typed clientData. */
+  chatContextOrThrow: getToolChatContextOrThrow,
 };
 
 /**
@@ -755,6 +849,14 @@ function chatTask<
             `chat turn ${turn + 1}`,
             async () => {
               locals.set(chatPipeCountKey, 0);
+
+              // Store chat context for auto-detection by ai.tool subtasks
+              locals.set(chatTurnContextKey, {
+                chatId: currentWirePayload.chatId,
+                turn,
+                continuation,
+                clientData,
+              });
 
               // Per-turn stop controller (reset each turn)
               const stopController = new AbortController();
