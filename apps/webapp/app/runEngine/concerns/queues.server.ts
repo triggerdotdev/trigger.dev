@@ -79,14 +79,35 @@ export class DefaultQueueManager implements QueueManager {
     if (lockedBackgroundWorker) {
       // Task is locked to a specific worker version
       const specifiedQueueName = extractQueueName(request.body.options?.queue);
+
+      // Always fetch the task to get TTL (and default queue if no override)
+      const lockedTask = await this.prisma.backgroundWorkerTask.findFirst({
+        where: {
+          workerId: lockedBackgroundWorker.id,
+          runtimeEnvironmentId: request.environment.id,
+          slug: request.taskId,
+        },
+        include: {
+          queue: true,
+        },
+      });
+
+      if (!lockedTask) {
+        throw new ServiceValidationError(
+          `Task '${request.taskId}' not found on locked version '${lockedBackgroundWorker.version ?? "<unknown>"
+          }'.`
+        );
+      }
+
+      taskTtl = lockedTask.ttl;
+
       if (specifiedQueueName) {
-        // A specific queue name is provided
+        // A specific queue name is provided, validate it exists for the locked worker
         const specifiedQueue = await this.prisma.taskQueue.findFirst({
-          // Validate it exists for the locked worker
           where: {
             name: specifiedQueueName,
             runtimeEnvironmentId: request.environment.id,
-            workers: { some: { id: lockedBackgroundWorker.id } }, // Ensure the queue is associated with any task of the locked worker
+            workers: { some: { id: lockedBackgroundWorker.id } },
           },
         });
 
@@ -100,25 +121,6 @@ export class DefaultQueueManager implements QueueManager {
         queueName = specifiedQueue.name;
         lockedQueueId = specifiedQueue.id;
       } else {
-        // No specific queue name provided, use the default queue for the task on the locked worker
-        const lockedTask = await this.prisma.backgroundWorkerTask.findFirst({
-          where: {
-            workerId: lockedBackgroundWorker.id,
-            runtimeEnvironmentId: request.environment.id,
-            slug: request.taskId,
-          },
-          include: {
-            queue: true,
-          },
-        });
-
-        if (!lockedTask) {
-          throw new ServiceValidationError(
-            `Task '${request.taskId}' not found on locked version '${lockedBackgroundWorker.version ?? "<unknown>"
-            }'.`
-          );
-        }
-
         if (!lockedTask.queue) {
           // This case should ideally be prevented by earlier checks or schema constraints,
           // but handle it defensively.
@@ -135,7 +137,6 @@ export class DefaultQueueManager implements QueueManager {
         // Use the task's default queue name
         queueName = lockedTask.queue.name;
         lockedQueueId = lockedTask.queue.id;
-        taskTtl = lockedTask.ttl;
       }
     } else {
       // Task is not locked to a specific version, use regular logic
@@ -181,10 +182,7 @@ export class DefaultQueueManager implements QueueManager {
     const { queue } = body.options ?? {};
 
     // Use extractQueueName to handle double-wrapped queue objects
-    const queueName = extractQueueName(queue);
-    if (queueName) {
-      return { queueName };
-    }
+    const overriddenQueueName = extractQueueName(queue);
 
     const defaultQueueName = `task/${taskId}`;
 
@@ -197,7 +195,7 @@ export class DefaultQueueManager implements QueueManager {
         environmentId: environment.id,
       });
 
-      return { queueName: defaultQueueName };
+      return { queueName: overriddenQueueName ?? defaultQueueName };
     }
 
     const task = await this.prisma.backgroundWorkerTask.findFirst({
@@ -217,7 +215,7 @@ export class DefaultQueueManager implements QueueManager {
         environmentId: environment.id,
       });
 
-      return { queueName: defaultQueueName };
+      return { queueName: overriddenQueueName ?? defaultQueueName };
     }
 
     if (!task.queue) {
@@ -227,10 +225,10 @@ export class DefaultQueueManager implements QueueManager {
         queueConfig: task.queueConfig,
       });
 
-      return { queueName: defaultQueueName, taskTtl: task.ttl };
+      return { queueName: overriddenQueueName ?? defaultQueueName, taskTtl: task.ttl };
     }
 
-    return { queueName: task.queue.name ?? defaultQueueName, taskTtl: task.ttl };
+    return { queueName: overriddenQueueName ?? task.queue.name ?? defaultQueueName, taskTtl: task.ttl };
   }
 
   async validateQueueLimits(
