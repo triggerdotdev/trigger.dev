@@ -247,6 +247,28 @@ export const myTask = task({
 });
 ```
 
+#### Per-task middleware
+
+You can also define middleware per task by passing the `middleware` option in the task definition. This runs after global middleware and before the `run` function. Use it when only specific tasks need certain locals or setup:
+
+```ts
+import { task, locals } from "@trigger.dev/sdk";
+
+const myLocal = locals.create<string>("myLocal");
+
+export const myTask = task({
+  id: "my-task",
+  middleware: async ({ payload, ctx, next }) => {
+    locals.set(myLocal, "some-value");
+    await next();
+  },
+  run: async (payload) => {
+    const value = locals.getOrThrow(myLocal);
+    // ...
+  },
+});
+```
+
 ### `onStartAttempt` function
 
 <Info>The `onStartAttempt` function was introduced in v4.1.0</Info>
