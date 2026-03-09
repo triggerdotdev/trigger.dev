@@ -190,10 +190,30 @@ export class RunEngineTriggerTaskService {
         }
       }
 
-      const ttl =
-        typeof body.options?.ttl === "number"
-          ? stringifyDuration(body.options?.ttl)
-          : body.options?.ttl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
+      // Resolve TTL with precedence: per-trigger > task-level > dev default
+      let ttl: string | undefined;
+
+      if (body.options?.ttl !== undefined) {
+        // Per-trigger TTL takes highest priority
+        ttl =
+          typeof body.options.ttl === "number"
+            ? stringifyDuration(body.options.ttl)
+            : body.options.ttl;
+      } else {
+        // Look up task-level TTL default from BackgroundWorkerTask
+        const taskDefaults = await this.prisma.backgroundWorkerTask.findFirst({
+          where: {
+            slug: taskId,
+            projectId: environment.projectId,
+            runtimeEnvironmentId: environment.id,
+          },
+          select: { ttl: true },
+          orderBy: { createdAt: "desc" },
+        });
+
+        ttl =
+          taskDefaults?.ttl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
+      }
 
       // Get parent run if specified
       const parentRun = body.options?.parentRunId

@@ -5,7 +5,7 @@ import {
   QueueManifest,
   TaskResource,
 } from "@trigger.dev/core/v3";
-import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
+import { BackgroundWorkerId, stringifyDuration } from "@trigger.dev/core/v3/isomorphic";
 import type { BackgroundWorker, TaskQueue, TaskQueueType } from "@trigger.dev/database";
 import cronstrue from "cronstrue";
 import { Prisma, PrismaClientOrTransaction } from "~/db.server";
@@ -280,6 +280,8 @@ async function createWorkerTask(
         triggerSource: task.triggerSource === "schedule" ? "SCHEDULED" : "STANDARD",
         fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
         maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
+        ttl:
+          typeof task.ttl === "number" ? stringifyDuration(task.ttl) ?? null : task.ttl ?? null,
         queueId: queue.id,
         payloadSchema: task.payloadSchema as any,
       },

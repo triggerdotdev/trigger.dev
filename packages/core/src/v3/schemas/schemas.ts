@@ -189,6 +189,7 @@ const taskMetadata = {
   triggerSource: z.string().optional(),
   schedule: ScheduleMetadata.optional(),
   maxDuration: z.number().optional(),
+  ttl: z.string().or(z.number().nonnegative()).optional(),
   payloadSchema: z.unknown().optional(),
 };
 
