@@ -1122,9 +1122,11 @@ run: async ({ messages, signal }) => {
 
 Use `chat.local` to create typed, run-scoped data that persists across turns and is accessible from anywhere — the run function, tools, nested helpers. Each run gets its own isolated copy, and locals are automatically cleared between runs.
 
+When a subtask is invoked via `ai.tool()`, initialized locals are automatically serialized into the subtask's metadata and hydrated on first access — no extra code needed. Subtask changes to hydrated locals are local to the subtask and don't propagate back to the parent.
+
 ### Declaring and initializing
 
-Declare locals at module level, then initialize them inside a lifecycle hook where you have context (chatId, clientData, etc.):
+Declare locals at module level with a unique `id`, then initialize them inside a lifecycle hook where you have context (chatId, clientData, etc.):
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
@@ -1133,12 +1135,12 @@ import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 
-// Declare at module level — multiple locals can coexist
+// Declare at module level — each local needs a unique id
 const userContext = chat.local<{
   name: string;
   plan: "free" | "pro";
   messageCount: number;
-}>();
+}>({ id: "userContext" });
 
 export const myChat = chat.task({
   id: "my-chat",
@@ -1172,7 +1174,7 @@ export const myChat = chat.task({
 Locals are accessible from anywhere during task execution — including AI SDK tools:
 
 ```ts
-const userContext = chat.local<{ plan: "free" | "pro" }>();
+const userContext = chat.local<{ plan: "free" | "pro" }>({ id: "userContext" });
 
 const premiumTool = tool({
   description: "Access premium features",
@@ -1185,6 +1187,49 @@ const premiumTool = tool({
   },
 });
 ```
+
+### Accessing from subtasks
+
+When you use `ai.tool()` to expose a subtask, chat locals are automatically available read-only:
+
+```ts
+import { chat, ai } from "@trigger.dev/sdk/ai";
+import { schemaTask } from "@trigger.dev/sdk";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+const userContext = chat.local<{ name: string; plan: "free" | "pro" }>({ id: "userContext" });
+
+export const analyzeData = schemaTask({
+  id: "analyze-data",
+  schema: z.object({ query: z.string() }),
+  run: async ({ query }) => {
+    // userContext.name just works — auto-hydrated from parent metadata
+    console.log(`Analyzing for ${userContext.name}`);
+    // Changes here are local to this subtask and don't propagate back
+  },
+});
+
+export const myChat = chat.task({
+  id: "my-chat",
+  onChatStart: async ({ clientData }) => {
+    userContext.init({ name: "Alice", plan: "pro" });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: openai("gpt-4o"),
+      messages,
+      tools: { analyzeData: ai.tool(analyzeData) },
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+<Note>
+  Values must be JSON-serializable for subtask access. Non-serializable values (functions, class instances, etc.) will be lost during transfer.
+</Note>
 
 ### Dirty tracking and persistence
 
@@ -1207,7 +1252,7 @@ onTurnComplete: async ({ chatId }) => {
 
 | Method | Description |
 |--------|-------------|
-| `chat.local<T>()` | Create a typed local (declare at module level) |
+| `chat.local<T>({ id })` | Create a typed local with a unique id (declare at module level) |
 | `local.init(value)` | Initialize with a value (call in hooks or `run`) |
 | `local.hasChanged()` | Returns `true` if modified since last check, resets flag |
 | `local.get()` | Returns a plain object copy (for serialization) |
@@ -1337,7 +1382,7 @@ See [onTurnComplete](#onturncomplete) for the full field reference.
 |--------|-------------|
 | `chat.task(options)` | Create a chat task |
 | `chat.pipe(source, options?)` | Pipe a stream to the frontend (from anywhere inside a task) |
-| `chat.local<T>()` | Create a per-run typed local (see [Per-run data](#per-run-data-with-chatlocal)) |
+| `chat.local<T>({ id })` | Create a per-run typed local (see [Per-run data](#per-run-data-with-chatlocal)) |
 | `chat.createAccessToken(taskId)` | Create a public access token for a chat task |
 | `chat.setTurnTimeout(duration)` | Override turn timeout at runtime (e.g. `"2h"`) |
 | `chat.setTurnTimeoutInSeconds(seconds)` | Override turn timeout at runtime (in seconds) |
