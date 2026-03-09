@@ -838,6 +838,17 @@ export const DevDequeueResponseBody = z.object({
 });
 export type DevDequeueResponseBody = z.infer<typeof DevDequeueResponseBody>;
 
+export const DevDisconnectRequestBody = z.object({
+  runFriendlyIds: z.string().array(),
+});
+export type DevDisconnectRequestBody = z.infer<typeof DevDisconnectRequestBody>;
+
+export const DevDisconnectResponseBody = z.object({
+  cancelled: z.number(),
+  bulkActionId: z.string().optional(),
+});
+export type DevDisconnectResponseBody = z.infer<typeof DevDisconnectResponseBody>;
+
 export type CreateUploadPayloadUrlResponseBody = z.infer<typeof CreateUploadPayloadUrlResponseBody>;
 
 export const ReplayRunResponse = z.object({
