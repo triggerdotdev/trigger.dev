@@ -98,6 +98,8 @@ export function ChatApp({
     setActiveChatId(id);
     setMessages([]);
     setNewChatModel(DEFAULT_MODEL);
+    // Eagerly start the run — onPreload fires immediately for initialization
+    transport.preload(id);
   }
 
   function handleSelectChat(id: string) {
