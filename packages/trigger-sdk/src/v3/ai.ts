@@ -40,6 +40,8 @@ export type ToolCallExecutionOptions = {
   turn?: number;
   continuation?: boolean;
   clientData?: unknown;
+  /** Serialized chat.local values from the parent run. @internal */
+  chatLocals?: Record<string, unknown>;
 };
 
 /** Chat context stored in locals during each chat.task turn for auto-detection. */
@@ -119,6 +121,18 @@ function toolFromTask<
         toolMeta.turn = chatCtx.turn;
         toolMeta.continuation = chatCtx.continuation;
         toolMeta.clientData = chatCtx.clientData;
+      }
+
+      // Serialize initialized chat.local values for subtask hydration
+      const chatLocals: Record<string, unknown> = {};
+      for (const entry of chatLocalRegistry) {
+        const value = locals.get(entry.key);
+        if (value !== undefined) {
+          chatLocals[entry.id] = value;
+        }
+      }
+      if (Object.keys(chatLocals).length > 0) {
+        toolMeta.chatLocals = chatLocals;
       }
 
       return await task
@@ -1546,8 +1560,31 @@ function cleanupAbortedParts(message: UIMessage): UIMessage {
 const CHAT_LOCAL_KEY: unique symbol = Symbol("chatLocalKey");
 /** @internal Symbol for storing the dirty-tracking locals key. */
 const CHAT_LOCAL_DIRTY_KEY: unique symbol = Symbol("chatLocalDirtyKey");
-/** @internal Counter for generating unique locals IDs. */
-let chatLocalCounter = 0;
+
+// ---------------------------------------------------------------------------
+// chat.local registry — tracks all declared locals for serialization
+// ---------------------------------------------------------------------------
+
+type ChatLocalEntry = { key: ReturnType<typeof locals.create>; id: string };
+const chatLocalRegistry = new Set<ChatLocalEntry>();
+
+/** @internal Run-scoped flag to ensure hydration happens at most once per run. */
+const chatLocalsHydratedKey = locals.create<boolean>("chat.locals.hydrated");
+
+/**
+ * Hydrate chat.local values from subtask metadata (set by toolFromTask).
+ * Runs once per run — subsequent calls are no-ops.
+ * @internal
+ */
+function hydrateLocalsFromMetadata(): void {
+  if (locals.get(chatLocalsHydratedKey)) return;
+  locals.set(chatLocalsHydratedKey, true);
+  const opts = metadata.get(METADATA_KEY) as ToolCallExecutionOptions | undefined;
+  if (!opts?.chatLocals) return;
+  for (const [id, value] of Object.entries(opts.chatLocals)) {
+    locals.set(locals.create(id), value);
+  }
+}
 
 /**
  * A Proxy-backed, run-scoped data object that appears as `T` to users.
@@ -1574,12 +1611,16 @@ export type ChatLocal<T extends Record<string, unknown>> = T & {
  *
  * Multiple locals can coexist — each gets its own isolated run-scoped storage.
  *
+ * The `id` is required and must be unique across all `chat.local()` calls in
+ * your project. It's used to serialize values into subtask metadata so that
+ * `ai.tool()` subtasks can auto-hydrate parent locals (read-only).
+ *
  * @example
  * ```ts
  * import { chat } from "@trigger.dev/sdk/ai";
  *
- * const userPrefs = chat.local<{ theme: string; language: string }>();
- * const gameState = chat.local<{ score: number; streak: number }>();
+ * const userPrefs = chat.local<{ theme: string; language: string }>({ id: "userPrefs" });
+ * const gameState = chat.local<{ score: number; streak: number }>({ id: "gameState" });
  *
  * export const myChat = chat.task({
  *   id: "my-chat",
@@ -1603,9 +1644,12 @@ export type ChatLocal<T extends Record<string, unknown>> = T & {
  * });
  * ```
  */
-function chatLocal<T extends Record<string, unknown>>(): ChatLocal<T> {
-  const localKey = locals.create<T>(`chat.local.${chatLocalCounter++}`);
-  const dirtyKey = locals.create<boolean>(`chat.local.${chatLocalCounter++}.dirty`);
+function chatLocal<T extends Record<string, unknown>>(options: { id: string }): ChatLocal<T> {
+  const id = `chat.local.${options.id}`;
+  const localKey = locals.create<T>(id);
+  const dirtyKey = locals.create<boolean>(`${id}.dirty`);
+
+  chatLocalRegistry.add({ key: localKey, id });
 
   const target = {} as any;
   target[CHAT_LOCAL_KEY] = localKey;
@@ -1633,7 +1677,11 @@ function chatLocal<T extends Record<string, unknown>>(): ChatLocal<T> {
       }
       if (prop === "get") {
         return () => {
-          const current = locals.get(localKey);
+          let current = locals.get(localKey);
+          if (current === undefined) {
+            hydrateLocalsFromMetadata();
+            current = locals.get(localKey);
+          }
           if (current === undefined) {
             throw new Error(
               "local.get() called before initialization. Call local.init() first."
@@ -1645,12 +1693,21 @@ function chatLocal<T extends Record<string, unknown>>(): ChatLocal<T> {
       // toJSON for serialization (JSON.stringify(local))
       if (prop === "toJSON") {
         return () => {
-          const current = locals.get(localKey);
+          let current = locals.get(localKey);
+          if (current === undefined) {
+            hydrateLocalsFromMetadata();
+            current = locals.get(localKey);
+          }
           return current ? { ...current } : undefined;
         };
       }
 
-      const current = locals.get(localKey);
+      let current = locals.get(localKey);
+      if (current === undefined) {
+        // Auto-hydrate from parent metadata in subtask context
+        hydrateLocalsFromMetadata();
+        current = locals.get(localKey);
+      }
       if (current === undefined) return undefined;
       return (current as any)[prop];
     },
@@ -1673,18 +1730,30 @@ function chatLocal<T extends Record<string, unknown>>(): ChatLocal<T> {
 
     has(_target, prop) {
       if (typeof prop === "symbol") return prop in _target;
-      const current = locals.get(localKey);
+      let current = locals.get(localKey);
+      if (current === undefined) {
+        hydrateLocalsFromMetadata();
+        current = locals.get(localKey);
+      }
       return current !== undefined && prop in current;
     },
 
     ownKeys() {
-      const current = locals.get(localKey);
+      let current = locals.get(localKey);
+      if (current === undefined) {
+        hydrateLocalsFromMetadata();
+        current = locals.get(localKey);
+      }
       return current ? Reflect.ownKeys(current) : [];
     },
 
     getOwnPropertyDescriptor(_target, prop) {
       if (typeof prop === "symbol") return undefined;
-      const current = locals.get(localKey);
+      let current = locals.get(localKey);
+      if (current === undefined) {
+        hydrateLocalsFromMetadata();
+        current = locals.get(localKey);
+      }
       if (current === undefined || !(prop in current)) return undefined;
       return {
         configurable: true,
