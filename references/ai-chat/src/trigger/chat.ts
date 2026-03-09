@@ -137,9 +137,9 @@ const userContext = chat.local<{
 }>({ id: "userContext" });
 
 // Per-run dynamic tools — loaded from DB in onPreload/onChatStart
-const userToolDefs = chat.local<
-  Array<{ name: string; description: string; responseTemplate: string }>
->({ id: "userToolDefs" });
+const userToolDefs = chat.local<{
+  value: Array<{ name: string; description: string; responseTemplate: string }>;
+}>({ id: "userToolDefs" });
 
 // --------------------------------------------------------------------------
 // Subtask: deep research — fetches multiple URLs and streams progress
@@ -250,6 +250,7 @@ export const aiChat = chat.task({
   warmTimeoutInSeconds: 60,
   chatAccessTokenTTL: "2h",
   onPreload: async ({ chatId, runId, chatAccessToken, clientData }) => {
+    if (!clientData) return;
     // Eagerly initialize before the user's first message arrives
     const user = await prisma.user.upsert({
       where: { id: clientData.userId },
@@ -266,7 +267,7 @@ export const aiChat = chat.task({
 
     // Load user-specific dynamic tools
     const tools = await prisma.userTool.findMany({ where: { userId: clientData.userId } });
-    userToolDefs.init(tools);
+    userToolDefs.init({ value: tools });
 
     // Create chat record and session
     await prisma.chat.upsert({
@@ -287,12 +288,8 @@ export const aiChat = chat.task({
   },
   onChatStart: async ({ chatId, runId, chatAccessToken, clientData, continuation, preloaded }) => {
     if (preloaded) {
-      // Already initialized in onPreload — just update session
-      await prisma.chatSession.upsert({
-        where: { id: chatId },
-        create: { id: chatId, runId, publicAccessToken: chatAccessToken },
-        update: { runId, publicAccessToken: chatAccessToken },
-      });
+      // Everything was already initialized in onPreload — skip entirely.
+      // The session, chat record, user context, and tools are all set up.
       return;
     }
 
@@ -312,7 +309,7 @@ export const aiChat = chat.task({
 
     // Load user-specific dynamic tools
     const tools = await prisma.userTool.findMany({ where: { userId: clientData.userId } });
-    userToolDefs.init(tools);
+    userToolDefs.init({ value: tools });
 
     if (!continuation) {
       await prisma.chat.upsert({
@@ -333,17 +330,10 @@ export const aiChat = chat.task({
       update: { runId, publicAccessToken: chatAccessToken },
     });
   },
-  onTurnStart: async ({ chatId, uiMessages, runId, chatAccessToken }) => {
-    // Persist messages BEFORE streaming so mid-stream refresh has the user message
-    await prisma.chat.update({
-      where: { id: chatId },
-      data: { messages: uiMessages as any },
-    });
-    await prisma.chatSession.upsert({
-      where: { id: chatId },
-      create: { id: chatId, runId, publicAccessToken: chatAccessToken },
-      update: { runId, publicAccessToken: chatAccessToken },
-    });
+  onTurnStart: async ({ chatId, uiMessages }) => {
+    // Persist messages so mid-stream refresh still shows the user message.
+    // Deferred — runs in parallel with streaming, awaited before onTurnComplete.
+    chat.defer(prisma.chat.update({ where: { id: chatId }, data: { messages: uiMessages as any } }));
   },
   onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId, clientData, stopped }) => {
     // Persist final messages + assistant response + stream position

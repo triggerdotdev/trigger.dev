@@ -1387,6 +1387,7 @@ See [onTurnComplete](#onturncomplete) for the full field reference.
 | `chat.setTurnTimeout(duration)` | Override turn timeout at runtime (e.g. `"2h"`) |
 | `chat.setTurnTimeoutInSeconds(seconds)` | Override turn timeout at runtime (in seconds) |
 | `chat.setWarmTimeoutInSeconds(seconds)` | Override warm timeout at runtime |
+| `chat.defer(promise)` | Run background work in parallel with streaming, awaited before `onTurnComplete` |
 | `chat.isStopped()` | Check if the current turn was stopped by the user (works anywhere during a turn) |
 | `chat.cleanupAbortedParts(message)` | Remove incomplete parts from a stopped response message |
 | `chat.stream` | Typed chat output stream — use `.writer()`, `.pipe()`, `.append()`, `.read()` |
