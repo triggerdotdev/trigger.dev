@@ -110,6 +110,8 @@ function ResearchProgress({ part }: { part: any }) {
   );
 }
 
+type TtfbEntry = { turn: number; ttfbMs: number };
+
 function DebugPanel({
   chatId,
   model,
@@ -117,6 +119,7 @@ function DebugPanel({
   session,
   dashboardUrl,
   messageCount,
+  ttfbHistory,
 }: {
   chatId: string;
   model: string;
@@ -124,12 +127,19 @@ function DebugPanel({
   session?: { runId: string; publicAccessToken: string; lastEventId?: string };
   dashboardUrl?: string;
   messageCount: number;
+  ttfbHistory: TtfbEntry[];
 }) {
   const [open, setOpen] = useState(false);
 
   const runUrl =
     session?.runId && dashboardUrl
       ? `${dashboardUrl}/runs/${session.runId}`
+      : undefined;
+
+  const latestTtfb = ttfbHistory.length > 0 ? ttfbHistory[ttfbHistory.length - 1]! : undefined;
+  const avgTtfb =
+    ttfbHistory.length > 0
+      ? Math.round(ttfbHistory.reduce((sum, e) => sum + e.ttfbMs, 0) / ttfbHistory.length)
       : undefined;
 
   return (
@@ -150,6 +160,9 @@ function DebugPanel({
           }`}
         />
         <span>{status}</span>
+        {latestTtfb && (
+          <span className="font-mono text-blue-600">TTFB {latestTtfb.ttfbMs.toLocaleString()}ms</span>
+        )}
         {session?.runId && (
           <span className="font-mono">{session.runId.slice(0, 16)}...</span>
         )}
@@ -169,6 +182,22 @@ function DebugPanel({
             </>
           ) : (
             <Row label="Session" value="none" />
+          )}
+          {ttfbHistory.length > 0 && (
+            <>
+              <div className="mt-2 border-t border-gray-200 pt-2">
+                <span className="font-medium text-gray-600">TTFB</span>
+                {avgTtfb !== undefined && (
+                  <span className="ml-2 text-gray-400">avg {avgTtfb.toLocaleString()}ms</span>
+                )}
+              </div>
+              {ttfbHistory.map((entry) => (
+                <div key={entry.turn} className="flex items-center gap-2">
+                  <span className="w-24 shrink-0 text-gray-400">Turn {entry.turn}</span>
+                  <span className="font-mono">{entry.ttfbMs.toLocaleString()}ms</span>
+                </div>
+              ))}
+            </>
           )}
         </div>
       )}
@@ -236,6 +265,11 @@ export function Chat({
   const [input, setInput] = useState("");
   const hasCalledFirstMessage = useRef(false);
 
+  // TTFB tracking
+  const sendTimestamp = useRef<number | null>(null);
+  const turnCounter = useRef(0);
+  const [ttfbHistory, setTtfbHistory] = useState<TtfbEntry[]>([]);
+
   const { messages, sendMessage, stop, status, error } = useChat({
     id: chatId,
     messages: initialMessages,
@@ -257,6 +291,19 @@ export function Chat({
     }
   }, [messages, chatId, onFirstMessage]);
 
+  // TTFB detection: record when first assistant content appears after send
+  useEffect(() => {
+    if (status !== "streaming") return;
+    if (sendTimestamp.current === null) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.role === "assistant") {
+      const ttfbMs = Date.now() - sendTimestamp.current;
+      const turn = turnCounter.current;
+      sendTimestamp.current = null;
+      setTtfbHistory((prev) => [...prev, { turn, ttfbMs }]);
+    }
+  }, [status, messages]);
+
   // Pending message to send after the current turn completes
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
@@ -277,6 +324,8 @@ export function Chat({
     if (pendingMessage) {
       const text = pendingMessage;
       setPendingMessage(null);
+      turnCounter.current++;
+      sendTimestamp.current = Date.now();
       sendMessage({ text }, { metadata: { model } });
     }
   }, [status, messages, chatId, onMessagesChange, sendMessage, pendingMessage, model]);
@@ -423,6 +472,7 @@ export function Chat({
         session={session}
         dashboardUrl={dashboardUrl}
         messageCount={messages.length}
+        ttfbHistory={ttfbHistory}
       />
 
       <form
@@ -432,6 +482,8 @@ export function Chat({
           if (status === "streaming") {
             setPendingMessage(input);
           } else {
+            turnCounter.current++;
+            sendTimestamp.current = Date.now();
             sendMessage({ text: input }, { metadata: { model } });
           }
           setInput("");

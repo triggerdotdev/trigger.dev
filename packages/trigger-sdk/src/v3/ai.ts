@@ -309,9 +309,8 @@ const chatStream = streams.define<UIMessageChunk>({ id: _CHAT_STREAM_KEY });
 /**
  * The wire payload shape sent by `TriggerChatTransport`.
  * Uses `metadata` to match the AI SDK's `ChatRequestOptions` field name.
- * @internal
  */
-type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unknown> = {
+export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unknown> = {
   messages: TMessage[];
   chatId: string;
   trigger: "submit-message" | "regenerate-message" | "preload";
@@ -383,6 +382,13 @@ export type ChatTaskRunPayload<TClientData = unknown> = ChatTaskPayload<TClientD
 // Input streams for bidirectional chat communication
 const messagesInput = streams.input<ChatTaskWirePayload>({ id: CHAT_MESSAGES_STREAM_ID });
 const stopInput = streams.input<{ stop: true; message?: string }>({ id: CHAT_STOP_STREAM_ID });
+
+/**
+ * Per-turn deferred promises. Registered via `chat.defer()`, awaited
+ * before `onTurnComplete` fires. Reset each turn.
+ * @internal
+ */
+const chatDeferKey = locals.create<Set<Promise<unknown>>>("chat.defer");
 
 /**
  * Run-scoped pipe counter. Stored in locals so concurrent runs in the
@@ -1016,6 +1022,7 @@ function chatTask<
             `chat turn ${turn + 1}`,
             async () => {
               locals.set(chatPipeCountKey, 0);
+              locals.set(chatDeferKey, new Set());
 
               // Store chat context for auto-detection by ai.tool subtasks
               locals.set(chatTurnContextKey, {
@@ -1270,6 +1277,16 @@ function chatTask<
                 turnAccessToken
               );
 
+              // Await deferred background work (e.g. DB writes from onTurnStart)
+              // before firing onTurnComplete so hooks can rely on the work being done.
+              const deferredWork = locals.get(chatDeferKey);
+              if (deferredWork && deferredWork.size > 0) {
+                await Promise.race([
+                  Promise.allSettled(deferredWork),
+                  new Promise<void>((r) => setTimeout(r, 5_000)),
+                ]);
+              }
+
               // Fire onTurnComplete after response capture
               if (onTurnComplete) {
                 await tracer.startActiveSpan(
@@ -1485,6 +1502,32 @@ function setWarmTimeoutInSeconds(seconds: number): void {
 function isStopped(): boolean {
   const controller = locals.get(chatStopControllerKey);
   return controller?.signal.aborted ?? false;
+}
+
+// ---------------------------------------------------------------------------
+// Per-turn deferred work
+// ---------------------------------------------------------------------------
+
+/**
+ * Register a promise that runs in the background during the current turn.
+ *
+ * Use this to move non-blocking work (DB writes, analytics, etc.) out of
+ * the critical path. The promise runs in parallel with streaming and is
+ * awaited (with a 5 s timeout) before `onTurnComplete` fires.
+ *
+ * @example
+ * ```ts
+ * onTurnStart: async ({ chatId, uiMessages }) => {
+ *   // Persist messages without blocking the LLM call
+ *   chat.defer(db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } }));
+ * },
+ * ```
+ */
+function chatDefer(promise: Promise<unknown>): void {
+  const promises = locals.get(chatDeferKey);
+  if (promises) {
+    promises.add(promise);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1806,6 +1849,8 @@ export const chat = {
   isStopped,
   /** Clean up aborted parts from a UIMessage. See {@link cleanupAbortedParts}. */
   cleanupAbortedParts,
+  /** Register background work that runs in parallel with streaming. See {@link chatDefer}. */
+  defer: chatDefer,
   /** Typed chat output stream for writing custom chunks or piping from subtasks. */
   stream: chatStream,
 };

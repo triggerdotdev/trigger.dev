@@ -12,6 +12,7 @@ import {
 type ChatMeta = {
   id: string;
   title: string;
+  model: string;
   createdAt: number;
   updatedAt: number;
 };
