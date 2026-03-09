@@ -17,6 +17,97 @@ The `@trigger.dev/sdk` provides a custom [ChatTransport](https://sdk.vercel.ai/d
 
 No custom API routes needed. Your chat backend is a Trigger.dev task.
 
+<Accordion title="How it works (sequence diagrams)">
+
+### First message flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant useChat as useChat + Transport
+    participant API as Trigger.dev API
+    participant Task as chat.task Worker
+    participant LLM as LLM Provider
+
+    User->>useChat: sendMessage("Hello")
+    useChat->>useChat: No session for chatId → trigger new run
+    useChat->>API: triggerTask(payload, tags: [chat:id])
+    API-->>useChat: { runId, publicAccessToken }
+    useChat->>useChat: Store session, subscribe to SSE
+
+    API->>Task: Start run with ChatTaskWirePayload
+    Task->>Task: onChatStart({ chatId, messages, clientData })
+    Task->>Task: onTurnStart({ chatId, messages })
+    Task->>LLM: streamText({ model, messages, abortSignal })
+    LLM-->>Task: Stream response chunks
+    Task->>API: streams.pipe("chat", uiStream)
+    API-->>useChat: SSE: UIMessageChunks
+    useChat-->>User: Render streaming text
+    Task->>API: Write __trigger_turn_complete
+    API-->>useChat: SSE: turn complete + refreshed token
+    useChat->>useChat: Close stream, update session
+    Task->>Task: onTurnComplete({ messages, stopped: false })
+    Task->>Task: Wait for next message (warm → suspend)
+```
+
+### Multi-turn flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant useChat as useChat + Transport
+    participant API as Trigger.dev API
+    participant Task as chat.task Worker
+    participant LLM as LLM Provider
+
+    Note over Task: Suspended, waiting for message
+
+    User->>useChat: sendMessage("Tell me more")
+    useChat->>useChat: Session exists → send via input stream
+    useChat->>API: sendInputStream(runId, "chat-messages", payload)
+    Note right of useChat: Only sends new message (not full history)
+
+    API->>Task: Deliver to messagesInput
+    Task->>Task: Wake from suspend
+    Task->>Task: Append to accumulated messages
+    Task->>Task: onTurnStart({ turn: 1 })
+    Task->>LLM: streamText({ messages: [all accumulated] })
+    LLM-->>Task: Stream response
+    Task->>API: streams.pipe("chat", uiStream)
+    API-->>useChat: SSE: UIMessageChunks
+    useChat-->>User: Render streaming text
+    Task->>API: Write __trigger_turn_complete
+    Task->>Task: onTurnComplete({ turn: 1 })
+    Task->>Task: Wait for next message (warm → suspend)
+```
+
+### Stop signal flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant useChat as useChat + Transport
+    participant API as Trigger.dev API
+    participant Task as chat.task Worker
+    participant LLM as LLM Provider
+
+    Note over Task: Streaming response...
+
+    User->>useChat: Click "Stop"
+    useChat->>API: sendInputStream(runId, "chat-stop", { stop: true })
+    API->>Task: Deliver to stopInput
+    Task->>Task: stopController.abort()
+    LLM-->>Task: Stream ends (AbortError)
+    Task->>Task: cleanupAbortedParts(responseMessage)
+    Note right of Task: Remove partial tool calls,<br/>mark streaming parts as done
+    Task->>API: Write __trigger_turn_complete
+    API-->>useChat: SSE: turn complete
+    Task->>Task: onTurnComplete({ stopped: true })
+    Task->>Task: Wait for next message
+```
+
+</Accordion>
+
 <Note>
   Requires `@trigger.dev/sdk` version **4.4.0 or later** and the `ai` package **v5.0.0 or later**.
 </Note>
