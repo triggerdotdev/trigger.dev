@@ -35,6 +35,12 @@ const { action } = createActionApiRoute(
     method: "POST",
   },
   async ({ authentication, body }) => {
+    // Only allow dev environments — this endpoint uses finalizeRun which
+    // skips PENDING_CANCEL and immediately finalizes executing runs.
+    if (authentication.environment.type !== "DEVELOPMENT") {
+      return json({ error: "This endpoint is only available for dev environments" }, { status: 403 });
+    }
+
     const environmentId = authentication.environment.id;
 
     // Rate limit per environment
