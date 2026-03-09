@@ -2170,6 +2170,9 @@ importers:
       streamdown:
         specifier: ^2.3.0
         version: 2.3.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      turndown:
+        specifier: ^7.2.2
+        version: 7.2.2
       zod:
         specifier: 3.25.76
         version: 3.25.76
@@ -2189,6 +2192,9 @@ importers:
       '@types/react-dom':
         specifier: ^19
         version: 19.0.4(@types/react@19.0.12)
+      '@types/turndown':
+        specifier: ^5.0.6
+        version: 5.0.6
       prisma:
         specifier: ^7.4.2
         version: 7.4.2(@types/react@19.0.12)(better-sqlite3@11.10.0)(magicast@0.3.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.5.4)
@@ -6056,6 +6062,9 @@ packages:
 
   '@microsoft/fetch-event-source@2.0.1':
     resolution: {integrity: sha512-W6CLUJ2eBMw3Rec70qrsEW0jOm/3twwJv21mrmj2yORiaVmVYGS4sSS5yUwvQc1ZlDLYGPnClVWmUUMagKNsfA==}
+
+  '@mixmark-io/domino@2.2.0':
+    resolution: {integrity: sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw==}
 
   '@modelcontextprotocol/sdk@1.25.2':
     resolution: {integrity: sha512-LZFeo4F9M5qOhC/Uc1aQSrBHxMrvxett+9KLHt7OhcExtoiRN9DKgbZffMP/nxjutWDQpfMDfP3nkHI4X9ijww==}
@@ -11255,6 +11264,9 @@ packages:
 
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
+
+  '@types/turndown@5.0.6':
+    resolution: {integrity: sha512-ru00MoyeeouE5BX4gRL+6m/BsDfbRayOskWqUvh7CLGW+UXxHQItqALa38kKnOiZPqJrtzJUgAC2+F0rL1S4Pg==}
 
   '@types/unist@2.0.6':
     resolution: {integrity: sha512-PBjIUxZHOuj0R15/xuwJYjFi+KZdNFrehocChv4g5hu6aFroHue8m0lBP0POdK2nKzbw0cgV1mws8+V/JAcEkQ==}
@@ -19818,6 +19830,9 @@ packages:
     resolution: {integrity: sha512-U4gKCWcKgLcCjQd4Pl8KJdfEKumpyWbzRu75A6FCj6Ctea1PIm58W6Ltw1QXKqHrl2pF9e1raAskf/h6dlrPCA==}
     hasBin: true
 
+  turndown@7.2.2:
+    resolution: {integrity: sha512-1F7db8BiExOKxjSMU2b7if62D/XOyQyZbPKq/nUwopfgnHlqXHqQ0lvfUTeUIr1lZJzOPFn43dODyMSIfvWRKQ==}
+
   tw-animate-css@1.2.4:
     resolution: {integrity: sha512-yt+HkJB41NAvOffe4NweJU6fLqAlVx/mBX6XmHRp15kq0JxTtOKaIw8pVSWM1Z+n2nXtyi7cW6C9f0WG/F/QAQ==}
 
@@ -24892,6 +24907,8 @@ snapshots:
       langium: 3.3.1
 
   '@microsoft/fetch-event-source@2.0.1': {}
+
+  '@mixmark-io/domino@2.2.0': {}
 
   '@modelcontextprotocol/sdk@1.25.2(hono@4.11.8)(supports-color@10.0.0)(zod@3.25.76)':
     dependencies:
@@ -31984,6 +32001,8 @@ snapshots:
 
   '@types/trusted-types@2.0.7':
     optional: true
+
+  '@types/turndown@5.0.6': {}
 
   '@types/unist@2.0.6': {}
 
@@ -42500,6 +42519,10 @@ snapshots:
       turbo-linux-arm64: 1.10.3
       turbo-windows-64: 1.10.3
       turbo-windows-arm64: 1.10.3
+
+  turndown@7.2.2:
+    dependencies:
+      '@mixmark-io/domino': 2.2.0
 
   tw-animate-css@1.2.4: {}
 
