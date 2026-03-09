@@ -300,7 +300,7 @@ const chatStream = streams.define<UIMessageChunk>({ id: _CHAT_STREAM_KEY });
 type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unknown> = {
   messages: TMessage[];
   chatId: string;
-  trigger: "submit-message" | "regenerate-message";
+  trigger: "submit-message" | "regenerate-message" | "preload";
   messageId?: string;
   metadata?: TMetadata;
   /** Whether this run is continuing an existing chat whose previous run ended. */
@@ -330,8 +330,9 @@ export type ChatTaskPayload<TClientData = unknown> = {
    * The trigger type:
    * - `"submit-message"`: A new user message
    * - `"regenerate-message"`: Regenerate the last assistant response
+   * - `"preload"`: Run was preloaded before the first message (only on turn 0)
    */
-  trigger: "submit-message" | "regenerate-message";
+  trigger: "submit-message" | "regenerate-message" | "preload";
 
   /** The ID of the message to regenerate (only for `"regenerate-message"`) */
   messageId?: string;
@@ -343,6 +344,8 @@ export type ChatTaskPayload<TClientData = unknown> = {
   continuation: boolean;
   /** The run ID of the previous run (only set when `continuation` is true). */
   previousRunId?: string;
+  /** Whether this run was preloaded before the first message. */
+  preloaded: boolean;
 };
 
 /**
@@ -511,6 +514,20 @@ async function pipeChat(
  * transport resumes the same run by sending the next message via input streams.
  */
 /**
+ * Event passed to the `onPreload` callback.
+ */
+export type PreloadEvent<TClientData = unknown> = {
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The Trigger.dev run ID for this conversation. */
+  runId: string;
+  /** A scoped access token for this chat run. */
+  chatAccessToken: string;
+  /** Custom data from the frontend. */
+  clientData?: TClientData;
+};
+
+/**
  * Event passed to the `onChatStart` callback.
  */
 export type ChatStartEvent<TClientData = unknown> = {
@@ -528,6 +545,8 @@ export type ChatStartEvent<TClientData = unknown> = {
   continuation: boolean;
   /** The run ID of the previous run (only set when `continuation` is true). */
   previousRunId?: string;
+  /** Whether this run was preloaded before the first message. */
+  preloaded: boolean;
 };
 
 /**
@@ -552,6 +571,8 @@ export type TurnStartEvent<TClientData = unknown> = {
   continuation: boolean;
   /** The run ID of the previous run (only set when `continuation` is true). */
   previousRunId?: string;
+  /** Whether this run was preloaded before the first message. */
+  preloaded: boolean;
 };
 
 /**
@@ -601,6 +622,8 @@ export type TurnCompleteEvent<TClientData = unknown> = {
   continuation: boolean;
   /** The run ID of the previous run (only set when `continuation` is true). */
   previousRunId?: string;
+  /** Whether this run was preloaded before the first message. */
+  preloaded: boolean;
 };
 
 export type ChatTaskOptions<
@@ -637,6 +660,22 @@ export type ChatTaskOptions<
    * the stream is automatically piped to the frontend.
    */
   run: (payload: ChatTaskRunPayload<inferSchemaOut<TClientDataSchema>>) => Promise<unknown>;
+
+  /**
+   * Called when a preloaded run starts, before the first message arrives.
+   *
+   * Use this to initialize state, create DB records, and load context early —
+   * so everything is ready when the user's first message comes through.
+   *
+   * @example
+   * ```ts
+   * onPreload: async ({ chatId, clientData }) => {
+   *   await db.chat.create({ data: { id: chatId } });
+   *   userContext.init(await loadUser(clientData.userId));
+   * }
+   * ```
+   */
+  onPreload?: (event: PreloadEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void;
 
   /**
    * Called on the first turn (turn 0) of a new run, before the `run` function executes.
@@ -722,6 +761,26 @@ export type ChatTaskOptions<
    * @default "1h"
    */
   chatAccessTokenTTL?: string;
+
+  /**
+   * How long (in seconds) to keep the run warm after `onPreload` fires,
+   * waiting for the first message before suspending.
+   *
+   * Only applies to preloaded runs (triggered via `transport.preload()`).
+   *
+   * @default Same as `warmTimeoutInSeconds`
+   */
+  preloadWarmTimeoutInSeconds?: number;
+
+  /**
+   * How long to wait (suspended) for the first message after a preloaded run starts.
+   * If no message arrives within this time, the run ends.
+   *
+   * Only applies to preloaded runs.
+   *
+   * @default Same as `turnTimeout`
+   */
+  preloadTimeout?: string;
 };
 
 /**
@@ -760,6 +819,7 @@ function chatTask<
   const {
     run: userRun,
     clientDataSchema,
+    onPreload,
     onChatStart,
     onTurnStart,
     onTurnComplete,
@@ -767,6 +827,8 @@ function chatTask<
     turnTimeout = "1h",
     warmTimeoutInSeconds = 30,
     chatAccessTokenTTL = "1h",
+    preloadWarmTimeoutInSeconds,
+    preloadTimeout,
     ...restOptions
   } = options;
 
@@ -786,6 +848,7 @@ function chatTask<
       let currentWirePayload = payload;
       const continuation = payload.continuation ?? false;
       const previousRunId = payload.previousRunId;
+      const preloaded = payload.trigger === "preload";
 
       // Accumulated model messages across turns. Turn 1 initialises from the
       // full history the frontend sends; subsequent turns append only the new
@@ -806,6 +869,96 @@ function chatTask<
       });
 
       try {
+        // Handle preloaded runs — fire onPreload, then wait for the first real message
+        if (preloaded) {
+          if (activeSpan) {
+            activeSpan.setAttribute("chat.preloaded", true);
+          }
+
+          const currentRunId = taskContext.ctx?.run.id ?? "";
+          let preloadAccessToken = "";
+          if (currentRunId) {
+            try {
+              preloadAccessToken = await auth.createPublicToken({
+                scopes: {
+                  read: { runs: currentRunId },
+                  write: { inputStreams: currentRunId },
+                },
+                expirationTime: chatAccessTokenTTL,
+              });
+            } catch {
+              // Token creation failed
+            }
+          }
+
+          // Parse client data for the preload hook
+          const preloadClientData = (parseClientData
+            ? await parseClientData(payload.metadata)
+            : payload.metadata) as inferSchemaOut<TClientDataSchema>;
+
+          // Fire onPreload hook
+          if (onPreload) {
+            await tracer.startActiveSpan(
+              "onPreload()",
+              async () => {
+                await onPreload({
+                  chatId: payload.chatId,
+                  runId: currentRunId,
+                  chatAccessToken: preloadAccessToken,
+                  clientData: preloadClientData,
+                });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                  "chat.id": payload.chatId,
+                  "chat.preloaded": true,
+                },
+              }
+            );
+          }
+
+          // Wait for the first real message — use preload-specific timeouts if configured
+          const effectivePreloadWarmTimeout =
+            (metadata.get(WARM_TIMEOUT_METADATA_KEY) as number | undefined)
+            ?? preloadWarmTimeoutInSeconds
+            ?? warmTimeoutInSeconds;
+
+          let firstMessage: ChatTaskWirePayload | undefined;
+
+          if (effectivePreloadWarmTimeout > 0) {
+            const warm = await messagesInput.once({
+              timeoutMs: effectivePreloadWarmTimeout * 1000,
+              spanName: "preload wait (warm)",
+            });
+
+            if (warm.ok) {
+              firstMessage = warm.output;
+            }
+          }
+
+          if (!firstMessage) {
+            const effectivePreloadTimeout =
+              (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined)
+              ?? preloadTimeout
+              ?? turnTimeout;
+
+            const suspended = await messagesInput.wait({
+              timeout: effectivePreloadTimeout,
+              spanName: "preload wait (suspended)",
+            });
+
+            if (!suspended.ok) {
+              return; // Timed out waiting for first message — end run
+            }
+
+            firstMessage = suspended.output;
+          }
+
+          currentWirePayload = firstMessage;
+        }
+
         for (let turn = 0; turn < maxTurns; turn++) {
           // Extract turn-level context before entering the span
           const { metadata: wireMetadata, messages: uiMessages, ...restWire } = currentWirePayload;
@@ -947,6 +1100,7 @@ function chatTask<
                       chatAccessToken: turnAccessToken,
                       continuation,
                       previousRunId,
+                      preloaded,
                     });
                   },
                   {
@@ -956,6 +1110,7 @@ function chatTask<
                       "chat.id": currentWirePayload.chatId,
                       "chat.messages.count": accumulatedMessages.length,
                       "chat.continuation": continuation,
+                      "chat.preloaded": preloaded,
                       ...(previousRunId ? { "chat.previous_run_id": previousRunId } : {}),
                     },
                   }
@@ -978,6 +1133,7 @@ function chatTask<
                       clientData,
                       continuation,
                       previousRunId,
+                      preloaded,
                     });
                   },
                   {
@@ -989,6 +1145,7 @@ function chatTask<
                       "chat.messages.count": accumulatedMessages.length,
                       "chat.trigger": currentWirePayload.trigger,
                       "chat.continuation": continuation,
+                      "chat.preloaded": preloaded,
                       ...(previousRunId ? { "chat.previous_run_id": previousRunId } : {}),
                     },
                   }
@@ -1014,6 +1171,7 @@ function chatTask<
                   clientData,
                   continuation,
                   previousRunId,
+                  preloaded,
                   signal: combinedSignal,
                   cancelSignal,
                   stopSignal,
@@ -1119,6 +1277,7 @@ function chatTask<
                       stopped: wasStopped,
                       continuation,
                       previousRunId,
+                      preloaded,
                     });
                   },
                   {
@@ -1129,6 +1288,7 @@ function chatTask<
                       "chat.turn": turn + 1,
                       "chat.stopped": wasStopped,
                       "chat.continuation": continuation,
+                      "chat.preloaded": preloaded,
                       ...(previousRunId ? { "chat.previous_run_id": previousRunId } : {}),
                       "chat.messages.count": accumulatedMessages.length,
                       "chat.response.parts.count": capturedResponseMessage?.parts?.length ?? 0,

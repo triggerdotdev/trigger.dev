@@ -1,7 +1,7 @@
 import { chat, ai } from "@trigger.dev/sdk/ai";
 import { schemaTask } from "@trigger.dev/sdk";
-import { streamText, tool, stepCountIs, generateId } from "ai";
-import type { LanguageModel } from "ai";
+import { streamText, tool, dynamicTool, stepCountIs, generateId } from "ai";
+import type { LanguageModel, Tool as AITool } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
@@ -136,6 +136,11 @@ const userContext = chat.local<{
   messageCount: number;
 }>();
 
+// Per-run dynamic tools — loaded from DB in onPreload/onChatStart
+const userToolDefs = chat.local<
+  Array<{ name: string; description: string; responseTemplate: string }>
+>();
+
 // --------------------------------------------------------------------------
 // Subtask: deep research — fetches multiple URLs and streams progress
 // back to the parent chat via chat.stream using data-* chunks
@@ -244,8 +249,8 @@ export const aiChat = chat.task({
   clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
   warmTimeoutInSeconds: 60,
   chatAccessTokenTTL: "2h",
-  onChatStart: async ({ chatId, runId, chatAccessToken, clientData, continuation }) => {
-    // Load user context from DB — available for the entire run
+  onPreload: async ({ chatId, runId, chatAccessToken, clientData }) => {
+    // Eagerly initialize before the user's first message arrives
     const user = await prisma.user.upsert({
       where: { id: clientData.userId },
       create: { id: clientData.userId, name: "User" },
@@ -259,8 +264,57 @@ export const aiChat = chat.task({
       messageCount: user.messageCount,
     });
 
+    // Load user-specific dynamic tools
+    const tools = await prisma.userTool.findMany({ where: { userId: clientData.userId } });
+    userToolDefs.init(tools);
+
+    // Create chat record and session
+    await prisma.chat.upsert({
+      where: { id: chatId },
+      create: {
+        id: chatId,
+        title: "New chat",
+        userId: user.id,
+        model: clientData?.model ?? DEFAULT_MODEL,
+      },
+      update: {},
+    });
+    await prisma.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+      update: { runId, publicAccessToken: chatAccessToken },
+    });
+  },
+  onChatStart: async ({ chatId, runId, chatAccessToken, clientData, continuation, preloaded }) => {
+    if (preloaded) {
+      // Already initialized in onPreload — just update session
+      await prisma.chatSession.upsert({
+        where: { id: chatId },
+        create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+        update: { runId, publicAccessToken: chatAccessToken },
+      });
+      return;
+    }
+
+    // Non-preloaded path: full initialization
+    const user = await prisma.user.upsert({
+      where: { id: clientData.userId },
+      create: { id: clientData.userId, name: "User" },
+      update: {},
+    });
+    userContext.init({
+      userId: user.id,
+      name: user.name,
+      plan: user.plan as "free" | "pro",
+      preferredModel: user.preferredModel,
+      messageCount: user.messageCount,
+    });
+
+    // Load user-specific dynamic tools
+    const tools = await prisma.userTool.findMany({ where: { userId: clientData.userId } });
+    userToolDefs.init(tools);
+
     if (!continuation) {
-      // Brand new chat — create the record with the selected model
       await prisma.chat.upsert({
         where: { id: chatId },
         create: {
@@ -273,7 +327,6 @@ export const aiChat = chat.task({
       });
     }
 
-    // Always update session for the new run
     await prisma.chatSession.upsert({
       where: { id: chatId },
       create: { id: chatId, runId, publicAccessToken: chatAccessToken },
@@ -328,6 +381,20 @@ export const aiChat = chat.task({
     const modelId = clientData?.model ?? userContext.preferredModel ?? undefined;
     const useReasoning = REASONING_MODELS.has(modelId ?? DEFAULT_MODEL);
 
+    // Build dynamic tools from user's DB-configured tools (loaded in onPreload/onChatStart)
+    const dynamicTools: Record<string, AITool<unknown, unknown>> = {};
+    for (const t of userToolDefs.value ?? []) {
+      dynamicTools[t.name] = dynamicTool({
+        description: t.description,
+        inputSchema: z.object({
+          query: z.string().describe("The query or topic to look up"),
+        }),
+        execute: async (input) => {
+          return { result: t.responseTemplate.replace("{{query}}", (input as any).query) };
+        },
+      });
+    }
+
     return streamText({
       model: getModel(modelId),
       system: `You are a helpful assistant for ${userContext.name} (${userContext.plan} plan). Be concise and friendly.`,
@@ -336,6 +403,7 @@ export const aiChat = chat.task({
         inspectEnvironment,
         webFetch,
         deepResearch: ai.tool(deepResearch),
+        ...dynamicTools,
       },
       stopWhen: stepCountIs(10),
       abortSignal: stopSignal,
