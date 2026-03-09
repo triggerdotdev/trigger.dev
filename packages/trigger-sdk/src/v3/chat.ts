@@ -183,6 +183,7 @@ export type TriggerChatTransportOptions<TClientData = unknown> = {
     /** Priority (lower = higher priority). */
     priority?: number;
   };
+
 };
 
 /**
@@ -449,6 +450,62 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       | undefined
   ): void {
     this._onSessionChange = callback;
+  }
+
+  /**
+   * Eagerly trigger a run for a chat before the first message is sent.
+   * This allows initialization (DB setup, context loading) to happen
+   * while the user is still typing, reducing first-response latency.
+   *
+   * The task's `onPreload` hook fires immediately. The run then waits
+   * for the first message via input stream. When `sendMessages` is called
+   * later, it detects the existing session and sends via input stream
+   * instead of triggering a new run.
+   *
+   * No-op if a session already exists for this chatId.
+   */
+  async preload(chatId: string): Promise<void> {
+    // Don't preload if session already exists
+    if (this.sessions.get(chatId)?.runId) return;
+
+    const payload = {
+      messages: [] as never[],
+      chatId,
+      trigger: "preload" as const,
+      metadata: this.defaultMetadata,
+    };
+
+    const currentToken = await this.resolveAccessToken();
+    const apiClient = new ApiClient(this.baseURL, currentToken);
+
+    const autoTags = [`chat:${chatId}`, "preload:true"];
+    const userTags = this.triggerOptions?.tags ?? [];
+    const tags = [...autoTags, ...userTags].slice(0, 5);
+
+    const triggerResponse = await apiClient.triggerTask(this.taskId, {
+      payload,
+      options: {
+        payloadType: "application/json",
+        tags,
+        queue: this.triggerOptions?.queue ? { name: this.triggerOptions.queue } : undefined,
+        maxAttempts: this.triggerOptions?.maxAttempts,
+        machine: this.triggerOptions?.machine,
+        priority: this.triggerOptions?.priority,
+      },
+    });
+
+    const runId = triggerResponse.id;
+    const publicAccessToken =
+      "publicAccessToken" in triggerResponse
+        ? (triggerResponse as { publicAccessToken?: string }).publicAccessToken
+        : undefined;
+
+    const newSession: ChatSessionState = {
+      runId,
+      publicAccessToken: publicAccessToken ?? currentToken,
+    };
+    this.sessions.set(chatId, newSession);
+    this.notifySessionChange(chatId, newSession);
   }
 
   private notifySessionChange(

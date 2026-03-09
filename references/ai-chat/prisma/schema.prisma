@@ -8,14 +8,24 @@ datasource db {
 }
 
 model User {
-  id             String   @id
+  id             String     @id
   name           String
-  plan           String   @default("free") // "free" | "pro"
+  plan           String     @default("free") // "free" | "pro"
   preferredModel String?
-  messageCount   Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  messageCount   Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
   chats          Chat[]
+  tools          UserTool[]
+}
+
+model UserTool {
+  id               String @id @default(cuid())
+  userId           String
+  name             String
+  description      String
+  responseTemplate String @default("")
+  user             User   @relation(fields: [userId], references: [id])
 }
 
 model Chat {
