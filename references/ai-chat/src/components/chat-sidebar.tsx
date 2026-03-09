@@ -24,6 +24,8 @@ type ChatSidebarProps = {
   onSelectChat: (id: string) => void;
   onNewChat: () => void;
   onDeleteChat: (id: string) => void;
+  preloadEnabled: boolean;
+  onPreloadChange: (enabled: boolean) => void;
 };
 
 export function ChatSidebar({
@@ -32,6 +34,8 @@ export function ChatSidebar({
   onSelectChat,
   onNewChat,
   onDeleteChat,
+  preloadEnabled,
+  onPreloadChange,
 }: ChatSidebarProps) {
   const sorted = [...chats].sort((a, b) => b.updatedAt - a.updatedAt);
 
@@ -76,6 +80,18 @@ export function ChatSidebar({
             </span>
           </button>
         ))}
+      </div>
+
+      <div className="shrink-0 border-t border-gray-200 px-3 py-2.5">
+        <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={preloadEnabled}
+            onChange={(e) => onPreloadChange(e.target.checked)}
+            className="rounded border-gray-300"
+          />
+          Preload new chats
+        </label>
       </div>
     </div>
   );
