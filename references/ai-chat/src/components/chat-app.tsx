@@ -52,6 +52,7 @@ export function ChatApp({
   // Model for new chats (before first message is sent)
   const [newChatModel, setNewChatModel] = useState(DEFAULT_MODEL);
   const [preloadEnabled, setPreloadEnabled] = useState(true);
+  const [warmTimeoutInSeconds, setWarmTimeoutInSeconds] = useState(60);
 
   const handleSessionChange = useCallback(
     (chatId: string, session: SessionInfo | null) => {
@@ -101,7 +102,7 @@ export function ChatApp({
     setNewChatModel(DEFAULT_MODEL);
     if (preloadEnabled) {
       // Eagerly start the run — onPreload fires immediately for initialization
-      transport.preload(id);
+      transport.preload(id, { warmTimeoutInSeconds });
     }
   }
 
@@ -154,6 +155,8 @@ export function ChatApp({
         onDeleteChat={handleDeleteChat}
         preloadEnabled={preloadEnabled}
         onPreloadChange={setPreloadEnabled}
+        warmTimeoutInSeconds={warmTimeoutInSeconds}
+        onWarmTimeoutChange={setWarmTimeoutInSeconds}
       />
       <div className="flex-1">
         {activeChatId ? (

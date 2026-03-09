@@ -194,6 +194,14 @@ export type RealtimeDefinedInputStream<TData> = {
    */
   wait: (options?: InputStreamWaitOptions) => ManualWaitpointPromise<TData>;
   /**
+   * Wait for data with a warm phase before suspending.
+   *
+   * Keeps the task warm (active, using compute) for `warmTimeoutInSeconds`,
+   * then suspends via `.wait()` if no data arrives. If data arrives during
+   * the warm phase the task responds instantly without suspending.
+   */
+  waitWithWarmup: (options: InputStreamWaitWithWarmupOptions) => Promise<{ ok: true; output: TData } | { ok: false; error?: any }>;
+  /**
    * Send data to this input stream on a specific run.
    * This is used from outside the task (e.g., from your backend or another task).
    */
@@ -246,6 +254,15 @@ export type InputStreamWaitOptions = {
   tags?: string[];
 
   /** Override the default span name for this operation. */
+  spanName?: string;
+};
+
+export type InputStreamWaitWithWarmupOptions = {
+  /** Seconds to keep the task warm before suspending. */
+  warmTimeoutInSeconds: number;
+  /** Maximum time to wait after suspending (duration string, e.g. "1h"). */
+  timeout?: string;
+  /** Override the default span name for the outer operation. */
   spanName?: string;
 };
 

@@ -320,6 +320,8 @@ export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadat
   continuation?: boolean;
   /** The run ID of the previous run (only set when `continuation` is true). */
   previousRunId?: string;
+  /** Override warm timeout for this run (seconds). Set by transport.preload(). */
+  warmTimeoutInSeconds?: number;
 };
 
 /**
@@ -941,40 +943,26 @@ function chatTask<
 
           // Wait for the first real message — use preload-specific timeouts if configured
           const effectivePreloadWarmTimeout =
-            (metadata.get(WARM_TIMEOUT_METADATA_KEY) as number | undefined)
+            payload.warmTimeoutInSeconds
             ?? preloadWarmTimeoutInSeconds
             ?? warmTimeoutInSeconds;
 
-          let firstMessage: ChatTaskWirePayload | undefined;
+          const effectivePreloadTimeout =
+            (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined)
+            ?? preloadTimeout
+            ?? turnTimeout;
 
-          if (effectivePreloadWarmTimeout > 0) {
-            const warm = await messagesInput.once({
-              timeoutMs: effectivePreloadWarmTimeout * 1000,
-              spanName: "preload wait (warm)",
-            });
+          const preloadResult = await messagesInput.waitWithWarmup({
+            warmTimeoutInSeconds: effectivePreloadWarmTimeout,
+            timeout: effectivePreloadTimeout,
+            spanName: "waiting for first message",
+          });
 
-            if (warm.ok) {
-              firstMessage = warm.output;
-            }
+          if (!preloadResult.ok) {
+            return; // Timed out waiting for first message — end run
           }
 
-          if (!firstMessage) {
-            const effectivePreloadTimeout =
-              (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined)
-              ?? preloadTimeout
-              ?? turnTimeout;
-
-            const suspended = await messagesInput.wait({
-              timeout: effectivePreloadTimeout,
-              spanName: "preload wait (suspended)",
-            });
-
-            if (!suspended.ok) {
-              return; // Timed out waiting for first message — end run
-            }
-
-            firstMessage = suspended.output;
-          }
+          let firstMessage = preloadResult.output;
 
           currentWirePayload = firstMessage;
         }
@@ -1335,35 +1323,19 @@ function chatTask<
                 return "continue";
               }
 
-              // Phase 1: Keep the run warm for quick response to the next message.
-              // The run stays active (using compute) during this window.
+              // Wait for the next message — stay warm briefly, then suspend
               const effectiveWarmTimeout =
                 (metadata.get(WARM_TIMEOUT_METADATA_KEY) as number | undefined) ?? warmTimeoutInSeconds;
-
-              if (effectiveWarmTimeout > 0) {
-                const warm = await messagesInput.once({
-                  timeoutMs: effectiveWarmTimeout * 1000,
-                  spanName: "waiting (warm)",
-                });
-
-                if (warm.ok) {
-                  // Message arrived while warm — respond instantly
-                  currentWirePayload = warm.output;
-                  return "continue";
-                }
-              }
-
-              // Phase 2: Suspend the task (frees compute) until the next message arrives
               const effectiveTurnTimeout =
                 (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
 
-              const next = await messagesInput.wait({
+              const next = await messagesInput.waitWithWarmup({
+                warmTimeoutInSeconds: effectiveWarmTimeout,
                 timeout: effectiveTurnTimeout,
-                spanName: "waiting (suspended)",
+                spanName: "waiting for next message",
               });
 
               if (!next.ok) {
-                // Timed out waiting for the next message — end the conversation
                 return "exit";
               }
 
