@@ -134,12 +134,12 @@ const userContext = chat.local<{
   plan: "free" | "pro";
   preferredModel: string | null;
   messageCount: number;
-}>();
+}>({ id: "userContext" });
 
 // Per-run dynamic tools — loaded from DB in onPreload/onChatStart
 const userToolDefs = chat.local<
   Array<{ name: string; description: string; responseTemplate: string }>
->();
+>({ id: "userToolDefs" });
 
 // --------------------------------------------------------------------------
 // Subtask: deep research — fetches multiple URLs and streams progress
