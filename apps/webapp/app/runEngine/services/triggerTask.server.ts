@@ -190,31 +190,6 @@ export class RunEngineTriggerTaskService {
         }
       }
 
-      // Resolve TTL with precedence: per-trigger > task-level > dev default
-      let ttl: string | undefined;
-
-      if (body.options?.ttl !== undefined) {
-        // Per-trigger TTL takes highest priority
-        ttl =
-          typeof body.options.ttl === "number"
-            ? stringifyDuration(body.options.ttl)
-            : body.options.ttl;
-      } else {
-        // Look up task-level TTL default from BackgroundWorkerTask
-        const taskDefaults = await this.prisma.backgroundWorkerTask.findFirst({
-          where: {
-            slug: taskId,
-            projectId: environment.projectId,
-            runtimeEnvironmentId: environment.id,
-          },
-          select: { ttl: true },
-          orderBy: { createdAt: "desc" },
-        });
-
-        ttl =
-          taskDefaults?.ttl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
-      }
-
       // Get parent run if specified
       const parentRun = body.options?.parentRunId
         ? await this.prisma.taskRun.findFirst({
@@ -270,10 +245,23 @@ export class RunEngineTriggerTaskService {
           })
         : undefined;
 
-      const { queueName, lockedQueueId } = await this.queueConcern.resolveQueueProperties(
-        triggerRequest,
-        lockedToBackgroundWorker ?? undefined
-      );
+      const { queueName, lockedQueueId, taskTtl } =
+        await this.queueConcern.resolveQueueProperties(
+          triggerRequest,
+          lockedToBackgroundWorker ?? undefined
+        );
+
+      // Resolve TTL with precedence: per-trigger > task-level > dev default
+      let ttl: string | undefined;
+
+      if (body.options?.ttl !== undefined) {
+        ttl =
+          typeof body.options.ttl === "number"
+            ? stringifyDuration(body.options.ttl)
+            : body.options.ttl;
+      } else {
+        ttl = taskTtl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
+      }
 
       if (!options.skipChecks) {
         const queueSizeGuard = await this.queueConcern.validateQueueLimits(
