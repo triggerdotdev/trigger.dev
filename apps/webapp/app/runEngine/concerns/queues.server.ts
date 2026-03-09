@@ -99,6 +99,13 @@ export class DefaultQueueManager implements QueueManager {
         // Use the validated queue name directly
         queueName = specifiedQueue.name;
         lockedQueueId = specifiedQueue.id;
+
+        // Still need task TTL even when queue is overridden
+        taskTtl = await this.getTaskTtl(
+          request.taskId,
+          request.environment.id,
+          lockedBackgroundWorker.id
+        );
       } else {
         // No specific queue name provided, use the default queue for the task on the locked worker
         const lockedTask = await this.prisma.backgroundWorkerTask.findFirst({
@@ -183,7 +190,9 @@ export class DefaultQueueManager implements QueueManager {
     // Use extractQueueName to handle double-wrapped queue objects
     const queueName = extractQueueName(queue);
     if (queueName) {
-      return { queueName };
+      // Still need task TTL even when queue is overridden
+      const taskTtl = await this.getTaskTtlForEnvironment(taskId, environment);
+      return { queueName, taskTtl };
     }
 
     const defaultQueueName = `task/${taskId}`;
@@ -231,6 +240,33 @@ export class DefaultQueueManager implements QueueManager {
     }
 
     return { queueName: task.queue.name ?? defaultQueueName, taskTtl: task.ttl };
+  }
+
+  private async getTaskTtl(
+    taskId: string,
+    environmentId: string,
+    workerId: string
+  ): Promise<string | null | undefined> {
+    const task = await this.prisma.backgroundWorkerTask.findFirst({
+      where: {
+        workerId,
+        runtimeEnvironmentId: environmentId,
+        slug: taskId,
+      },
+      select: { ttl: true },
+    });
+    return task?.ttl;
+  }
+
+  private async getTaskTtlForEnvironment(
+    taskId: string,
+    environment: AuthenticatedEnvironment
+  ): Promise<string | null | undefined> {
+    const worker = await findCurrentWorkerFromEnvironment(environment, this.prisma);
+    if (!worker) {
+      return undefined;
+    }
+    return this.getTaskTtl(taskId, environment.id, worker.id);
   }
 
   async validateQueueLimits(
