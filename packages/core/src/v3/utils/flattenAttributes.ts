@@ -5,6 +5,36 @@ export const CIRCULAR_REFERENCE_SENTINEL = "$@circular((";
 
 const DEFAULT_MAX_DEPTH = 128;
 
+function escapeKey(key: string): string {
+  return key.replace(/\\/g, "\\\\").replace(/\./g, "\\.");
+}
+
+function unescapeKey(key: string): string {
+  return key.replace(/\\\./g, ".").replace(/\\\\/g, "\\");
+}
+
+function splitKey(key: string): string[] {
+  const parts: string[] = [];
+  let currentPart = "";
+  for (let i = 0; i < key.length; i++) {
+    if (key[i] === "\\" && i + 1 < key.length) {
+      if (key[i + 1] === "." || key[i + 1] === "\\") {
+        currentPart += key[i + 1];
+        i++;
+      } else {
+        currentPart += key[i];
+      }
+    } else if (key[i] === ".") {
+      parts.push(currentPart);
+      currentPart = "";
+    } else {
+      currentPart += key[i];
+    }
+  }
+  parts.push(currentPart);
+  return parts;
+}
+
 export function flattenAttributes(
   obj: unknown,
   prefix?: string,
@@ -24,7 +54,7 @@ class AttributeFlattener {
   constructor(
     private maxAttributeCount?: number,
     private maxDepth: number = DEFAULT_MAX_DEPTH
-  ) {}
+  ) { }
 
   get attributes(): Attributes {
     return this.result;
@@ -200,7 +230,8 @@ class AttributeFlattener {
         break;
       }
 
-      const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
+      const escapedKey = Array.isArray(obj) ? `[${key}]` : escapeKey(key);
+      const newPrefix = `${prefix ? `${prefix}.` : ""}${escapedKey}`;
 
       if (Array.isArray(value)) {
         for (let i = 0; i < value.length; i++) {
@@ -278,9 +309,9 @@ export function unflattenAttributes(
       continue;
     }
 
-    const parts = key.split(".").reduce(
+    const parts = splitKey(key).reduce(
       (acc, part) => {
-        if (part.startsWith("[") && part.endsWith("]")) {
+        if (typeof part === "string" && part.startsWith("[") && part.endsWith("]")) {
           // Handle array indices more precisely
           const match = part.match(/^\[(\d+)\]$/);
           if (match && match[1]) {

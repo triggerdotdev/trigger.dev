@@ -17,6 +17,7 @@ const emailStrategy = new EmailLinkStrategy(
     secret,
     callbackURL: "/magic",
     sessionMagicLinkKey: "triggerdotdev:magiclink",
+    validateSession: false,
   },
   async ({
     email,

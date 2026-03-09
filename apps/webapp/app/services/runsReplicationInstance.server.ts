@@ -22,8 +22,12 @@ function initializeRunsReplicationInstance() {
 
   console.log("🗃️  Runs replication service enabled");
 
+  const url = new URL(env.RUN_REPLICATION_CLICKHOUSE_URL);
+  // Remove secure param to prevent Unknown URL parameters error
+  url.searchParams.delete("secure");
+
   const clickhouse = new ClickHouse({
-    url: env.RUN_REPLICATION_CLICKHOUSE_URL,
+    url: url.toString(),
     name: "runs-replication",
     keepAlive: {
       enabled: env.RUN_REPLICATION_KEEP_ALIVE_ENABLED === "1",
