@@ -161,13 +161,7 @@ class DevSupervisor implements WorkerRuntime {
   #handleSigterm = async () => {
     logger.debug("[DevSupervisor] Received SIGTERM/SIGINT, stopping all run controllers");
 
-    // The detached watchdog handles cancelling runs on the platform.
-    // Here we just stop local run controllers.
-    const stopPromises = Array.from(this.runControllers.values()).map((controller) =>
-      controller.stop()
-    );
-
-    await Promise.allSettled(stopPromises);
+    await this.shutdown();
 
     // Must exit explicitly since registering a custom SIGINT handler
     // overrides Node's default process termination behavior.
@@ -177,6 +171,12 @@ class DevSupervisor implements WorkerRuntime {
   async shutdown(): Promise<void> {
     process.off("SIGTERM", this.#handleSigterm);
     process.off("SIGINT", this.#handleSigterm);
+
+    // Stop all local run controllers first so active-runs.json is up-to-date
+    const stopPromises = Array.from(this.runControllers.values()).map((controller) =>
+      controller.stop()
+    );
+    await Promise.allSettled(stopPromises);
 
     // Kill watchdog on clean shutdown — no disconnect needed since runs are stopped locally
     this.#killWatchdog();
@@ -247,23 +247,28 @@ class DevSupervisor implements WorkerRuntime {
   }
 
   #killWatchdog() {
-    if (this.watchdogProcess?.pid) {
+    const knownPid = this.watchdogProcess?.pid;
+
+    if (knownPid) {
       try {
-        process.kill(this.watchdogProcess.pid, "SIGTERM");
+        process.kill(knownPid, "SIGTERM");
       } catch {
         // Already dead
       }
       this.watchdogProcess = undefined;
     }
 
-    // Also try via PID file in case the process reference is stale
+    // Fallback: try via PID file, but only if the PID matches our spawned watchdog
+    // to avoid killing an unrelated process that reused a stale PID
     if (this.watchdogPidPath) {
       try {
         const content = readFileSync(this.watchdogPidPath, "utf8");
         const prefix = "trigger-watchdog:";
         if (content.startsWith(prefix)) {
           const pid = parseInt(content.slice(prefix.length), 10);
-          if (pid) process.kill(pid, "SIGTERM");
+          if (pid && (!knownPid || pid === knownPid)) {
+            process.kill(pid, "SIGTERM");
+          }
         }
       } catch {
         // Already dead or no file
