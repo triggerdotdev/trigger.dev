@@ -12,7 +12,10 @@ import { PrismaClient } from "../../lib/generated/prisma/client";
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
+import TurndownService from "turndown";
 import { DEFAULT_MODEL, REASONING_MODELS } from "@/lib/models";
+
+const turndown = new TurndownService();
 
 const MODELS: Record<string, () => LanguageModel> = {
   "gpt-4o-mini": () => openai("gpt-4o-mini"),
@@ -98,20 +101,8 @@ const webFetch = tool({
     let text = await response.text();
     const contentType = response.headers.get("content-type") ?? "";
 
-    // Strip HTML to plain text for readability
     if (contentType.includes("html")) {
-      text = text
-        .replace(/<script[\s\S]*?<\/script>/gi, "")
-        .replace(/<style[\s\S]*?<\/style>/gi, "")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/&nbsp;/g, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/\s+/g, " ")
-        .trim();
+      text = turndown.turndown(text);
     }
 
     return {
@@ -204,16 +195,7 @@ export const deepResearch = schemaTask({
         const contentType = response.headers.get("content-type") ?? "";
 
         if (contentType.includes("html")) {
-          text = text
-            .replace(/<script[\s\S]*?<\/script>/gi, "")
-            .replace(/<style[\s\S]*?<\/style>/gi, "")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/&nbsp;/g, " ")
-            .replace(/&amp;/g, "&")
-            .replace(/&lt;/g, "<")
-            .replace(/&gt;/g, ">")
-            .replace(/\s+/g, " ")
-            .trim();
+          text = turndown.turndown(text);
         }
 
         results.push({
