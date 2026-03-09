@@ -317,22 +317,26 @@ class PlaywrightExtension implements BuildExtension {
 
     Array.from(browsersToInstall).forEach((browser) => {
       instructions.push(
-        `RUN grep -A5 -m1 "browser: ${browser}" /tmp/browser-info.txt > /tmp/${browser}-info.txt`,
+        // Extract the block for the specific browser. 
+        // We look for a line starting with "browser: {browser}" OR "{browser} v" (legacy)
+        // Then we collect lines until the next block starts (line starting with browser: or certain chars) or an empty line.
+        `RUN awk '/^browser: ${browser}|^${browser} v/{flag=1; print; next} /^(browser:|[a-z-]+ v)/{flag=0} flag' /tmp/browser-info.txt > /tmp/${browser}-info.txt`,
 
-        `RUN INSTALL_DIR=$(grep "Install location:" /tmp/${browser}-info.txt | cut -d':' -f2- | xargs) && \
+        `RUN INSTALL_DIR=$(grep -i "Install location:" /tmp/${browser}-info.txt | cut -d':' -f2- | xargs) && \
           DIR_NAME=$(basename "$INSTALL_DIR") && \
-          if [ -z "$DIR_NAME" ]; then echo "Failed to extract installation directory for ${browser}"; exit 1; fi && \
+          if [ -z "$DIR_NAME" ]; then echo "Failed to extract installation directory for ${browser}. Content of /tmp/${browser}-info.txt:"; cat /tmp/${browser}-info.txt; exit 1; fi && \
           MS_DIR="/ms-playwright/$DIR_NAME" && \
           mkdir -p "$MS_DIR"`,
 
-        `RUN DOWNLOAD_URL=$(grep "Download url:" /tmp/${browser}-info.txt | cut -d':' -f2- | xargs | sed "s/mac-arm64/linux/g" | sed "s/mac-15-arm64/ubuntu-20.04/g") && \
+        `RUN DOWNLOAD_URL=$(grep -i "Download url:" /tmp/${browser}-info.txt | cut -d':' -f2- | xargs | sed "s/mac-arm64/linux/g" | sed "s/mac-15-arm64/ubuntu-20.04/g") && \
           if [ -z "$DOWNLOAD_URL" ]; then echo "Failed to extract download URL for ${browser}"; exit 1; fi && \
           echo "Downloading ${browser} from $DOWNLOAD_URL" && \
           curl -L -o /tmp/${browser}.zip "$DOWNLOAD_URL" && \
           if [ $? -ne 0 ]; then echo "Failed to download ${browser}"; exit 1; fi && \
-          unzip -q /tmp/${browser}.zip -d "/ms-playwright/$(basename $(grep "Install location:" /tmp/${browser}-info.txt | cut -d':' -f2- | xargs))" && \
+          INSTALL_LOCATION=$(grep -i "Install location:" /tmp/${browser}-info.txt | cut -d':' -f2- | xargs) && \
+          unzip -q /tmp/${browser}.zip -d "/ms-playwright/$(basename "$INSTALL_LOCATION")" && \
           if [ $? -ne 0 ]; then echo "Failed to extract ${browser}"; exit 1; fi && \
-          chmod -R +x "/ms-playwright/$(basename $(grep "Install location:" /tmp/${browser}-info.txt | cut -d':' -f2- | xargs))" && \
+          chmod -R +x "/ms-playwright/$(basename "$INSTALL_LOCATION")" && \
           rm /tmp/${browser}.zip`
       );
     });

@@ -4,6 +4,8 @@ import { BuildRuntime } from "../schemas/build.js";
 import { dedupFlags } from "./flags.js";
 import { homedir } from "node:os";
 
+import { existsSync } from "node:fs";
+
 export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
 
 export function binaryForRuntime(runtime: BuildRuntime): string {
@@ -25,14 +27,28 @@ export function execPathForRuntime(runtime: BuildRuntime): string {
       return process.execPath;
     case "bun":
       if (typeof process.env.BUN_INSTALL === "string") {
-        return join(process.env.BUN_INSTALL, "bin", "bun");
+        const binPath = join(process.env.BUN_INSTALL, "bin", "bun");
+
+        if (existsSync(binPath)) {
+          return binPath;
+        }
       }
 
       if (typeof process.env.BUN_INSTALL_BIN === "string") {
-        return join(process.env.BUN_INSTALL_BIN, "bun");
+        const binPath = join(process.env.BUN_INSTALL_BIN, "bun");
+
+        if (existsSync(binPath)) {
+          return binPath;
+        }
       }
 
-      return join(homedir(), ".bun", "bin", "bun");
+      const defaultPath = join(homedir(), ".bun", "bin", "bun");
+
+      if (existsSync(defaultPath)) {
+        return defaultPath;
+      }
+
+      return "bun";
     default:
       throw new Error(`Unsupported runtime ${runtime}`);
   }

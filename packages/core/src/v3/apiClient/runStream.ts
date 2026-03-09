@@ -20,36 +20,36 @@ import { zodShapeStream } from "./stream.js";
 
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
   ? {
-      id: string;
-      taskIdentifier: TRunTypes["taskIdentifier"];
-      payload: TRunTypes["payload"];
-      output?: TRunTypes["output"];
-      createdAt: Date;
-      updatedAt: Date;
-      status: RunStatus;
-      durationMs: number;
-      costInCents: number;
-      baseCostInCents: number;
-      tags: string[];
-      idempotencyKey?: string;
-      expiredAt?: Date;
-      ttl?: string;
-      finishedAt?: Date;
-      startedAt?: Date;
-      delayedUntil?: Date;
-      queuedAt?: Date;
-      metadata?: Record<string, DeserializedJson>;
-      error?: SerializedError;
-      isTest: boolean;
-      isQueued: boolean;
-      isExecuting: boolean;
-      isWaiting: boolean;
-      isCompleted: boolean;
-      isFailed: boolean;
-      isSuccess: boolean;
-      isCancelled: boolean;
-      realtimeStreams: string[];
-    }
+    id: string;
+    taskIdentifier: TRunTypes["taskIdentifier"];
+    payload: TRunTypes["payload"];
+    output?: TRunTypes["output"];
+    createdAt: Date;
+    updatedAt: Date;
+    status: RunStatus;
+    durationMs: number;
+    costInCents: number;
+    baseCostInCents: number;
+    tags: string[];
+    idempotencyKey?: string;
+    expiredAt?: Date;
+    ttl?: string;
+    finishedAt?: Date;
+    startedAt?: Date;
+    delayedUntil?: Date;
+    queuedAt?: Date;
+    metadata?: Record<string, DeserializedJson>;
+    error?: SerializedError;
+    isTest: boolean;
+    isQueued: boolean;
+    isExecuting: boolean;
+    isWaiting: boolean;
+    isCompleted: boolean;
+    isFailed: boolean;
+    isSuccess: boolean;
+    isCancelled: boolean;
+    realtimeStreams: string[];
+  }
   : never;
 
 export type AnyRunShape = RunShape<AnyRunTypes>;
@@ -102,9 +102,9 @@ export type StreamPartResult<TRun, TStreams extends Record<string, any>> = {
 
 export type RunWithStreamsResult<TRun, TStreams extends Record<string, any>> =
   | {
-      type: "run";
-      run: TRun;
-    }
+    type: "run";
+    run: TRun;
+  }
   | StreamPartResult<TRun, TStreams>;
 
 export function runShapeStream<TRunTypes extends AnyRunTypes>(
@@ -297,7 +297,10 @@ export class SSEStreamSubscription implements StreamSubscription {
 
                     chunkController.enqueue({
                       id: record.seq_num.toString(),
-                      chunk: parsedBody.data,
+                      chunk:
+                        typeof parsedBody.data === "string"
+                          ? safeParseJSON(parsedBody.data)
+                          : parsedBody.data,
                       timestamp: record.timestamp,
                     });
                   }
@@ -390,7 +393,7 @@ export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {
       headers?: Record<string, string>;
       signal?: AbortSignal;
     }
-  ) {}
+  ) { }
 
   createSubscription(
     runId: string,
@@ -750,10 +753,10 @@ if (isSafari()) {
 function getStreamsFromRunShape(run: AnyRunShape): string[] {
   const metadataStreams =
     run.metadata &&
-    "$$streams" in run.metadata &&
-    Array.isArray(run.metadata.$$streams) &&
-    run.metadata.$$streams.length > 0 &&
-    run.metadata.$$streams.every((stream) => typeof stream === "string")
+      "$$streams" in run.metadata &&
+      Array.isArray(run.metadata.$$streams) &&
+      run.metadata.$$streams.length > 0 &&
+      run.metadata.$$streams.every((stream) => typeof stream === "string")
       ? run.metadata.$$streams
       : undefined;
 
