@@ -168,6 +168,10 @@ class DevSupervisor implements WorkerRuntime {
     );
 
     await Promise.allSettled(stopPromises);
+
+    // Must exit explicitly since registering a custom SIGINT handler
+    // overrides Node's default process termination behavior.
+    process.exit(0);
   };
 
   async shutdown(): Promise<void> {
@@ -224,7 +228,7 @@ class DevSupervisor implements WorkerRuntime {
         env: {
           ...process.env,
           WATCHDOG_PARENT_PID: process.pid.toString(),
-          WATCHDOG_API_URL: this.options.client.apiURL,
+          WATCHDOG_API_URL: this.config?.engineUrl ?? this.options.client.apiURL,
           WATCHDOG_API_KEY: this.options.client.accessToken ?? "",
           WATCHDOG_ACTIVE_RUNS: this.activeRunsPath,
           WATCHDOG_PID_FILE: this.watchdogPidPath,
