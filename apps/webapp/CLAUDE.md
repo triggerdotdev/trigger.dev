@@ -56,3 +56,14 @@ The `app/v3/` directory name is misleading - most code is actively used by V2. O
 - `app/v3/sharedSocketConnection.ts`
 
 Some services (e.g., `cancelTaskRun.server.ts`, `batchTriggerV3.server.ts`) branch on `RunEngineVersion` to support both V1 and V2. When editing these, only modify V2 code paths.
+
+## Performance: Trigger Hot Path
+
+The `triggerTask.server.ts` service is the **highest-throughput code path** in the system. Every API trigger call goes through it. Keep it fast:
+
+- **Do NOT add database queries** to the trigger path. The only acceptable DB query for task defaults (TTL, etc.) is the single existing `backgroundWorkerTask.findFirst()` call with a minimal `select`.
+- **Two-stage resolution pattern**: Task metadata is resolved in two stages by design:
+  1. **Trigger time** (`triggerTask.server.ts`): Only TTL is resolved from task defaults. Everything else uses whatever the caller provides.
+  2. **Dequeue time** (`dequeueSystem.ts`): Full `BackgroundWorkerTask` is loaded and retry config, machine config, maxDuration, etc. are resolved against task defaults.
+- If you need to add a new task-level default, **add it to the existing `select` clause** in the `backgroundWorkerTask.findFirst()` query — do NOT add a second query. If the default doesn't need to be known at trigger time, resolve it at dequeue time instead.
+- Batch triggers (`batchTriggerV3.server.ts`) follow the same pattern — keep batch paths equally fast.
