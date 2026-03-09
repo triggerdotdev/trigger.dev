@@ -29,15 +29,10 @@ export function RuntimeIcon({
 }: RuntimeIconProps) {
   const parsedRuntime = parseRuntime(runtime);
 
-  // Default to Node.js if no runtime is specified
-  const effectiveRuntime = parsedRuntime || {
-    runtime: "node" as const,
-    originalRuntime: "node",
-    displayName: "Node.js",
-  };
-
-  const icon = getIcon(effectiveRuntime.runtime, className);
-  const formattedText = formatRuntimeWithVersion(effectiveRuntime.originalRuntime, runtimeVersion);
+  const icon = parsedRuntime ? getIcon(parsedRuntime.runtime, className) : <span className="text-text-dimmed">–</span>;
+  const formattedText = parsedRuntime
+    ? formatRuntimeWithVersion(parsedRuntime.originalRuntime, runtimeVersion)
+    : "Unknown";
 
   if (withLabel) {
     return (

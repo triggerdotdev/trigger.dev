@@ -486,47 +486,57 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
       };
     }
 
-    const [credentialsError, credentials] = await tryCatch(
-      getDockerUsernameAndPassword(apiClient, deploymentId)
-    );
+    let credentials;
+    if (cloudRegistryHost.endsWith("amazonaws.com")) {
+      const [credentialsError, result] = await tryCatch(
+        getDockerUsernameAndPassword(apiClient, deploymentId)
+      );
 
-    if (credentialsError) {
-      return {
-        ok: false as const,
-        error: `Failed to get docker credentials: ${credentialsError.message}`,
-        logs: "",
-      };
-    }
-
-    logger.debug(`Logging in to docker registry: ${cloudRegistryHost}`);
-
-    const loginProcess = x(
-      "docker",
-      ["login", "--username", credentials.username, "--password-stdin", cloudRegistryHost],
-      {
-        nodeOptions: {
-          cwd: options.cwd,
-        },
+      if (credentialsError) {
+        return {
+          ok: false as const,
+          error: `Failed to get docker credentials: ${credentialsError.message}`,
+          logs: "",
+        };
       }
-    );
-
-    loginProcess.process?.stdin?.write(credentials.password);
-    loginProcess.process?.stdin?.end();
-
-    for await (const line of loginProcess) {
-      errors.push(line);
-      logger.debug(line);
+      credentials = result;
     }
 
-    if (loginProcess.exitCode !== 0) {
-      return {
-        ok: false as const,
-        error: `Failed to login to registry: ${cloudRegistryHost}`,
-        logs: extractLogs(errors),
-      };
-    }
+    if (credentials) {
+      logger.debug(`Logging in to docker registry: ${cloudRegistryHost}`);
 
-    options.onLog?.(`Successfully logged in to the remote registry`);
+      const loginProcess = x(
+        "docker",
+        ["login", "--username", credentials.username, "--password-stdin", cloudRegistryHost],
+        {
+          nodeOptions: {
+            cwd: options.cwd,
+          },
+        }
+      );
+
+      loginProcess.process?.stdin?.write(credentials.password);
+      loginProcess.process?.stdin?.end();
+
+      for await (const line of loginProcess) {
+        errors.push(line);
+        logger.debug(line);
+      }
+
+      if (loginProcess.exitCode !== 0) {
+        return {
+          ok: false as const,
+          error: `Failed to login to registry: ${cloudRegistryHost}`,
+          logs: extractLogs(errors),
+        };
+      }
+
+      options.onLog?.(`Successfully logged in to the remote registry`);
+    } else {
+      logger.debug(
+        `Skipping automatic registry login for ${cloudRegistryHost}. Please ensure you are logged in locally.`
+      );
+    }
   }
 
   const projectCacheRef = getProjectCacheRefFromImageTag(imageTag);
@@ -550,13 +560,12 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     options.noCache ? "--no-cache" : undefined,
     ...(useRegistryCache
       ? [
-          "--cache-to",
-          `type=registry,mode=max,image-manifest=true,oci-mediatypes=true,ref=${projectCacheRef}${
-            cacheCompression === "zstd" ? ",compression=zstd" : ""
-          }`,
-          "--cache-from",
-          `type=registry,ref=${projectCacheRef}`,
-        ]
+        "--cache-to",
+        `type=registry,mode=max,image-manifest=true,oci-mediatypes=true,ref=${projectCacheRef}${cacheCompression === "zstd" ? ",compression=zstd" : ""
+        }`,
+        "--cache-from",
+        `type=registry,ref=${projectCacheRef}`,
+      ]
       : []),
     "--output",
     outputOptions.join(","),
