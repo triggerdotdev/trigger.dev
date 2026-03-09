@@ -26,6 +26,8 @@ type ChatSidebarProps = {
   onDeleteChat: (id: string) => void;
   preloadEnabled: boolean;
   onPreloadChange: (enabled: boolean) => void;
+  warmTimeoutInSeconds: number;
+  onWarmTimeoutChange: (seconds: number) => void;
 };
 
 export function ChatSidebar({
@@ -36,6 +38,8 @@ export function ChatSidebar({
   onDeleteChat,
   preloadEnabled,
   onPreloadChange,
+  warmTimeoutInSeconds,
+  onWarmTimeoutChange,
 }: ChatSidebarProps) {
   const sorted = [...chats].sort((a, b) => b.updatedAt - a.updatedAt);
 
@@ -82,7 +86,7 @@ export function ChatSidebar({
         ))}
       </div>
 
-      <div className="shrink-0 border-t border-gray-200 px-3 py-2.5">
+      <div className="shrink-0 border-t border-gray-200 px-3 py-2.5 space-y-2">
         <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer select-none">
           <input
             type="checkbox"
@@ -92,6 +96,18 @@ export function ChatSidebar({
           />
           Preload new chats
         </label>
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <span className="shrink-0">Warm timeout</span>
+          <input
+            type="number"
+            min={0}
+            step={5}
+            value={warmTimeoutInSeconds}
+            onChange={(e) => onWarmTimeoutChange(Number(e.target.value))}
+            className="w-16 rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 outline-none focus:border-blue-500"
+          />
+          <span>s</span>
+        </div>
       </div>
     </div>
   );

@@ -25,6 +25,7 @@ import {
   InputStreamOncePromise,
   type InputStreamOnceResult,
   type InputStreamWaitOptions,
+  type InputStreamWaitWithWarmupOptions,
   type SendInputStreamOptions,
   type InferInputStreamType,
   type StreamWriteResult,
@@ -767,6 +768,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
           const result = await tracer.startActiveSpan(
             options?.spanName ?? `inputStream.wait()`,
             async (span) => {
+
               // 1. Block the run on the waitpoint
               const waitResponse = await apiClient.waitForWaitpointToken({
                 runFriendlyId: ctx.run.id,
@@ -786,7 +788,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
               // 3. Suspend the task
               const waitResult = await runtime.waitUntil(response.waitpointId);
 
-              // 3. Parse the output
+              // 4. Parse the output
               const data =
                 waitResult.output !== undefined
                   ? await conditionallyImportAndParsePacket(
@@ -839,6 +841,45 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
           reject(error);
         }
       });
+    },
+    async waitWithWarmup(options) {
+      const self = this;
+      const spanName = options.spanName ?? `inputStream.waitWithWarmup()`;
+
+      return tracer.startActiveSpan(
+        spanName,
+        async (span) => {
+          // Warm phase: keep compute alive
+          if (options.warmTimeoutInSeconds > 0) {
+            const warm = await inputStreams.once(opts.id, {
+              timeoutMs: options.warmTimeoutInSeconds * 1000,
+            });
+            if (warm.ok) {
+              span.setAttribute("wait.resolved", "warm");
+              return { ok: true as const, output: warm.output as TData };
+            }
+          }
+
+          // Cold phase: suspend via .wait() — creates a child span
+          span.setAttribute("wait.resolved", "suspended");
+          const waitResult = await self.wait({
+            timeout: options.timeout,
+            spanName: "suspended",
+          });
+
+          return waitResult;
+        },
+        {
+          attributes: {
+            [SemanticInternalAttributes.STYLE_ICON]: "streams",
+            streamId: opts.id,
+            ...accessoryAttributes({
+              items: [{ text: opts.id, variant: "normal" }],
+              style: "codepath",
+            }),
+          },
+        }
+      );
     },
     async send(runId, data, options) {
       return tracer.startActiveSpan(
