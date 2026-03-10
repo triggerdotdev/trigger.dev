@@ -1718,6 +1718,219 @@ class ChatMessageAccumulator {
 }
 
 // ---------------------------------------------------------------------------
+// chat.createSession — async iterator for chat turns
+// ---------------------------------------------------------------------------
+
+export type ChatSessionOptions = {
+  /** Run-level cancel signal (from task context). */
+  signal: AbortSignal;
+  /** Seconds to stay warm between turns before suspending. @default 30 */
+  warmTimeoutInSeconds?: number;
+  /** Duration string for suspend timeout. @default "1h" */
+  timeout?: string;
+  /** Max turns before ending. @default 100 */
+  maxTurns?: number;
+};
+
+export type ChatTurn = {
+  /** Turn number (0-indexed). */
+  number: number;
+  /** Chat session ID. */
+  chatId: string;
+  /** What triggered this turn. */
+  trigger: string;
+  /** Client data from the transport (`metadata` field on the wire payload). */
+  clientData: unknown;
+  /** Full accumulated model messages — pass directly to `streamText`. */
+  messages: ModelMessage[];
+  /** Full accumulated UI messages — use for persistence. */
+  uiMessages: UIMessage[];
+  /** Combined stop+cancel AbortSignal (fresh each turn). */
+  signal: AbortSignal;
+  /** Whether the user stopped generation this turn. */
+  readonly stopped: boolean;
+  /** Whether this is a continuation run. */
+  continuation: boolean;
+
+  /**
+   * Easy path: pipe stream, capture response, accumulate it,
+   * clean up aborted parts if stopped, and write turn-complete chunk.
+   */
+  complete(source: UIMessageStreamable): Promise<UIMessage | undefined>;
+
+  /**
+   * Manual path: just write turn-complete chunk.
+   * Use when you've already piped and accumulated manually.
+   */
+  done(): Promise<void>;
+
+  /**
+   * Add the response to the accumulator manually.
+   * Use with `chat.pipeAndCapture` when you need control between pipe and done.
+   */
+  addResponse(response: UIMessage): Promise<void>;
+};
+
+/**
+ * Create a chat session that yields turns as an async iterator.
+ *
+ * Handles: preload wait, stop signals, message accumulation, turn-complete
+ * signaling, and warm/suspend between turns. You control: initialization,
+ * model/tool selection, persistence, and any custom per-turn logic.
+ *
+ * @example
+ * ```ts
+ * import { task } from "@trigger.dev/sdk";
+ * import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
+ * import { streamText } from "ai";
+ * import { openai } from "@ai-sdk/openai";
+ *
+ * export const myChat = task({
+ *   id: "my-chat",
+ *   run: async (payload: ChatTaskWirePayload, { signal }) => {
+ *     const session = chat.createSession(payload, { signal });
+ *
+ *     for await (const turn of session) {
+ *       const result = streamText({
+ *         model: openai("gpt-4o"),
+ *         messages: turn.messages,
+ *         abortSignal: turn.signal,
+ *       });
+ *       await turn.complete(result);
+ *     }
+ *   },
+ * });
+ * ```
+ */
+function createChatSession(
+  payload: ChatTaskWirePayload,
+  options: ChatSessionOptions
+): AsyncIterable<ChatTurn> {
+  const {
+    signal: runSignal,
+    warmTimeoutInSeconds = 30,
+    timeout = "1h",
+    maxTurns = 100,
+  } = options;
+
+  return {
+    [Symbol.asyncIterator]() {
+      let currentPayload = payload;
+      let turn = -1;
+      const stop = createStopSignal();
+      const accumulator = new ChatMessageAccumulator();
+
+      return {
+        async next(): Promise<IteratorResult<ChatTurn>> {
+          turn++;
+
+          // First turn: handle preload — wait for the first real message
+          if (turn === 0 && currentPayload.trigger === "preload") {
+            const result = await messagesInput.waitWithWarmup({
+              warmTimeoutInSeconds: currentPayload.warmTimeoutInSeconds ?? warmTimeoutInSeconds,
+              timeout,
+              spanName: "waiting for first message",
+            });
+            if (!result.ok || runSignal.aborted) {
+              stop.cleanup();
+              return { done: true, value: undefined };
+            }
+            currentPayload = result.output;
+          }
+
+          // Subsequent turns: wait for the next message
+          if (turn > 0) {
+            const next = await messagesInput.waitWithWarmup({
+              warmTimeoutInSeconds,
+              timeout,
+              spanName: "waiting for next message",
+            });
+            if (!next.ok || runSignal.aborted) {
+              stop.cleanup();
+              return { done: true, value: undefined };
+            }
+            currentPayload = next.output;
+          }
+
+          // Check limits
+          if (turn >= maxTurns || runSignal.aborted) {
+            stop.cleanup();
+            return { done: true, value: undefined };
+          }
+
+          // Reset stop signal for this turn
+          stop.reset();
+
+          // Accumulate messages
+          const messages = await accumulator.addIncoming(
+            currentPayload.messages,
+            currentPayload.trigger,
+            turn,
+          );
+
+          const combinedSignal = AbortSignal.any([runSignal, stop.signal]);
+
+          const turnObj: ChatTurn = {
+            number: turn,
+            chatId: currentPayload.chatId,
+            trigger: currentPayload.trigger,
+            clientData: currentPayload.metadata,
+            messages,
+            uiMessages: accumulator.uiMessages,
+            signal: combinedSignal,
+            get stopped() { return stop.signal.aborted && !runSignal.aborted; },
+            continuation: currentPayload.continuation ?? false,
+
+            async complete(source: UIMessageStreamable) {
+              let response: UIMessage | undefined;
+              try {
+                response = await pipeChatAndCapture(source, { signal: combinedSignal });
+              } catch (error) {
+                if (error instanceof Error && error.name === "AbortError") {
+                  if (runSignal.aborted) {
+                    // Full cancel — don't accumulate
+                    await chatWriteTurnComplete();
+                    return undefined;
+                  }
+                  // Stop — fall through to accumulate partial response
+                } else {
+                  throw error;
+                }
+              }
+
+              if (response) {
+                const cleaned = (stop.signal.aborted && !runSignal.aborted)
+                  ? cleanupAbortedParts(response)
+                  : response;
+                await accumulator.addResponse(cleaned);
+              }
+
+              await chatWriteTurnComplete();
+              return response;
+            },
+
+            async addResponse(response: UIMessage) {
+              await accumulator.addResponse(response);
+            },
+
+            async done() {
+              await chatWriteTurnComplete();
+            },
+          };
+
+          return { done: false, value: turnObj };
+        },
+
+        async return() {
+          stop.cleanup();
+          return { done: true, value: undefined };
+        },
+      };
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // chat.local — per-run typed data with Proxy access
 // ---------------------------------------------------------------------------
 
@@ -1985,6 +2198,8 @@ export const chat = {
   pipeAndCapture: pipeChatAndCapture,
   /** Message accumulator class for raw task chat. See {@link ChatMessageAccumulator}. */
   MessageAccumulator: ChatMessageAccumulator,
+  /** Create a chat session (async iterator). See {@link createChatSession}. */
+  createSession: createChatSession,
 };
 
 /**
