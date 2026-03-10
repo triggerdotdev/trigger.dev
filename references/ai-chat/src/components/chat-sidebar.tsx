@@ -28,6 +28,8 @@ type ChatSidebarProps = {
   onPreloadChange: (enabled: boolean) => void;
   warmTimeoutInSeconds: number;
   onWarmTimeoutChange: (seconds: number) => void;
+  taskMode: string;
+  onTaskModeChange: (mode: string) => void;
 };
 
 export function ChatSidebar({
@@ -40,6 +42,8 @@ export function ChatSidebar({
   onPreloadChange,
   warmTimeoutInSeconds,
   onWarmTimeoutChange,
+  taskMode,
+  onTaskModeChange,
 }: ChatSidebarProps) {
   const sorted = [...chats].sort((a, b) => b.updatedAt - a.updatedAt);
 
@@ -107,6 +111,17 @@ export function ChatSidebar({
             className="w-16 rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 outline-none focus:border-blue-500"
           />
           <span>s</span>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <span className="shrink-0">Task</span>
+          <select
+            value={taskMode}
+            onChange={(e) => onTaskModeChange(e.target.value)}
+            className="flex-1 rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 outline-none focus:border-blue-500"
+          >
+            <option value="ai-chat">ai-chat (chat.task)</option>
+            <option value="ai-chat-raw">ai-chat-raw (raw task)</option>
+          </select>
         </div>
       </div>
     </div>

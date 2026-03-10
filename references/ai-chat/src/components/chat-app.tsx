@@ -32,6 +32,8 @@ type SessionInfo = {
 };
 
 type ChatAppProps = {
+  taskMode: string;
+  onTaskModeChange: (mode: string) => void;
   initialChatList: ChatMeta[];
   initialActiveChatId: string | null;
   initialMessages: UIMessage[];
@@ -39,6 +41,8 @@ type ChatAppProps = {
 };
 
 export function ChatApp({
+  taskMode,
+  onTaskModeChange,
   initialChatList,
   initialActiveChatId,
   initialMessages,
@@ -70,9 +74,9 @@ export function ChatApp({
     []
   );
 
-  const transport = useTriggerChatTransport<typeof aiChat>({
-    task: "ai-chat",
-    accessToken: getChatToken,
+  const transport = useTriggerChatTransport({
+    task: taskMode,
+    accessToken: () => getChatToken(taskMode),
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
     sessions: initialSessions,
     onSessionChange: handleSessionChange,
@@ -157,6 +161,8 @@ export function ChatApp({
         onPreloadChange={setPreloadEnabled}
         warmTimeoutInSeconds={warmTimeoutInSeconds}
         onWarmTimeoutChange={setWarmTimeoutInSeconds}
+        taskMode={taskMode}
+        onTaskModeChange={onTaskModeChange}
       />
       <div className="flex-1">
         {activeChatId ? (

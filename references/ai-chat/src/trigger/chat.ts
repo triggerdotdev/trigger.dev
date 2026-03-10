@@ -1,7 +1,7 @@
-import { chat, ai } from "@trigger.dev/sdk/ai";
-import { schemaTask } from "@trigger.dev/sdk";
+import { chat, ai, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
+import { schemaTask, task } from "@trigger.dev/sdk";
 import { streamText, tool, dynamicTool, stepCountIs, generateId } from "ai";
-import type { LanguageModel, Tool as AITool } from "ai";
+import type { LanguageModel, Tool as AITool, UIMessage } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
@@ -390,5 +390,176 @@ export const aiChat = chat.task({
         isEnabled: true,
       },
     });
+  },
+});
+
+// --------------------------------------------------------------------------
+// Raw task version — same functionality using composable primitives
+// --------------------------------------------------------------------------
+
+async function initUserContext(userId: string, chatId: string, model?: string) {
+  const user = await prisma.user.upsert({
+    where: { id: userId },
+    create: { id: userId, name: "User" },
+    update: {},
+  });
+  userContext.init({
+    userId: user.id,
+    name: user.name,
+    plan: user.plan as "free" | "pro",
+    preferredModel: user.preferredModel,
+    messageCount: user.messageCount,
+  });
+
+  const tools = await prisma.userTool.findMany({ where: { userId } });
+  userToolDefs.init({ value: tools });
+
+  await prisma.chat.upsert({
+    where: { id: chatId },
+    create: { id: chatId, title: "New chat", userId: user.id, model: model ?? DEFAULT_MODEL },
+    update: {},
+  });
+}
+
+export const aiChatRaw = task({
+  id: "ai-chat-raw",
+  run: async (payload: ChatTaskWirePayload, { signal: runSignal }) => {
+    let currentPayload = payload;
+    const clientData = payload.metadata as { userId: string; model?: string } | undefined;
+
+    // Handle preload — init early, then wait for first message
+    if (currentPayload.trigger === "preload") {
+      if (clientData) {
+        await initUserContext(clientData.userId, currentPayload.chatId, clientData.model);
+      }
+
+      const result = await chat.messages.waitWithWarmup({
+        warmTimeoutInSeconds: payload.warmTimeoutInSeconds ?? 60,
+        timeout: "1h",
+        spanName: "waiting for first message",
+      });
+      if (!result.ok) return;
+      currentPayload = result.output;
+    }
+
+    // Non-preloaded: init now
+    const currentClientData = (currentPayload.metadata ?? clientData) as
+      | { userId: string; model?: string }
+      | undefined;
+
+    if (!userContext.userId && currentClientData) {
+      await initUserContext(currentClientData.userId, currentPayload.chatId, currentClientData.model);
+    }
+
+    const stop = chat.createStopSignal();
+    const conversation = new chat.MessageAccumulator();
+
+    for (let turn = 0; turn < 100; turn++) {
+      stop.reset();
+
+      const messages = await conversation.addIncoming(
+        currentPayload.messages,
+        currentPayload.trigger,
+        turn
+      );
+
+      const turnClientData = (currentPayload.metadata ?? currentClientData) as
+        | { userId: string; model?: string }
+        | undefined;
+
+      userContext.messageCount++;
+      if (turnClientData?.model) {
+        userContext.preferredModel = turnClientData.model;
+      }
+
+      const modelId = turnClientData?.model ?? userContext.preferredModel ?? undefined;
+      const useReasoning = REASONING_MODELS.has(modelId ?? DEFAULT_MODEL);
+      const combinedSignal = AbortSignal.any([runSignal, stop.signal]);
+
+      const dynamicTools: Record<string, AITool<unknown, unknown>> = {};
+      for (const t of userToolDefs.value ?? []) {
+        dynamicTools[t.name] = dynamicTool({
+          description: t.description,
+          inputSchema: z.object({
+            query: z.string().describe("The query or topic to look up"),
+          }),
+          execute: async (input) => {
+            return { result: t.responseTemplate.replace("{{query}}", (input as any).query) };
+          },
+        });
+      }
+
+      const result = streamText({
+        model: getModel(modelId),
+        system: `You are a helpful assistant for ${userContext.name} (${userContext.plan} plan). Be concise and friendly.`,
+        messages,
+        tools: {
+          inspectEnvironment,
+          webFetch,
+          deepResearch: ai.tool(deepResearch),
+          ...dynamicTools,
+        },
+        stopWhen: stepCountIs(10),
+        abortSignal: combinedSignal,
+        providerOptions: {
+          openai: { user: turnClientData?.userId },
+          anthropic: {
+            metadata: { user_id: turnClientData?.userId },
+            ...(useReasoning ? { thinking: { type: "enabled", budgetTokens: 10000 } } : {}),
+          },
+        },
+        experimental_telemetry: { isEnabled: true },
+      });
+
+      let response: UIMessage | undefined;
+      try {
+        response = await chat.pipeAndCapture(result, { signal: combinedSignal });
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          if (runSignal.aborted) break;
+          // Stop — fall through
+        } else {
+          throw error;
+        }
+      }
+
+      if (response) {
+        if (stop.signal.aborted && !runSignal.aborted) {
+          await conversation.addResponse(chat.cleanupAbortedParts(response));
+        } else {
+          await conversation.addResponse(response);
+        }
+      }
+
+      if (runSignal.aborted) break;
+
+      // Persist messages
+      await prisma.chat.update({
+        where: { id: currentPayload.chatId },
+        data: { messages: conversation.uiMessages as any },
+      });
+
+      if (userContext.hasChanged()) {
+        await prisma.user.update({
+          where: { id: userContext.userId },
+          data: {
+            messageCount: userContext.messageCount,
+            preferredModel: userContext.preferredModel,
+          },
+        });
+      }
+
+      await chat.writeTurnComplete();
+
+      const next = await chat.messages.waitWithWarmup({
+        warmTimeoutInSeconds: 60,
+        timeout: "1h",
+        spanName: "waiting for next message",
+      });
+      if (!next.ok) break;
+      currentPayload = next.output;
+    }
+
+    stop.cleanup();
   },
 });

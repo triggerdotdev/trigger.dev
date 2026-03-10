@@ -25,6 +25,7 @@ export default function Home() {
     Record<string, { runId: string; publicAccessToken: string; lastEventId?: string }>
   >({});
   const [loaded, setLoaded] = useState(false);
+  const [taskMode, setTaskMode] = useState<string>("ai-chat");
 
   useEffect(() => {
     async function load() {
@@ -50,6 +51,9 @@ export default function Home() {
 
   return (
     <ChatApp
+      key={taskMode}
+      taskMode={taskMode}
+      onTaskModeChange={setTaskMode}
       initialChatList={chatList}
       initialActiveChatId={activeChatId}
       initialMessages={initialMessages}
