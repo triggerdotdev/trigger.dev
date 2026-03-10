@@ -2,7 +2,13 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { EnvelopeIcon, NoSymbolIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, type MetaFunction, useActionData, useFetcher, useNavigation } from "@remix-run/react";
+import {
+  Form,
+  type MetaFunction,
+  useActionData,
+  useFetcher,
+  useNavigation,
+} from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { useEffect, useRef, useState } from "react";
@@ -630,9 +636,9 @@ export function PurchaseSeatsModal({
           <div className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-1">
               <Paragraph variant="small/bright">
-                Purchase extra seats at {formatCurrency(pricePerSeat, false)}/month per seat.
-                Reducing the number of seats will take effect at the start of the next billing cycle
-                (1st of the month).
+                Purchase extra seats at {formatCurrency(pricePerSeat, true)}/month per seat.
+                Reducing seats will take effect at the start of your next billing cycle (on the 1st
+                of the month).
               </Paragraph>
             </div>
             <Fieldset>
