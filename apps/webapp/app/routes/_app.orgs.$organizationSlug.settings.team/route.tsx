@@ -1,9 +1,9 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { EnvelopeIcon, NoSymbolIcon, UserPlusIcon } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, useActionData } from "@remix-run/react";
+import { Form, type MetaFunction, useActionData, useNavigation } from "@remix-run/react";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -374,12 +374,61 @@ function LeaveTeamModal({
   );
 }
 
+const RESEND_COOLDOWN_SECONDS = 30;
+
+function initialCooldown(updatedAt: Date | string): number {
+  const elapsed = Math.floor((Date.now() - new Date(updatedAt).getTime()) / 1000);
+  const remaining = RESEND_COOLDOWN_SECONDS - elapsed;
+  return remaining > 0 ? remaining : 0;
+}
+
 function ResendButton({ invite }: { invite: Invite }) {
+  const navigation = useNavigation();
+  const isSubmitting =
+    navigation.state === "submitting" &&
+    navigation.formAction === resendInvitePath() &&
+    navigation.formData?.get("inviteId") === invite.id;
+  const prevSubmitting = useRef(false);
+  const [cooldown, setCooldown] = useState(() => initialCooldown(invite.updatedAt));
+  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+
+  useEffect(() => {
+    if (prevSubmitting.current && !isSubmitting) {
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+    }
+    prevSubmitting.current = isSubmitting;
+  }, [isSubmitting]);
+
+  useEffect(() => {
+    if (cooldown <= 0) {
+      clearInterval(intervalRef.current);
+      return;
+    }
+
+    intervalRef.current = setInterval(() => {
+      setCooldown((c) => {
+        if (c <= 1) {
+          clearInterval(intervalRef.current);
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(intervalRef.current);
+  }, [cooldown > 0]); // only re-run when transitioning between active/inactive
+
+  const isDisabled = isSubmitting || cooldown > 0;
+
   return (
     <Form method="post" action={resendInvitePath()} className="flex">
       <input type="hidden" value={invite.id} name="inviteId" />
-      <Button type="submit" variant="secondary/small">
-        Resend invite
+      <Button type="submit" variant="secondary/small" disabled={isDisabled}>
+        {isSubmitting
+          ? "Sending…"
+          : cooldown > 0
+          ? <span className="tabular-nums">{`Sent – resend in ${cooldown}s`}</span>
+          : "Resend invite"}
       </Button>
     </Form>
   );
