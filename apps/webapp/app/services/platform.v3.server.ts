@@ -35,7 +35,6 @@ function initializeClient() {
       apiKey: process.env.BILLING_API_KEY,
     });
     return client;
-  } else {
   }
 }
 
@@ -403,6 +402,22 @@ export async function setConcurrencyAddOn(organizationId: string, amount: number
     return result;
   } catch (e) {
     logger.error("Error setting concurrency add on - caught error", { error: e });
+    return undefined;
+  }
+}
+
+export async function setSeatsAddOn(organizationId: string, amount: number) {
+  if (!client) return undefined;
+
+  try {
+    const result = await client.setAddOn(organizationId, { type: "seats", amount });
+    if (!result.success) {
+      logger.error("Error setting seats add on - no success", { error: result.error });
+      return undefined;
+    }
+    return result;
+  } catch (e) {
+    logger.error("Error setting seats add on - caught error", { error: e });
     return undefined;
   }
 }

@@ -1,8 +1,21 @@
-import { useForm } from "@conform-to/react";
+import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { EnvelopeIcon, NoSymbolIcon, UserPlusIcon } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, useActionData, useNavigation } from "@remix-run/react";
-import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { DialogClose } from "@radix-ui/react-dialog";
+import {
+  Form,
+  type MetaFunction,
+  useActionData,
+  useNavigation,
+  useSearchParams,
+} from "@remix-run/react";
+import {
+  type ActionFunctionArgs,
+  type ActionFunction,
+  type LoaderFunctionArgs,
+  json,
+} from "@remix-run/server-runtime";
+import { tryCatch } from "@trigger.dev/core";
 import { useEffect, useRef, useState } from "react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
@@ -22,16 +35,25 @@ import {
 } from "~/components/primitives/Alert";
 import { Button, ButtonContent, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
+import { Fieldset } from "~/components/primitives/Fieldset";
+import { FormButtons } from "~/components/primitives/FormButtons";
+import { FormError } from "~/components/primitives/FormError";
 import { Header2, Header3 } from "~/components/primitives/Headers";
+import { InputGroup } from "~/components/primitives/InputGroup";
+import { InputNumberStepper } from "~/components/primitives/InputNumberStepper";
+import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { cn } from "~/utils/cn";
 import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
 import { removeTeamMember } from "~/models/member.server";
-import { redirectWithSuccessMessage } from "~/models/message.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import {
@@ -41,6 +63,9 @@ import {
   revokeInvitePath,
   v3BillingPath,
 } from "~/utils/pathBuilder";
+import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
+import { SetSeatsAddOnService } from "~/v3/services/setSeatsAddOn.server";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
 export const meta: MetaFunction = () => {
   return [
@@ -84,12 +109,76 @@ const schema = z.object({
   memberId: z.string(),
 });
 
-export const action: ActionFunction = async ({ request, params }) => {
+const PurchaseSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("purchase"),
+    amount: z.coerce.number().min(0, "Amount must be 0 or more"),
+  }),
+  z.object({
+    action: z.literal("quota-increase"),
+    amount: z.coerce.number().min(1, "Amount must be greater than 0"),
+  }),
+]);
+
+export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug } = params;
   invariant(organizationSlug, "organizationSlug not found");
 
   const formData = await request.formData();
+  const formType = formData.get("_formType");
+
+  if (formType === "purchase-seats") {
+    const redirectTo = formData.get("redirectTo");
+    const redirectPath =
+      typeof redirectTo === "string" && redirectTo
+        ? redirectTo
+        : organizationTeamPath({ slug: organizationSlug });
+
+    const org = await $replica.organization.findFirst({
+      where: { slug: organizationSlug },
+      select: { id: true },
+    });
+
+    if (!org) {
+      throw redirectWithErrorMessage(redirectPath, request, "Organization not found");
+    }
+
+    const submission = parse(formData, { schema: PurchaseSchema });
+
+    if (!submission.value || submission.intent !== "submit") {
+      return json(submission);
+    }
+
+    const service = new SetSeatsAddOnService();
+    const [error, result] = await tryCatch(
+      service.call({
+        userId,
+        organizationId: org.id,
+        action: submission.value.action,
+        amount: submission.value.amount,
+      })
+    );
+
+    if (error) {
+      submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
+      return json(submission);
+    }
+
+    if (!result.success) {
+      submission.error.amount = [result.error];
+      return json(submission);
+    }
+
+    return redirectWithSuccessMessage(
+      `${redirectPath}?purchaseSuccess=true`,
+      request,
+      submission.value.action === "purchase"
+        ? "Seats updated successfully"
+        : "Requested extra seats, we'll get back to you soon."
+    );
+  }
+
   const submission = parse(formData, { schema });
 
   if (!submission.value || submission.intent !== "submit") {
@@ -121,11 +210,23 @@ type Member = UseDataFunctionReturn<typeof loader>["members"][number];
 type Invite = UseDataFunctionReturn<typeof loader>["invites"][number];
 
 export default function Page() {
-  const { members, invites, limits } = useTypedLoaderData<typeof loader>();
+  const {
+    members,
+    invites,
+    limits,
+    canPurchaseSeats,
+    extraSeats,
+    seatPricing,
+    maxSeatQuota,
+    planSeatLimit,
+  } = useTypedLoaderData<typeof loader>();
   const user = useUser();
   const organization = useOrganization();
 
+  const plan = useCurrentPlan();
   const requiresUpgrade = limits.used >= limits.limit;
+  const canUpgrade =
+    plan?.v3Subscription?.plan && !plan.v3Subscription.plan.limits.teamMembers.canExceed;
 
   return (
     <PageContainer>
@@ -224,7 +325,7 @@ export default function Page() {
             </div>
           </div>
 
-          <div className="flex h-fit w-full items-center gap-4 border-t border-grid-bright bg-background-bright p-[0.86rem] pl-4">
+          <div className="flex h-fit w-full items-center gap-3 border-t border-grid-bright bg-background-bright p-[0.86rem] pl-4">
             <SimpleTooltip
               button={
                 <div className="size-6">
@@ -254,17 +355,29 @@ export default function Page() {
             <div className="flex w-full items-center justify-between gap-6">
               {requiresUpgrade ? (
                 <Header3 className="text-error">
-                  You've used all {limits.limit} of your team members. Upgrade your plan to enable
-                  more.
+                  You've used all {limits.limit} of your seats.{" "}
+                  {canPurchaseSeats
+                    ? "Purchase more seats to invite more team members."
+                    : "Upgrade your plan to invite more team members."}
                 </Header3>
               ) : (
                 <Header3>
-                  You've used {limits.used}/{limits.limit} of your team members
+                  You've used {limits.used}/{limits.limit} of your seats
                 </Header3>
               )}
-              <LinkButton to={v3BillingPath(organization)} variant="primary/small">
-                Upgrade
-              </LinkButton>
+              {canPurchaseSeats && seatPricing ? (
+                <PurchaseSeatsModal
+                  seatPricing={seatPricing}
+                  extraSeats={extraSeats}
+                  usedSeats={limits.used}
+                  maxQuota={maxSeatQuota}
+                  planSeatLimit={planSeatLimit}
+                />
+              ) : canUpgrade ? (
+                <LinkButton to={v3BillingPath(organization)} variant="primary/small">
+                  Upgrade
+                </LinkButton>
+              ) : null}
             </div>
           </div>
         </div>
@@ -424,11 +537,13 @@ function ResendButton({ invite }: { invite: Invite }) {
     <Form method="post" action={resendInvitePath()} className="flex">
       <input type="hidden" value={invite.id} name="inviteId" />
       <Button type="submit" variant="secondary/small" disabled={isDisabled}>
-        {isSubmitting
-          ? "Sending…"
-          : cooldown > 0
-          ? <span className="tabular-nums">{`Sent – resend in ${cooldown}s`}</span>
-          : "Resend invite"}
+        {isSubmitting ? (
+          "Sending…"
+        ) : cooldown > 0 ? (
+          <span className="tabular-nums">{`Sent – resend in ${cooldown}s`}</span>
+        ) : (
+          "Resend invite"
+        )}
       </Button>
     </Form>
   );
@@ -452,7 +567,269 @@ function RevokeButton({ invite }: { invite: Invite }) {
         }
         content="Revoke invite"
         disableHoverableContent
+        asChild
       />
     </Form>
   );
+}
+
+export function PurchaseSeatsModal({
+  seatPricing,
+  extraSeats,
+  usedSeats,
+  maxQuota,
+  planSeatLimit,
+  triggerButton,
+  redirectTo,
+}: {
+  seatPricing: {
+    stepSize: number;
+    centsPerStep: number;
+  };
+  extraSeats: number;
+  usedSeats: number;
+  maxQuota: number;
+  planSeatLimit: number;
+  triggerButton?: React.ReactNode;
+  redirectTo?: string;
+}) {
+  const lastSubmission = useActionData();
+  const organization = useOrganization();
+  const [form, { amount }] = useForm({
+    id: "purchase-seats",
+    lastSubmission: lastSubmission as any,
+    onValidate({ formData }) {
+      return parse(formData, { schema: PurchaseSchema });
+    },
+    shouldRevalidate: "onSubmit",
+  });
+
+  const [amountValue, setAmountValue] = useState(extraSeats);
+  const navigation = useNavigation();
+  const isLoading = navigation.state !== "idle" && navigation.formMethod === "POST";
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const success = searchParams.get("purchaseSuccess");
+    if (success) {
+      setOpen(false);
+      setSearchParams((s) => {
+        s.delete("purchaseSuccess");
+        return s;
+      });
+    }
+  }, [searchParams.get("purchaseSuccess")]);
+
+  const state = updateSeatState({
+    value: amountValue,
+    existingValue: extraSeats,
+    quota: maxQuota,
+    usedSeats,
+    planSeatLimit,
+  });
+  const changeClassName =
+    state === "decrease" ? "text-error" : state === "increase" ? "text-success" : undefined;
+
+  const pricePerSeat = seatPricing.centsPerStep / seatPricing.stepSize / 100;
+  const title = extraSeats === 0 ? "Purchase extra seats…" : "Add/remove extra seats…";
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        {triggerButton ?? (
+          <Button variant="primary/small" onClick={() => setOpen(true)}>
+            {title}
+          </Button>
+        )}
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>{title}</DialogHeader>
+        <Form method="post" action={organizationTeamPath(organization)} {...form.props}>
+          <input type="hidden" name="_formType" value="purchase-seats" />
+          {redirectTo && <input type="hidden" name="redirectTo" value={redirectTo} />}
+          <div className="flex flex-col gap-4 pt-2">
+            <div className="flex flex-col gap-1">
+              <Paragraph variant="small/bright">
+                Purchase extra seats at {formatCurrency(pricePerSeat, false)}/month per seat.
+                Reducing the number of seats will take effect at the start of the next billing cycle
+                (1st of the month).
+              </Paragraph>
+            </div>
+            <Fieldset>
+              <InputGroup fullWidth>
+                <Label htmlFor="amount" className="text-text-dimmed">
+                  Total extra seats
+                </Label>
+                <InputNumberStepper
+                  {...conform.input(amount, { type: "number" })}
+                  step={seatPricing.stepSize}
+                  min={0}
+                  max={undefined}
+                  value={amountValue}
+                  onChange={(e) => setAmountValue(Number(e.target.value))}
+                  disabled={isLoading}
+                />
+                <FormError id={amount.errorId}>
+                  {amount.error ?? amount.initialError?.[""]?.[0]}
+                </FormError>
+                <FormError>{form.error}</FormError>
+              </InputGroup>
+            </Fieldset>
+            {state === "need_to_remove_members" ? (
+              <div className="flex flex-col pb-3">
+                <Paragraph variant="small" className="text-warning" spacing>
+                  You need to remove {formatNumber(usedSeats - (planSeatLimit + amountValue))}{" "}
+                  {usedSeats - (planSeatLimit + amountValue) === 1
+                    ? "team member or pending invite"
+                    : "team members or pending invites"}{" "}
+                  before you can reduce to this level.
+                </Paragraph>
+              </div>
+            ) : state === "above_quota" ? (
+              <div className="flex flex-col pb-3">
+                <Paragraph variant="small" className="text-warning" spacing>
+                  Currently you can only have up to {maxQuota} extra seats. Send a request below to
+                  lift your current limit. We'll get back to you soon.
+                </Paragraph>
+              </div>
+            ) : (
+              <div className="flex flex-col pb-3 tabular-nums">
+                <div className="grid grid-cols-2 border-b border-grid-dimmed pb-1">
+                  <Header3 className="font-normal text-text-dimmed">Summary</Header3>
+                  <Header3 className="justify-self-end font-normal text-text-dimmed">Total</Header3>
+                </div>
+                <div className="grid grid-cols-2 pt-2">
+                  <Header3 className="pb-0 font-normal text-text-dimmed">
+                    <span className="text-text-bright">{formatNumber(extraSeats)}</span> current
+                    extra
+                  </Header3>
+                  <Header3 className="justify-self-end font-normal text-text-bright">
+                    {formatCurrency(extraSeats * pricePerSeat, true)}
+                  </Header3>
+                </div>
+                <div className="grid grid-cols-2 text-xs">
+                  <span className="text-text-dimmed">
+                    ({extraSeats} {extraSeats === 1 ? "seat" : "seats"})
+                  </span>
+                  <span className="justify-self-end text-text-dimmed">/mth</span>
+                </div>
+                <div className="grid grid-cols-2 pt-2">
+                  <Header3 className={cn("pb-0 font-normal", changeClassName)}>
+                    {state === "increase" ? "+" : null}
+                    {formatNumber(amountValue - extraSeats)}
+                  </Header3>
+                  <Header3 className={cn("justify-self-end font-normal", changeClassName)}>
+                    {state === "increase" ? "+" : null}
+                    {formatCurrency((amountValue - extraSeats) * pricePerSeat, true)}
+                  </Header3>
+                </div>
+                <div className="grid grid-cols-2 text-xs">
+                  <span className="text-text-dimmed">
+                    ({Math.abs(amountValue - extraSeats)}{" "}
+                    {Math.abs(amountValue - extraSeats) === 1 ? "seat" : "seats"} @{" "}
+                    {formatCurrency(pricePerSeat, true)}/mth)
+                  </span>
+                  <span className="justify-self-end text-text-dimmed">/mth</span>
+                </div>
+                <div className="grid grid-cols-2 pt-2">
+                  <Header3 className="pb-0 font-normal text-text-dimmed">
+                    <span className="text-text-bright">{formatNumber(amountValue)}</span> new total
+                  </Header3>
+                  <Header3 className="justify-self-end font-normal text-text-bright">
+                    {formatCurrency(amountValue * pricePerSeat, true)}
+                  </Header3>
+                </div>
+                <div className="grid grid-cols-2 text-xs">
+                  <span className="text-text-dimmed">
+                    ({amountValue} {amountValue === 1 ? "seat" : "seats"})
+                  </span>
+                  <span className="justify-self-end text-text-dimmed">/mth</span>
+                </div>
+              </div>
+            )}
+          </div>
+          <FormButtons
+            confirmButton={
+              state === "above_quota" ? (
+                <>
+                  <input type="hidden" name="action" value="quota-increase" />
+                  <Button
+                    LeadingIcon={isLoading ? SpinnerWhite : EnvelopeIcon}
+                    variant="primary/medium"
+                    type="submit"
+                    disabled={isLoading}
+                  >
+                    <span className="tabular-nums text-text-bright">{`Send request for ${formatNumber(
+                      amountValue
+                    )}`}</span>
+                  </Button>
+                </>
+              ) : state === "decrease" || state === "need_to_remove_members" ? (
+                <>
+                  <input type="hidden" name="action" value="purchase" />
+                  <Button
+                    variant="danger/medium"
+                    type="submit"
+                    disabled={isLoading || state === "need_to_remove_members"}
+                    LeadingIcon={isLoading ? SpinnerWhite : undefined}
+                  >
+                    <span className="tabular-nums text-text-bright">{`Remove ${formatNumber(
+                      extraSeats - amountValue
+                    )} ${extraSeats - amountValue === 1 ? "seat" : "seats"}`}</span>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <input type="hidden" name="action" value="purchase" />
+                  <Button
+                    variant="primary/medium"
+                    type="submit"
+                    disabled={isLoading || state === "no_change"}
+                    LeadingIcon={isLoading ? SpinnerWhite : undefined}
+                  >
+                    <span className="tabular-nums text-text-bright">{`Purchase ${formatNumber(
+                      amountValue - extraSeats
+                    )} ${amountValue - extraSeats === 1 ? "seat" : "seats"}`}</span>
+                  </Button>
+                </>
+              )
+            }
+            cancelButton={
+              <DialogClose asChild>
+                <Button variant="secondary/medium" disabled={isLoading}>
+                  Cancel
+                </Button>
+              </DialogClose>
+            }
+          />
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function updateSeatState({
+  value,
+  existingValue,
+  quota,
+  usedSeats,
+  planSeatLimit,
+}: {
+  value: number;
+  existingValue: number;
+  quota: number;
+  usedSeats: number;
+  planSeatLimit: number;
+}): "no_change" | "increase" | "decrease" | "above_quota" | "need_to_remove_members" {
+  if (value === existingValue) return "no_change";
+  if (value < existingValue) {
+    const newTotalLimit = planSeatLimit + value;
+    if (usedSeats > newTotalLimit) {
+      return "need_to_remove_members";
+    }
+    return "decrease";
+  }
+  if (value > quota) return "above_quota";
+  return "increase";
 }
