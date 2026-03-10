@@ -195,7 +195,7 @@ export class DefaultQueueManager implements QueueManager {
         environmentId: environment.id,
       });
 
-      return { queueName: overriddenQueueName ?? defaultQueueName };
+      return { queueName: overriddenQueueName ?? defaultQueueName, taskTtl: undefined };
     }
 
     const task = await this.prisma.backgroundWorkerTask.findFirst({
@@ -215,7 +215,7 @@ export class DefaultQueueManager implements QueueManager {
         environmentId: environment.id,
       });
 
-      return { queueName: overriddenQueueName ?? defaultQueueName };
+      return { queueName: overriddenQueueName ?? defaultQueueName, taskTtl: undefined };
     }
 
     if (!task.queue) {
