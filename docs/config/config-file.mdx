@@ -350,6 +350,22 @@ export default defineConfig({
 
 See our [maxDuration guide](/runs/max-duration) for more information.
 
+## TTL
+
+You can set a default time-to-live (TTL) for all task runs in your project. If a run is not dequeued within this time, it will expire and never execute.
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  ttl: "1h", // Also accepts a number of seconds, e.g. 3600
+});
+```
+
+You can override this on a per-task basis by setting `ttl` on the task definition, or per-trigger by passing `ttl` in the trigger options. See [Time-to-live (TTL)](/runs#time-to-live-ttl) for more information.
+
 ## Process keep alive
 
 Keep the process alive after the task has finished running so the next task doesn't have to wait for the process to start up again.
