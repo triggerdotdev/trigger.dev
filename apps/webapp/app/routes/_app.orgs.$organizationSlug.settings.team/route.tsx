@@ -238,7 +238,17 @@ export default function Page() {
               ))}
             </Property.Table>
           </AdminDebugTooltip>
-          {!requiresUpgrade && (
+          {requiresUpgrade ? (
+            <SimpleTooltip
+              button={
+                <ButtonContent variant="primary/small" LeadingIcon={UserPlusIcon} className="cursor-not-allowed opacity-50">
+                  Invite a team member
+                </ButtonContent>
+              }
+              content="Purchase more seats to invite more team members"
+              disableHoverableContent
+            />
+          ) : (
             <LinkButton
               to={inviteTeamMemberPath(organization)}
               variant="primary/small"
