@@ -504,6 +504,89 @@ run: async ({ messages, signal }) => {
   Longer warm timeout means faster responses but more compute usage. Set to `0` to suspend immediately after each turn (minimum latency cost, slight delay on next message).
 </Info>
 
+#### Stream options
+
+Control how `streamText` results are converted to the frontend stream via `toUIMessageStream()`. Set static defaults on the task, or override per-turn.
+
+##### Error handling with onError
+
+When `streamText` encounters an error mid-stream (rate limits, API failures, network errors), the `onError` callback converts it to a string that's sent to the frontend as an `{ type: "error", errorText }` chunk. The AI SDK's `useChat` receives this via its `onError` callback.
+
+By default, the raw error message is sent to the frontend. Use `onError` to sanitize errors and avoid leaking internal details:
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  uiMessageStreamOptions: {
+    onError: (error) => {
+      // Log the full error server-side for debugging
+      console.error("Stream error:", error);
+      // Return a sanitized message — this is what the frontend sees
+      if (error instanceof Error && error.message.includes("rate limit")) {
+        return "Rate limited — please wait a moment and try again.";
+      }
+      return "Something went wrong. Please try again.";
+    },
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+`onError` is also called for tool execution errors, so a single handler covers both LLM errors and tool failures.
+
+On the frontend, handle the error in `useChat`:
+
+```tsx
+const { messages, sendMessage } = useChat({
+  transport,
+  onError: (error) => {
+    // error.message contains the string returned by your onError handler
+    toast.error(error.message);
+  },
+});
+```
+
+##### Reasoning and sources
+
+Control which AI SDK features are forwarded to the frontend:
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  uiMessageStreamOptions: {
+    sendReasoning: true,  // Forward model reasoning (default: true)
+    sendSources: true,    // Forward source citations (default: false)
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+##### Per-turn overrides
+
+Override per-turn with `chat.setUIMessageStreamOptions()` — per-turn values merge with the static config (per-turn wins on conflicts). The override is cleared automatically after each turn.
+
+```ts
+run: async ({ messages, clientData, signal }) => {
+  // Enable reasoning only for certain models
+  if (clientData.model?.includes("claude")) {
+    chat.setUIMessageStreamOptions({ sendReasoning: true });
+  }
+  return streamText({ model: openai(clientData.model ?? "gpt-4o"), messages, abortSignal: signal });
+},
+```
+
+`chat.setUIMessageStreamOptions()` works across all abstraction levels — `chat.task()`, `chat.createSession()` / `turn.complete()`, and `chat.pipeAndCapture()`.
+
+See [ChatUIMessageStreamOptions](/ai-chat/reference#chatuimessagestreamoptions) for the full reference.
+
+<Note>
+  `onFinish` is managed internally for response capture and cannot be overridden here. Use `streamText`'s `onFinish` callback for custom finish handling, or use [raw task mode](#raw-task-with-primitives) for full control over `toUIMessageStream()`.
+</Note>
+
 ### Manual mode with task()
 
 If you need full control over task options, use the standard `task()` with `ChatTaskPayload` and `chat.pipe()`:
@@ -646,6 +729,8 @@ for await (const turn of session) {
 ## Raw task with primitives
 
 For full control, use a standard `task()` with the composable primitives from the `chat` namespace. You manage everything: the turn loop, stop signals, message accumulation, and turn-complete signaling.
+
+Raw task mode also lets you call `.toUIMessageStream()` yourself with any options — including `onFinish` and `originalMessages`. This is the right choice when you need complete control over the stream conversion beyond what `chat.setUIMessageStreamOptions()` provides.
 
 ### Primitives
 

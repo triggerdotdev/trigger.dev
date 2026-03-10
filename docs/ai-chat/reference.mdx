@@ -23,6 +23,7 @@ Options for `chat.task()`.
 | `chatAccessTokenTTL` | `string` | `"1h"` | How long the scoped access token remains valid |
 | `preloadWarmTimeoutInSeconds` | `number` | Same as `warmTimeoutInSeconds` | Warm timeout after `onPreload` fires |
 | `preloadTimeout` | `string` | Same as `turnTimeout` | Suspend timeout for preloaded runs |
+| `uiMessageStreamOptions` | `ChatUIMessageStreamOptions` | — | Default options for `toUIMessageStream()`. Per-turn override via `chat.setUIMessageStreamOptions()` |
 
 Plus all standard [TaskOptions](/tasks/overview) — `retry`, `queue`, `machine`, `maxDuration`, etc.
 
@@ -156,11 +157,27 @@ All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
 | `chat.setTurnTimeout(duration)` | Override turn timeout at runtime (e.g. `"2h"`) |
 | `chat.setTurnTimeoutInSeconds(seconds)` | Override turn timeout at runtime (in seconds) |
 | `chat.setWarmTimeoutInSeconds(seconds)` | Override warm timeout at runtime |
+| `chat.setUIMessageStreamOptions(options)` | Override `toUIMessageStream()` options for the current turn |
 | `chat.defer(promise)` | Run background work in parallel with streaming, awaited before `onTurnComplete` |
 | `chat.isStopped()` | Check if the current turn was stopped by the user |
 | `chat.cleanupAbortedParts(message)` | Remove incomplete parts from a stopped response message |
 | `chat.stream` | Typed chat output stream — use `.writer()`, `.pipe()`, `.append()`, `.read()` |
 | `chat.MessageAccumulator` | Class that accumulates conversation messages across turns |
+
+## ChatUIMessageStreamOptions
+
+Options for customizing `toUIMessageStream()`. Set as static defaults via `uiMessageStreamOptions` on `chat.task()`, or override per-turn via `chat.setUIMessageStreamOptions()`. See [Stream options](/ai-chat/backend#stream-options) for usage examples.
+
+Derived from the AI SDK's `UIMessageStreamOptions` with `onFinish`, `originalMessages`, and `generateMessageId` omitted (managed internally).
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `onError` | `(error: unknown) => string` | Raw error message | Called on LLM errors and tool execution errors. Return a sanitized string — sent as `{ type: "error", errorText }` to the frontend. |
+| `sendReasoning` | `boolean` | `true` | Send reasoning parts to the client |
+| `sendSources` | `boolean` | `false` | Send source parts to the client |
+| `sendFinish` | `boolean` | `true` | Send the finish event. Set to `false` when chaining multiple `streamText` calls. |
+| `sendStart` | `boolean` | `true` | Send the message start event. Set to `false` when chaining. |
+| `messageMetadata` | `(options: { part }) => metadata` | — | Extract message metadata to send to the client. Called on `start` and `finish` events. |
 
 ## TriggerChatTransport options
 
