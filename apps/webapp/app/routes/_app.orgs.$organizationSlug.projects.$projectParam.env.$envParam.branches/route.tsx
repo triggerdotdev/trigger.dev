@@ -707,7 +707,7 @@ function PurchaseBranchesModal({
           <input type="hidden" name="_formType" value="purchase-branches" />
           <div className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-1">
-              <Paragraph variant="base/bright">
+              <Paragraph variant="small/bright">
                 Purchase extra preview branches at {formatCurrency(pricePerBranch, false)}/month per
                 branch. Reducing the number of branches will take effect at the start of the next
                 billing cycle (1st of the month).
