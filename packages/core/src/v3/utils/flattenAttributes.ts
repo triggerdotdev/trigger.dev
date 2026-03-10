@@ -147,7 +147,7 @@ class AttributeFlattener {
         if (!this.canAddMoreAttributes()) break;
         // Use the key directly if it's a string, otherwise convert it
         const keyStr = typeof key === "string" ? key : String(key);
-        this.#processValue(value, `${prefix || "map"}.${keyStr}`, depth);
+        this.#processValue(value, `${prefix || "map"}.${escapeKey(keyStr)}`, depth);
       }
       return;
     }
