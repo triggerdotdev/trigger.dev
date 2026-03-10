@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.4.3
+
+### Patch Changes
+
+- Auto-cancel in-flight dev runs when the CLI exits, using a detached watchdog process that survives pnpm SIGKILL ([#3191](https://github.com/triggerdotdev/trigger.dev/pull/3191))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.3`
+  - `@trigger.dev/build@4.4.3`
+  - `@trigger.dev/schema-to-json@4.4.3`
+
 ## 4.4.2
 
 ### Patch Changes
