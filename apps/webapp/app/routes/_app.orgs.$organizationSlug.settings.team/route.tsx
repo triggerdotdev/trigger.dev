@@ -42,7 +42,7 @@ import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
 import { removeTeamMember } from "~/models/member.server";
-import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import {
@@ -118,15 +118,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const formType = formData.get("_formType");
 
   if (formType === "purchase-seats") {
-    const redirectPath = organizationTeamPath({ slug: organizationSlug });
-
     const org = await $replica.organization.findFirst({
       where: { slug: organizationSlug },
       select: { id: true },
     });
 
     if (!org) {
-      throw redirectWithErrorMessage(redirectPath, request, "Organization not found");
+      return json({ ok: false, error: "Organization not found" } as const);
     }
 
     const submission = parse(formData, { schema: PurchaseSchema });
@@ -155,13 +153,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return json(submission);
     }
 
-    return redirectWithSuccessMessage(
-      redirectPath,
-      request,
-      submission.value.action === "purchase"
-        ? "Seats updated successfully"
-        : "Requested extra seats, we'll get back to you soon."
-    );
+    return json({ ok: true } as const);
   }
 
   const submission = parse(formData, { schema });
@@ -576,9 +568,13 @@ export function PurchaseSeatsModal({
 }) {
   const fetcher = useFetcher();
   const organization = useOrganization();
+  const lastSubmission =
+    fetcher.data && typeof fetcher.data === "object" && "intent" in fetcher.data
+      ? fetcher.data
+      : undefined;
   const [form, { amount }] = useForm({
     id: "purchase-seats",
-    lastSubmission: fetcher.data as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema: PurchaseSchema });
     },
@@ -586,15 +582,23 @@ export function PurchaseSeatsModal({
   });
 
   const [amountValue, setAmountValue] = useState(extraSeats);
+  useEffect(() => {
+    setAmountValue(extraSeats);
+  }, [extraSeats]);
   const isLoading = fetcher.state !== "idle";
 
   const [open, setOpen] = useState(false);
-  const prevFetcherState = useRef(fetcher.state);
   useEffect(() => {
-    if (prevFetcherState.current !== "idle" && fetcher.state === "idle" && !fetcher.data) {
+    const data = fetcher.data;
+    if (
+      fetcher.state === "idle" &&
+      data !== null &&
+      typeof data === "object" &&
+      "ok" in data &&
+      data.ok
+    ) {
       setOpen(false);
     }
-    prevFetcherState.current = fetcher.state;
   }, [fetcher.state, fetcher.data]);
 
   const state = updateSeatState({
