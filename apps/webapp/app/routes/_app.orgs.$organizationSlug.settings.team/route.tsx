@@ -1,6 +1,6 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { EnvelopeIcon, LockOpenIcon, TrashIcon, UserPlusIcon } from "@heroicons/react/20/solid";
+import { EnvelopeIcon, NoSymbolIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import { Form, type MetaFunction, useActionData } from "@remix-run/react";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useState } from "react";
@@ -9,11 +9,7 @@ import invariant from "tiny-invariant";
 import { z } from "zod";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import {
-  MainHorizontallyCenteredContainer,
-  PageBody,
-  PageContainer,
-} from "~/components/layout/AppLayout";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {
   Alert,
   AlertCancel,
@@ -27,7 +23,6 @@ import {
 import { Button, ButtonContent, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
-import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
@@ -159,97 +154,120 @@ export default function Page() {
               ))}
             </Property.Table>
           </AdminDebugTooltip>
+          {!requiresUpgrade && (
+            <LinkButton
+              to={inviteTeamMemberPath(organization)}
+              variant="primary/small"
+              LeadingIcon={UserPlusIcon}
+            >
+              Invite a team member
+            </LinkButton>
+          )}
         </PageAccessories>
       </NavBar>
-      <PageBody>
-        <MainHorizontallyCenteredContainer>
-          <Header2>
-            Members{" "}
-            <span className="font-normal text-text-dimmed">
-              ({limits.used}/{limits.limit})
-            </span>
-          </Header2>
-          <ul className="divide-ui-border mt-3 flex w-full flex-col divide-y border-y border-grid-bright">
-            {members.map((member) => (
-              <li key={member.user.id} className="flex items-center gap-x-4 py-4">
-                <UserAvatar
-                  avatarUrl={member.user.avatarUrl}
-                  name={member.user.name}
-                  className="size-10"
-                />
-                <div className="flex flex-col gap-0.5">
-                  <Header3>
-                    {member.user.name}{" "}
-                    {member.user.id === user.id && <span className="text-text-dimmed">(You)</span>}
-                  </Header3>
-                  <Paragraph variant="small">{member.user.email}</Paragraph>
-                </div>
-                <div className="flex grow items-center justify-end gap-4">
-                  <LeaveRemoveButton
-                    userId={user.id}
-                    member={member}
-                    memberCount={members.length}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          {invites.length > 0 && (
-            <>
-              <Header2 className="mb-3 mt-4">Pending invites</Header2>
-              <ul className="flex w-full flex-col divide-y divide-charcoal-800 border-b border-grid-bright">
-                {invites.map((invite) => (
-                  <li key={invite.id} className="flex items-center gap-4 py-4">
-                    <div className="rounded-md border border-charcoal-750 bg-charcoal-800 p-1.5">
-                      <EnvelopeIcon className="size-7 text-cyan-500" />
-                    </div>
+      <PageBody scrollable={false}>
+        <div className="grid max-h-full min-h-full grid-rows-[1fr_auto]">
+          <div className="overflow-y-auto">
+            <div className="mx-auto max-w-3xl px-4 pb-4 pt-20">
+              {invites.length > 0 && (
+                <>
+                  <Header2 className="mb-3 mt-4">Pending invites</Header2>
+                  <ul className="divide-ui-border mb-6 flex w-full flex-col divide-y border-y">
+                    {invites.map((invite) => (
+                      <li key={invite.id} className="flex items-center gap-4 py-4">
+                        <div className="rounded-md border border-charcoal-750 bg-charcoal-800 p-1.5">
+                          <EnvelopeIcon className="size-7 text-text-dimmed" />
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <Header3>{invite.email}</Header3>
+                          <Paragraph variant="small">
+                            Invite sent {<DateTime date={invite.updatedAt} />}
+                          </Paragraph>
+                        </div>
+                        <div className="flex grow items-center justify-end gap-x-2">
+                          <ResendButton invite={invite} />
+                          <RevokeButton invite={invite} />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              <Header2>Active team members</Header2>
+              <ul className="divide-ui-border mt-3 flex w-full flex-col divide-y border-y border-grid-bright">
+                {members.map((member) => (
+                  <li key={member.user.id} className="flex items-center gap-x-4 py-4">
+                    <UserAvatar
+                      avatarUrl={member.user.avatarUrl}
+                      name={member.user.name}
+                      className="size-10"
+                    />
                     <div className="flex flex-col gap-0.5">
-                      <Header3>{invite.email}</Header3>
-                      <Paragraph variant="small">
-                        Invite sent {<DateTime date={invite.updatedAt} />}
-                      </Paragraph>
+                      <Header3>
+                        {member.user.name}{" "}
+                        {member.user.id === user.id && (
+                          <span className="text-text-dimmed">(You)</span>
+                        )}
+                      </Header3>
+                      <Paragraph variant="small">{member.user.email}</Paragraph>
                     </div>
-                    <div className="flex grow items-center justify-end gap-x-2">
-                      <ResendButton invite={invite} />
-                      <RevokeButton invite={invite} />
+                    <div className="flex grow items-center justify-end gap-4">
+                      <LeaveRemoveButton
+                        userId={user.id}
+                        member={member}
+                        memberCount={members.length}
+                      />
                     </div>
                   </li>
                 ))}
               </ul>
-            </>
-          )}
+            </div>
+          </div>
 
-          {requiresUpgrade ? (
-            <InfoPanel
-              variant="upgrade"
-              icon={LockOpenIcon}
-              iconClassName="text-indigo-500"
-              title="Unlock more team members"
-              accessory={
-                <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
-                  Upgrade
-                </LinkButton>
+          <div className="flex h-fit w-full items-center gap-4 border-t border-grid-bright bg-background-bright p-[0.86rem] pl-4">
+            <SimpleTooltip
+              button={
+                <div className="size-6">
+                  <svg className="h-full w-full -rotate-90 overflow-visible">
+                    <circle
+                      className="fill-none stroke-grid-bright"
+                      strokeWidth="4"
+                      r="10"
+                      cx="12"
+                      cy="12"
+                    />
+                    <circle
+                      className={`fill-none ${requiresUpgrade ? "stroke-error" : "stroke-success"}`}
+                      strokeWidth="4"
+                      r="10"
+                      cx="12"
+                      cy="12"
+                      strokeDasharray={`${(limits.used / limits.limit) * 62.8} 62.8`}
+                      strokeDashoffset="0"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </div>
               }
-              panelClassName="mt-4"
-            >
-              <Paragraph variant="small">
-                You've used all {limits.limit} of your available team members. Upgrade your plan to
-                enable more.
-              </Paragraph>
-            </InfoPanel>
-          ) : (
-            <div className="mt-4 flex justify-end">
-              <LinkButton
-                to={inviteTeamMemberPath(organization)}
-                variant={"secondary/small"}
-                LeadingIcon={UserPlusIcon}
-              >
-                Invite a team member
+              content={`${Math.round((limits.used / limits.limit) * 100)}%`}
+            />
+            <div className="flex w-full items-center justify-between gap-6">
+              {requiresUpgrade ? (
+                <Header3 className="text-error">
+                  You've used all {limits.limit} of your team members. Upgrade your plan to enable
+                  more.
+                </Header3>
+              ) : (
+                <Header3>
+                  You've used {limits.used}/{limits.limit} of your team members
+                </Header3>
+              )}
+              <LinkButton to={v3BillingPath(organization)} variant="primary/small">
+                Upgrade
               </LinkButton>
             </div>
-          )}
-        </MainHorizontallyCenteredContainer>
+          </div>
+        </div>
       </PageBody>
     </PageContainer>
   );
@@ -275,6 +293,7 @@ function LeaveRemoveButton({
               Leave team
             </ButtonContent>
           }
+          disableHoverableContent
           content="An organization requires at least 1 team member"
         />
       );
@@ -332,7 +351,7 @@ function LeaveTeamModal({
   return (
     <Alert open={open} onOpenChange={(o) => setOpen(o)}>
       <AlertTrigger asChild>
-        <Button variant="tertiary/small">{buttonText}</Button>
+        <Button variant="secondary/small">{buttonText}</Button>
       </AlertTrigger>
       <AlertContent>
         <AlertHeader>
@@ -341,7 +360,7 @@ function LeaveTeamModal({
         </AlertHeader>
         <AlertFooter>
           <AlertCancel asChild>
-            <Button variant="tertiary/small">Cancel</Button>
+            <Button variant="secondary/small">Cancel</Button>
           </AlertCancel>
           <Form method="post" {...form.props} onSubmit={() => setOpen(false)}>
             <input type="hidden" value={member.id} name="memberId" />
@@ -359,7 +378,7 @@ function ResendButton({ invite }: { invite: Invite }) {
   return (
     <Form method="post" action={resendInvitePath()} className="flex">
       <input type="hidden" value={invite.id} name="inviteId" />
-      <Button type="submit" variant="tertiary/small">
+      <Button type="submit" variant="secondary/small">
         Resend invite
       </Button>
     </Form>
@@ -373,11 +392,17 @@ function RevokeButton({ invite }: { invite: Invite }) {
     <Form method="post" action={revokeInvitePath()} className="flex">
       <input type="hidden" value={invite.id} name="inviteId" />
       <input type="hidden" value={organization.slug} name="slug" />
-      <Button
-        type="submit"
-        variant="danger/small"
-        LeadingIcon={TrashIcon}
-        leadingIconClassName="text-white"
+      <SimpleTooltip
+        button={
+          <Button
+            type="submit"
+            variant="danger/small"
+            LeadingIcon={NoSymbolIcon}
+            leadingIconClassName="text-white"
+          />
+        }
+        content="Revoke invite"
+        disableHoverableContent
       />
     </Form>
   );
