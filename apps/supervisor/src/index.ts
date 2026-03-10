@@ -429,6 +429,7 @@ class ManagedSupervisor {
 
   async stop() {
     this.logger.log("Shutting down");
+    await this.workloadServer.stop();
     await this.workerSession.stop();
 
     // Optional services

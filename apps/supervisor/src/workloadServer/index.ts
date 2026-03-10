@@ -25,6 +25,7 @@ import { type IncomingMessage } from "node:http";
 import { register } from "../metrics.js";
 import { env } from "../env.js";
 import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
+import { TimerWheel } from "../services/timerWheel.js";
 
 // Use the official export when upgrading to socket.io@4.8.0
 interface DefaultEventsMap {
@@ -62,6 +63,12 @@ const ComputeSnapshotCallbackBody = z.object({
   metadata: z.record(z.string()).optional(),
 });
 
+type DelayedSnapshot = {
+  runnerId: string;
+  runFriendlyId: string;
+  snapshotFriendlyId: string;
+};
+
 type WorkloadServerOptions = {
   port: number;
   host?: string;
@@ -95,6 +102,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   >();
 
   private readonly workerClient: SupervisorHttpClient;
+  private readonly snapshotDelayWheel?: TimerWheel<DelayedSnapshot>;
 
   constructor(opts: WorkloadServerOptions) {
     super();
@@ -105,6 +113,14 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     this.workerClient = opts.workerClient;
     this.checkpointClient = opts.checkpointClient;
     this.computeManager = opts.computeManager;
+
+    if (this.computeManager && env.COMPUTE_SNAPSHOTS_ENABLED) {
+      this.snapshotDelayWheel = new TimerWheel<DelayedSnapshot>({
+        delayMs: env.COMPUTE_SNAPSHOT_DELAY_MS,
+        onExpire: (item) => this.dispatchComputeSnapshot(item.data),
+      });
+      this.snapshotDelayWheel.start();
+    }
 
     this.httpServer = this.createHttpServer({ host, port });
     this.websocketServer = this.createWebsocketServer();
@@ -263,7 +279,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               return;
             }
 
-            if (this.computeManager && env.COMPUTE_SNAPSHOTS_ENABLED) {
+            if (this.snapshotDelayWheel && this.computeManager && env.COMPUTE_SNAPSHOTS_ENABLED) {
               if (!env.TRIGGER_WORKLOAD_API_DOMAIN) {
                 this.logger.error(
                   "TRIGGER_WORKLOAD_API_DOMAIN is not set, cannot create snapshot callback URL"
@@ -272,23 +288,20 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 return;
               }
 
-              // Compute mode: fire-and-forget snapshot with callback
+              // Compute mode: delay snapshot to avoid wasted work on short-lived waitpoints.
+              // If the run continues before the delay expires, the snapshot is cancelled.
               reply.json({ ok: true } satisfies WorkloadSuspendRunResponseBody, false, 202);
 
-              const callbackUrl = `${env.TRIGGER_WORKLOAD_API_PROTOCOL}://${env.TRIGGER_WORKLOAD_API_DOMAIN}:${env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL}/api/v1/compute/snapshot-complete`;
-
-              const snapshotResult = await this.computeManager.snapshot({
+              this.snapshotDelayWheel.submit(params.runFriendlyId, {
                 runnerId,
-                callbackUrl,
-                metadata: {
-                  runId: params.runFriendlyId,
-                  snapshotFriendlyId: params.snapshotFriendlyId,
-                },
+                runFriendlyId: params.runFriendlyId,
+                snapshotFriendlyId: params.snapshotFriendlyId,
               });
 
-              if (!snapshotResult) {
-                this.logger.error("Failed to request compute snapshot", { params, runnerId });
-              }
+              this.logger.debug("Snapshot delayed", {
+                runId: params.runFriendlyId,
+                delayMs: env.COMPUTE_SNAPSHOT_DELAY_MS,
+              });
 
               return;
             }
@@ -339,6 +352,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           paramsSchema: WorkloadActionParams,
           handler: async ({ req, reply, params }) => {
             this.logger.debug("Run continuation request", { params });
+
+            // Cancel any pending delayed snapshot for this run
+            if (this.snapshotDelayWheel?.cancel(params.runFriendlyId)) {
+              this.logger.debug("Cancelled delayed snapshot", { runId: params.runFriendlyId });
+            }
 
             const continuationResult = await this.workerClient.continueRunExecution(
               params.runFriendlyId,
@@ -700,11 +718,46 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     }
   }
 
+  /**
+   * Dispatch a compute snapshot request to the gateway. Called by the timer wheel
+   * when the delay expires, or immediately during drain.
+   */
+  private async dispatchComputeSnapshot(snapshot: DelayedSnapshot): Promise<void> {
+    if (!this.computeManager) return;
+
+    const callbackUrl = `${env.TRIGGER_WORKLOAD_API_PROTOCOL}://${env.TRIGGER_WORKLOAD_API_DOMAIN}:${env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL}/api/v1/compute/snapshot-complete`;
+
+    const result = await this.computeManager.snapshot({
+      runnerId: snapshot.runnerId,
+      callbackUrl,
+      metadata: {
+        runId: snapshot.runFriendlyId,
+        snapshotFriendlyId: snapshot.snapshotFriendlyId,
+      },
+    });
+
+    if (!result) {
+      this.logger.error("Failed to request compute snapshot", {
+        runId: snapshot.runFriendlyId,
+        runnerId: snapshot.runnerId,
+      });
+    }
+  }
+
   async start() {
     await this.httpServer.start();
   }
 
   async stop() {
+    const remaining = this.snapshotDelayWheel?.stop() ?? [];
+    if (remaining.length > 0) {
+      this.logger.info("Snapshot delay wheel stopped, dropped pending snapshots", {
+        count: remaining.length,
+      });
+      this.logger.debug("Dropped snapshot details", {
+        runs: remaining.map((item) => item.key),
+      });
+    }
     await this.httpServer.stop();
   }
 }
