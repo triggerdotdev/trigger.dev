@@ -584,7 +584,7 @@ export function PurchaseSeatsModal({
   usedSeats: number;
   maxQuota: number;
   planSeatLimit: number;
-  triggerButton?: React.ReactNode;
+  triggerButton?: React.ReactElement;
 }) {
   const fetcher = useFetcher();
   const organization = useOrganization();
