@@ -4,7 +4,8 @@ import { chat } from "@trigger.dev/sdk/ai";
 import type { aiChat } from "@/trigger/chat";
 import { prisma } from "@/lib/prisma";
 
-export const getChatToken = async () => chat.createAccessToken<typeof aiChat>("ai-chat");
+export const getChatToken = async (taskId?: string) =>
+  chat.createAccessToken<typeof aiChat>((taskId ?? "ai-chat") as any);
 
 export async function getChatList() {
   const chats = await prisma.chat.findMany({
