@@ -557,6 +557,7 @@ function RevokeButton({ invite }: { invite: Invite }) {
             variant="danger/small"
             LeadingIcon={NoSymbolIcon}
             leadingIconClassName="text-white"
+            aria-label="Revoke invite"
           />
         }
         content="Revoke invite"
