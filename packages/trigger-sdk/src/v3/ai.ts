@@ -14,7 +14,7 @@ import {
   type TaskSchema,
   type TaskWithSchema,
 } from "@trigger.dev/core/v3";
-import type { ModelMessage, UIMessage, UIMessageChunk } from "ai";
+import type { ModelMessage, UIMessage, UIMessageChunk, UIMessageStreamOptions } from "ai";
 import type { StreamWriteResult } from "@trigger.dev/core/v3";
 import { convertToModelMessages, dynamicTool, generateId as generateMessageId, jsonSchema, JSONSchema7, Schema, Tool, ToolCallOptions, zodSchema } from "ai";
 import { type Attributes, trace } from "@opentelemetry/api";
@@ -399,6 +399,10 @@ const chatDeferKey = locals.create<Set<Promise<unknown>>>("chat.defer");
  */
 const chatPipeCountKey = locals.create<number>("chat.pipeCount");
 const chatStopControllerKey = locals.create<AbortController>("chat.stopController");
+/** Static (task-level) UIMessageStream options, set once during chatTask setup. @internal */
+const chatUIStreamStaticKey = locals.create<ChatUIMessageStreamOptions>("chat.uiMessageStreamOptions.static");
+/** Per-turn UIMessageStream options, set via chat.setUIMessageStreamOptions(). @internal */
+const chatUIStreamPerTurnKey = locals.create<ChatUIMessageStreamOptions>("chat.uiMessageStreamOptions.perTurn");
 
 /**
  * Options for `pipeChat`.
@@ -422,6 +426,23 @@ export type PipeChatOptions = {
   /** Override the default span name for this operation. */
   spanName?: string;
 };
+
+/**
+ * Options for customizing the `toUIMessageStream()` call used when piping
+ * `streamText` results to the frontend.
+ *
+ * Set static defaults via `uiMessageStreamOptions` on `chat.task()`, or
+ * override per-turn via `chat.setUIMessageStreamOptions()`.
+ *
+ * `onFinish`, `originalMessages`, and `generateMessageId` are omitted because
+ * they are managed internally for response capture and message accumulation.
+ * Use `streamText`'s `onFinish` for custom finish handling, or drop down to
+ * raw task mode with `chat.pipe()` for full control.
+ */
+export type ChatUIMessageStreamOptions = Omit<
+  UIMessageStreamOptions<UIMessage>,
+  "onFinish" | "originalMessages" | "generateMessageId"
+>;
 
 /**
  * An object with a `toUIMessageStream()` method (e.g. `StreamTextResult` from `streamText()`).
@@ -803,6 +824,35 @@ export type ChatTaskOptions<
    * @default Same as `turnTimeout`
    */
   preloadTimeout?: string;
+
+  /**
+   * Default options for `toUIMessageStream()` when auto-piping or using
+   * `turn.complete()` / `chat.pipeAndCapture()`.
+   *
+   * Controls how the `StreamTextResult` is converted to a `UIMessageChunk`
+   * stream — error handling, reasoning/source visibility, metadata, etc.
+   *
+   * Can be overridden per-turn by calling `chat.setUIMessageStreamOptions()`
+   * inside `run()` or lifecycle hooks. Per-turn values are merged on top
+   * of these defaults (per-turn wins on conflicts).
+   *
+   * `onFinish`, `originalMessages`, and `generateMessageId` are managed
+   * internally and cannot be overridden here. Use `streamText`'s `onFinish`
+   * for custom finish handling, or drop to raw task mode for full control.
+   *
+   * @example
+   * ```ts
+   * chat.task({
+   *   id: "my-chat",
+   *   uiMessageStreamOptions: {
+   *     sendReasoning: true,
+   *     onError: (error) => error instanceof Error ? error.message : "An error occurred.",
+   *   },
+   *   run: async ({ messages, signal }) => { ... },
+   * });
+   * ```
+   */
+  uiMessageStreamOptions?: ChatUIMessageStreamOptions;
 };
 
 /**
@@ -851,6 +901,7 @@ function chatTask<
     chatAccessTokenTTL = "1h",
     preloadWarmTimeoutInSeconds,
     preloadTimeout,
+    uiMessageStreamOptions,
     ...restOptions
   } = options;
 
@@ -865,6 +916,11 @@ function chatTask<
       const activeSpan = trace.getActiveSpan();
       if (activeSpan) {
         activeSpan.setAttribute("gen_ai.conversation.id", payload.chatId);
+      }
+
+      // Store static UIMessageStream options in locals so resolveUIMessageStreamOptions() can read them
+      if (uiMessageStreamOptions) {
+        locals.set(chatUIStreamStaticKey, uiMessageStreamOptions);
       }
 
       let currentWirePayload = payload;
@@ -1192,6 +1248,7 @@ function chatTask<
                 if ((locals.get(chatPipeCountKey) ?? 0) === 0 && isUIMessageStreamable(result)) {
                   onFinishAttached = true;
                   const uiStream = result.toUIMessageStream({
+                    ...resolveUIMessageStreamOptions(),
                     onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
                       capturedResponseMessage = responseMessage;
                       resolveOnFinish!();
@@ -1447,6 +1504,48 @@ function setWarmTimeoutInSeconds(seconds: number): void {
   metadata.set(WARM_TIMEOUT_METADATA_KEY, seconds);
 }
 
+/**
+ * Override the `toUIMessageStream()` options for the current turn.
+ *
+ * These options control how the `StreamTextResult` is converted to a
+ * `UIMessageChunk` stream — error handling, reasoning/source visibility,
+ * message metadata, etc.
+ *
+ * Per-turn options are merged on top of the static `uiMessageStreamOptions`
+ * set on `chat.task()`. Per-turn values win on conflicts.
+ *
+ * @example
+ * ```ts
+ * run: async ({ messages, signal }) => {
+ *   chat.setUIMessageStreamOptions({
+ *     sendReasoning: true,
+ *     onError: (error) => error instanceof Error ? error.message : "An error occurred.",
+ *   });
+ *   return streamText({ model, messages, abortSignal: signal });
+ * }
+ * ```
+ */
+function setUIMessageStreamOptions(options: ChatUIMessageStreamOptions): void {
+  locals.set(chatUIStreamPerTurnKey, options);
+}
+
+/**
+ * Resolve the effective UIMessageStream options by merging:
+ * 1. Static task-level options (from `chat.task({ uiMessageStreamOptions })`)
+ * 2. Per-turn overrides (from `chat.setUIMessageStreamOptions()`)
+ *
+ * Per-turn values win on conflicts. Clears the per-turn override after reading
+ * so it doesn't leak into subsequent turns.
+ * @internal
+ */
+function resolveUIMessageStreamOptions(): ChatUIMessageStreamOptions {
+  const staticOptions = locals.get(chatUIStreamStaticKey) ?? {};
+  const perTurnOptions = locals.get(chatUIStreamPerTurnKey) ?? {};
+  // Clear per-turn override so it doesn't leak into subsequent turns
+  locals.set(chatUIStreamPerTurnKey, undefined);
+  return { ...staticOptions, ...perTurnOptions };
+}
+
 // ---------------------------------------------------------------------------
 // Stop detection
 // ---------------------------------------------------------------------------
@@ -1641,6 +1740,7 @@ async function pipeChatAndCapture(
   const onFinishPromise = new Promise<void>((r) => { resolveOnFinish = r; });
 
   const uiStream = source.toUIMessageStream({
+    ...resolveUIMessageStreamOptions(),
     onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
       captured = responseMessage;
       resolveOnFinish!();
@@ -2180,6 +2280,8 @@ export const chat = {
   setTurnTimeoutInSeconds,
   /** Override the warm timeout at runtime. See {@link setWarmTimeoutInSeconds}. */
   setWarmTimeoutInSeconds,
+  /** Override toUIMessageStream() options for the current turn. See {@link setUIMessageStreamOptions}. */
+  setUIMessageStreamOptions,
   /** Check if the current turn was stopped by the user. See {@link isStopped}. */
   isStopped,
   /** Clean up aborted parts from a UIMessage. See {@link cleanupAbortedParts}. */
