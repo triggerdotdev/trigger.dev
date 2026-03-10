@@ -20,15 +20,10 @@ import {
 } from "@trigger.dev/otlp-importer";
 import type { MetricsV1Input } from "@internal/clickhouse";
 import { logger } from "~/services/logger.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
+import { getEventRepositoryForOrganization } from "./eventRepository/eventRepositoryFactory.server";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
-import { ClickhouseEventRepository } from "./eventRepository/clickhouseEventRepository.server";
-import {
-  clickhouseEventRepository,
-  clickhouseEventRepositoryV2,
-} from "./eventRepository/clickhouseEventRepositoryInstance.server";
 import { generateSpanId } from "./eventRepository/common.server";
-import { EventRepository, eventRepository } from "./eventRepository/eventRepository.server";
 import type {
   CreatableEventKind,
   CreatableEventStatus,
@@ -46,9 +41,6 @@ class OTLPExporter {
   private _tracer: Tracer;
 
   constructor(
-    private readonly _eventRepository: EventRepository,
-    private readonly _clickhouseEventRepository: ClickhouseEventRepository,
-    private readonly _clickhouseEventRepositoryV2: ClickhouseEventRepository,
     private readonly _metricsFlushScheduler: DynamicFlushScheduler<MetricsV1Input>,
     private readonly _verbose: boolean,
     private readonly _spanAttributeValueLengthLimit: number
