@@ -1,5 +1,5 @@
 import { chat, ai, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
-import { schemaTask, task } from "@trigger.dev/sdk";
+import { logger, schemaTask, task } from "@trigger.dev/sdk";
 import { streamText, tool, dynamicTool, stepCountIs, generateId } from "ai";
 import type { LanguageModel, Tool as AITool, UIMessage } from "ai";
 import { openai } from "@ai-sdk/openai";
@@ -231,6 +231,18 @@ export const aiChat = chat.task({
   clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
   warmTimeoutInSeconds: 60,
   chatAccessTokenTTL: "2h",
+  uiMessageStreamOptions: {
+    sendReasoning: true,
+    onError: (error) => {
+      // Log the full error server-side for debugging
+      logger.error("Stream error", { error });
+      // Return a sanitized message — this is what the frontend sees
+      if (error instanceof Error && error.message.includes("rate limit")) {
+        return "Rate limited — please wait a moment and try again.";
+      }
+      return "Something went wrong. Please try again.";
+    },
+  },
   onPreload: async ({ chatId, runId, chatAccessToken, clientData }) => {
     if (!clientData) return;
     // Eagerly initialize before the user's first message arrives
