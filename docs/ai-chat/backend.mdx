@@ -1,0 +1,771 @@
+---
+title: "Backend"
+sidebarTitle: "Backend"
+description: "Three approaches to building your chat backend — chat.task(), session iterator, or raw task primitives."
+---
+
+## chat.task()
+
+The highest-level approach. Handles message accumulation, stop signals, turn lifecycle, and auto-piping automatically.
+
+### Simple: return a StreamTextResult
+
+Return the `streamText` result from `run` and it's automatically piped to the frontend:
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+export const simpleChat = chat.task({
+  id: "simple-chat",
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: openai("gpt-4o"),
+      system: "You are a helpful assistant.",
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+### Using chat.pipe() for complex flows
+
+For complex agent flows where `streamText` is called deep inside your code, use `chat.pipe()`. It works from **anywhere inside a task** — even nested function calls.
+
+```ts trigger/agent-chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+import type { ModelMessage } from "ai";
+
+export const agentChat = chat.task({
+  id: "agent-chat",
+  run: async ({ messages }) => {
+    // Don't return anything — chat.pipe is called inside
+    await runAgentLoop(messages);
+  },
+});
+
+async function runAgentLoop(messages: ModelMessage[]) {
+  // ... agent logic, tool calls, etc.
+
+  const result = streamText({
+    model: openai("gpt-4o"),
+    messages,
+  });
+
+  // Pipe from anywhere — no need to return it
+  await chat.pipe(result);
+}
+```
+
+### Lifecycle hooks
+
+#### onPreload
+
+Fires when a preloaded run starts — before any messages arrive. Use it to eagerly initialize state (DB records, user context) while the user is still typing.
+
+Preloaded runs are triggered by calling `transport.preload(chatId)` on the frontend. See [Preload](/ai-chat/features#preload) for details.
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  clientDataSchema: z.object({ userId: z.string() }),
+  onPreload: async ({ chatId, clientData, runId, chatAccessToken }) => {
+    // Initialize early — before the first message arrives
+    const user = await db.user.findUnique({ where: { id: clientData.userId } });
+    userContext.init({ name: user.name, plan: user.plan });
+
+    await db.chat.create({ data: { id: chatId, userId: clientData.userId } });
+    await db.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+      update: { runId, publicAccessToken: chatAccessToken },
+    });
+  },
+  onChatStart: async ({ preloaded }) => {
+    if (preloaded) return; // Already initialized in onPreload
+    // ... non-preloaded initialization
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `chatId` | `string` | Chat session ID |
+| `runId` | `string` | The Trigger.dev run ID |
+| `chatAccessToken` | `string` | Scoped access token for this run |
+| `clientData` | Typed by `clientDataSchema` | Custom data from the frontend |
+
+#### onChatStart
+
+Fires once on the first turn (turn 0) before `run()` executes. Use it to create a chat record in your database.
+
+The `continuation` field tells you whether this is a brand new chat or a continuation of an existing one (where the previous run timed out or was cancelled). The `preloaded` field tells you whether `onPreload` already ran.
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  onChatStart: async ({ chatId, clientData, continuation, preloaded }) => {
+    if (preloaded) return; // Already set up in onPreload
+    if (continuation) return; // Chat record already exists
+
+    const { userId } = clientData as { userId: string };
+    await db.chat.create({
+      data: { id: chatId, userId, title: "New chat" },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+<Tip>
+  `clientData` contains custom data from the frontend — either the `clientData` option on the transport constructor (sent with every message) or the `metadata` option on `sendMessage()` (per-message). See [Client data and metadata](/ai-chat/frontend#client-data-and-metadata).
+</Tip>
+
+#### onTurnStart
+
+Fires at the start of every turn, after message accumulation and `onChatStart` (turn 0), but **before** `run()` executes. Use it to persist messages before streaming begins — so a mid-stream page refresh still shows the user's message.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `chatId` | `string` | Chat session ID |
+| `messages` | `ModelMessage[]` | Full accumulated conversation (model format) |
+| `uiMessages` | `UIMessage[]` | Full accumulated conversation (UI format) |
+| `turn` | `number` | Turn number (0-indexed) |
+| `runId` | `string` | The Trigger.dev run ID |
+| `chatAccessToken` | `string` | Scoped access token for this run |
+| `continuation` | `boolean` | Whether this run is continuing an existing chat |
+| `preloaded` | `boolean` | Whether this run was preloaded |
+| `clientData` | Typed by `clientDataSchema` | Custom data from the frontend |
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  onTurnStart: async ({ chatId, uiMessages, runId, chatAccessToken }) => {
+    await db.chat.update({
+      where: { id: chatId },
+      data: { messages: uiMessages },
+    });
+    await db.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+      update: { runId, publicAccessToken: chatAccessToken },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+<Tip>
+  By persisting in `onTurnStart`, the user's message is saved to your database before the AI starts streaming. If the user refreshes mid-stream, the message is already there.
+</Tip>
+
+#### onTurnComplete
+
+Fires after each turn completes — after the response is captured, before waiting for the next message. This is the primary hook for persisting the assistant's response.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `chatId` | `string` | Chat session ID |
+| `messages` | `ModelMessage[]` | Full accumulated conversation (model format) |
+| `uiMessages` | `UIMessage[]` | Full accumulated conversation (UI format) |
+| `newMessages` | `ModelMessage[]` | Only this turn's messages (model format) |
+| `newUIMessages` | `UIMessage[]` | Only this turn's messages (UI format) |
+| `responseMessage` | `UIMessage \| undefined` | The assistant's response for this turn |
+| `turn` | `number` | Turn number (0-indexed) |
+| `runId` | `string` | The Trigger.dev run ID |
+| `chatAccessToken` | `string` | Scoped access token for this run |
+| `lastEventId` | `string \| undefined` | Stream position for resumption. Persist this with the session. |
+| `stopped` | `boolean` | Whether the user stopped generation during this turn |
+| `continuation` | `boolean` | Whether this run is continuing an existing chat |
+| `rawResponseMessage` | `UIMessage \| undefined` | The raw assistant response before abort cleanup (same as `responseMessage` when not stopped) |
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
+    await db.chat.update({
+      where: { id: chatId },
+      data: { messages: uiMessages },
+    });
+    await db.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
+      update: { runId, publicAccessToken: chatAccessToken, lastEventId },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+<Tip>
+  Use `uiMessages` to overwrite the full conversation each turn (simplest). Use `newUIMessages` if you prefer to store messages individually — for example, one database row per message.
+</Tip>
+
+<Tip>
+  Persist `lastEventId` alongside the session. When the transport reconnects after a page refresh, it uses this to skip past already-seen events — preventing duplicate messages.
+</Tip>
+
+### Stop generation
+
+#### How stop works
+
+Calling `stop()` from `useChat` sends a stop signal to the running task via input streams. The task's `streamText` call aborts (if you passed `signal` or `stopSignal`), but the **run stays alive** and waits for the next message. The partial response is captured and accumulated normally.
+
+#### Abort signals
+
+The `run` function receives three abort signals:
+
+| Signal | Fires when | Use for |
+|--------|-----------|---------|
+| `signal` | Stop **or** cancel | Pass to `streamText` — handles both cases. **Use this in most cases.** |
+| `stopSignal` | Stop only (per-turn, reset each turn) | Custom logic that should only run on user stop, not cancellation |
+| `cancelSignal` | Run cancel, expire, or maxDuration exceeded | Cleanup that should only happen on full cancellation |
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  run: async ({ messages, signal, stopSignal, cancelSignal }) => {
+    return streamText({
+      model: openai("gpt-4o"),
+      messages,
+      abortSignal: signal, // Handles both stop and cancel
+    });
+  },
+});
+```
+
+<Tip>
+  Use `signal` (the combined signal) in most cases. The separate `stopSignal` and `cancelSignal` are only needed if you want different behavior for stop vs cancel.
+</Tip>
+
+#### Detecting stop in callbacks
+
+The `onTurnComplete` event includes a `stopped` boolean that indicates whether the user stopped generation during that turn:
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  onTurnComplete: async ({ chatId, uiMessages, stopped }) => {
+    await db.chat.update({
+      where: { id: chatId },
+      data: { messages: uiMessages, lastStoppedAt: stopped ? new Date() : undefined },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+You can also check stop status from **anywhere** during a turn using `chat.isStopped()`. This is useful inside `streamText`'s `onFinish` callback where the AI SDK's `isAborted` flag can be unreliable (e.g. when using `createUIMessageStream` + `writer.merge()`):
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+
+export const myChat = chat.task({
+  id: "my-chat",
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: openai("gpt-4o"),
+      messages,
+      abortSignal: signal,
+      onFinish: ({ isAborted }) => {
+        // isAborted may be false even after stop when using createUIMessageStream
+        const wasStopped = isAborted || chat.isStopped();
+        if (wasStopped) {
+          // handle stop — e.g. log analytics
+        }
+      },
+    });
+  },
+});
+```
+
+#### Cleaning up aborted messages
+
+When stop happens mid-stream, the captured response message can contain parts in an incomplete state — tool calls stuck in `partial-call`, reasoning blocks still marked as `streaming`, etc. These can cause UI issues like permanent spinners.
+
+`chat.task` automatically cleans up the `responseMessage` when stop is detected before passing it to `onTurnComplete`. If you use `chat.pipe()` manually and capture response messages yourself, use `chat.cleanupAbortedParts()`:
+
+```ts
+const cleaned = chat.cleanupAbortedParts(rawResponseMessage);
+```
+
+This removes tool invocation parts stuck in `partial-call` state and marks any `streaming` text or reasoning parts as `done`.
+
+<Note>
+  Stop signal delivery is best-effort. There is a small race window where the model may finish before the stop signal arrives, in which case the turn completes normally with `stopped: false`. This is expected and does not require special handling.
+</Note>
+
+### Persistence
+
+#### What needs to be persisted
+
+To build a chat app that survives page refreshes, you need to persist two things:
+
+1. **Messages** — The conversation history. Persisted **server-side** in the task via `onTurnStart` and `onTurnComplete`.
+2. **Sessions** — The transport's connection state (`runId`, `publicAccessToken`, `lastEventId`). Persisted **server-side** via `onTurnStart` and `onTurnComplete`.
+
+<Note>
+  Sessions let the transport reconnect to an existing run after a page refresh. Without them, every page load would start a new run — losing the conversation context that was accumulated in the previous run.
+</Note>
+
+#### Full persistence example
+
+<CodeGroup>
+```ts trigger/chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+import { db } from "@/lib/db";
+
+export const myChat = chat.task({
+  id: "my-chat",
+  clientDataSchema: z.object({
+    userId: z.string(),
+  }),
+  onChatStart: async ({ chatId, clientData }) => {
+    await db.chat.create({
+      data: { id: chatId, userId: clientData.userId, title: "New chat", messages: [] },
+    });
+  },
+  onTurnStart: async ({ chatId, uiMessages, runId, chatAccessToken }) => {
+    // Persist messages + session before streaming
+    await db.chat.update({
+      where: { id: chatId },
+      data: { messages: uiMessages },
+    });
+    await db.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+      update: { runId, publicAccessToken: chatAccessToken },
+    });
+  },
+  onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
+    // Persist assistant response + stream position
+    await db.chat.update({
+      where: { id: chatId },
+      data: { messages: uiMessages },
+    });
+    await db.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
+      update: { runId, publicAccessToken: chatAccessToken, lastEventId },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: openai("gpt-4o"),
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+```ts app/actions.ts
+"use server";
+
+import { chat } from "@trigger.dev/sdk/ai";
+import type { myChat } from "@/trigger/chat";
+import { db } from "@/lib/db";
+
+export const getChatToken = () =>
+  chat.createAccessToken<typeof myChat>("my-chat");
+
+export async function getChatMessages(chatId: string) {
+  const found = await db.chat.findUnique({ where: { id: chatId } });
+  return found?.messages ?? [];
+}
+
+export async function getAllSessions() {
+  const sessions = await db.chatSession.findMany();
+  const result: Record<string, {
+    runId: string;
+    publicAccessToken: string;
+    lastEventId?: string;
+  }> = {};
+  for (const s of sessions) {
+    result[s.id] = {
+      runId: s.runId,
+      publicAccessToken: s.publicAccessToken,
+      lastEventId: s.lastEventId ?? undefined,
+    };
+  }
+  return result;
+}
+
+export async function deleteSession(chatId: string) {
+  await db.chatSession.delete({ where: { id: chatId } }).catch(() => {});
+}
+```
+
+```tsx app/components/chat.tsx
+"use client";
+
+import { useChat } from "@ai-sdk/react";
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import type { myChat } from "@/trigger/chat";
+import { getChatToken, deleteSession } from "@/app/actions";
+
+export function Chat({ chatId, initialMessages, initialSessions }) {
+  const transport = useTriggerChatTransport<typeof myChat>({
+    task: "my-chat",
+    accessToken: getChatToken,
+    clientData: { userId: currentUser.id }, // Type-checked against clientDataSchema
+    sessions: initialSessions,
+    onSessionChange: (id, session) => {
+      if (!session) deleteSession(id);
+    },
+  });
+
+  const { messages, sendMessage, stop, status } = useChat({
+    id: chatId,
+    messages: initialMessages,
+    transport,
+    resume: initialMessages.length > 0,
+  });
+
+  return (
+    <div>
+      {messages.map((m) => (
+        <div key={m.id}>
+          <strong>{m.role}:</strong>
+          {m.parts.map((part, i) =>
+            part.type === "text" ? <span key={i}>{part.text}</span> : null
+          )}
+        </div>
+      ))}
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const input = e.currentTarget.querySelector("input");
+          if (input?.value) {
+            sendMessage({ text: input.value });
+            input.value = "";
+          }
+        }}
+      >
+        <input placeholder="Type a message..." />
+        <button type="submit" disabled={status === "streaming"}>
+          Send
+        </button>
+        {status === "streaming" && (
+          <button type="button" onClick={stop}>Stop</button>
+        )}
+      </form>
+    </div>
+  );
+}
+```
+</CodeGroup>
+
+### Runtime configuration
+
+#### chat.setTurnTimeout()
+
+Override how long the run stays suspended waiting for the next message. Call from inside `run()`:
+
+```ts
+run: async ({ messages, signal }) => {
+  chat.setTurnTimeout("2h"); // Wait longer for this conversation
+  return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+},
+```
+
+#### chat.setWarmTimeoutInSeconds()
+
+Override how long the run stays warm (active, using compute) after each turn:
+
+```ts
+run: async ({ messages, signal }) => {
+  chat.setWarmTimeoutInSeconds(60); // Stay warm for 1 minute
+  return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+},
+```
+
+<Info>
+  Longer warm timeout means faster responses but more compute usage. Set to `0` to suspend immediately after each turn (minimum latency cost, slight delay on next message).
+</Info>
+
+### Manual mode with task()
+
+If you need full control over task options, use the standard `task()` with `ChatTaskPayload` and `chat.pipe()`:
+
+```ts
+import { task } from "@trigger.dev/sdk";
+import { chat, type ChatTaskPayload } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+export const manualChat = task({
+  id: "manual-chat",
+  retry: { maxAttempts: 3 },
+  queue: { concurrencyLimit: 10 },
+  run: async (payload: ChatTaskPayload) => {
+    const result = streamText({
+      model: openai("gpt-4o"),
+      messages: payload.messages,
+    });
+
+    await chat.pipe(result);
+  },
+});
+```
+
+<Warning>
+  Manual mode does not get automatic message accumulation or the `onTurnComplete`/`onChatStart` lifecycle hooks. The `responseMessage` field in `onTurnComplete` will be `undefined` when using `chat.pipe()` directly. Use `chat.task()` for the full multi-turn experience.
+</Warning>
+
+---
+
+## chat.createSession()
+
+A middle ground between `chat.task()` and raw primitives. You get an async iterator that yields `ChatTurn` objects — each turn handles stop signals, message accumulation, and turn-complete signaling automatically. You control initialization, model/tool selection, persistence, and any custom per-turn logic.
+
+Use `chat.createSession()` inside a standard `task()`:
+
+```ts
+import { task } from "@trigger.dev/sdk";
+import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+export const myChat = task({
+  id: "my-chat",
+  run: async (payload: ChatTaskWirePayload, { signal }) => {
+    // One-time initialization — just code, no hooks
+    const clientData = payload.metadata as { userId: string };
+    await db.chat.create({ data: { id: payload.chatId, userId: clientData.userId } });
+
+    const session = chat.createSession(payload, {
+      signal,
+      warmTimeoutInSeconds: 60,
+      timeout: "1h",
+    });
+
+    for await (const turn of session) {
+      const result = streamText({
+        model: openai("gpt-4o"),
+        messages: turn.messages,
+        abortSignal: turn.signal,
+      });
+
+      // Pipe, capture, accumulate, and signal turn-complete — all in one call
+      await turn.complete(result);
+
+      // Persist after each turn
+      await db.chat.update({
+        where: { id: turn.chatId },
+        data: { messages: turn.uiMessages },
+      });
+    }
+  },
+});
+```
+
+### ChatSessionOptions
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `signal` | `AbortSignal` | required | Run-level cancel signal (from task context) |
+| `warmTimeoutInSeconds` | `number` | `30` | Seconds to stay warm between turns |
+| `timeout` | `string` | `"1h"` | Duration string for suspend timeout |
+| `maxTurns` | `number` | `100` | Max turns before ending |
+
+### ChatTurn
+
+Each turn yielded by the iterator provides:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `number` | `number` | Turn number (0-indexed) |
+| `chatId` | `string` | Chat session ID |
+| `trigger` | `string` | What triggered this turn |
+| `clientData` | `unknown` | Client data from the transport |
+| `messages` | `ModelMessage[]` | Full accumulated model messages — pass to `streamText` |
+| `uiMessages` | `UIMessage[]` | Full accumulated UI messages — use for persistence |
+| `signal` | `AbortSignal` | Combined stop+cancel signal (fresh each turn) |
+| `stopped` | `boolean` | Whether the user stopped generation this turn |
+| `continuation` | `boolean` | Whether this is a continuation run |
+
+| Method | Description |
+|--------|-------------|
+| `turn.complete(source)` | Pipe stream, capture response, accumulate, and signal turn-complete |
+| `turn.done()` | Just signal turn-complete (when you've piped manually) |
+| `turn.addResponse(response)` | Add a response to the accumulator manually |
+
+### turn.complete() vs manual control
+
+`turn.complete(result)` is the easy path — it handles piping, capturing the response, accumulating messages, cleaning up aborted parts, and writing the turn-complete chunk.
+
+For more control, you can do each step manually:
+
+```ts
+for await (const turn of session) {
+  const result = streamText({
+    model: openai("gpt-4o"),
+    messages: turn.messages,
+    abortSignal: turn.signal,
+  });
+
+  // Manual: pipe and capture separately
+  const response = await chat.pipeAndCapture(result, { signal: turn.signal });
+
+  if (response) {
+    // Custom processing before accumulating
+    await turn.addResponse(response);
+  }
+
+  // Custom persistence, analytics, etc.
+  await db.chat.update({ ... });
+
+  // Must call done() when not using complete()
+  await turn.done();
+}
+```
+
+---
+
+## Raw task with primitives
+
+For full control, use a standard `task()` with the composable primitives from the `chat` namespace. You manage everything: the turn loop, stop signals, message accumulation, and turn-complete signaling.
+
+### Primitives
+
+| Primitive | Description |
+|-----------|-------------|
+| `chat.messages` | Input stream for incoming messages — use `.waitWithWarmup()` to wait for the next turn |
+| `chat.createStopSignal()` | Create a managed stop signal wired to the stop input stream |
+| `chat.pipeAndCapture(result)` | Pipe a `StreamTextResult` to the chat stream and capture the response |
+| `chat.writeTurnComplete()` | Signal the frontend that the current turn is complete |
+| `chat.MessageAccumulator` | Accumulates conversation messages across turns |
+| `chat.pipe(stream)` | Pipe a stream to the frontend (no response capture) |
+| `chat.cleanupAbortedParts(msg)` | Clean up incomplete parts from a stopped response |
+
+### Example
+
+```ts
+import { task } from "@trigger.dev/sdk";
+import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+export const myChat = task({
+  id: "my-chat-raw",
+  run: async (payload: ChatTaskWirePayload, { signal: runSignal }) => {
+    let currentPayload = payload;
+
+    // Handle preload — wait for the first real message
+    if (currentPayload.trigger === "preload") {
+      const result = await chat.messages.waitWithWarmup({
+        warmTimeoutInSeconds: 60,
+        timeout: "1h",
+        spanName: "waiting for first message",
+      });
+      if (!result.ok) return;
+      currentPayload = result.output;
+    }
+
+    const stop = chat.createStopSignal();
+    const conversation = new chat.MessageAccumulator();
+
+    for (let turn = 0; turn < 100; turn++) {
+      stop.reset();
+
+      const messages = await conversation.addIncoming(
+        currentPayload.messages,
+        currentPayload.trigger,
+        turn
+      );
+
+      const combinedSignal = AbortSignal.any([runSignal, stop.signal]);
+
+      const result = streamText({
+        model: openai("gpt-4o"),
+        messages,
+        abortSignal: combinedSignal,
+      });
+
+      let response;
+      try {
+        response = await chat.pipeAndCapture(result, { signal: combinedSignal });
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          if (runSignal.aborted) break;
+          // Stop — fall through to accumulate partial
+        } else {
+          throw error;
+        }
+      }
+
+      if (response) {
+        const cleaned = stop.signal.aborted && !runSignal.aborted
+          ? chat.cleanupAbortedParts(response)
+          : response;
+        await conversation.addResponse(cleaned);
+      }
+
+      if (runSignal.aborted) break;
+
+      // Persist, analytics, etc.
+      await db.chat.update({
+        where: { id: currentPayload.chatId },
+        data: { messages: conversation.uiMessages },
+      });
+
+      await chat.writeTurnComplete();
+
+      // Wait for the next message
+      const next = await chat.messages.waitWithWarmup({
+        warmTimeoutInSeconds: 60,
+        timeout: "1h",
+        spanName: "waiting for next message",
+      });
+      if (!next.ok) break;
+      currentPayload = next.output;
+    }
+
+    stop.cleanup();
+  },
+});
+```
+
+### MessageAccumulator
+
+The `MessageAccumulator` handles the transport protocol automatically:
+
+- Turn 0: replaces messages (full history from frontend)
+- Subsequent turns: appends new messages (frontend only sends the new user message)
+- Regenerate: replaces messages (full history minus last assistant message)
+
+```ts
+const conversation = new chat.MessageAccumulator();
+
+// Returns full accumulated ModelMessage[] for streamText
+const messages = await conversation.addIncoming(payload.messages, payload.trigger, turn);
+
+// After piping, add the response
+const response = await chat.pipeAndCapture(result);
+if (response) await conversation.addResponse(response);
+
+// Access accumulated messages for persistence
+conversation.uiMessages;   // UIMessage[]
+conversation.modelMessages; // ModelMessage[]
+```
