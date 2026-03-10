@@ -55,6 +55,7 @@ import { ListPagination } from "~/components/ListPagination";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import { EnvironmentParamSchema, v3ErrorPath } from "~/utils/pathBuilder";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import SegmentedControl from "~/components/primitives/SegmentedControl";
 
 export const meta: MetaFunction = () => {
   return [
@@ -237,7 +238,6 @@ export default function Page() {
 }
 
 function StatusFilterButton() {
-  const location = useOptimisticLocation();
   const [searchParams, setSearchParams] = useRemixSearchParams();
   const currentStatus = searchParams.get("status") ?? "all";
 
@@ -249,31 +249,26 @@ function StatusFilterButton() {
   ];
 
   return (
-    <div className="flex items-center rounded border border-charcoal-700">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          className={`px-2 py-0.5 text-xs transition-colors ${
-            currentStatus === opt.value
-              ? "bg-charcoal-700 text-text-bright"
-              : "text-text-dimmed hover:text-text-bright"
-          }`}
-          onClick={() => {
-            const next = new URLSearchParams(searchParams);
-            next.delete("cursor");
-            next.delete("direction");
-            if (opt.value === "all") {
-              next.delete("status");
-            } else {
-              next.set("status", opt.value);
-            }
-            setSearchParams(next);
-          }}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      name="status"
+      value={currentStatus}
+      variant="secondary/small"
+      options={options.map((opt) => ({
+        label: opt.label,
+        value: opt.value,
+      }))}
+      onChange={(value) => {
+        const next = new URLSearchParams(searchParams);
+        next.delete("cursor");
+        next.delete("direction");
+        if (value === "all") {
+          next.delete("status");
+        } else {
+          next.set("status", value);
+        }
+        setSearchParams(next);
+      }}
+    />
   );
 }
 
@@ -292,7 +287,6 @@ function FiltersBar({
     searchParams.has("tasks") ||
     searchParams.has("versions") ||
     searchParams.has("search") ||
-    searchParams.has("status") ||
     searchParams.has("period") ||
     searchParams.has("from") ||
     searchParams.has("to");
