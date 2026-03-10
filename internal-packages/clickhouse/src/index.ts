@@ -37,6 +37,9 @@ import {
   createErrorOccurrencesQueryBuilder,
   createErrorOccurrencesByVersionQueryBuilder,
   getErrorAffectedVersionsQueryBuilder,
+  getOccurrenceCountSinceQueryBuilder,
+  getActiveErrorsSinceQueryBuilder,
+  getOccurrenceCountsSinceQueryBuilder,
 } from "./errors.js";
 export { msToClickHouseInterval } from "./intervals.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
@@ -262,6 +265,9 @@ export class ClickHouse {
         createErrorOccurrencesQueryBuilder(this.reader, intervalExpr),
       createOccurrencesByVersionQueryBuilder: (intervalExpr: string) =>
         createErrorOccurrencesByVersionQueryBuilder(this.reader, intervalExpr),
+      occurrenceCountSinceQueryBuilder: getOccurrenceCountSinceQueryBuilder(this.reader),
+      activeErrorsSinceQueryBuilder: getActiveErrorsSinceQueryBuilder(this.reader),
+      occurrenceCountsSinceQueryBuilder: getOccurrenceCountsSinceQueryBuilder(this.reader),
     };
   }
 }

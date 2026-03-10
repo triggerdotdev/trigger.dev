@@ -2,7 +2,7 @@ import { z } from "zod";
 import { type ClickHouse, msToClickHouseInterval } from "@internal/clickhouse";
 import { TimeGranularity } from "~/utils/timeGranularity";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
-import { type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { type ErrorGroupStatus, type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { type Direction, DirectionSchema } from "~/components/ListPagination";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
@@ -61,6 +61,18 @@ function parseClickHouseDateTime(value: string): Date {
   return new Date(value.replace(" ", "T") + "Z");
 }
 
+export type ErrorGroupState = {
+  status: ErrorGroupStatus;
+  resolvedAt: Date | null;
+  resolvedInVersion: string | null;
+  resolvedBy: string | null;
+  ignoredUntil: Date | null;
+  ignoredReason: string | null;
+  ignoredByUserId: string | null;
+  ignoredUntilOccurrenceRate: number | null;
+  ignoredUntilTotalOccurrences: number | null;
+};
+
 export type ErrorGroupSummary = {
   fingerprint: string;
   errorType: string;
@@ -70,6 +82,7 @@ export type ErrorGroupSummary = {
   firstSeen: Date;
   lastSeen: Date;
   affectedVersions: string[];
+  state: ErrorGroupState;
 };
 
 export type ErrorGroupOccurrences = Awaited<ReturnType<ErrorGroupPresenter["getOccurrences"]>>;
@@ -114,7 +127,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       defaultPeriod: "7d",
     });
 
-    const [summary, affectedVersions, runList] = await Promise.all([
+    const [summary, affectedVersions, runList, stateRow] = await Promise.all([
       this.getSummary(organizationId, projectId, environmentId, fingerprint),
       this.getAffectedVersions(organizationId, projectId, environmentId, fingerprint),
       this.getRunList(organizationId, environmentId, {
@@ -128,10 +141,22 @@ export class ErrorGroupPresenter extends BasePresenter {
         cursor,
         direction,
       }),
+      this.getState(environmentId, fingerprint),
     ]);
 
     if (summary) {
       summary.affectedVersions = affectedVersions;
+      summary.state = stateRow ?? {
+        status: "UNRESOLVED",
+        resolvedAt: null,
+        resolvedInVersion: null,
+        resolvedBy: null,
+        ignoredUntil: null,
+        ignoredReason: null,
+        ignoredByUserId: null,
+        ignoredUntilOccurrenceRate: null,
+        ignoredUntilTotalOccurrences: null,
+      };
     }
 
     return {
@@ -288,6 +313,31 @@ export class ErrorGroupPresenter extends BasePresenter {
 
     const versions = records.map((r) => r.task_version).filter((v) => v.length > 0);
     return sortVersionsDescending(versions).slice(0, 5);
+  }
+
+  private async getState(
+    environmentId: string,
+    fingerprint: string
+  ): Promise<ErrorGroupState | null> {
+    const row = await this.replica.errorGroupState.findFirst({
+      where: {
+        environmentId,
+        errorFingerprint: fingerprint,
+      },
+      select: {
+        status: true,
+        resolvedAt: true,
+        resolvedInVersion: true,
+        resolvedBy: true,
+        ignoredUntil: true,
+        ignoredReason: true,
+        ignoredByUserId: true,
+        ignoredUntilOccurrenceRate: true,
+        ignoredUntilTotalOccurrences: true,
+      },
+    });
+
+    return row;
   }
 
   private async getRunList(

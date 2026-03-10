@@ -350,3 +350,112 @@ export function createErrorOccurrencesByVersionQueryBuilder(
     settings
   );
 }
+
+// ---------------------------------------------------------------------------
+// Alert evaluator – active errors since a timestamp
+// ---------------------------------------------------------------------------
+
+export const ActiveErrorsSinceQueryResult = z.object({
+  environment_id: z.string(),
+  task_identifier: z.string(),
+  error_fingerprint: z.string(),
+  error_type: z.string(),
+  error_message: z.string(),
+  sample_stack_trace: z.string(),
+  first_seen: z.string(),
+  last_seen: z.string(),
+  occurrence_count: z.number(),
+});
+
+export type ActiveErrorsSinceQueryResult = z.infer<typeof ActiveErrorsSinceQueryResult>;
+
+/**
+ * Query builder for fetching all errors active since a given timestamp.
+ * Returns errors with last_seen > scheduledAt, grouped by env/task/fingerprint.
+ * Used by the error alert evaluator to find new issues, regressions, and un-ignored errors.
+ */
+export function getActiveErrorsSinceQueryBuilder(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilder({
+    name: "getActiveErrorsSince",
+    baseQuery: `
+      SELECT
+        environment_id,
+        task_identifier,
+        error_fingerprint,
+        any(error_type) as error_type,
+        any(error_message) as error_message,
+        any(sample_stack_trace) as sample_stack_trace,
+        toString(toUnixTimestamp64Milli(min(first_seen))) as first_seen,
+        toString(toUnixTimestamp64Milli(max(last_seen))) as last_seen,
+        toUInt64(sumMerge(occurrence_count)) as occurrence_count
+      FROM trigger_dev.errors_v1
+    `,
+    schema: ActiveErrorsSinceQueryResult,
+    settings,
+  });
+}
+
+export const OccurrenceCountsSinceQueryResult = z.object({
+  environment_id: z.string(),
+  task_identifier: z.string(),
+  error_fingerprint: z.string(),
+  occurrences_since: z.number(),
+});
+
+export type OccurrenceCountsSinceQueryResult = z.infer<typeof OccurrenceCountsSinceQueryResult>;
+
+/**
+ * Query builder for occurrence counts since a given timestamp, grouped by error.
+ * Used by the alert evaluator to check ignore thresholds.
+ */
+export function getOccurrenceCountsSinceQueryBuilder(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilder({
+    name: "getOccurrenceCountsSince",
+    baseQuery: `
+      SELECT
+        environment_id,
+        task_identifier,
+        error_fingerprint,
+        sum(count) as occurrences_since
+      FROM trigger_dev.error_occurrences_v1
+    `,
+    schema: OccurrenceCountsSinceQueryResult,
+    settings,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Alert evaluator helpers – occurrence rate & count since timestamp
+// ---------------------------------------------------------------------------
+
+export const ErrorOccurrenceTotalCountResult = z.object({
+  total_count: z.number(),
+});
+
+export type ErrorOccurrenceTotalCountResult = z.infer<typeof ErrorOccurrenceTotalCountResult>;
+
+/**
+ * Query builder for summing occurrences since a given timestamp.
+ * Used by the alert evaluator to check total-count-based ignore thresholds.
+ */
+export function getOccurrenceCountSinceQueryBuilder(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilder({
+    name: "getOccurrenceCountSince",
+    baseQuery: `
+      SELECT
+        sum(count) as total_count
+      FROM trigger_dev.error_occurrences_v1
+    `,
+    schema: ErrorOccurrenceTotalCountResult,
+    settings,
+  });
+}

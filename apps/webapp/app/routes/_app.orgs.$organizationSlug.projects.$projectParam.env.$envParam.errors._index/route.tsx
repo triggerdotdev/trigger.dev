@@ -1,6 +1,7 @@
 import { XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction } from "@remix-run/react";
+import { Form, type MetaFunction, useSearchParams as useRemixSearchParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type ErrorGroupStatus } from "@trigger.dev/database";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { Suspense, useMemo } from "react";
 import {
@@ -82,6 +83,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const tasks = url.searchParams.getAll("tasks").filter((t) => t.length > 0);
   const versions = url.searchParams.getAll("versions").filter((v) => v.length > 0);
+  const statusParam = url.searchParams.get("status") ?? undefined;
+  const status =
+    statusParam === "UNRESOLVED" || statusParam === "RESOLVED" || statusParam === "IGNORED"
+      ? (statusParam as ErrorGroupStatus)
+      : undefined;
   const search = url.searchParams.get("search") ?? undefined;
   const period = url.searchParams.get("period") ?? undefined;
   const fromStr = url.searchParams.get("from");
@@ -104,6 +110,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       projectId: project.id,
       tasks: tasks.length > 0 ? tasks : undefined,
       versions: versions.length > 0 ? versions : undefined,
+      status,
       search,
       period,
       from,
@@ -229,6 +236,47 @@ export default function Page() {
   );
 }
 
+function StatusFilterButton() {
+  const location = useOptimisticLocation();
+  const [searchParams, setSearchParams] = useRemixSearchParams();
+  const currentStatus = searchParams.get("status") ?? "all";
+
+  const options: Array<{ value: string; label: string }> = [
+    { value: "all", label: "All" },
+    { value: "UNRESOLVED", label: "Unresolved" },
+    { value: "RESOLVED", label: "Resolved" },
+    { value: "IGNORED", label: "Ignored" },
+  ];
+
+  return (
+    <div className="flex items-center rounded border border-charcoal-700">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          className={`px-2 py-0.5 text-xs transition-colors ${
+            currentStatus === opt.value
+              ? "bg-charcoal-700 text-text-bright"
+              : "text-text-dimmed hover:text-text-bright"
+          }`}
+          onClick={() => {
+            const next = new URLSearchParams(searchParams);
+            next.delete("cursor");
+            next.delete("direction");
+            if (opt.value === "all") {
+              next.delete("status");
+            } else {
+              next.set("status", opt.value);
+            }
+            setSearchParams(next);
+          }}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function FiltersBar({
   list,
   defaultPeriod,
@@ -244,6 +292,7 @@ function FiltersBar({
     searchParams.has("tasks") ||
     searchParams.has("versions") ||
     searchParams.has("search") ||
+    searchParams.has("status") ||
     searchParams.has("period") ||
     searchParams.has("from") ||
     searchParams.has("to");
@@ -253,6 +302,7 @@ function FiltersBar({
       <div className="flex flex-row flex-wrap items-center gap-1">
         {list ? (
           <>
+            <StatusFilterButton />
             <LogsTaskFilter possibleTasks={list.filters.possibleTasks} />
             <LogsVersionFilter />
             <TimeFilter
@@ -273,6 +323,7 @@ function FiltersBar({
           </>
         ) : (
           <>
+            <StatusFilterButton />
             <LogsTaskFilter possibleTasks={[]} />
             <LogsVersionFilter />
             <TimeFilter defaultPeriod={defaultPeriod} maxPeriodDays={retentionLimitDays} />
@@ -325,6 +376,7 @@ function ErrorsList({
       <TableHeader>
         <TableRow>
           <TableHeaderCell>ID</TableHeaderCell>
+          <TableHeaderCell>Status</TableHeaderCell>
           <TableHeaderCell>Task</TableHeaderCell>
           <TableHeaderCell>Error</TableHeaderCell>
           <TableHeaderCell>Occurrences</TableHeaderCell>
@@ -393,9 +445,12 @@ function ErrorGroupRow({
       <CopyableTableCell to={errorPath} value={ErrorId.toFriendlyId(errorGroup.fingerprint)}>
         {errorGroup.fingerprint.slice(-8)}
       </CopyableTableCell>
+      <TableCell to={errorPath}>
+        <ListStatusBadge status={errorGroup.status} />
+      </TableCell>
       <TableCell to={errorPath}>{errorGroup.taskIdentifier}</TableCell>
       <CopyableTableCell to={errorPath} className="font-mono" value={errorMessage}>
-        {errorMessage}
+        {errorMessage.length > 128 ? `${errorMessage.slice(0, 128)}…` : errorMessage}
       </CopyableTableCell>
       <TableCell to={errorPath}>{errorGroup.count.toLocaleString()}</TableCell>
       <TableCell to={errorPath} actionClassName="py-1.5">
@@ -419,6 +474,27 @@ function ErrorGroupRow({
         <RelativeDateTime date={errorGroup.lastSeen} />
       </TableCell>
     </TableRow>
+  );
+}
+
+const LIST_STATUS_STYLES = {
+  UNRESOLVED: "text-error",
+  RESOLVED: "text-success",
+  IGNORED: "text-text-dimmed",
+} as const;
+
+const LIST_STATUS_LABELS = {
+  UNRESOLVED: "Unresolved",
+  RESOLVED: "Resolved",
+  IGNORED: "Ignored",
+} as const;
+
+function ListStatusBadge({ status }: { status: string }) {
+  const s = (status as keyof typeof LIST_STATUS_STYLES) ?? "UNRESOLVED";
+  return (
+    <span className={`text-xs ${LIST_STATUS_STYLES[s] ?? LIST_STATUS_STYLES.UNRESOLVED}`}>
+      {LIST_STATUS_LABELS[s] ?? "Unresolved"}
+    </span>
   );
 }
 

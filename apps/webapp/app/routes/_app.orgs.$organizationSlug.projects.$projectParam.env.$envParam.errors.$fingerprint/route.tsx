@@ -1,8 +1,10 @@
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { type MetaFunction } from "@remix-run/react";
+import { type LoaderFunctionArgs, type ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { type MetaFunction, Form, useFetcher } from "@remix-run/react";
+import { parse } from "@conform-to/zod";
+import { z } from "zod";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
-import { requireUser } from "~/services/session.server";
+import { requireUser, requireUserId } from "~/services/session.server";
 import {
   EnvironmentParamSchema,
   v3CreateBulkActionPath,
@@ -17,13 +19,14 @@ import {
   type ErrorGroupActivityVersions,
   type ErrorGroupOccurrences,
   type ErrorGroupSummary,
+  type ErrorGroupState,
 } from "~/presenters/v3/ErrorGroupPresenter.server";
 import { type NextRunList } from "~/presenters/v3/NextRunListPresenter.server";
 import { $replica } from "~/db.server";
 import { logsClickhouseClient, clickhouseClient } from "~/services/clickhouseInstance.server";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PageBody } from "~/components/layout/AppLayout";
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Callout } from "~/components/primitives/Callout";
@@ -38,7 +41,7 @@ import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCom
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -49,6 +52,21 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { LogsVersionFilter } from "~/components/logs/LogsVersionFilter";
 import { getSeriesColor } from "~/components/code/chartColors";
+import {
+  Popover,
+  PopoverArrowTrigger,
+  PopoverContent,
+  PopoverMenuItem,
+} from "~/components/primitives/Popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
+import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
@@ -56,6 +74,86 @@ export const meta: MetaFunction<typeof loader> = ({ data }) => {
       title: `Error Details | Trigger.dev`,
     },
   ];
+};
+
+const actionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("resolve"),
+    taskIdentifier: z.string(),
+    resolvedInVersion: z.string().optional(),
+  }),
+  z.object({
+    action: z.literal("ignore"),
+    taskIdentifier: z.string(),
+    duration: z.coerce.number().optional(),
+    occurrenceRate: z.coerce.number().optional(),
+    totalOccurrences: z.coerce.number().optional(),
+    reason: z.string().optional(),
+  }),
+  z.object({
+    action: z.literal("unresolve"),
+    taskIdentifier: z.string(),
+  }),
+]);
+
+export const action = async ({ request, params }: ActionFunctionArgs) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+  const fingerprint = params.fingerprint;
+
+  if (!fingerprint) {
+    return json({ error: "Fingerprint parameter is required" }, { status: 400 });
+  }
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) {
+    return json({ error: "Project not found" }, { status: 404 });
+  }
+
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    return json({ error: "Environment not found" }, { status: 404 });
+  }
+
+  const formData = await request.formData();
+  const submission = parse(formData, { schema: actionSchema });
+
+  if (!submission.value) {
+    return json(submission);
+  }
+
+  const actions = new ErrorGroupActions();
+  const identifier = {
+    organizationId: project.organizationId,
+    projectId: project.id,
+    environmentId: environment.id,
+    taskIdentifier: submission.value.taskIdentifier,
+    errorFingerprint: fingerprint,
+  };
+
+  switch (submission.value.action) {
+    case "resolve": {
+      await actions.resolveError(identifier, {
+        userId,
+        resolvedInVersion: submission.value.resolvedInVersion,
+      });
+      return json({ ok: true });
+    }
+    case "ignore": {
+      await actions.ignoreError(identifier, {
+        userId,
+        duration: submission.value.duration,
+        occurrenceRateThreshold: submission.value.occurrenceRate,
+        totalOccurrencesThreshold: submission.value.totalOccurrences,
+        reason: submission.value.reason,
+      });
+      return json({ ok: true });
+    }
+    case "unresolve": {
+      await actions.unresolveError(identifier);
+      return json({ ok: true });
+    }
+  }
 };
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -276,9 +374,16 @@ function ErrorGroupDetail({
     <div className="grid h-full grid-rows-[auto_12rem_1fr] overflow-hidden">
       {/* Error Summary */}
       <div className="flex flex-col gap-2 border-b border-grid-bright bg-background-bright p-4">
-        <div className="flex flex-col gap-0.5">
-          <Header2>{errorGroup.errorMessage}</Header2>
-          <Header3>{formatNumberCompact(errorGroup.count)} total occurrences</Header3>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-0.5">
+            <Header2>{errorGroup.errorMessage}</Header2>
+            <Header3>{formatNumberCompact(errorGroup.count)} total occurrences</Header3>
+          </div>
+          <ErrorGroupActionButtons
+            state={errorGroup.state}
+            taskIdentifier={errorGroup.taskIdentifier}
+            fingerprint={fingerprint}
+          />
         </div>
 
         <div className="grid grid-cols-[auto_auto_auto_1fr] gap-x-12 gap-y-0.5">
@@ -400,6 +505,187 @@ function ErrorGroupDetail({
         )}
       </div>
     </div>
+  );
+}
+
+const STATUS_BADGE_STYLES = {
+  UNRESOLVED: "bg-error/10 text-error",
+  RESOLVED: "bg-success/10 text-success",
+  IGNORED: "bg-text-dimmed/10 text-text-dimmed",
+} as const;
+
+const STATUS_LABELS = {
+  UNRESOLVED: "Unresolved",
+  RESOLVED: "Resolved",
+  IGNORED: "Ignored",
+} as const;
+
+function StatusBadge({ status }: { status: ErrorGroupState["status"] }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_STYLES[status]}`}
+    >
+      {STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+function ErrorGroupActionButtons({
+  state,
+  taskIdentifier,
+  fingerprint,
+}: {
+  state: ErrorGroupState;
+  taskIdentifier: string;
+  fingerprint: string;
+}) {
+  const fetcher = useFetcher();
+  const [customIgnoreOpen, setCustomIgnoreOpen] = useState(false);
+  const isSubmitting = fetcher.state !== "idle";
+
+  const submitAction = (data: Record<string, string>) => {
+    fetcher.submit({ ...data, taskIdentifier }, { method: "post" });
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <StatusBadge status={state.status} />
+
+      {state.status === "UNRESOLVED" && (
+        <>
+          <Button
+            variant="secondary/small"
+            disabled={isSubmitting}
+            onClick={() => submitAction({ action: "resolve" })}
+          >
+            Resolve
+          </Button>
+          <Popover>
+            <PopoverArrowTrigger>Ignore</PopoverArrowTrigger>
+            <PopoverContent className="min-w-[180px] p-1" align="end">
+              <PopoverMenuItem
+                title="Ignore for 1 hour"
+                onClick={() => submitAction({ action: "ignore", duration: String(60 * 60 * 1000) })}
+              />
+              <PopoverMenuItem
+                title="Ignore for 24 hours"
+                onClick={() =>
+                  submitAction({
+                    action: "ignore",
+                    duration: String(24 * 60 * 60 * 1000),
+                  })
+                }
+              />
+              <PopoverMenuItem
+                title="Ignore forever"
+                onClick={() => submitAction({ action: "ignore" })}
+              />
+              <PopoverMenuItem
+                title="Custom condition..."
+                onClick={() => setCustomIgnoreOpen(true)}
+              />
+            </PopoverContent>
+          </Popover>
+        </>
+      )}
+
+      {(state.status === "RESOLVED" || state.status === "IGNORED") && (
+        <Button
+          variant="secondary/small"
+          disabled={isSubmitting}
+          onClick={() => submitAction({ action: "unresolve" })}
+        >
+          Unresolve
+        </Button>
+      )}
+
+      <Dialog open={customIgnoreOpen} onOpenChange={setCustomIgnoreOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Custom ignore condition</DialogTitle>
+          </DialogHeader>
+          <CustomIgnoreForm
+            taskIdentifier={taskIdentifier}
+            onClose={() => setCustomIgnoreOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function CustomIgnoreForm({
+  taskIdentifier,
+  onClose,
+}: {
+  taskIdentifier: string;
+  onClose: () => void;
+}) {
+  const fetcher = useFetcher();
+  const isSubmitting = fetcher.state !== "idle";
+
+  return (
+    <fetcher.Form
+      method="post"
+      onSubmit={() => {
+        setTimeout(onClose, 100);
+      }}
+    >
+      <input type="hidden" name="action" value="ignore" />
+      <input type="hidden" name="taskIdentifier" value={taskIdentifier} />
+
+      <div className="flex flex-col gap-4 py-4">
+        <div className="flex flex-col gap-1">
+          <label htmlFor="occurrenceRate" className="text-xs text-text-dimmed">
+            Unignore when occurrence rate exceeds (per minute)
+          </label>
+          <input
+            id="occurrenceRate"
+            name="occurrenceRate"
+            type="number"
+            min={1}
+            className="rounded border border-charcoal-700 bg-charcoal-850 px-3 py-1.5 text-sm text-text-bright placeholder:text-text-dimmed focus:border-indigo-500 focus:outline-none"
+            placeholder="e.g. 10"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label htmlFor="totalOccurrences" className="text-xs text-text-dimmed">
+            Unignore when total occurrences exceed
+          </label>
+          <input
+            id="totalOccurrences"
+            name="totalOccurrences"
+            type="number"
+            min={1}
+            className="rounded border border-charcoal-700 bg-charcoal-850 px-3 py-1.5 text-sm text-text-bright placeholder:text-text-dimmed focus:border-indigo-500 focus:outline-none"
+            placeholder="e.g. 100"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label htmlFor="reason" className="text-xs text-text-dimmed">
+            Reason (optional)
+          </label>
+          <input
+            id="reason"
+            name="reason"
+            type="text"
+            className="rounded border border-charcoal-700 bg-charcoal-850 px-3 py-1.5 text-sm text-text-bright placeholder:text-text-dimmed focus:border-indigo-500 focus:outline-none"
+            placeholder="e.g. Known flaky test"
+          />
+        </div>
+      </div>
+
+      <DialogFooter>
+        <Button variant="tertiary/small" type="button" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button variant="primary/small" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Ignoring..." : "Ignore error"}
+        </Button>
+      </DialogFooter>
+    </fetcher.Form>
   );
 }
 
