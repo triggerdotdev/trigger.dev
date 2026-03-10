@@ -1568,6 +1568,156 @@ function cleanupAbortedParts(message: UIMessage): UIMessage {
 }
 
 // ---------------------------------------------------------------------------
+// Composable primitives for raw task chat
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a managed stop signal wired to the chat stop input stream.
+ *
+ * Call once at the start of your run. Use `signal` as the abort signal for
+ * `streamText`. Call `reset()` at the start of each turn to get a fresh
+ * per-turn signal. Call `cleanup()` when the run ends.
+ *
+ * @example
+ * ```ts
+ * const stop = chat.createStopSignal();
+ * for (let turn = 0; turn < 100; turn++) {
+ *   stop.reset();
+ *   const result = streamText({ model, messages, abortSignal: stop.signal });
+ *   await chat.pipe(result);
+ *   // ...
+ * }
+ * stop.cleanup();
+ * ```
+ */
+function createStopSignal(): { readonly signal: AbortSignal; reset: () => void; cleanup: () => void } {
+  let controller = new AbortController();
+  const sub = stopInput.on((data) => {
+    controller.abort(data?.message || "stopped");
+  });
+  return {
+    get signal() { return controller.signal; },
+    reset() { controller = new AbortController(); },
+    cleanup() { sub.off(); },
+  };
+}
+
+/**
+ * Signal the frontend that the current turn is complete.
+ *
+ * The `TriggerChatTransport` intercepts this to close the ReadableStream
+ * for the current turn. Call after piping the response stream.
+ *
+ * @example
+ * ```ts
+ * await chat.pipe(result);
+ * await chat.writeTurnComplete();
+ * ```
+ */
+async function chatWriteTurnComplete(options?: { publicAccessToken?: string }): Promise<void> {
+  await writeTurnCompleteChunk(undefined, options?.publicAccessToken);
+}
+
+/**
+ * Pipe a `StreamTextResult` (or similar) to the chat stream and capture
+ * the assistant's response message via `onFinish`.
+ *
+ * Combines `toUIMessageStream()` + `onFinish` callback + `chat.pipe()`.
+ * Returns the captured `UIMessage`, or `undefined` if capture failed.
+ *
+ * @example
+ * ```ts
+ * const result = streamText({ model, messages, abortSignal: signal });
+ * const response = await chat.pipeAndCapture(result, { signal });
+ * if (response) conversation.addResponse(response);
+ * ```
+ */
+async function pipeChatAndCapture(
+  source: UIMessageStreamable,
+  options?: { signal?: AbortSignal; spanName?: string }
+): Promise<UIMessage | undefined> {
+  let captured: UIMessage | undefined;
+  let resolveOnFinish: () => void;
+  const onFinishPromise = new Promise<void>((r) => { resolveOnFinish = r; });
+
+  const uiStream = source.toUIMessageStream({
+    onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
+      captured = responseMessage;
+      resolveOnFinish!();
+    },
+  });
+
+  await pipeChat(uiStream, { signal: options?.signal, spanName: options?.spanName ?? "stream response" });
+  await onFinishPromise;
+
+  return captured;
+}
+
+/**
+ * Accumulates conversation messages across turns.
+ *
+ * Handles the transport protocol: turn 0 sends full history (replace),
+ * subsequent turns send only new messages (append), regenerate sends
+ * full history minus last assistant message (replace).
+ *
+ * @example
+ * ```ts
+ * const conversation = new chat.MessageAccumulator();
+ * for (let turn = 0; turn < 100; turn++) {
+ *   const messages = await conversation.addIncoming(payload.messages, payload.trigger, turn);
+ *   const result = streamText({ model, messages });
+ *   const response = await chat.pipeAndCapture(result);
+ *   if (response) await conversation.addResponse(response);
+ * }
+ * ```
+ */
+class ChatMessageAccumulator {
+  modelMessages: ModelMessage[] = [];
+  uiMessages: UIMessage[] = [];
+
+  /**
+   * Add incoming messages from the transport payload.
+   * Returns the full accumulated model messages for `streamText`.
+   */
+  async addIncoming(
+    messages: UIMessage[],
+    trigger: string,
+    turn: number
+  ): Promise<ModelMessage[]> {
+    const cleaned = messages.map((m) =>
+      m.role === "assistant" ? cleanupAbortedParts(m) : m
+    );
+    const model = await convertToModelMessages(cleaned);
+
+    if (turn === 0 || trigger === "regenerate-message") {
+      this.modelMessages = model;
+      this.uiMessages = [...cleaned];
+    } else {
+      this.modelMessages.push(...model);
+      this.uiMessages.push(...cleaned);
+    }
+    return this.modelMessages;
+  }
+
+  /**
+   * Add the assistant's response to the accumulator.
+   * Call after `pipeAndCapture` with the captured response.
+   */
+  async addResponse(response: UIMessage): Promise<void> {
+    if (!response.id) {
+      response = { ...response, id: generateMessageId() };
+    }
+    this.uiMessages.push(response);
+    try {
+      const msgs = await convertToModelMessages([stripProviderMetadata(response)]);
+      this.modelMessages.push(...msgs);
+    } catch {
+      // Conversion failed — skip model message accumulation for this response
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // chat.local — per-run typed data with Proxy access
 // ---------------------------------------------------------------------------
 
@@ -1825,6 +1975,16 @@ export const chat = {
   defer: chatDefer,
   /** Typed chat output stream for writing custom chunks or piping from subtasks. */
   stream: chatStream,
+  /** Pre-built input stream for receiving messages from the transport. */
+  messages: messagesInput,
+  /** Create a managed stop signal wired to the stop input stream. See {@link createStopSignal}. */
+  createStopSignal,
+  /** Signal the frontend that the current turn is complete. See {@link chatWriteTurnComplete}. */
+  writeTurnComplete: chatWriteTurnComplete,
+  /** Pipe a stream and capture the response message. See {@link pipeChatAndCapture}. */
+  pipeAndCapture: pipeChatAndCapture,
+  /** Message accumulator class for raw task chat. See {@link ChatMessageAccumulator}. */
+  MessageAccumulator: ChatMessageAccumulator,
 };
 
 /**
