@@ -33,12 +33,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { scheduleEmail } from "~/services/email.server";
 import { requireUserId } from "~/services/session.server";
-import {
-  acceptInvitePath,
-  inviteTeamMemberPath,
-  organizationTeamPath,
-  v3BillingPath,
-} from "~/utils/pathBuilder";
+import { acceptInvitePath, organizationTeamPath, v3BillingPath } from "~/utils/pathBuilder";
 import { PurchaseSeatsModal } from "../_app.orgs.$organizationSlug.settings.team/route";
 
 const Params = z.object({
@@ -177,7 +172,6 @@ export default function Page() {
                   maxQuota={maxSeatQuota}
                   planSeatLimit={planSeatLimit}
                   triggerButton={<Button variant="primary/small">Purchase more seats…</Button>}
-                  redirectTo={inviteTeamMemberPath(organization)}
                 />
               }
               panelClassName="mb-4"

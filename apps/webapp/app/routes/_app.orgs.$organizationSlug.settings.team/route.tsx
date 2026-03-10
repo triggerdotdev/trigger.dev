@@ -2,19 +2,8 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { EnvelopeIcon, NoSymbolIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import {
-  Form,
-  type MetaFunction,
-  useActionData,
-  useNavigation,
-  useSearchParams,
-} from "@remix-run/react";
-import {
-  type ActionFunctionArgs,
-  type ActionFunction,
-  type LoaderFunctionArgs,
-  json,
-} from "@remix-run/server-runtime";
+import { Form, type MetaFunction, useActionData, useFetcher, useNavigation } from "@remix-run/react";
+import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { useEffect, useRef, useState } from "react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -129,11 +118,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const formType = formData.get("_formType");
 
   if (formType === "purchase-seats") {
-    const redirectTo = formData.get("redirectTo");
-    const redirectPath =
-      typeof redirectTo === "string" && redirectTo
-        ? redirectTo
-        : organizationTeamPath({ slug: organizationSlug });
+    const redirectPath = organizationTeamPath({ slug: organizationSlug });
 
     const org = await $replica.organization.findFirst({
       where: { slug: organizationSlug },
@@ -171,7 +156,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
 
     return redirectWithSuccessMessage(
-      `${redirectPath}?purchaseSuccess=true`,
+      redirectPath,
       request,
       submission.value.action === "purchase"
         ? "Seats updated successfully"
@@ -512,11 +497,9 @@ function ResendButton({ invite }: { invite: Invite }) {
     prevSubmitting.current = isSubmitting;
   }, [isSubmitting]);
 
+  const cooldownActive = cooldown > 0;
   useEffect(() => {
-    if (cooldown <= 0) {
-      clearInterval(intervalRef.current);
-      return;
-    }
+    if (!cooldownActive) return;
 
     intervalRef.current = setInterval(() => {
       setCooldown((c) => {
@@ -529,7 +512,7 @@ function ResendButton({ invite }: { invite: Invite }) {
     }, 1000);
 
     return () => clearInterval(intervalRef.current);
-  }, [cooldown > 0]); // only re-run when transitioning between active/inactive
+  }, [cooldownActive]);
 
   const isDisabled = isSubmitting || cooldown > 0;
 
@@ -580,7 +563,6 @@ export function PurchaseSeatsModal({
   maxQuota,
   planSeatLimit,
   triggerButton,
-  redirectTo,
 }: {
   seatPricing: {
     stepSize: number;
@@ -591,13 +573,12 @@ export function PurchaseSeatsModal({
   maxQuota: number;
   planSeatLimit: number;
   triggerButton?: React.ReactNode;
-  redirectTo?: string;
 }) {
-  const lastSubmission = useActionData();
+  const fetcher = useFetcher();
   const organization = useOrganization();
   const [form, { amount }] = useForm({
     id: "purchase-seats",
-    lastSubmission: lastSubmission as any,
+    lastSubmission: fetcher.data as any,
     onValidate({ formData }) {
       return parse(formData, { schema: PurchaseSchema });
     },
@@ -605,21 +586,16 @@ export function PurchaseSeatsModal({
   });
 
   const [amountValue, setAmountValue] = useState(extraSeats);
-  const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle" && navigation.formMethod === "POST";
+  const isLoading = fetcher.state !== "idle";
 
-  const [searchParams, setSearchParams] = useSearchParams();
   const [open, setOpen] = useState(false);
+  const prevFetcherState = useRef(fetcher.state);
   useEffect(() => {
-    const success = searchParams.get("purchaseSuccess");
-    if (success) {
+    if (prevFetcherState.current !== "idle" && fetcher.state === "idle" && !fetcher.data) {
       setOpen(false);
-      setSearchParams((s) => {
-        s.delete("purchaseSuccess");
-        return s;
-      });
     }
-  }, [searchParams.get("purchaseSuccess")]);
+    prevFetcherState.current = fetcher.state;
+  }, [fetcher.state, fetcher.data]);
 
   const state = updateSeatState({
     value: amountValue,
@@ -645,9 +621,8 @@ export function PurchaseSeatsModal({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>{title}</DialogHeader>
-        <Form method="post" action={organizationTeamPath(organization)} {...form.props}>
+        <fetcher.Form method="post" action={organizationTeamPath(organization)} {...form.props}>
           <input type="hidden" name="_formType" value="purchase-seats" />
-          {redirectTo && <input type="hidden" name="redirectTo" value={redirectTo} />}
           <div className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-1">
               <Paragraph variant="small/bright">
@@ -803,7 +778,7 @@ export function PurchaseSeatsModal({
               </DialogClose>
             }
           />
-        </Form>
+        </fetcher.Form>
       </DialogContent>
     </Dialog>
   );
