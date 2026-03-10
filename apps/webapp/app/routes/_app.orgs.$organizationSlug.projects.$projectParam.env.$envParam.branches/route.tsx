@@ -652,7 +652,6 @@ function PurchaseBranchesModal({
   triggerButton?: React.ReactNode;
 }) {
   const lastSubmission = useActionData();
-  const organization = useOrganization();
   const [form, { amount }] = useForm({
     id: "purchase-branches",
     lastSubmission: lastSubmission as any,
