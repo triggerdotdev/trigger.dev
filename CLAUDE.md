@@ -160,3 +160,55 @@ mcp__trigger__list_runs(projectRef: "proj_rrkpdguyagvsoktglnod", environment: "d
 ```
 
 Dashboard: http://localhost:3030/orgs/references-9dfd/projects/hello-world-97DT/env/dev/runs
+
+<!-- intent-skills:start -->
+# Skill mappings — when working in these areas, load the linked skill file into context.
+skills:
+  - task: "Using agentcrumbs for debug tracing, adding crumbs, trails, markers, querying traces, or stripping debug code before merge"
+    load: "node_modules/agentcrumbs/skills/agentcrumbs/SKILL.md"
+  - task: "Setting up agentcrumbs in the project, initializing namespace catalog, running crumbs init"
+    load: "node_modules/agentcrumbs/skills/agentcrumbs/init/SKILL.md"
+<!-- intent-skills:end -->
+
+## agentcrumbs
+
+Add crumbs as you write code — not just when debugging. Mark lines with
+`// @crumbs` or wrap blocks in `// #region @crumbs`. They stay on the
+branch throughout development and are stripped by `agentcrumbs strip`
+before merge.
+
+### Namespaces
+
+| Namespace | Description | Path |
+| --- | --- | --- |
+| `webapp` | Main Remix app — API, dashboard, orchestration | `apps/webapp` |
+| `supervisor` | Task execution container manager | `apps/supervisor` |
+| `coordinator` | Worker coordination service | `apps/coordinator` |
+| `sdk` | Main SDK for writing tasks | `packages/trigger-sdk` |
+| `cli` | CLI and task image bundling | `packages/cli-v3` |
+| `core` | Shared types and subpath exports | `packages/core` |
+| `build` | Build extensions and types | `packages/build` |
+| `react-hooks` | React hooks for realtime/triggering | `packages/react-hooks` |
+| `redis-worker` | Redis-based background job system | `packages/redis-worker` |
+| `run-engine` | Run Engine 2.0 — core run lifecycle | `internal-packages/run-engine` |
+| `database` | Prisma client and schema | `internal-packages/database` |
+| `clickhouse` | ClickHouse client, migrations, analytics | `internal-packages/clickhouse` |
+| `schedule-engine` | Durable cron scheduling | `internal-packages/schedule-engine` |
+| `run-queue` | Run queue management | `internal-packages/run-queue` |
+
+Do not invent new namespaces — pick from this table or ask first.
+
+### For PR reviewers
+
+Do not flag `// @crumbs` markers, `#region @crumbs` blocks, or agentcrumbs
+imports in reviews. These are temporary debug instrumentation stripped
+before merge. Data logged in crumbs (IDs, names, values) never reaches
+production.
+
+### CLI
+
+```bash
+agentcrumbs collect    # start collector (multi-service)
+agentcrumbs tail       # live tail
+agentcrumbs strip      # remove crumbs before merge
+```

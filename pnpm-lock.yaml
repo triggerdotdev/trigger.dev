@@ -57,6 +57,9 @@ importers:
       '@remix-run/changelog-github':
         specifier: ^0.0.5
         version: 0.0.5(encoding@0.1.13)
+      agentcrumbs:
+        specifier: ^0.3.0
+        version: 0.3.0
       node-fetch:
         specifier: 2.6.x
         version: 2.6.7(encoding@0.1.13)
@@ -11418,6 +11421,11 @@ packages:
   agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
+
+  agentcrumbs@0.3.0:
+    resolution: {integrity: sha512-WbZ4JhwcQjzBr1rUSeIXUVrKeDwQiAKzGGkpfb9Nl4cDJ34VO3Rx2k5Ej8/om2yaDi7TDLfxHIO4hQvjdHUPSQ==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
 
   agentkeepalive@4.5.0:
     resolution: {integrity: sha512-5GG/5IbQQpC9FpkRGsSvZI5QYeSCzlJHdpBQntCsuTOxhKD8lqKhrleg2Yi7yvMIf82Ycmmqln9U8V9qwEiJew==}
@@ -31867,6 +31875,8 @@ snapshots:
       - supports-color
 
   agent-base@7.1.4: {}
+
+  agentcrumbs@0.3.0: {}
 
   agentkeepalive@4.5.0:
     dependencies:
