@@ -1,5 +1,11 @@
 # internal-platform
 
+## 4.4.3
+
+### Patch Changes
+
+- Auto-cancel in-flight dev runs when the CLI exits, using a detached watchdog process that survives pnpm SIGKILL ([#3191](https://github.com/triggerdotdev/trigger.dev/pull/3191))
+
 ## 4.4.2
 
 ## 4.4.1

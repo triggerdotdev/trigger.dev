@@ -1,3 +1,7 @@
+import { spawn, type ChildProcess } from "node:child_process";
+import { readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { setTimeout as awaitTimeout } from "node:timers/promises";
 import {
   BuildManifest,
@@ -71,6 +75,11 @@ class DevSupervisor implements WorkerRuntime {
   private runLimiter?: ReturnType<typeof pLimit>;
   private taskRunProcessPool?: TaskRunProcessPool;
 
+  /** Detached watchdog process that cancels runs if the CLI is killed */
+  private watchdogProcess?: ChildProcess;
+  private activeRunsPath?: string;
+  private watchdogPidPath?: string;
+
   constructor(public readonly options: WorkerRuntimeOptions) {}
 
   async init(): Promise<void> {
@@ -138,25 +147,39 @@ class DevSupervisor implements WorkerRuntime {
     //start an SSE connection for presence
     this.disconnectPresence = await this.#startPresenceConnection();
 
-    // Handle SIGTERM to gracefully stop all run controllers
+    // Handle SIGTERM/SIGINT to gracefully stop all run controllers
     process.on("SIGTERM", this.#handleSigterm);
+    process.on("SIGINT", this.#handleSigterm);
+
+    // Spawn detached watchdog to cancel runs if CLI is killed (e.g. pnpm SIGKILL)
+    this.#spawnWatchdog();
 
     //start dequeuing
     await this.#dequeueRuns();
   }
 
   #handleSigterm = async () => {
-    logger.debug("[DevSupervisor] Received SIGTERM, stopping all run controllers");
+    logger.debug("[DevSupervisor] Received SIGTERM/SIGINT, stopping all run controllers");
 
-    const stopPromises = Array.from(this.runControllers.values()).map((controller) =>
-      controller.stop()
-    );
+    await this.shutdown();
 
-    await Promise.allSettled(stopPromises);
+    // Must exit explicitly since registering a custom SIGINT handler
+    // overrides Node's default process termination behavior.
+    process.exit(0);
   };
 
   async shutdown(): Promise<void> {
     process.off("SIGTERM", this.#handleSigterm);
+    process.off("SIGINT", this.#handleSigterm);
+
+    // Stop all local run controllers first so active-runs.json is up-to-date
+    const stopPromises = Array.from(this.runControllers.values()).map((controller) =>
+      controller.stop()
+    );
+    await Promise.allSettled(stopPromises);
+
+    // Kill watchdog on clean shutdown — no disconnect needed since runs are stopped locally
+    this.#killWatchdog();
 
     this.disconnectPresence?.();
     try {
@@ -174,6 +197,107 @@ class DevSupervisor implements WorkerRuntime {
           error: shutdownError,
         });
       }
+    }
+  }
+
+  #spawnWatchdog() {
+    const triggerDir = join(this.options.config.workingDir, ".trigger");
+    if (!existsSync(triggerDir)) {
+      mkdirSync(triggerDir, { recursive: true });
+    }
+
+    this.activeRunsPath = join(triggerDir, "active-runs.json");
+    this.watchdogPidPath = join(triggerDir, "watchdog.pid");
+
+    // Write empty active-runs file
+    this.#updateActiveRunsFile();
+
+    // Resolve the compiled watchdog script path relative to this file
+    const thisDir = fileURLToPath(new URL(".", import.meta.url));
+    const watchdogScript = join(thisDir, "devWatchdog.js");
+
+    if (!existsSync(watchdogScript)) {
+      logger.debug("[DevSupervisor] Watchdog script not found, skipping", { watchdogScript });
+      return;
+    }
+
+    try {
+      this.watchdogProcess = spawn(process.execPath, [watchdogScript], {
+        detached: true,
+        stdio: "ignore",
+        env: {
+          ...process.env,
+          WATCHDOG_PARENT_PID: process.pid.toString(),
+          WATCHDOG_API_URL: this.config?.engineUrl ?? this.options.client.apiURL,
+          WATCHDOG_API_KEY: this.options.client.accessToken ?? "",
+          WATCHDOG_ACTIVE_RUNS: this.activeRunsPath,
+          WATCHDOG_PID_FILE: this.watchdogPidPath,
+        },
+      });
+
+      this.watchdogProcess.unref();
+
+      logger.debug("[DevSupervisor] Spawned watchdog", {
+        watchdogPid: this.watchdogProcess.pid,
+        parentPid: process.pid,
+      });
+    } catch (error) {
+      logger.debug("[DevSupervisor] Failed to spawn watchdog", { error });
+    }
+  }
+
+  #killWatchdog() {
+    const knownPid = this.watchdogProcess?.pid;
+
+    if (knownPid) {
+      try {
+        process.kill(knownPid, "SIGTERM");
+      } catch {
+        // Already dead
+      }
+      this.watchdogProcess = undefined;
+    }
+
+    // Fallback: try via PID file, but only if the PID matches our spawned watchdog
+    // to avoid killing an unrelated process that reused a stale PID
+    if (this.watchdogPidPath) {
+      try {
+        const content = readFileSync(this.watchdogPidPath, "utf8");
+        const prefix = "trigger-watchdog:";
+        if (content.startsWith(prefix)) {
+          const pid = parseInt(content.slice(prefix.length), 10);
+          if (pid && (!knownPid || pid === knownPid)) {
+            process.kill(pid, "SIGTERM");
+          }
+        }
+      } catch {
+        // Already dead or no file
+      }
+    }
+
+    // Clean up files
+    try {
+      if (this.activeRunsPath) unlinkSync(this.activeRunsPath);
+    } catch {}
+    try {
+      if (this.watchdogPidPath) unlinkSync(this.watchdogPidPath);
+    } catch {}
+  }
+
+  #updateActiveRunsFile() {
+    if (!this.activeRunsPath) return;
+
+    try {
+      const data = {
+        parentPid: process.pid,
+        runFriendlyIds: Array.from(this.runControllers.keys()),
+      };
+      // Atomic write: write to temp file then rename to avoid corrupt reads
+      const tmpPath = this.activeRunsPath + ".tmp";
+      writeFileSync(tmpPath, JSON.stringify(data));
+      renameSync(tmpPath, this.activeRunsPath);
+    } catch (error) {
+      logger.debug("[DevSupervisor] Failed to update active-runs file", { error });
     }
   }
 
@@ -386,6 +510,7 @@ class DevSupervisor implements WorkerRuntime {
             //stop the run controller, and remove it
             runController?.stop();
             this.runControllers.delete(message.run.friendlyId);
+            this.#updateActiveRunsFile();
             this.#unsubscribeFromRunNotifications(message.run.friendlyId);
 
             //stop the worker if it is deprecated and there are no more runs
@@ -402,6 +527,7 @@ class DevSupervisor implements WorkerRuntime {
         });
 
         this.runControllers.set(message.run.friendlyId, runController);
+        this.#updateActiveRunsFile();
 
         if (this.runLimiter) {
           this.runLimiter(() => runController.start(message)).then(() => {

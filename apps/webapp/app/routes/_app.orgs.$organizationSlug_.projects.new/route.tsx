@@ -22,7 +22,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Select, SelectItem } from "~/components/primitives/Select";
-import { ButtonSpinner } from "~/components/primitives/Spinner";
+
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -169,6 +169,8 @@ const schema = z.object({
   technologiesOther: z.string().optional(),
   goals: z.string().optional(),
   goalsOther: z.string().optional(),
+  workingOnPositions: z.string().optional(),
+  goalsPositions: z.string().optional(),
 });
 
 export const action: ActionFunction = async ({ request, params }) => {
@@ -200,10 +202,25 @@ export const action: ActionFunction = async ({ request, params }) => {
     }
   }
 
+  const numberArraySchema = z.array(z.number());
+  function safeParseNumberArray(value: string | undefined): number[] | undefined {
+    if (!value) return undefined;
+    try {
+      const result = numberArraySchema.safeParse(JSON.parse(value));
+      return result.success && result.data.length > 0 ? result.data : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   const onboardingData: Record<string, Prisma.InputJsonValue> = {};
 
   const workingOn = safeParseStringArray(submission.value.workingOn);
-  if (workingOn) onboardingData.workingOn = workingOn;
+  if (workingOn) {
+    onboardingData.workingOn = workingOn;
+    const workingOnPositions = safeParseNumberArray(submission.value.workingOnPositions);
+    if (workingOnPositions) onboardingData.workingOnPositions = workingOnPositions;
+  }
 
   if (submission.value.workingOnOther) {
     onboardingData.workingOnOther = submission.value.workingOnOther;
@@ -216,7 +233,11 @@ export const action: ActionFunction = async ({ request, params }) => {
   if (technologiesOther) onboardingData.technologiesOther = technologiesOther;
 
   const goals = safeParseStringArray(submission.value.goals);
-  if (goals) onboardingData.goals = goals;
+  if (goals) {
+    onboardingData.goals = goals;
+    const goalsPositions = safeParseNumberArray(submission.value.goalsPositions);
+    if (goalsPositions) onboardingData.goalsPositions = goalsPositions;
+  }
 
   if (submission.value.goalsOther) {
     onboardingData.goalsOther = submission.value.goalsOther;
@@ -376,6 +397,13 @@ export default function Page() {
                 <InputGroup>
                   <Label>What are you working on?</Label>
                   <input type="hidden" name="workingOn" value={JSON.stringify(selectedWorkingOn)} />
+                  <input
+                    type="hidden"
+                    name="workingOnPositions"
+                    value={JSON.stringify(
+                      selectedWorkingOn.map((v) => shuffledWorkingOn.indexOf(v) + 1)
+                    )}
+                  />
                   <MultiSelectField
                     value={selectedWorkingOn}
                     setValue={setSelectedWorkingOn}
@@ -421,6 +449,13 @@ export default function Page() {
                 <InputGroup>
                   <Label>What are you trying to do with Trigger.dev?</Label>
                   <input type="hidden" name="goals" value={JSON.stringify(selectedGoals)} />
+                  <input
+                    type="hidden"
+                    name="goalsPositions"
+                    value={JSON.stringify(
+                      selectedGoals.map((v) => shuffledGoals.indexOf(v) + 1)
+                    )}
+                  />
                   <MultiSelectField
                     value={selectedGoals}
                     setValue={setSelectedGoals}
@@ -445,13 +480,8 @@ export default function Page() {
 
                 <FormButtons
                   confirmButton={
-                    <Button
-                      type="submit"
-                      variant={"primary/small"}
-                      disabled={isLoading}
-                      TrailingIcon={isLoading ? ButtonSpinner : undefined}
-                    >
-                      {isLoading ? "Creating…" : "Create"}
+                    <Button type="submit" variant={"primary/small"} isLoading={isLoading}>
+                      Create
                     </Button>
                   }
                   cancelButton={
