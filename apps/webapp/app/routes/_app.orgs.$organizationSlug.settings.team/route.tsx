@@ -167,7 +167,7 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className="grid max-h-full min-h-full grid-rows-[1fr_auto]">
-          <div className="overflow-y-auto">
+          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <div className="mx-auto max-w-3xl px-4 pb-4 pt-20">
               {invites.length > 0 && (
                 <>
@@ -194,7 +194,7 @@ export default function Page() {
                 </>
               )}
               <Header2>Active team members</Header2>
-              <ul className="divide-ui-border mt-3 flex w-full flex-col divide-y border-y border-grid-bright">
+              <ul className="divide-ui-border mb-8 mt-3 flex w-full flex-col divide-y border-y border-grid-bright">
                 {members.map((member) => (
                   <li key={member.user.id} className="flex items-center gap-x-4 py-4">
                     <UserAvatar
