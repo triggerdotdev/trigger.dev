@@ -1,5 +1,13 @@
 # @trigger.dev/build
 
+## 4.4.3
+
+### Patch Changes
+
+- Add syncSupabaseEnvVars to pull database connection strings and save them as trigger.dev environment variables ([#3152](https://github.com/triggerdotdev/trigger.dev/pull/3152))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.3`
+
 ## 4.4.2
 
 ### Patch Changes
