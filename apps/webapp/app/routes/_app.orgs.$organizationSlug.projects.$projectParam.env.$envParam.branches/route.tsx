@@ -667,17 +667,17 @@ function PurchaseBranchesModal({
   const isLoading = navigation.state !== "idle" && navigation.formMethod === "POST";
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const purchaseSuccess = searchParams.get("purchaseSuccess");
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    const success = searchParams.get("purchaseSuccess");
-    if (success) {
+    if (purchaseSuccess) {
       setOpen(false);
       setSearchParams((s) => {
         s.delete("purchaseSuccess");
         return s;
       });
     }
-  }, [searchParams.get("purchaseSuccess")]);
+  }, [purchaseSuccess, setSearchParams]);
 
   const state = updateBranchState({
     value: amountValue,
