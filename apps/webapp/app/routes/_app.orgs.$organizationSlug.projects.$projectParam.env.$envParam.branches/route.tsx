@@ -690,14 +690,14 @@ function PurchaseBranchesModal({
     state === "decrease" ? "text-error" : state === "increase" ? "text-success" : undefined;
 
   const pricePerBranch = branchPricing.centsPerStep / branchPricing.stepSize / 100;
-  const title = extraBranches === 0 ? "Purchase extra branches" : "Add/remove branches";
+  const title = extraBranches === 0 ? "Purchase extra branches…" : "Add/remove extra branches…";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {triggerButton ?? (
           <Button variant="primary/small" onClick={() => setOpen(true)}>
-            Purchase more…
+            {title}
           </Button>
         )}
       </DialogTrigger>
@@ -816,7 +816,9 @@ function PurchaseBranchesModal({
                     type="submit"
                     disabled={isLoading}
                   >
-                    {`Send request for ${formatNumber(amountValue)}`}
+                    <span className="tabular-nums text-text-bright">{`Send request for ${formatNumber(
+                      amountValue
+                    )}`}</span>
                   </Button>
                 </>
               ) : state === "decrease" || state === "need_to_archive" ? (
@@ -828,9 +830,9 @@ function PurchaseBranchesModal({
                     disabled={isLoading || state === "need_to_archive"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    {`Remove ${formatNumber(extraBranches - amountValue)} ${
-                      extraBranches - amountValue === 1 ? "branch" : "branches"
-                    }`}
+                    <span className="tabular-nums text-text-bright">{`Remove ${formatNumber(
+                      extraBranches - amountValue
+                    )} ${extraBranches - amountValue === 1 ? "branch" : "branches"}`}</span>
                   </Button>
                 </>
               ) : (
@@ -842,9 +844,9 @@ function PurchaseBranchesModal({
                     disabled={isLoading || state === "no_change"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    {`Purchase ${formatNumber(amountValue - extraBranches)} ${
-                      amountValue - extraBranches === 1 ? "branch" : "branches"
-                    }`}
+                    <span className="tabular-nums text-text-bright">{`Purchase ${formatNumber(
+                      amountValue - extraBranches
+                    )} ${amountValue - extraBranches === 1 ? "branch" : "branches"}`}</span>
                   </Button>
                 </>
               )
