@@ -121,6 +121,7 @@ export function ChatSidebar({
           >
             <option value="ai-chat">ai-chat (chat.task)</option>
             <option value="ai-chat-raw">ai-chat-raw (raw task)</option>
+            <option value="ai-chat-session">ai-chat-session (session)</option>
           </select>
         </div>
       </div>

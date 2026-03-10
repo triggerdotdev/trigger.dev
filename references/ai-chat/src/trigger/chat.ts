@@ -563,3 +563,76 @@ export const aiChatRaw = task({
     stop.cleanup();
   },
 });
+
+// --------------------------------------------------------------------------
+// Session iterator version — middle ground between chat.task and raw task
+// --------------------------------------------------------------------------
+
+export const aiChatSession = task({
+  id: "ai-chat-session",
+  run: async (payload: ChatTaskWirePayload, { signal }) => {
+    const clientData = payload.metadata as { userId: string; model?: string } | undefined;
+
+    // One-time init — just code at the top, no hooks needed
+    if (clientData) {
+      await initUserContext(clientData.userId, payload.chatId, clientData.model);
+    }
+
+    const session = chat.createSession(payload, {
+      signal,
+      warmTimeoutInSeconds: payload.warmTimeoutInSeconds ?? 60,
+      timeout: "1h",
+    });
+
+    for await (const turn of session) {
+      const turnClientData = (turn.clientData ?? clientData) as
+        | { userId: string; model?: string }
+        | undefined;
+
+      userContext.messageCount++;
+      if (turnClientData?.model) userContext.preferredModel = turnClientData.model;
+
+      const modelId = turnClientData?.model ?? userContext.preferredModel ?? undefined;
+      const useReasoning = REASONING_MODELS.has(modelId ?? DEFAULT_MODEL);
+
+      const result = streamText({
+        model: getModel(modelId),
+        system: `You are a helpful assistant for ${userContext.name} (${userContext.plan} plan). Be concise and friendly.`,
+        messages: turn.messages,
+        tools: {
+          inspectEnvironment,
+          webFetch,
+          deepResearch: ai.tool(deepResearch),
+        },
+        stopWhen: stepCountIs(10),
+        abortSignal: turn.signal,
+        providerOptions: {
+          openai: { user: turnClientData?.userId },
+          anthropic: {
+            metadata: { user_id: turnClientData?.userId },
+            ...(useReasoning ? { thinking: { type: "enabled", budgetTokens: 10000 } } : {}),
+          },
+        },
+        experimental_telemetry: { isEnabled: true },
+      });
+
+      await turn.complete(result);
+
+      // Persist after each turn
+      await prisma.chat.update({
+        where: { id: turn.chatId },
+        data: { messages: turn.uiMessages as any },
+      });
+
+      if (userContext.hasChanged()) {
+        await prisma.user.update({
+          where: { id: userContext.userId },
+          data: {
+            messageCount: userContext.messageCount,
+            preferredModel: userContext.preferredModel,
+          },
+        });
+      }
+    }
+  },
+});
