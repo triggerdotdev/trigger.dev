@@ -220,6 +220,20 @@ export class DefaultQueueManager implements QueueManager {
       return { queueName: overriddenQueueName ?? defaultQueueName, taskTtl: undefined };
     }
 
+    // When queue is overridden, we only need TTL from the task (no queue join needed)
+    if (overriddenQueueName) {
+      const task = await this.prisma.backgroundWorkerTask.findFirst({
+        where: {
+          workerId: worker.id,
+          runtimeEnvironmentId: environment.id,
+          slug: taskId,
+        },
+        select: { ttl: true },
+      });
+
+      return { queueName: overriddenQueueName, taskTtl: task?.ttl };
+    }
+
     const task = await this.prisma.backgroundWorkerTask.findFirst({
       where: {
         workerId: worker.id,
@@ -237,7 +251,7 @@ export class DefaultQueueManager implements QueueManager {
         environmentId: environment.id,
       });
 
-      return { queueName: overriddenQueueName ?? defaultQueueName, taskTtl: undefined };
+      return { queueName: defaultQueueName, taskTtl: undefined };
     }
 
     if (!task.queue) {
@@ -247,10 +261,10 @@ export class DefaultQueueManager implements QueueManager {
         queueConfig: task.queueConfig,
       });
 
-      return { queueName: overriddenQueueName ?? defaultQueueName, taskTtl: task.ttl };
+      return { queueName: defaultQueueName, taskTtl: task.ttl };
     }
 
-    return { queueName: overriddenQueueName ?? task.queue.name ?? defaultQueueName, taskTtl: task.ttl };
+    return { queueName: task.queue.name ?? defaultQueueName, taskTtl: task.ttl };
   }
 
   async validateQueueLimits(
