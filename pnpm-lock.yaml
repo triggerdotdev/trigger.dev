@@ -58,8 +58,8 @@ importers:
         specifier: ^0.0.5
         version: 0.0.5(encoding@0.1.13)
       agentcrumbs:
-        specifier: ^0.3.1
-        version: 0.3.1
+        specifier: ^0.3.3
+        version: 0.3.3
       node-fetch:
         specifier: 2.6.x
         version: 2.6.7(encoding@0.1.13)
@@ -11422,8 +11422,8 @@ packages:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
 
-  agentcrumbs@0.3.1:
-    resolution: {integrity: sha512-65nPVTpRmM8zJ/jmW7i5m+QXyIR3gM2hCUQO5IvWf7wuY4YANAWcSAcTm7kxZiumcGhdC6Ac2RTq7OdbhUMwgQ==}
+  agentcrumbs@0.3.3:
+    resolution: {integrity: sha512-aupvMKUu/b+7x1scuPVN6Pi5qBXCDpbvCVLrkhpSbvT28ZRaX/ZkZ+LD/96Jg0KP4qCnU8ZOwvGVDUkmSsj+ag==}
     engines: {node: '>=18.0.0'}
     hasBin: true
 
@@ -31876,7 +31876,7 @@ snapshots:
 
   agent-base@7.1.4: {}
 
-  agentcrumbs@0.3.1: {}
+  agentcrumbs@0.3.3: {}
 
   agentkeepalive@4.5.0:
     dependencies:
