@@ -83,6 +83,9 @@ function initializeQueryClickhouseClient() {
 
   const url = new URL(env.QUERY_CLICKHOUSE_URL);
 
+  // Remove secure param
+  url.searchParams.delete("secure");
+
   return new ClickHouse({
     url: url.toString(),
     name: "query-clickhouse",
