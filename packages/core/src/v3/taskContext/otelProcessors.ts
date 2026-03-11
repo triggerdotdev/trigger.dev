@@ -30,6 +30,12 @@ export class TaskContextSpanProcessor implements SpanProcessor {
       span.setAttributes(
         flattenAttributes(taskContext.attributes, SemanticInternalAttributes.METADATA)
       );
+
+      // Set run tags as a proper array attribute (not flattened) so it arrives
+      // as an OTEL ArrayValue and can be extracted on the server side.
+      if (!taskContext.isRunDisabled && taskContext.ctx.run.tags?.length) {
+        span.setAttribute(SemanticInternalAttributes.RUN_TAGS, taskContext.ctx.run.tags);
+      }
     }
 
     if (!isPartialSpan(span) && !skipPartialSpan(span)) {

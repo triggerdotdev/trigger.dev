@@ -27,13 +27,16 @@ CREATE TABLE IF NOT EXISTS trigger_dev.llm_usage_v1
   total_cost        Decimal64(12) DEFAULT 0,
   cost_details      Map(LowCardinality(String), Decimal64(12)),
 
+  metadata          Map(LowCardinality(String), String),
+
   start_time        DateTime64(9) CODEC(Delta(8), ZSTD(1)),
   duration          UInt64 DEFAULT 0 CODEC(ZSTD(1)),
   inserted_at       DateTime64(3) DEFAULT now64(3),
 
   INDEX idx_run_id run_id TYPE bloom_filter(0.001) GRANULARITY 1,
   INDEX idx_span_id span_id TYPE bloom_filter(0.001) GRANULARITY 1,
-  INDEX idx_response_model response_model TYPE bloom_filter(0.01) GRANULARITY 1
+  INDEX idx_response_model response_model TYPE bloom_filter(0.01) GRANULARITY 1,
+  INDEX idx_metadata_keys mapKeys(metadata) TYPE bloom_filter(0.01) GRANULARITY 1
 )
 ENGINE = MergeTree
 PARTITION BY toDate(inserted_at)

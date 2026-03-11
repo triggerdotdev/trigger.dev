@@ -48,7 +48,24 @@ function enrichLlmCost(event: CreateEventInput): void {
   const props = event.properties;
   if (!props) return;
 
-  crumb("enrichLlmCost called", { kind: event.kind, isPartial: event.isPartial, spanId: event.spanId, message: event.message, props }); // @crumbs
+  // #region @crumbs
+  // Log all spans (not just gen_ai) that have conversation/chat/session/user context
+  if (!event.isPartial) {
+    const contextKeys = Object.entries(props).filter(([k]) =>
+      k.startsWith("ai.telemetry.") || k.startsWith("gen_ai.conversation") ||
+      k.startsWith("chat.") || k.includes("session") || k.includes("user")
+    );
+    if (contextKeys.length > 0) {
+      crumb("span with context", {
+        spanId: event.spanId,
+        parentId: event.parentId,
+        runId: event.runId,
+        message: event.message,
+        contextAttrs: Object.fromEntries(contextKeys),
+      });
+    }
+  }
+  // #endregion @crumbs
 
   // Only enrich span-like events (INTERNAL, SERVER, CLIENT, CONSUMER, PRODUCER — not LOG, UNSPECIFIED)
   const enrichableKinds = new Set(["INTERNAL", "SERVER", "CLIENT", "CONSUMER", "PRODUCER"]);
@@ -130,6 +147,39 @@ function enrichLlmCost(event: CreateEventInput): void {
     },
   };
 
+  // Build metadata map from run tags and ai.telemetry.metadata.*
+  const metadata: Record<string, string> = {};
+
+  if (event.runTags) {
+    for (const tag of event.runTags) {
+      const colonIdx = tag.indexOf(":");
+      if (colonIdx > 0) {
+        metadata[tag.substring(0, colonIdx)] = tag.substring(colonIdx + 1);
+      }
+    }
+  }
+
+  for (const [key, value] of Object.entries(props)) {
+    if (key.startsWith("ai.telemetry.metadata.") && typeof value === "string") {
+      metadata[key.slice("ai.telemetry.metadata.".length)] = value;
+    }
+  }
+
+  // #region @crumbs
+  const metadataKeyCount = Object.keys(metadata).length;
+  if (metadataKeyCount > 0) {
+    crumb("llm metadata built", {
+      spanId: event.spanId,
+      runId: event.runId,
+      responseModel,
+      metadataKeyCount,
+      metadataKeys: Object.keys(metadata),
+      fromRunTags: event.runTags?.length ?? 0,
+      fromTelemetry: metadataKeyCount - (event.runTags?.filter((t) => t.includes(":")).length ?? 0),
+    });
+  }
+  // #endregion @crumbs
+
   // Set _llmUsage side-channel for dual-write to llm_usage_v1
   const llmUsage: LlmUsageData = {
     genAiSystem: (props["gen_ai.system"] as string) ?? "unknown",
@@ -147,6 +197,7 @@ function enrichLlmCost(event: CreateEventInput): void {
     outputCost: cost.outputCost,
     totalCost: cost.totalCost,
     costDetails: cost.costDetails,
+    metadata,
   };
 
   event._llmUsage = llmUsage;

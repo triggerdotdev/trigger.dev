@@ -279,6 +279,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       output_cost: llmUsage.outputCost,
       total_cost: llmUsage.totalCost,
       cost_details: llmUsage.costDetails,
+      metadata: llmUsage.metadata,
       start_time: this.#clampAndFormatStartTime(event.startTime.toString()),
       duration: formatClickhouseUnsignedIntegerString(event.duration ?? 0),
     };
@@ -311,7 +312,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       .map((e) => this.#createLlmUsageInput(e));
 
     if (llmUsageRows.length > 0) {
-      crumb("queuing llm usage rows", { count: llmUsageRows.length, firstRunId: llmUsageRows[0]?.run_id }); // @crumbs
+      crumb("queuing llm usage rows", { count: llmUsageRows.length, firstRunId: llmUsageRows[0]?.run_id, metadataKeys: llmUsageRows.map((r) => Object.keys(r.metadata)) }); // @crumbs
       this._llmUsageFlushScheduler.addToBatch(llmUsageRows);
     }
   }
