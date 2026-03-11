@@ -175,6 +175,39 @@ ORDER BY total_cost DESC`,
     scope: "environment",
     table: "llm_usage",
   },
+  {
+    title: "LLM cost by user",
+    description:
+      "Total LLM cost per user from run tags or AI SDK telemetry metadata. Uses metadata.userId which comes from experimental_telemetry metadata or run tags like user:123.",
+    query: `SELECT
+  metadata.userId AS user_id,
+  SUM(total_cost) AS total_cost,
+  SUM(total_tokens) AS total_tokens,
+  count() AS call_count
+FROM llm_usage
+WHERE metadata.userId != ''
+GROUP BY metadata.userId
+ORDER BY total_cost DESC
+LIMIT 50`,
+    scope: "environment",
+    table: "llm_usage",
+  },
+  {
+    title: "LLM cost by metadata key",
+    description:
+      "Browse all metadata keys and their LLM cost. Metadata comes from run tags (key:value) and AI SDK telemetry metadata.",
+    query: `SELECT
+  metadata,
+  response_model,
+  total_cost,
+  total_tokens,
+  run_id
+FROM llm_usage
+ORDER BY start_time DESC
+LIMIT 20`,
+    scope: "environment",
+    table: "llm_usage",
+  },
 ];
 
 const tableOptions = querySchemas.map((s) => ({ label: s.name, value: s.name }));

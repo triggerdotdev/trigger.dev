@@ -37,6 +37,7 @@ export type LlmUsageData = {
   outputCost: number;
   totalCost: number;
   costDetails: Record<string, number>;
+  metadata: Record<string, string>;
 };
 
 export type CreateEventInput = Omit<
@@ -75,6 +76,7 @@ export type CreateEventInput = Omit<
   metadata: Attributes | undefined;
   style: Attributes | undefined;
   machineId?: string;
+  runTags?: string[];
   /** Side-channel data for LLM cost tracking, populated by enrichCreatableEvents */
   _llmUsage?: LlmUsageData;
 };

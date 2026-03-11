@@ -28,6 +28,8 @@ export const LlmUsageV1Input = z.object({
   total_cost: z.number(),
   cost_details: z.record(z.string(), z.number()),
 
+  metadata: z.record(z.string(), z.string()),
+
   start_time: z.string(),
   duration: z.string(),
 });

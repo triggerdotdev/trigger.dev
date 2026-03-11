@@ -38,6 +38,8 @@ import type {
 import { startSpan } from "./tracing.server";
 import { enrichCreatableEvents } from "./utils/enrichCreatableEvents.server";
 import "./llmPricingRegistry.server"; // Initialize LLM pricing registry on startup
+import { trail } from "agentcrumbs"; // @crumbs
+const crumbOtlp = trail("webapp:otlp-exporter"); // @crumbs
 import { env } from "~/env.server";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 import { singleton } from "~/utils/singleton";
@@ -392,6 +394,9 @@ function convertSpansToCreateableEvents(
           SemanticInternalAttributes.METADATA
         );
 
+        const runTags = extractArrayAttribute(span.attributes ?? [], SemanticInternalAttributes.RUN_TAGS);
+        if (runTags && runTags.length > 0) { crumbOtlp("extracted runTags from span", { runTags, spanId: binaryToHex(span.spanId) }); } // @crumbs
+
         const properties =
           truncateAttributes(
             convertKeyValueItemsToMap(span.attributes ?? [], [], undefined, [
@@ -440,6 +445,7 @@ function convertSpansToCreateableEvents(
           runId: spanProperties.runId ?? resourceProperties.runId ?? "unknown",
           taskSlug: spanProperties.taskSlug ?? resourceProperties.taskSlug ?? "unknown",
           machineId: spanProperties.machineId ?? resourceProperties.machineId,
+          runTags,
           attemptNumber:
             extractNumberAttribute(
               span.attributes ?? [],
@@ -999,6 +1005,21 @@ function extractBooleanAttribute(
   if (!attribute) return fallback;
 
   return isBoolValue(attribute?.value) ? attribute.value.boolValue : fallback;
+}
+
+function extractArrayAttribute(
+  attributes: KeyValue[],
+  name: string | Array<string | undefined>
+): string[] | undefined {
+  const key = Array.isArray(name) ? name.filter(Boolean).join(".") : name;
+
+  const attribute = attributes.find((attribute) => attribute.key === key);
+
+  if (!attribute?.value?.arrayValue?.values) return undefined;
+
+  return attribute.value.arrayValue.values
+    .filter((v): v is { stringValue: string } => isStringValue(v))
+    .map((v) => v.stringValue);
 }
 
 function isPartialSpan(span: Span): boolean {
