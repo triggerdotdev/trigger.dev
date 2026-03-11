@@ -21,6 +21,24 @@ export type { ExceptionEventProperties };
 // Event Creation Types
 // ============================================================================
 
+export type LlmUsageData = {
+  genAiSystem: string;
+  requestModel: string;
+  responseModel: string;
+  matchedModelId: string;
+  operationName: string;
+  pricingTierId: string;
+  pricingTierName: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  usageDetails: Record<string, number>;
+  inputCost: number;
+  outputCost: number;
+  totalCost: number;
+  costDetails: Record<string, number>;
+};
+
 export type CreateEventInput = Omit<
   Prisma.TaskEventCreateInput,
   | "id"
@@ -57,6 +75,8 @@ export type CreateEventInput = Omit<
   metadata: Attributes | undefined;
   style: Attributes | undefined;
   machineId?: string;
+  /** Side-channel data for LLM cost tracking, populated by enrichCreatableEvents */
+  _llmUsage?: LlmUsageData;
 };
 
 export type CreatableEventKind = TaskEventKind;

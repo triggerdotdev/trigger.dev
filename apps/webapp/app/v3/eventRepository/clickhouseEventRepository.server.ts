@@ -1,5 +1,6 @@
 import type {
   ClickHouse,
+  LlmUsageV1Input,
   TaskEventDetailedSummaryV1Result,
   TaskEventDetailsV1Result,
   TaskEventSummaryV1Result,
@@ -7,6 +8,9 @@ import type {
   TaskEventV2Input,
 } from "@internal/clickhouse";
 import { Attributes, startSpan, trace, Tracer } from "@internal/tracing";
+import { trail } from "agentcrumbs"; // @crumbs
+
+const crumb = trail("webapp:llm-dual-write"); // @crumbs
 import { createJsonErrorObject } from "@trigger.dev/core/v3/errors";
 import { serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import {
@@ -94,6 +98,7 @@ export class ClickhouseEventRepository implements IEventRepository {
   private _clickhouse: ClickHouse;
   private _config: ClickhouseEventRepositoryConfig;
   private readonly _flushScheduler: DynamicFlushScheduler<TaskEventV1Input | TaskEventV2Input>;
+  private readonly _llmUsageFlushScheduler: DynamicFlushScheduler<LlmUsageV1Input>;
   private _tracer: Tracer;
   private _version: "v1" | "v2";
 
@@ -117,6 +122,17 @@ export class ClickhouseEventRepository implements IEventRepository {
         // Only drop LOG events during load shedding
         return event.kind === "DEBUG_EVENT";
       },
+    });
+
+    this._llmUsageFlushScheduler = new DynamicFlushScheduler({
+      batchSize: 5000,
+      flushInterval: 2000,
+      callback: this.#flushLlmUsageBatch.bind(this),
+      minConcurrency: 1,
+      maxConcurrency: 2,
+      maxBatchSize: 10000,
+      memoryPressureThreshold: 10000,
+      loadSheddingEnabled: false,
     });
   }
 
@@ -216,6 +232,58 @@ export class ClickhouseEventRepository implements IEventRepository {
     });
   }
 
+  async #flushLlmUsageBatch(flushId: string, rows: LlmUsageV1Input[]) {
+    crumb("flushing llm usage batch", { flushId, rows: rows.length }); // @crumbs
+
+    const [insertError] = await this._clickhouse.llmUsage.insert(rows, {
+      params: {
+        clickhouse_settings: this.#getClickhouseInsertSettings(),
+      },
+    });
+
+    if (insertError) {
+      crumb("llm usage batch insert failed", { flushId, error: String(insertError) }); // @crumbs
+      throw insertError;
+    }
+
+    crumb("llm usage batch inserted", { flushId, rows: rows.length }); // @crumbs
+
+    logger.info("ClickhouseEventRepository.flushLlmUsageBatch Inserted LLM usage batch", {
+      rows: rows.length,
+    });
+  }
+
+  #createLlmUsageInput(event: CreateEventInput): LlmUsageV1Input {
+    const llmUsage = event._llmUsage!;
+
+    return {
+      organization_id: event.organizationId,
+      project_id: event.projectId,
+      environment_id: event.environmentId,
+      run_id: event.runId,
+      task_identifier: event.taskSlug,
+      trace_id: event.traceId,
+      span_id: event.spanId,
+      gen_ai_system: llmUsage.genAiSystem,
+      request_model: llmUsage.requestModel,
+      response_model: llmUsage.responseModel,
+      matched_model_id: llmUsage.matchedModelId,
+      operation_name: llmUsage.operationName,
+      pricing_tier_id: llmUsage.pricingTierId,
+      pricing_tier_name: llmUsage.pricingTierName,
+      input_tokens: llmUsage.inputTokens,
+      output_tokens: llmUsage.outputTokens,
+      total_tokens: llmUsage.totalTokens,
+      usage_details: llmUsage.usageDetails,
+      input_cost: llmUsage.inputCost,
+      output_cost: llmUsage.outputCost,
+      total_cost: llmUsage.totalCost,
+      cost_details: llmUsage.costDetails,
+      start_time: this.#clampAndFormatStartTime(event.startTime.toString()),
+      duration: formatClickhouseUnsignedIntegerString(event.duration ?? 0),
+    };
+  }
+
   #getClickhouseInsertSettings() {
     if (this._config.insertStrategy === "insert") {
       return {};
@@ -236,6 +304,16 @@ export class ClickhouseEventRepository implements IEventRepository {
 
   async insertMany(events: CreateEventInput[]): Promise<void> {
     this.addToBatch(events.flatMap((event) => this.createEventToTaskEventV1Input(event)));
+
+    // Dual-write LLM usage records for spans with cost enrichment
+    const llmUsageRows = events
+      .filter((e) => e._llmUsage != null)
+      .map((e) => this.#createLlmUsageInput(e));
+
+    if (llmUsageRows.length > 0) {
+      crumb("queuing llm usage rows", { count: llmUsageRows.length, firstRunId: llmUsageRows[0]?.run_id }); // @crumbs
+      this._llmUsageFlushScheduler.addToBatch(llmUsageRows);
+    }
   }
 
   async insertManyImmediate(events: CreateEventInput[]): Promise<void> {
@@ -1525,7 +1603,13 @@ export class ClickhouseEventRepository implements IEventRepository {
       }
 
       if (parsedMetadata && "style" in parsedMetadata && parsedMetadata.style) {
-        span.data.style = parsedMetadata.style as TaskEventStyle;
+        const newStyle = parsedMetadata.style as TaskEventStyle;
+        // Merge styles: prefer the most complete value for each field
+        span.data.style = {
+          icon: newStyle.icon ?? span.data.style.icon,
+          variant: newStyle.variant ?? span.data.style.variant,
+          accessory: newStyle.accessory ?? span.data.style.accessory,
+        };
       }
 
       if (record.kind === "SPAN") {
