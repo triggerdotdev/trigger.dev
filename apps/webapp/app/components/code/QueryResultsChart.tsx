@@ -1209,6 +1209,11 @@ function createYAxisFormatter(
       formatDurationMilliseconds(value * 1000, { style: "short" });
   }
 
+  if (format === "durationNs") {
+    return (value: number): string =>
+      formatDurationMilliseconds(value / 1_000_000, { style: "short" });
+  }
+
   if (format === "costInDollars" || format === "cost") {
     return (value: number): string => {
       const dollars = format === "cost" ? value / 100 : value;

@@ -27,6 +27,7 @@ class TestableRegistry extends ModelPricingRegistry {
 
 const gpt4o: LlmModelWithPricing = {
   id: "model-gpt4o",
+  friendlyId: "llm_model_gpt4o",
   modelName: "gpt-4o",
   matchPattern: "^gpt-4o(-\\d{4}-\\d{2}-\\d{2})?$",
   startDate: null,
@@ -48,6 +49,7 @@ const gpt4o: LlmModelWithPricing = {
 
 const claudeSonnet: LlmModelWithPricing = {
   id: "model-claude-sonnet",
+  friendlyId: "llm_model_claude_sonnet",
   modelName: "claude-sonnet-4-0",
   matchPattern: "^claude-sonnet-4-0(-\\d{8})?$",
   startDate: null,
@@ -181,6 +183,7 @@ describe("ModelPricingRegistry", () => {
       const langfuseRegistry = new TestableRegistry(null as any);
       const models: LlmModelWithPricing[] = defaultModelPrices.map((def, i) => ({
         id: `test-${i}`,
+        friendlyId: `llm_model_test${i}`,
         modelName: def.modelName,
         matchPattern: def.matchPattern,
         startDate: def.startDate ? new Date(def.startDate) : null,
@@ -206,6 +209,7 @@ describe("ModelPricingRegistry", () => {
       const langfuseRegistry = new TestableRegistry(null as any);
       const models: LlmModelWithPricing[] = defaultModelPrices.map((def, i) => ({
         id: `test-${i}`,
+        friendlyId: `llm_model_test${i}`,
         modelName: def.modelName,
         matchPattern: def.matchPattern,
         startDate: null,

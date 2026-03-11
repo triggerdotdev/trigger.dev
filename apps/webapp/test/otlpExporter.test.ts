@@ -406,7 +406,7 @@ describe("OTLPExporter", () => {
           const inputCost = (usageDetails["input"] ?? 0) * 0.0000025;
           const outputCost = (usageDetails["output"] ?? 0) * 0.00001;
           return {
-            matchedModelId: "model-gpt4o",
+            matchedModelId: "llm_model_gpt4o",
             matchedModelName: "gpt-4o",
             pricingTierId: "tier-standard",
             pricingTierName: "Standard",
