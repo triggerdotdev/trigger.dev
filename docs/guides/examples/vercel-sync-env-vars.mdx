@@ -6,6 +6,12 @@ description: "This example demonstrates how to sync environment variables from y
 
 import VercelDocsCards from "/snippets/vercel-docs-cards.mdx";
 
+<Warning>
+  **`syncVercelEnvVars` is deprecated.** If you are using the [Vercel
+  integration](/vercel-integration), do not use this extension — the integration handles environment
+  variable syncing natively. Using both together can cause env vars to be incorrectly populated.
+</Warning>
+
 ## Build configuration
 
 To sync environment variables, you just need to add our build extension to your `trigger.config.ts` file. This extension will then automatically run every time you deploy your Trigger.dev project.
