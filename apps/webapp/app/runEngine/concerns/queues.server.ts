@@ -80,27 +80,6 @@ export class DefaultQueueManager implements QueueManager {
       // Task is locked to a specific worker version
       const specifiedQueueName = extractQueueName(request.body.options?.queue);
 
-      // Always fetch the task to get TTL (and default queue if no override)
-      const lockedTask = await this.prisma.backgroundWorkerTask.findFirst({
-        where: {
-          workerId: lockedBackgroundWorker.id,
-          runtimeEnvironmentId: request.environment.id,
-          slug: request.taskId,
-        },
-        include: {
-          queue: true,
-        },
-      });
-
-      if (!lockedTask) {
-        throw new ServiceValidationError(
-          `Task '${request.taskId}' not found on locked version '${lockedBackgroundWorker.version ?? "<unknown>"
-          }'.`
-        );
-      }
-
-      taskTtl = lockedTask.ttl;
-
       if (specifiedQueueName) {
         // A specific queue name is provided, validate it exists for the locked worker
         const specifiedQueue = await this.prisma.taskQueue.findFirst({
@@ -117,10 +96,46 @@ export class DefaultQueueManager implements QueueManager {
             }'.`
           );
         }
+
         // Use the validated queue name directly
         queueName = specifiedQueue.name;
         lockedQueueId = specifiedQueue.id;
+
+        // Only fetch task for TTL if caller didn't provide a per-trigger TTL
+        if (request.body.options?.ttl === undefined) {
+          const lockedTask = await this.prisma.backgroundWorkerTask.findFirst({
+            where: {
+              workerId: lockedBackgroundWorker.id,
+              runtimeEnvironmentId: request.environment.id,
+              slug: request.taskId,
+            },
+            select: { ttl: true },
+          });
+
+          taskTtl = lockedTask?.ttl;
+        }
       } else {
+        // No queue override - fetch task with queue to get both default queue and TTL
+        const lockedTask = await this.prisma.backgroundWorkerTask.findFirst({
+          where: {
+            workerId: lockedBackgroundWorker.id,
+            runtimeEnvironmentId: request.environment.id,
+            slug: request.taskId,
+          },
+          include: {
+            queue: true,
+          },
+        });
+
+        if (!lockedTask) {
+          throw new ServiceValidationError(
+            `Task '${request.taskId}' not found on locked version '${lockedBackgroundWorker.version ?? "<unknown>"
+            }'.`
+          );
+        }
+
+        taskTtl = lockedTask.ttl;
+
         if (!lockedTask.queue) {
           // This case should ideally be prevented by earlier checks or schema constraints,
           // but handle it defensively.
@@ -134,6 +149,7 @@ export class DefaultQueueManager implements QueueManager {
             }'.`
           );
         }
+
         // Use the task's default queue name
         queueName = lockedTask.queue.name;
         lockedQueueId = lockedTask.queue.id;
