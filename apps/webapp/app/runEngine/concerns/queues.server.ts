@@ -186,11 +186,6 @@ export class DefaultQueueManager implements QueueManager {
     };
   }
 
-  async getQueueName(request: TriggerTaskRequest): Promise<string> {
-    const result = await this.getTaskQueueInfo(request);
-    return result.queueName;
-  }
-
   private async getTaskQueueInfo(
     request: TriggerTaskRequest
   ): Promise<{ queueName: string; taskTtl?: string | null }> {
