@@ -81,6 +81,11 @@ function getFormattedValue(value: unknown, column: OutputColumnMetadata): string
           return formatDurationMilliseconds(value * 1000, { style: "short" });
         }
         break;
+      case "durationNs":
+        if (typeof value === "number") {
+          return formatDurationMilliseconds(value / 1_000_000, { style: "short" });
+        }
+        break;
       case "cost":
         if (typeof value === "number") {
           return formatCurrencyAccurate(value / 100);
@@ -279,6 +284,12 @@ function getDisplayLength(value: unknown, column: OutputColumnMetadata): number 
       case "durationSeconds":
         if (typeof value === "number") {
           const formatted = formatDurationMilliseconds(value * 1000, { style: "short" });
+          return formatted.length;
+        }
+        return 10;
+      case "durationNs":
+        if (typeof value === "number") {
+          const formatted = formatDurationMilliseconds(value / 1_000_000, { style: "short" });
           return formatted.length;
         }
         return 10;
@@ -594,6 +605,15 @@ function CellValue({
           return (
             <span className="tabular-nums">
               {formatDurationMilliseconds(value * 1000, { style: "short" })}
+            </span>
+          );
+        }
+        return <span>{String(value)}</span>;
+      case "durationNs":
+        if (typeof value === "number") {
+          return (
+            <span className="tabular-nums">
+              {formatDurationMilliseconds(value / 1_000_000, { style: "short" })}
             </span>
           );
         }

@@ -1,6 +1,7 @@
 -- CreateTable
 CREATE TABLE "public"."llm_models" (
     "id" TEXT NOT NULL,
+    "friendly_id" TEXT NOT NULL,
     "project_id" TEXT,
     "model_name" TEXT NOT NULL,
     "match_pattern" TEXT NOT NULL,
@@ -34,6 +35,9 @@ CREATE TABLE "public"."llm_prices" (
 
     CONSTRAINT "llm_prices_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateIndex
+CREATE UNIQUE INDEX "llm_models_friendly_id_key" ON "public"."llm_models"("friendly_id");
 
 -- CreateIndex
 CREATE INDEX "llm_models_project_id_idx" ON "public"."llm_models"("project_id");

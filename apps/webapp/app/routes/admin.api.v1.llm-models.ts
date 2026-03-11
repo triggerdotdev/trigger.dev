@@ -2,6 +2,7 @@ import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-r
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 
 async function requireAdmin(request: Request) {
   const authResult = await authenticateApiRequestWithPersonalAccessToken(request);
@@ -93,6 +94,7 @@ export async function action({ request }: ActionFunctionArgs) {
   // Create model first, then tiers with explicit model connection
   const model = await prisma.llmModel.create({
     data: {
+      friendlyId: generateFriendlyId("llm_model"),
       modelName,
       matchPattern,
       startDate: startDate ? new Date(startDate) : null,

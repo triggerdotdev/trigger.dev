@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@trigger.dev/database";
+import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { defaultModelPrices } from "./defaultPrices.js";
 
 export async function seedLlmPricing(prisma: PrismaClient): Promise<{
@@ -25,6 +26,7 @@ export async function seedLlmPricing(prisma: PrismaClient): Promise<{
     // Create model first
     const model = await prisma.llmModel.create({
       data: {
+        friendlyId: generateFriendlyId("llm_model"),
         modelName: modelDef.modelName,
         matchPattern: modelDef.matchPattern,
         startDate: modelDef.startDate ? new Date(modelDef.startDate) : null,

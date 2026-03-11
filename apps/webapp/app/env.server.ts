@@ -1280,6 +1280,7 @@ const EnvironmentSchema = z
     // LLM cost tracking
     LLM_COST_TRACKING_ENABLED: BoolEnv.default(true),
     LLM_PRICING_RELOAD_INTERVAL_MS: z.coerce.number().int().default(5 * 60 * 1000), // 5 minutes
+    LLM_PRICING_SEED_ON_STARTUP: BoolEnv.default(false),
 
     // Bootstrap
     TRIGGER_BOOTSTRAP_ENABLED: z.string().default("0"),

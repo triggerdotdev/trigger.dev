@@ -72,6 +72,7 @@ export class ModelPricingRegistry {
           regex,
           model: {
             id: model.id,
+            friendlyId: model.friendlyId,
             modelName: model.modelName,
             matchPattern: model.matchPattern,
             startDate: model.startDate,
@@ -143,7 +144,7 @@ export class ModelPricingRegistry {
     const outputCost = costDetails["output"] ?? 0;
 
     return {
-      matchedModelId: model.id,
+      matchedModelId: model.friendlyId,
       matchedModelName: model.modelName,
       pricingTierId: tier.id,
       pricingTierName: tier.name,

@@ -22,6 +22,7 @@ export type LlmPricingTierWithPrices = {
 
 export type LlmModelWithPricing = {
   id: string;
+  friendlyId: string;
   modelName: string;
   matchPattern: string;
   startDate: Date | null;
