@@ -186,6 +186,12 @@ export class DefaultQueueManager implements QueueManager {
 
     const defaultQueueName = `task/${taskId}`;
 
+    // When caller provides both a queue override and a per-trigger TTL,
+    // we don't need any DB queries - the per-trigger TTL takes precedence
+    if (overriddenQueueName && body.options?.ttl !== undefined) {
+      return { queueName: overriddenQueueName, taskTtl: undefined };
+    }
+
     // Find the current worker for the environment
     const worker = await findCurrentWorkerFromEnvironment(environment, this.prisma);
 
