@@ -49,7 +49,7 @@ export const fixturesConfig: TestCase[] = [
       externals: [
         {
           name: "import-in-the-middle",
-          version: "1.11.0",
+          version: "3.0.0",
         },
       ],
       files: [{ entry: "src/trigger/helloWorld.ts" }],
@@ -82,7 +82,7 @@ export const fixturesConfig: TestCase[] = [
         },
         {
           name: "import-in-the-middle",
-          version: "1.11.0",
+          version: "3.0.0",
         },
       ],
       files: [{ entry: "src/trigger/ai.ts" }],
@@ -114,7 +114,7 @@ export const fixturesConfig: TestCase[] = [
       externals: [
         {
           name: "import-in-the-middle",
-          version: "1.11.0",
+          version: "3.0.0",
         },
       ],
       files: [{ entry: "src/trigger/decorators.ts" }],
@@ -145,7 +145,7 @@ export const fixturesConfig: TestCase[] = [
       externals: [
         {
           name: "import-in-the-middle",
-          version: "1.11.0",
+          version: "3.0.0",
         },
       ],
       files: [{ entry: "src/reactEmail.tsx" }],
@@ -178,7 +178,7 @@ export const fixturesConfig: TestCase[] = [
       externals: [
         {
           name: "import-in-the-middle",
-          version: "1.11.0",
+          version: "3.0.0",
         },
         {
           name: "mupdf",

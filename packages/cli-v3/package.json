@@ -114,7 +114,7 @@
     "gradient-string": "^2.0.2",
     "has-flag": "^5.0.1",
     "ignore": "^7.0.5",
-    "import-in-the-middle": "1.11.0",
+    "import-in-the-middle": "3.0.0",
     "import-meta-resolve": "^4.1.0",
     "ini": "^5.0.0",
     "json-stable-stringify": "^1.3.0",
