@@ -1,0 +1,209 @@
+import type { PrismaClient } from "@trigger.dev/database";
+import { trail } from "agentcrumbs"; // @crumbs
+import type {
+  LlmModelWithPricing,
+  LlmCostResult,
+  LlmPricingTierWithPrices,
+  PricingCondition,
+} from "./types.js";
+
+const crumb = trail("webapp:llm-pricing"); // @crumbs
+
+type CompiledPattern = {
+  regex: RegExp;
+  model: LlmModelWithPricing;
+};
+
+// Convert POSIX-style (?i) inline flag to JS RegExp 'i' flag
+function compilePattern(pattern: string): RegExp {
+  if (pattern.startsWith("(?i)")) {
+    return new RegExp(pattern.slice(4), "i");
+  }
+  return new RegExp(pattern);
+}
+
+export class ModelPricingRegistry {
+  private _prisma: PrismaClient;
+  private _patterns: CompiledPattern[] = [];
+  private _exactMatchCache: Map<string, LlmModelWithPricing | null> = new Map();
+  private _loaded = false;
+
+  constructor(prisma: PrismaClient) {
+    this._prisma = prisma;
+  }
+
+  get isLoaded(): boolean {
+    return this._loaded;
+  }
+
+  async loadFromDatabase(): Promise<void> {
+    const models = await this._prisma.llmModel.findMany({
+      where: { projectId: null },
+      include: {
+        pricingTiers: {
+          include: { prices: true },
+          orderBy: { priority: "asc" },
+        },
+      },
+      orderBy: [{ startDate: "desc" }],
+    });
+
+    crumb("loaded models from db", { count: models.length }); // @crumbs
+
+    const compiled: CompiledPattern[] = [];
+    let skippedCount = 0; // @crumbs
+
+    for (const model of models) {
+      try {
+        const regex = compilePattern(model.matchPattern);
+        const tiers: LlmPricingTierWithPrices[] = model.pricingTiers.map((tier) => ({
+          id: tier.id,
+          name: tier.name,
+          isDefault: tier.isDefault,
+          priority: tier.priority,
+          conditions: (tier.conditions as PricingCondition[]) ?? [],
+          prices: tier.prices.map((p) => ({
+            usageType: p.usageType,
+            price: Number(p.price),
+          })),
+        }));
+
+        compiled.push({
+          regex,
+          model: {
+            id: model.id,
+            modelName: model.modelName,
+            matchPattern: model.matchPattern,
+            startDate: model.startDate,
+            pricingTiers: tiers,
+          },
+        });
+      } catch {
+        skippedCount++; // @crumbs
+        // Skip models with invalid regex patterns
+        console.warn(`Invalid regex pattern for model ${model.modelName}: ${model.matchPattern}`);
+        crumb("invalid regex pattern", { modelName: model.modelName, pattern: model.matchPattern }); // @crumbs
+      }
+    }
+
+    this._patterns = compiled;
+    this._exactMatchCache.clear();
+    this._loaded = true;
+    crumb("registry loaded", { patterns: compiled.length, skipped: skippedCount }); // @crumbs
+  }
+
+  async reload(): Promise<void> {
+    await this.loadFromDatabase();
+  }
+
+  match(responseModel: string): LlmModelWithPricing | null {
+    if (!this._loaded) return null;
+
+    // Check exact match cache
+    const cached = this._exactMatchCache.get(responseModel);
+    if (cached !== undefined) return cached;
+
+    // Iterate compiled regex patterns
+    for (const { regex, model } of this._patterns) {
+      if (regex.test(responseModel)) {
+        this._exactMatchCache.set(responseModel, model);
+        crumb("model matched", { responseModel, matchedModel: model.modelName }); // @crumbs
+        return model;
+      }
+    }
+
+    // Cache miss
+    this._exactMatchCache.set(responseModel, null);
+    crumb("model not matched", { responseModel }); // @crumbs
+    return null;
+  }
+
+  calculateCost(
+    responseModel: string,
+    usageDetails: Record<string, number>
+  ): LlmCostResult | null {
+    const model = this.match(responseModel);
+    if (!model) return null;
+
+    const tier = this._matchPricingTier(model.pricingTiers, usageDetails);
+    if (!tier) return null;
+
+    const costDetails: Record<string, number> = {};
+    let totalCost = 0;
+
+    for (const priceEntry of tier.prices) {
+      const tokenCount = usageDetails[priceEntry.usageType] ?? 0;
+      if (tokenCount === 0) continue;
+      const cost = tokenCount * priceEntry.price;
+      costDetails[priceEntry.usageType] = cost;
+      totalCost += cost;
+    }
+
+    const inputCost = costDetails["input"] ?? 0;
+    const outputCost = costDetails["output"] ?? 0;
+
+    return {
+      matchedModelId: model.id,
+      matchedModelName: model.modelName,
+      pricingTierId: tier.id,
+      pricingTierName: tier.name,
+      inputCost,
+      outputCost,
+      totalCost,
+      costDetails,
+    };
+  }
+
+  private _matchPricingTier(
+    tiers: LlmPricingTierWithPrices[],
+    usageDetails: Record<string, number>
+  ): LlmPricingTierWithPrices | null {
+    if (tiers.length === 0) return null;
+
+    // Tiers are sorted by priority ascending (lowest first)
+    // Evaluate conditions — first tier whose conditions match wins
+    for (const tier of tiers) {
+      if (tier.conditions.length === 0) {
+        // No conditions = default tier
+        return tier;
+      }
+
+      if (this._evaluateConditions(tier.conditions, usageDetails)) {
+        return tier;
+      }
+    }
+
+    // Fallback to default tier
+    const defaultTier = tiers.find((t) => t.isDefault);
+    return defaultTier ?? tiers[0] ?? null;
+  }
+
+  private _evaluateConditions(
+    conditions: PricingCondition[],
+    usageDetails: Record<string, number>
+  ): boolean {
+    return conditions.every((condition) => {
+      // Find matching usage detail key
+      const regex = new RegExp(condition.usageDetailPattern);
+      const matchingValue = Object.entries(usageDetails).find(([key]) => regex.test(key));
+      const value = matchingValue?.[1] ?? 0;
+
+      switch (condition.operator) {
+        case "gt":
+          return value > condition.value;
+        case "gte":
+          return value >= condition.value;
+        case "lt":
+          return value < condition.value;
+        case "lte":
+          return value <= condition.value;
+        case "eq":
+          return value === condition.value;
+        case "neq":
+          return value !== condition.value;
+        default:
+          return false;
+      }
+    });
+  }
+}

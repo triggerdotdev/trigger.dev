@@ -599,7 +599,151 @@ export const metricsSchema: TableSchema = {
 /**
  * All available schemas for the query editor
  */
-export const querySchemas: TableSchema[] = [runsSchema, metricsSchema];
+/**
+ * Schema definition for the llm_usage table (trigger_dev.llm_usage_v1)
+ */
+export const llmUsageSchema: TableSchema = {
+  name: "llm_usage",
+  clickhouseName: "trigger_dev.llm_usage_v1",
+  description: "LLM token usage and cost data from GenAI spans",
+  timeConstraint: "start_time",
+  tenantColumns: {
+    organizationId: "organization_id",
+    projectId: "project_id",
+    environmentId: "environment_id",
+  },
+  columns: {
+    environment: {
+      name: "environment",
+      clickhouseName: "environment_id",
+      ...column("String", { description: "The environment slug", example: "prod" }),
+      fieldMapping: "environment",
+      customRenderType: "environment",
+    },
+    project: {
+      name: "project",
+      clickhouseName: "project_id",
+      ...column("String", {
+        description: "The project reference, they always start with `proj_`.",
+        example: "proj_howcnaxbfxdmwmxazktx",
+      }),
+      fieldMapping: "project",
+      customRenderType: "project",
+    },
+    run_id: {
+      name: "run_id",
+      ...column("String", {
+        description: "The run ID",
+        customRenderType: "runId",
+        coreColumn: true,
+      }),
+    },
+    task_identifier: {
+      name: "task_identifier",
+      ...column("LowCardinality(String)", {
+        description: "The task identifier",
+        example: "my-task",
+        coreColumn: true,
+      }),
+    },
+    gen_ai_system: {
+      name: "gen_ai_system",
+      ...column("LowCardinality(String)", {
+        description: "AI provider (e.g. openai, anthropic)",
+        example: "openai",
+        coreColumn: true,
+      }),
+    },
+    request_model: {
+      name: "request_model",
+      ...column("String", {
+        description: "The model name requested",
+        example: "gpt-4o",
+      }),
+    },
+    response_model: {
+      name: "response_model",
+      ...column("String", {
+        description: "The model name returned by the provider",
+        example: "gpt-4o-2024-08-06",
+        coreColumn: true,
+      }),
+    },
+    operation_name: {
+      name: "operation_name",
+      ...column("LowCardinality(String)", {
+        description: "Operation type (e.g. chat, completion)",
+        example: "chat",
+      }),
+    },
+    input_tokens: {
+      name: "input_tokens",
+      ...column("UInt64", {
+        description: "Number of input tokens",
+        example: "702",
+      }),
+    },
+    output_tokens: {
+      name: "output_tokens",
+      ...column("UInt64", {
+        description: "Number of output tokens",
+        example: "22",
+      }),
+    },
+    total_tokens: {
+      name: "total_tokens",
+      ...column("UInt64", {
+        description: "Total token count",
+        example: "724",
+      }),
+    },
+    input_cost: {
+      name: "input_cost",
+      ...column("Decimal64(12)", {
+        description: "Input cost in USD",
+        customRenderType: "costInDollars",
+      }),
+    },
+    output_cost: {
+      name: "output_cost",
+      ...column("Decimal64(12)", {
+        description: "Output cost in USD",
+        customRenderType: "costInDollars",
+      }),
+    },
+    total_cost: {
+      name: "total_cost",
+      ...column("Decimal64(12)", {
+        description: "Total cost in USD",
+        customRenderType: "costInDollars",
+        coreColumn: true,
+      }),
+    },
+    pricing_tier_name: {
+      name: "pricing_tier_name",
+      ...column("LowCardinality(String)", {
+        description: "The matched pricing tier name",
+        example: "Standard",
+      }),
+    },
+    start_time: {
+      name: "start_time",
+      ...column("DateTime64(9)", {
+        description: "When the LLM call started",
+        coreColumn: true,
+      }),
+    },
+    duration: {
+      name: "duration",
+      ...column("UInt64", {
+        description: "Span duration in nanoseconds",
+        customRenderType: "durationNs",
+      }),
+    },
+  },
+};
+
+export const querySchemas: TableSchema[] = [runsSchema, metricsSchema, llmUsageSchema];
 
 /**
  * Default query for the query editor
