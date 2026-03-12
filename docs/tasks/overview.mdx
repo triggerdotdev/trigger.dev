@@ -136,6 +136,22 @@ export const longTask = task({
 
 See our [maxDuration guide](/runs/max-duration) for more information.
 
+### `ttl` option
+
+You can set a default time-to-live (TTL) on a task. If a run is not dequeued within this time, it will expire and never execute. This is useful for time-sensitive tasks where stale runs should be discarded.
+
+```ts /trigger/time-sensitive-task.ts
+export const timeSensitiveTask = task({
+  id: "time-sensitive-task",
+  ttl: "10m", // Also accepts a number of seconds, e.g. 600
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+You can override this per-trigger by passing `ttl` in the trigger options, or set a project-wide default in your [trigger.config.ts](/config/config-file#ttl). See [Time-to-live (TTL)](/runs#time-to-live-ttl) for more information.
+
 ## Global lifecycle hooks
 
 <Note>When specifying global lifecycle hooks, we recommend using the `init.ts` file.</Note>
