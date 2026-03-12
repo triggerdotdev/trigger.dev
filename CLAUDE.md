@@ -36,9 +36,15 @@ Test files go next to source files (e.g., `MyService.ts` -> `MyService.test.ts`)
 ```typescript
 import { redisTest, postgresTest, containerTest } from "@internal/testcontainers";
 
-redisTest("should use redis", async ({ redisOptions }) => { /* ... */ });
-postgresTest("should use postgres", async ({ prisma }) => { /* ... */ });
-containerTest("should use both", async ({ prisma, redisOptions }) => { /* ... */ });
+redisTest("should use redis", async ({ redisOptions }) => {
+  /* ... */
+});
+postgresTest("should use postgres", async ({ prisma }) => {
+  /* ... */
+});
+containerTest("should use both", async ({ prisma, redisOptions }) => {
+  /* ... */
+});
 ```
 
 ## Changesets and Server Changes
@@ -162,12 +168,15 @@ mcp__trigger__list_runs(projectRef: "proj_rrkpdguyagvsoktglnod", environment: "d
 Dashboard: http://localhost:3030/orgs/references-9dfd/projects/hello-world-97DT/env/dev/runs
 
 <!-- intent-skills:start -->
+
 # Skill mappings — when working in these areas, load the linked skill file into context.
+
 skills:
-  - task: "Using agentcrumbs for debug tracing, adding crumbs, trails, markers, querying traces, or stripping debug code before merge"
-    load: "node_modules/agentcrumbs/skills/agentcrumbs/SKILL.md"
-  - task: "Setting up agentcrumbs in the project, initializing namespace catalog, running crumbs init"
-    load: "node_modules/agentcrumbs/skills/agentcrumbs/init/SKILL.md"
+
+- task: "Using agentcrumbs for debug tracing, adding crumbs, trails, markers, querying traces, or stripping debug code before merge"
+  load: "node_modules/agentcrumbs/skills/agentcrumbs/SKILL.md"
+- task: "Setting up agentcrumbs in the project, initializing namespace catalog, running crumbs init"
+load: "node_modules/agentcrumbs/skills/agentcrumbs/init/SKILL.md"
 <!-- intent-skills:end -->
 
 ## agentcrumbs
@@ -179,22 +188,21 @@ before merge.
 
 ### Namespaces
 
-| Namespace | Description | Path |
-| --- | --- | --- |
-| `webapp` | Main Remix app — API, dashboard, orchestration | `apps/webapp` |
-| `supervisor` | Task execution container manager | `apps/supervisor` |
-| `coordinator` | Worker coordination service | `apps/coordinator` |
-| `sdk` | Main SDK for writing tasks | `packages/trigger-sdk` |
-| `cli` | CLI and task image bundling | `packages/cli-v3` |
-| `core` | Shared types and subpath exports | `packages/core` |
-| `build` | Build extensions and types | `packages/build` |
-| `react-hooks` | React hooks for realtime/triggering | `packages/react-hooks` |
-| `redis-worker` | Redis-based background job system | `packages/redis-worker` |
-| `run-engine` | Run Engine 2.0 — core run lifecycle | `internal-packages/run-engine` |
-| `database` | Prisma client and schema | `internal-packages/database` |
-| `clickhouse` | ClickHouse client, migrations, analytics | `internal-packages/clickhouse` |
-| `schedule-engine` | Durable cron scheduling | `internal-packages/schedule-engine` |
-| `run-queue` | Run queue management | `internal-packages/run-queue` |
+| Namespace         | Description                                    | Path                                |
+| ----------------- | ---------------------------------------------- | ----------------------------------- |
+| `webapp`          | Main Remix app — API, dashboard, orchestration | `apps/webapp`                       |
+| `supervisor`      | Task execution container manager               | `apps/supervisor`                   |
+| `sdk`             | Main SDK for writing tasks                     | `packages/trigger-sdk`              |
+| `cli`             | CLI and task image bundling                    | `packages/cli-v3`                   |
+| `core`            | Shared types and subpath exports               | `packages/core`                     |
+| `build`           | Build extensions and types                     | `packages/build`                    |
+| `react-hooks`     | React hooks for realtime/triggering            | `packages/react-hooks`              |
+| `redis-worker`    | Redis-based background job system              | `packages/redis-worker`             |
+| `run-engine`      | Run Engine 2.0 — core run lifecycle            | `internal-packages/run-engine`      |
+| `database`        | Prisma client and schema                       | `internal-packages/database`        |
+| `clickhouse`      | ClickHouse client, migrations, analytics       | `internal-packages/clickhouse`      |
+| `schedule-engine` | Durable cron scheduling                        | `internal-packages/schedule-engine` |
+| `run-queue`       | Run queue management                           | `internal-packages/run-queue`       |
 
 Do not invent new namespaces — pick from this table or ask first.
 
@@ -208,7 +216,9 @@ production.
 ### CLI
 
 ```bash
-agentcrumbs collect    # start collector (multi-service)
-agentcrumbs tail       # live tail
-agentcrumbs strip      # remove crumbs before merge
+pnpm exec agentcrumbs collect    # start collector (multi-service)
+pnpm exec agentcrumbs tail --app trigger       # live tail
+pnpm exec agentcrumbs clear --app trigger      # remove crumbs before merge
 ```
+
+The preferred way to query for crumbs is to use `pnpm exec agentcrumbs query --app trigger` with the `--limit` option and cursor pagination, and clear existing crumbs before reproducing a bug via `pnpm exec agentcrumbs clear --app trigger`.
