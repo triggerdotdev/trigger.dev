@@ -1,13 +1,10 @@
 import type { PrismaClient } from "@trigger.dev/database";
-import { trail } from "agentcrumbs"; // @crumbs
 import type {
   LlmModelWithPricing,
   LlmCostResult,
   LlmPricingTierWithPrices,
   PricingCondition,
 } from "./types.js";
-
-const crumb = trail("webapp:llm-pricing"); // @crumbs
 
 type CompiledPattern = {
   regex: RegExp;
@@ -48,10 +45,7 @@ export class ModelPricingRegistry {
       orderBy: [{ startDate: "desc" }],
     });
 
-    crumb("loaded models from db", { count: models.length }); // @crumbs
-
     const compiled: CompiledPattern[] = [];
-    let skippedCount = 0; // @crumbs
 
     for (const model of models) {
       try {
@@ -80,17 +74,14 @@ export class ModelPricingRegistry {
           },
         });
       } catch {
-        skippedCount++; // @crumbs
         // Skip models with invalid regex patterns
         console.warn(`Invalid regex pattern for model ${model.modelName}: ${model.matchPattern}`);
-        crumb("invalid regex pattern", { modelName: model.modelName, pattern: model.matchPattern }); // @crumbs
       }
     }
 
     this._patterns = compiled;
     this._exactMatchCache.clear();
     this._loaded = true;
-    crumb("registry loaded", { patterns: compiled.length, skipped: skippedCount }); // @crumbs
   }
 
   async reload(): Promise<void> {
@@ -108,14 +99,12 @@ export class ModelPricingRegistry {
     for (const { regex, model } of this._patterns) {
       if (regex.test(responseModel)) {
         this._exactMatchCache.set(responseModel, model);
-        crumb("model matched", { responseModel, matchedModel: model.modelName }); // @crumbs
         return model;
       }
     }
 
     // Cache miss
     this._exactMatchCache.set(responseModel, null);
-    crumb("model not matched", { responseModel }); // @crumbs
     return null;
   }
 

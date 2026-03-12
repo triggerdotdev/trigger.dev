@@ -24,6 +24,7 @@ import { engine } from "~/v3/runEngine.server";
 import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { IEventRepository, SpanDetail } from "~/v3/eventRepository/eventRepository.types";
 import { safeJsonParse } from "~/utils/json";
+import { extractAISpanData } from "~/components/runs/v3/ai";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
@@ -543,6 +544,13 @@ export class SpanPresenter extends BasePresenter {
       entity: span.entity,
       metadata: span.metadata,
       triggeredRuns,
+      aiData:
+        span.properties && typeof span.properties === "object"
+          ? extractAISpanData(
+              span.properties as Record<string, unknown>,
+              span.duration / 1_000_000
+            )
+          : undefined,
     };
 
     switch (span.entity.type) {
@@ -665,6 +673,12 @@ export class SpanPresenter extends BasePresenter {
         };
       }
       default:
+        if (data.aiData) {
+          return {
+            ...data,
+            entity: { type: "ai-generation" as const, object: data.aiData },
+          };
+        }
         return { ...data, entity: null };
     }
   }

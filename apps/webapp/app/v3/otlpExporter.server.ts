@@ -395,7 +395,22 @@ function convertSpansToCreateableEvents(
         );
 
         const runTags = extractArrayAttribute(span.attributes ?? [], SemanticInternalAttributes.RUN_TAGS);
-        if (runTags && runTags.length > 0) { crumbOtlp("extracted runTags from span", { runTags, spanId: binaryToHex(span.spanId) }); } // @crumbs
+
+        // #region @crumbs
+        if (span.attributes) {
+          crumbOtlp("span raw OTEL attrs", {
+            spanName: span.name,
+            spanId: binaryToHex(span.spanId),
+            attrCount: span.attributes.length,
+            attrs: span.attributes.map((a) => ({
+              key: a.key,
+              type: a.value?.stringValue !== undefined ? "string" : a.value?.intValue !== undefined ? "int" : a.value?.doubleValue !== undefined ? "double" : a.value?.boolValue !== undefined ? "bool" : a.value?.arrayValue ? "array" : a.value?.bytesValue ? "bytes" : "unknown",
+              ...(a.value?.arrayValue ? { arrayLen: a.value.arrayValue.values?.length } : {}),
+              ...(a.value?.stringValue !== undefined ? { strLen: a.value.stringValue.length } : {}),
+            })),
+          });
+        }
+        // #endregion @crumbs
 
         const properties =
           truncateAttributes(
@@ -715,6 +730,8 @@ function convertKeyValueItemsToMap(
         ? attribute.value.boolValue
         : isBytesValue(attribute.value)
         ? binaryToHex(attribute.value.bytesValue)
+        : isArrayValue(attribute.value)
+        ? serializeArrayValue(attribute.value.arrayValue!.values)
         : undefined;
 
       return map;
@@ -751,6 +768,8 @@ function convertSelectedKeyValueItemsToMap(
         ? attribute.value.boolValue
         : isBytesValue(attribute.value)
         ? binaryToHex(attribute.value.bytesValue)
+        : isArrayValue(attribute.value)
+        ? serializeArrayValue(attribute.value.arrayValue!.values)
         : undefined;
 
       return map;
@@ -1062,6 +1081,31 @@ function isBytesValue(value: AnyValue | undefined): value is { bytesValue: Buffe
   if (!value) return false;
 
   return Buffer.isBuffer(value.bytesValue);
+}
+
+function isArrayValue(
+  value: AnyValue | undefined
+): value is { arrayValue: { values: AnyValue[] } } {
+  if (!value) return false;
+
+  return value.arrayValue != null && Array.isArray(value.arrayValue.values);
+}
+
+/**
+ * Serialize an OTEL array value into a JSON string.
+ * For arrays of strings, produces a JSON array: `["item1","item2"]`
+ * For mixed types, extracts primitives and serializes.
+ */
+function serializeArrayValue(values: AnyValue[]): string {
+  const items = values.map((v) => {
+    if (isStringValue(v)) return v.stringValue;
+    if (isIntValue(v)) return Number(v.intValue);
+    if (isDoubleValue(v)) return v.doubleValue;
+    if (isBoolValue(v)) return v.boolValue;
+    return null;
+  });
+
+  return JSON.stringify(items);
 }
 
 function binaryToHex(buffer: Buffer | string): string;
