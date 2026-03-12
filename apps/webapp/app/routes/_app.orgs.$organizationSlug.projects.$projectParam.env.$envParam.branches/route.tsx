@@ -128,11 +128,14 @@ export const schema = CreateBranchOptions.and(
 const PurchaseSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("purchase"),
-    amount: z.coerce.number().min(0, "Amount must be 0 or more"),
+    amount: z.coerce.number().int("Must be a whole number").min(0, "Amount must be 0 or more"),
   }),
   z.object({
     action: z.literal("quota-increase"),
-    amount: z.coerce.number().min(1, "Amount must be greater than 0"),
+    amount: z.coerce
+      .number()
+      .int("Must be a whole number")
+      .min(1, "Amount must be greater than 0"),
   }),
 ]);
 
