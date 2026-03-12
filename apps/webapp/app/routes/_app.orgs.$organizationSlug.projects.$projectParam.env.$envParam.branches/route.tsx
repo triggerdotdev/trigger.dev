@@ -246,6 +246,8 @@ export default function Page() {
     !plan.v3Subscription.plan.limits.branches.canExceed;
   const canUpgrade =
     plan?.v3Subscription?.plan && !plan.v3Subscription.plan.limits.branches.canExceed;
+  const atBranchLimit = limits.used >= limits.limit;
+  const usageRatio = limits.limit > 0 ? Math.min(limits.used / limits.limit, 1) : 0;
 
   if (!branchableEnvironment) {
     return (
@@ -461,20 +463,20 @@ export default function Page() {
                           />
                           <circle
                             className={`fill-none ${
-                              requiresUpgrade ? "stroke-error" : "stroke-success"
+                              atBranchLimit ? "stroke-error" : "stroke-success"
                             }`}
                             strokeWidth="4"
                             r="10"
                             cx="12"
                             cy="12"
-                            strokeDasharray={`${(limits.used / limits.limit) * 62.8} 62.8`}
+                            strokeDasharray={`${usageRatio * 62.8} 62.8`}
                             strokeDashoffset="0"
                             strokeLinecap="round"
                           />
                         </svg>
                       </div>
                     }
-                    content={`${Math.round((limits.used / limits.limit) * 100)}%`}
+                    content={`${Math.round(usageRatio * 100)}%`}
                   />
                   <div className="flex w-full items-center justify-between gap-6">
                     {requiresUpgrade ? (
@@ -484,7 +486,7 @@ export default function Page() {
                       </Header3>
                     ) : (
                       <div className="flex items-center gap-1">
-                        <Header3>
+                        <Header3 className={atBranchLimit ? "text-error" : undefined}>
                           You've used {limits.used}/{limits.limit} of your branches
                         </Header3>
                         <InfoIconTooltip content="Archived branches don't count towards your limit." />
