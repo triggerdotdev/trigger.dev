@@ -27,6 +27,7 @@ export type ErrorGroupOptions = {
   userId?: string;
   projectId: string;
   fingerprint: string;
+  versions?: string[];
   runsPageSize?: number;
   period?: string;
   from?: number;
@@ -39,6 +40,7 @@ export const ErrorGroupOptionsSchema = z.object({
   userId: z.string().optional(),
   projectId: z.string(),
   fingerprint: z.string(),
+  versions: z.array(z.string()).optional(),
   runsPageSize: z.number().int().positive().max(1000).optional(),
   period: z.string().optional(),
   from: z.number().int().nonnegative().optional(),
@@ -72,6 +74,7 @@ export type ErrorGroupSummary = {
 
 export type ErrorGroupOccurrences = Awaited<ReturnType<ErrorGroupPresenter["getOccurrences"]>>;
 export type ErrorGroupActivity = ErrorGroupOccurrences["data"];
+export type ErrorGroupActivityVersions = ErrorGroupOccurrences["versions"];
 
 export class ErrorGroupPresenter extends BasePresenter {
   constructor(
@@ -89,6 +92,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       userId,
       projectId,
       fingerprint,
+      versions,
       runsPageSize = DEFAULT_RUNS_PAGE_SIZE,
       period,
       from,
@@ -117,6 +121,7 @@ export class ErrorGroupPresenter extends BasePresenter {
         userId,
         projectId,
         fingerprint,
+        versions,
         pageSize: runsPageSize,
         from: time.from.getTime(),
         to: time.to.getTime(),
@@ -140,8 +145,8 @@ export class ErrorGroupPresenter extends BasePresenter {
   }
 
   /**
-   * Returns bucketed occurrence counts for a single fingerprint over a time range.
-   * Granularity is determined automatically from the range span.
+   * Returns bucketed occurrence counts for a single fingerprint over a time range,
+   * grouped by task_version for stacked charts.
    */
   public async getOccurrences(
     organizationId: string,
@@ -149,14 +154,17 @@ export class ErrorGroupPresenter extends BasePresenter {
     environmentId: string,
     fingerprint: string,
     from: Date,
-    to: Date
+    to: Date,
+    versions?: string[]
   ): Promise<{
-    data: Array<{ date: Date; count: number }>;
+    data: Array<Record<string, number | Date>>;
+    versions: string[];
   }> {
     const granularityMs = errorGroupGranularity.getTimeGranularityMs(from, to);
     const intervalExpr = msToClickHouseInterval(granularityMs);
 
-    const queryBuilder = this.logsClickhouse.errors.createOccurrencesQueryBuilder(intervalExpr);
+    const queryBuilder =
+      this.logsClickhouse.errors.createOccurrencesByVersionQueryBuilder(intervalExpr);
 
     queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
     queryBuilder.where("project_id = {projectId: String}", { projectId });
@@ -169,7 +177,11 @@ export class ErrorGroupPresenter extends BasePresenter {
       toTimeMs: to.getTime(),
     });
 
-    queryBuilder.groupBy("error_fingerprint, bucket_epoch");
+    if (versions && versions.length > 0) {
+      queryBuilder.where("task_version IN {versions: Array(String)}", { versions });
+    }
+
+    queryBuilder.groupBy("error_fingerprint, task_version, bucket_epoch");
     queryBuilder.orderBy("bucket_epoch ASC");
 
     const [queryError, records] = await queryBuilder.execute();
@@ -186,17 +198,27 @@ export class ErrorGroupPresenter extends BasePresenter {
       buckets.push(epoch);
     }
 
-    const byBucket = new Map<number, number>();
+    // Collect distinct versions and index results by (epoch, version)
+    const versionSet = new Set<string>();
+    const byBucketVersion = new Map<string, number>();
     for (const row of records ?? []) {
-      byBucket.set(row.bucket_epoch, (byBucket.get(row.bucket_epoch) ?? 0) + row.count);
+      const version = row.task_version || "unknown";
+      versionSet.add(version);
+      const key = `${row.bucket_epoch}:${version}`;
+      byBucketVersion.set(key, (byBucketVersion.get(key) ?? 0) + row.count);
     }
 
-    return {
-      data: buckets.map((epoch) => ({
-        date: new Date(epoch * 1000),
-        count: byBucket.get(epoch) ?? 0,
-      })),
-    };
+    const sortedVersions = sortVersionsDescending([...versionSet]);
+
+    const data = buckets.map((epoch) => {
+      const point: Record<string, number | Date> = { date: new Date(epoch * 1000) };
+      for (const version of sortedVersions) {
+        point[version] = byBucketVersion.get(`${epoch}:${version}`) ?? 0;
+      }
+      return point;
+    });
+
+    return { data, versions: sortedVersions };
   }
 
   private async getSummary(
@@ -275,6 +297,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       userId?: string;
       projectId: string;
       fingerprint: string;
+      versions?: string[];
       pageSize: number;
       from?: number;
       to?: number;
@@ -289,6 +312,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       projectId: options.projectId,
       rootOnly: false,
       errorId: ErrorId.toFriendlyId(options.fingerprint),
+      versions: options.versions,
       pageSize: options.pageSize,
       from: options.from,
       to: options.to,

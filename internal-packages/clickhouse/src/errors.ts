@@ -314,3 +314,39 @@ export function createErrorOccurrencesQueryBuilder(
     settings
   );
 }
+
+export const ErrorOccurrencesByVersionQueryResult = z.object({
+  error_fingerprint: z.string(),
+  task_version: z.string(),
+  bucket_epoch: z.number(),
+  count: z.number(),
+});
+
+export type ErrorOccurrencesByVersionQueryResult = z.infer<
+  typeof ErrorOccurrencesByVersionQueryResult
+>;
+
+/**
+ * Creates a query builder for bucketed error occurrence counts grouped by task_version.
+ * Used for stacked-by-version activity charts on the error detail page.
+ */
+export function createErrorOccurrencesByVersionQueryBuilder(
+  ch: ClickhouseReader,
+  intervalExpr: string,
+  settings?: ClickHouseSettings
+): ClickhouseQueryBuilder<ErrorOccurrencesByVersionQueryResult> {
+  return new ClickhouseQueryBuilder(
+    "getErrorOccurrencesByVersion",
+    `
+      SELECT
+        error_fingerprint,
+        task_version,
+        toUnixTimestamp(toStartOfInterval(minute, ${intervalExpr})) as bucket_epoch,
+        sum(count) as count
+      FROM trigger_dev.error_occurrences_v1
+    `,
+    ch,
+    ErrorOccurrencesByVersionQueryResult,
+    settings
+  );
+}

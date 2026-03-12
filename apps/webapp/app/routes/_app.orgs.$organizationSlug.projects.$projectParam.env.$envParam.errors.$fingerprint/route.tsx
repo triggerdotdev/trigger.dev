@@ -14,6 +14,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   ErrorGroupPresenter,
   type ErrorGroupActivity,
+  type ErrorGroupActivityVersions,
   type ErrorGroupOccurrences,
   type ErrorGroupSummary,
 } from "~/presenters/v3/ErrorGroupPresenter.server";
@@ -43,9 +44,11 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { CopyableText } from "~/components/primitives/CopyableText";
+import { LogsVersionFilter } from "~/components/logs/LogsVersionFilter";
+import { getSeriesColor } from "~/components/code/chartColors";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
@@ -82,6 +85,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const toStr = url.searchParams.get("to");
   const from = fromStr ? parseInt(fromStr, 10) : undefined;
   const to = toStr ? parseInt(toStr, 10) : undefined;
+  const versions = url.searchParams.getAll("versions").filter((v) => v.length > 0);
   const cursor = url.searchParams.get("cursor") ?? undefined;
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
@@ -93,6 +97,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       userId,
       projectId: project.id,
       fingerprint,
+      versions: versions.length > 0 ? versions : undefined,
       period,
       from,
       to,
@@ -115,9 +120,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       environment.id,
       fingerprint,
       time.from,
-      time.to
+      time.to,
+      versions.length > 0 ? versions : undefined
     )
-    .catch(() => ({ data: [] as ErrorGroupActivity }));
+    .catch(() => ({ data: [] as ErrorGroupActivity, versions: [] as string[] }));
 
   return typeddefer({
     data: detailPromise,
@@ -149,6 +155,9 @@ export default function Page() {
     if (period) carry.set("period", period);
     if (from) carry.set("from", from);
     if (to) carry.set("to", to);
+    for (const v of searchParams.getAll("versions")) {
+      if (v) carry.append("versions", v);
+    }
     const qs = carry.toString();
     return qs ? `${base}?${qs}` : base;
   }, [organizationSlug, projectParam, envParam, searchParams.toString()]);
@@ -232,7 +241,7 @@ function ErrorGroupDetail({
   envParam: string;
   fingerprint: string;
 }) {
-  const { value } = useSearchParams();
+  const { value, values } = useSearchParams();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -252,11 +261,13 @@ function ErrorGroupDetail({
 
   const fromValue = value("from") ?? undefined;
   const toValue = value("to") ?? undefined;
+  const selectedVersions = values("versions").filter((v) => v !== "");
 
   const filters: TaskRunListSearchFilters = {
     period: value("period") ?? undefined,
     from: fromValue ? parseInt(fromValue, 10) : undefined,
     to: toValue ? parseInt(toValue, 10) : undefined,
+    versions: selectedVersions.length > 0 ? selectedVersions : undefined,
     rootOnly: false,
     errorId: ErrorId.toFriendlyId(fingerprint),
   };
@@ -318,19 +329,19 @@ function ErrorGroupDetail({
 
       {/* Activity chart */}
       <div className="flex flex-col gap-3 overflow-hidden border-b border-grid-bright px-4 py-3">
-        <div className="flex items-center">
+        <div className="flex items-center gap-1">
           <TimeFilter defaultPeriod="7d" labelName="Occurred" />
+          <LogsVersionFilter />
         </div>
 
         <Suspense fallback={<ActivityChartBlankState />}>
           <TypedAwait resolve={activity} errorElement={<ActivityChartBlankState />}>
-            {(result) =>
-              result.data.length > 0 ? (
-                <ActivityChart activity={result.data} />
-              ) : (
-                <ActivityChartBlankState />
-              )
-            }
+            {(result) => {
+              if (result.data.length > 0 && result.versions.length > 0) {
+                return <ActivityChart activity={result.data} versions={result.versions} />;
+              }
+              return <ActivityChartBlankState />;
+            }}
           </TypedAwait>
         </Suspense>
       </div>
@@ -369,10 +380,10 @@ function ErrorGroupDetail({
         {runList ? (
           <TaskRunsTable
             total={runList.runs.length}
-            hasFilters={false}
+            hasFilters={selectedVersions.length > 0}
             filters={{
               tasks: [],
-              versions: [],
+              versions: selectedVersions,
               statuses: [],
               from: undefined,
               to: undefined,
@@ -392,14 +403,24 @@ function ErrorGroupDetail({
   );
 }
 
-const activityChartConfig: ChartConfig = {
-  count: {
-    label: "Occurrences",
-    color: "#6366F1",
-  },
-};
+function ActivityChart({
+  activity,
+  versions,
+}: {
+  activity: ErrorGroupActivity;
+  versions: ErrorGroupActivityVersions;
+}) {
+  const chartConfig = useMemo(() => {
+    const cfg: ChartConfig = {};
+    for (let i = 0; i < versions.length; i++) {
+      cfg[versions[i]] = {
+        label: versions[i],
+        color: getSeriesColor(i),
+      };
+    }
+    return cfg;
+  }, [versions]);
 
-function ActivityChart({ activity }: { activity: ErrorGroupActivity }) {
   const data = useMemo(
     () =>
       activity.map((d) => ({
@@ -453,13 +474,14 @@ function ActivityChart({ activity }: { activity: ErrorGroupActivity }) {
 
   return (
     <Chart.Root
-      config={activityChartConfig}
+      config={chartConfig}
       data={data}
       dataKey="__timestamp"
-      series={["count"]}
+      series={versions}
       fillContainer
     >
       <Chart.Bar
+        stackId="versions"
         xAxisProps={{
           tickFormatter: xAxisFormatter,
           ticks: midnightTicks,
