@@ -759,6 +759,16 @@ export function setupBatchQueueCallbacks() {
             span.end();
             return { success: true as const, runId: result.run.friendlyId };
           } else {
+            logger.error("[BatchQueue] TriggerTaskService returned undefined", {
+              batchId,
+              friendlyId,
+              itemIndex,
+              task: item.task,
+              environmentId: meta.environmentId,
+              attempt,
+              isFinalAttempt,
+            });
+
             span.setAttribute("batch.result.error", "TriggerTaskService returned undefined");
 
             // Only create a pre-failed run on the final attempt; otherwise let the retry mechanism handle it
@@ -795,6 +805,18 @@ export function setupBatchQueueCallbacks() {
           }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
+
+          logger.error("[BatchQueue] Failed to trigger batch item", {
+            batchId,
+            friendlyId,
+            itemIndex,
+            task: item.task,
+            environmentId: meta.environmentId,
+            attempt,
+            isFinalAttempt,
+            error,
+          });
+
           span.setAttribute("batch.result.error", errorMessage);
           span.recordException(error instanceof Error ? error : new Error(String(error)));
 
