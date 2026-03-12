@@ -400,6 +400,7 @@ export const aiChat = chat.task({
       },
       experimental_telemetry: {
         isEnabled: true,
+        metadata: clientData?.userId ? { userId: clientData.userId } : undefined,
       },
     });
   },
