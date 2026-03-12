@@ -1,7 +1,4 @@
-import { trail } from "agentcrumbs"; // @crumbs
 import type { CreateEventInput, LlmUsageData } from "../eventRepository/eventRepository.types";
-
-const crumb = trail("webapp:llm-enrich"); // @crumbs
 
 // Registry interface — matches ModelPricingRegistry from @internal/llm-pricing
 type CostRegistry = {
@@ -48,25 +45,6 @@ function enrichLlmCost(event: CreateEventInput): void {
   const props = event.properties;
   if (!props) return;
 
-  // #region @crumbs
-  // Log all spans (not just gen_ai) that have conversation/chat/session/user context
-  if (!event.isPartial) {
-    const contextKeys = Object.entries(props).filter(([k]) =>
-      k.startsWith("ai.telemetry.") || k.startsWith("gen_ai.conversation") ||
-      k.startsWith("chat.") || k.includes("session") || k.includes("user")
-    );
-    if (contextKeys.length > 0) {
-      crumb("span with context", {
-        spanId: event.spanId,
-        parentId: event.parentId,
-        runId: event.runId,
-        message: event.message,
-        contextAttrs: Object.fromEntries(contextKeys),
-      });
-    }
-  }
-  // #endregion @crumbs
-
   // Only enrich span-like events (INTERNAL, SERVER, CLIENT, CONSUMER, PRODUCER — not LOG, UNSPECIFIED)
   const enrichableKinds = new Set(["INTERNAL", "SERVER", "CLIENT", "CONSUMER", "PRODUCER"]);
   if (!enrichableKinds.has(event.kind as string)) return;
@@ -86,17 +64,8 @@ function enrichLlmCost(event: CreateEventInput): void {
         : null;
 
   if (!responseModel) {
-    // #region @crumbs
-    const genAiModel = props["gen_ai.response.model"];
-    const aiModel = props["ai.model.id"];
-    if (genAiModel || aiModel) {
-      crumb("responseModel null despite gen_ai attrs", { genAiModel, genAiModelType: typeof genAiModel, aiModel, spanId: event.spanId });
-    }
-    // #endregion @crumbs
     return;
   }
-
-  crumb("llm span detected", { responseModel, kind: event.kind, spanId: event.spanId }); // @crumbs
 
   // Extract usage details, normalizing attribute names
   const usageDetails = extractUsageDetails(props);
@@ -104,19 +73,15 @@ function enrichLlmCost(event: CreateEventInput): void {
   // Need at least some token usage
   const hasTokens = Object.values(usageDetails).some((v) => v > 0);
   if (!hasTokens) {
-    crumb("llm span skipped: no tokens", { responseModel, spanId: event.spanId }); // @crumbs
     return;
   }
 
   if (!_registry?.isLoaded) {
-    crumb("llm span skipped: registry not loaded", { responseModel }); // @crumbs
     return;
   }
 
   const cost = _registry.calculateCost(responseModel, usageDetails);
   if (!cost) return;
-
-  crumb("llm cost enriched", { responseModel, totalCost: cost.totalCost, matchedModel: cost.matchedModelName, spanId: event.spanId }); // @crumbs
 
   // Add trigger.llm.* attributes to the span
   event.properties = {
@@ -164,21 +129,6 @@ function enrichLlmCost(event: CreateEventInput): void {
       metadata[key.slice("ai.telemetry.metadata.".length)] = value;
     }
   }
-
-  // #region @crumbs
-  const metadataKeyCount = Object.keys(metadata).length;
-  if (metadataKeyCount > 0) {
-    crumb("llm metadata built", {
-      spanId: event.spanId,
-      runId: event.runId,
-      responseModel,
-      metadataKeyCount,
-      metadataKeys: Object.keys(metadata),
-      fromRunTags: event.runTags?.length ?? 0,
-      fromTelemetry: metadataKeyCount - (event.runTags?.filter((t) => t.includes(":")).length ?? 0),
-    });
-  }
-  // #endregion @crumbs
 
   // Set _llmUsage side-channel for dual-write to llm_usage_v1
   const llmUsage: LlmUsageData = {

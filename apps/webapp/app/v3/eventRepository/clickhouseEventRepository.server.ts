@@ -8,9 +8,7 @@ import type {
   TaskEventV2Input,
 } from "@internal/clickhouse";
 import { Attributes, startSpan, trace, Tracer } from "@internal/tracing";
-import { trail } from "agentcrumbs"; // @crumbs
 
-const crumb = trail("webapp:llm-dual-write"); // @crumbs
 import { createJsonErrorObject } from "@trigger.dev/core/v3/errors";
 import { serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import {
@@ -233,7 +231,6 @@ export class ClickhouseEventRepository implements IEventRepository {
   }
 
   async #flushLlmUsageBatch(flushId: string, rows: LlmUsageV1Input[]) {
-    crumb("flushing llm usage batch", { flushId, rows: rows.length }); // @crumbs
 
     const [insertError] = await this._clickhouse.llmUsage.insert(rows, {
       params: {
@@ -242,11 +239,8 @@ export class ClickhouseEventRepository implements IEventRepository {
     });
 
     if (insertError) {
-      crumb("llm usage batch insert failed", { flushId, error: String(insertError) }); // @crumbs
       throw insertError;
     }
-
-    crumb("llm usage batch inserted", { flushId, rows: rows.length }); // @crumbs
 
     logger.info("ClickhouseEventRepository.flushLlmUsageBatch Inserted LLM usage batch", {
       rows: rows.length,
@@ -312,7 +306,6 @@ export class ClickhouseEventRepository implements IEventRepository {
       .map((e) => this.#createLlmUsageInput(e));
 
     if (llmUsageRows.length > 0) {
-      crumb("queuing llm usage rows", { count: llmUsageRows.length, firstRunId: llmUsageRows[0]?.run_id, metadataKeys: llmUsageRows.map((r) => Object.keys(r.metadata)) }); // @crumbs
       this._llmUsageFlushScheduler.addToBatch(llmUsageRows);
     }
   }
@@ -1381,19 +1374,21 @@ export class ClickhouseEventRepository implements IEventRepository {
         }
       }
 
-      if (
-        (span.properties == null ||
-          (typeof span.properties === "object" && Object.keys(span.properties).length === 0)) &&
-        typeof record.attributes_text === "string"
-      ) {
-        const parsedAttributes = this.#parseAttributes(record.attributes_text);
-        const resourceAttributes = parsedAttributes["$resource"];
+      if (typeof record.attributes_text === "string") {
+        const shouldUpdate =
+          span.properties == null ||
+          (typeof span.properties === "object" && Object.keys(span.properties).length === 0) ||
+          (record.kind === "SPAN" && record.status !== "PARTIAL");
 
-        // Remove the $resource key from the attributes
-        delete parsedAttributes["$resource"];
+        if (shouldUpdate) {
+          const parsedAttributes = this.#parseAttributes(record.attributes_text);
+          const resourceAttributes = parsedAttributes["$resource"];
 
-        span.properties = parsedAttributes;
-        span.resourceProperties = resourceAttributes as Record<string, unknown> | undefined;
+          delete parsedAttributes["$resource"];
+
+          span.properties = parsedAttributes;
+          span.resourceProperties = resourceAttributes as Record<string, unknown> | undefined;
+        }
       }
     }
 
