@@ -1,5 +1,5 @@
 import { BaseService } from "./baseService.server";
-import { tryCatch } from "@trigger.dev/core";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { setBranchesAddOn } from "~/services/platform.v3.server";
 import assertNever from "assert-never";
 import { sendToPlain } from "~/utils/plain.server";
