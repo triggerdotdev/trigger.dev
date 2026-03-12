@@ -3,7 +3,7 @@ import { parse } from "@conform-to/zod";
 import { ArrowUpCircleIcon, CheckIcon, EnvelopeIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useActionData, useLocation, useNavigation, useSearchParams } from "@remix-run/react";
+import { Form, useActionData, useFetcher, useLocation, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { GitMeta, tryCatch } from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useState } from "react";
@@ -184,13 +184,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json(submission);
     }
 
-    return redirectWithSuccessMessage(
-      `${redirectPath}?purchaseSuccess=true`,
-      request,
-      submission.value.action === "purchase"
-        ? "Preview branches updated successfully"
-        : "Requested extra preview branches, we'll get back to you soon."
-    );
+    return json({ ok: true } as const);
   }
 
   const submission = parse(formData, { schema });
@@ -654,7 +648,11 @@ function PurchaseBranchesModal({
   planBranchLimit: number;
   triggerButton?: React.ReactNode;
 }) {
-  const lastSubmission = useActionData();
+  const fetcher = useFetcher();
+  const lastSubmission =
+    fetcher.data && typeof fetcher.data === "object" && "intent" in fetcher.data
+      ? fetcher.data
+      : undefined;
   const [form, { amount }] = useForm({
     id: "purchase-branches",
     lastSubmission: lastSubmission as any,
@@ -665,21 +663,18 @@ function PurchaseBranchesModal({
   });
 
   const [amountValue, setAmountValue] = useState(extraBranches);
-  const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle" && navigation.formMethod === "POST";
+  useEffect(() => {
+    setAmountValue(extraBranches);
+  }, [extraBranches]);
+  const isLoading = fetcher.state !== "idle";
 
-  const [searchParams, setSearchParams] = useSearchParams();
-  const purchaseSuccess = searchParams.get("purchaseSuccess");
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    if (purchaseSuccess) {
+    const data = fetcher.data;
+    if (fetcher.state === "idle" && data !== null && typeof data === "object" && "ok" in data && data.ok) {
       setOpen(false);
-      setSearchParams((s) => {
-        s.delete("purchaseSuccess");
-        return s;
-      });
     }
-  }, [purchaseSuccess, setSearchParams]);
+  }, [fetcher.state, fetcher.data]);
 
   const state = updateBranchState({
     value: amountValue,
@@ -705,7 +700,7 @@ function PurchaseBranchesModal({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>{title}</DialogHeader>
-        <Form method="post" {...form.props}>
+        <fetcher.Form method="post" {...form.props}>
           <input type="hidden" name="_formType" value="purchase-branches" />
           <div className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-1">
@@ -861,7 +856,7 @@ function PurchaseBranchesModal({
               </DialogClose>
             }
           />
-        </Form>
+        </fetcher.Form>
       </DialogContent>
     </Dialog>
   );
