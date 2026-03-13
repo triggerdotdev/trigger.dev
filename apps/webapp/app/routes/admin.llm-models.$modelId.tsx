@@ -1,4 +1,4 @@
-import { Form, useNavigate } from "@remix-run/react";
+import { Form, useActionData, useNavigate } from "@remix-run/react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -130,6 +130,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
 export default function AdminLlmModelDetailRoute() {
   const { model } = useTypedLoaderData<typeof loader>();
+  const actionData = useActionData<{ success?: boolean; error?: string; details?: unknown[] }>();
   const navigate = useNavigate();
 
   const [modelName, setModelName] = useState(model.modelName);
@@ -272,6 +273,17 @@ export default function AdminLlmModelDetailRoute() {
                 />
               ))}
             </div>
+
+            {actionData?.error && (
+              <div className="rounded-md bg-red-500/10 border border-red-500/30 p-3 text-sm text-red-400">
+                {actionData.error}
+                {actionData.details && (
+                  <pre className="mt-1 text-xs text-red-300/70 overflow-auto">
+                    {JSON.stringify(actionData.details, null, 2)}
+                  </pre>
+                )}
+              </div>
+            )}
 
             {/* Actions */}
             <div className="flex items-center gap-2 border-t border-grid-dimmed pt-4">

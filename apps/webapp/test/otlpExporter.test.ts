@@ -638,5 +638,69 @@ describe("OTLPExporter", () => {
       expect($events[0]._llmUsage.inputTokens).toBe(500);
       expect($events[0]._llmUsage.outputTokens).toBe(100);
     });
+
+    it("should prefer gen_ai.usage.total_tokens over input+output sum", () => {
+      const events = [
+        makeGenAiEvent({
+          "gen_ai.usage.input_tokens": 100,
+          "gen_ai.usage.output_tokens": 50,
+          "gen_ai.usage.total_tokens": 200, // higher than 100+50 (e.g. includes cached/reasoning)
+        }),
+      ];
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      const event = $events[0];
+
+      // Pills should show the explicit total, not input+output
+      expect(event.style.accessory.items[1]).toEqual({
+        text: "200",
+        icon: "tabler-hash",
+      });
+
+      // LLM usage should also use the explicit total
+      expect(event._llmUsage.totalTokens).toBe(200);
+      expect(event._llmUsage.inputTokens).toBe(100);
+      expect(event._llmUsage.outputTokens).toBe(50);
+    });
+
+    it("should fall back to input+output when total_tokens is absent", () => {
+      const events = [
+        makeGenAiEvent({
+          "gen_ai.usage.input_tokens": 300,
+          "gen_ai.usage.output_tokens": 75,
+        }),
+      ];
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      const event = $events[0];
+
+      expect(event.style.accessory.items[1]).toEqual({
+        text: "375",
+        icon: "tabler-hash",
+      });
+      expect(event._llmUsage.totalTokens).toBe(375);
+    });
+
+    it("should use total_tokens when only total is present without input/output breakdown", () => {
+      const events = [
+        makeGenAiEvent({
+          "gen_ai.usage.input_tokens": undefined,
+          "gen_ai.usage.output_tokens": undefined,
+          "gen_ai.usage.total_tokens": 500,
+        }),
+      ];
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      const event = $events[0];
+
+      // Pills should show 500, not 0
+      expect(event.style.accessory.items[1]).toEqual({
+        text: "500",
+        icon: "tabler-hash",
+      });
+    });
   });
 });

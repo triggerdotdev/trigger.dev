@@ -746,7 +746,6 @@ export const llmUsageSchema: TableSchema = {
         description:
           "Key-value metadata from run tags (key:value format) and AI SDK telemetry metadata. Access keys with dot notation (metadata.userId) or bracket syntax (metadata['userId']).",
         example: "{'userId':'user_123','org':'acme'}",
-        coreColumn: true,
       }),
     },
   },

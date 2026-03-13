@@ -162,22 +162,20 @@ export class ModelPricingRegistry {
   ): LlmPricingTierWithPrices | null {
     if (tiers.length === 0) return null;
 
-    // Tiers are sorted by priority ascending (lowest first)
-    // Evaluate conditions — first tier whose conditions match wins
+    // Tiers are sorted by priority ascending (lowest first).
+    // First pass: evaluate tiers that have conditions — first match wins.
     for (const tier of tiers) {
-      if (tier.conditions.length === 0) {
-        // No conditions = default tier
-        return tier;
-      }
-
-      if (this._evaluateConditions(tier.conditions, usageDetails)) {
+      if (tier.conditions.length > 0 && this._evaluateConditions(tier.conditions, usageDetails)) {
         return tier;
       }
     }
 
-    // Fallback to default tier
+    // Second pass: fall back to the default tier, or first tier with no conditions
     const defaultTier = tiers.find((t) => t.isDefault);
-    return defaultTier ?? tiers[0] ?? null;
+    if (defaultTier) return defaultTier;
+
+    const unconditional = tiers.find((t) => t.conditions.length === 0);
+    return unconditional ?? tiers[0] ?? null;
   }
 
   private _evaluateConditions(

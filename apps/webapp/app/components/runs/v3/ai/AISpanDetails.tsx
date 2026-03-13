@@ -16,8 +16,7 @@ export function AISpanDetails({
   rawProperties?: string;
 }) {
   const [tab, setTab] = useState<AITab>("overview");
-  const hasTools =
-    (aiData.toolDefinitions && aiData.toolDefinitions.length > 0) || aiData.toolCount != null;
+  const toolCount = aiData.toolCount ?? aiData.toolDefinitions?.length ?? 0;
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -40,16 +39,14 @@ export function AISpanDetails({
           >
             Messages
           </TabButton>
-          {hasTools && (
-            <TabButton
-              isActive={tab === "tools"}
-              layoutId="ai-span"
-              onClick={() => setTab("tools")}
-              shortcut={{ key: "t" }}
-            >
-              Tools{aiData.toolCount != null ? ` (${aiData.toolCount})` : ""}
-            </TabButton>
-          )}
+          <TabButton
+            isActive={tab === "tools"}
+            layoutId="ai-span"
+            onClick={() => setTab("tools")}
+            shortcut={{ key: "t" }}
+          >
+            Tools{toolCount > 0 ? ` (${toolCount})` : ""}
+          </TabButton>
         </TabContainer>
       </div>
 
