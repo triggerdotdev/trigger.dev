@@ -75,7 +75,11 @@ export class PostgresRunsRepository implements IRunsRepository {
           previousCursor = reversedRuns.at(1)?.id ?? null;
           nextCursor = reversedRuns.at(options.page.size)?.id ?? null;
         } else {
-          nextCursor = reversedRuns.at(options.page.size - 1)?.id ?? null;
+          // Use the last item (oldest run) as the forward cursor.
+          // We can't use a fixed index (pageSize - 1) because the result set
+          // may have fewer items than pageSize (e.g., when new runs were created
+          // while the user was browsing, shifting page boundaries).
+          nextCursor = reversedRuns.at(reversedRuns.length - 1)?.id ?? null;
         }
         break;
       }
