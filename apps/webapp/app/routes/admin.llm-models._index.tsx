@@ -33,7 +33,7 @@ const SearchParams = z.object({
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.admin) return redirect("/");
+  if (!user?.admin) throw redirect("/");
 
   const searchParams = createSearchParams(request.url, SearchParams);
   if (!searchParams.success) throw new Error(searchParams.error);
@@ -79,7 +79,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export async function action({ request }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.admin) return redirect("/");
+  if (!user?.admin) throw redirect("/");
 
   const formData = await request.formData();
   const _action = formData.get("_action");

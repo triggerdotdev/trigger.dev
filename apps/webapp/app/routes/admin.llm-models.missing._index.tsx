@@ -33,7 +33,7 @@ const SearchParams = z.object({
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.admin) return redirect("/");
+  if (!user?.admin) throw redirect("/");
 
   const url = new URL(request.url);
   const lookbackHours = parseInt(url.searchParams.get("lookbackHours") ?? "24", 10);

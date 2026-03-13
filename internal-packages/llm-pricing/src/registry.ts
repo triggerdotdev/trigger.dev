@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
 import type {
   LlmModelWithPricing,
   LlmCostResult,
@@ -20,12 +20,12 @@ function compilePattern(pattern: string): RegExp {
 }
 
 export class ModelPricingRegistry {
-  private _prisma: PrismaClient;
+  private _prisma: PrismaClient | PrismaReplicaClient;
   private _patterns: CompiledPattern[] = [];
   private _exactMatchCache: Map<string, LlmModelWithPricing | null> = new Map();
   private _loaded = false;
 
-  constructor(prisma: PrismaClient) {
+  constructor(prisma: PrismaClient | PrismaReplicaClient) {
     this._prisma = prisma;
   }
 

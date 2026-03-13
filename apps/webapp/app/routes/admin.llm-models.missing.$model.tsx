@@ -14,7 +14,7 @@ import {
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.admin) return redirect("/");
+  if (!user?.admin) throw redirect("/");
 
   // Model name is URL-encoded in the URL param
   const modelName = decodeURIComponent(params.model ?? "");
@@ -142,7 +142,7 @@ export default function AdminMissingModelDetailRoute() {
                 </span>
                 <div className="flex gap-4 mt-1 font-mono text-text-bright">
                   <span>input: {providerCosts[0].estimatedInputPrice.toExponential(4)}</span>
-                  <span>output: {providerCosts[0].estimatedOutputPrice ?? 0.toExponential(4)}</span>
+                  <span>output: {(providerCosts[0].estimatedOutputPrice ?? 0).toExponential(4)}</span>
                 </div>
                 <span className="text-text-dimmed mt-1 block">
                   Cross-reference with the provider's pricing page before using these estimates.
@@ -176,7 +176,7 @@ export default function AdminMissingModelDetailRoute() {
             const expanded = expandedSpans.has(s.span_id);
             let parsedAttrs: Record<string, unknown> | null = null;
             try {
-              parsedAttrs = JSON.parse(s.attributes_text);
+              parsedAttrs = JSON.parse(s.attributes_text) as Record<string, unknown>;
             } catch {
               // ignore
             }
@@ -226,7 +226,7 @@ function extractTokenTypes(samples: MissingModelSample[]): TokenTypeSummary[] {
   for (const s of samples) {
     let attrs: Record<string, unknown>;
     try {
-      attrs = JSON.parse(s.attributes_text);
+      attrs = JSON.parse(s.attributes_text) as Record<string, unknown>;
     } catch {
       continue;
     }
@@ -300,7 +300,7 @@ function extractProviderCosts(samples: MissingModelSample[]): ProviderCostInfo[]
   for (const s of samples) {
     let attrs: Record<string, unknown>;
     try {
-      attrs = JSON.parse(s.attributes_text);
+      attrs = JSON.parse(s.attributes_text) as Record<string, unknown>;
     } catch {
       continue;
     }
@@ -310,7 +310,7 @@ function extractProviderCosts(samples: MissingModelSample[]): ProviderCostInfo[]
     const aiResponse = getNestedObj(attrs, ["ai", "response"]);
     const rawMeta = aiResponse?.providerMetadata;
     if (typeof rawMeta === "string") {
-      try { providerMeta = JSON.parse(rawMeta); } catch {}
+      try { providerMeta = JSON.parse(rawMeta) as Record<string, unknown>; } catch {}
     } else if (rawMeta && typeof rawMeta === "object") {
       providerMeta = rawMeta as Record<string, unknown>;
     }
@@ -390,13 +390,15 @@ function buildPrompt(modelName: string, samples: MissingModelSample[], providerC
   let sampleAttrs = "";
   if (samples.length > 0) {
     try {
-      const attrs = JSON.parse(samples[0].attributes_text);
+      const attrs = JSON.parse(samples[0].attributes_text) as Record<string, unknown>;
+      const ai = attrs.ai as Record<string, unknown> | undefined;
+      const aiResponse = (ai?.response ?? {}) as Record<string, unknown>;
       // Extract just the relevant fields
       const compact: Record<string, unknown> = {};
       if (attrs.gen_ai) compact.gen_ai = attrs.gen_ai;
-      if (attrs.ai?.usage) compact["ai.usage"] = attrs.ai.usage;
-      if (attrs.ai?.response?.providerMetadata) {
-        compact["ai.response.providerMetadata"] = attrs.ai.response.providerMetadata;
+      if (ai?.usage) compact["ai.usage"] = ai.usage;
+      if (aiResponse.providerMetadata) {
+        compact["ai.response.providerMetadata"] = aiResponse.providerMetadata;
       }
       sampleAttrs = JSON.stringify(compact, null, 2);
     } catch {
@@ -457,7 +459,7 @@ The gateway/router is reporting costs for this model. Use these to cross-referen
 ${providerCosts.map((c) => `- $${c.cost.toFixed(6)} for ${c.inputTokens.toLocaleString()} input + ${c.outputTokens.toLocaleString()} output tokens`).join("\n")}${providerCosts[0].estimatedInputPrice != null ? `
 - Estimated per-token rates (rough, assuming ~3x output/input ratio):
   - input: ${providerCosts[0].estimatedInputPrice.toExponential(4)} (${(providerCosts[0].estimatedInputPrice * 1_000_000).toFixed(4)} $/M)
-  - output: ${providerCosts[0].estimatedOutputPrice ?? 0.toExponential(4)} (${(providerCosts[0].estimatedOutputPrice ?? 0 * 1_000_000).toFixed(4)} $/M)
+  - output: ${(providerCosts[0].estimatedOutputPrice ?? 0).toExponential(4)} (${((providerCosts[0].estimatedOutputPrice ?? 0) * 1_000_000).toFixed(4)} $/M)
 - Verify these against the official pricing page before using.` : ""}` : ""}${sampleAttrs ? `
 
 ## Sample span attributes (first span)

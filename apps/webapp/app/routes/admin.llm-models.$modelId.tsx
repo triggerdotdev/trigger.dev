@@ -14,7 +14,7 @@ import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.admin) return redirect("/");
+  if (!user?.admin) throw redirect("/");
 
   const model = await prisma.llmModel.findUnique({
     where: { friendlyId: params.modelId },
@@ -46,7 +46,7 @@ const SaveSchema = z.object({
 export async function action({ request, params }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.admin) return redirect("/");
+  if (!user?.admin) throw redirect("/");
 
   const friendlyId = params.modelId!;
   const existing = await prisma.llmModel.findUnique({ where: { friendlyId } });
@@ -89,7 +89,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       prices: Record<string, number>;
     }>;
     try {
-      pricingTiers = JSON.parse(pricingTiersJson);
+      pricingTiers = JSON.parse(pricingTiersJson) as typeof pricingTiers;
     } catch {
       return typedjson({ error: "Invalid pricing tiers JSON" }, { status: 400 });
     }
