@@ -126,12 +126,12 @@ function enrichLlmCost(event: CreateEventInput): void {
   }
 
   event.style = {
-    ...event.style,
+    ...(event.style as Record<string, unknown> | undefined),
     accessory: {
       style: "pills",
       items: pillItems,
     },
-  };
+  } as unknown as typeof event.style;
 
   // Only write llm_usage when cost data is available
   if (!cost && !providerCost) return;
@@ -270,7 +270,7 @@ function extractProviderCost(
 
   let meta: Record<string, unknown>;
   try {
-    meta = JSON.parse(rawMeta);
+    meta = JSON.parse(rawMeta) as Record<string, unknown>;
   } catch {
     return null;
   }

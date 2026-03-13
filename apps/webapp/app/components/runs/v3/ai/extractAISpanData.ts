@@ -426,7 +426,7 @@ function parseProviderMetadata(
 ): { serviceTier?: string; resolvedProvider?: string; gatewayCost?: string } | undefined {
   if (typeof raw !== "string") return undefined;
   try {
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
     if (!parsed || typeof parsed !== "object") return undefined;
 
     let serviceTier: string | undefined;
@@ -469,12 +469,13 @@ function parseToolChoice(raw: unknown): string | undefined {
   try {
     const parsed = JSON.parse(raw);
     if (typeof parsed === "string") return parsed;
-    if (parsed && typeof parsed === "object" && typeof parsed.type === "string") {
-      return parsed.type;
+    if (parsed && typeof parsed === "object") {
+      const obj = parsed as Record<string, unknown>;
+      if (typeof obj.type === "string") return obj.type;
     }
     return undefined;
   } catch {
-    return raw || undefined;
+    return undefined;
   }
 }
 
