@@ -103,6 +103,18 @@ export class ModelPricingRegistry {
       }
     }
 
+    // Fallback: strip provider prefix (e.g. "mistral/mistral-large-3" → "mistral-large-3")
+    // Gateway and OpenRouter prepend the provider to the model name.
+    if (responseModel.includes("/")) {
+      const stripped = responseModel.split("/").slice(1).join("/");
+      for (const { regex, model } of this._patterns) {
+        if (regex.test(stripped)) {
+          this._exactMatchCache.set(responseModel, model);
+          return model;
+        }
+      }
+    }
+
     // Cache miss
     this._exactMatchCache.set(responseModel, null);
     return null;

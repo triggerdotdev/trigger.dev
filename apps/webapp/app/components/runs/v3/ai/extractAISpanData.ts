@@ -34,9 +34,12 @@ export function extractAISpanData(
   const model = str(gResponse.model) ?? str(gRequest.model) ?? str(aiModel.id);
   if (!model) return undefined;
 
-  // Prefer ai.usage (richer) over gen_ai.usage
-  const inputTokens = num(aiUsage.inputTokens) ?? num(gUsage.input_tokens) ?? 0;
-  const outputTokens = num(aiUsage.outputTokens) ?? num(gUsage.output_tokens) ?? 0;
+  // Prefer ai.usage (richer) over gen_ai.usage.
+  // Gateway/some providers emit promptTokens/completionTokens instead of inputTokens/outputTokens.
+  const inputTokens =
+    num(aiUsage.inputTokens) ?? num(aiUsage.promptTokens) ?? num(gUsage.input_tokens) ?? 0;
+  const outputTokens =
+    num(aiUsage.outputTokens) ?? num(aiUsage.completionTokens) ?? num(gUsage.output_tokens) ?? 0;
   const totalTokens = num(aiUsage.totalTokens) ?? inputTokens + outputTokens;
 
   const tokensPerSecond =
@@ -56,6 +59,7 @@ export function extractAISpanData(
     operationName: str(gOperation.name) ?? str(ai.operationId) ?? "",
     finishReason: str(aiResponse.finishReason),
     serviceTier: providerMeta?.serviceTier,
+    resolvedProvider: providerMeta?.resolvedProvider,
     toolChoice: parseToolChoice(aiPrompt.toolChoice),
     toolCount: toolDefs?.length,
     messageCount: countMessages(aiPrompt.messages),
@@ -64,6 +68,8 @@ export function extractAISpanData(
     outputTokens,
     totalTokens,
     cachedTokens: num(aiUsage.cachedInputTokens) ?? num(gUsage.cache_read_input_tokens),
+    cacheCreationTokens:
+      num(aiUsage.cacheCreationInputTokens) ?? num(gUsage.cache_creation_input_tokens),
     reasoningTokens: num(aiUsage.reasoningTokens) ?? num(gUsage.reasoning_tokens),
     tokensPerSecond,
     msToFirstChunk: num(aiResponse.msToFirstChunk),
@@ -71,7 +77,7 @@ export function extractAISpanData(
     inputCost: num(triggerLlm.input_cost),
     outputCost: num(triggerLlm.output_cost),
     totalCost: num(triggerLlm.total_cost),
-    responseText: str(aiResponse.text) || undefined,
+    responseText: str(aiResponse.text) || str(aiResponse.object) || undefined,
     toolDefinitions: toolDefs,
     items: buildDisplayItems(aiPrompt.messages, aiResponse.toolCalls, toolDefs),
   };
@@ -417,18 +423,38 @@ function parseToolDefinitions(raw: unknown): ToolDefinition[] | undefined {
 
 function parseProviderMetadata(
   raw: unknown
-): { serviceTier?: string } | undefined {
+): { serviceTier?: string; resolvedProvider?: string; gatewayCost?: string } | undefined {
   if (typeof raw !== "string") return undefined;
   try {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return undefined;
 
-    // Anthropic: { anthropic: { usage: { service_tier: "standard" } } }
-    const anthropic = rec(parsed.anthropic ?? parsed);
-    const usage = rec(anthropic.usage);
-    const serviceTier = str(usage.service_tier);
+    let serviceTier: string | undefined;
+    let resolvedProvider: string | undefined;
+    let gatewayCost: string | undefined;
 
-    return serviceTier ? { serviceTier } : undefined;
+    // Anthropic: { anthropic: { usage: { service_tier: "standard" } } }
+    const anthropic = rec(parsed.anthropic);
+    serviceTier = str(rec(anthropic.usage).service_tier);
+
+    // Azure/OpenAI: { azure: { serviceTier: "default" } } or { openai: { serviceTier: "..." } }
+    if (!serviceTier) {
+      serviceTier = str(rec(parsed.azure).serviceTier) ?? str(rec(parsed.openai).serviceTier);
+    }
+
+    // Gateway: { gateway: { routing: { finalProvider, resolvedProvider }, cost } }
+    const gateway = rec(parsed.gateway);
+    const routing = rec(gateway.routing);
+    resolvedProvider = str(routing.finalProvider) ?? str(routing.resolvedProvider);
+    gatewayCost = str(gateway.cost);
+
+    // OpenRouter: { openrouter: { provider: "xAI" } }
+    if (!resolvedProvider) {
+      resolvedProvider = str(rec(parsed.openrouter).provider);
+    }
+
+    if (!serviceTier && !resolvedProvider && !gatewayCost) return undefined;
+    return { serviceTier, resolvedProvider, gatewayCost };
   } catch {
     return undefined;
   }
