@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import type { AISpanData, ToolDefinition } from "./types";
+import { Paragraph } from "~/components/primitives/Paragraph";
 
 export function AIToolsInventory({ aiData }: { aiData: AISpanData }) {
   const defs = aiData.toolDefinitions ?? [];
@@ -8,8 +9,8 @@ export function AIToolsInventory({ aiData }: { aiData: AISpanData }) {
 
   if (defs.length === 0) {
     return (
-      <div className="px-3 py-6 text-center text-xs text-text-dimmed">
-        No tool definitions available for this span.
+      <div className="px-3 py-6 text-center">
+        <Paragraph variant="small/dimmed">No tool definitions available for this span.</Paragraph>
       </div>
     );
   }
