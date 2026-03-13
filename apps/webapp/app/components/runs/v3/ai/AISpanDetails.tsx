@@ -1,10 +1,12 @@
+import { CheckIcon, ClipboardDocumentIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
-import { Clipboard, ClipboardCheck } from "lucide-react";
+import { Button } from "~/components/primitives/Buttons";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
-import type { AISpanData, DisplayItem } from "./types";
-import { AITagsRow, AIStatsSummary } from "./AIModelSummary";
+import { useHasAdminAccess } from "~/hooks/useUser";
 import { AIChatMessages, AssistantResponse } from "./AIChatMessages";
+import { AIStatsSummary, AITagsRow } from "./AIModelSummary";
 import { AIToolsInventory } from "./AIToolsInventory";
+import type { AISpanData, DisplayItem } from "./types";
 
 type AITab = "overview" | "messages" | "tools";
 
@@ -16,6 +18,7 @@ export function AISpanDetails({
   rawProperties?: string;
 }) {
   const [tab, setTab] = useState<AITab>("overview");
+  const isAdmin = useHasAdminAccess();
   const toolCount = aiData.toolCount ?? aiData.toolDefinitions?.length ?? 0;
 
   return (
@@ -51,14 +54,14 @@ export function AISpanDetails({
       </div>
 
       {/* Tab content */}
-      <div className="min-h-0 flex-1 overflow-y-auto scrollbar-gutter-stable scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         {tab === "overview" && <OverviewTab aiData={aiData} />}
         {tab === "messages" && <MessagesTab aiData={aiData} />}
         {tab === "tools" && <ToolsTab aiData={aiData} />}
       </div>
 
-      {/* Footer: Copy raw */}
-      {rawProperties && <CopyRawFooter rawProperties={rawProperties} />}
+      {/* Footer: Copy raw (admin only) */}
+      {isAdmin && rawProperties && <CopyRawFooter rawProperties={rawProperties} />}
     </div>
   );
 }
@@ -126,23 +129,15 @@ function CopyRawFooter({ rawProperties }: { rawProperties: string }) {
   }
 
   return (
-    <div className="flex shrink-0 items-center justify-end border-t border-grid-dimmed px-3 py-2">
-      <button
+    <div className="flex h-[3.25rem] shrink-0 items-center justify-end border-t border-grid-dimmed px-2">
+      <Button
+        variant="minimal/medium"
         onClick={handleCopy}
-        className="flex items-center gap-1.5 text-xs text-text-dimmed transition-colors hover:text-text-bright"
+        LeadingIcon={copied ? CheckIcon : ClipboardDocumentIcon}
+        leadingIconClassName={copied ? "text-green-500" : undefined}
       >
-        {copied ? (
-          <>
-            <ClipboardCheck className="size-3.5" />
-            Copied
-          </>
-        ) : (
-          <>
-            <Clipboard className="size-3.5" />
-            Copy raw properties
-          </>
-        )}
-      </button>
+        Copy raw properties
+      </Button>
     </div>
   );
 }
