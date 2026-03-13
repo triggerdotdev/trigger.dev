@@ -2,9 +2,10 @@ import { CheckIcon, ClipboardDocumentIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { useHasAdminAccess } from "~/hooks/useUser";
-import { AIChatMessages, AssistantResponse } from "./AIChatMessages";
+import { AIChatMessages, AssistantResponse, ChatBubble } from "./AIChatMessages";
 import { AIStatsSummary, AITagsRow } from "./AIModelSummary";
 import { AIToolsInventory } from "./AIToolsInventory";
 import type { AISpanData, DisplayItem } from "./types";
@@ -85,21 +86,25 @@ function OverviewTab({ aiData }: { aiData: AISpanData }) {
 
       {/* Input (last user prompt) */}
       {userText && (
-        <div className="flex flex-col gap-1 py-2.5">
+        <div className="flex flex-col gap-1.5 py-2.5">
           <Header3>Input</Header3>
-          <p className="text-sm text-text-bright">{userText}</p>
+          <ChatBubble>
+            <Paragraph variant="small/dimmed">{userText}</Paragraph>
+          </ChatBubble>
         </div>
       )}
 
       {/* Output (assistant response or tool calls) */}
       {outputText && <AssistantResponse text={outputText} headerLabel="Output" />}
       {outputToolNames.length > 0 && !outputText && (
-        <div className="flex flex-col gap-1 py-2.5">
+        <div className="flex flex-col gap-1.5 py-2.5">
           <Header3>Output</Header3>
-          <p className="text-sm text-text-dimmed">
-            Called {outputToolNames.length === 1 ? "tool" : "tools"}:{" "}
-            <span className="font-mono text-text-bright">{outputToolNames.join(", ")}</span>
-          </p>
+          <ChatBubble>
+            <Paragraph variant="small/dimmed">
+              Called {outputToolNames.length === 1 ? "tool" : "tools"}:{" "}
+              <span className="font-mono text-text-bright">{outputToolNames.join(", ")}</span>
+            </Paragraph>
+          </ChatBubble>
         </div>
       )}
     </div>
@@ -109,7 +114,7 @@ function OverviewTab({ aiData }: { aiData: AISpanData }) {
 function MessagesTab({ aiData }: { aiData: AISpanData }) {
   return (
     <div className="px-3">
-      <div className="flex flex-col divide-y divide-grid-bright">
+      <div className="flex flex-col">
         {aiData.items && aiData.items.length > 0 && <AIChatMessages items={aiData.items} />}
         {aiData.responseText && !hasAssistantItem(aiData.items) && (
           <AssistantResponse text={aiData.responseText} />
