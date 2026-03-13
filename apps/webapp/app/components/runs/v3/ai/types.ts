@@ -66,6 +66,8 @@ export type AISpanData = {
   // Categorical tags
   finishReason?: string;
   serviceTier?: string;
+  /** Resolved downstream provider for gateway/openrouter spans (e.g. "xAI", "mistral") */
+  resolvedProvider?: string;
   toolChoice?: string;
   toolCount?: number;
   messageCount?: number;
@@ -77,6 +79,7 @@ export type AISpanData = {
   outputTokens: number;
   totalTokens: number;
   cachedTokens?: number;
+  cacheCreationTokens?: number;
   reasoningTokens?: number;
 
   // Performance

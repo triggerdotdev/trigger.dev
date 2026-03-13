@@ -76,41 +76,65 @@ function enrichLlmCost(event: CreateEventInput): void {
     return;
   }
 
-  if (!_registry?.isLoaded) {
-    return;
-  }
-
-  const cost = _registry.calculateCost(responseModel, usageDetails);
-  if (!cost) return;
-
-  // Add trigger.llm.* attributes to the span
-  event.properties = {
-    ...props,
-    "trigger.llm.input_cost": cost.inputCost,
-    "trigger.llm.output_cost": cost.outputCost,
-    "trigger.llm.total_cost": cost.totalCost,
-    "trigger.llm.matched_model": cost.matchedModelName,
-    "trigger.llm.matched_model_id": cost.matchedModelId,
-    "trigger.llm.pricing_tier": cost.pricingTierName,
-    "trigger.llm.pricing_tier_id": cost.pricingTierId,
-  };
-
-  // Add style accessories for model, tokens, and cost
+  // Add style accessories for model and tokens (even without cost data)
   const inputTokens = usageDetails["input"] ?? 0;
   const outputTokens = usageDetails["output"] ?? 0;
   const totalTokens = inputTokens + outputTokens;
+
+  const pillItems: Array<{ text: string; icon: string }> = [
+    { text: responseModel, icon: "tabler-cube" },
+    { text: formatTokenCount(totalTokens), icon: "tabler-hash" },
+  ];
+
+  // Try cost enrichment if the registry is loaded.
+  // The registry handles prefix stripping (e.g. "mistral/mistral-large-3" → "mistral-large-3")
+  // for gateway/openrouter models automatically in its match() method.
+  let cost: ReturnType<NonNullable<typeof _registry>["calculateCost"]> | null = null;
+  if (_registry?.isLoaded) {
+    cost = _registry.calculateCost(responseModel, usageDetails);
+  }
+
+  // Fallback: extract cost from provider metadata (gateway/openrouter report per-request cost)
+  let providerCost: { totalCost: number; source: string } | null = null;
+  if (!cost) {
+    providerCost = extractProviderCost(props);
+  }
+
+  if (cost) {
+    // Add trigger.llm.* attributes to the span from our pricing registry
+    event.properties = {
+      ...props,
+      "trigger.llm.input_cost": cost.inputCost,
+      "trigger.llm.output_cost": cost.outputCost,
+      "trigger.llm.total_cost": cost.totalCost,
+      "trigger.llm.matched_model": cost.matchedModelName,
+      "trigger.llm.matched_model_id": cost.matchedModelId,
+      "trigger.llm.pricing_tier": cost.pricingTierName,
+      "trigger.llm.pricing_tier_id": cost.pricingTierId,
+    };
+
+    pillItems.push({ text: formatCost(cost.totalCost), icon: "tabler-currency-dollar" });
+  } else if (providerCost) {
+    // Use provider-reported cost as fallback (no input/output breakdown available)
+    event.properties = {
+      ...props,
+      "trigger.llm.total_cost": providerCost.totalCost,
+      "trigger.llm.cost_source": providerCost.source,
+    };
+
+    pillItems.push({ text: formatCost(providerCost.totalCost), icon: "tabler-currency-dollar" });
+  }
 
   event.style = {
     ...event.style,
     accessory: {
       style: "pills",
-      items: [
-        { text: responseModel, icon: "tabler-cube" },
-        { text: formatTokenCount(totalTokens), icon: "tabler-hash" },
-        { text: formatCost(cost.totalCost), icon: "tabler-currency-dollar" },
-      ],
+      items: pillItems,
     },
   };
+
+  // Only write llm_usage when cost data is available
+  if (!cost && !providerCost) return;
 
   // Build metadata map from run tags and ai.telemetry.metadata.*
   const metadata: Record<string, string> = {};
@@ -135,18 +159,18 @@ function enrichLlmCost(event: CreateEventInput): void {
     genAiSystem: (props["gen_ai.system"] as string) ?? "unknown",
     requestModel: (props["gen_ai.request.model"] as string) ?? responseModel,
     responseModel,
-    matchedModelId: cost.matchedModelId,
+    matchedModelId: cost?.matchedModelId ?? "",
     operationName: (props["gen_ai.operation.name"] as string) ?? (props["operation.name"] as string) ?? "",
-    pricingTierId: cost.pricingTierId,
-    pricingTierName: cost.pricingTierName,
+    pricingTierId: cost?.pricingTierId ?? (providerCost ? `provider:${providerCost.source}` : ""),
+    pricingTierName: cost?.pricingTierName ?? (providerCost ? `${providerCost.source} reported` : ""),
     inputTokens: usageDetails["input"] ?? 0,
     outputTokens: usageDetails["output"] ?? 0,
     totalTokens: Object.values(usageDetails).reduce((sum, v) => sum + v, 0),
     usageDetails,
-    inputCost: cost.inputCost,
-    outputCost: cost.outputCost,
-    totalCost: cost.totalCost,
-    costDetails: cost.costDetails,
+    inputCost: cost?.inputCost ?? 0,
+    outputCost: cost?.outputCost ?? 0,
+    totalCost: cost?.totalCost ?? providerCost?.totalCost ?? 0,
+    costDetails: cost?.costDetails ?? {},
     metadata,
   };
 
@@ -197,6 +221,15 @@ function enrichStyle(event: CreateEventInput) {
   // GenAI System check
   const system = props["gen_ai.system"];
   if (typeof system === "string") {
+    // For gateway/openrouter, derive the icon from the model's provider prefix
+    // e.g. "mistral/mistral-large-3" → "mistral", "anthropic/claude-..." → "anthropic"
+    if (system === "gateway" || system === "openrouter") {
+      const modelId = props["gen_ai.request.model"] ?? props["ai.model.id"];
+      if (typeof modelId === "string" && modelId.includes("/")) {
+        const provider = modelId.split("/")[0].replace(/-/g, "");
+        return { ...baseStyle, icon: `tabler-brand-${provider}` };
+      }
+    }
     return { ...baseStyle, icon: `tabler-brand-${system.split(".")[0]}` };
   }
 
@@ -223,6 +256,47 @@ function formatTokenCount(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
   if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`;
   return tokens.toString();
+}
+
+/**
+ * Extract provider-reported cost from ai.response.providerMetadata.
+ * Gateway and OpenRouter include per-request cost in their metadata.
+ */
+function extractProviderCost(
+  props: Record<string, unknown>
+): { totalCost: number; source: string } | null {
+  const rawMeta = props["ai.response.providerMetadata"];
+  if (typeof rawMeta !== "string") return null;
+
+  let meta: Record<string, unknown>;
+  try {
+    meta = JSON.parse(rawMeta);
+  } catch {
+    return null;
+  }
+
+  if (!meta || typeof meta !== "object") return null;
+
+  // Gateway: { gateway: { cost: "0.0006615" } }
+  const gateway = meta.gateway;
+  if (gateway && typeof gateway === "object") {
+    const gw = gateway as Record<string, unknown>;
+    const cost = parseFloat(String(gw.cost ?? "0"));
+    if (cost > 0) return { totalCost: cost, source: "gateway" };
+  }
+
+  // OpenRouter: { openrouter: { usage: { cost: 0.000135 } } }
+  const openrouter = meta.openrouter;
+  if (openrouter && typeof openrouter === "object") {
+    const or = openrouter as Record<string, unknown>;
+    const usage = or.usage;
+    if (usage && typeof usage === "object") {
+      const cost = Number((usage as Record<string, unknown>).cost ?? 0);
+      if (cost > 0) return { totalCost: cost, source: "openrouter" };
+    }
+  }
+
+  return null;
 }
 
 function formatCost(cost: number): string {

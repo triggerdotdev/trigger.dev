@@ -6,6 +6,9 @@ export function AITagsRow({ aiData }: { aiData: AISpanData }) {
     <div className="flex flex-wrap items-center gap-1.5 py-2.5">
       <Pill>{aiData.model}</Pill>
       {aiData.provider !== "unknown" && <Pill variant="dimmed">{aiData.provider}</Pill>}
+      {aiData.resolvedProvider && (
+        <Pill variant="dimmed">via {aiData.resolvedProvider}</Pill>
+      )}
       {aiData.finishReason && <Pill variant="dimmed">{aiData.finishReason}</Pill>}
       {aiData.serviceTier && <Pill variant="dimmed">tier: {aiData.serviceTier}</Pill>}
       {aiData.toolChoice && <Pill variant="dimmed">tools: {aiData.toolChoice}</Pill>}
@@ -38,7 +41,14 @@ export function AIStatsSummary({ aiData }: { aiData: AISpanData }) {
         <MetricRow label="Input" value={aiData.inputTokens.toLocaleString()} unit="tokens" />
         <MetricRow label="Output" value={aiData.outputTokens.toLocaleString()} unit="tokens" />
         {aiData.cachedTokens != null && aiData.cachedTokens > 0 && (
-          <MetricRow label="Cached" value={aiData.cachedTokens.toLocaleString()} unit="tokens" />
+          <MetricRow label="Cache read" value={aiData.cachedTokens.toLocaleString()} unit="tokens" />
+        )}
+        {aiData.cacheCreationTokens != null && aiData.cacheCreationTokens > 0 && (
+          <MetricRow
+            label="Cache write"
+            value={aiData.cacheCreationTokens.toLocaleString()}
+            unit="tokens"
+          />
         )}
         {aiData.reasoningTokens != null && aiData.reasoningTokens > 0 && (
           <MetricRow

@@ -1247,6 +1247,12 @@ const EnvironmentSchema = z
     // Metric widget concurrency limits
     METRIC_WIDGET_DEFAULT_ORG_CONCURRENCY_LIMIT: z.coerce.number().int().default(30),
 
+    // Admin ClickHouse URL (for admin dashboard queries like missing models)
+    ADMIN_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+
     EVENTS_CLICKHOUSE_URL: z
       .string()
       .optional()
