@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { Header3 } from "~/components/primitives/Headers";
 import type { DisplayItem, ToolUse } from "./types";
 
 // Lazy load streamdown to avoid SSR issues
@@ -45,7 +46,7 @@ function SectionHeader({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-xs font-medium uppercase tracking-wide text-text-dimmed">{label}</span>
+      <Header3>{label}</Header3>
       {right && <div className="flex items-center gap-2">{right}</div>}
     </div>
   );

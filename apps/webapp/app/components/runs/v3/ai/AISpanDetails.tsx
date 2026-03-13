@@ -1,6 +1,7 @@
 import { CheckIcon, ClipboardDocumentIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
+import { Header3 } from "~/components/primitives/Headers";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { AIChatMessages, AssistantResponse } from "./AIChatMessages";
@@ -77,7 +78,7 @@ function OverviewTab({ aiData }: { aiData: AISpanData }) {
   const { userText, outputText, outputToolNames } = extractInputOutput(aiData);
 
   return (
-    <div className="flex flex-col divide-y divide-grid-bright px-3">
+    <div className="flex flex-col px-3">
       {/* Tags + Stats */}
       <AITagsRow aiData={aiData} />
       <AIStatsSummary aiData={aiData} />
@@ -85,9 +86,7 @@ function OverviewTab({ aiData }: { aiData: AISpanData }) {
       {/* Input (last user prompt) */}
       {userText && (
         <div className="flex flex-col gap-1 py-2.5">
-          <span className="text-xs font-medium uppercase tracking-wide text-text-dimmed">
-            Input
-          </span>
+          <Header3>Input</Header3>
           <p className="text-sm text-text-bright">{userText}</p>
         </div>
       )}
@@ -96,9 +95,7 @@ function OverviewTab({ aiData }: { aiData: AISpanData }) {
       {outputText && <AssistantResponse text={outputText} headerLabel="Output" />}
       {outputToolNames.length > 0 && !outputText && (
         <div className="flex flex-col gap-1 py-2.5">
-          <span className="text-xs font-medium uppercase tracking-wide text-text-dimmed">
-            Output
-          </span>
+          <Header3>Output</Header3>
           <p className="text-sm text-text-dimmed">
             Called {outputToolNames.length === 1 ? "tool" : "tools"}:{" "}
             <span className="font-mono text-text-bright">{outputToolNames.join(", ")}</span>
