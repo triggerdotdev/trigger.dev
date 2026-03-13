@@ -86,7 +86,7 @@ describe("OTLPExporter", () => {
 
       const event = $events[0];
       expect(event.message).toBe("Responses API with 'gpt-4o'");
-      expect(event.style).toEqual({
+      expect(event.style).toMatchObject({
         icon: "tabler-brand-openai",
       });
     });
@@ -164,8 +164,17 @@ describe("OTLPExporter", () => {
 
       const event = $events[0];
       expect(event.message).toBe("Responses API with gpt-4o");
-      expect(event.style).toEqual({
+      expect(event.style).toMatchObject({
         icon: "tabler-brand-openai",
+      });
+      // Enrichment also adds model/token pills as accessories
+      const style = event.style as Record<string, unknown>;
+      expect(style.accessory).toMatchObject({
+        style: "pills",
+        items: expect.arrayContaining([
+          expect.objectContaining({ text: "gpt-4o-2024-08-06" }),
+          expect.objectContaining({ text: "724" }),
+        ]),
       });
     });
 

@@ -11,8 +11,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "generate": "./scripts/sync-model-prices.sh",
-    "sync-prices": "./scripts/sync-model-prices.sh",
-    "sync-prices:check": "./scripts/sync-model-prices.sh --check"
+    "generate": "echo 'defaultPrices.ts is pre-committed — run sync-prices to update'",
+    "sync-prices": "bash scripts/sync-model-prices.sh",
+    "sync-prices:check": "bash scripts/sync-model-prices.sh --check"
   }
 }
