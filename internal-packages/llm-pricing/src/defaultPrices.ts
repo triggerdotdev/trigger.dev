@@ -1109,7 +1109,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
     ]
   },
   {
-    "modelName": " gpt-4-preview",
+    "modelName": "gpt-4-preview",
     "matchPattern": "(?i)^(openai/)?(gpt-4-preview)$",
     "startDate": "2024-04-23T10:37:17.092Z",
     "pricingTiers": [

@@ -23,36 +23,37 @@ export async function seedLlmPricing(prisma: PrismaClient): Promise<{
       continue;
     }
 
-    // Create model first
-    const model = await prisma.llmModel.create({
-      data: {
-        friendlyId: generateFriendlyId("llm_model"),
-        modelName: modelDef.modelName,
-        matchPattern: modelDef.matchPattern,
-        startDate: modelDef.startDate ? new Date(modelDef.startDate) : null,
-        source: "default",
-      },
-    });
-
-    // Create tiers and prices with explicit model connection
-    for (const tier of modelDef.pricingTiers) {
-      await prisma.llmPricingTier.create({
+    // Create model + tiers atomically so partial models can't be left behind
+    await prisma.$transaction(async (tx) => {
+      const model = await tx.llmModel.create({
         data: {
-          modelId: model.id,
-          name: tier.name,
-          isDefault: tier.isDefault,
-          priority: tier.priority,
-          conditions: tier.conditions,
-          prices: {
-            create: Object.entries(tier.prices).map(([usageType, price]) => ({
-              modelId: model.id,
-              usageType,
-              price,
-            })),
-          },
+          friendlyId: generateFriendlyId("llm_model"),
+          modelName: modelDef.modelName.trim(),
+          matchPattern: modelDef.matchPattern,
+          startDate: modelDef.startDate ? new Date(modelDef.startDate) : null,
+          source: "default",
         },
       });
-    }
+
+      for (const tier of modelDef.pricingTiers) {
+        await tx.llmPricingTier.create({
+          data: {
+            modelId: model.id,
+            name: tier.name,
+            isDefault: tier.isDefault,
+            priority: tier.priority,
+            conditions: tier.conditions,
+            prices: {
+              create: Object.entries(tier.prices).map(([usageType, price]) => ({
+                modelId: model.id,
+                usageType,
+                price,
+              })),
+            },
+          },
+        });
+      }
+    });
 
     modelsCreated++;
   }

@@ -75,7 +75,13 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
   const parsed = CreateModelSchema.safeParse(body);
 
   if (!parsed.success) {
@@ -84,50 +90,51 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const { modelName, matchPattern, startDate, source, pricingTiers } = parsed.data;
 
-  // Validate regex pattern
+  // Validate regex pattern — strip (?i) POSIX flag since our registry handles it
   try {
-    new RegExp(matchPattern);
+    const testPattern = matchPattern.startsWith("(?i)") ? matchPattern.slice(4) : matchPattern;
+    new RegExp(testPattern);
   } catch {
     return json({ error: "Invalid regex in matchPattern" }, { status: 400 });
   }
 
-  // Create model first, then tiers with explicit model connection
-  const model = await prisma.llmModel.create({
-    data: {
-      friendlyId: generateFriendlyId("llm_model"),
-      modelName,
-      matchPattern,
-      startDate: startDate ? new Date(startDate) : null,
-      source,
-    },
-  });
-
-  for (const tier of pricingTiers) {
-    await prisma.llmPricingTier.create({
+  // Create model + tiers atomically
+  const created = await prisma.$transaction(async (tx) => {
+    const model = await tx.llmModel.create({
       data: {
-        modelId: model.id,
-        name: tier.name,
-        isDefault: tier.isDefault,
-        priority: tier.priority,
-        conditions: tier.conditions,
-        prices: {
-          create: Object.entries(tier.prices).map(([usageType, price]) => ({
-            modelId: model.id,
-            usageType,
-            price,
-          })),
-        },
+        friendlyId: generateFriendlyId("llm_model"),
+        modelName,
+        matchPattern,
+        startDate: startDate ? new Date(startDate) : null,
+        source,
       },
     });
-  }
 
-  const created = await prisma.llmModel.findUnique({
-    where: { id: model.id },
-    include: {
-      pricingTiers: {
-        include: { prices: true },
+    for (const tier of pricingTiers) {
+      await tx.llmPricingTier.create({
+        data: {
+          modelId: model.id,
+          name: tier.name,
+          isDefault: tier.isDefault,
+          priority: tier.priority,
+          conditions: tier.conditions,
+          prices: {
+            create: Object.entries(tier.prices).map(([usageType, price]) => ({
+              modelId: model.id,
+              usageType,
+              price,
+            })),
+          },
+        },
+      });
+    }
+
+    return tx.llmModel.findUnique({
+      where: { id: model.id },
+      include: {
+        pricingTiers: { include: { prices: true } },
       },
-    },
+    });
   });
 
   return json({ model: created }, { status: 201 });

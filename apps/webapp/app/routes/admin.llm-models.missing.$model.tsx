@@ -16,7 +16,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user?.admin) return redirect("/");
 
-  // Model name is base64url-encoded in the URL param
+  // Model name is URL-encoded in the URL param
   const modelName = decodeURIComponent(params.model ?? "");
   if (!modelName) throw new Response("Missing model param", { status: 400 });
 
@@ -142,7 +142,7 @@ export default function AdminMissingModelDetailRoute() {
                 </span>
                 <div className="flex gap-4 mt-1 font-mono text-text-bright">
                   <span>input: {providerCosts[0].estimatedInputPrice.toExponential(4)}</span>
-                  <span>output: {providerCosts[0].estimatedOutputPrice!.toExponential(4)}</span>
+                  <span>output: {providerCosts[0].estimatedOutputPrice ?? 0.toExponential(4)}</span>
                 </div>
                 <span className="text-text-dimmed mt-1 block">
                   Cross-reference with the provider's pricing page before using these estimates.
@@ -457,7 +457,7 @@ The gateway/router is reporting costs for this model. Use these to cross-referen
 ${providerCosts.map((c) => `- $${c.cost.toFixed(6)} for ${c.inputTokens.toLocaleString()} input + ${c.outputTokens.toLocaleString()} output tokens`).join("\n")}${providerCosts[0].estimatedInputPrice != null ? `
 - Estimated per-token rates (rough, assuming ~3x output/input ratio):
   - input: ${providerCosts[0].estimatedInputPrice.toExponential(4)} (${(providerCosts[0].estimatedInputPrice * 1_000_000).toFixed(4)} $/M)
-  - output: ${providerCosts[0].estimatedOutputPrice!.toExponential(4)} (${(providerCosts[0].estimatedOutputPrice! * 1_000_000).toFixed(4)} $/M)
+  - output: ${providerCosts[0].estimatedOutputPrice ?? 0.toExponential(4)} (${(providerCosts[0].estimatedOutputPrice ?? 0 * 1_000_000).toFixed(4)} $/M)
 - Verify these against the official pricing page before using.` : ""}` : ""}${sampleAttrs ? `
 
 ## Sample span attributes (first span)

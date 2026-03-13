@@ -50,7 +50,7 @@ echo "Generating defaultPrices.ts..."
 node -e "
 const data = JSON.parse(require('fs').readFileSync('$JSON_TARGET', 'utf-8'));
 const stripped = data.map(e => ({
-  modelName: e.modelName,
+  modelName: e.modelName.trim(),
   matchPattern: e.matchPattern,
   startDate: e.createdAt,
   pricingTiers: e.pricingTiers.map(t => ({
