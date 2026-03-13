@@ -79,7 +79,7 @@ function enrichLlmCost(event: CreateEventInput): void {
   // Add style accessories for model and tokens (even without cost data)
   const inputTokens = usageDetails["input"] ?? 0;
   const outputTokens = usageDetails["output"] ?? 0;
-  const totalTokens = inputTokens + outputTokens;
+  const totalTokens = usageDetails["total"] ?? inputTokens + outputTokens;
 
   const pillItems: Array<{ text: string; icon: string }> = [
     { text: responseModel, icon: "tabler-cube" },
@@ -165,7 +165,7 @@ function enrichLlmCost(event: CreateEventInput): void {
     pricingTierName: cost?.pricingTierName ?? (providerCost ? `${providerCost.source} reported` : ""),
     inputTokens: usageDetails["input"] ?? 0,
     outputTokens: usageDetails["output"] ?? 0,
-    totalTokens: Object.values(usageDetails).reduce((sum, v) => sum + v, 0),
+    totalTokens: usageDetails["total"] ?? (usageDetails["input"] ?? 0) + (usageDetails["output"] ?? 0),
     usageDetails,
     inputCost: cost?.inputCost ?? 0,
     outputCost: cost?.outputCost ?? 0,

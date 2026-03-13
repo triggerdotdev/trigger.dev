@@ -174,6 +174,165 @@ describe("ModelPricingRegistry", () => {
     });
   });
 
+  describe("prefix stripping", () => {
+    it("should match gateway-prefixed model names", () => {
+      const result = registry.match("openai/gpt-4o");
+      expect(result).not.toBeNull();
+      expect(result!.modelName).toBe("gpt-4o");
+    });
+
+    it("should match openrouter-prefixed model names with date suffix", () => {
+      const result = registry.match("openai/gpt-4o-2024-08-06");
+      expect(result).not.toBeNull();
+      expect(result!.modelName).toBe("gpt-4o");
+    });
+
+    it("should return null for prefixed unknown model", () => {
+      const result = registry.match("xai/unknown-model");
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("tier matching", () => {
+    const multiTierModel: LlmModelWithPricing = {
+      id: "model-gemini-pro",
+      friendlyId: "llm_model_gemini_pro",
+      modelName: "gemini-2.5-pro",
+      matchPattern: "^gemini-2\\.5-pro$",
+      startDate: null,
+      pricingTiers: [
+        {
+          id: "tier-large-context",
+          name: "Large Context",
+          isDefault: false,
+          priority: 0,
+          conditions: [
+            { usageDetailPattern: "input", operator: "gt" as const, value: 200000 },
+          ],
+          prices: [
+            { usageType: "input", price: 0.0000025 },
+            { usageType: "output", price: 0.00001 },
+          ],
+        },
+        {
+          id: "tier-standard",
+          name: "Standard",
+          isDefault: true,
+          priority: 1,
+          conditions: [],
+          prices: [
+            { usageType: "input", price: 0.00000125 },
+            { usageType: "output", price: 0.000005 },
+          ],
+        },
+      ],
+    };
+
+    it("should use conditional tier when conditions match", () => {
+      const tieredRegistry = new TestableRegistry(null as any);
+      tieredRegistry.loadPatterns([multiTierModel]);
+
+      const result = tieredRegistry.calculateCost("gemini-2.5-pro", {
+        input: 250000,
+        output: 1000,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.pricingTierName).toBe("Large Context");
+      expect(result!.inputCost).toBeCloseTo(0.625); // 250000 * 0.0000025
+    });
+
+    it("should fall back to default tier when conditions do not match", () => {
+      const tieredRegistry = new TestableRegistry(null as any);
+      tieredRegistry.loadPatterns([multiTierModel]);
+
+      const result = tieredRegistry.calculateCost("gemini-2.5-pro", {
+        input: 1000,
+        output: 100,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.pricingTierName).toBe("Standard");
+      expect(result!.inputCost).toBeCloseTo(0.00125); // 1000 * 0.00000125
+    });
+
+    it("should not let unconditional tier win over conditional match", () => {
+      // Model where unconditional tier has lower priority than conditional
+      const model: LlmModelWithPricing = {
+        ...multiTierModel,
+        pricingTiers: [
+          {
+            id: "tier-unconditional",
+            name: "Unconditional",
+            isDefault: false,
+            priority: 0,
+            conditions: [],
+            prices: [{ usageType: "input", price: 0.001 }],
+          },
+          {
+            id: "tier-conditional",
+            name: "Conditional",
+            isDefault: false,
+            priority: 1,
+            conditions: [
+              { usageDetailPattern: "input", operator: "gt" as const, value: 100 },
+            ],
+            prices: [{ usageType: "input", price: 0.0001 }],
+          },
+          {
+            id: "tier-default",
+            name: "Default",
+            isDefault: true,
+            priority: 2,
+            conditions: [],
+            prices: [{ usageType: "input", price: 0.01 }],
+          },
+        ],
+      };
+
+      const tieredRegistry = new TestableRegistry(null as any);
+      tieredRegistry.loadPatterns([model]);
+
+      // Condition matches — conditional tier should win, not the unconditional one
+      const result = tieredRegistry.calculateCost("gemini-2.5-pro", { input: 500 });
+      expect(result).not.toBeNull();
+      expect(result!.pricingTierName).toBe("Conditional");
+    });
+
+    it("should fall back to isDefault tier when no conditions match", () => {
+      const model: LlmModelWithPricing = {
+        ...multiTierModel,
+        pricingTiers: [
+          {
+            id: "tier-conditional",
+            name: "Conditional",
+            isDefault: false,
+            priority: 0,
+            conditions: [
+              { usageDetailPattern: "input", operator: "gt" as const, value: 999999 },
+            ],
+            prices: [{ usageType: "input", price: 0.001 }],
+          },
+          {
+            id: "tier-default",
+            name: "Default",
+            isDefault: true,
+            priority: 1,
+            conditions: [],
+            prices: [{ usageType: "input", price: 0.0001 }],
+          },
+        ],
+      };
+
+      const tieredRegistry = new TestableRegistry(null as any);
+      tieredRegistry.loadPatterns([model]);
+
+      const result = tieredRegistry.calculateCost("gemini-2.5-pro", { input: 100 });
+      expect(result).not.toBeNull();
+      expect(result!.pricingTierName).toBe("Default");
+    });
+  });
+
   describe("defaultModelPrices (Langfuse JSON)", () => {
     it("should load all models from the JSON file", () => {
       expect(defaultModelPrices.length).toBeGreaterThan(100);
