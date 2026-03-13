@@ -24,7 +24,7 @@ export function AISpanDetails({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Tab bar */}
-      <div className="shrink-0 px-3">
+      <div className="shrink-0 overflow-x-auto px-3 py-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <TabContainer>
           <TabButton
             isActive={tab === "overview"}
@@ -48,7 +48,14 @@ export function AISpanDetails({
             onClick={() => setTab("tools")}
             shortcut={{ key: "t" }}
           >
-            Tools{toolCount > 0 ? ` (${toolCount})` : ""}
+            <span className="inline-flex items-center whitespace-nowrap">
+              Tools
+              {toolCount > 0 && (
+                <span className="ml-1 inline-flex min-w-4 -translate-y-px items-center justify-center rounded-full border border-charcoal-600 bg-charcoal-650 px-1 py-0.5 text-[0.625rem] font-medium leading-none text-text-bright">
+                  {toolCount}
+                </span>
+              )}
+            </span>
           </TabButton>
         </TabContainer>
       </div>
