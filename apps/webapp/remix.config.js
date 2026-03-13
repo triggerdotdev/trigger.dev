@@ -12,6 +12,7 @@ module.exports = {
     /^@internal\//, // Bundle all internal packages
     /^@trigger\.dev\//, // Bundle all trigger packages
     "marked",
+    "agentcrumbs",
     "axios",
     "p-limit",
     "p-map",
