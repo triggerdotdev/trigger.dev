@@ -1,6 +1,9 @@
+import { CheckIcon, ClipboardDocumentIcon, CodeBracketSquareIcon } from "@heroicons/react/20/solid";
 import { lazy, Suspense, useState } from "react";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { Button } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import type { DisplayItem, ToolUse } from "./types";
 
 // Lazy load streamdown to avoid SSR issues
@@ -16,7 +19,7 @@ const StreamdownRenderer = lazy(() =>
 
 export function AIChatMessages({ items }: { items: DisplayItem[] }) {
   return (
-    <div className="flex flex-col divide-y divide-grid-bright">
+    <div className="flex flex-col gap-1">
       {items.map((item, i) => {
         switch (item.type) {
           case "system":
@@ -37,17 +40,19 @@ export function AIChatMessages({ items }: { items: DisplayItem[] }) {
 // Section header (shared across all sections)
 // ---------------------------------------------------------------------------
 
-function SectionHeader({
-  label,
-  right,
-}: {
-  label: string;
-  right?: React.ReactNode;
-}) {
+function SectionHeader({ label, right }: { label: string; right?: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between">
       <Header3>{label}</Header3>
       {right && <div className="flex items-center gap-2">{right}</div>}
+    </div>
+  );
+}
+
+export function ChatBubble({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-md border border-grid-bright bg-charcoal-750/50 px-3.5 py-2">
+      {children}
     </div>
   );
 }
@@ -62,7 +67,7 @@ function SystemSection({ text }: { text: string }) {
   const preview = isLong ? text.slice(0, 150) + "..." : text;
 
   return (
-    <div className="flex flex-col gap-1 py-2.5">
+    <div className="flex flex-col gap-1.5 py-2.5">
       <SectionHeader
         label="System"
         right={
@@ -76,9 +81,11 @@ function SystemSection({ text }: { text: string }) {
           ) : undefined
         }
       />
-      <pre className="whitespace-pre-wrap text-xs leading-relaxed text-text-dimmed">
-        {expanded || !isLong ? text : preview}
-      </pre>
+      <ChatBubble>
+        <Paragraph variant="small/dimmed" className="whitespace-pre-wrap">
+          {expanded || !isLong ? text : preview}
+        </Paragraph>
+      </ChatBubble>
     </div>
   );
 }
@@ -89,9 +96,11 @@ function SystemSection({ text }: { text: string }) {
 
 function UserSection({ text }: { text: string }) {
   return (
-    <div className="flex flex-col gap-1 py-2.5">
+    <div className="flex flex-col gap-1.5 py-2.5">
       <SectionHeader label="User" />
-      <p className="text-sm text-text-bright">{text}</p>
+      <ChatBubble>
+        <Paragraph variant="small/dimmed">{text}</Paragraph>
+      </ChatBubble>
     </div>
   );
 }
@@ -108,36 +117,54 @@ export function AssistantResponse({
   headerLabel?: string;
 }) {
   const [mode, setMode] = useState<"rendered" | "raw">("rendered");
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   return (
-    <div className="flex flex-col gap-1 py-2.5">
+    <div className="flex flex-col gap-1.5 py-2.5">
       <SectionHeader
         label={headerLabel}
         right={
-          <div className="flex items-center gap-2">
-            <button
+          <div className="flex items-center">
+            <Button
+              variant="minimal/small"
               onClick={() => setMode(mode === "rendered" ? "raw" : "rendered")}
-              className="text-[10px] text-text-link hover:underline"
+              LeadingIcon={CodeBracketSquareIcon}
             >
               {mode === "rendered" ? "Raw" : "Rendered"}
-            </button>
-            <button
-              onClick={() => navigator.clipboard.writeText(text)}
-              className="text-[10px] text-text-link hover:underline"
+            </Button>
+            <Button
+              variant="minimal/small"
+              onClick={handleCopy}
+              LeadingIcon={copied ? CheckIcon : ClipboardDocumentIcon}
+              leadingIconClassName={copied ? "text-green-500" : undefined}
             >
               Copy
-            </button>
+            </Button>
           </div>
         }
       />
       {mode === "rendered" ? (
-        <div className="streamdown-container text-sm text-text-bright">
-          <Suspense fallback={<pre className="whitespace-pre-wrap">{text}</pre>}>
-            <StreamdownRenderer>{text}</StreamdownRenderer>
-          </Suspense>
-        </div>
+        <ChatBubble>
+          <Paragraph variant="small/dimmed" className="streamdown-container">
+            <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
+              <StreamdownRenderer>{text}</StreamdownRenderer>
+            </Suspense>
+          </Paragraph>
+        </ChatBubble>
       ) : (
-        <CodeBlock code={text} maxLines={20} showLineNumbers={false} showCopyButton />
+        <CodeBlock
+          code={text}
+          maxLines={20}
+          showLineNumbers={false}
+          showCopyButton={false}
+          className="pl-2"
+        />
       )}
     </div>
   );
@@ -151,9 +178,13 @@ function ToolUseSection({ tools }: { tools: ToolUse[] }) {
   return (
     <div className="flex flex-col gap-1.5 py-2.5">
       <SectionHeader label={tools.length === 1 ? "Tool call" : `Tool calls (${tools.length})`} />
-      {tools.map((tool) => (
-        <ToolUseRow key={tool.toolCallId} tool={tool} />
-      ))}
+      <ChatBubble>
+        <div className="flex flex-col gap-2">
+          {tools.map((tool) => (
+            <ToolUseRow key={tool.toolCallId} tool={tool} />
+          ))}
+        </div>
+      </ChatBubble>
     </div>
   );
 }
@@ -228,9 +259,9 @@ function ToolUseRow({ tool }: { tool: ToolUse }) {
           )}
 
           {activeTab === "details" && hasDetails && (
-            <div className="border-t border-grid-dimmed px-2.5 py-2 flex flex-col gap-2">
+            <div className="flex flex-col gap-2 border-t border-grid-dimmed px-2.5 py-2">
               {tool.description && (
-                <p className="text-xs text-text-dimmed leading-relaxed">{tool.description}</p>
+                <p className="text-xs leading-relaxed text-text-dimmed">{tool.description}</p>
               )}
               {tool.parametersJson && (
                 <div>
