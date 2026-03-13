@@ -81,7 +81,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
   const parsed = UpdateModelSchema.safeParse(body);
 
   if (!parsed.success) {
@@ -90,59 +96,56 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const { modelName, matchPattern, startDate, pricingTiers } = parsed.data;
 
-  // Validate regex if provided
+  // Validate regex if provided — strip (?i) POSIX flag since our registry handles it
   if (matchPattern) {
     try {
-      new RegExp(matchPattern);
+      const testPattern = matchPattern.startsWith("(?i)") ? matchPattern.slice(4) : matchPattern;
+      new RegExp(testPattern);
     } catch {
       return json({ error: "Invalid regex in matchPattern" }, { status: 400 });
     }
   }
 
-  // Update model fields
-  const model = await prisma.llmModel.update({
-    where: { id: modelId },
-    data: {
-      ...(modelName !== undefined && { modelName }),
-      ...(matchPattern !== undefined && { matchPattern }),
-      ...(startDate !== undefined && { startDate: startDate ? new Date(startDate) : null }),
-    },
-  });
-
-  // If pricing tiers provided, replace them entirely
-  if (pricingTiers) {
-    // Delete existing tiers (cascades to prices)
-    await prisma.llmPricingTier.deleteMany({ where: { modelId } });
-
-    // Create new tiers
-    for (const tier of pricingTiers) {
-      await prisma.llmPricingTier.create({
-        data: {
-          modelId,
-          name: tier.name,
-          isDefault: tier.isDefault,
-          priority: tier.priority,
-          conditions: tier.conditions,
-          prices: {
-            create: Object.entries(tier.prices).map(([usageType, price]) => ({
-              modelId,
-              usageType,
-              price,
-            })),
-          },
-        },
-      });
-    }
-  }
-
-  const updated = await prisma.llmModel.findUnique({
-    where: { id: modelId },
-    include: {
-      pricingTiers: {
-        include: { prices: true },
-        orderBy: { priority: "asc" },
+  // Update model + tiers atomically
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.llmModel.update({
+      where: { id: modelId },
+      data: {
+        ...(modelName !== undefined && { modelName }),
+        ...(matchPattern !== undefined && { matchPattern }),
+        ...(startDate !== undefined && { startDate: startDate ? new Date(startDate) : null }),
       },
-    },
+    });
+
+    if (pricingTiers) {
+      await tx.llmPricingTier.deleteMany({ where: { modelId } });
+
+      for (const tier of pricingTiers) {
+        await tx.llmPricingTier.create({
+          data: {
+            modelId,
+            name: tier.name,
+            isDefault: tier.isDefault,
+            priority: tier.priority,
+            conditions: tier.conditions,
+            prices: {
+              create: Object.entries(tier.prices).map(([usageType, price]) => ({
+                modelId,
+                usageType,
+                price,
+              })),
+            },
+          },
+        });
+      }
+    }
+
+    return tx.llmModel.findUnique({
+      where: { id: modelId },
+      include: {
+        pricingTiers: { include: { prices: true }, orderBy: { priority: "asc" } },
+      },
+    });
   });
 
   return json({ model: updated });

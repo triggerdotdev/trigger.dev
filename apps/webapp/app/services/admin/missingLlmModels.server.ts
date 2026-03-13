@@ -70,7 +70,8 @@ export async function getMissingLlmModels(opts: {
 
   // Filter out models that now have pricing in the database (added after spans were inserted).
   // The registry's match() handles prefix stripping for gateway/openrouter models.
-  return candidates.filter((c) => !llmPricingRegistry?.match(c.model));
+  if (!llmPricingRegistry?.isLoaded) return candidates;
+  return candidates.filter((c) => !llmPricingRegistry.match(c.model));
 }
 
 export type MissingModelSample = {
