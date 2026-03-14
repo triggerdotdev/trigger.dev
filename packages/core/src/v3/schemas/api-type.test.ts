@@ -189,6 +189,21 @@ describe("RunEvent Schema", () => {
     expect(result.startTime.toISOString()).toBe("2024-03-14T00:00:00.000Z");
   });
 
+  it("handles 19-digit nanosecond startTime strings", () => {
+    const event = { ...validEvent, startTime: "1710374400000000000" };
+    const result = RunEvent.parse(event);
+    expect(result.startTime).toBeInstanceOf(Date);
+    // 1710374400000000000 ns = 1710374400000 ms = 2024-03-14T00:00:00Z
+    expect(result.startTime.toISOString()).toBe("2024-03-14T00:00:00.000Z");
+  });
+
+  it("handles bigint nanosecond startTime", () => {
+    const event = { ...validEvent, startTime: 1710374400000000000n };
+    const result = RunEvent.parse(event as any);
+    expect(result.startTime).toBeInstanceOf(Date);
+    expect(result.startTime.toISOString()).toBe("2024-03-14T00:00:00.000Z");
+  });
+
   it("allows optional/null parentId", () => {
     const eventWithoutParent = { ...validEvent };
     delete (eventWithoutParent as any).parentId;
@@ -196,6 +211,26 @@ describe("RunEvent Schema", () => {
 
     const eventWithNullParent = { ...validEvent, parentId: null };
     expect(RunEvent.safeParse(eventWithNullParent).success).toBe(true);
+  });
+
+  it("allows nullish attemptNumber", () => {
+    const eventWithNullAttempt = { ...validEvent, attemptNumber: null };
+    const result = RunEvent.safeParse(eventWithNullAttempt);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.attemptNumber).toBe(null);
+    }
+
+    const eventWithoutAttempt = { ...validEvent };
+    delete (eventWithoutAttempt as any).attemptNumber;
+    const result2 = RunEvent.safeParse(eventWithoutAttempt);
+    expect(result2.success).toBe(true);
+  });
+
+  it("supports taskSlug", () => {
+    const eventWithSlug = { ...validEvent, taskSlug: "my-task" };
+    const result = RunEvent.parse(eventWithSlug);
+    expect(result.taskSlug).toBe("my-task");
   });
 });
 
