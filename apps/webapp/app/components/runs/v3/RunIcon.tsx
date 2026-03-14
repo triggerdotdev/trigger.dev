@@ -7,6 +7,7 @@ import {
   TableCellsIcon,
   TagIcon,
 } from "@heroicons/react/20/solid";
+import { AnthropicLogoIcon } from "~/assets/icons/AnthropicLogoIcon";
 import { AttemptIcon } from "~/assets/icons/AttemptIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { cn } from "~/utils/cn";
@@ -112,6 +113,8 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
       return <FunctionIcon className={cn(className, "text-error")} />;
     case "streams":
       return <StreamsIcon className={cn(className, "text-text-dimmed")} />;
+    case "tabler-brand-anthropic":
+      return <AnthropicLogoIcon className={cn(className, "text-text-dimmed")} />;
   }
 
   return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;

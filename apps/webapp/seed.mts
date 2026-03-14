@@ -75,6 +75,7 @@ async function seed() {
   }
 
   await createBatchLimitOrgs(user);
+  await ensureDefaultWorkerGroup();
 
   console.log("\n🎉 Seed complete!\n");
   console.log("Summary:");
@@ -248,4 +249,63 @@ async function findOrCreateProject(
   }
 
   return { project, environments };
+}
+
+async function ensureDefaultWorkerGroup() {
+  // Check if the feature flag already exists
+  const existingFlag = await prisma.featureFlag.findUnique({
+    where: { key: "defaultWorkerInstanceGroupId" },
+  });
+
+  if (existingFlag) {
+    console.log(`✅ Default worker instance group already configured`);
+    return;
+  }
+
+  // Check if a managed worker group already exists
+  let workerGroup = await prisma.workerInstanceGroup.findFirst({
+    where: { type: "MANAGED" },
+  });
+
+  if (!workerGroup) {
+    console.log("Creating default worker instance group...");
+
+    const { createHash, randomBytes } = await import("crypto");
+    const tokenValue = `tr_wgt_${randomBytes(20).toString("hex")}`;
+    const tokenHash = createHash("sha256").update(tokenValue).digest("hex");
+
+    const token = await prisma.workerGroupToken.create({
+      data: { tokenHash },
+    });
+
+    workerGroup = await prisma.workerInstanceGroup.create({
+      data: {
+        type: "MANAGED",
+        name: "local-dev",
+        masterQueue: "local-dev",
+        description: "Local development worker group",
+        tokenId: token.id,
+      },
+    });
+
+    console.log(`✅ Created worker instance group: ${workerGroup.name} (${workerGroup.id})`);
+  } else {
+    console.log(
+      `✅ Worker instance group already exists: ${workerGroup.name} (${workerGroup.id})`
+    );
+  }
+
+  // Set the feature flag
+  await prisma.featureFlag.upsert({
+    where: { key: "defaultWorkerInstanceGroupId" },
+    create: {
+      key: "defaultWorkerInstanceGroupId",
+      value: workerGroup.id,
+    },
+    update: {
+      value: workerGroup.id,
+    },
+  });
+
+  console.log(`✅ Set defaultWorkerInstanceGroupId feature flag`);
 }

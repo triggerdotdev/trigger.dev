@@ -16,6 +16,7 @@
     "start:local": "cross-env node --max-old-space-size=8192 ./build/server.js",
     "typecheck": "cross-env NODE_OPTIONS=\"--max-old-space-size=8192\" tsc --noEmit -p ./tsconfig.check.json",
     "db:seed": "tsx seed.mts",
+    "db:seed:ai-spans": "tsx seed-ai-spans.mts",
     "upload:sourcemaps": "bash ./upload-sourcemaps.sh",
     "test": "vitest --no-file-parallelism",
     "eval:dev": "evalite watch"
@@ -56,6 +57,7 @@
     "@heroicons/react": "^2.0.12",
     "@jsonhero/schema-infer": "^0.1.5",
     "@internal/cache": "workspace:*",
+    "@internal/llm-pricing": "workspace:*",
     "@internal/redis": "workspace:*",
     "@internal/run-engine": "workspace:*",
     "@internal/schedule-engine": "workspace:*",
