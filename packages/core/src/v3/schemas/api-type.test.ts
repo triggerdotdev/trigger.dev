@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { InitializeDeploymentRequestBody, RunEvent } from "./api.js";
+import { InitializeDeploymentRequestBody, RunEvent, ListRunEventsResponse } from "./api.js";
 import type { InitializeDeploymentRequestBody as InitializeDeploymentRequestBodyType } from "./api.js";
 
 describe("InitializeDeploymentRequestBody", () => {
@@ -189,10 +189,47 @@ describe("RunEvent Schema", () => {
     expect(result.startTime.toISOString()).toBe("2024-03-14T00:00:00.000Z");
   });
 
-  it("allows optional parentId", () => {
+  it("allows optional/null parentId", () => {
     const eventWithoutParent = { ...validEvent };
     delete (eventWithoutParent as any).parentId;
-    const result = RunEvent.safeParse(eventWithoutParent);
+    expect(RunEvent.safeParse(eventWithoutParent).success).toBe(true);
+
+    const eventWithNullParent = { ...validEvent, parentId: null };
+    expect(RunEvent.safeParse(eventWithNullParent).success).toBe(true);
+  });
+});
+
+describe("ListRunEventsResponse Schema", () => {
+  it("parses a valid wrapped response", () => {
+    const response = {
+      events: [
+        {
+          spanId: "span_1",
+          runId: "run_1",
+          message: "Event 1",
+          style: {},
+          startTime: "2024-03-14T00:00:00Z",
+          duration: 100,
+          isError: false,
+          isPartial: false,
+          isCancelled: false,
+          level: "INFO",
+          kind: "TASK",
+        },
+      ],
+    };
+
+    const result = ListRunEventsResponse.safeParse(response);
     expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.events).toHaveLength(1);
+      expect(result.data.events[0].spanId).toBe("span_1");
+    }
+  });
+
+  it("fails on plain array", () => {
+    const response = [{ spanId: "span_1" }];
+    const result = ListRunEventsResponse.safeParse(response);
+    expect(result.success).toBe(false);
   });
 });

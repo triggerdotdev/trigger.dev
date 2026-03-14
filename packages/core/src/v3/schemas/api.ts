@@ -1646,7 +1646,7 @@ export type TaskEventLevel = z.infer<typeof TaskEventLevel>;
 
 export const RunEvent = z.object({
   spanId: z.string(),
-  parentId: z.string().optional(),
+  parentId: z.string().nullish(),
   runId: z.string(),
   message: z.string(),
   style: TaskEventStyle,
@@ -1662,3 +1662,9 @@ export const RunEvent = z.object({
 });
 
 export type RunEvent = z.infer<typeof RunEvent>;
+
+export const ListRunEventsResponse = z.object({
+  events: z.array(RunEvent),
+});
+
+export type ListRunEventsResponse = z.infer<typeof ListRunEventsResponse>;
