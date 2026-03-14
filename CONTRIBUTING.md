@@ -242,9 +242,23 @@ See the [Job Catalog](./references/job-catalog/README.md) file for more.
 
 **If you get errors, be sure to fix them before committing.**
 
-- Be sure to [check the "Allow edits from maintainers" option](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/allowing-changes-to-a-pull-request-branch-created-from-a-fork) while creating you PR.
-- If your PR refers to or fixes an issue, be sure to add `refs #XXX` or `fixes #XXX` to the PR description. Replacing `XXX` with the respective issue number. See more about [Linking a pull request to an issue
-  ](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue).
+> **Note:** We may close PRs if we decide that the cost of integrating the change outweighs the benefits. To improve the chances of your PR getting accepted, follow the guidelines below.
+
+### PR workflow
+
+1. **Always open your PR in draft status first.** Do not mark it as "Ready for Review" until the steps below are complete.
+2. **Address all CodeRabbit code review comments.** Our CI runs an automated code review via CodeRabbit. Go through each comment and either fix the issue or resolve it with a comment explaining why no change is needed.
+3. **Wait for all CI checks to pass.** Do not mark the PR as "Ready for Review" until every check is green.
+4. **Then mark the PR as "Ready for Review"** so a maintainer can take a look.
+
+### Cost/benefit analysis for risky changes
+
+If your change touches core infrastructure, modifies widely-used code paths, or could introduce regressions, consider doing a brief cost/benefit analysis and including it in the PR description. Explain what the benefit is to users and why the risk is worth it. This goes a long way toward helping maintainers evaluate your contribution.
+
+### General guidelines
+
+- Be sure to [check the "Allow edits from maintainers" option](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/allowing-changes-to-a-pull-request-branch-created-from-a-fork) while creating your PR.
+- If your PR refers to or fixes an issue, be sure to add `refs #XXX` or `fixes #XXX` to the PR description. Replacing `XXX` with the respective issue number. See more about [Linking a pull request to an issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue).
 - Be sure to fill the PR Template accordingly.
 
 ## Adding changesets
