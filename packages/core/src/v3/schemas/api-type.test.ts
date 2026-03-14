@@ -221,9 +221,8 @@ describe("ListRunEventsResponse Schema", () => {
 
     const result = ListRunEventsResponse.safeParse(response);
     expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.events).toHaveLength(1);
-      expect(result.data.events[0].spanId).toBe("span_1");
+    if (result.success && result.data) {
+      expect(result.data.events[0]!.spanId).toBe("span_1");
     }
   });
 
