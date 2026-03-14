@@ -1,4 +1,4 @@
-import type { CreateEventInput, LlmUsageData } from "../eventRepository/eventRepository.types";
+import type { CreateEventInput, LlmMetricsData } from "../eventRepository/eventRepository.types";
 
 // Registry interface — matches ModelPricingRegistry from @internal/llm-pricing
 type CostRegistry = {
@@ -36,12 +36,12 @@ function enrichCreatableEvent(event: CreateEventInput): CreateEventInput {
   event.message = message;
   event.style = enrichStyle(event);
 
-  enrichLlmCost(event);
+  enrichLlmMetrics(event);
 
   return event;
 }
 
-function enrichLlmCost(event: CreateEventInput): void {
+function enrichLlmMetrics(event: CreateEventInput): void {
   const props = event.properties;
   if (!props) return;
 
@@ -133,7 +133,7 @@ function enrichLlmCost(event: CreateEventInput): void {
     },
   } as unknown as typeof event.style;
 
-  // Only write llm_usage when cost data is available
+  // Only write llm_metrics when cost data is available
   if (!cost && !providerCost) return;
 
   // Build metadata map from run tags and ai.telemetry.metadata.*
@@ -154,13 +154,33 @@ function enrichLlmCost(event: CreateEventInput): void {
     }
   }
 
-  // Set _llmUsage side-channel for dual-write to llm_usage_v1
-  const llmUsage: LlmUsageData = {
+  // Extract new performance/behavioral fields
+  const finishReason = typeof props["ai.response.finishReason"] === "string"
+    ? props["ai.response.finishReason"]
+    : typeof props["gen_ai.response.finish_reasons"] === "string"
+      ? props["gen_ai.response.finish_reasons"]
+      : "";
+  const operationId = typeof props["ai.operationId"] === "string"
+    ? props["ai.operationId"]
+    : (props["gen_ai.operation.name"] as string) ?? (props["operation.name"] as string) ?? "";
+  const msToFirstChunk = typeof props["ai.response.msToFirstChunk"] === "number"
+    ? props["ai.response.msToFirstChunk"]
+    : 0;
+  const avgTokensPerSec = typeof props["ai.response.avgOutputTokensPerSecond"] === "number"
+    ? props["ai.response.avgOutputTokensPerSecond"]
+    : 0;
+  const costSource = cost ? "registry" : providerCost ? providerCost.source : "";
+  const providerCostValue = providerCost?.totalCost ?? 0;
+
+  // Set _llmMetrics side-channel for dual-write to llm_metrics_v1
+  const llmMetrics: LlmMetricsData = {
     genAiSystem: (props["gen_ai.system"] as string) ?? "unknown",
     requestModel: (props["gen_ai.request.model"] as string) ?? responseModel,
     responseModel,
     matchedModelId: cost?.matchedModelId ?? "",
-    operationName: (props["gen_ai.operation.name"] as string) ?? (props["operation.name"] as string) ?? "",
+    operationId,
+    finishReason,
+    costSource,
     pricingTierId: cost?.pricingTierId ?? (providerCost ? `provider:${providerCost.source}` : ""),
     pricingTierName: cost?.pricingTierName ?? (providerCost ? `${providerCost.source} reported` : ""),
     inputTokens: usageDetails["input"] ?? 0,
@@ -171,10 +191,13 @@ function enrichLlmCost(event: CreateEventInput): void {
     outputCost: cost?.outputCost ?? 0,
     totalCost: cost?.totalCost ?? providerCost?.totalCost ?? 0,
     costDetails: cost?.costDetails ?? {},
+    providerCost: providerCostValue,
+    msToFirstChunk,
+    tokensPerSecond: avgTokensPerSec,
     metadata,
   };
 
-  event._llmUsage = llmUsage;
+  event._llmMetrics = llmMetrics;
 }
 
 function extractUsageDetails(props: Record<string, unknown>): Record<string, number> {

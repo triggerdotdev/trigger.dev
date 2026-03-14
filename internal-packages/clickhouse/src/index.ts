@@ -27,7 +27,7 @@ import {
   getLogsSearchListQueryBuilder,
 } from "./taskEvents.js";
 import { insertMetrics } from "./metrics.js";
-import { insertLlmUsage } from "./llmUsage.js";
+import { insertLlmMetrics } from "./llmMetrics.js";
 import {
   getErrorGroups,
   getErrorInstances,
@@ -45,7 +45,7 @@ import type { Agent as HttpsAgent } from "https";
 export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
 export type * from "./metrics.js";
-export type * from "./llmUsage.js";
+export type * from "./llmMetrics.js";
 export type * from "./errors.js";
 export type * from "./client/queryBuilder.js";
 
@@ -227,9 +227,9 @@ export class ClickHouse {
     };
   }
 
-  get llmUsage() {
+  get llmMetrics() {
     return {
-      insert: insertLlmUsage(this.writer),
+      insert: insertLlmMetrics(this.writer),
     };
   }
 

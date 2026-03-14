@@ -4,7 +4,7 @@ import { prisma } from "./app/db.server";
 import { createOrganization } from "./app/models/organization.server";
 import { createProject } from "./app/models/project.server";
 import { ClickHouse } from "@internal/clickhouse";
-import type { TaskEventV2Input, LlmUsageV1Input } from "@internal/clickhouse";
+import type { TaskEventV2Input, LlmMetricsV1Input } from "@internal/clickhouse";
 import {
   generateTraceId,
   generateSpanId,
@@ -117,8 +117,8 @@ function eventToClickhouseRow(event: CreateEventInput): TaskEventV2Input {
   };
 }
 
-function eventToLlmUsageRow(event: CreateEventInput): LlmUsageV1Input {
-  const llm = event._llmUsage!;
+function eventToLlmMetricsRow(event: CreateEventInput): LlmMetricsV1Input {
+  const llm = event._llmMetrics!;
   return {
     organization_id: event.organizationId,
     project_id: event.projectId,
@@ -131,7 +131,9 @@ function eventToLlmUsageRow(event: CreateEventInput): LlmUsageV1Input {
     request_model: llm.requestModel,
     response_model: llm.responseModel,
     matched_model_id: llm.matchedModelId,
-    operation_name: llm.operationName,
+    operation_id: llm.operationId,
+    finish_reason: llm.finishReason,
+    cost_source: llm.costSource,
     pricing_tier_id: llm.pricingTierId,
     pricing_tier_name: llm.pricingTierName,
     input_tokens: llm.inputTokens,
@@ -142,6 +144,9 @@ function eventToLlmUsageRow(event: CreateEventInput): LlmUsageV1Input {
     output_cost: llm.outputCost,
     total_cost: llm.totalCost,
     cost_details: llm.costDetails,
+    provider_cost: llm.providerCost,
+    ms_to_first_chunk: llm.msToFirstChunk,
+    tokens_per_second: llm.tokensPerSecond,
     metadata: llm.metadata,
     start_time: formatStartTime(BigInt(event.startTime)),
     duration: formatDuration(event.duration ?? 0),
@@ -335,8 +340,8 @@ async function seedAiSpans() {
   crumb("enriching events"); // @crumbs
   const enriched = enrichCreatableEvents(events);
 
-  const enrichedCount = enriched.filter((e) => e._llmUsage != null).length;
-  const totalCost = enriched.reduce((sum, e) => sum + (e._llmUsage?.totalCost ?? 0), 0);
+  const enrichedCount = enriched.filter((e) => e._llmMetrics != null).length;
+  const totalCost = enriched.reduce((sum, e) => sum + (e._llmMetrics?.totalCost ?? 0), 0);
   console.log(
     `Enriched ${enrichedCount} spans with LLM cost (total: $${totalCost.toFixed(6)})`
   );
@@ -362,10 +367,10 @@ async function seedAiSpans() {
   crumb("task events inserted", { rowCount: chRows.length }); // @crumbs
 
   // Insert LLM usage rows
-  const llmRows = enriched.filter((e) => e._llmUsage != null).map(eventToLlmUsageRow);
+  const llmRows = enriched.filter((e) => e._llmMetrics != null).map(eventToLlmMetricsRow);
   if (llmRows.length > 0) {
-    await clickhouse.llmUsage.insert(llmRows);
-    crumb("llm usage inserted", { rowCount: llmRows.length }); // @crumbs
+    await clickhouse.llmMetrics.insert(llmRows);
+    crumb("llm metrics inserted", { rowCount: llmRows.length }); // @crumbs
   }
 
   // 12. Output
