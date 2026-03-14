@@ -5,6 +5,7 @@ import {
   type inferSchemaIn,
   type TaskSchema,
   type TaskWithSchema,
+  type TriggerAndWaitOptions,
 } from "@trigger.dev/core/v3";
 import { dynamicTool, jsonSchema, JSONSchema7, Schema, Tool, ToolCallOptions, zodSchema } from "ai";
 import { metadata } from "./metadata.js";
@@ -27,6 +28,7 @@ type ToolResultContent = Array<
 
 export type ToolOptions<TResult> = {
   experimental_toToolResultContent?: (result: TResult) => ToolResultContent;
+  triggerOptions?: TriggerAndWaitOptions;
 };
 
 function toolFromTask<TIdentifier extends string, TInput = void, TOutput = unknown>(
@@ -61,18 +63,20 @@ function toolFromTask<
   const toolDefinition = dynamicTool({
     description: task.description,
     inputSchema: convertTaskSchemaToToolParameters(task),
-    execute: async (input, options) => {
-      const serializedOptions = options ? JSON.parse(JSON.stringify(options)) : undefined;
-
-      return await task
-        .triggerAndWait(input as inferSchemaIn<TTaskSchema>, {
-          metadata: {
-            [METADATA_KEY]: serializedOptions,
-          },
-        })
-        .unwrap();
-    },
-    ...options,
+    execute: async (input, toolCallMetadata) => {
+      const serializedOptions = toolCallMetadata ? JSON.parse(JSON.stringify(toolCallMetadata)) : undefined;
+ 
+       return await task
+         .triggerAndWait(input as inferSchemaIn<TTaskSchema>, {
+           ...options?.triggerOptions,
+           metadata: {
+             [METADATA_KEY]: serializedOptions,
+             ...options?.triggerOptions?.metadata,
+           },
+         })
+         .unwrap();
+     },
+     ...options,
   });
 
   return toolDefinition as TTaskSchema extends TaskSchema
