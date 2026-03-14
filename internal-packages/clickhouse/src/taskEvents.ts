@@ -279,6 +279,9 @@ export function getLogsSearchListQueryBuilder(ch: ClickhouseReader) {
       "attributes_text",
       "triggered_timestamp",
     ],
+    settings: {
+      use_query_condition_cache: 1,
+    },
   });
 }
 

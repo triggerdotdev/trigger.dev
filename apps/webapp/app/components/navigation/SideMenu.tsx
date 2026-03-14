@@ -24,6 +24,7 @@ import {
   Squares2X2Icon,
   TableCellsIcon,
   UsersIcon,
+  BugAntIcon,
 } from "@heroicons/react/20/solid";
 import { Link, useFetcher, useNavigation } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
@@ -73,6 +74,7 @@ import {
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
   v3LogsPath,
+  v3ErrorsPath,
   v3ProjectAlertsPath,
   v3ProjectPath,
   v3ProjectSettingsGeneralPath,
@@ -112,6 +114,7 @@ import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
 import { type SideMenuSectionId } from "./sideMenuTypes";
+import { IconBugFilled } from "@tabler/icons-react";
 
 /** Get the collapsed state for a specific side menu section from user preferences */
 function getSectionCollapsed(
@@ -471,6 +474,17 @@ export function SideMenu({
                     to={v3LogsPath(organization, project, environment)}
                     data-action="logs"
                     badge={<AlphaBadge />}
+                    isCollapsed={isCollapsed}
+                  />
+                )}
+                {(user.admin || user.isImpersonating) && (
+                  <SideMenuItem
+                    name="Errors"
+                    icon={IconBugFilled}
+                    activeIconColor="text-amber-500"
+                    inactiveIconColor="text-amber-500"
+                    to={v3ErrorsPath(organization, project, environment)}
+                    data-action="errors"
                     isCollapsed={isCollapsed}
                   />
                 )}

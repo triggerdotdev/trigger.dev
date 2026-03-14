@@ -80,13 +80,13 @@ export const realtimeStreamsTask = task({
 export const realtimeStreamsV2Task = task({
   id: "realtime-streams-v2",
   run: async () => {
-    const mockStream1 = createStreamFromGenerator(generateMockData(5 * 60 * 1000));
+    const mockStream1 = createStreamFromGenerator(generateMockData(10_000));
 
     await metadata.stream("mock-data", mockStream1);
 
-    await setTimeout(10000); // Offset by 10 seconds
+    await setTimeout(5000); // Offset by 5 seconds
 
-    const mockStream2 = createStreamFromGenerator(generateMockData(5 * 60 * 1000));
+    const mockStream2 = createStreamFromGenerator(generateMockData(10_000));
     const stream2 = await metadata.stream("mock-data", mockStream2);
 
     for await (const chunk of stream2) {

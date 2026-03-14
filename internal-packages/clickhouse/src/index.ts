@@ -27,6 +27,16 @@ import {
   getLogsSearchListQueryBuilder,
 } from "./taskEvents.js";
 import { insertMetrics } from "./metrics.js";
+import {
+  getErrorGroups,
+  getErrorInstances,
+  getErrorGroupsListQueryBuilder,
+  getErrorHourlyOccurrences,
+  getErrorOccurrencesListQueryBuilder,
+  createErrorOccurrencesQueryBuilder,
+  getErrorAffectedVersionsQueryBuilder,
+} from "./errors.js";
+export { msToClickHouseInterval } from "./intervals.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
@@ -34,6 +44,7 @@ import type { Agent as HttpsAgent } from "https";
 export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
 export type * from "./metrics.js";
+export type * from "./errors.js";
 export type * from "./client/queryBuilder.js";
 
 // Re-export column constants, indices, and type-safe accessors
@@ -227,6 +238,19 @@ export class ClickHouse {
   get taskEventsSearch() {
     return {
       logsListQueryBuilder: getLogsSearchListQueryBuilder(this.reader),
+    };
+  }
+
+  get errors() {
+    return {
+      getGroups: getErrorGroups(this.reader),
+      getInstances: getErrorInstances(this.reader),
+      getHourlyOccurrences: getErrorHourlyOccurrences(this.reader),
+      affectedVersionsQueryBuilder: getErrorAffectedVersionsQueryBuilder(this.reader),
+      listQueryBuilder: getErrorGroupsListQueryBuilder(this.reader),
+      occurrencesListQueryBuilder: getErrorOccurrencesListQueryBuilder(this.reader),
+      createOccurrencesQueryBuilder: (intervalExpr: string) =>
+        createErrorOccurrencesQueryBuilder(this.reader, intervalExpr),
     };
   }
 }

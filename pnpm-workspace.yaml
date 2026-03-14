@@ -11,6 +11,7 @@ minimumReleaseAgeExclude:
   - "@trigger.dev/platform"
   - "next"
   - "@next/*"
+  - "agentcrumbs"
 preferOffline: true
 
 linkWorkspacePackages: false

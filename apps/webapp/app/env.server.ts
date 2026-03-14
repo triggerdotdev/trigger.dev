@@ -39,6 +39,7 @@ const S2EnvSchema = z.preprocess(
       S2_ENABLED: z.literal("1"),
       S2_ACCESS_TOKEN: z.string(),
       S2_DEPLOYMENT_LOGS_BASIN_NAME: z.string(),
+      S2_DEPLOYMENT_STREAMS_LOCAL: z.string().default("0"),
     }),
     z.object({
       S2_ENABLED: z.literal("0"),
@@ -992,6 +993,9 @@ const EnvironmentSchema = z
     // Global rate limit: max items processed per second across all consumers
     // If not set, no global rate limiting is applied
     BATCH_QUEUE_GLOBAL_RATE_LIMIT: z.coerce.number().int().positive().optional(),
+    // Max items in the worker queue before claiming pauses (protects visibility timeouts)
+    // If not set, no depth limit is applied
+    BATCH_QUEUE_WORKER_QUEUE_MAX_DEPTH: z.coerce.number().int().positive().optional(),
 
     ADMIN_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     ADMIN_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
@@ -1195,6 +1199,7 @@ const EnvironmentSchema = z
     RUN_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
     RUN_REPLICATION_INSERT_STRATEGY: z.enum(["insert", "insert_async"]).default("insert"),
     RUN_REPLICATION_DISABLE_PAYLOAD_INSERT: z.string().default("0"),
+    RUN_REPLICATION_DISABLE_ERROR_FINGERPRINTING: z.string().default("0"),
 
     // Clickhouse
     CLICKHOUSE_URL: z.string(),
@@ -1344,6 +1349,8 @@ const EnvironmentSchema = z
 
     REALTIME_STREAMS_S2_BASIN: z.string().optional(),
     REALTIME_STREAMS_S2_ACCESS_TOKEN: z.string().optional(),
+    REALTIME_STREAMS_S2_ENDPOINT: z.string().optional(),
+    REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS: z.enum(["true", "false"]).default("false"),
     REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS: z.coerce
       .number()
       .int()

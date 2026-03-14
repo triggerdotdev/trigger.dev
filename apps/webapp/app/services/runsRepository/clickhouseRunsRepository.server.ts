@@ -1,5 +1,5 @@
 import { type ClickhouseQueryBuilder } from "@internal/clickhouse";
-import { RunId } from "@trigger.dev/core/v3/isomorphic";
+import { ErrorId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import {
   type FilterRunsOptions,
   type IRunsRepository,
@@ -326,6 +326,12 @@ function applyRunFiltersToQueryBuilder<T>(
   if (options.machines && options.machines.length > 0) {
     queryBuilder.where("machine_preset IN {machines: Array(String)}", {
       machines: options.machines,
+    });
+  }
+
+  if (options.errorId) {
+    queryBuilder.where("error_fingerprint = {errorFingerprint: String}", {
+      errorFingerprint: ErrorId.toId(options.errorId),
     });
   }
 }

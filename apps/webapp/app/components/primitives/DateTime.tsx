@@ -1,7 +1,8 @@
 import { GlobeAltIcon, GlobeAmericasIcon } from "@heroicons/react/20/solid";
 import { useRouteLoaderData } from "@remix-run/react";
+import { formatDistanceToNow } from "date-fns";
 import { Laptop } from "lucide-react";
-import { memo, type ReactNode, useMemo, useSyncExternalStore } from "react";
+import { memo, type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { CopyButton } from "./CopyButton";
 import { useLocales } from "./LocaleProvider";
 import { Paragraph } from "./Paragraph";
@@ -356,6 +357,54 @@ function formatDateTimeAccurate(
 
   return `${datePart} ${timePart}`;
 }
+
+type RelativeDateTimeProps = {
+  date: Date | string;
+  timeZone?: string;
+};
+
+function getRelativeText(date: Date): string {
+  const text = formatDistanceToNow(date, { addSuffix: true });
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+export const RelativeDateTime = ({ date, timeZone }: RelativeDateTimeProps) => {
+  const locales = useLocales();
+  const userTimeZone = useUserTimeZone();
+
+  const realDate = useMemo(() => (typeof date === "string" ? new Date(date) : date), [date]);
+
+  const [relativeText, setRelativeText] = useState(() => getRelativeText(realDate));
+
+  // Every 60s refresh
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRelativeText(getRelativeText(realDate));
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [realDate]);
+
+  // On first render
+  useEffect(() => {
+    setRelativeText(getRelativeText(realDate));
+  }, [realDate]);
+
+  return (
+    <SimpleTooltip
+      button={<span suppressHydrationWarning>{relativeText}</span>}
+      content={
+        <TooltipContent
+          realDate={realDate}
+          timeZone={timeZone}
+          localTimeZone={userTimeZone}
+          locales={locales}
+        />
+      }
+      side="right"
+      asChild={true}
+    />
+  );
+};
 
 export const DateTimeShort = ({ date, hour12 = true }: DateTimeProps) => {
   const locales = useLocales();

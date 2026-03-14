@@ -228,6 +228,18 @@ export function BulkActionFilterSummary({
                     />
                   );
                 }
+                case "errorId": {
+                  return (
+                    <AppliedFilter
+                      variant="minimal/medium"
+                      key={key}
+                      label={"Error ID"}
+                      icon={filterIcon(key)}
+                      value={value}
+                      removable={false}
+                    />
+                  );
+                }
                 default: {
                   assertNever(typedKey);
                 }

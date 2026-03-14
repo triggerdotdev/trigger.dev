@@ -189,10 +189,25 @@ jobs:
           # Get current release body and replace the generic link with the tag-specific one.
           # Use word boundary after GENERIC_URL (closing paren) to avoid matching URLs that
           # already have a version ID appended (idempotent on re-runs).
-          gh release view "${TAG}" --json body --jq '.body' > /tmp/release-body.md
+          gh release view "${TAG}" --repo triggerdotdev/trigger.dev --json body --jq '.body' > /tmp/release-body.md
           sed -i "s|${GENERIC_URL})|${DOCKER_URL})|g" /tmp/release-body.md
 
-          gh release edit "${TAG}" --notes-file /tmp/release-body.md
+          gh release edit "${TAG}" --repo triggerdotdev/trigger.dev --notes-file /tmp/release-body.md
+
+  # Dispatch changelog entry creation to the marketing site repo.
+  # Runs after update-release so the GitHub release body already has the exact Docker image URL.
+  dispatch-changelog:
+    name: 📝 Dispatch changelog PR
+    needs: [release, update-release]
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          repository: triggerdotdev/trigger.dev-site-v3
+          event-type: new-release
+          client-payload: '{"version": "${{ needs.release.outputs.published_package_version }}"}'
 
   # The prerelease job needs to be on the same workflow file due to a limitation related to how npm verifies OIDC claims.
   prerelease:

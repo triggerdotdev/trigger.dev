@@ -217,7 +217,7 @@ export class DeploymentPresenter {
     let eventStream = undefined;
     if (
       env.S2_ENABLED === "1" &&
-      (buildServerMetadata || gitMetadata?.source === "trigger_github_app")
+      (buildServerMetadata || gitMetadata?.source === "trigger_github_app" || env.S2_DEPLOYMENT_STREAMS_LOCAL === "1")
     ) {
       const [error, accessToken] = await tryCatch(this.getS2AccessToken(project.externalRef));
 
@@ -290,9 +290,9 @@ export class DeploymentPresenter {
       return cachedToken;
     }
 
-    const { access_token: accessToken } = await s2.accessTokens.issue({
+    const { accessToken } = await s2.accessTokens.issue({
       id: `${projectRef}-${new Date().getTime()}`,
-      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
       scope: {
         ops: ["read"],
         basins: {

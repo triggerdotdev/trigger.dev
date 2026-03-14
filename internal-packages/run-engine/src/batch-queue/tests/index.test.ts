@@ -1,6 +1,7 @@
 import { redisTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
 import { BatchQueue } from "../index.js";
+import type { GlobalRateLimiter } from "@trigger.dev/redis-worker";
 import type { CompleteBatchResult, InitializeBatchOptions, BatchItem } from "../types.js";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -652,6 +653,123 @@ describe("BatchQueue", () => {
           // Redis data should be cleaned up after successful callback
           const meta = await queue.getBatchMeta("batch1");
           expect(meta).toBeNull();
+        } finally {
+          await queue.close();
+        }
+      }
+    );
+  });
+
+  describe("global rate limiter at worker queue consumer level", () => {
+    redisTest(
+      "should call rate limiter before each processing attempt",
+      async ({ redisContainer }) => {
+        let limitCallCount = 0;
+        const rateLimiter: GlobalRateLimiter = {
+          async limit() {
+            limitCallCount++;
+            return { allowed: true };
+          },
+        };
+
+        const queue = new BatchQueue({
+          redis: {
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+            keyPrefix: "test:",
+          },
+          drr: { quantum: 5, maxDeficit: 50 },
+          consumerCount: 1,
+          consumerIntervalMs: 50,
+          startConsumers: true,
+          globalRateLimiter: rateLimiter,
+        });
+
+        let completionResult: CompleteBatchResult | null = null;
+
+        try {
+          queue.onProcessItem(async ({ itemIndex }) => {
+            return { success: true, runId: `run_${itemIndex}` };
+          });
+
+          queue.onBatchComplete(async (result) => {
+            completionResult = result;
+          });
+
+          const itemCount = 5;
+          await queue.initializeBatch(createInitOptions("batch1", "env1", itemCount));
+          await enqueueItems(queue, "batch1", "env1", createBatchItems(itemCount));
+
+          await vi.waitFor(
+            () => {
+              expect(completionResult).not.toBeNull();
+            },
+            { timeout: 10000 }
+          );
+
+          expect(completionResult!.successfulRunCount).toBe(itemCount);
+          // Rate limiter is called before each blockingPop, including iterations
+          // where no message is available, so count >= items processed
+          expect(limitCallCount).toBeGreaterThanOrEqual(itemCount);
+        } finally {
+          await queue.close();
+        }
+      }
+    );
+
+    redisTest(
+      "should delay processing when rate limited",
+      async ({ redisContainer }) => {
+        let limitCallCount = 0;
+        const rateLimiter: GlobalRateLimiter = {
+          async limit() {
+            limitCallCount++;
+            // Rate limit the first 3 calls, then allow
+            if (limitCallCount <= 3) {
+              return { allowed: false, resetAt: Date.now() + 100 };
+            }
+            return { allowed: true };
+          },
+        };
+
+        const queue = new BatchQueue({
+          redis: {
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+            keyPrefix: "test:",
+          },
+          drr: { quantum: 5, maxDeficit: 50 },
+          consumerCount: 1,
+          consumerIntervalMs: 50,
+          startConsumers: true,
+          globalRateLimiter: rateLimiter,
+        });
+
+        let completionResult: CompleteBatchResult | null = null;
+
+        try {
+          queue.onProcessItem(async ({ itemIndex }) => {
+            return { success: true, runId: `run_${itemIndex}` };
+          });
+
+          queue.onBatchComplete(async (result) => {
+            completionResult = result;
+          });
+
+          await queue.initializeBatch(createInitOptions("batch1", "env1", 3));
+          await enqueueItems(queue, "batch1", "env1", createBatchItems(3));
+
+          // Should still complete despite initial rate limiting
+          await vi.waitFor(
+            () => {
+              expect(completionResult).not.toBeNull();
+            },
+            { timeout: 10000 }
+          );
+
+          expect(completionResult!.successfulRunCount).toBe(3);
+          // Rate limiter was called more times than items due to initial rejections
+          expect(limitCallCount).toBeGreaterThan(3);
         } finally {
           await queue.close();
         }

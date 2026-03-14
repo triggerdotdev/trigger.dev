@@ -398,6 +398,7 @@ export class RunEngine {
       consumerIntervalMs: options.batchQueue?.consumerIntervalMs ?? 100,
       defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
       globalRateLimiter: options.batchQueue?.globalRateLimiter,
+      workerQueueMaxDepth: options.batchQueue?.workerQueueMaxDepth,
       startConsumers: startBatchQueueConsumers,
       retry: options.batchQueue?.retry,
       tracer: options.tracer,
@@ -768,19 +769,32 @@ export class RunEngine {
             }
           }
         } else {
-          if (taskRun.ttl) {
-            await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
-          }
+          try {
+            if (taskRun.ttl) {
+              await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
+            }
 
-          await this.enqueueSystem.enqueueRun({
-            run: taskRun,
-            env: environment,
-            workerId,
-            runnerId,
-            tx: prisma,
-            skipRunLock: true,
-            includeTtl: true,
-          });
+            await this.enqueueSystem.enqueueRun({
+              run: taskRun,
+              env: environment,
+              workerId,
+              runnerId,
+              tx: prisma,
+              skipRunLock: true,
+              includeTtl: true,
+            });
+          } catch (enqueueError) {
+            this.logger.error("engine.trigger(): failed to schedule TTL or enqueue run", {
+              runId: taskRun.id,
+              friendlyId: taskRun.friendlyId,
+              taskIdentifier: taskRun.taskIdentifier,
+              environmentId: environment.id,
+              ttl: taskRun.ttl,
+              error: enqueueError,
+            });
+
+            throw enqueueError;
+          }
         }
 
         this.eventBus.emit("runCreated", {

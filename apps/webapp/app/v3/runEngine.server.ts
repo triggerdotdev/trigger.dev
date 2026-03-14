@@ -198,6 +198,8 @@ function createRunEngine() {
       globalRateLimiter: env.BATCH_QUEUE_GLOBAL_RATE_LIMIT
         ? createBatchGlobalRateLimiter(env.BATCH_QUEUE_GLOBAL_RATE_LIMIT)
         : undefined,
+      // Worker queue depth cap - prevents unbounded growth protecting visibility timeouts
+      workerQueueMaxDepth: env.BATCH_QUEUE_WORKER_QUEUE_MAX_DEPTH,
       retry: {
         maxAttempts: 6,
         minTimeoutInMs: 1_000,

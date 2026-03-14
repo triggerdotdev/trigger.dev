@@ -325,7 +325,7 @@ export function v3CreateBulkActionPath(
   project: ProjectForPath,
   environment: EnvironmentForPath,
   filters?: TaskRunListSearchFilters,
-  mode?: "selected" | "filters",
+  mode?: "selected" | "filter",
   action?: "replay" | "cancel"
 ) {
   const searchParams = objectToSearchParams(filters) ?? new URLSearchParams();
@@ -525,6 +525,23 @@ export function v3LogsPath(
   environment: EnvironmentForPath
 ) {
   return `${v3EnvironmentPath(organization, project, environment)}/logs`;
+}
+
+export function v3ErrorsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/errors`;
+}
+
+export function v3ErrorPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  error: { fingerprint: string }
+) {
+  return `${v3ErrorsPath(organization, project, environment)}/${error.fingerprint}`;
 }
 
 export function v3DeploymentsPath(

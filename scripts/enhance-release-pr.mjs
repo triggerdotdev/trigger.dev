@@ -100,13 +100,7 @@ function gitExec(args) {
 async function getCommitForFile(filePath) {
   try {
     // Find the commit that added this file
-    const sha = await gitExec([
-      "log",
-      "--diff-filter=A",
-      "--format=%H",
-      "--",
-      filePath,
-    ]);
+    const sha = await gitExec(["log", "--diff-filter=A", "--format=%H", "--", filePath]);
     return sha.split("\n")[0] || null;
   } catch {
     return null;
@@ -118,15 +112,12 @@ async function getPrForCommit(commitSha) {
   if (!token || !commitSha) return null;
 
   try {
-    const res = await fetch(
-      `https://api.github.com/repos/${REPO}/commits/${commitSha}/pulls`,
-      {
-        headers: {
-          Authorization: `token ${token}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-      }
-    );
+    const res = await fetch(`https://api.github.com/repos/${REPO}/commits/${commitSha}/pulls`, {
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+    });
     if (!res.ok) return null;
 
     const pulls = await res.json();
@@ -173,9 +164,7 @@ async function parseServerChanges() {
   }
 
   // Look up commits for all files in parallel
-  const commits = await Promise.all(
-    fileData.map((f) => getCommitForFile(f.filePath))
-  );
+  const commits = await Promise.all(fileData.map((f) => getCommitForFile(f.filePath)));
 
   // Look up PRs for all commits in parallel
   const prNumbers = await Promise.all(commits.map((sha) => getPrForCommit(sha)));
@@ -222,35 +211,24 @@ function formatPrBody({ version, packageEntries, serverEntries, rawBody }) {
 
   const features = packageEntries.filter((e) => e.type === "feature");
   const fixes = packageEntries.filter((e) => e.type === "fix");
-  const improvements = packageEntries.filter(
-    (e) => e.type === "improvement" || e.type === "other"
-  );
+  const improvements = packageEntries.filter((e) => e.type === "improvement" || e.type === "other");
   const breaking = packageEntries.filter((e) => e.type === "breaking");
 
   const serverFeatures = serverEntries.filter((e) => e.type === "feature");
   const serverFixes = serverEntries.filter((e) => e.type === "fix");
-  const serverImprovements = serverEntries.filter(
-    (e) => e.type === "improvement"
-  );
+  const serverImprovements = serverEntries.filter((e) => e.type === "improvement");
   const serverBreaking = serverEntries.filter((e) => e.type === "breaking");
 
   const totalFeatures = features.length + serverFeatures.length;
   const totalFixes = fixes.length + serverFixes.length;
   const totalImprovements = improvements.length + serverImprovements.length;
 
-  lines.push(`# trigger.dev v${version}`);
-  lines.push("");
-
   // Summary line
   const parts = [];
-  if (totalFeatures > 0)
-    parts.push(`${totalFeatures} new feature${totalFeatures > 1 ? "s" : ""}`);
+  if (totalFeatures > 0) parts.push(`${totalFeatures} new feature${totalFeatures > 1 ? "s" : ""}`);
   if (totalImprovements > 0)
-    parts.push(
-      `${totalImprovements} improvement${totalImprovements > 1 ? "s" : ""}`
-    );
-  if (totalFixes > 0)
-    parts.push(`${totalFixes} bug fix${totalFixes > 1 ? "es" : ""}`);
+    parts.push(`${totalImprovements} improvement${totalImprovements > 1 ? "s" : ""}`);
+  if (totalFixes > 0) parts.push(`${totalFixes} bug fix${totalFixes > 1 ? "es" : ""}`);
   if (parts.length > 0) {
     lines.push(`## Summary`);
     lines.push(`${parts.join(", ")}.`);
@@ -260,8 +238,7 @@ function formatPrBody({ version, packageEntries, serverEntries, rawBody }) {
   // Breaking changes
   if (breaking.length > 0 || serverBreaking.length > 0) {
     lines.push("## Breaking changes");
-    for (const entry of [...breaking, ...serverBreaking])
-      lines.push(`- ${entry.text}`);
+    for (const entry of [...breaking, ...serverBreaking]) lines.push(`- ${entry.text}`);
     lines.push("");
   }
 
@@ -290,17 +267,11 @@ function formatPrBody({ version, packageEntries, serverEntries, rawBody }) {
   }
 
   // Server changes
-  const allServer = [
-    ...serverFeatures,
-    ...serverImprovements,
-    ...serverFixes,
-  ];
+  const allServer = [...serverFeatures, ...serverImprovements, ...serverFixes];
   if (allServer.length > 0) {
     lines.push("## Server changes");
     lines.push("");
-    lines.push(
-      "These changes affect the self-hosted Docker image and Trigger.dev Cloud:"
-    );
+    lines.push("These changes affect the self-hosted Docker image and Trigger.dev Cloud:");
     lines.push("");
     for (const entry of allServer) {
       // Indent continuation lines so multi-line entries stay inside the list item
