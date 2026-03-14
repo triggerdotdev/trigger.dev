@@ -9,6 +9,8 @@ import {
 } from "./common.js";
 import { BackgroundWorkerMetadata } from "./resources.js";
 import { DequeuedMessage, MachineResources } from "./runEngine.js";
+import { TaskEventStyle } from "./style.js";
+import { SpanEvents } from "./openTelemetry.js";
 
 export const RunEngineVersion = z.union([z.literal("V1"), z.literal("V2")]);
 
@@ -1639,3 +1641,52 @@ export const SendInputStreamResponseBody = z.object({
   ok: z.boolean(),
 });
 export type SendInputStreamResponseBody = z.infer<typeof SendInputStreamResponseBody>;
+export const TaskEventLevel = z.enum(["TRACE", "DEBUG", "INFO", "LOG", "WARN", "ERROR"]);
+export type TaskEventLevel = z.infer<typeof TaskEventLevel>;
+export const NanosecondTimestampSchema = z
+  .union([z.string(), z.number(), z.bigint()])
+  .transform((val) => {
+    // If it's already a Date, return it (though union doesn't include it)
+    if (typeof val === "object" && val instanceof Date) return val;
+
+    const str = val.toString();
+
+    // 19 digits is nanoseconds (e.g., 1710374400000000000)
+    if (str.length === 19) {
+      return new Date(Number(BigInt(str) / 1000000n));
+    }
+
+    // 13 digits is milliseconds
+    if (str.length === 13) {
+      return new Date(Number(val));
+    }
+
+    // Default to standard date coercion
+    return new Date(val as any);
+  });
+
+export const RunEvent = z.object({
+  spanId: z.string(),
+  parentId: z.string().nullish(),
+  runId: z.string(),
+  message: z.string(),
+  style: TaskEventStyle,
+  startTime: NanosecondTimestampSchema,
+  duration: z.number(),
+  isError: z.boolean(),
+  isPartial: z.boolean(),
+  isCancelled: z.boolean(),
+  level: TaskEventLevel,
+  events: SpanEvents.optional(),
+  kind: z.string(),
+  attemptNumber: z.number().nullish(),
+  taskSlug: z.string().optional(),
+});
+
+export type RunEvent = z.infer<typeof RunEvent>;
+
+export const ListRunEventsResponse = z.object({
+  events: z.array(RunEvent),
+});
+
+export type ListRunEventsResponse = z.infer<typeof ListRunEventsResponse>;
