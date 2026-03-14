@@ -1578,6 +1578,11 @@ export class RunQueue {
               continue;
             }
 
+            if (messages.length > 0) {
+              // Reset cooloff state on successful dequeue
+              this._queueCooloffStates.delete(queue);
+            }
+
             if (messages.length === 0) {
               if (cooloffState._tag === "normal") {
                 const cooloffCountThreshold = Math.max(
