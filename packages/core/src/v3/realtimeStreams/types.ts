@@ -26,13 +26,17 @@ export interface RealtimeStreamsManager {
   ): Promise<void>;
 }
 
+export type StreamWriteResult = {
+  lastEventId?: string;
+};
+
 export interface RealtimeStreamInstance<T> {
-  wait(): Promise<void>;
+  wait(): Promise<StreamWriteResult>;
   get stream(): AsyncIterableStream<T>;
 }
 
 export interface StreamsWriter {
-  wait(): Promise<void>;
+  wait(): Promise<StreamWriteResult>;
 }
 
 export type RealtimeDefinedStream<TPart> = {
@@ -71,6 +75,10 @@ export type PipeStreamOptions = {
    * Additional request options for the API call.
    */
   requestOptions?: ApiRequestOptions;
+  /** Override the default span name for this operation. */
+  spanName?: string;
+  /** When true, the span will be collapsed in the dashboard. */
+  collapsed?: boolean;
 };
 
 /**
@@ -89,7 +97,7 @@ export type PipeStreamResult<T> = {
    * to the realtime stream. Use this to wait for the stream to complete before
    * finishing your task.
    */
-  waitUntilComplete: () => Promise<void>;
+  waitUntilComplete: () => Promise<StreamWriteResult>;
 };
 
 /**
@@ -186,6 +194,14 @@ export type RealtimeDefinedInputStream<TData> = {
    */
   wait: (options?: InputStreamWaitOptions) => ManualWaitpointPromise<TData>;
   /**
+   * Wait for data with a warm phase before suspending.
+   *
+   * Keeps the task warm (active, using compute) for `warmTimeoutInSeconds`,
+   * then suspends via `.wait()` if no data arrives. If data arrives during
+   * the warm phase the task responds instantly without suspending.
+   */
+  waitWithWarmup: (options: InputStreamWaitWithWarmupOptions) => Promise<{ ok: true; output: TData } | { ok: false; error?: any }>;
+  /**
    * Send data to this input stream on a specific run.
    * This is used from outside the task (e.g., from your backend or another task).
    */
@@ -199,6 +215,8 @@ export type InputStreamSubscription = {
 export type InputStreamOnceOptions = {
   signal?: AbortSignal;
   timeoutMs?: number;
+  /** Override the default span name for this operation. */
+  spanName?: string;
 };
 
 export type SendInputStreamOptions = {
@@ -234,6 +252,18 @@ export type InputStreamWaitOptions = {
    * and filtering waitpoints via `wait.listTokens()`.
    */
   tags?: string[];
+
+  /** Override the default span name for this operation. */
+  spanName?: string;
+};
+
+export type InputStreamWaitWithWarmupOptions = {
+  /** Seconds to keep the task warm before suspending. */
+  warmTimeoutInSeconds: number;
+  /** Maximum time to wait after suspending (duration string, e.g. "1h"). */
+  timeout?: string;
+  /** Override the default span name for the outer operation. */
+  spanName?: string;
 };
 
 export type InferInputStreamType<T> = T extends RealtimeDefinedInputStream<infer TData>
