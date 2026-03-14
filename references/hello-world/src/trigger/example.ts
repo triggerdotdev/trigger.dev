@@ -5,6 +5,7 @@ import { fixedLengthTask } from "./batches.js";
 
 export const helloWorldTask = task({
   id: "hello-world",
+  ttl: "10m",
   retry: {
     maxAttempts: 3,
     minTimeoutInMs: 500,
