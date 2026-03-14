@@ -9,6 +9,8 @@ import {
 } from "./common.js";
 import { BackgroundWorkerMetadata } from "./resources.js";
 import { DequeuedMessage, MachineResources } from "./runEngine.js";
+import { TaskEventStyle } from "./style.js";
+import { SpanEvents } from "./openTelemetry.js";
 
 export const RunEngineVersion = z.union([z.literal("V1"), z.literal("V2")]);
 
@@ -1639,3 +1641,24 @@ export const SendInputStreamResponseBody = z.object({
   ok: z.boolean(),
 });
 export type SendInputStreamResponseBody = z.infer<typeof SendInputStreamResponseBody>;
+export const TaskEventLevel = z.enum(["TRACE", "DEBUG", "INFO", "LOG", "WARN", "ERROR"]);
+export type TaskEventLevel = z.infer<typeof TaskEventLevel>;
+
+export const RunEvent = z.object({
+  spanId: z.string(),
+  parentId: z.string().optional(),
+  runId: z.string(),
+  message: z.string(),
+  style: TaskEventStyle,
+  startTime: z.coerce.date(),
+  duration: z.number(),
+  isError: z.boolean(),
+  isPartial: z.boolean(),
+  isCancelled: z.boolean(),
+  level: TaskEventLevel,
+  events: SpanEvents.optional(),
+  kind: z.string(),
+  attemptNumber: z.number().optional(),
+});
+
+export type RunEvent = z.infer<typeof RunEvent>;

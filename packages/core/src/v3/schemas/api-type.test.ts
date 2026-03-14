@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { InitializeDeploymentRequestBody } from "./api.js";
+import { InitializeDeploymentRequestBody, RunEvent } from "./api.js";
 import type { InitializeDeploymentRequestBody as InitializeDeploymentRequestBodyType } from "./api.js";
 
 describe("InitializeDeploymentRequestBody", () => {
@@ -137,5 +137,62 @@ describe("InitializeDeploymentRequestBody", () => {
         expect(narrowed.contentHash).toBe("abc123");
       }
     });
+  });
+});
+
+describe("RunEvent Schema", () => {
+  const validEvent = {
+    spanId: "span_123",
+    parentId: "span_root",
+    runId: "run_abc",
+    message: "Test event",
+    style: {
+      icon: "task",
+      variant: "primary",
+    },
+    startTime: "2024-03-14T00:00:00Z",
+    duration: 1234,
+    isError: false,
+    isPartial: false,
+    isCancelled: false,
+    level: "INFO",
+    kind: "TASK",
+    attemptNumber: 1,
+  };
+
+  it("parses a valid event correctly", () => {
+    const result = RunEvent.safeParse(validEvent);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.spanId).toBe("span_123");
+      expect(result.data.startTime).toBeInstanceOf(Date);
+      expect(result.data.level).toBe("INFO");
+    }
+  });
+
+  it("fails on missing required fields", () => {
+    const invalidEvent = { ...validEvent };
+    delete (invalidEvent as any).spanId;
+    const result = RunEvent.safeParse(invalidEvent);
+    expect(result.success).toBe(false);
+  });
+
+  it("fails on invalid level", () => {
+    const invalidEvent = { ...validEvent, level: "INVALID_LEVEL" };
+    const result = RunEvent.safeParse(invalidEvent);
+    expect(result.success).toBe(false);
+  });
+
+  it("coerces startTime to Date", () => {
+    const result = RunEvent.parse(validEvent);
+    expect(result.startTime).toBeInstanceOf(Date);
+    expect(result.startTime.toISOString()).toBe("2024-03-14T00:00:00.000Z");
+  });
+
+  it("allows optional parentId", () => {
+    const eventWithoutParent = { ...validEvent };
+    delete (eventWithoutParent as any).parentId;
+    const result = RunEvent.safeParse(eventWithoutParent);
+    expect(result.success).toBe(true);
   });
 });

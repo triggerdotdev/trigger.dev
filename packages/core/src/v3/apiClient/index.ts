@@ -42,6 +42,7 @@ import {
   RetrieveQueueParam,
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
+  RunEvent,
   ScheduleObject,
   SendInputStreamResponseBody,
   StreamBatchItemsResponse,
@@ -700,7 +701,7 @@ export class ApiClient {
 
   listRunEvents(runId: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
-      z.any(), // TODO: define a proper schema for this
+      RunEvent.array(),
       `${this.baseUrl}/api/v1/runs/${runId}/events`,
       {
         method: "GET",
