@@ -1387,9 +1387,15 @@ export class RunQueue {
       const keyPrefix = this.options.redis.keyPrefix ?? "";
 
       for (const [masterQueueKey, queueNames] of queuesByMasterKey) {
-        // Deduplicate queue names within each master queue shard
-        const uniqueQueueNames = [...new Set(queueNames)];
-        pipeline.migrateLegacyMasterQueues(masterQueueKey, keyPrefix, ...uniqueQueueNames);
+        // For CK queues, skip the legacy rebalance — the CK index was already
+        // updated inside the Lua script, and migrateLegacyMasterQueues would
+        // re-add the concrete :ck:bar member to the master queue.
+        // Only rebalance non-CK queues here.
+        const nonCkQueues = queueNames.filter((q) => !q.includes(":ck:"));
+        if (nonCkQueues.length > 0) {
+          const uniqueQueueNames = [...new Set(nonCkQueues)];
+          pipeline.migrateLegacyMasterQueues(masterQueueKey, keyPrefix, ...uniqueQueueNames);
+        }
       }
 
       await pipeline.exec();
