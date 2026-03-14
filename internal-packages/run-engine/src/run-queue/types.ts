@@ -125,6 +125,12 @@ export interface RunQueueKeyProducer {
 
   // TTL system methods
   ttlQueueKeyForShard(shard: number): string;
+
+  // CK index methods
+  ckIndexKeyFromQueue(queue: string): string;
+  baseQueueKeyFromQueue(queue: string): string;
+  isCkWildcard(queue: string): boolean;
+  toCkWildcard(queue: string): string;
 }
 
 export type EnvQueues = {
