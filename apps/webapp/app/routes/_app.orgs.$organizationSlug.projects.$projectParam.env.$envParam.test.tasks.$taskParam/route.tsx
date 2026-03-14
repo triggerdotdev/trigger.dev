@@ -120,6 +120,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     return typedjson({ ...result, regions: regionsResult.regions });
   } catch (error) {
+    logger.error("Failed to load test page", {
+      taskParam,
+      error: error instanceof Error ? error.message : error,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+
     return redirectWithErrorMessage(
       v3TestPath({ slug: organizationSlug }, { slug: projectParam }, environment),
       request,

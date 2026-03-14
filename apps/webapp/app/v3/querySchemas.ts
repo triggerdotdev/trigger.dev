@@ -600,12 +600,12 @@ export const metricsSchema: TableSchema = {
  * All available schemas for the query editor
  */
 /**
- * Schema definition for the llm_usage table (trigger_dev.llm_usage_v1)
+ * Schema definition for the llm_metrics table (trigger_dev.llm_metrics_v1)
  */
-export const llmUsageSchema: TableSchema = {
-  name: "llm_usage",
-  clickhouseName: "trigger_dev.llm_usage_v1",
-  description: "LLM token usage and cost data from GenAI spans",
+export const llmMetricsSchema: TableSchema = {
+  name: "llm_metrics",
+  clickhouseName: "trigger_dev.llm_metrics_v1",
+  description: "LLM metrics: token usage, cost, performance, and behavior from GenAI spans",
   timeConstraint: "start_time",
   tenantColumns: {
     organizationId: "organization_id",
@@ -669,11 +669,26 @@ export const llmUsageSchema: TableSchema = {
         coreColumn: true,
       }),
     },
-    operation_name: {
-      name: "operation_name",
+    operation_id: {
+      name: "operation_id",
       ...column("LowCardinality(String)", {
-        description: "Operation type (e.g. chat, completion)",
-        example: "chat",
+        description: "Operation type (e.g. ai.streamText.doStream, ai.generateText.doGenerate)",
+        example: "ai.streamText.doStream",
+      }),
+    },
+    finish_reason: {
+      name: "finish_reason",
+      ...column("LowCardinality(String)", {
+        description: "Why the LLM stopped generating (e.g. stop, tool-calls, length)",
+        example: "stop",
+        coreColumn: true,
+      }),
+    },
+    cost_source: {
+      name: "cost_source",
+      ...column("LowCardinality(String)", {
+        description: "Where cost data came from (registry, gateway, openrouter)",
+        example: "registry",
       }),
     },
     input_tokens: {
@@ -700,14 +715,14 @@ export const llmUsageSchema: TableSchema = {
     input_cost: {
       name: "input_cost",
       ...column("Decimal64(12)", {
-        description: "Input cost in USD",
+        description: "Input cost in USD (from pricing registry)",
         customRenderType: "costInDollars",
       }),
     },
     output_cost: {
       name: "output_cost",
       ...column("Decimal64(12)", {
-        description: "Output cost in USD",
+        description: "Output cost in USD (from pricing registry)",
         customRenderType: "costInDollars",
       }),
     },
@@ -717,6 +732,28 @@ export const llmUsageSchema: TableSchema = {
         description: "Total cost in USD",
         customRenderType: "costInDollars",
         coreColumn: true,
+      }),
+    },
+    provider_cost: {
+      name: "provider_cost",
+      ...column("Decimal64(12)", {
+        description: "Provider-reported cost in USD (from gateway or openrouter)",
+        customRenderType: "costInDollars",
+      }),
+    },
+    ms_to_first_chunk: {
+      name: "ms_to_first_chunk",
+      ...column("Float64", {
+        description: "Time to first chunk in milliseconds (TTFC)",
+        example: "245.3",
+        coreColumn: true,
+      }),
+    },
+    tokens_per_second: {
+      name: "tokens_per_second",
+      ...column("Float64", {
+        description: "Average output tokens per second",
+        example: "72.5",
       }),
     },
     pricing_tier_name: {
@@ -751,7 +788,7 @@ export const llmUsageSchema: TableSchema = {
   },
 };
 
-export const querySchemas: TableSchema[] = [runsSchema, metricsSchema, llmUsageSchema];
+export const querySchemas: TableSchema[] = [runsSchema, metricsSchema, llmMetricsSchema];
 
 /**
  * Default query for the query editor

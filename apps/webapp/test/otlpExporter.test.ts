@@ -505,20 +505,20 @@ describe("OTLPExporter", () => {
       });
     });
 
-    it("should set _llmUsage side-channel for dual-write", () => {
+    it("should set _llmMetrics side-channel for dual-write", () => {
       const events = [makeGenAiEvent()];
 
       // @ts-expect-error
       const $events = enrichCreatableEvents(events);
       const event = $events[0];
 
-      expect(event._llmUsage).toBeDefined();
-      expect(event._llmUsage.genAiSystem).toBe("openai");
-      expect(event._llmUsage.responseModel).toBe("gpt-4o-2024-08-06");
-      expect(event._llmUsage.inputTokens).toBe(702);
-      expect(event._llmUsage.outputTokens).toBe(22);
-      expect(event._llmUsage.totalCost).toBeCloseTo(0.001975);
-      expect(event._llmUsage.operationName).toBe("ai.streamText.doStream");
+      expect(event._llmMetrics).toBeDefined();
+      expect(event._llmMetrics.genAiSystem).toBe("openai");
+      expect(event._llmMetrics.responseModel).toBe("gpt-4o-2024-08-06");
+      expect(event._llmMetrics.inputTokens).toBe(702);
+      expect(event._llmMetrics.outputTokens).toBe(22);
+      expect(event._llmMetrics.totalCost).toBeCloseTo(0.001975);
+      expect(event._llmMetrics.operationId).toBe("ai.streamText.doStream");
     });
 
     it("should skip partial spans", () => {
@@ -528,7 +528,7 @@ describe("OTLPExporter", () => {
       // @ts-expect-error
       const $events = enrichCreatableEvents(events);
       expect($events[0].properties["trigger.llm.total_cost"]).toBeUndefined();
-      expect($events[0]._llmUsage).toBeUndefined();
+      expect($events[0]._llmMetrics).toBeUndefined();
     });
 
     it("should skip spans without gen_ai.response.model or gen_ai.request.model", () => {
@@ -635,8 +635,8 @@ describe("OTLPExporter", () => {
 
       // @ts-expect-error
       const $events = enrichCreatableEvents(events);
-      expect($events[0]._llmUsage.inputTokens).toBe(500);
-      expect($events[0]._llmUsage.outputTokens).toBe(100);
+      expect($events[0]._llmMetrics.inputTokens).toBe(500);
+      expect($events[0]._llmMetrics.outputTokens).toBe(100);
     });
 
     it("should prefer gen_ai.usage.total_tokens over input+output sum", () => {
@@ -659,9 +659,9 @@ describe("OTLPExporter", () => {
       });
 
       // LLM usage should also use the explicit total
-      expect(event._llmUsage.totalTokens).toBe(200);
-      expect(event._llmUsage.inputTokens).toBe(100);
-      expect(event._llmUsage.outputTokens).toBe(50);
+      expect(event._llmMetrics.totalTokens).toBe(200);
+      expect(event._llmMetrics.inputTokens).toBe(100);
+      expect(event._llmMetrics.outputTokens).toBe(50);
     });
 
     it("should fall back to input+output when total_tokens is absent", () => {
@@ -680,7 +680,7 @@ describe("OTLPExporter", () => {
         text: "375",
         icon: "tabler-hash",
       });
-      expect(event._llmUsage.totalTokens).toBe(375);
+      expect(event._llmMetrics.totalTokens).toBe(375);
     });
 
     it("should use total_tokens when only total is present without input/output breakdown", () => {

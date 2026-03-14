@@ -1,6 +1,6 @@
 import type {
   ClickHouse,
-  LlmUsageV1Input,
+  LlmMetricsV1Input,
   TaskEventDetailedSummaryV1Result,
   TaskEventDetailsV1Result,
   TaskEventSummaryV1Result,
@@ -96,7 +96,7 @@ export class ClickhouseEventRepository implements IEventRepository {
   private _clickhouse: ClickHouse;
   private _config: ClickhouseEventRepositoryConfig;
   private readonly _flushScheduler: DynamicFlushScheduler<TaskEventV1Input | TaskEventV2Input>;
-  private readonly _llmUsageFlushScheduler: DynamicFlushScheduler<LlmUsageV1Input>;
+  private readonly _llmMetricsFlushScheduler: DynamicFlushScheduler<LlmMetricsV1Input>;
   private _tracer: Tracer;
   private _version: "v1" | "v2";
 
@@ -122,10 +122,10 @@ export class ClickhouseEventRepository implements IEventRepository {
       },
     });
 
-    this._llmUsageFlushScheduler = new DynamicFlushScheduler({
+    this._llmMetricsFlushScheduler = new DynamicFlushScheduler({
       batchSize: 5000,
       flushInterval: 2000,
-      callback: this.#flushLlmUsageBatch.bind(this),
+      callback: this.#flushLlmMetricsBatch.bind(this),
       minConcurrency: 1,
       maxConcurrency: 2,
       maxBatchSize: 10000,
@@ -230,9 +230,9 @@ export class ClickhouseEventRepository implements IEventRepository {
     });
   }
 
-  async #flushLlmUsageBatch(flushId: string, rows: LlmUsageV1Input[]) {
+  async #flushLlmMetricsBatch(flushId: string, rows: LlmMetricsV1Input[]) {
 
-    const [insertError] = await this._clickhouse.llmUsage.insert(rows, {
+    const [insertError] = await this._clickhouse.llmMetrics.insert(rows, {
       params: {
         clickhouse_settings: this.#getClickhouseInsertSettings(),
       },
@@ -242,13 +242,13 @@ export class ClickhouseEventRepository implements IEventRepository {
       throw insertError;
     }
 
-    logger.info("ClickhouseEventRepository.flushLlmUsageBatch Inserted LLM usage batch", {
+    logger.info("ClickhouseEventRepository.flushLlmMetricsBatch Inserted LLM metrics batch", {
       rows: rows.length,
     });
   }
 
-  #createLlmUsageInput(event: CreateEventInput): LlmUsageV1Input {
-    const llmUsage = event._llmUsage!;
+  #createLlmMetricsInput(event: CreateEventInput): LlmMetricsV1Input {
+    const llmMetrics = event._llmMetrics!;
 
     return {
       organization_id: event.organizationId,
@@ -258,22 +258,27 @@ export class ClickhouseEventRepository implements IEventRepository {
       task_identifier: event.taskSlug,
       trace_id: event.traceId,
       span_id: event.spanId,
-      gen_ai_system: llmUsage.genAiSystem,
-      request_model: llmUsage.requestModel,
-      response_model: llmUsage.responseModel,
-      matched_model_id: llmUsage.matchedModelId,
-      operation_name: llmUsage.operationName,
-      pricing_tier_id: llmUsage.pricingTierId,
-      pricing_tier_name: llmUsage.pricingTierName,
-      input_tokens: llmUsage.inputTokens,
-      output_tokens: llmUsage.outputTokens,
-      total_tokens: llmUsage.totalTokens,
-      usage_details: llmUsage.usageDetails,
-      input_cost: llmUsage.inputCost,
-      output_cost: llmUsage.outputCost,
-      total_cost: llmUsage.totalCost,
-      cost_details: llmUsage.costDetails,
-      metadata: llmUsage.metadata,
+      gen_ai_system: llmMetrics.genAiSystem,
+      request_model: llmMetrics.requestModel,
+      response_model: llmMetrics.responseModel,
+      matched_model_id: llmMetrics.matchedModelId,
+      operation_id: llmMetrics.operationId,
+      finish_reason: llmMetrics.finishReason,
+      cost_source: llmMetrics.costSource,
+      pricing_tier_id: llmMetrics.pricingTierId,
+      pricing_tier_name: llmMetrics.pricingTierName,
+      input_tokens: llmMetrics.inputTokens,
+      output_tokens: llmMetrics.outputTokens,
+      total_tokens: llmMetrics.totalTokens,
+      usage_details: llmMetrics.usageDetails,
+      input_cost: llmMetrics.inputCost,
+      output_cost: llmMetrics.outputCost,
+      total_cost: llmMetrics.totalCost,
+      cost_details: llmMetrics.costDetails,
+      provider_cost: llmMetrics.providerCost,
+      ms_to_first_chunk: llmMetrics.msToFirstChunk,
+      tokens_per_second: llmMetrics.tokensPerSecond,
+      metadata: llmMetrics.metadata,
       start_time: this.#clampAndFormatStartTime(event.startTime.toString()),
       duration: formatClickhouseUnsignedIntegerString(event.duration ?? 0),
     };
@@ -300,13 +305,13 @@ export class ClickhouseEventRepository implements IEventRepository {
   async insertMany(events: CreateEventInput[]): Promise<void> {
     this.addToBatch(events.flatMap((event) => this.createEventToTaskEventV1Input(event)));
 
-    // Dual-write LLM usage records for spans with cost enrichment
-    const llmUsageRows = events
-      .filter((e) => e._llmUsage != null)
-      .map((e) => this.#createLlmUsageInput(e));
+    // Dual-write LLM metrics records for spans with cost enrichment
+    const llmMetricsRows = events
+      .filter((e) => e._llmMetrics != null)
+      .map((e) => this.#createLlmMetricsInput(e));
 
-    if (llmUsageRows.length > 0) {
-      this._llmUsageFlushScheduler.addToBatch(llmUsageRows);
+    if (llmMetricsRows.length > 0) {
+      this._llmMetricsFlushScheduler.addToBatch(llmMetricsRows);
     }
   }
 

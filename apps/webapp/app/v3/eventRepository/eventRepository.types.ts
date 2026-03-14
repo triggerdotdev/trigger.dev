@@ -21,12 +21,14 @@ export type { ExceptionEventProperties };
 // Event Creation Types
 // ============================================================================
 
-export type LlmUsageData = {
+export type LlmMetricsData = {
   genAiSystem: string;
   requestModel: string;
   responseModel: string;
   matchedModelId: string;
-  operationName: string;
+  operationId: string;
+  finishReason: string;
+  costSource: string;
   pricingTierId: string;
   pricingTierName: string;
   inputTokens: number;
@@ -37,6 +39,9 @@ export type LlmUsageData = {
   outputCost: number;
   totalCost: number;
   costDetails: Record<string, number>;
+  providerCost: number;
+  msToFirstChunk: number;
+  tokensPerSecond: number;
   metadata: Record<string, string>;
 };
 
@@ -78,7 +83,7 @@ export type CreateEventInput = Omit<
   machineId?: string;
   runTags?: string[];
   /** Side-channel data for LLM cost tracking, populated by enrichCreatableEvents */
-  _llmUsage?: LlmUsageData;
+  _llmMetrics?: LlmMetricsData;
 };
 
 export type CreatableEventKind = TaskEventKind;
