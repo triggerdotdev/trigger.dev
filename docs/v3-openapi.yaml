@@ -1148,6 +1148,126 @@ paths:
                 "format": "json"
               }'
 
+  "/api/v1/query/schema":
+    get:
+      operationId: get_query_schema_v1
+      summary: Get query schema
+      description: Get the schema for TRQL queries, including all available tables, their columns, data types, descriptions, and allowed values.
+      responses:
+        "200":
+          description: Schema retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tables:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: Table name used in TRQL queries
+                        description:
+                          type: string
+                          description: Description of the table
+                        timeColumn:
+                          type: string
+                          description: The primary time column for this table
+                        columns:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              name:
+                                type: string
+                                description: Column name
+                              type:
+                                type: string
+                                description: ClickHouse data type
+                              description:
+                                type: string
+                                description: Column description
+                              example:
+                                type: string
+                                description: Example value
+                              allowedValues:
+                                type: array
+                                items:
+                                  type: string
+                                description: Allowed values for enum-like columns
+                              coreColumn:
+                                type: boolean
+                                description: Whether this is a core column included in default queries
+        "401":
+          description: Unauthorized - API key is missing or invalid
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |-
+            curl "https://api.trigger.dev/api/v1/query/schema" \
+              -H "Authorization: Bearer tr_dev_1234"
+
+  "/api/v1/query/dashboards":
+    get:
+      operationId: list_dashboards_v1
+      summary: List built-in dashboards
+      description: List available built-in dashboards with their widgets. Each dashboard contains pre-built TRQL queries for common metrics like run success rates, costs, and LLM usage.
+      responses:
+        "200":
+          description: Dashboards listed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dashboards:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                          description: Dashboard identifier (e.g. "overview", "llm")
+                        title:
+                          type: string
+                          description: Dashboard display title
+                        widgets:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: string
+                                description: Widget identifier
+                              title:
+                                type: string
+                                description: Widget display title
+                              query:
+                                type: string
+                                description: The TRQL query this widget executes
+                              type:
+                                type: string
+                                enum: [bignumber, chart, table]
+                                description: Widget display type
+        "401":
+          description: Unauthorized - API key is missing or invalid
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |-
+            curl "https://api.trigger.dev/api/v1/query/dashboards" \
+              -H "Authorization: Bearer tr_dev_1234"
+
   "/api/v1/runs/{runId}/reschedule":
     parameters:
       - $ref: "#/components/parameters/runId"
