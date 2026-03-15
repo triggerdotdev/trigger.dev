@@ -1149,9 +1149,9 @@ async function handleNativeBuildServerDeploy({
   const [readSessionError, readSession] = await tryCatch(
     stream.readSession(
       {
-        seq_num: 0,
-        clamp: true,
-        wait: 60 * 20, // 20 minutes
+        start: {
+          from: { seqNum: 0 },
+        },
       },
       { signal: abortController.signal }
     )
@@ -1187,7 +1187,7 @@ async function handleNativeBuildServerDeploy({
 
     switch (event.type) {
       case "log": {
-        if (record.seq_num === 0) {
+        if (record.seqNum === 0) {
           $queuedSpinner.stop("Build started");
           console.log("│");
           queuedSpinnerStopped = true;
