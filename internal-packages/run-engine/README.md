@@ -206,7 +206,7 @@ When triggering a run and passing the `delay` option, we use a `DATETIME` waitpo
 
 Wait until a request has been received at the URL that you are given. This is useful for pausing a run and then continuing it again when some external event occurs on another service. For example, Replicate have an API where they will callback when their work is complete.
 
-### `wait.forWaitpoint(waitpointId)`
+### `wait.forToken(waitpointId)`
 
 A more advanced SDK which would require uses to explicitly create a waitpoint. We would also need `createWaitpoint()`, `completeWaitpoint()`, and `failWaitpoint()`.
 
