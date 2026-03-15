@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { InitializeDeploymentRequestBody, RunEvent, ListRunEventsResponse } from "./api.js";
+import { InitializeDeploymentRequestBody, RunEvent, ListRunEventsResponse, ListRunEventsResponseWithStringDates } from "./api.js";
 import type { InitializeDeploymentRequestBody as InitializeDeploymentRequestBodyType } from "./api.js";
 
 describe("InitializeDeploymentRequestBody", () => {
@@ -197,6 +197,18 @@ describe("RunEvent Schema", () => {
     expect(result.startTime.toISOString()).toBe("2024-03-14T00:00:00.000Z");
   });
 
+  it("should handle Date object", () => {
+    const now = new Date();
+    const result = RunEvent.safeParse({
+      ...validEvent,
+      startTime: now,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.startTime.toISOString()).toBe(now.toISOString());
+    }
+  });
+
   it("handles bigint nanosecond startTime", () => {
     const event = { ...validEvent, startTime: 1710374400000000000n };
     const result = RunEvent.parse(event as any);
@@ -237,6 +249,19 @@ describe("RunEvent Schema", () => {
     const eventWithSlug = { ...validEvent, taskSlug: "my-task" };
     const result = RunEvent.parse(eventWithSlug);
     expect(result.taskSlug).toBe("my-task");
+  });
+
+  it("ListRunEventsResponseWithStringDates correctly transforms Dates to strings", () => {
+    const rawResponse = {
+      events: [validEvent],
+    };
+
+    const parsed = ListRunEventsResponse.parse(rawResponse);
+    expect(parsed.events[0]!.startTime).toBeInstanceOf(Date);
+
+    const legacy = ListRunEventsResponseWithStringDates.parse(rawResponse);
+    expect(typeof legacy.events[0]!.startTime).toBe("string");
+    expect(legacy.events[0]!.startTime).toBe(parsed.events[0]!.startTime.toISOString());
   });
 });
 

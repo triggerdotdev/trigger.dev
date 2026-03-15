@@ -61,11 +61,11 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
       accessToken: options.accessToken,
       ...(options.endpoint
         ? {
-            endpoints: {
-              account: options.endpoint,
-              basin: options.endpoint,
-            },
-          }
+          endpoints: {
+            account: options.endpoint,
+            basin: options.endpoint,
+          },
+        }
         : {}),
     });
     this.flushIntervalMs = options.flushIntervalMs ?? 200;
@@ -135,7 +135,7 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
       const stream = basin.stream(this.options.stream);
 
       const session = await stream.appendSession({
-        maxInflightBytes: this.maxInflightBytes,
+        maxQueuedBytes: this.maxInflightBytes,
       });
 
       this.sessionWritable = session.writable;
@@ -152,7 +152,7 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
                 return;
               }
               // Convert each chunk to JSON string and wrap in AppendRecord
-              controller.enqueue(AppendRecord.string({ body: JSON.stringify({ data: chunk, id: nanoid(7) }) }));
+              controller.enqueue(AppendRecord.make(JSON.stringify({ data: chunk, id: nanoid(7) })));
             },
           })
         )
@@ -169,9 +169,9 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
       const lastAcked = session.lastAckedPosition();
 
       if (lastAcked?.end) {
-        const recordsWritten = lastAcked.end.seqNum;
+        const recordsWritten = lastAcked.end.seq_num;
         this.log(
-          `[S2MetadataStream] Written ${recordsWritten} records, ending at seqNum=${lastAcked.end.seqNum}`
+          `[S2MetadataStream] Written ${recordsWritten} records, ending at seq_num=${lastAcked.end.seq_num}`
         );
       }
     } catch (error) {
@@ -223,5 +223,5 @@ async function* streamToAsyncIterator<T>(stream: ReadableStream<T>): AsyncIterab
 function safeReleaseLock(reader: ReadableStreamDefaultReader<any>) {
   try {
     reader.releaseLock();
-  } catch (error) {}
+  } catch (error) { }
 }

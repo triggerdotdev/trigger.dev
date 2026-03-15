@@ -1644,27 +1644,27 @@ export type SendInputStreamResponseBody = z.infer<typeof SendInputStreamResponse
 export const TaskEventLevel = z.enum(["TRACE", "DEBUG", "INFO", "LOG", "WARN", "ERROR"]);
 export type TaskEventLevel = z.infer<typeof TaskEventLevel>;
 export const NanosecondTimestampSchema = z
-  .union([z.string(), z.number(), z.bigint()])
+  .union([z.string(), z.number(), z.bigint(), z.date()])
   .transform((val) => {
+    if (val instanceof Date) return val;
+
     const str = val.toString();
 
-    let date: Date;
-
-    // 19 digits is nanoseconds (e.g., 1710374400000000000)
-    if (str.length === 19) {
-      date = new Date(Number(BigInt(str) / 1000000n));
-    } else if (str.length === 13) {
-      // 13 digits is milliseconds
-      date = new Date(Number(str));
-    } else {
-      // Default to standard date coercion
-      date = new Date(str);
+    // 19-digit nanoseconds -> milliseconds
+    if (str.length === 19 && /^\d+$/.test(str)) {
+      return new Date(Number(BigInt(str) / 1_000_000n));
     }
 
-    return date;
+    // 13-digit milliseconds
+    if (str.length === 13 && /^\d+$/.test(str)) {
+      return new Date(Number(str));
+    }
+
+    // Fallback: parse ISO or other date string
+    return new Date(str);
   })
-  .refine((d) => !isNaN(d.getTime()), {
-    message: "Invalid timestamp",
+  .refine((date) => !isNaN(date.getTime()), {
+    message: "Invalid date",
   });
 
 export const RunEvent = z.object({
@@ -1687,8 +1687,31 @@ export const RunEvent = z.object({
 
 export type RunEvent = z.infer<typeof RunEvent>;
 
+/**
+ * A legacy-focused version of RunEvent where startTime is guaranteed to be an ISO string.
+ * Useful for consumers who haven't yet migrated to handling Date objects.
+ */
+export type RunEventWithStringDates = Omit<RunEvent, "startTime"> & {
+  startTime: string;
+};
+
 export const ListRunEventsResponse = z.object({
   events: z.array(RunEvent),
 });
 
 export type ListRunEventsResponse = z.infer<typeof ListRunEventsResponse>;
+
+/**
+ * A legacy-focused version of the response where events have startTime as an ISO string.
+ * This can be used as a transform on the original response for backward compatibility.
+ */
+export const ListRunEventsResponseWithStringDates = ListRunEventsResponse.transform((resp) => ({
+  events: resp.events.map((e) => ({
+    ...e,
+    startTime: e.startTime.toISOString(),
+  })),
+}));
+
+export type ListRunEventsResponseWithStringDates = z.infer<
+  typeof ListRunEventsResponseWithStringDates
+>;
