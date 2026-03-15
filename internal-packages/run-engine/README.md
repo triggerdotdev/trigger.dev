@@ -19,6 +19,107 @@ It is responsible for:
       - **Run controller**: The code that manages running the task.
       - **Run executor**: The actual task running.
 
+## Overview
+
+```
+                                                                                                     ╔═══════════════════════════════╗
+                                                                                                     ║                               ║░
+                                                                                                     ║         Run triggered         ║░
+                                                                                                     ║                               ║░
+                                                                                                     ╚═══════════════════════════════╝░
+                                               ___             ___           _                        ░░░░░░░░░░░░░░░│░░░░░░░░░░░░░░░░░
+                                              | _ \_  _ _ _   | __|_ _  __ _(_)_ _  ___                              │
+                                           ╔══|   / || | ' \  | _|| ' \/ _` | | ' \/ -_)═════════════════════════════╬══════════════════════════════════════╗
+                                           ║  |_|_\\_,_|_||_| |___|_||_\__, |_|_||_\___|                             │                                      ║
+                                           ║                           |___/                                         │                                      ║
+                                           ║                                                                         │                                      ║
+                                           ║                       ┌────────────────────────────────────── Has delay/debounce?                              ║
+                                           ║                       │                                                 │                                      ║
+                                           ║                      Yes                                               No                                      ║
+                                           ║                       │                                                 │                                      ║
+                                           ║                       ▼                                                 ▼                                      ║
+                                           ║       ╔═══════════════════════════════╗                 ╔═══════════════════════════════╗                      ║
+                                           ║       ║                               ║      Delay/     ║                               ║                      ║
+                                           ║       ║            DELAYED            ║◀────debounce────║          RUN_CREATED          ║                      ║
+                                           ║       ║                               ║                 ║                               ║                      ║
+                                           ║       ╚═══════════════════════════════╝                 ╚═══════════════════════════════╝                      ║
+                                           ║                       │                                                 │                                      ║
+                                           ║                       │                                                 │                                      ║
+                                           ║       +===============================+                         No delay/debounce                              ║
+                                           ║       |                               |                                 │                                      ║
+                                           ║       |         Redis Worker          |                                 │                                      ║
+                                           ║       |                               |                                 ▼                                      ║
+                                           ║       +===============================+                 ╔═══════════════════════════════╗                      ║
+                                           ║                       │                                 ║                               ║                      ║
+                                           ║                       └───────────After delay──────────▶║            QUEUED             ║◀────────────┐        ║
+                                           ║                                                         ║                               ║             │        ║
+                                           ║                                                         ╚═══════════════════════════════╝             │        ║
+                                           ║                       ┌────All Waitpoints complete?─────┐               │                             │        ║
+                                           ║                       │                                 │               │                             │        ║
+                                           ║                       │                                 ▼               ▼                             │        ║
+                                           ║       ╔═══════════════════════════════╗                 +===============================+             │        ║
+                                           ║       ║                               ║                 |                               |        Slow retry    ║
+                                           ║       ║           SUSPENDED           ║                 |           Run Queue           |             │        ║
+                                           ║       ║                               ║                 |                               |             │        ║
+                                           ║       ╚═══════════════════════════════╝                 +===============================+             │        ║
+                        Run not executing  ║                       ▲                                                                               │        ║
+                                           ║                       │                                                 │                             │        ║
+       ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ╬ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ╬ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ╬ ═ ═ ═ ═║═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═ ═
+                                           ║                       │                                                 │                             │        ║
+                      Run maybe executing  ║                       │                                                                               │        ║    ╔═══════════════════════════════╗
+                                           ║                       │                                                 │                             │        ║    ║                               ║░
+                                           ║                       │                                       Pulled from the queue ◀─────────────────┼────────╬───◈║         Dequeue a run         ║░
+                                           ║                       │                                                 │                             │        ║    ║                               ║░
+                                           ║                       │                                                 ▼                             │        ║    ╚═══════════════════════════════╝░
+                                           ║                       │                                 ╔═══════════════════════════════╗             │        ║     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+                                           ║                       │                                 ║                               ║             │        ║
+                                           ║                       │                                 ║       PENDING_EXECUTING       ║             │        ║
+      ╔═══════════════════════════════╗    ║                       │                                 ║                               ║             │        ║
+      ║                               ║░   ║                       │                                 ╚═══════════════════════════════╝             │        ║
+      ║      Checkpoint created       ║◈───╬───────────────────────┤                                                 │                             │        ║    ╔═══════════════════════════════╗
+      ║                               ║░   ║                                                                                                       │        ║    ║                               ║░
+      ╚═══════════════════════════════╝░   ║                       │                                                 ├─────────────────────────────┼────────╬───◈║         Start attempt         ║░
+       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ║                                                                         │                             │        ║    ║                               ║░
+                                           ║                       │                                                 ▼                             │        ║    ╚═══════════════════════════════╝░
+                                           ║                                               All            Is executing on worker                   │        ║     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+                                           ║                       │               ┌────Waitpoints───┐               │               ┌─Quick retry │        ║
+                                           ║                                       │    complete?    │               │               │      │      │        ║
+                                           ║                       │               │                 ▼               ▼               ▼      │      │        ║
+                                           ║       ╔═══════════════════════════════╗                 ╔═══════════════════════════════╗      │      │        ║
+                                           ║       ║                               ║     Hits a      ║                               ║      │      │        ║
+                                           ║       ║   EXECUTING_WITH_WAITPOINTS   ║◀───Waitpoint────║           EXECUTING           ║      │      │        ║
+                                           ║       ║                               ║                 ║                               ║      │      │        ║
+                                           ║       ╚═══════════════════════════════╝                 ╚═══════════════════════════════╝      │      │        ║
+                                           ║                                                                         │                      │      │        ║    ╔═══════════════════════════════╗
+                                           ║                                                                                                │      │        ║    ║                               ║░
+                                           ║                                                                         ◀──────────────────────┼──────┼────────╬───◈║       Complete attempt        ║░
+                                           ║                                                                         │                      │      │        ║    ║                               ║░
+                                           ║                                                                         │                      │      │        ║    ╚═══════════════════════════════╝░
+                                           ║                                                                         │                      │      │        ║     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+                                           ║                                                                         ├───────────────▶ Attempt failed       ║
+                                           ║                                                                         │                        │             ║
+                                           ║                                                                  Attempt success                 │             ║
+                                           ║                                                                         │                   All retries        ║
+                                           ║                                                                         ▼                      used            ║
+      ╔═══════════════════════════════╗    ║                                                         ╔═══════════════════════════════╗        │             ║
+      ║                               ║░   ║                                                         ║                               ║        │             ║
+      ║      User cancels a run       ║────╬──────────────▶  Is executing?  ─────────── No ─────────▶║           FINISHED            ║◀───────┘             ║
+      ║                               ║░   ║                       │                                 ║                               ║                      ║
+      ╚═══════════════════════════════╝░   ║                      Yes                                ╚═══════════════════════════════╝                      ║
+       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   ║                       │                                                 ▲                                      ║
+                                           ║                       ▼                                                 │                                      ║
+                                           ║       ╔═══════════════════════════════╗                                 │                                      ║
+                                           ║       ║                               ║                                 │                                      ║
+                                           ║       ║        PENDING_CANCEL         ║─────────────────────────────────┘                                      ║
+                                           ║       ║                               ║                                                                        ║
+                                           ║       ╚═══════════════════════════════╝                                                                        ║
+                                           ║                                                                                                                ║
+                                           ║                                                                                                                ║
+                                           ║                                                                                                                ║
+                                           ╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+
+```
+
 ## Run locking
 
 Many operations on the run are "atomic" in the sense that only a single operation can mutate them at a time. We use RedLock to create a distributed lock to ensure this. Postgres locking is not enough on its own because we have multiple API instances and Redis is used for the queue.
@@ -31,8 +132,6 @@ There are race conditions we need to deal with:
 
 The execution state of a run is stored in the `TaskRunExecutionSnapshot` table in Postgres. This is separate from the `TaskRun` status which is exposed to users via the dashboard and API.
 
-![The execution states](./execution-states.png)
-
 The `TaskRunExecutionSnapshot` `executionStatus` is used to determine the execution status and is internal to the run engine. It is a log of events that impact run execution – the data is used to execute the run.
 
 A common pattern we use is to read the current state and check that the passed in `snapshotId` matches the current `snapshotId`. If it doesn't, we know that the state has moved on. In the case of a checkpoint coming in, we know we can just ignore it.
@@ -41,28 +140,15 @@ We can also store invalid states by setting an error. These invalid states are p
 
 ## Workers
 
-A worker is a server that runs tasks. There are two types of workers:
+A worker is a server that runs tasks.
 
-- Hosted workers (serverless, managed and cloud-only)
-- Self-hosted workers
+In the dashboard under the "Regions" page, you can see all worker groups. You can set the default `region` there.
 
-In the dashboard under the "Workers" page, you can see all worker groups including the "main" group which is the default and not self-hosted. You can also see alternative worker groups that are available to you, such as "EU", "v3.2 (beta)", and any self-hosted worker groups you have created.
-
-You add a new self-hosted worker group by clicking "Add" and choosing an `id` that is unique to your project.
-
-Then when triggering runs, you can specify the `workerGroup` to use. It defaults to "main". The workerGroup is used internally to set the `masterQueue` that a run is placed in, this allows pulling runs only for that worker group.
-
-On the "Workers" page, you can see the status of each worker group, including the number of workers in the group, the number of runs that are queued.
+Then when triggering runs, you can override the `region` to use. The region is used internally to set the `masterQueue` that a run is placed in, this allows pulling runs only for that worker group.
 
 ## Pulling from the queue
 
-A worker will call the Trigger.dev API with it's `workerGroup`.
-
-For warm starts, self-hosted workers we will also pass the `BackgroundWorker` id and `environment` id. This allow pulling relevant runs.
-
-For dev environments, we will pass the `environment` id.
-
-If there's only a `workerGroup`, we can just `dequeueFromMasterQueue()` to get runs. If there's a `BackgroundWorker` id, we need to determine if that `BackgroundWorker` is the latest. If it's the latest we call `dequeueFromEnvironmentMasterQueue()` to get any runs that aren't locked to a version. If it's not the latest, we call `dequeueFromBackgroundWorkerMasterQueue()` to get runs that are locked to that version.
+A worker will call the Trigger.dev API with it's `region`. For dev environments, we will pass the `environment` id.
 
 ## Run Queue
 
@@ -125,17 +211,34 @@ Wait until a request has been received at the URL that you are given. This is us
 A more advanced SDK which would require uses to explicitly create a waitpoint. We would also need `createWaitpoint()`, `completeWaitpoint()`, and `failWaitpoint()`.
 
 ```ts
-const waitpoint = await waitpoints.create({ idempotencyKey: `purchase-${payload.cart.id}` });
-const waitpoint = await waitpoints.retrieve(waitpoint.id);
-const waitpoint = await waitpoints.complete(waitpoint.id, result);
-const waitpoint = await waitpoints.fail(waitpoint.id, error);
+// Your backend
+import { wait } from "@trigger.dev/sdk";
 
+type ApprovalToken = {
+  status: "approved" | "rejected";
+};
+
+const waitpoint = await wait.createToken({ idempotencyKey: `purchase-${payload.cart.id}` });
+const waitpoint = await wait.retrieveToken(waitpoint.id);
+
+await wait.completeToken<ApprovalToken>(tokenId, {
+  status: "approved",
+});
+
+// /trigger/approval.ts
 export const approvalFlow = task({
   id: "approvalFlow",
   run: async (payload) => {
     //...do stuff
 
-    const result = await wait.forWaitpoint(waitpoint.id, { timeout: "1h" });
+    // This must be called inside a task run function
+    const result = await wait.forToken<ApprovalToken>(payload.tokenId);
+
+    if (result.ok) {
+      console.log("Token completed", result.output.status); // "approved" or "rejected"
+    } else {
+      console.log("Token timed out", result.error);
+    }
     if (!result.ok) {
       //...timeout
     }
@@ -145,10 +248,6 @@ export const approvalFlow = task({
 });
 ```
 
-### `wait.forRunToComplete(runId)`
-
-You could wait for another run (or runs) using their run ids. This would allow you to wait for runs that you haven't triggered inside that run.
-
 ## Run flow control
 
 There are several ways to control when a run will execute (or not). Each of these should be configurable on a task, a named queue that is shared between tasks, and at trigger time including the ability to pass a `key` so you can have per-tenant controls.
@@ -156,15 +255,6 @@ There are several ways to control when a run will execute (or not). Each of thes
 ### Concurrency limits
 
 When `trigger` is called the run is added to the queue. We only dequeue when the concurrency limit hasn't been exceeded for that task/queue.
-
-### Rate limiting
-
-When `trigger` is called, we check if the rate limit has been exceeded. If it has then we ignore the trigger. The run is thrown away and an appropriate error is returned.
-
-This is useful:
-
-- To prevent abuse.
-- To control how many executions a user can do (using a `key` with rate limiting).
 
 ### Debouncing
 
@@ -175,25 +265,6 @@ This is useful:
 - To prevent too many runs happening in a short period.
 
 We should mark the run as `"DELAYED"` with the correct `delayUntil` time. This will allow the user to see that the run is delayed and why.
-
-### Throttling
-
-When `trigger` is called the run is added to the queue. We only run them when they don't exceed the limit in that time period, by controlling the timing of when they are dequeued.
-
-This is useful:
-
-- To prevent too many runs happening in a short period.
-- To control how many executions a user can do (using a `key` with throttling).
-- When you need to execute every run but not too many in a short period, e.g. avoiding rate limits.
-
-### Batching
-
-When `trigger` is called, we batch the runs together. This means the payload of the run is an array of items, each being a single payload.
-
-This is useful:
-
-- For performance, as it reduces the number of runs in the system.
-- It can be useful when using 3rd party APIs that support batching.
 
 ## Emitting events
 
