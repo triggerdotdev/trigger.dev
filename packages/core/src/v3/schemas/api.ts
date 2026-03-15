@@ -1550,8 +1550,8 @@ export const ApiDeploymentListResponseItem = z.object({
   createdAt: z.coerce.date(),
   shortCode: z.string(),
   version: z.string(),
-  runtime: z.string(),
-  runtimeVersion: z.string(),
+  runtime: z.string().nullable(),
+  runtimeVersion: z.string().nullable(),
   status: z.enum([
     "PENDING",
     "BUILDING",

@@ -28,6 +28,8 @@ import {
 import { startDevOutput } from "./devOutput.js";
 import { startWorkerRuntime } from "./devSupervisor.js";
 import { startMcpServer, stopMcpServer } from "./mcpServer.js";
+import { trail } from "agentcrumbs"; // @crumbs
+const crumb = trail("cli"); // @crumbs
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { join } from "node:path";
 
@@ -59,6 +61,7 @@ export async function startDevSession({
   const destination = getTmpDir(rawConfig.workingDir, "build", keepTmpFiles);
   // Create shared store directory for deduplicating chunk files across rebuilds
   const storeDir = getStoreDir(rawConfig.workingDir, keepTmpFiles);
+  crumb("devSession started", { destinationPath: destination.path, storeDir, workingDir: rawConfig.workingDir }); // @crumbs
 
   const runtime = await startWorkerRuntime({
     name,
@@ -101,6 +104,7 @@ export async function startDevSession({
   const pluginsFromExtensions = resolvePluginsForContext(buildContext);
 
   async function updateBundle(bundle: BundleResult, workerDir?: EphemeralDirectory) {
+    crumb("updateBundle", { isRebuild: !!workerDir, workerDirPath: workerDir?.path, destinationPath: destination.path }); // @crumbs
     let buildManifest = await createBuildManifestFromBundle({
       bundle,
       destination: destination.path,
@@ -181,6 +185,7 @@ export async function startDevSession({
         }
 
         const workerDir = getTmpDir(rawConfig.workingDir, "build", keepTmpFiles);
+        crumb("rebuild: new workerDir", { path: workerDir.path }); // @crumbs
         await updateBuild(result, workerDir);
       });
     },
@@ -224,6 +229,7 @@ export async function startDevSession({
 
   return {
     stop: () => {
+      crumb("devSession stopping", { destinationPath: destination.path }); // @crumbs
       logger.debug("Stopping dev session");
 
       destination.remove();

@@ -427,3 +427,35 @@ function formatRunSummary(run: ListRunResponseItem): string {
 
   return parts.join(" | ");
 }
+
+/** Format query results as a compact text table. Falls back to compact JSON for nested data. */
+export function formatQueryResults(rows: Record<string, unknown>[]): string {
+  if (rows.length === 0) return "_No results_";
+
+  const columns = Object.keys(rows[0]!);
+
+  // Check if any values are objects/arrays — use compact JSON for those
+  const hasComplex = rows.some((row) =>
+    columns.some((col) => {
+      const val = row[col];
+      return val !== null && typeof val === "object";
+    })
+  );
+
+  if (hasComplex) {
+    return rows.map((row) => JSON.stringify(row)).join("\n");
+  }
+
+  const header = columns.join(" | ");
+  const separator = columns.map(() => "---").join(" | ");
+  const body = rows.map((row) =>
+    columns
+      .map((col) => {
+        const val = row[col];
+        return val === null || val === undefined ? "" : String(val);
+      })
+      .join(" | ")
+  );
+
+  return [header, separator, ...body].join("\n");
+}

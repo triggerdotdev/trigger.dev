@@ -35,6 +35,8 @@ import {
   QueryExecuteRequestBody,
   QueryExecuteResponseBody,
   QueryExecuteCSVResponseBody,
+  QuerySchemaResponseBody,
+  ListDashboardsResponseBody,
   ReplayRunResponse,
   RescheduleRunRequestBody,
   ResetIdempotencyKeyResponse,
@@ -1480,6 +1482,32 @@ export class ApiClient {
         method: "POST",
         headers: this.#getHeaders(false),
         body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async getQuerySchema(requestOptions?: ZodFetchOptions): Promise<QuerySchemaResponseBody> {
+    return zodfetch(
+      QuerySchemaResponseBody,
+      `${this.baseUrl}/api/v1/query/schema`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async listDashboards(
+    requestOptions?: ZodFetchOptions
+  ): Promise<ListDashboardsResponseBody> {
+    return zodfetch(
+      ListDashboardsResponseBody,
+      `${this.baseUrl}/api/v1/query/dashboards`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );

@@ -18,8 +18,11 @@
  *   WATCHDOG_PID_FILE      - Path to write the watchdog PID file
  */
 
-import { readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
+// @crumbs - watchdog runs as detached process, trail imported directly
+let crumb: (msg: string, data?: Record<string, unknown>) => void = () => {}; // @crumbs
+try { const { trail } = await import("agentcrumbs"); crumb = trail("cli"); } catch {} // @crumbs
 
 const POLL_INTERVAL_MS = 1000;
 
@@ -32,6 +35,7 @@ const apiUrl = process.env.WATCHDOG_API_URL!;
 const apiKey = process.env.WATCHDOG_API_KEY!;
 const activeRunsPath = process.env.WATCHDOG_ACTIVE_RUNS!;
 const pidFilePath = process.env.WATCHDOG_PID_FILE!;
+const tmpDir = process.env.WATCHDOG_TMP_DIR;
 
 if (!parentPid || !apiUrl || !apiKey || !activeRunsPath || !pidFilePath) {
   process.exit(1);
@@ -75,6 +79,18 @@ function cleanup() {
   } catch {}
 }
 
+function cleanupTmpDir() {
+  if (!tmpDir) return;
+  crumb("watchdog: cleaning up tmp dir", { tmpDir }); // @crumbs
+  try {
+    rmSync(tmpDir, { recursive: true, force: true });
+    crumb("watchdog: tmp dir removed", { tmpDir }); // @crumbs
+  } catch {
+    crumb("watchdog: tmp dir cleanup failed", { tmpDir }); // @crumbs
+    // Best effort — may fail on Windows with EBUSY
+  }
+}
+
 function isParentAlive(): boolean {
   try {
     process.kill(parentPid, 0);
@@ -113,6 +129,7 @@ const MAX_DISCONNECT_ATTEMPTS = 5;
 const INITIAL_BACKOFF_MS = 500;
 
 async function onParentDied(): Promise<void> {
+  crumb("watchdog: parent died", { parentPid, tmpDir }); // @crumbs
   const runFriendlyIds = readActiveRuns();
 
   if (runFriendlyIds.length > 0) {
@@ -130,6 +147,7 @@ async function onParentDied(): Promise<void> {
     }
   }
 
+  cleanupTmpDir();
   cleanup();
   process.exit(0);
 }

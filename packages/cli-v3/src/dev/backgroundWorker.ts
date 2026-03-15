@@ -6,6 +6,8 @@ import { prettyError } from "../utilities/cliOutput.js";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import type { Metafile } from "esbuild";
+import { trail } from "agentcrumbs"; // @crumbs
+const crumb = trail("cli"); // @crumbs
 
 export type BackgroundWorkerOptions = {
   env: Record<string, string>;
@@ -37,6 +39,7 @@ export class BackgroundWorker {
   }
 
   stop() {
+    crumb("BackgroundWorker.stop", { version: this.serverWorker?.version, outputPath: this.build.outputPath }); // @crumbs
     logger.debug("[BackgroundWorker] Stopping worker", {
       version: this.serverWorker?.version,
       outputPath: this.build.outputPath,

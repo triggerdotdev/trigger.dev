@@ -20,6 +20,7 @@ const McpCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   logFile: z.string().optional(),
   devOnly: z.boolean().default(false),
+  readonly: z.boolean().default(false),
   rulesInstallManifestPath: z.string().optional(),
   rulesInstallBranch: z.string().optional(),
 });
@@ -35,6 +36,10 @@ export function configureMcpCommand(program: Command) {
       .option(
         "--dev-only",
         "Only run the MCP server for the dev environment. Attempts to access other environments will fail."
+      )
+      .option(
+        "--readonly",
+        "Run in read-only mode. Write tools (deploy, trigger_task, cancel_run) are hidden from the AI."
       )
       .option("--log-file <log file>", "The file to log to")
       .addOption(
@@ -97,6 +102,7 @@ export async function mcpCommand(options: McpCommandOptions) {
 
   server.server.oninitialized = async () => {
     fileLogger?.log("initialized mcp command", { options, argv: process.argv });
+    await context.loadProjectProfile();
   };
 
   // Start receiving messages on stdin and sending messages on stdout
@@ -111,6 +117,7 @@ export async function mcpCommand(options: McpCommandOptions) {
     fileLogger,
     apiUrl: options.apiUrl ?? CLOUD_API_URL,
     profile: options.profile,
+    readonly: options.readonly,
   });
 
   registerTools(context);
