@@ -712,6 +712,33 @@ export const llmMetricsSchema: TableSchema = {
         example: "724",
       }),
     },
+    cached_read_tokens: {
+      name: "cached_read_tokens",
+      ...column("UInt64", {
+        description:
+          "Input tokens served from the provider's prompt cache (cheaper than regular input tokens). Supported by Anthropic and OpenAI.",
+        example: "8200",
+      }),
+      expression: "usage_details['input_cached_tokens']",
+    },
+    cache_creation_tokens: {
+      name: "cache_creation_tokens",
+      ...column("UInt64", {
+        description:
+          "Input tokens written to create a new prompt cache entry. Supported by Anthropic.",
+        example: "1751",
+      }),
+      expression: "usage_details['cache_creation_input_tokens']",
+    },
+    reasoning_tokens: {
+      name: "reasoning_tokens",
+      ...column("UInt64", {
+        description:
+          "Tokens used for chain-of-thought reasoning (e.g. OpenAI o-series, DeepSeek R1). These count toward output but are not visible in the response.",
+        example: "512",
+      }),
+      expression: "usage_details['reasoning_tokens']",
+    },
     input_cost: {
       name: "input_cost",
       ...column("Decimal64(12)", {
@@ -733,6 +760,23 @@ export const llmMetricsSchema: TableSchema = {
         customRenderType: "costInDollars",
         coreColumn: true,
       }),
+    },
+    cached_read_cost: {
+      name: "cached_read_cost",
+      ...column("Decimal64(12)", {
+        description:
+          "Cost of cached input tokens (discounted vs regular input). Only present when the pricing tier has a separate cached input price.",
+        customRenderType: "costInDollars",
+      }),
+      expression: "cost_details['input_cached_tokens']",
+    },
+    cache_creation_cost: {
+      name: "cache_creation_cost",
+      ...column("Decimal64(12)", {
+        description: "Cost of tokens written to create a prompt cache entry.",
+        customRenderType: "costInDollars",
+      }),
+      expression: "cost_details['cache_creation_input_tokens']",
     },
     provider_cost: {
       name: "provider_cost",

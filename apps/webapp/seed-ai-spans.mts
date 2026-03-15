@@ -25,6 +25,16 @@ const TASK_SLUG = "ai-chat";
 const QUEUE_NAME = "task/ai-chat";
 const WORKER_VERSION = "seed-ai-spans-v1";
 
+const SEED_USER_IDS = [
+  "user_alice", "user_bob", "user_carol", "user_dave",
+  "user_eve", "user_frank", "user_grace", "user_heidi",
+  "user_ivan", "user_judy", "user_karl", "user_liam",
+];
+
+function randomUserId(): string {
+  return SEED_USER_IDS[Math.floor(Math.random() * SEED_USER_IDS.length)];
+}
+
 // ---------------------------------------------------------------------------
 // ClickHouse formatting helpers (replicated from clickhouseEventRepository)
 // ---------------------------------------------------------------------------
@@ -158,8 +168,9 @@ function eventToLlmMetricsRow(event: CreateEventInput): LlmMetricsV1Input {
 // ---------------------------------------------------------------------------
 
 async function seedAiSpans() {
+  const seedUserId = randomUserId();
   crumb("seed started"); // @crumbs
-  console.log("Starting AI span seed...\n");
+  console.log(`Starting AI span seed (userId: ${seedUserId})...\n`);
 
   // 1. Find user
   crumb("finding user"); // @crumbs
@@ -301,7 +312,7 @@ async function seedAiSpans() {
       lockedToVersionId: worker.id,
       startedAt,
       completedAt,
-      runTags: ["user:seed_user_42", "chat:seed_session"],
+      runTags: [`user:${seedUserId}`, "chat:seed_session"],
       taskEventStore: "clickhouse_v2",
     },
   });
@@ -320,6 +331,7 @@ async function seedAiSpans() {
     organizationId: org.id,
     taskSlug: TASK_SLUG,
     baseTimeMs: now,
+    seedUserId,
   });
 
   crumb("span tree built", { spanCount: events.length }); // @crumbs
@@ -398,6 +410,7 @@ type SpanTreeParams = {
   organizationId: string;
   taskSlug: string;
   baseTimeMs: number;
+  seedUserId: string;
 };
 
 function buildAiSpanTree(params: SpanTreeParams): CreateEventInput[] {
@@ -410,10 +423,11 @@ function buildAiSpanTree(params: SpanTreeParams): CreateEventInput[] {
     organizationId,
     taskSlug,
     baseTimeMs,
+    seedUserId,
   } = params;
 
   const events: CreateEventInput[] = [];
-  const runTags = ["user:seed_user_42", "chat:seed_session"];
+  const runTags = [`user:${seedUserId}`, "chat:seed_session"];
 
   // Timing cursor — each span advances this
   let cursor = baseTimeMs;
@@ -591,7 +605,7 @@ function buildAiSpanTree(params: SpanTreeParams): CreateEventInput[] {
         "ai.usage.inputTokens": 807,
         "ai.usage.outputTokens": 242,
         "ai.usage.totalTokens": 1049,
-        "ai.telemetry.metadata.userId": "seed_user_42",
+        "ai.telemetry.metadata.userId": seedUserId,
         "ai.telemetry.functionId": "ai-chat",
         "operation.name": "ai.streamText",
       },
@@ -630,7 +644,7 @@ function buildAiSpanTree(params: SpanTreeParams): CreateEventInput[] {
         "ai.usage.inputTokens": 284,
         "ai.usage.outputTokens": 55,
         "ai.usage.totalTokens": 339,
-        "ai.telemetry.metadata.userId": "seed_user_42",
+        "ai.telemetry.metadata.userId": seedUserId,
         "ai.telemetry.functionId": "ai-chat",
         "operation.name": "ai.streamText.doStream",
       },
@@ -686,7 +700,7 @@ function buildAiSpanTree(params: SpanTreeParams): CreateEventInput[] {
         "ai.usage.outputTokens": 187,
         "ai.usage.totalTokens": 710,
         "ai.usage.reasoningTokens": 42,
-        "ai.telemetry.metadata.userId": "seed_user_42",
+        "ai.telemetry.metadata.userId": seedUserId,
         "ai.telemetry.functionId": "ai-chat",
         "operation.name": "ai.streamText.doStream",
       },
