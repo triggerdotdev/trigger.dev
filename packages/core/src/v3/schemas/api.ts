@@ -1646,23 +1646,25 @@ export type TaskEventLevel = z.infer<typeof TaskEventLevel>;
 export const NanosecondTimestampSchema = z
   .union([z.string(), z.number(), z.bigint()])
   .transform((val) => {
-    // If it's already a Date, return it (though union doesn't include it)
-    if (typeof val === "object" && val instanceof Date) return val;
-
     const str = val.toString();
+
+    let date: Date;
 
     // 19 digits is nanoseconds (e.g., 1710374400000000000)
     if (str.length === 19) {
-      return new Date(Number(BigInt(str) / 1000000n));
+      date = new Date(Number(BigInt(str) / 1000000n));
+    } else if (str.length === 13) {
+      // 13 digits is milliseconds
+      date = new Date(Number(str));
+    } else {
+      // Default to standard date coercion
+      date = new Date(str);
     }
 
-    // 13 digits is milliseconds
-    if (str.length === 13) {
-      return new Date(Number(val));
-    }
-
-    // Default to standard date coercion
-    return new Date(val as any);
+    return date;
+  })
+  .refine((d) => !isNaN(d.getTime()), {
+    message: "Invalid timestamp",
   });
 
 export const RunEvent = z.object({

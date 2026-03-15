@@ -204,6 +204,12 @@ describe("RunEvent Schema", () => {
     expect(result.startTime.toISOString()).toBe("2024-03-14T00:00:00.000Z");
   });
 
+  it("fails on invalid startTime", () => {
+    const event = { ...validEvent, startTime: "not-a-date" };
+    const result = RunEvent.safeParse(event);
+    expect(result.success).toBe(false);
+  });
+
   it("allows optional/null parentId", () => {
     const eventWithoutParent = { ...validEvent };
     delete (eventWithoutParent as any).parentId;
