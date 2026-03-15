@@ -222,6 +222,46 @@ describe("RunEvent Schema", () => {
     expect(result.success).toBe(false);
   });
 
+  describe("startTime edge cases", () => {
+    it("should handle whitespace-padded strings", () => {
+      const result = RunEvent.safeParse({
+        ...validEvent,
+        startTime: "  2024-03-14T00:00:00Z  ",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.startTime.toISOString()).toBe("2024-03-14T00:00:00.000Z");
+      }
+    });
+
+    it("should handle whitespace-padded nanosecond strings", () => {
+      const result = RunEvent.safeParse({
+        ...validEvent,
+        startTime: "  1710374400000000000  ",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.startTime.toISOString()).toBe("2024-03-14T00:00:00.000Z");
+      }
+    });
+
+    it("should fail on empty string", () => {
+      const result = RunEvent.safeParse({
+        ...validEvent,
+        startTime: "",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should fail on whitespace-only string", () => {
+      const result = RunEvent.safeParse({
+        ...validEvent,
+        startTime: "   ",
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
   it("allows optional/null parentId", () => {
     const eventWithoutParent = { ...validEvent };
     delete (eventWithoutParent as any).parentId;

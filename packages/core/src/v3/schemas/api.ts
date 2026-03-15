@@ -1648,7 +1648,7 @@ export const NanosecondTimestampSchema = z
   .transform((val) => {
     if (val instanceof Date) return val;
 
-    const str = val.toString();
+    const str = typeof val === "string" ? val.trim() : val.toString();
 
     // 19-digit nanoseconds -> milliseconds
     if (str.length === 19 && /^\d+$/.test(str)) {
