@@ -328,7 +328,7 @@ async function installMcpServerForClient(
   return { configPath, clientName, scope };
 }
 
-type McpServerConfig = Record<string, string | Array<string> | boolean | undefined>;
+type McpServerConfig = Record<string, string | Array<string> | boolean | number | undefined>;
 type McpServerScope = {
   scope: (typeof scopes)[number];
   location: string;
@@ -538,6 +538,7 @@ function resolveMcpServerConfig(
       return {
         command: "npx",
         args,
+        startup_timeout_sec: 30,
       };
     }
     case "zed": {
