@@ -28,8 +28,6 @@ import {
 } from "@trigger.dev/core/v3/workers";
 import pLimit from "p-limit";
 import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
-import { trail } from "agentcrumbs"; // @crumbs
-const crumb = trail("cli"); // @crumbs
 import type { Metafile } from "esbuild";
 import { TaskRunProcessPool } from "./taskRunProcessPool.js";
 import { tryCatch } from "@trigger.dev/core/utils";
@@ -435,8 +433,6 @@ class DevSupervisor implements WorkerRuntime {
       for (const message of result.data.dequeuedMessages) {
         const worker = this.workers.get(message.backgroundWorker.friendlyId);
 
-        crumb("dequeue run", { runId: message.run.friendlyId, targetWorkerId: message.backgroundWorker.friendlyId, workerFound: !!worker, workerDeprecated: worker?.deprecated, availableWorkers: Array.from(this.workers.keys()) }); // @crumbs
-
         if (!worker) {
           logger.debug(
             `[DevSupervisor] dequeueRuns. Dequeued a run but there's no BackgroundWorker so we can't execute it`,
@@ -510,7 +506,6 @@ class DevSupervisor implements WorkerRuntime {
           taskRunProcessPool: this.taskRunProcessPool,
           cwd,
           onFinished: () => {
-            crumb("run finished", { runId: message.run.friendlyId, workerId: message.backgroundWorker.friendlyId, workerDeprecated: worker.deprecated }); // @crumbs
 
             logger.debug("[DevSupervisor] Run finished", { runId: message.run.friendlyId });
 
@@ -522,7 +517,6 @@ class DevSupervisor implements WorkerRuntime {
 
             //stop the worker if it is deprecated and there are no more runs
             if (worker.deprecated) {
-              crumb("run finished on deprecated worker, scheduling cleanup", { workerId: message.backgroundWorker.friendlyId }); // @crumbs
               this.#tryDeleteWorker(message.backgroundWorker.friendlyId).finally(() => {});
             }
           },
@@ -613,15 +607,12 @@ class DevSupervisor implements WorkerRuntime {
       return;
     }
 
-    crumb("registerWorker", { newWorkerId: worker.serverWorker.id, version: worker.serverWorker.version, existingWorkers: Array.from(this.workers.keys()) }); // @crumbs
-
     //deprecate other workers
     for (const [workerId, existingWorker] of this.workers.entries()) {
       if (workerId === worker.serverWorker.id) {
         continue;
       }
 
-      crumb("deprecating worker", { workerId, hasActiveRuns: Array.from(this.runControllers.values()).some(c => { try { return c.workerFriendlyId === workerId; } catch { return false; } }) }); // @crumbs
       existingWorker.deprecate();
       this.#tryDeleteWorker(workerId).finally(() => {});
     }
@@ -750,7 +741,6 @@ class DevSupervisor implements WorkerRuntime {
   static readonly MAX_DEPRECATED_WORKERS = 2;
 
   async #tryDeleteWorker(friendlyId: string) {
-    crumb("tryDeleteWorker: waiting 5s", { friendlyId }); // @crumbs
     await awaitTimeout(5_000);
     this.#cleanupWorker(friendlyId);
   }
@@ -758,15 +748,10 @@ class DevSupervisor implements WorkerRuntime {
   #cleanupWorker(friendlyId: string) {
     const worker = this.workers.get(friendlyId);
     if (!worker) {
-      crumb("cleanupWorker: worker not found in map", { friendlyId }); // @crumbs
       return;
     }
 
     // Check if any active runs still reference this worker
-    const activeRunIds = Array.from(this.runControllers.entries()).filter(([, c]) => { try { return c.workerFriendlyId === friendlyId; } catch { return false; } }).map(([id]) => id); // @crumbs
-    const hasActiveRuns = activeRunIds.length > 0; // @crumbs
-
-    crumb("cleanupWorker", { friendlyId, hasActiveRuns, activeRunIds, version: worker.serverWorker?.version, outputPath: worker.build.outputPath }); // @crumbs
 
     if (hasActiveRuns) {
       logger.debug("[DevSupervisor] Worker still has active runs, skipping cleanup", {
@@ -804,8 +789,6 @@ class DevSupervisor implements WorkerRuntime {
       }
     }
 
-    crumb("pruneDeprecatedWorkers", { total: deprecatedWorkers.length, max: DevSupervisor.MAX_DEPRECATED_WORKERS, ids: deprecatedWorkers.map(w => w.id) }); // @crumbs
-
     // Keep the most recent deprecated workers, remove the rest
     if (deprecatedWorkers.length <= DevSupervisor.MAX_DEPRECATED_WORKERS) {
       return;
@@ -818,7 +801,6 @@ class DevSupervisor implements WorkerRuntime {
     );
 
     for (const { id, worker } of toRemove) {
-      crumb("pruning worker", { id, version: worker.serverWorker?.version, outputPath: worker.build.outputPath }); // @crumbs
 
       logger.debug("[DevSupervisor] Pruning old deprecated worker and cleaning up build dir", {
         workerId: id,

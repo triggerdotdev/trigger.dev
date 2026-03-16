@@ -21,8 +21,6 @@
 import { readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
 // @crumbs - watchdog runs as detached process, trail imported directly
-let crumb: (msg: string, data?: Record<string, unknown>) => void = () => {}; // @crumbs
-try { const { trail } = await import("agentcrumbs"); crumb = trail("cli"); } catch {} // @crumbs
 
 const POLL_INTERVAL_MS = 1000;
 
@@ -81,12 +79,9 @@ function cleanup() {
 
 function cleanupTmpDir() {
   if (!tmpDir) return;
-  crumb("watchdog: cleaning up tmp dir", { tmpDir }); // @crumbs
   try {
     rmSync(tmpDir, { recursive: true, force: true });
-    crumb("watchdog: tmp dir removed", { tmpDir }); // @crumbs
   } catch {
-    crumb("watchdog: tmp dir cleanup failed", { tmpDir }); // @crumbs
     // Best effort — may fail on Windows with EBUSY
   }
 }
@@ -129,7 +124,6 @@ const MAX_DISCONNECT_ATTEMPTS = 5;
 const INITIAL_BACKOFF_MS = 500;
 
 async function onParentDied(): Promise<void> {
-  crumb("watchdog: parent died", { parentPid, tmpDir }); // @crumbs
   const runFriendlyIds = readActiveRuns();
 
   if (runFriendlyIds.length > 0) {
