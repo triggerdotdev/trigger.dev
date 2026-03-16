@@ -67,6 +67,18 @@ You can see from the comments that the payload has several useful properties:
 
 Like all tasks they don't have timeouts, they should be placed inside a [/trigger folder](/config/config-file), and you [can configure them](/tasks/overview#defining-a-task).
 
+You can set a [TTL](/runs#time-to-live-ttl) on a scheduled task to automatically expire runs that aren't dequeued in time. This is useful when a schedule fires while the previous run is still executing - rather than queueing up stale runs, they'll expire:
+
+```ts
+export const frequentTask = schedules.task({
+  id: "frequent-task",
+  ttl: "5m",
+  run: async (payload) => {
+    //...
+  },
+});
+```
+
 ## How to attach a schedule
 
 Now that we've defined a scheduled task, we need to define when it will actually run. To do this we need to attach one or more schedules.
