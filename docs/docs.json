@@ -81,6 +81,17 @@
             ]
           },
           {
+            "group": "AI Chat",
+            "pages": [
+              "ai-chat/overview",
+              "ai-chat/quick-start",
+              "ai-chat/backend",
+              "ai-chat/frontend",
+              "ai-chat/features",
+              "ai-chat/reference"
+            ]
+          },
+          {
             "group": "Configuration",
             "pages": [
               "config/config-file",
@@ -733,6 +744,10 @@
     {
       "source": "/insights/metrics",
       "destination": "/observability/dashboards"
+    },
+    {
+      "source": "/guides/ai-chat",
+      "destination": "/ai-chat/overview"
     }
   ]
 }
