@@ -4,8 +4,8 @@ import { formatQueryResults } from "../formatters.js";
 import { QueryInput, QuerySchemaInput } from "../schemas.js";
 import { respondWithError, toolHandler } from "../utils.js";
 
-// Cache query schema (rarely changes)
-let schemaCache: { data: QuerySchemaResponseBody; expiresAt: number } | null = null;
+// Cache query schema keyed by project/environment (rarely changes)
+const schemaCache = new Map<string, { data: QuerySchemaResponseBody; expiresAt: number }>();
 const SCHEMA_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export const queryTool = {
@@ -93,7 +93,7 @@ function formatSchemaTable(table: QuerySchemaTable): string {
     }
 
     const core = col.coreColumn ? " *" : "";
-    const desc = parts.join(". ").replace(/\|/g, "\\|");
+    const desc = parts.join(". ").replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
 
     lines.push(`| \`${col.name}\`${core} | ${col.type} | ${desc} |`);
   }
@@ -130,12 +130,14 @@ export const getQuerySchemaTool = {
       branch: input.branch,
     });
 
+    const cacheKey = `${projectRef}:${input.environment}:${input.branch ?? ""}`;
+    const cached = schemaCache.get(cacheKey);
     let schema: QuerySchemaResponseBody;
-    if (schemaCache && Date.now() < schemaCache.expiresAt) {
-      schema = schemaCache.data;
+    if (cached && Date.now() < cached.expiresAt) {
+      schema = cached.data;
     } else {
       schema = await apiClient.getQuerySchema();
-      schemaCache = { data: schema, expiresAt: Date.now() + SCHEMA_CACHE_TTL_MS };
+      schemaCache.set(cacheKey, { data: schema, expiresAt: Date.now() + SCHEMA_CACHE_TTL_MS });
     }
 
     const table = schema.tables.find((t) => t.name === input.table);

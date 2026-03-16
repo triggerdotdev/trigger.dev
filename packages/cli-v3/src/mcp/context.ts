@@ -51,10 +51,15 @@ export type McpContextOptions = {
 export class McpContext {
   public readonly server: McpServer;
   public readonly options: McpContextOptions;
+  private _profileLoaded: Promise<void> | undefined;
+  private _resolveProfileLoaded: (() => void) | undefined;
 
   constructor(server: McpServer, options: McpContextOptions) {
     this.server = server;
     this.options = options;
+    this._profileLoaded = new Promise((resolve) => {
+      this._resolveProfileLoaded = resolve;
+    });
   }
 
   get logger() {
@@ -62,6 +67,8 @@ export class McpContext {
   }
 
   public async getAuth() {
+    // Wait for project profile to be loaded before authenticating
+    await this._profileLoaded;
     const auth = await mcpAuth({
       server: this.server,
       defaultApiUrl: this.options.apiUrl,
@@ -212,15 +219,20 @@ export class McpContext {
   /**
    * Load the persisted profile from the project-scoped .trigger/mcp.json.
    * Overrides the default global profile with the project-scoped one.
+   * Must be called once after initialization — tools wait for this before authenticating.
    */
   public async loadProjectProfile() {
-    const cwd = await this.getCwd();
-    if (!cwd) return;
+    try {
+      const cwd = await this.getCwd();
+      if (!cwd) return;
 
-    const config = readMcpProjectConfig(cwd);
-    if (config?.profile) {
-      this.options.profile = config.profile;
-      this.logger?.log("Loaded project profile", { profile: config.profile, cwd });
+      const config = readMcpProjectConfig(cwd);
+      if (config?.profile) {
+        this.options.profile = config.profile;
+        this.logger?.log("Loaded project profile", { profile: config.profile, cwd });
+      }
+    } finally {
+      this._resolveProfileLoaded?.();
     }
   }
 

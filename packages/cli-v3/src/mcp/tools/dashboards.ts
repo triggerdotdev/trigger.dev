@@ -4,9 +4,8 @@ import { formatQueryResults } from "../formatters.js";
 import { ListDashboardsInput, RunDashboardQueryInput } from "../schemas.js";
 import { respondWithError, toolHandler } from "../utils.js";
 
-// Cache dashboard listings to avoid refetching on every run_dashboard_query call.
-// Dashboards are defined in server code and rarely change.
-let dashboardCache: { data: ListDashboardsResponseBody; expiresAt: number } | null = null;
+// Cache dashboard listings keyed by project/environment.
+const dashboardCache = new Map<string, { data: ListDashboardsResponseBody; expiresAt: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 export const listDashboardsTool = {
@@ -35,8 +34,9 @@ export const listDashboardsTool = {
       branch: input.branch,
     });
 
+    const cacheKey = `${projectRef}:${input.environment}:${input.branch ?? ""}`;
     const result = await apiClient.listDashboards();
-    dashboardCache = { data: result, expiresAt: Date.now() + CACHE_TTL_MS };
+    dashboardCache.set(cacheKey, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
 
     const content: string[] = ["## Available Dashboards", ""];
 
@@ -90,12 +90,14 @@ export const runDashboardQueryTool = {
     });
 
     // Use cached dashboard listing if available, otherwise fetch
+    const cacheKey = `${projectRef}:${input.environment}:${input.branch ?? ""}`;
+    const cached = dashboardCache.get(cacheKey);
     let dashboards: ListDashboardsResponseBody;
-    if (dashboardCache && Date.now() < dashboardCache.expiresAt) {
-      dashboards = dashboardCache.data;
+    if (cached && Date.now() < cached.expiresAt) {
+      dashboards = cached.data;
     } else {
       dashboards = await apiClient.listDashboards();
-      dashboardCache = { data: dashboards, expiresAt: Date.now() + CACHE_TTL_MS };
+      dashboardCache.set(cacheKey, { data: dashboards, expiresAt: Date.now() + CACHE_TTL_MS });
     }
     const dashboard = dashboards.dashboards.find((d) => d.key === input.dashboardKey);
 

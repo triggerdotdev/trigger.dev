@@ -106,11 +106,18 @@ export const switchProfileTool = {
 
     const previousProfile = ctx.options.profile ?? readAuthConfigCurrentProfileName();
     const projectDir = await ctx.getCwd();
-    ctx.switchProfile(input.profile, projectDir);
+
+    // Switch in-memory first (don't persist until auth succeeds)
+    ctx.switchProfile(input.profile);
 
     // Verify the new profile works by fetching auth
     try {
       const auth = await ctx.getAuth();
+
+      // Auth succeeded — now persist to project config
+      if (projectDir) {
+        ctx.switchProfile(input.profile, projectDir);
+      }
 
       const persisted = projectDir ? " (saved to project)" : " (session only)";
 
@@ -125,8 +132,8 @@ export const switchProfileTool = {
         content: [{ type: "text" as const, text: content.join("\n") }],
       };
     } catch (error) {
-      // Revert on failure
-      ctx.switchProfile(previousProfile, projectDir);
+      // Revert in-memory only (nothing was persisted)
+      ctx.switchProfile(previousProfile);
       return respondWithError(
         `Failed to authenticate with profile "${input.profile}". Reverted to "${previousProfile}".`
       );
