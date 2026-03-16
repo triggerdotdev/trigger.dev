@@ -48,6 +48,7 @@ export type QueueValidationResult =
 export type QueueProperties = {
   queueName: string;
   lockedQueueId?: string;
+  taskTtl?: string | null;
 };
 
 export type LockedBackgroundWorker = Pick<
@@ -61,7 +62,6 @@ export interface QueueManager {
     request: TriggerTaskRequest,
     lockedBackgroundWorker?: LockedBackgroundWorker
   ): Promise<QueueProperties>;
-  getQueueName(request: TriggerTaskRequest): Promise<string>;
   validateQueueLimits(
     env: AuthenticatedEnvironment,
     queueName: string,
