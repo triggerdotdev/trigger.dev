@@ -2,7 +2,9 @@ import { json } from "@remix-run/server-runtime";
 import type { DashboardSummary, DashboardWidgetSummary } from "@trigger.dev/core/v3/schemas";
 import type { BuiltInDashboard } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { builtInDashboardList } from "~/presenters/v3/BuiltInDashboards.server";
+import { builtInDashboard } from "~/presenters/v3/BuiltInDashboards.server";
+
+const BUILT_IN_DASHBOARD_KEYS = ["overview", "llm"];
 
 function serializeDashboard(dashboard: BuiltInDashboard): DashboardSummary {
   const widgets: DashboardWidgetSummary[] = [];
@@ -40,7 +42,13 @@ export const loader = createLoaderApiRoute(
     },
   },
   async () => {
-    const dashboards = builtInDashboardList().map(serializeDashboard);
+    const dashboards = BUILT_IN_DASHBOARD_KEYS.map((key) => {
+      try {
+        return serializeDashboard(builtInDashboard(key));
+      } catch {
+        return null;
+      }
+    }).filter((d): d is DashboardSummary => d !== null);
     return json({ dashboards });
   }
 );
