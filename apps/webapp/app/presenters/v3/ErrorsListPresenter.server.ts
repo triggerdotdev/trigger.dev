@@ -23,7 +23,7 @@ export type ErrorsListOptions = {
   // filters
   tasks?: string[];
   versions?: string[];
-  status?: ErrorGroupStatus;
+  statuses?: ErrorGroupStatus[];
   period?: string;
   from?: number;
   to?: number;
@@ -42,7 +42,7 @@ export const ErrorsListOptionsSchema = z.object({
   projectId: z.string(),
   tasks: z.array(z.string()).optional(),
   versions: z.array(z.string()).optional(),
-  status: z.enum(["UNRESOLVED", "RESOLVED", "IGNORED"]).optional(),
+  statuses: z.array(z.enum(["UNRESOLVED", "RESOLVED", "IGNORED"])).optional(),
   period: z.string().optional(),
   from: z.number().int().nonnegative().optional(),
   to: z.number().int().nonnegative().optional(),
@@ -132,7 +132,7 @@ export class ErrorsListPresenter extends BasePresenter {
       projectId,
       tasks,
       versions,
-      status,
+      statuses,
       period,
       search,
       from,
@@ -168,7 +168,7 @@ export class ErrorsListPresenter extends BasePresenter {
       (tasks !== undefined && tasks.length > 0) ||
       (versions !== undefined && versions.length > 0) ||
       (search !== undefined && search !== "") ||
-      status !== undefined ||
+      (statuses !== undefined && statuses.length > 0) ||
       !time.isDefault;
 
     const possibleTasksAsync = getAllTaskIdentifiers(this.replica, environmentId);
@@ -292,8 +292,10 @@ export class ErrorsListPresenter extends BasePresenter {
       };
     });
 
-    if (status) {
-      transformedErrorGroups = transformedErrorGroups.filter((g) => g.status === status);
+    if (statuses && statuses.length > 0) {
+      transformedErrorGroups = transformedErrorGroups.filter((g) =>
+        statuses.includes(g.status as ErrorGroupStatus)
+      );
     }
 
     return {
@@ -305,7 +307,7 @@ export class ErrorsListPresenter extends BasePresenter {
       filters: {
         tasks,
         versions,
-        status,
+        statuses,
         search,
         period: time,
         from: effectiveFrom,

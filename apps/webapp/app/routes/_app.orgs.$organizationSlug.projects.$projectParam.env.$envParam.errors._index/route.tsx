@@ -1,9 +1,11 @@
+import * as Ariakit from "@ariakit/react";
 import { XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, useSearchParams as useRemixSearchParams } from "@remix-run/react";
+import { Form, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type ErrorGroupStatus } from "@trigger.dev/database";
+import { IconBugFilled } from "@tabler/icons-react";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, type ReactNode } from "react";
 import {
   Bar,
   BarChart,
@@ -18,12 +20,21 @@ import { PageBody } from "~/components/layout/AppLayout";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { LogsTaskFilter } from "~/components/logs/LogsTaskFilter";
 import { LogsVersionFilter } from "~/components/logs/LogsVersionFilter";
+import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { formatDateTime, RelativeDateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  ComboBox,
+  SelectItem,
+  SelectList,
+  SelectPopover,
+  SelectProvider,
+  SelectTrigger,
+} from "~/components/primitives/Select";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   CopyableTableCell,
@@ -36,9 +47,10 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
-import { TimeFilter } from "~/components/runs/v3/SharedFilters";
+import { appliedSummary, FilterMenuProvider, TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { $replica } from "~/db.server";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -55,7 +67,6 @@ import { ListPagination } from "~/components/ListPagination";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import { EnvironmentParamSchema, v3ErrorPath } from "~/utils/pathBuilder";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
-import SegmentedControl from "~/components/primitives/SegmentedControl";
 
 export const meta: MetaFunction = () => {
   return [
@@ -84,11 +95,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const tasks = url.searchParams.getAll("tasks").filter((t) => t.length > 0);
   const versions = url.searchParams.getAll("versions").filter((v) => v.length > 0);
-  const statusParam = url.searchParams.get("status") ?? undefined;
-  const status =
-    statusParam === "UNRESOLVED" || statusParam === "RESOLVED" || statusParam === "IGNORED"
-      ? (statusParam as ErrorGroupStatus)
-      : undefined;
+  const statuses = url.searchParams
+    .getAll("status")
+    .filter(
+      (s): s is ErrorGroupStatus => s === "UNRESOLVED" || s === "RESOLVED" || s === "IGNORED"
+    );
   const search = url.searchParams.get("search") ?? undefined;
   const period = url.searchParams.get("period") ?? undefined;
   const fromStr = url.searchParams.get("from");
@@ -111,7 +122,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       projectId: project.id,
       tasks: tasks.length > 0 ? tasks : undefined,
       versions: versions.length > 0 ? versions : undefined,
-      status,
+      statuses: statuses.length > 0 ? statuses : undefined,
       search,
       period,
       from,
@@ -237,38 +248,117 @@ export default function Page() {
   );
 }
 
-function StatusFilterButton() {
-  const [searchParams, setSearchParams] = useRemixSearchParams();
-  const currentStatus = searchParams.get("status") ?? "all";
+const errorStatusOptions = [
+  { value: "UNRESOLVED", label: "Unresolved" },
+  { value: "RESOLVED", label: "Resolved" },
+  { value: "IGNORED", label: "Ignored" },
+] as const;
 
-  const options: Array<{ value: string; label: string }> = [
-    { value: "all", label: "All" },
-    { value: "UNRESOLVED", label: "Unresolved" },
-    { value: "RESOLVED", label: "Resolved" },
-    { value: "IGNORED", label: "Ignored" },
-  ];
+const statusIcon = <IconBugFilled className="size-4" />;
+const statusShortcut = { key: "s" };
+
+function StatusFilter() {
+  const { values, del } = useSearchParams();
+  const selectedStatuses = values("status");
+
+  if (selectedStatuses.length === 0 || selectedStatuses.every((v) => v === "")) {
+    return (
+      <FilterMenuProvider>
+        {(search, setSearch) => (
+          <ErrorStatusDropdown
+            trigger={
+              <SelectTrigger
+                icon={statusIcon}
+                variant="secondary/small"
+                shortcut={statusShortcut}
+                tooltipTitle="Filter by status"
+              >
+                <span className="ml-0.5">Status</span>
+              </SelectTrigger>
+            }
+            searchValue={search}
+            clearSearchValue={() => setSearch("")}
+          />
+        )}
+      </FilterMenuProvider>
+    );
+  }
 
   return (
-    <SegmentedControl
-      name="status"
-      value={currentStatus}
-      variant="secondary/small"
-      options={options.map((opt) => ({
-        label: opt.label,
-        value: opt.value,
-      }))}
-      onChange={(value) => {
-        const next = new URLSearchParams(searchParams);
-        next.delete("cursor");
-        next.delete("direction");
-        if (value === "all") {
-          next.delete("status");
-        } else {
-          next.set("status", value);
-        }
-        setSearchParams(next);
-      }}
-    />
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <ErrorStatusDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label="Status"
+                icon={statusIcon}
+                value={appliedSummary(
+                  selectedStatuses.map((s) => {
+                    const opt = errorStatusOptions.find((o) => o.value === s);
+                    return opt ? opt.label : s;
+                  })
+                )}
+                onRemove={() => del(["status", "cursor", "direction"])}
+                variant="secondary/small"
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function ErrorStatusDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const { values, replace } = useSearchParams();
+
+  const handleChange = (values: string[]) => {
+    clearSearchValue();
+    replace({ status: values.length > 0 ? values : undefined, cursor: undefined, direction: undefined });
+  };
+
+  const filtered = useMemo(() => {
+    return errorStatusOptions.filter((item) =>
+      item.label.toLowerCase().includes(searchValue.toLowerCase())
+    );
+  }, [searchValue]);
+
+  return (
+    <SelectProvider value={values("status")} setValue={handleChange} virtualFocus={true}>
+      {trigger}
+      <SelectPopover
+        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+          return true;
+        }}
+      >
+        <ComboBox placeholder="Filter by status..." value={searchValue} />
+        <SelectList>
+          {filtered.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
   );
 }
 
@@ -284,6 +374,7 @@ function FiltersBar({
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
   const hasFilters =
+    searchParams.has("status") ||
     searchParams.has("tasks") ||
     searchParams.has("versions") ||
     searchParams.has("search") ||
@@ -296,7 +387,7 @@ function FiltersBar({
       <div className="flex flex-row flex-wrap items-center gap-1">
         {list ? (
           <>
-            <StatusFilterButton />
+            <StatusFilter />
             <LogsTaskFilter possibleTasks={list.filters.possibleTasks} />
             <LogsVersionFilter />
             <TimeFilter
@@ -317,7 +408,7 @@ function FiltersBar({
           </>
         ) : (
           <>
-            <StatusFilterButton />
+            <StatusFilter />
             <LogsTaskFilter possibleTasks={[]} />
             <LogsVersionFilter />
             <TimeFilter defaultPeriod={defaultPeriod} maxPeriodDays={retentionLimitDays} />
