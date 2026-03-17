@@ -163,7 +163,11 @@ function enrichLlmMetrics(event: CreateEventInput): void {
       : "";
   const operationId = typeof props["ai.operationId"] === "string"
     ? props["ai.operationId"]
-    : (props["gen_ai.operation.name"] as string) ?? (props["operation.name"] as string) ?? "";
+    : typeof props["gen_ai.operation.name"] === "string"
+      ? props["gen_ai.operation.name"]
+      : typeof props["operation.name"] === "string"
+        ? props["operation.name"]
+        : "";
   const msToFirstChunk = typeof props["ai.response.msToFirstChunk"] === "number"
     ? props["ai.response.msToFirstChunk"]
     : 0;
@@ -175,8 +179,8 @@ function enrichLlmMetrics(event: CreateEventInput): void {
 
   // Set _llmMetrics side-channel for dual-write to llm_metrics_v1
   const llmMetrics: LlmMetricsData = {
-    genAiSystem: (props["gen_ai.system"] as string) ?? "unknown",
-    requestModel: (props["gen_ai.request.model"] as string) ?? responseModel,
+    genAiSystem: typeof props["gen_ai.system"] === "string" ? props["gen_ai.system"] : "unknown",
+    requestModel: typeof props["gen_ai.request.model"] === "string" ? props["gen_ai.request.model"] : responseModel,
     responseModel,
     matchedModelId: cost?.matchedModelId ?? "",
     operationId,
