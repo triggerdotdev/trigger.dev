@@ -116,7 +116,7 @@ export const toolsMetadata = {
     name: "get_query_schema",
     title: "Get Query Schema",
     description:
-      "Get the column schema for a specific TRQL table. Available tables: 'runs' (task execution data), 'metrics' (CPU, memory, custom metrics). Returns columns, types, descriptions, and allowed values for the specified table.",
+      "Get the column schema for a specific TRQL table. Available tables: 'runs' (task execution data), 'metrics' (CPU, memory, custom metrics), 'llm_metrics' (LLM token usage, costs, latency). Returns columns, types, descriptions, and allowed values for the specified table.",
   },
   list_dashboards: {
     name: "list_dashboards",
