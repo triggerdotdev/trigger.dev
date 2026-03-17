@@ -35,8 +35,14 @@ export const listDashboardsTool = {
     });
 
     const cacheKey = `${projectRef}:${input.environment}:${input.branch ?? ""}`;
-    const result = await apiClient.listDashboards();
-    dashboardCache.set(cacheKey, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
+    const cached = dashboardCache.get(cacheKey);
+    let result: ListDashboardsResponseBody;
+    if (cached && Date.now() < cached.expiresAt) {
+      result = cached.data;
+    } else {
+      result = await apiClient.listDashboards();
+      dashboardCache.set(cacheKey, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
+    }
 
     const content: string[] = ["## Available Dashboards", ""];
 

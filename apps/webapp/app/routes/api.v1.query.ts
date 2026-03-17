@@ -19,7 +19,10 @@ const BodySchema = z.object({
 /** Extract table names from a TRQL query for authorization */
 function detectTables(query: string): string[] {
   return querySchemas
-    .filter((s) => new RegExp(`\\bFROM\\s+${s.name}\\b`, "i").test(query))
+    .filter((s) => {
+      const escaped = s.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`\\bFROM\\s+${escaped}\\b`, "i").test(query);
+    })
     .map((s) => s.name);
 }
 

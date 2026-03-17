@@ -21,11 +21,13 @@ import {
 import { getCurrentWorker, getTaskSchemaTool, triggerTaskTool } from "./tools/tasks.js";
 import { respondWithError } from "./utils.js";
 
-/** Tool names that perform write operations (deploy, trigger, cancel). */
+/** Tool names that perform write/mutating operations. */
 const WRITE_TOOLS = new Set([
   deployTool.name,
   triggerTaskTool.name,
   cancelRunTool.name,
+  createProjectInOrgTool.name,
+  initializeProjectTool.name,
 ]);
 
 export function registerTools(context: McpContext) {
