@@ -212,13 +212,11 @@ function ToolUseSection({ tools }: { tools: ToolUse[] }) {
   return (
     <div className="flex flex-col gap-1.5 py-2.5">
       <SectionHeader label={tools.length === 1 ? "Tool call" : `Tool calls (${tools.length})`} />
-      <ChatBubble>
-        <div className="flex flex-col gap-2">
-          {tools.map((tool) => (
-            <ToolUseRow key={tool.toolCallId} tool={tool} />
-          ))}
-        </div>
-      </ChatBubble>
+      <div className="flex flex-col gap-2">
+        {tools.map((tool) => (
+          <ToolUseRow key={tool.toolCallId} tool={tool} />
+        ))}
+      </div>
     </div>
   );
 }
