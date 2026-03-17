@@ -300,7 +300,57 @@ async function seedAiSpans() {
       status: "COMPLETED_SUCCESSFULLY",
       taskIdentifier: TASK_SLUG,
       payload: JSON.stringify({
-        message: "What is the current Federal Reserve interest rate?",
+        message: `I need a comprehensive analysis of the current Federal Reserve interest rate policy and its broader economic implications. Please cover all of the following areas in detail:
+
+## 1. Current Rate Policy
+
+- What is the **current federal funds target rate** range?
+- When was it last changed, and by how much?
+- What was the FOMC vote breakdown — were there any dissents?
+- What key language changes appeared in the most recent FOMC statement compared to the prior meeting?
+
+## 2. Rate History & Trajectory
+
+- Provide a complete timeline of rate decisions over the past **18 months**, including the size of each move
+- How does the current rate compare to the **pre-pandemic neutral rate** estimate?
+- What does the latest **dot plot** (Summary of Economic Projections) show for 2025, 2026, and the longer-run rate?
+- How has the **median longer-run rate estimate** shifted over the past year?
+
+## 3. Inflation & Economic Data Context
+
+- What are the latest readings for **Core PCE**, **headline CPI**, and **trimmed mean CPI**?
+- How does current inflation compare to the Fed's 2% symmetric target?
+- What does the **breakeven inflation rate** (5-year and 10-year TIPS spreads) suggest about market inflation expectations?
+- Are there any notable divergences between goods inflation and services inflation?
+
+## 4. Labor Market Assessment
+
+- What is the current **unemployment rate**, and how has it trended over the past 6 months?
+- What do **nonfarm payrolls**, **JOLTs job openings**, and **initial jobless claims** indicate about labor market health?
+- Is wage growth (via the **Employment Cost Index** and **Average Hourly Earnings**) still running above levels consistent with 2% inflation?
+- How does the Fed view the balance between its **maximum employment** and **price stability** mandates right now?
+
+## 5. Forward Guidance & Market Expectations
+
+- What are the upcoming **FOMC meeting dates** for the next 6 months?
+- What does the **CME FedWatch Tool** show for the probability of rate changes at each upcoming meeting?
+- How do **fed funds futures** and **OIS swaps** price the terminal rate for this cycle?
+- Are there any notable divergences between Fed guidance and market pricing?
+
+## 6. Global Context & Risk Factors
+
+- How do US rates compare to the **ECB**, **Bank of England**, and **Bank of Japan** policy rates?
+- What role are **tariff and trade policy** uncertainties playing in Fed deliberations?
+- How might **fiscal policy** changes (tax cuts, spending proposals) impact the rate outlook?
+- What are the key **upside and downside risks** to the current rate path?
+
+## 7. Financial Conditions
+
+- What is the current reading of the **Goldman Sachs Financial Conditions Index** and the **Chicago Fed National Financial Conditions Index**?
+- How have **10-year Treasury yields**, **corporate credit spreads**, and **equity valuations** responded to recent policy signals?
+- Is the **yield curve** currently inverted, and what does that historically signal?
+
+Please structure your response with clear headings, use tables for comparative data, include specific numbers and dates, and cite your sources. Flag any data points that may be stale or subject to revision.`,
       }),
       payloadType: "application/json",
       traceId,
@@ -478,10 +528,71 @@ function buildAiSpanTree(params: SpanTreeParams): CreateEventInput[] {
   }
 
   // --- Shared prompt content ---
-  const userMessage = "What is the current Federal Reserve interest rate?";
-  const systemPrompt = "You are a helpful financial assistant with access to web search tools.";
-  const assistantResponse =
-    "The current Federal Reserve interest rate target range is 4.25% to 4.50%. This was set by the FOMC at their most recent meeting.";
+  const userMessage = `I need a detailed analysis of the current Federal Reserve interest rate policy, including:
+
+1. The **current target rate** range
+2. How it compares to rates over the past 12 months
+3. Any upcoming FOMC meetings and market expectations
+
+Please include relevant data points and sources where possible.`;
+
+  const systemPrompt = `You are a senior financial analyst AI assistant with expertise in monetary policy, macroeconomics, and Federal Reserve operations.
+
+## Your Capabilities
+- Access to real-time web search for current financial data
+- Deep knowledge of FOMC meeting schedules, dot plots, and forward guidance
+- Ability to interpret economic indicators (CPI, PCE, employment data)
+
+## Response Guidelines
+- Always cite specific dates and data sources
+- Use tables for comparative data when appropriate
+- Flag any uncertainty or conflicting signals in the data
+- Present information in a structured, scannable format
+
+## Important Notes
+> Never provide investment advice. Present factual analysis only.
+> When data is older than 48 hours, note the timestamp explicitly.`;
+
+  const assistantResponse = `## Current Federal Reserve Interest Rate
+
+The Federal Open Market Committee (FOMC) has set the **federal funds target rate** at a range of **4.25% to 4.50%**, effective since the December 18, 2024 meeting.
+
+### Rate Trajectory (Past 12 Months)
+
+| Meeting Date | Decision | Target Range |
+|:---|:---|:---|
+| Dec 18, 2024 | -25 bps | 4.25% – 4.50% |
+| Nov 7, 2024 | -25 bps | 4.50% – 4.75% |
+| Sep 18, 2024 | -50 bps | 4.75% – 5.00% |
+| Jul 31, 2024 | Hold | 5.25% – 5.50% |
+| Jun 12, 2024 | Hold | 5.25% – 5.50% |
+| May 1, 2024 | Hold | 5.25% – 5.50% |
+| Mar 20, 2024 | Hold | 5.25% – 5.50% |
+
+### Key Observations
+
+1. **Easing Cycle Began**: The Fed started cutting rates in September 2024 with an aggressive 50 bps cut, followed by two 25 bps cuts
+2. **Cumulative Reduction**: Rates have been lowered by **100 basis points** total from the cycle peak of 5.25%–5.50%
+3. **Pause Signals**: Recent FOMC language suggests a *cautious approach* to further cuts, citing:
+   - Persistent core inflation above the 2% target
+   - Strong labor market conditions
+   - Uncertainty around fiscal policy changes
+
+### Upcoming FOMC Schedule
+
+The next scheduled meeting is **January 28–29, 2025**. Market expectations via CME FedWatch:
+
+\`\`\`
+Hold (no change):  89.3%
+Cut (-25 bps):     10.7%
+\`\`\`
+
+> **Note**: Market pricing strongly favors a hold at the January meeting, with the first expected cut pushed to mid-2025.
+
+### Sources
+- [Federal Reserve Board – Policy Actions](https://federalreserve.gov)
+- CME FedWatch Tool (as of Jan 15, 2025)
+- FOMC Statement, December 18, 2024`;
   const toolCallResult = JSON.stringify({
     status: 200,
     contentType: "text/html",
@@ -1113,7 +1224,15 @@ function buildAiSpanTree(params: SpanTreeParams): CreateEventInput[] {
     finishReason: "stop",
     wrapperDurationMs: 1_400,
     doDurationMs: 1_200,
-    responseText: "The document discusses quarterly earnings guidance for tech sector.",
+    responseText: `### Document Analysis
+
+The document primarily discusses **quarterly earnings guidance** for the technology sector, with the following key themes:
+
+- Revenue growth projections of *12–15%* YoY
+- Margin compression due to increased R&D spending
+- Forward guidance citing \`macroeconomic headwinds\`
+
+**Confidence**: High (0.92)`,
     useCompletionStyle: true,
     providerMetadata: {
       gateway: {
@@ -1215,7 +1334,21 @@ function buildAiSpanTree(params: SpanTreeParams): CreateEventInput[] {
     finishReason: "stop",
     wrapperDurationMs: 1_800,
     doDurationMs: 1_500,
-    responseText: "The content appears to be a standard financial news article. Classification: SAFE.",
+    responseText: `## Content Classification Report
+
+**Category**: Financial News Article
+**Risk Level**: SAFE ✓
+
+### Analysis Breakdown
+
+| Criteria | Result | Score |
+|:---|:---|---:|
+| Factual accuracy | Verified | 0.94 |
+| Bias detection | Minimal | 0.12 |
+| Misinformation risk | Low | 0.08 |
+| Regulatory sensitivity | None detected | 0.02 |
+
+> This content follows standard financial journalism conventions and references official Federal Reserve communications directly.`,
     useCompletionStyle: true,
     providerMetadata: {
       gateway: {
@@ -1312,7 +1445,22 @@ function buildAiSpanTree(params: SpanTreeParams): CreateEventInput[] {
     finishReason: "stop",
     wrapperDurationMs: 2_000,
     doDurationMs: 1_800,
-    responseText: "Based on the latest FOMC minutes, the committee voted unanimously to maintain rates.",
+    responseText: `Based on the latest FOMC minutes, the committee voted **unanimously** to maintain rates at the current target range.
+
+### Key Takeaways from the Minutes
+
+1. **Labor Market**: Participants noted that employment conditions remain *"solid"* but acknowledged some cooling in job openings
+2. **Inflation Outlook**: Core PCE inflation running at 2.8% — still above the 2% target
+3. **Forward Guidance**: Several participants emphasized the need for \`patience\` before additional rate adjustments
+
+#### Notable Quotes
+
+> "The Committee judges that the risks to achieving its employment and inflation goals are roughly in balance." — *FOMC Statement*
+
+The next decision point will hinge on incoming data, particularly:
+- January CPI release (Feb 12)
+- January employment report (Feb 7)
+- Q4 GDP second estimate (Feb 27)`,
     useCompletionStyle: true,
     providerMetadata: {
       openrouter: {
@@ -1397,7 +1545,27 @@ function buildAiSpanTree(params: SpanTreeParams): CreateEventInput[] {
     finishReason: "stop",
     wrapperDurationMs: 4_500,
     doDurationMs: 4_200,
-    responseText: "According to the Federal Reserve's most recent announcement on December 18, 2024, the federal funds rate target range was maintained at 4.25% to 4.50%. This decision was made during the December FOMC meeting.",
+    responseText: `According to the Federal Reserve's most recent announcement on **December 18, 2024**, the federal funds rate target range was maintained at **4.25% to 4.50%**.
+
+### Context
+
+This decision was made during the December FOMC meeting, where the committee:
+
+- Acknowledged *"solid"* economic activity and a labor market that has *"generally eased"*
+- Noted inflation remains *"somewhat elevated"* relative to the 2% target
+- Projected only **two rate cuts** in 2025 (down from four projected in September)
+
+### Market Impact
+
+The announcement triggered a sharp market reaction:
+
+\`\`\`
+S&P 500:    -2.95%  (largest FOMC-day drop since 2001)
+10Y Yield:  +11 bps to 4.52%
+DXY Index:  +1.2% to 108.3
+\`\`\`
+
+> **Sources**: Federal Reserve Board press release, CME FedWatch, Bloomberg Terminal`,
   });
 
   // =====================================================================
@@ -1435,8 +1603,34 @@ function buildAiSpanTree(params: SpanTreeParams): CreateEventInput[] {
     finishReason: "stop",
     wrapperDurationMs: 12_000,
     doDurationMs: 11_500,
-    responseText: "The Federal Reserve has maintained its target range for the federal funds rate at 4.25% to 4.50% since December 2024. This represents a pause in the rate-cutting cycle that began in September 2024. The FOMC has indicated it will continue to assess incoming data, the evolving outlook, and the balance of risks when considering further adjustments.",
-    responseReasoning: "The user is asking about the current Federal Reserve interest rate. Let me provide a comprehensive answer based on the most recent FOMC decision. I should include context about the rate trajectory and forward guidance.",
+    responseText: `The Federal Reserve has maintained its target range for the federal funds rate at **4.25% to 4.50%** since December 2024.
+
+## Rate Cycle Overview
+
+This represents a **pause** in the rate-cutting cycle that began in September 2024:
+
+| Phase | Period | Action |
+|:---|:---|:---|
+| Peak hold | Jul 2023 – Sep 2024 | Held at 5.25%–5.50% |
+| Easing begins | Sep 2024 | Cut 50 bps |
+| Continued easing | Nov 2024 | Cut 25 bps |
+| Final cut (so far) | Dec 2024 | Cut 25 bps |
+| Current pause | Jan 2025 – present | Hold |
+
+### What's Driving the Pause?
+
+The FOMC has cited three primary factors:
+
+1. **Sticky inflation**: Core PCE at 2.8% remains above the 2% symmetric target
+2. **Resilient growth**: GDP growth of 3.1% in Q3 2024 exceeded expectations
+3. **Policy uncertainty**: New administration trade and fiscal policies create *"unusually elevated"* uncertainty
+
+> The Committee has indicated it will continue to assess incoming data, the evolving outlook, and the balance of risks when considering further adjustments to the target range.
+
+### Technical Note
+
+The effective federal funds rate (\`EFFR\`) currently sits at **4.33%**, near the midpoint of the target range. The overnight reverse repo facility (ON RRP) rate is set at **4.25%**.`,
+    responseReasoning: "The user is asking about the current Federal Reserve interest rate. Let me provide a comprehensive answer based on the most recent FOMC decision. I should include context about the rate trajectory and forward guidance. I'll structure this with a table showing the recent rate changes and explain the pause rationale.",
     cacheReadTokens: 12400,
     cacheCreationTokens: 2800,
     providerMetadata: {
@@ -1500,8 +1694,42 @@ function buildAiSpanTree(params: SpanTreeParams): CreateEventInput[] {
     finishReason: "stop",
     wrapperDurationMs: 8_000,
     doDurationMs: 7_500,
-    responseText: "The Federal Reserve's current target range for the federal funds rate is 4.25% to 4.50%, established at the December 2024 FOMC meeting. The committee has signaled a cautious approach to further rate cuts, citing persistent inflation concerns.",
-    responseReasoning: "I need to provide accurate, up-to-date information about the Federal Reserve interest rate. The last FOMC meeting was in December 2024 where they held rates steady after three consecutive cuts.",
+    responseText: `## Federal Funds Rate — Current Status
+
+The Federal Reserve's current target range is **4.25% to 4.50%**, established at the **December 18, 2024** FOMC meeting.
+
+### Policy Stance
+
+The committee has signaled a *cautious approach* to further rate cuts. Key considerations include:
+
+- **Inflation**: Core PCE remains at 2.8%, above the 2% target
+- **Employment**: Unemployment rate stable at 4.2%, with 256K jobs added in December
+- **Growth**: Real GDP tracking at ~2.5% annualized
+
+### Dot Plot Summary (Dec 2024 SEP)
+
+The median dot plot projections:
+
+\`\`\`python
+# Median FOMC projections
+rates = {
+    "2025": 3.75,  # implies 2 cuts of 25bps
+    "2026": 3.25,  # implies 2 additional cuts
+    "longer_run": 3.00  # neutral rate estimate (up from 2.5%)
+}
+\`\`\`
+
+### Risk Assessment
+
+| Risk Factor | Direction | Magnitude |
+|:---|:---:|:---:|
+| Tariff-driven inflation | ↑ Upside | Medium |
+| Labor market softening | ↓ Downside | Low |
+| Fiscal expansion | ↑ Upside | High |
+| Global growth slowdown | ↓ Downside | Medium |
+
+> *"The committee remains attentive to the risks to both sides of its dual mandate."* — Chair Powell, Dec 18 press conference`,
+    responseReasoning: "I need to provide accurate, up-to-date information about the Federal Reserve interest rate. The last FOMC meeting was in December 2024 where they cut rates by 25 bps after two previous cuts. Let me include the dot plot projections and a risk assessment table for a comprehensive view.",
     reasoningTokens: 516,
     providerMetadata: {
       openai: {
@@ -1530,7 +1758,12 @@ function buildAiSpanTree(params: SpanTreeParams): CreateEventInput[] {
     finishReason: "stop",
     wrapperDurationMs: 600,
     doDurationMs: 400,
-    responseText: "The Federal Reserve rate is currently at 4.25-4.50%.",
+    responseText: `The Federal Reserve rate is currently at **4.25–4.50%**.
+
+Key details:
+- *Effective date*: December 18, 2024
+- *Next meeting*: January 28–29, 2025
+- *Market expectation*: Hold (\`89.3%\` probability per CME FedWatch)`,
   });
 
   // =====================================================================
@@ -1547,7 +1780,16 @@ function buildAiSpanTree(params: SpanTreeParams): CreateEventInput[] {
     finishReason: "stop",
     wrapperDurationMs: 4_000,
     doDurationMs: 3_500,
-    responseText: "Based on the latest FOMC statement, the target rate range remains at 4.25% to 4.50%.",
+    responseText: `Based on the latest FOMC statement, the target rate range remains at **4.25% to 4.50%**.
+
+### Additional Context
+
+The committee's statement included notable language changes:
+- Removed reference to *"gaining greater confidence"* on inflation
+- Added emphasis on monitoring \`both sides\` of the dual mandate
+- Acknowledged *"uncertainty around the economic outlook has increased"*
+
+Governor Bowman dissented, preferring a **hold** rather than the 25 bps cut — the first governor dissent since 2005.`,
   });
 
   // =====================================================================
