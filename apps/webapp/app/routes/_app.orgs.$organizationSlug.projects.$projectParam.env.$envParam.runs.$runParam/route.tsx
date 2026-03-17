@@ -119,7 +119,7 @@ const resizableSettings = {
     },
     inspector: {
       id: "inspector",
-      default: "430px" as const,
+      default: "500px" as const,
       min: "50px" as const,
     },
   },

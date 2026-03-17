@@ -118,6 +118,96 @@ LIMIT 100`,
     scope: "environment",
     table: "metrics",
   },
+  {
+    title: "LLM cost by model (past 7d)",
+    description: "Total cost, input tokens, and output tokens grouped by model over the last 7 days.",
+    query: `SELECT
+  response_model,
+  SUM(total_cost) AS total_cost,
+  SUM(input_tokens) AS input_tokens,
+  SUM(output_tokens) AS output_tokens
+FROM llm_metrics
+WHERE start_time > now() - INTERVAL 7 DAY
+GROUP BY response_model
+ORDER BY total_cost DESC`,
+    scope: "environment",
+    table: "llm_metrics",
+  },
+  {
+    title: "LLM cost over time",
+    description: "Total LLM cost bucketed over time. The bucket size adjusts automatically.",
+    query: `SELECT
+  timeBucket(),
+  SUM(total_cost) AS total_cost
+FROM llm_metrics
+GROUP BY timeBucket
+ORDER BY timeBucket
+LIMIT 1000`,
+    scope: "environment",
+    table: "llm_metrics",
+  },
+  {
+    title: "Most expensive runs by LLM cost (top 50)",
+    description: "Top 50 runs by total LLM cost with token breakdown.",
+    query: `SELECT
+  run_id,
+  task_identifier,
+  SUM(total_cost) AS llm_cost,
+  SUM(input_tokens) AS input_tokens,
+  SUM(output_tokens) AS output_tokens
+FROM llm_metrics
+GROUP BY run_id, task_identifier
+ORDER BY llm_cost DESC
+LIMIT 50`,
+    scope: "environment",
+    table: "llm_metrics",
+  },
+  {
+    title: "LLM calls by provider",
+    description: "Count and cost of LLM calls grouped by AI provider.",
+    query: `SELECT
+  gen_ai_system,
+  count() AS call_count,
+  SUM(total_cost) AS total_cost
+FROM llm_metrics
+GROUP BY gen_ai_system
+ORDER BY total_cost DESC`,
+    scope: "environment",
+    table: "llm_metrics",
+  },
+  {
+    title: "LLM cost by user",
+    description:
+      "Total LLM cost per user from run tags or AI SDK telemetry metadata. Uses metadata.userId which comes from experimental_telemetry metadata or run tags like user:123.",
+    query: `SELECT
+  metadata.userId AS user_id,
+  SUM(total_cost) AS total_cost,
+  SUM(total_tokens) AS total_tokens,
+  count() AS call_count
+FROM llm_metrics
+WHERE metadata.userId != ''
+GROUP BY metadata.userId
+ORDER BY total_cost DESC
+LIMIT 50`,
+    scope: "environment",
+    table: "llm_metrics",
+  },
+  {
+    title: "LLM cost by metadata key",
+    description:
+      "Browse all metadata keys and their LLM cost. Metadata comes from run tags (key:value) and AI SDK telemetry metadata.",
+    query: `SELECT
+  metadata,
+  response_model,
+  total_cost,
+  total_tokens,
+  run_id
+FROM llm_metrics
+ORDER BY start_time DESC
+LIMIT 20`,
+    scope: "environment",
+    table: "llm_metrics",
+  },
 ];
 
 const tableOptions = querySchemas.map((s) => ({ label: s.name, value: s.name }));

@@ -32,6 +32,10 @@ export default function Page() {
               label: "Concurrency",
               to: "/admin/concurrency",
             },
+            {
+              label: "LLM Models",
+              to: "/admin/llm-models",
+            },
           ]}
           layoutId={"admin"}
         />

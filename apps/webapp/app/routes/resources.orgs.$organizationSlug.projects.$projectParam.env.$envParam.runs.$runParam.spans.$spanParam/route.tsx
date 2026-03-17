@@ -19,7 +19,7 @@ import {
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { FlagIcon } from "~/assets/icons/RegionIcons";
@@ -60,6 +60,7 @@ import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
+import { AISpanDetails } from "~/components/runs/v3/ai";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import {
@@ -252,6 +253,8 @@ function SpanBody({
 
   span = applySpanOverrides(span, spanOverrides);
 
+  const isAiGeneration = span.entity?.type === "ai-generation";
+
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
       <div className="flex items-center justify-between gap-2 overflow-x-hidden border-b border-grid-bright px-3 pr-2">
@@ -276,9 +279,13 @@ function SpanBody({
           />
         )}
       </div>
-      <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      {isAiGeneration ? (
         <SpanEntity span={span} />
-      </div>
+      ) : (
+        <div className="scrollbar-gutter-stable overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <SpanEntity span={span} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1155,6 +1162,35 @@ function RunError({ error }: { error: TaskRunError }) {
   }
 }
 
+function CollapsibleProperties({ code }: { code: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-t border-grid-bright pt-2">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-1 text-xs font-medium text-text-dimmed hover:text-text-bright"
+      >
+        <ChevronUpIcon
+          className={cn("size-3.5 transition-transform", open ? "rotate-180" : "rotate-90")}
+        />
+        Raw properties
+      </button>
+      {open && (
+        <div className="mt-1.5">
+          <CodeBlock
+            code={code}
+            maxLines={20}
+            showLineNumbers={false}
+            showCopyButton
+            showTextWrapping
+            showOpenInModal
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SpanEntity({ span }: { span: Span }) {
   const isAdmin = useHasAdminAccess();
 
@@ -1349,6 +1385,14 @@ function SpanEntity({ span }: { span: Span }) {
           streamKey={span.entity.object.streamKey}
           metadata={span.entity.object.metadata}
           displayName={span.entity.object.displayName}
+        />
+      );
+    }
+    case "ai-generation": {
+      return (
+        <AISpanDetails
+          aiData={span.entity.object}
+          rawProperties={typeof span.properties === "string" ? span.properties : span.properties != null ? JSON.stringify(span.properties, null, 2) : undefined}
         />
       );
     }
