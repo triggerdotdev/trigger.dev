@@ -80,7 +80,7 @@ class DevSupervisor implements WorkerRuntime {
   private activeRunsPath?: string;
   private watchdogPidPath?: string;
 
-  constructor(public readonly options: WorkerRuntimeOptions) {}
+  constructor(public readonly options: WorkerRuntimeOptions) { }
 
   async init(): Promise<void> {
     logger.debug("[DevSupervisor] initialized worker runtime", { options: this.options });
@@ -117,8 +117,8 @@ class DevSupervisor implements WorkerRuntime {
       typeof processKeepAlive === "boolean"
         ? processKeepAlive
         : typeof processKeepAlive === "object"
-        ? processKeepAlive.enabled
-        : false;
+          ? processKeepAlive.enabled
+          : false;
 
     const maxPoolSize =
       typeof processKeepAlive === "object" ? processKeepAlive.devMaxPoolSize ?? 25 : 25;
@@ -279,10 +279,10 @@ class DevSupervisor implements WorkerRuntime {
     // Clean up files
     try {
       if (this.activeRunsPath) unlinkSync(this.activeRunsPath);
-    } catch {}
+    } catch { }
     try {
       if (this.watchdogPidPath) unlinkSync(this.watchdogPidPath);
-    } catch {}
+    } catch { }
   }
 
   #updateActiveRunsFile() {
@@ -517,7 +517,7 @@ class DevSupervisor implements WorkerRuntime {
 
             //stop the worker if it is deprecated and there are no more runs
             if (worker.deprecated) {
-              this.#tryDeleteWorker(message.backgroundWorker.friendlyId).finally(() => {});
+              this.#tryDeleteWorker(message.backgroundWorker.friendlyId).finally(() => { });
             }
           },
           onSubscribeToRunNotifications: async (run, snapshot) => {
@@ -614,7 +614,7 @@ class DevSupervisor implements WorkerRuntime {
       }
 
       existingWorker.deprecate();
-      this.#tryDeleteWorker(workerId).finally(() => {});
+      this.#tryDeleteWorker(workerId).finally(() => { });
     }
 
     this.workers.set(worker.serverWorker.id, worker);
@@ -745,15 +745,24 @@ class DevSupervisor implements WorkerRuntime {
     this.#cleanupWorker(friendlyId);
   }
 
+  #hasActiveRunsForWorker(friendlyId: string): boolean {
+    for (const controller of this.runControllers.values()) {
+      try {
+        if (controller.workerFriendlyId === friendlyId) return true;
+      } catch {
+        // workerFriendlyId may throw if the controller is in an unexpected state
+      }
+    }
+    return false;
+  }
+
   #cleanupWorker(friendlyId: string) {
     const worker = this.workers.get(friendlyId);
     if (!worker) {
       return;
     }
 
-    // Check if any active runs still reference this worker
-
-    if (hasActiveRuns) {
+    if (this.#hasActiveRunsForWorker(friendlyId)) {
       logger.debug("[DevSupervisor] Worker still has active runs, skipping cleanup", {
         workerId: friendlyId,
       });
@@ -775,16 +784,7 @@ class DevSupervisor implements WorkerRuntime {
     for (const [id, worker] of this.workers.entries()) {
       if (!worker.deprecated) continue;
 
-      // Skip workers with active runs
-      const hasActiveRuns = Array.from(this.runControllers.values()).some((controller) => {
-        try {
-          return controller.workerFriendlyId === id;
-        } catch {
-          return false;
-        }
-      });
-
-      if (!hasActiveRuns) {
+      if (!this.#hasActiveRunsForWorker(id)) {
         deprecatedWorkers.push({ id, worker });
       }
     }
@@ -815,12 +815,12 @@ class DevSupervisor implements WorkerRuntime {
 
 type ValidationIssue =
   | {
-      type: "duplicateTaskId";
-      duplicationTaskIds: string[];
-    }
+    type: "duplicateTaskId";
+    duplicationTaskIds: string[];
+  }
   | {
-      type: "noTasksDefined";
-    };
+    type: "noTasksDefined";
+  };
 
 function validateWorkerManifest(manifest: WorkerManifest): ValidationIssue | undefined {
   const issues: ValidationIssue[] = [];
