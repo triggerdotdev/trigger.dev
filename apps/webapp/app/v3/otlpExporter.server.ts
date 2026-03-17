@@ -38,8 +38,6 @@ import type {
 import { startSpan } from "./tracing.server";
 import { enrichCreatableEvents } from "./utils/enrichCreatableEvents.server";
 import "./llmPricingRegistry.server"; // Initialize LLM pricing registry on startup
-import { trail } from "agentcrumbs"; // @crumbs
-const crumbOtlp = trail("webapp:otlp-exporter"); // @crumbs
 import { env } from "~/env.server";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 import { singleton } from "~/utils/singleton";
@@ -395,22 +393,6 @@ function convertSpansToCreateableEvents(
         );
 
         const runTags = extractArrayAttribute(span.attributes ?? [], SemanticInternalAttributes.RUN_TAGS);
-
-        // #region @crumbs
-        if (span.attributes) {
-          crumbOtlp("span raw OTEL attrs", {
-            spanName: span.name,
-            spanId: binaryToHex(span.spanId),
-            attrCount: span.attributes.length,
-            attrs: span.attributes.map((a) => ({
-              key: a.key,
-              type: a.value?.stringValue !== undefined ? "string" : a.value?.intValue !== undefined ? "int" : a.value?.doubleValue !== undefined ? "double" : a.value?.boolValue !== undefined ? "bool" : a.value?.arrayValue ? "array" : a.value?.bytesValue ? "bytes" : "unknown",
-              ...(a.value?.arrayValue ? { arrayLen: a.value.arrayValue.values?.length } : {}),
-              ...(a.value?.stringValue !== undefined ? { strLen: a.value.stringValue.length } : {}),
-            })),
-          });
-        }
-        // #endregion @crumbs
 
         const properties =
           truncateAttributes(

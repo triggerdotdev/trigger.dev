@@ -1,5 +1,3 @@
-import { trail } from "agentcrumbs"; // @crumbs
-const crumb = trail("webapp"); // @crumbs
 import { prisma } from "./app/db.server";
 import { createOrganization } from "./app/models/organization.server";
 import { createProject } from "./app/models/project.server";
@@ -169,11 +167,9 @@ function eventToLlmMetricsRow(event: CreateEventInput): LlmMetricsV1Input {
 
 async function seedAiSpans() {
   const seedUserId = randomUserId();
-  crumb("seed started"); // @crumbs
   console.log(`Starting AI span seed (userId: ${seedUserId})...\n`);
 
   // 1. Find user
-  crumb("finding user"); // @crumbs
   const user = await prisma.user.findUnique({
     where: { email: "local@trigger.dev" },
   });
@@ -181,10 +177,8 @@ async function seedAiSpans() {
     console.error("User local@trigger.dev not found. Run `pnpm run db:seed` first.");
     process.exit(1);
   }
-  crumb("user found", { userId: user.id }); // @crumbs
 
   // 2. Find or create org
-  crumb("finding/creating org"); // @crumbs
   let org = await prisma.organization.findFirst({
     where: { title: ORG_TITLE, members: { some: { userId: user.id } } },
   });
@@ -194,10 +188,8 @@ async function seedAiSpans() {
   } else {
     console.log(`Org exists: ${org.title} (${org.slug})`);
   }
-  crumb("org ready", { orgId: org.id, slug: org.slug }); // @crumbs
 
   // 3. Find or create project
-  crumb("finding/creating project"); // @crumbs
   let project = await prisma.project.findFirst({
     where: { name: PROJECT_NAME, organizationId: org.id },
   });
@@ -212,10 +204,8 @@ async function seedAiSpans() {
   } else {
     console.log(`Project exists: ${project.name} (${project.externalRef})`);
   }
-  crumb("project ready", { projectId: project.id, ref: project.externalRef }); // @crumbs
 
   // 4. Get DEVELOPMENT environment
-  crumb("finding dev environment"); // @crumbs
   const runtimeEnv = await prisma.runtimeEnvironment.findFirst({
     where: { projectId: project.id, type: "DEVELOPMENT" },
   });
@@ -223,10 +213,8 @@ async function seedAiSpans() {
     console.error("No DEVELOPMENT environment found for project.");
     process.exit(1);
   }
-  crumb("dev env found", { envId: runtimeEnv.id }); // @crumbs
 
   // 5. Upsert background worker
-  crumb("upserting worker/task/queue"); // @crumbs
   const worker = await prisma.backgroundWorker.upsert({
     where: {
       projectId_runtimeEnvironmentId_version: {
@@ -281,10 +269,7 @@ async function seedAiSpans() {
     },
   });
 
-  crumb("infra upserts done"); // @crumbs
-
   // 8. Create the TaskRun
-  crumb("creating TaskRun"); // @crumbs
   const traceId = generateTraceId();
   const rootSpanId = generateSpanId();
   const now = Date.now();
@@ -367,11 +352,9 @@ Please structure your response with clear headings, use tables for comparative d
     },
   });
 
-  crumb("TaskRun created", { runId: run.friendlyId, traceId }); // @crumbs
   console.log(`Created TaskRun: ${run.friendlyId}`);
 
   // 9. Build span tree
-  crumb("building span tree"); // @crumbs
   const events = buildAiSpanTree({
     traceId,
     rootSpanId,
@@ -384,22 +367,18 @@ Please structure your response with clear headings, use tables for comparative d
     seedUserId,
   });
 
-  crumb("span tree built", { spanCount: events.length }); // @crumbs
   console.log(`Built ${events.length} spans`);
 
   // 10. Seed LLM pricing and enrich
-  crumb("seeding LLM pricing"); // @crumbs
   const seedResult = await seedLlmPricing(prisma);
   console.log(
     `LLM pricing: ${seedResult.modelsCreated} created, ${seedResult.modelsSkipped} skipped`
   );
 
-  crumb("loading pricing registry"); // @crumbs
   const registry = new ModelPricingRegistry(prisma);
   setLlmPricingRegistry(registry);
   await registry.loadFromDatabase();
 
-  crumb("enriching events"); // @crumbs
   const enriched = enrichCreatableEvents(events);
 
   const enrichedCount = enriched.filter((e) => e._llmMetrics != null).length;
@@ -408,10 +387,7 @@ Please structure your response with clear headings, use tables for comparative d
     `Enriched ${enrichedCount} spans with LLM cost (total: $${totalCost.toFixed(6)})`
   );
 
-  crumb("enrichment done", { enrichedCount, totalCost }); // @crumbs
-
   // 11. Insert into ClickHouse
-  crumb("inserting into ClickHouse"); // @crumbs
   const clickhouseUrl = process.env.CLICKHOUSE_URL ?? process.env.EVENTS_CLICKHOUSE_URL;
   if (!clickhouseUrl) {
     console.error("CLICKHOUSE_URL or EVENTS_CLICKHOUSE_URL not set");
@@ -426,13 +402,10 @@ Please structure your response with clear headings, use tables for comparative d
   const chRows = enriched.map(eventToClickhouseRow);
   await clickhouse.taskEventsV2.insert(chRows);
 
-  crumb("task events inserted", { rowCount: chRows.length }); // @crumbs
-
   // Insert LLM usage rows
   const llmRows = enriched.filter((e) => e._llmMetrics != null).map(eventToLlmMetricsRow);
   if (llmRows.length > 0) {
     await clickhouse.llmMetrics.insert(llmRows);
-    crumb("llm metrics inserted", { rowCount: llmRows.length }); // @crumbs
   }
 
   // 12. Output
@@ -443,7 +416,6 @@ Please structure your response with clear headings, use tables for comparative d
   console.log(`Spans: ${events.length}`);
   console.log(`LLM cost enriched: ${enrichedCount}`);
   console.log(`Total cost: $${totalCost.toFixed(6)}`);
-  crumb("seed complete"); // @crumbs
   process.exit(0);
 }
 
