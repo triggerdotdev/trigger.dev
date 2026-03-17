@@ -26,7 +26,7 @@ const DiscoverySchema = z.object({
 });
 
 const CardDataV1Schema = z.object({
-  type: z.enum(["card", "info", "warn", "error", "success"]),
+  type: z.enum(["card", "info", "warn", "error", "success", "changelog"]),
   title: z.string(),
   description: z.string(),
   image: z.string().url().optional(),
@@ -197,6 +197,32 @@ export async function dismissNotification({
     onUpdate: { webappDismissedAt: now },
     onCreate: { webappDismissedAt: now },
   });
+}
+
+// --- Read: recent changelogs (for Help & Feedback) ---
+
+export async function getRecentChangelogs({ limit = 2 }: { limit?: number } = {}) {
+  const now = new Date();
+
+  const notifications = await prisma.platformNotification.findMany({
+    where: {
+      surface: "WEBAPP",
+      archivedAt: null,
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      payload: { path: ["data", "type"], equals: "changelog" },
+    },
+    orderBy: [{ createdAt: "desc" }],
+    take: limit,
+  });
+
+  return notifications
+    .map((n) => {
+      const parsed = PayloadV1Schema.safeParse(n.payload);
+      if (!parsed.success) return null;
+      return { id: n.id, title: parsed.data.data.title, actionUrl: parsed.data.data.actionUrl };
+    })
+    .filter(Boolean) as Array<{ id: string; title: string; actionUrl?: string }>;
 }
 
 // --- CLI: next notification for CLI surface ---
