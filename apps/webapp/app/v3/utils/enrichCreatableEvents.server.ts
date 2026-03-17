@@ -240,20 +240,16 @@ function enrichStyle(event: CreateEventInput) {
     return baseStyle;
   }
 
-  // Direct property access and early returns
-  // GenAI System check
   const system = props["gen_ai.system"];
-  if (typeof system === "string") {
-    // For gateway/openrouter, derive the icon from the model's provider prefix
-    // e.g. "mistral/mistral-large-3" → "mistral", "anthropic/claude-..." → "anthropic"
-    if (system === "gateway" || system === "openrouter") {
-      const modelId = props["gen_ai.request.model"] ?? props["ai.model.id"];
-      if (typeof modelId === "string" && modelId.includes("/")) {
-        const provider = modelId.split("/")[0].replace(/-/g, "");
-        return { ...baseStyle, icon: `tabler-brand-${provider}` };
-      }
-    }
-    return { ...baseStyle, icon: `tabler-brand-${system.split(".")[0]}` };
+  const modelId = props["gen_ai.request.model"] ?? props["ai.model.id"];
+
+  const provider = resolveAiProvider(
+    typeof system === "string" ? system : undefined,
+    typeof modelId === "string" ? modelId : undefined
+  );
+
+  if (provider) {
+    return { ...baseStyle, icon: `ai-provider-${provider}` };
   }
 
   // Agent workflow check
@@ -265,11 +261,11 @@ function enrichStyle(event: CreateEventInput) {
   const message = event.message;
 
   if (typeof message === "string" && message === "ai.toolCall") {
-    return { ...baseStyle, icon: "tabler-tool" };
+    return { ...baseStyle, icon: "hero-wrench" };
   }
 
   if (typeof message === "string" && message.startsWith("ai.")) {
-    return { ...baseStyle, icon: "tabler-sparkles" };
+    return { ...baseStyle, icon: "hero-sparkles" };
   }
 
   return baseStyle;
@@ -357,4 +353,66 @@ function formatPythonStyle(template: string, values: Record<string, any>): strin
 
     return hasRepr ? repr(value) : String(value);
   });
+}
+
+type AiProvider =
+  | "anthropic"
+  | "openai"
+  | "gemini"
+  | "llama"
+  | "deepseek"
+  | "xai"
+  | "perplexity"
+  | "cerebras"
+  | "azure"
+  | "mistral";
+
+const systemToProvider: Record<string, AiProvider> = {
+  anthropic: "anthropic",
+  openai: "openai",
+  azure: "azure",
+  "google.generative-ai": "gemini",
+  google: "gemini",
+  xai: "xai",
+  deepseek: "deepseek",
+  cerebras: "cerebras",
+  perplexity: "perplexity",
+  "meta-llama": "llama",
+  mistral: "mistral",
+};
+
+const modelPatterns: [RegExp, AiProvider][] = [
+  [/\banthropic\b|claude/i, "anthropic"],
+  [/\bopenai\b|gpt-|o[134]-|chatgpt/i, "openai"],
+  [/gemini/i, "gemini"],
+  [/llama/i, "llama"],
+  [/deepseek/i, "deepseek"],
+  [/grok/i, "xai"],
+  [/sonar/i, "perplexity"],
+  [/cerebras/i, "cerebras"],
+  [/mistral|mixtral|codestral|pixtral/i, "mistral"],
+];
+
+function resolveAiProvider(
+  system: string | undefined,
+  modelId: string | undefined
+): AiProvider | undefined {
+  if (modelId) {
+    if (modelId.includes("/")) {
+      const prefix = modelId.split("/")[0].toLowerCase();
+      const fromPrefix = systemToProvider[prefix];
+      if (fromPrefix) return fromPrefix;
+    }
+
+    for (const [pattern, provider] of modelPatterns) {
+      if (pattern.test(modelId)) return provider;
+    }
+  }
+
+  if (system) {
+    const normalized = system.toLowerCase().split(".")[0];
+    return systemToProvider[system] ?? systemToProvider[normalized];
+  }
+
+  return undefined;
 }
