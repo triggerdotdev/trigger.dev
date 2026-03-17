@@ -50,7 +50,13 @@ export const toolsMetadata = {
     name: "get_current_worker",
     title: "Get Current Worker",
     description:
-      "Get the current worker for the project. Useful when searching for a task and for looking up a task identifier/slug and payload schema, or looking for the latest version in a specific environment.",
+      "Get the current worker for the project, including version and registered task slugs. Use get_task_schema to get the payload schema for a specific task.",
+  },
+  get_task_schema: {
+    name: "get_task_schema",
+    title: "Get Task Schema",
+    description:
+      "Get the payload schema for a specific task. Use get_current_worker first to see available task slugs.",
   },
   trigger_task: {
     name: "trigger_task",
@@ -62,7 +68,7 @@ export const toolsMetadata = {
     name: "get_run_details",
     title: "Get Run Details",
     description:
-      "Get the details of a run. The run ID is the ID of the run that was triggered. It starts with run_",
+      "Get the details and trace of a run. Trace events are paginated — the first call returns run details and the first page of trace lines. Pass the returned cursor to fetch subsequent pages without re-fetching the trace. The run ID starts with run_.",
   },
   wait_for_run_to_complete: {
     name: "wait_for_run_to_complete",
@@ -99,5 +105,64 @@ export const toolsMetadata = {
     title: "List Preview Branches",
     description:
       "List all preview branches for a project. Use this tool when you need to search for a preview branch or list all preview branches for a project.",
+  },
+  query: {
+    name: "query",
+    title: "Query",
+    description:
+      "Execute a TRQL query against your Trigger.dev data. TRQL is a SQL-style query language for analyzing runs, metrics, and LLM usage. Call the get_query_schema tool first to discover available tables and columns before writing a query.",
+  },
+  get_query_schema: {
+    name: "get_query_schema",
+    title: "Get Query Schema",
+    description:
+      "Get the column schema for a specific TRQL table. Available tables: 'runs' (task execution data), 'metrics' (CPU, memory, custom metrics). Returns columns, types, descriptions, and allowed values for the specified table.",
+  },
+  list_dashboards: {
+    name: "list_dashboards",
+    title: "List Dashboards",
+    description:
+      "List available built-in dashboards with their widgets. Each dashboard contains pre-built queries for common metrics like run success rates, costs, LLM usage, and more. Use run_dashboard to execute a dashboard's queries.",
+  },
+  run_dashboard_query: {
+    name: "run_dashboard_query",
+    title: "Run Dashboard Query",
+    description:
+      "Execute a single widget query from a built-in dashboard. Use list_dashboards first to see available dashboards, widget IDs, and their queries. Supports time period and scope options.",
+  },
+  whoami: {
+    name: "whoami",
+    title: "Who Am I",
+    description:
+      "Show the current authenticated user, active CLI profile, email, and API URL.",
+  },
+  list_profiles: {
+    name: "list_profiles",
+    title: "List Profiles",
+    description:
+      "List all configured CLI profiles. Shows which profile is currently active.",
+  },
+  switch_profile: {
+    name: "switch_profile",
+    title: "Switch Profile",
+    description:
+      "Switch the active CLI profile for this MCP session. This changes which Trigger.dev account and API URL are used for all subsequent tool calls.",
+  },
+  start_dev_server: {
+    name: "start_dev_server",
+    title: "Start Dev Server",
+    description:
+      "Start the Trigger.dev dev server (`trigger dev`) in the background. Waits up to 30 seconds for the worker to be ready. Use `dev_server_status` to check output and `stop_dev_server` to stop it.",
+  },
+  stop_dev_server: {
+    name: "stop_dev_server",
+    title: "Stop Dev Server",
+    description: "Stop the running Trigger.dev dev server.",
+  },
+  dev_server_status: {
+    name: "dev_server_status",
+    title: "Dev Server Status",
+    description:
+      "Check the status of the dev server and view recent output. Shows whether it is stopped, starting, ready, or has errors, along with recent log lines.",
   },
 };
