@@ -77,7 +77,8 @@ export function extractAISpanData(
     inputCost: num(triggerLlm.input_cost),
     outputCost: num(triggerLlm.output_cost),
     totalCost: num(triggerLlm.total_cost),
-    responseText: str(aiResponse.text) || str(aiResponse.object) || undefined,
+    responseText: str(aiResponse.text) || undefined,
+    responseObject: str(aiResponse.object) || undefined,
     toolDefinitions: toolDefs,
     items: buildDisplayItems(aiPrompt.messages, aiResponse.toolCalls, toolDefs),
   };

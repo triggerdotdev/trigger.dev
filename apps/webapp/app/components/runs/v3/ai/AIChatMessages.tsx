@@ -109,6 +109,17 @@ function UserSection({ text }: { text: string }) {
 // Assistant response (with markdown/raw toggle)
 // ---------------------------------------------------------------------------
 
+function isJsonString(value: string): boolean {
+  const trimmed = value.trimStart();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return false;
+  try {
+    JSON.parse(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function AssistantResponse({
   text,
   headerLabel = "Assistant",
@@ -116,6 +127,7 @@ export function AssistantResponse({
   text: string;
   headerLabel?: string;
 }) {
+  const isJson = isJsonString(text);
   const [mode, setMode] = useState<"rendered" | "raw">("rendered");
   const [copied, setCopied] = useState(false);
 
@@ -123,6 +135,21 @@ export function AssistantResponse({
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  if (isJson) {
+    return (
+      <div className="flex flex-col gap-1.5 py-2.5">
+        <SectionHeader label={headerLabel} />
+        <CodeBlock
+          code={text}
+          maxLines={20}
+          showLineNumbers={false}
+          showCopyButton
+          language="json"
+        />
+      </div>
+    );
   }
 
   return (

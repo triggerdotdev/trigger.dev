@@ -94,6 +94,8 @@ export type AISpanData = {
 
   // Response text (final assistant output)
   responseText?: string;
+  // Structured object response (JSON) — mutually exclusive with responseText
+  responseObject?: string;
 
   // Tool definitions (from ai.prompt.tools)
   toolDefinitions?: ToolDefinition[];

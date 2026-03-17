@@ -5,6 +5,7 @@ import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { useHasAdminAccess } from "~/hooks/useUser";
+import { CodeBlock } from "~/components/code/CodeBlock";
 import { AIChatMessages, AssistantResponse, ChatBubble } from "./AIChatMessages";
 import { AIStatsSummary, AITagsRow } from "./AIModelSummary";
 import { AIToolsInventory } from "./AIToolsInventory";
@@ -76,15 +77,13 @@ export function AISpanDetails({
 }
 
 function OverviewTab({ aiData }: { aiData: AISpanData }) {
-  const { userText, outputText, outputToolNames } = extractInputOutput(aiData);
+  const { userText, outputText, outputObject, outputToolNames } = extractInputOutput(aiData);
 
   return (
     <div className="flex flex-col px-3">
-      {/* Tags + Stats */}
       <AITagsRow aiData={aiData} />
       <AIStatsSummary aiData={aiData} />
 
-      {/* Input (last user prompt) */}
       {userText && (
         <div className="flex flex-col gap-1.5 py-2.5">
           <Header3>Input</Header3>
@@ -94,9 +93,20 @@ function OverviewTab({ aiData }: { aiData: AISpanData }) {
         </div>
       )}
 
-      {/* Output (assistant response or tool calls) */}
       {outputText && <AssistantResponse text={outputText} headerLabel="Output" />}
-      {outputToolNames.length > 0 && !outputText && (
+      {!outputText && outputObject && (
+        <div className="flex flex-col gap-1.5 py-2.5">
+          <Header3>Output</Header3>
+          <CodeBlock
+            code={outputObject}
+            maxLines={20}
+            showLineNumbers={false}
+            showCopyButton
+            language="json"
+          />
+        </div>
+      )}
+      {outputToolNames.length > 0 && !outputText && !outputObject && (
         <div className="flex flex-col gap-1.5 py-2.5">
           <Header3>Output</Header3>
           <ChatBubble>
@@ -112,12 +122,26 @@ function OverviewTab({ aiData }: { aiData: AISpanData }) {
 }
 
 function MessagesTab({ aiData }: { aiData: AISpanData }) {
+  const showFallbackText = aiData.responseText && !hasAssistantItem(aiData.items);
+  const showFallbackObject =
+    !showFallbackText && aiData.responseObject && !hasAssistantItem(aiData.items);
+
   return (
     <div className="px-3">
       <div className="flex flex-col">
         {aiData.items && aiData.items.length > 0 && <AIChatMessages items={aiData.items} />}
-        {aiData.responseText && !hasAssistantItem(aiData.items) && (
-          <AssistantResponse text={aiData.responseText} />
+        {showFallbackText && <AssistantResponse text={aiData.responseText!} />}
+        {showFallbackObject && (
+          <div className="flex flex-col gap-1.5 py-2.5">
+            <Header3>Assistant</Header3>
+            <CodeBlock
+              code={aiData.responseObject!}
+              maxLines={20}
+              showLineNumbers={false}
+              showCopyButton
+              language="json"
+            />
+          </div>
         )}
       </div>
     </div>
@@ -158,6 +182,7 @@ function CopyRawFooter({ rawProperties }: { rawProperties: string }) {
 function extractInputOutput(aiData: AISpanData): {
   userText: string | undefined;
   outputText: string | undefined;
+  outputObject: string | undefined;
   outputToolNames: string[];
 } {
   let userText: string | undefined;
@@ -165,7 +190,6 @@ function extractInputOutput(aiData: AISpanData): {
   const outputToolNames: string[] = [];
 
   if (aiData.items) {
-    // Find the last user message
     for (let i = aiData.items.length - 1; i >= 0; i--) {
       if (aiData.items[i].type === "user") {
         userText = (aiData.items[i] as { type: "user"; text: string }).text;
@@ -173,7 +197,6 @@ function extractInputOutput(aiData: AISpanData): {
       }
     }
 
-    // Find the last assistant or tool-use item as the output
     for (let i = aiData.items.length - 1; i >= 0; i--) {
       const item = aiData.items[i];
       if (item.type === "assistant") {
@@ -189,12 +212,11 @@ function extractInputOutput(aiData: AISpanData): {
     }
   }
 
-  // Fall back to responseText if no assistant item found
   if (!outputText && aiData.responseText) {
     outputText = aiData.responseText;
   }
 
-  return { userText, outputText, outputToolNames };
+  return { userText, outputText, outputObject: aiData.responseObject, outputToolNames };
 }
 
 function hasAssistantItem(items: DisplayItem[] | undefined): boolean {
