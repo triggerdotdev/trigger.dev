@@ -86,9 +86,10 @@ export const startDevServerTool = {
     });
 
     // Stream output in the background
+    const myProcess = devProcess;
     const readOutput = async () => {
       try {
-        for await (const line of devProcess!) {
+        for await (const line of myProcess) {
           const clean = stripAnsi(line);
           pushLog(clean);
 
@@ -104,8 +105,12 @@ export const startDevServerTool = {
         // Process ended
       }
 
-      // When the process exits
-      const exitCode = devProcess?.exitCode;
+      // Only update module state if no new server has been started since
+      if (devProcess !== myProcess) {
+        return;
+      }
+
+      const exitCode = myProcess.exitCode;
       if (devState !== "error") {
         devState = "stopped";
       }
