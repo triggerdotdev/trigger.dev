@@ -65,6 +65,7 @@ function SystemSection({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false);
   const isLong = text.length > 150;
   const preview = isLong ? text.slice(0, 150) + "..." : text;
+  const displayText = expanded || !isLong ? text : preview;
 
   return (
     <div className="flex flex-col gap-1.5 py-2.5">
@@ -82,8 +83,10 @@ function SystemSection({ text }: { text: string }) {
         }
       />
       <ChatBubble>
-        <Paragraph variant="small/dimmed" className="whitespace-pre-wrap">
-          {expanded || !isLong ? text : preview}
+        <Paragraph variant="small/dimmed" className="streamdown-container">
+          <Suspense fallback={<span className="whitespace-pre-wrap">{displayText}</span>}>
+            <StreamdownRenderer>{displayText}</StreamdownRenderer>
+          </Suspense>
         </Paragraph>
       </ChatBubble>
     </div>
@@ -99,7 +102,11 @@ function UserSection({ text }: { text: string }) {
     <div className="flex flex-col gap-1.5 py-2.5">
       <SectionHeader label="User" />
       <ChatBubble>
-        <Paragraph variant="small/dimmed">{text}</Paragraph>
+        <Paragraph variant="small/dimmed" className="streamdown-container">
+          <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
+            <StreamdownRenderer>{text}</StreamdownRenderer>
+          </Suspense>
+        </Paragraph>
       </ChatBubble>
     </div>
   );
