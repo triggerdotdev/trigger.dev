@@ -517,7 +517,9 @@ class DevSupervisor implements WorkerRuntime {
 
             //stop the worker if it is deprecated and there are no more runs
             if (worker.deprecated) {
-              this.#tryDeleteWorker(message.backgroundWorker.friendlyId).finally(() => { });
+              this.#tryDeleteWorker(message.backgroundWorker.friendlyId).catch((err) => {
+                logger.debug("[DevSupervisor] Failed to delete worker", { error: err });
+              });
             }
           },
           onSubscribeToRunNotifications: async (run, snapshot) => {
@@ -614,7 +616,9 @@ class DevSupervisor implements WorkerRuntime {
       }
 
       existingWorker.deprecate();
-      this.#tryDeleteWorker(workerId).finally(() => { });
+      this.#tryDeleteWorker(workerId).catch((err) => {
+        logger.debug("[DevSupervisor] Failed to delete worker", { error: err });
+      });
     }
 
     this.workers.set(worker.serverWorker.id, worker);
@@ -801,11 +805,14 @@ class DevSupervisor implements WorkerRuntime {
     );
 
     for (const { id, worker } of toRemove) {
-
       logger.debug("[DevSupervisor] Pruning old deprecated worker and cleaning up build dir", {
         workerId: id,
         version: worker.serverWorker?.version,
       });
+
+      if (worker.serverWorker?.version) {
+        this.taskRunProcessPool?.deprecateVersion(worker.serverWorker.version);
+      }
 
       worker.stop();
       this.workers.delete(id);
