@@ -2980,5 +2980,25 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
         }
       }
     ]
+  },
+  {
+    "modelName": "gemini-live-2.5-flash-native-audio",
+    "matchPattern": "(?i)^(google/)?(gemini-live-2.5-flash-native-audio)$",
+    "startDate": "2026-03-16T00:00:00.000Z",
+    "pricingTiers": [
+      {
+        "name": "Standard",
+        "isDefault": true,
+        "priority": 0,
+        "conditions": [],
+        "prices": {
+          "input_text": 5e-7,
+          "input_audio": 0.000003,
+          "input_image": 0.000003,
+          "output_text": 0.000002,
+          "output_audio": 0.000012
+        }
+      }
+    ]
   }
 ];
