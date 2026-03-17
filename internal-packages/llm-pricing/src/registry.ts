@@ -24,9 +24,16 @@ export class ModelPricingRegistry {
   private _patterns: CompiledPattern[] = [];
   private _exactMatchCache: Map<string, LlmModelWithPricing | null> = new Map();
   private _loaded = false;
+  private _readyResolve!: () => void;
+
+  /** Resolves once the initial `loadFromDatabase()` completes successfully. */
+  readonly isReady: Promise<void>;
 
   constructor(prisma: PrismaClient | PrismaReplicaClient) {
     this._prisma = prisma;
+    this.isReady = new Promise<void>((resolve) => {
+      this._readyResolve = resolve;
+    });
   }
 
   get isLoaded(): boolean {
@@ -81,7 +88,11 @@ export class ModelPricingRegistry {
 
     this._patterns = compiled;
     this._exactMatchCache.clear();
-    this._loaded = true;
+
+    if (!this._loaded) {
+      this._loaded = true;
+      this._readyResolve();
+    }
   }
 
   async reload(): Promise<void> {

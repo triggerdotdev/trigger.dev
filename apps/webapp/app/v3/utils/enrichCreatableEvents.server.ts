@@ -20,6 +20,8 @@ type CostRegistry = {
 
 let _registry: CostRegistry | undefined;
 
+const ENRICHABLE_KINDS = new Set(["INTERNAL", "SERVER", "CLIENT", "CONSUMER", "PRODUCER"]);
+
 export function setLlmPricingRegistry(registry: CostRegistry): void {
   _registry = registry;
 }
@@ -46,8 +48,7 @@ function enrichLlmMetrics(event: CreateEventInput): void {
   if (!props) return;
 
   // Only enrich span-like events (INTERNAL, SERVER, CLIENT, CONSUMER, PRODUCER — not LOG, UNSPECIFIED)
-  const enrichableKinds = new Set(["INTERNAL", "SERVER", "CLIENT", "CONSUMER", "PRODUCER"]);
-  if (!enrichableKinds.has(event.kind as string)) return;
+  if (!ENRICHABLE_KINDS.has(event.kind as string)) return;
 
   // Skip partial spans (they don't have final token counts)
   if (event.isPartial) return;
