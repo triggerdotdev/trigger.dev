@@ -639,6 +639,32 @@ export async function enqueueBuild(
   return result;
 }
 
+export async function triggerInitialDeployment(
+  projectId: string,
+  options: { environment: "preview" | "prod" | "staging" }
+): Promise<void> {
+  if (!client) return;
+
+  const [error, result] = await tryCatch(client.triggerInitialDeployment(projectId, options));
+
+  if (error) {
+    logger.warn("Error triggering initial deployment", {
+      projectId,
+      environment: options.environment,
+      error,
+    });
+    return;
+  }
+
+  if (!result.success) {
+    logger.warn("Failed to trigger initial deployment", {
+      projectId,
+      environment: options.environment,
+      error: result.error,
+    });
+  }
+}
+
 function isCloud(): boolean {
   const acceptableHosts = [
     "https://cloud.trigger.dev",
