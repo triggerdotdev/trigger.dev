@@ -1379,6 +1379,11 @@ export class ClickhouseEventRepository implements IEventRepository {
         }
       }
 
+      // Parse attributes from the first record that has them, then re-parse for the
+      // completed SPAN record. The completed record's attributes are a superset of the
+      // partial's (includes enriched trigger.llm.* cost data added during ingestion).
+      // This means at most 2x JSON.parse per span detail query, but only on this
+      // read path (span detail view), not on ingestion.
       if (typeof record.attributes_text === "string") {
         const shouldUpdate =
           span.properties == null ||

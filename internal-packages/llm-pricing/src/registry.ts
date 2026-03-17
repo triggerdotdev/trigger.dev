@@ -22,6 +22,9 @@ function compilePattern(pattern: string): RegExp {
 export class ModelPricingRegistry {
   private _prisma: PrismaClient | PrismaReplicaClient;
   private _patterns: CompiledPattern[] = [];
+  // TODO: When we add project-based models (users adding their own), this cache grows unbounded
+  // between reloads. Fine-tuned model IDs (e.g. "ft:gpt-3.5-turbo:org:name:id") create unique
+  // entries per model string. Consider adding an LRU cap or size limit at that point.
   private _exactMatchCache: Map<string, LlmModelWithPricing | null> = new Map();
   private _loaded = false;
   private _readyResolve!: () => void;
