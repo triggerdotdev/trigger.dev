@@ -86,6 +86,11 @@ export type ClickhouseEventRepositoryConfig = {
    * - "v2": Uses task_events_v2 (partitioned by inserted_at to avoid "too many parts" errors)
    */
   version?: "v1" | "v2";
+  /** LLM metrics flush scheduler config */
+  llmMetricsBatchSize?: number;
+  llmMetricsFlushInterval?: number;
+  llmMetricsMaxBatchSize?: number;
+  llmMetricsMaxConcurrency?: number;
 };
 
 /**
@@ -123,13 +128,13 @@ export class ClickhouseEventRepository implements IEventRepository {
     });
 
     this._llmMetricsFlushScheduler = new DynamicFlushScheduler({
-      batchSize: 5000,
-      flushInterval: 2000,
+      batchSize: config.llmMetricsBatchSize ?? 5000,
+      flushInterval: config.llmMetricsFlushInterval ?? 2000,
       callback: this.#flushLlmMetricsBatch.bind(this),
       minConcurrency: 1,
-      maxConcurrency: 2,
-      maxBatchSize: 10000,
-      memoryPressureThreshold: 10000,
+      maxConcurrency: config.llmMetricsMaxConcurrency ?? 2,
+      maxBatchSize: config.llmMetricsMaxBatchSize ?? 10000,
+      memoryPressureThreshold: config.llmMetricsMaxBatchSize ?? 10000,
       loadSheddingEnabled: false,
     });
   }

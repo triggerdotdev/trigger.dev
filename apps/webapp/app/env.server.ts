@@ -1288,6 +1288,10 @@ const EnvironmentSchema = z
     LLM_PRICING_RELOAD_INTERVAL_MS: z.coerce.number().int().default(5 * 60 * 1000), // 5 minutes
     LLM_PRICING_SEED_ON_STARTUP: BoolEnv.default(false),
     LLM_PRICING_READY_TIMEOUT_MS: z.coerce.number().int().default(500),
+    LLM_METRICS_BATCH_SIZE: z.coerce.number().int().default(5000),
+    LLM_METRICS_FLUSH_INTERVAL_MS: z.coerce.number().int().default(2000),
+    LLM_METRICS_MAX_BATCH_SIZE: z.coerce.number().int().default(10000),
+    LLM_METRICS_MAX_CONCURRENCY: z.coerce.number().int().default(2),
 
     // Bootstrap
     TRIGGER_BOOTSTRAP_ENABLED: z.string().default("0"),
