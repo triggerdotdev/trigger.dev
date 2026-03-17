@@ -87,7 +87,7 @@ describe("OTLPExporter", () => {
       const event = $events[0];
       expect(event.message).toBe("Responses API with 'gpt-4o'");
       expect(event.style).toMatchObject({
-        icon: "tabler-brand-openai",
+        icon: "ai-provider-openai",
       });
     });
 
@@ -165,7 +165,7 @@ describe("OTLPExporter", () => {
       const event = $events[0];
       expect(event.message).toBe("Responses API with gpt-4o");
       expect(event.style).toMatchObject({
-        icon: "tabler-brand-openai",
+        icon: "ai-provider-openai",
       });
       // Enrichment also adds model/token pills as accessories
       const style = event.style as Record<string, unknown>;
@@ -230,7 +230,7 @@ describe("OTLPExporter", () => {
       const $events = enrichCreatableEvents(events);
       expect($events[0].message).toBe("Using 'gpt-4' with temperature 0.7");
       expect($events[0].style).toEqual({
-        icon: "tabler-brand-openai",
+        icon: "ai-provider-openai",
       });
     });
 
@@ -261,7 +261,7 @@ describe("OTLPExporter", () => {
       const $events = enrichCreatableEvents(events);
       expect($events[0].message).toBe("Count is 42 and enabled is true");
       expect($events[0].style).toEqual({
-        icon: "tabler-brand-anthropic",
+        icon: "ai-provider-anthropic",
       });
     });
 
@@ -290,7 +290,7 @@ describe("OTLPExporter", () => {
       const $events = enrichCreatableEvents(events);
       expect($events[0].message).toBe("Plain message without variables");
       expect($events[0].style).toEqual({
-        icon: "tabler-brand-openai",
+        icon: "ai-provider-openai",
       });
     });
 
@@ -346,7 +346,7 @@ describe("OTLPExporter", () => {
       const $events = enrichCreatableEvents(events);
       expect($events[0].style).toEqual({
         existingStyle: "value",
-        icon: "tabler-brand-openai", // GenAI enricher wins because it's first
+        icon: "ai-provider-openai", // GenAI enricher wins because it's first
       });
     });
 
