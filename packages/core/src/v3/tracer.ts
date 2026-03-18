@@ -138,6 +138,7 @@ export class TriggerTracer {
         } catch (e) {
           if (isCompleteTaskWithOutput(e)) {
             if (!spanEnded) {
+              spanEnded = true;
               span.end(clock.preciseNow());
             }
 
@@ -157,16 +158,20 @@ export class TriggerTracer {
           if (!spanEnded) {
             spanEnded = true;
 
-            if (taskContext.ctx) {
-              const usageSample = usage.stop(usageMeasurement);
-              const machine = taskContext.ctx.machine;
+            try {
+              if (taskContext.ctx) {
+                const usageSample = usage.stop(usageMeasurement);
+                const machine = taskContext.ctx.machine;
 
-              span.setAttributes({
-                [SemanticInternalAttributes.USAGE_DURATION_MS]: usageSample.cpuTime,
-                [SemanticInternalAttributes.USAGE_COST_IN_CENTS]: machine?.centsPerMs
-                  ? usageSample.cpuTime * machine.centsPerMs
-                  : 0,
-              });
+                span.setAttributes({
+                  [SemanticInternalAttributes.USAGE_DURATION_MS]: usageSample.cpuTime,
+                  [SemanticInternalAttributes.USAGE_COST_IN_CENTS]: machine?.centsPerMs
+                    ? usageSample.cpuTime * machine.centsPerMs
+                    : 0,
+                });
+              }
+            } catch {
+              // Prevent cleanup errors from replacing the original error
             }
 
             span.end(clock.preciseNow());

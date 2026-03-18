@@ -26,7 +26,7 @@ export const helloWorldTask = task({
     logger.warn("warn: Hello, world!", { payload });
     logger.error("error: Hello, world!", { payload });
 
-    logger.trace("my trace", async (span) => {
+    await logger.trace("my trace", async (span) => {
       logger.debug("some log", { span });
     });
 
@@ -36,7 +36,7 @@ export const helloWorldTask = task({
       throw new Error("Forced error to cause a retry");
     }
 
-    logger.trace(
+    await logger.trace(
       "my trace",
       async (span) => {
         logger.debug("some log", { span });
