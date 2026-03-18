@@ -541,6 +541,9 @@ export function VercelOnboardingModal({
     formData.append("atomicBuilds", JSON.stringify(atomicBuilds));
     formData.append("discoverEnvVars", JSON.stringify(discoverEnvVars));
     formData.append("syncEnvVarsMapping", JSON.stringify(syncEnvVarsMapping));
+    if (fromMarketplaceContext) {
+      formData.append("origin", "marketplace");
+    }
     if (nextUrl && fromMarketplaceContext && isGitHubConnectedForOnboarding) {
       formData.append("next", nextUrl);
     }

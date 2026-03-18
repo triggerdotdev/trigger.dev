@@ -413,7 +413,7 @@ export class VercelIntegrationService {
       });
 
       if (upsertResult.isErr()) {
-        logger.error("Failed to sync staging TRIGGER_SECRET_KEY to custom environment", {
+        logger.warn("Failed to sync staging TRIGGER_SECRET_KEY to custom environment", {
           projectId,
           newCustomEnvironmentId,
           error: upsertResult.error.message,
