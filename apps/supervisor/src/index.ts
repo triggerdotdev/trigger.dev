@@ -267,6 +267,7 @@ class ManagedSupervisor {
           snapshotId: message.snapshot.id,
           snapshotFriendlyId: message.snapshot.friendlyId,
           placementTags: message.placementTags,
+          envVars: message.envVars,
         });
 
         // Disabled for now
