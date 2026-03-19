@@ -24,6 +24,10 @@ export interface WorkloadManagerCreateOptions {
   nextAttemptNumber?: number;
   dequeuedAt: Date;
   placementTags?: PlacementTag[];
+  // Timing context (populated by supervisor handler, included in wide event)
+  dequeueResponseMs?: number;
+  pollingIntervalMs?: number;
+  warmStartCheckMs?: number;
   // identifiers
   envId: string;
   envType: EnvironmentType;
