@@ -1,5 +1,6 @@
 import { type LoaderFunctionArgs, type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { type MetaFunction, Form, useFetcher } from "@remix-run/react";
+import { BellAlertIcon } from "@heroicons/react/20/solid";
 import { parse } from "@conform-to/zod";
 import { z } from "zod";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -24,7 +25,7 @@ import {
 import { type NextRunList } from "~/presenters/v3/NextRunListPresenter.server";
 import { $replica } from "~/db.server";
 import { logsClickhouseClient, clickhouseClient } from "~/services/clickhouseInstance.server";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Suspense, useMemo, useState } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -260,6 +261,12 @@ export default function Page() {
     return qs ? `${base}?${qs}` : base;
   }, [organizationSlug, projectParam, envParam, searchParams.toString()]);
 
+  const alertsHref = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    params.set("alerts", "true");
+    return `?${params.toString()}`;
+  }, [location.search]);
+
   return (
     <>
       <NavBar>
@@ -270,6 +277,11 @@ export default function Page() {
           }}
           title={<span className="font-mono text-xs">{ErrorId.toFriendlyId(fingerprint)}</span>}
         />
+        <PageAccessories>
+          <LinkButton to={alertsHref} variant="primary/small" LeadingIcon={BellAlertIcon}>
+            Configure alerts
+          </LinkButton>
+        </PageAccessories>
       </NavBar>
 
       <PageBody scrollable={false}>

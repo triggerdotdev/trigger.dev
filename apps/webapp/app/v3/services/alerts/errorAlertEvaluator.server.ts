@@ -16,17 +16,32 @@ type ErrorClassification = "new_issue" | "regression" | "unignored";
 interface AlertableError {
   classification: ErrorClassification;
   error: ActiveErrorsSinceQueryResult;
+  environmentSlug: string;
   environmentName: string;
 }
 
 interface ResolvedEnvironment {
   id: string;
+  slug: string;
   type: RuntimeEnvironmentType;
   displayName: string;
 }
 
 const DEFAULT_INTERVAL_MS = 300_000;
 
+/**
+ * For a project evalutes whether to send error alerts
+ *
+ * Alerts are sent if an error is
+ * 1. A new issue
+ * 2. A regression (was resolved and now back)
+ * 3. Unignored (was ignored and is no longer)
+ *
+ * Unignored happens in 3 situations
+ * 1. It was ignored with a future date, and that's now in the past
+ * 2. It was ignored until reaching an error rate (e.g. 10/minute) and that has been exceeded
+ * 3. It was ignored until reaching a total occurrence count (e.g. 1,000) and that has been exceeded
+ */
 export class ErrorAlertEvaluator {
   constructor(
     protected readonly _prisma: PrismaClientOrTransaction = $replica,
@@ -89,6 +104,7 @@ export class ErrorAlertEvaluator {
         alertableErrors.push({
           classification,
           error,
+          environmentSlug: env?.slug ?? "",
           environmentName: env?.displayName ?? error.environment_id,
         });
       }
@@ -111,6 +127,7 @@ export class ErrorAlertEvaluator {
             error: {
               fingerprint: alertable.error.error_fingerprint,
               environmentId: alertable.error.environment_id,
+              environmentSlug: alertable.environmentSlug,
               environmentName: alertable.environmentName,
               taskIdentifier: alertable.error.task_identifier,
               errorType: alertable.error.error_type,
@@ -249,6 +266,7 @@ export class ErrorAlertEvaluator {
 
     return envs.map((e) => ({
       id: e.id,
+      slug: e.slug,
       type: e.type,
       displayName: e.branchName ?? e.slug,
     }));
@@ -277,7 +295,7 @@ export class ErrorAlertEvaluator {
     qb.where("project_id = {projectId: String}", { projectId });
     qb.where("environment_id IN {envIds: Array(String)}", { envIds });
     qb.groupBy("environment_id, task_identifier, error_fingerprint");
-    qb.having("max(last_seen) > fromUnixTimestamp64Milli({scheduledAt: Int64})", {
+    qb.having("toInt64(last_seen) > {scheduledAt: Int64}", {
       scheduledAt,
     });
 

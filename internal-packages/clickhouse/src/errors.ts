@@ -94,8 +94,8 @@ export function getErrorGroups(ch: ClickhouseReader, settings?: ClickHouseSettin
         AND project_id = {projectId: String}
         AND environment_id = {environmentId: String}
       GROUP BY error_fingerprint, task_identifier
-      HAVING max(last_seen) >= now() - INTERVAL {days: Int64} DAY
-      ORDER BY last_seen DESC
+      HAVING toInt64(last_seen) >= toInt64(toUnixTimestamp(now() - INTERVAL {days: Int64} DAY)) * 1000
+      ORDER BY toInt64(last_seen) DESC
       LIMIT {limit: Int64}
       OFFSET {offset: Int64}
     `,

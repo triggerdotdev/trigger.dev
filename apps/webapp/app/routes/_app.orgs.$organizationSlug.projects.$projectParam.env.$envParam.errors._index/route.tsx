@@ -1,5 +1,5 @@
 import * as Ariakit from "@ariakit/react";
-import { XMarkIcon } from "@heroicons/react/20/solid";
+import { BellAlertIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type ErrorGroupStatus } from "@trigger.dev/database";
@@ -21,11 +21,11 @@ import { SearchInput } from "~/components/primitives/SearchInput";
 import { LogsTaskFilter } from "~/components/logs/LogsTaskFilter";
 import { LogsVersionFilter } from "~/components/logs/LogsVersionFilter";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { formatDateTime, RelativeDateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ComboBox,
@@ -175,10 +175,25 @@ export default function Page() {
     envParam,
   } = useTypedLoaderData<typeof loader>();
 
+  const location = useOptimisticLocation();
+  const showAlerts = new URLSearchParams(location.search).has("alerts");
+  const alertsHref = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    params.set("alerts", "true");
+    return `?${params.toString()}`;
+  }, [location.search]);
+
   return (
     <>
       <NavBar>
         <PageTitle title="Errors" />
+        <PageAccessories>
+          {!showAlerts && (
+            <LinkButton to={alertsHref} variant="primary/small" LeadingIcon={BellAlertIcon}>
+              Configure alerts
+            </LinkButton>
+          )}
+        </PageAccessories>
       </NavBar>
 
       <PageBody scrollable={false}>
@@ -327,7 +342,11 @@ function ErrorStatusDropdown({
 
   const handleChange = (values: string[]) => {
     clearSearchValue();
-    replace({ status: values.length > 0 ? values : undefined, cursor: undefined, direction: undefined });
+    replace({
+      status: values.length > 0 ? values : undefined,
+      cursor: undefined,
+      direction: undefined,
+    });
   };
 
   const filtered = useMemo(() => {
