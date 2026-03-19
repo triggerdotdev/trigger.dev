@@ -76,6 +76,7 @@ function initializeWorker() {
           error: z.object({
             fingerprint: z.string(),
             environmentId: z.string(),
+            environmentSlug: z.string(),
             environmentName: z.string(),
             taskIdentifier: z.string(),
             errorType: z.string(),

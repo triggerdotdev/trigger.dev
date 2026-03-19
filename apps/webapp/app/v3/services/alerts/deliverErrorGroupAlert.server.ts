@@ -10,6 +10,7 @@ import { type ProjectAlertChannelType } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { v3ErrorPath } from "~/utils/pathBuilder";
 import {
   isIntegrationForService,
   type OrganizationIntegrationForService,
@@ -34,6 +35,7 @@ interface ErrorAlertPayload {
   error: {
     fingerprint: string;
     environmentId: string;
+    environmentSlug: string;
     environmentName: string;
     taskIdentifier: string;
     errorType: string;
@@ -67,7 +69,7 @@ export class DeliverErrorGroupAlertService {
       return;
     }
 
-    const errorLink = this.#buildErrorLink(channel.project, payload.error);
+    const errorLink = this.#buildErrorLink(channel.project.organization, channel.project, payload.error);
 
     try {
       switch (channel.type) {
@@ -93,10 +95,11 @@ export class DeliverErrorGroupAlertService {
   }
 
   #buildErrorLink(
-    project: { externalRef: string },
+    organization: { slug: string },
+    project: { slug: string },
     error: ErrorAlertPayload["error"]
   ): string {
-    return `${env.APP_ORIGIN}/projects/v3/${project.externalRef}/errors/${error.fingerprint}`;
+    return `${env.APP_ORIGIN}${v3ErrorPath(organization, project, { slug: error.environmentSlug }, { fingerprint: error.fingerprint })}`;
   }
 
   #classificationLabel(classification: ErrorAlertClassification): string {
