@@ -26,6 +26,47 @@ import { IEventRepository, SpanDetail } from "~/v3/eventRepository/eventReposito
 import { safeJsonParse } from "~/utils/json";
 import { extractAISpanData } from "~/components/runs/v3/ai";
 
+export type PromptSpanData = {
+  slug: string;
+  version: number;
+  labels: string;
+  model?: string;
+  template?: string;
+  text?: string;
+  input?: string;
+  config?: string;
+};
+
+function extractPromptSpanData(
+  properties: Record<string, unknown>
+): PromptSpanData | undefined {
+  // Properties come as an unflattened nested object from ClickHouse,
+  // e.g. { prompt: { slug: "...", version: 3, ... } }
+  const prompt = properties.prompt;
+  if (!prompt || typeof prompt !== "object") {
+    return undefined;
+  }
+
+  const p = prompt as Record<string, unknown>;
+  const slug = p.slug;
+  const version = p.version;
+
+  if (typeof slug !== "string" || typeof version !== "number") {
+    return undefined;
+  }
+
+  return {
+    slug,
+    version,
+    labels: typeof p.labels === "string" ? p.labels : "",
+    model: typeof p.model === "string" ? p.model : undefined,
+    template: typeof p.template === "string" ? p.template : undefined,
+    text: typeof p.text === "string" ? p.text : undefined,
+    input: typeof p.input === "string" ? p.input : undefined,
+    config: typeof p.config === "string" ? p.config : undefined,
+  };
+}
+
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
 export type SpanRun = NonNullable<NonNullable<Result>["run"]>;
@@ -672,11 +713,61 @@ export class SpanPresenter extends BasePresenter {
           },
         };
       }
-      default:
-        if (data.aiData) {
+      case "prompt": {
+        const promptData = extractPromptSpanData(span.properties as Record<string, unknown>);
+
+        if (promptData) {
           return {
             ...data,
-            entity: { type: "ai-generation" as const, object: data.aiData },
+            entity: { type: "prompt" as const, object: promptData },
+          };
+        }
+
+        return { ...data, entity: null };
+      }
+      default:
+        if (data.aiData) {
+          // Look up prompt version data if this generation has a linked prompt
+          let promptVersionData: PromptSpanData | undefined;
+          if (data.aiData.promptSlug && data.aiData.promptVersion) {
+            const prompt = await this._replica.prompt.findUnique({
+              where: {
+                projectId_runtimeEnvironmentId_slug: {
+                  projectId,
+                  runtimeEnvironmentId: environmentId,
+                  slug: data.aiData.promptSlug,
+                },
+              },
+            });
+            if (prompt) {
+              const version = await this._replica.promptVersion.findUnique({
+                where: {
+                  promptId_version: {
+                    promptId: prompt.id,
+                    version: Number(data.aiData.promptVersion),
+                  },
+                },
+              });
+              if (version) {
+                promptVersionData = {
+                  slug: data.aiData.promptSlug,
+                  version: version.version,
+                  labels: data.aiData.promptLabels ?? "",
+                  model: version.model ?? undefined,
+                  template: version.textContent ?? undefined,
+                  text: undefined, // Resolved text is per-invocation, not stored on the version
+                  input: data.aiData.promptInput,
+                };
+              }
+            }
+          }
+          return {
+            ...data,
+            entity: {
+              type: "ai-generation" as const,
+              object: data.aiData,
+              promptVersionData,
+            },
           };
         }
         return { ...data, entity: null };

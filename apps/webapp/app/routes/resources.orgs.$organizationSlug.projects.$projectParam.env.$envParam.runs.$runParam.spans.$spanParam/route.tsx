@@ -61,6 +61,7 @@ import { RunTag } from "~/components/runs/v3/RunTag";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { AISpanDetails } from "~/components/runs/v3/ai";
+import { PromptSpanDetails } from "~/components/runs/v3/PromptSpanDetails";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import {
@@ -1392,12 +1393,17 @@ function SpanEntity({ span }: { span: Span }) {
       return (
         <AISpanDetails
           aiData={span.entity.object}
+          promptVersionData={span.entity.promptVersionData}
           rawProperties={typeof span.properties === "string" ? span.properties : span.properties != null ? JSON.stringify(span.properties, null, 2) : undefined}
         />
       );
+    }
+    case "prompt": {
+      return <PromptSpanDetails promptData={span.entity.object} />;
     }
     default: {
       assertNever(span.entity);
     }
   }
 }
+

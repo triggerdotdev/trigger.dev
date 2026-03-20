@@ -37,6 +37,9 @@ export const LlmMetricsV1Input = z.object({
 
   metadata: z.record(z.string(), z.string()),
 
+  prompt_slug: z.string(),
+  prompt_version: z.number(),
+
   start_time: z.string(),
   duration: z.string(),
 });

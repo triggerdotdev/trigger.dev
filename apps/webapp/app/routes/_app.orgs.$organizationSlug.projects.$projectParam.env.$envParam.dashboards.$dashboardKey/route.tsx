@@ -7,6 +7,7 @@ import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LogsTaskFilter } from "~/components/logs/LogsTaskFilter";
 import { ModelsFilter, type ModelOption } from "~/components/metrics/ModelsFilter";
+import { PromptsFilter } from "~/components/metrics/PromptsFilter";
 import { type WidgetData } from "~/components/metrics/QueryWidget";
 import { QueuesFilter } from "~/components/metrics/QueuesFilter";
 import { ScopeFilter } from "~/components/metrics/ScopeFilter";
@@ -28,6 +29,7 @@ import {
   type Widget,
   MetricDashboardPresenter,
 } from "~/presenters/v3/MetricDashboardPresenter.server";
+import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -94,6 +96,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }
   }
 
+  let possiblePrompts: string[] = [];
+  if (filters.includes("prompts")) {
+    const promptPresenter = new PromptPresenter(clickhouseClient);
+    possiblePrompts = await promptPresenter.getDistinctPromptSlugs(
+      project.organizationId,
+      project.id,
+      environment.id
+    );
+  }
+
   return typedjson({
     ...dashboard,
     filters,
@@ -101,6 +113,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       .map((task) => ({ slug: task.slug, triggerSource: task.triggerSource }))
       .sort((a, b) => a.slug.localeCompare(b.slug)),
     possibleModels,
+    possiblePrompts,
   });
 };
 
@@ -113,6 +126,7 @@ export default function Page() {
     filters,
     possibleTasks,
     possibleModels,
+    possiblePrompts,
   } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
@@ -142,6 +156,7 @@ export default function Page() {
             filters={filters}
             possibleTasks={possibleTasks}
             possibleModels={possibleModels}
+            possiblePrompts={possiblePrompts}
           />
         </div>
       </PageBody>
@@ -157,6 +172,7 @@ export function MetricDashboard({
   filters: filterConfig,
   possibleTasks,
   possibleModels,
+  possiblePrompts,
   onLayoutChange,
   onEditWidget,
   onRenameWidget,
@@ -175,6 +191,8 @@ export function MetricDashboard({
   possibleTasks?: { slug: string; triggerSource: TaskTriggerSource }[];
   /** Possible models for filtering */
   possibleModels?: ModelOption[];
+  /** Possible prompt slugs for filtering */
+  possiblePrompts?: string[];
   onLayoutChange?: (layout: LayoutItem[]) => void;
   onEditWidget?: (widgetId: string, widget: WidgetData) => void;
   onRenameWidget?: (widgetId: string, newTitle: string) => void;
@@ -202,6 +220,7 @@ export function MetricDashboard({
   const tasks = values("tasks").filter((v) => v !== "");
   const queues = values("queues").filter((v) => v !== "");
   const models = values("models").filter((v) => v !== "");
+  const prompts = values("prompts").filter((v) => v !== "");
 
   const activeFilters = filterConfig ?? ["tasks", "queues"];
 
@@ -236,6 +255,9 @@ export function MetricDashboard({
         {activeFilters.includes("queues") && <QueuesFilter />}
         {activeFilters.includes("models") && (
           <ModelsFilter possibleModels={possibleModels ?? []} />
+        )}
+        {activeFilters.includes("prompts") && (
+          <PromptsFilter possiblePrompts={possiblePrompts ?? []} />
         )}
         <TimeFilter
           defaultPeriod={defaultPeriod}
@@ -292,6 +314,7 @@ export function MetricDashboard({
                     taskIdentifiers={tasks.length > 0 ? tasks : undefined}
                     queues={queues.length > 0 ? queues : undefined}
                     responseModels={models.length > 0 ? models : undefined}
+                    promptSlugs={prompts.length > 0 ? prompts : undefined}
                     config={widget.display}
                     organizationId={organization.id}
                     projectId={project.id}

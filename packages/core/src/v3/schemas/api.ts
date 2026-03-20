@@ -1639,3 +1639,24 @@ export const SendInputStreamResponseBody = z.object({
   ok: z.boolean(),
 });
 export type SendInputStreamResponseBody = z.infer<typeof SendInputStreamResponseBody>;
+
+export const ResolvePromptRequestBody = z.object({
+  variables: z.record(z.unknown()).default({}),
+  label: z.string().optional(),
+  version: z.number().optional(),
+});
+export type ResolvePromptRequestBody = z.infer<typeof ResolvePromptRequestBody>;
+
+export const ResolvePromptResponseBody = z.object({
+  data: z.object({
+    promptId: z.string(),
+    slug: z.string(),
+    version: z.number(),
+    labels: z.array(z.string()),
+    template: z.string().optional(),
+    text: z.string().optional(),
+    model: z.string().optional().nullable(),
+    config: z.record(z.unknown()).optional().nullable(),
+  }),
+});
+export type ResolvePromptResponseBody = z.infer<typeof ResolvePromptResponseBody>;

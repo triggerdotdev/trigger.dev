@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ConfigManifest } from "./config.js";
-import { QueueManifest, TaskFile, TaskManifest } from "./schemas.js";
+import { PromptManifest, QueueManifest, TaskFile, TaskManifest } from "./schemas.js";
 
 export const BuildExternal = z.object({
   name: z.string(),
@@ -86,6 +86,7 @@ export type IndexMessage = z.infer<typeof IndexMessage>;
 export const WorkerManifest = z.object({
   configPath: z.string(),
   tasks: TaskManifest.array(),
+  prompts: PromptManifest.array().optional(),
   queues: QueueManifest.array().optional(),
   workerEntryPoint: z.string(),
   controllerEntryPoint: z.string().optional(),

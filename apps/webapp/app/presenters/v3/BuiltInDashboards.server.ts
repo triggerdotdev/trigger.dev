@@ -217,7 +217,7 @@ const overviewDashboard: BuiltInDashboard = {
 const llmDashboard: BuiltInDashboard = {
   key: "llm",
   title: "AI Metrics",
-  filters: ["tasks", "models"],
+  filters: ["tasks", "models", "prompts"],
   layout: {
     version: "1",
     layout: [
@@ -248,7 +248,8 @@ const llmDashboard: BuiltInDashboard = {
       { i: "llm-title-attribution", x: 0, y: 77, w: 12, h: 2, minH: 2, maxH: 2 },
       { i: "llm-cost-task", x: 0, y: 79, w: 6, h: 13 },
       { i: "llm-cost-provider", x: 6, y: 79, w: 6, h: 13 },
-      { i: "llm-cost-user", x: 0, y: 92, w: 12, h: 13 },
+      { i: "llm-cost-prompt", x: 0, y: 92, w: 6, h: 13 },
+      { i: "llm-cost-user", x: 6, y: 92, w: 6, h: 13 },
       // Efficiency section
       { i: "llm-title-efficiency", x: 0, y: 105, w: 12, h: 2, minH: 2, maxH: 2 },
       { i: "llm-cost-operation", x: 0, y: 107, w: 6, h: 13 },
@@ -456,6 +457,12 @@ const llmDashboard: BuiltInDashboard = {
           sortDirection: "asc",
           aggregation: "sum",
         },
+      },
+      "llm-cost-prompt": {
+        title: "Cost by prompt",
+        query:
+          "SELECT\r\n  prompt_slug,\r\n  SUM(total_cost) AS cost,\r\n  SUM(total_tokens) AS tokens,\r\n  count() AS calls\r\nFROM\r\n  llm_metrics\r\nWHERE prompt_slug != ''\r\nGROUP BY\r\n  prompt_slug\r\nORDER BY\r\n  cost DESC",
+        display: { type: "table", prettyFormatting: true, sorting: [] },
       },
       "llm-cost-user": {
         title: "Cost by user",

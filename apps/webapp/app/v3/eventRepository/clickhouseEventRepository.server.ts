@@ -284,6 +284,8 @@ export class ClickhouseEventRepository implements IEventRepository {
       ms_to_first_chunk: llmMetrics.msToFirstChunk,
       tokens_per_second: llmMetrics.tokensPerSecond,
       metadata: llmMetrics.metadata,
+      prompt_slug: llmMetrics.promptSlug,
+      prompt_version: llmMetrics.promptVersion,
       start_time: this.#clampAndFormatStartTime(event.startTime.toString()),
       duration: formatClickhouseUnsignedIntegerString(event.duration ?? 0),
     };

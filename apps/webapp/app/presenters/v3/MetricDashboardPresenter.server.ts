@@ -58,7 +58,7 @@ export type CustomDashboard = {
   defaultPeriod: string;
 };
 
-export type BuiltInDashboardFilter = "tasks" | "queues" | "models";
+export type BuiltInDashboardFilter = "tasks" | "queues" | "models" | "prompts";
 
 export type BuiltInDashboard = {
   key: string;

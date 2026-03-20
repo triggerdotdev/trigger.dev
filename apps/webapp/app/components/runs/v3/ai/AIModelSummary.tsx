@@ -1,15 +1,49 @@
+import type { ReactNode } from "react";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import { Header3 } from "~/components/primitives/Headers";
+import { TextLink } from "~/components/primitives/TextLink";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { v3PromptPath } from "~/utils/pathBuilder";
+import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import type { AISpanData } from "./types";
 
 export function AITagsRow({ aiData }: { aiData: AISpanData }) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
+  const promptLink =
+    aiData.promptSlug && organization && project && environment
+      ? v3PromptPath(organization, project, environment, aiData.promptSlug, aiData.promptVersion)
+      : undefined;
+
   return (
     <div className="flex flex-col gap-1 py-2.5">
       <div className="flex flex-col text-xs @container">
+        {aiData.responseId && (
+          <MetricRow label="Response ID" value={<TruncatedCopyableValue value={aiData.responseId} />} />
+        )}
         <MetricRow label="Model" value={aiData.model} />
         {aiData.provider !== "unknown" && <MetricRow label="Provider" value={aiData.provider} />}
         {aiData.resolvedProvider && (
           <MetricRow label="Resolved provider" value={aiData.resolvedProvider} />
+        )}
+        {aiData.promptSlug && (
+          <MetricRow
+            label="Prompt"
+            value={
+              promptLink ? (
+                <TextLink to={promptLink}>
+                  {aiData.promptSlug}
+                  {aiData.promptVersion ? ` v${aiData.promptVersion}` : ""}
+                </TextLink>
+              ) : (
+                `${aiData.promptSlug}${aiData.promptVersion ? ` v${aiData.promptVersion}` : ""}`
+              )
+            }
+          />
         )}
         {aiData.finishReason && <MetricRow label="Finish reason" value={aiData.finishReason} />}
         {aiData.serviceTier && <MetricRow label="Service tier" value={aiData.serviceTier} />}
@@ -27,9 +61,9 @@ export function AITagsRow({ aiData }: { aiData: AISpanData }) {
           />
         )}
         {aiData.telemetryMetadata &&
-          Object.entries(aiData.telemetryMetadata).map(([key, value]) => (
-            <MetricRow key={key} label={key} value={value} />
-          ))}
+          Object.entries(aiData.telemetryMetadata)
+            .filter(([key]) => key !== "prompt")
+            .map(([key, value]) => <MetricRow key={key} label={key} value={value} />)}
       </div>
     </div>
   );
@@ -86,7 +120,7 @@ function MetricRow({
   bold,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   unit?: string;
   bold?: boolean;
 }) {
@@ -111,3 +145,4 @@ function formatTtfc(ms: number): string {
   }
   return `${Math.round(ms)}ms`;
 }
+

@@ -42,6 +42,8 @@ import {
   ResetIdempotencyKeyResponse,
   RetrieveBatchV2Response,
   RetrieveQueueParam,
+  ResolvePromptRequestBody,
+  ResolvePromptResponseBody,
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
   ScheduleObject,
@@ -1566,6 +1568,23 @@ export class ApiClient {
     }
 
     return headers;
+  }
+
+  resolvePrompt(
+    slug: string,
+    body: ResolvePromptRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      ResolvePromptResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
   }
 
   #getRealtimeHeaders() {
