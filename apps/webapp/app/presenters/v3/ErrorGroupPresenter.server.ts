@@ -66,11 +66,14 @@ export type ErrorGroupState = {
   resolvedAt: Date | null;
   resolvedInVersion: string | null;
   resolvedBy: string | null;
+  ignoredAt: Date | null;
   ignoredUntil: Date | null;
   ignoredReason: string | null;
   ignoredByUserId: string | null;
+  ignoredByUserDisplayName: string | null;
   ignoredUntilOccurrenceRate: number | null;
   ignoredUntilTotalOccurrences: number | null;
+  ignoredAtOccurrenceCount: number | null;
 };
 
 export type ErrorGroupSummary = {
@@ -151,11 +154,14 @@ export class ErrorGroupPresenter extends BasePresenter {
         resolvedAt: null,
         resolvedInVersion: null,
         resolvedBy: null,
+        ignoredAt: null,
         ignoredUntil: null,
         ignoredReason: null,
         ignoredByUserId: null,
+        ignoredByUserDisplayName: null,
         ignoredUntilOccurrenceRate: null,
         ignoredUntilTotalOccurrences: null,
+        ignoredAtOccurrenceCount: null,
       };
     }
 
@@ -329,15 +335,47 @@ export class ErrorGroupPresenter extends BasePresenter {
         resolvedAt: true,
         resolvedInVersion: true,
         resolvedBy: true,
+        ignoredAt: true,
         ignoredUntil: true,
         ignoredReason: true,
         ignoredByUserId: true,
         ignoredUntilOccurrenceRate: true,
         ignoredUntilTotalOccurrences: true,
+        ignoredAtOccurrenceCount: true,
       },
     });
 
-    return row;
+    if (!row) {
+      return null;
+    }
+
+    let ignoredByUserDisplayName: string | null = null;
+    if (row.ignoredByUserId) {
+      const user = await this.replica.user.findUnique({
+        where: { id: row.ignoredByUserId },
+        select: { displayName: true, name: true, email: true },
+      });
+      if (user) {
+        ignoredByUserDisplayName = user.displayName ?? user.name ?? user.email;
+      }
+    }
+
+    return {
+      status: row.status,
+      resolvedAt: row.resolvedAt,
+      resolvedInVersion: row.resolvedInVersion,
+      resolvedBy: row.resolvedBy,
+      ignoredAt: row.ignoredAt,
+      ignoredUntil: row.ignoredUntil,
+      ignoredReason: row.ignoredReason,
+      ignoredByUserId: row.ignoredByUserId,
+      ignoredByUserDisplayName,
+      ignoredUntilOccurrenceRate: row.ignoredUntilOccurrenceRate,
+      ignoredUntilTotalOccurrences: row.ignoredUntilTotalOccurrences,
+      ignoredAtOccurrenceCount: row.ignoredAtOccurrenceCount
+        ? Number(row.ignoredAtOccurrenceCount)
+        : null,
+    };
   }
 
   private async getRunList(

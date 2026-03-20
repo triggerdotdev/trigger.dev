@@ -32,7 +32,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Callout } from "~/components/primitives/Callout";
 import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, isPast } from "date-fns";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import * as Property from "~/components/primitives/PropertyTable";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
@@ -463,6 +463,8 @@ function ErrorGroupDetail({
             )}
           </Property.Table>
         </div>
+
+        <IgnoredDetails state={errorGroup.state} totalOccurrences={errorGroup.count} />
       </div>
 
       {/* Activity chart */}
@@ -560,6 +562,89 @@ function StatusBadge({ status }: { status: ErrorGroupState["status"] }) {
     >
       {STATUS_LABELS[status]}
     </span>
+  );
+}
+
+function IgnoredDetails({
+  state,
+  totalOccurrences,
+}: {
+  state: ErrorGroupState;
+  totalOccurrences: number;
+}) {
+  if (state.status !== "IGNORED") {
+    return null;
+  }
+
+  const hasConditions =
+    state.ignoredUntil || state.ignoredUntilOccurrenceRate || state.ignoredUntilTotalOccurrences;
+
+  const ignoredForever = !hasConditions;
+
+  const occurrencesSinceIgnore =
+    state.ignoredUntilTotalOccurrences && state.ignoredAtOccurrenceCount !== null
+      ? totalOccurrences - state.ignoredAtOccurrenceCount
+      : null;
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded border border-text-dimmed/20 bg-text-dimmed/5 px-3 py-2.5 text-sm">
+      <div className="flex items-center gap-2">
+        <span className="font-medium text-text-bright">
+          {ignoredForever ? "Ignored permanently" : "Ignored with conditions"}
+        </span>
+        {state.ignoredByUserDisplayName && (
+          <span className="text-text-dimmed">by {state.ignoredByUserDisplayName}</span>
+        )}
+        {state.ignoredAt && (
+          <span className="text-text-dimmed">
+            <RelativeDateTime date={state.ignoredAt} />
+          </span>
+        )}
+      </div>
+
+      {state.ignoredReason && (
+        <div className="text-text-dimmed">
+          Reason: <span className="text-text-bright">{state.ignoredReason}</span>
+        </div>
+      )}
+
+      {hasConditions && (
+        <div className="flex flex-col gap-0.5 text-xs text-text-dimmed">
+          <span className="font-medium text-text-bright/80">Will unignore when:</span>
+          <ul className="list-inside list-disc space-y-0.5 pl-1">
+            {state.ignoredUntil && (
+              <li>
+                Time expires:{" "}
+                <span className="text-text-bright">
+                  <DateTime date={state.ignoredUntil} />
+                </span>
+                {isPast(state.ignoredUntil) && <span className="ml-1 text-warning">(expired)</span>}
+              </li>
+            )}
+            {state.ignoredUntilOccurrenceRate !== null && state.ignoredUntilOccurrenceRate > 0 && (
+              <li>
+                Occurrence rate exceeds{" "}
+                <span className="text-text-bright">{state.ignoredUntilOccurrenceRate}/min</span>
+              </li>
+            )}
+            {state.ignoredUntilTotalOccurrences !== null &&
+              state.ignoredUntilTotalOccurrences > 0 && (
+                <li>
+                  Total occurrences exceed{" "}
+                  <span className="text-text-bright">
+                    {state.ignoredUntilTotalOccurrences.toLocaleString()}
+                  </span>
+                  {occurrencesSinceIgnore !== null && (
+                    <span className="ml-1 text-text-dimmed">
+                      ({occurrencesSinceIgnore.toLocaleString()} since ignored)
+                    </span>
+                  )}
+                </li>
+              )}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 
