@@ -1,5 +1,6 @@
 import {
   AttemptStatus,
+  RunAnnotations,
   RunStatus,
   SerializedError,
   TaskRunError,
@@ -56,6 +57,7 @@ const commonRunSelect = {
     },
   },
   runTags: true,
+  annotations: true,
 } satisfies Prisma.TaskRunSelect;
 
 type CommonRelatedRun = Prisma.Result<
@@ -466,6 +468,7 @@ async function createCommonRunStructure(run: CommonRelatedRun, apiVersion: API_V
     triggerFunction: resolveTriggerFunction(run),
     batchId: run.batch?.friendlyId,
     metadata,
+    annotations: run.annotations ? RunAnnotations.safeParse(run.annotations).data : undefined,
   };
 }
 

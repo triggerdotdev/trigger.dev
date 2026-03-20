@@ -86,7 +86,7 @@ export class McpContext {
   public async getCliApiClient(branch?: string) {
     const auth = await this.getAuth();
 
-    return new CliApiClient(auth.auth.apiUrl, auth.auth.accessToken, branch);
+    return new CliApiClient(auth.auth.apiUrl, auth.auth.accessToken, branch, { source: "mcp" });
   }
 
   public async getApiClient(options: {

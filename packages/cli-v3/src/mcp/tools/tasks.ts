@@ -98,12 +98,7 @@ export const triggerTaskTool = {
       cwd: input.configPath,
     });
 
-    const apiClient = await ctx.getApiClient({
-      projectRef,
-      environment: input.environment,
-      scopes: ["write:tasks"],
-      branch: input.branch,
-    });
+    const cliApiClient = await ctx.getCliApiClient(input.branch);
 
     ctx.logger?.log("triggering task", { input });
 
@@ -117,21 +112,25 @@ export const triggerTaskTool = {
       }
     }
 
-    const result = await apiClient.triggerTask(input.taskId, {
+    const result = await cliApiClient.triggerTaskRun(input.taskId, {
       payload,
       options: input.options,
     });
 
-    const taskRunUrl = await ctx.getDashboardUrl(`/projects/v3/${projectRef}/runs/${result.id}`);
+    if (!result.success) {
+      return respondWithError(`Failed to trigger task ${input.taskId}: ${result.error}`);
+    }
+
+    const runId = result.data.id;
+    const taskRunUrl = await ctx.getDashboardUrl(`/projects/v3/${projectRef}/runs/${runId}`);
 
     const contents = [
-      `Task ${input.taskId} triggered and run with ID created: ${result.id}.`,
+      `Task ${input.taskId} triggered and run with ID created: ${runId}.`,
       `View the run in the dashboard: ${taskRunUrl}`,
       `Use the ${toolsMetadata.wait_for_run_to_complete.name} tool to wait for the run to complete and the ${toolsMetadata.get_run_details.name} tool to get the details of the run.`,
     ];
 
     if (input.environment === "dev") {
-      const cliApiClient = await ctx.getCliApiClient(input.branch);
       const devStatus = await cliApiClient.getDevStatus(projectRef);
       const isConnected = devStatus.success ? devStatus.data.isConnected : false;
       const connectionMessage = isConnected

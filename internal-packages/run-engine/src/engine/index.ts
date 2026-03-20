@@ -495,6 +495,7 @@ export class RunEngine {
       planType,
       realtimeStreamsVersion,
       debounce,
+      annotations,
       onDebounced,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
@@ -668,6 +669,7 @@ export class RunEngine {
                   createdAt: new Date(),
                 }
                 : undefined,
+              annotations,
               executionSnapshots: {
                 create: {
                   engine: "V2",

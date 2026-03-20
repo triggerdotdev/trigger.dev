@@ -36,6 +36,7 @@ export const HeadersSchema = z.object({
   "x-trigger-engine-version": RunEngineVersionSchema.nullish(),
   "x-trigger-request-idempotency-key": z.string().nullish(),
   "x-trigger-realtime-streams-version": z.string().nullish(),
+  "x-trigger-source": z.string().nullish(),
   traceparent: z.string().optional(),
   tracestate: z.string().optional(),
 });
@@ -67,6 +68,7 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-engine-version": engineVersion,
       "x-trigger-request-idempotency-key": requestIdempotencyKey,
       "x-trigger-realtime-streams-version": realtimeStreamsVersion,
+      "x-trigger-source": triggerSourceHeader,
     } = headers;
 
     const cachedResponse = await handleRequestIdempotency(requestIdempotencyKey, {
@@ -119,6 +121,10 @@ const { action, loader } = createActionApiRoute(
           realtimeStreamsVersion: determineRealtimeStreamsVersion(
             realtimeStreamsVersion ?? undefined
           ),
+          triggerSource: body.options?.parentRunId
+            ? "sdk"
+            : triggerSourceHeader ?? "api",
+          triggerAction: "trigger",
         },
         engineVersion ?? undefined
       );

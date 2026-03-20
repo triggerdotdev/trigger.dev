@@ -540,6 +540,25 @@ export const DeploymentTriggeredVia = z
 
 export type DeploymentTriggeredVia = z.infer<typeof DeploymentTriggeredVia>;
 
+export const TriggerSource = z
+  .enum(["sdk", "api", "dashboard", "cli", "mcp", "schedule"])
+  .or(anyString);
+
+export type TriggerSource = z.infer<typeof TriggerSource>;
+
+export const TriggerAction = z.enum(["trigger", "replay", "test"]).or(anyString);
+
+export type TriggerAction = z.infer<typeof TriggerAction>;
+
+export const RunAnnotations = z.object({
+  triggerSource: TriggerSource,
+  triggerAction: TriggerAction,
+  rootTriggerSource: TriggerSource,
+  rootScheduleId: z.string().optional(),
+});
+
+export type RunAnnotations = z.infer<typeof RunAnnotations>;
+
 export const UpsertBranchRequestBody = z.object({
   git: GitMeta.optional(),
   env: z.enum(["preview"]),
@@ -1110,6 +1129,7 @@ const CommonRunFields = {
   baseCostInCents: z.number(),
   durationMs: z.number(),
   metadata: z.record(z.any()).optional(),
+  annotations: RunAnnotations.optional(),
 };
 
 const RetrieveRunCommandFields = {

@@ -72,6 +72,7 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-engine-version": engineVersion,
       "batch-processing-strategy": batchProcessingStrategy,
       "x-trigger-realtime-streams-version": realtimeStreamsVersion,
+      "x-trigger-source": triggerSourceHeader,
       traceparent,
       tracestate,
     } = headers;
@@ -113,6 +114,8 @@ const { action, loader } = createActionApiRoute(
         realtimeStreamsVersion: determineRealtimeStreamsVersion(
           realtimeStreamsVersion ?? undefined
         ),
+        triggerSource: triggerSourceHeader ?? undefined,
+        triggerAction: "trigger",
       });
 
       const $responseHeaders = await responseHeaders(
