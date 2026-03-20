@@ -707,13 +707,23 @@ function ErrorGroupActionButtons({
         </>
       )}
 
-      {(state.status === "RESOLVED" || state.status === "IGNORED") && (
+      {state.status === "RESOLVED" && (
         <Button
           variant="secondary/small"
           disabled={isSubmitting}
           onClick={() => submitAction({ action: "unresolve" })}
         >
           Unresolve
+        </Button>
+      )}
+
+      {state.status === "IGNORED" && (
+        <Button
+          variant="secondary/small"
+          disabled={isSubmitting}
+          onClick={() => submitAction({ action: "unresolve" })}
+        >
+          Unignore
         </Button>
       )}
 
