@@ -1,11 +1,11 @@
 import * as Ariakit from "@ariakit/react";
 import { BellAlertIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction } from "@remix-run/react";
+import { Form, type MetaFunction, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type ErrorGroupStatus } from "@trigger.dev/database";
 import { IconBugFilled } from "@tabler/icons-react";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
-import { Suspense, useMemo, type ReactNode } from "react";
+import { Suspense, useCallback, useMemo, type ReactNode } from "react";
 import {
   Bar,
   BarChart,
@@ -49,6 +49,7 @@ import {
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { appliedSummary, FilterMenuProvider, TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { $replica } from "~/db.server";
+import { useInterval } from "~/hooks/useInterval";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
@@ -174,6 +175,17 @@ export default function Page() {
     projectParam,
     envParam,
   } = useTypedLoaderData<typeof loader>();
+
+  const revalidator = useRevalidator();
+  useInterval({
+    interval: 60_000,
+    onLoad: false,
+    callback: useCallback(() => {
+      if (revalidator.state === "idle") {
+        revalidator.revalidate();
+      }
+    }, [revalidator]),
+  });
 
   const location = useOptimisticLocation();
   const showAlerts = new URLSearchParams(location.search).has("alerts");
