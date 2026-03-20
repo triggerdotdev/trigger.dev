@@ -44,8 +44,8 @@ const DEFAULT_INTERVAL_MS = 300_000;
  */
 export class ErrorAlertEvaluator {
   constructor(
-    protected readonly _prisma: PrismaClientOrTransaction = $replica,
-    protected readonly _replica: PrismaClientOrTransaction = prisma,
+    protected readonly _prisma: PrismaClientOrTransaction = prisma,
+    protected readonly _replica: PrismaClientOrTransaction = $replica,
     protected readonly _clickhouse: ClickHouse = clickhouseClient
   ) {}
 
@@ -61,6 +61,18 @@ export class ErrorAlertEvaluator {
     }
 
     const minIntervalMs = this.computeMinInterval(channels);
+    const windowMs = nextScheduledAt - scheduledAt;
+
+    if (windowMs > minIntervalMs * 2) {
+      logger.info("[ErrorAlertEvaluator] Large evaluation window (gap detected)", {
+        projectId,
+        scheduledAt,
+        nextScheduledAt,
+        windowMs,
+        minIntervalMs,
+      });
+    }
+
     const allEnvTypes = this.collectEnvironmentTypes(channels);
     const environments = await this.resolveEnvironments(projectId, allEnvTypes);
 
@@ -97,7 +109,8 @@ export class ErrorAlertEvaluator {
 
       const classification = this.classifyError(error, state, firstSeenMs, scheduledAt, {
         occurrencesSince: occurrenceMap.get(key) ?? 0,
-        windowMs: nextScheduledAt - scheduledAt,
+        windowMs,
+        totalOccurrenceCount: error.occurrence_count,
       });
 
       if (classification) {
@@ -160,7 +173,7 @@ export class ErrorAlertEvaluator {
     state: ErrorGroupState | undefined,
     firstSeenMs: number,
     scheduledAt: number,
-    thresholdContext: { occurrencesSince: number; windowMs: number }
+    thresholdContext: { occurrencesSince: number; windowMs: number; totalOccurrenceCount: number }
   ): ErrorClassification | null {
     if (!state) {
       return firstSeenMs > scheduledAt ? "new_issue" : null;
@@ -186,7 +199,7 @@ export class ErrorAlertEvaluator {
 
   private isIgnoreBreached(
     state: ErrorGroupState,
-    context: { occurrencesSince: number; windowMs: number }
+    context: { occurrencesSince: number; windowMs: number; totalOccurrenceCount: number }
   ): boolean {
     if (state.ignoredUntil && state.ignoredUntil.getTime() <= Date.now()) {
       return true;
@@ -204,11 +217,12 @@ export class ErrorAlertEvaluator {
     }
 
     if (
-      state.ignoredUntilTotalOccurrences !== null &&
-      state.ignoredUntilTotalOccurrences !== undefined &&
-      state.ignoredAt
+      state.ignoredUntilTotalOccurrences != null &&
+      state.ignoredAtOccurrenceCount != null
     ) {
-      if (context.occurrencesSince >= state.ignoredUntilTotalOccurrences) {
+      const occurrencesSinceIgnored =
+        context.totalOccurrenceCount - Number(state.ignoredAtOccurrenceCount);
+      if (occurrencesSinceIgnored >= state.ignoredUntilTotalOccurrences) {
         return true;
       }
     }
@@ -387,14 +401,14 @@ export class ErrorAlertEvaluator {
       const state = stateMap.get(key);
       if (!state) continue;
 
-      await this,
-        this._prisma.errorGroupState.update({
+      await this._prisma.errorGroupState.update({
           where: { id: state.id },
           data: {
             status: "UNRESOLVED",
             ignoredUntil: null,
             ignoredUntilOccurrenceRate: null,
             ignoredUntilTotalOccurrences: null,
+            ignoredAtOccurrenceCount: null,
             ignoredAt: null,
             ignoredReason: null,
             ignoredByUserId: null,

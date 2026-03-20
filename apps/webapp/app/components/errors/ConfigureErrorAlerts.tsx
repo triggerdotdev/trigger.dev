@@ -42,7 +42,9 @@ export const ErrorAlertsFormSchema = z.object({
   }, z.string().url().array()),
 });
 
-type ConfigureErrorAlertsProps = ErrorAlertChannelData;
+type ConfigureErrorAlertsProps = ErrorAlertChannelData & {
+  connectToSlackHref?: string;
+};
 
 export function ConfigureErrorAlerts({
   emails: existingEmails,
@@ -50,6 +52,7 @@ export function ConfigureErrorAlerts({
   slackChannel: existingSlackChannel,
   slack,
   emailAlertsEnabled,
+  connectToSlackHref,
 }: ConfigureErrorAlertsProps) {
   const fetcher = useFetcher();
   const location = useOptimisticLocation();
@@ -216,17 +219,43 @@ export function ConfigureErrorAlerts({
                     />
                   </>
                 ) : slack.status === "NOT_CONFIGURED" ? (
-                  <Callout variant="info">
-                    Slack is not connected. Connect Slack from the{" "}
-                    <span className="font-medium text-text-bright">Alerts</span> page to enable
-                    Slack notifications.
-                  </Callout>
+                  connectToSlackHref ? (
+                    <LinkButton variant="tertiary/large" to={connectToSlackHref} fullWidth>
+                      <span className="flex items-center gap-2 text-text-bright">
+                        <SlackIcon className="size-5" /> Connect to Slack
+                      </span>
+                    </LinkButton>
+                  ) : (
+                    <Callout variant="info">
+                      Slack is not connected. Connect Slack from the{" "}
+                      <span className="font-medium text-text-bright">Alerts</span> page to enable
+                      Slack notifications.
+                    </Callout>
+                  )
                 ) : slack.status === "TOKEN_REVOKED" || slack.status === "TOKEN_EXPIRED" ? (
-                  <Callout variant="info">
-                    The Slack integration in your workspace has been revoked or expired. Please
-                    re-connect from the <span className="font-medium text-text-bright">Alerts</span>{" "}
-                    page.
-                  </Callout>
+                  connectToSlackHref ? (
+                    <div className="flex flex-col gap-4">
+                      <Callout variant="info">
+                        The Slack integration in your workspace has been revoked or has expired.
+                        Please re-connect your Slack workspace.
+                      </Callout>
+                      <LinkButton
+                        variant="tertiary/large"
+                        to={`${connectToSlackHref}?reinstall=true`}
+                        fullWidth
+                      >
+                        <span className="flex items-center gap-2 text-text-bright">
+                          <SlackIcon className="size-5" /> Connect to Slack
+                        </span>
+                      </LinkButton>
+                    </div>
+                  ) : (
+                    <Callout variant="info">
+                      The Slack integration in your workspace has been revoked or expired. Please
+                      re-connect from the{" "}
+                      <span className="font-medium text-text-bright">Alerts</span> page.
+                    </Callout>
+                  )
                 ) : slack.status === "FAILED_FETCHING_CHANNELS" ? (
                   <Callout variant="warning">
                     Failed loading channels from Slack. Please try again later.
