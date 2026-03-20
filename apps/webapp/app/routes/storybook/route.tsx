@@ -137,6 +137,10 @@ const stories: Story[] = [
     slug: "typography",
   },
   {
+    name: "Unordered list",
+    slug: "unordered-list",
+  },
+  {
     name: "Usage",
     slug: "usage",
   },

@@ -22,6 +22,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
+import { UnorderedList } from "~/components/primitives/UnorderedList";
 import type { ErrorAlertChannelData } from "~/presenters/v3/ErrorAlertChannelPresenter.server";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { cn } from "~/utils/cn";
@@ -100,7 +101,7 @@ export function ConfigureErrorAlerts({
   const webhookFields = useFieldList(form.ref, webhooks);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden border-l border-grid-bright">
+    <div className="grid h-full grid-rows-[auto_1fr_auto] overflow-hidden">
       <div className="flex items-center justify-between border-b border-grid-bright px-4 py-3">
         <Header2>Configure alerts</Header2>
         <LinkButton
@@ -113,20 +114,20 @@ export function ConfigureErrorAlerts({
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <fetcher.Form method="post" {...form.props}>
-          <Fieldset className="p-4">
-            <Paragraph variant="small" className="text-text-dimmed">
-              You'll receive alerts when:
-            </Paragraph>
-            <ul className="list-disc space-y-1 pl-5 text-xs text-text-dimmed">
-              <li>A new issue is seen for the first time</li>
-              <li>A resolved issue re-occurs</li>
-              <li>An ignored issue re-occurs depending on the settings you configured</li>
-            </ul>
+          <Fieldset className="flex flex-col gap-3 p-4">
+            <div className="flex flex-col">
+              <Paragraph variant="small/dimmed">You'll receive alerts when</Paragraph>
+              <UnorderedList variant="small/dimmed" className="mt-1">
+                <li>An error is seen for the first time</li>
+                <li>A resolved error re-occurs</li>
+                <li>An ignored error re-occurs based on settings you configured</li>
+              </UnorderedList>
+            </div>
 
             {/* Email section */}
-            <div className="mt-6">
+            <div>
               <Header3 className="mb-3 flex items-center gap-1.5">
                 <EnvelopeIcon className="size-4 text-text-dimmed" />
                 Email
@@ -162,7 +163,7 @@ export function ConfigureErrorAlerts({
             </div>
 
             {/* Slack section */}
-            <div className="mt-6">
+            <div>
               <Header3 className="mb-3 flex items-center gap-1.5">
                 <SlackIcon className="size-4" />
                 Slack
@@ -270,7 +271,7 @@ export function ConfigureErrorAlerts({
             </div>
 
             {/* Webhook section */}
-            <div className="mt-6">
+            <div>
               <Header3 className="mb-3 flex items-center gap-1.5">
                 <GlobeAltIcon className="size-4 text-text-dimmed" />
                 Webhook
