@@ -242,6 +242,7 @@ export class BulkActionService extends BaseService {
             const [error, result] = await tryCatch(
               replayService.call(run, {
                 bulkActionId: bulkActionId,
+                triggerSource: "dashboard",
               })
             );
             if (error) {

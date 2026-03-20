@@ -42,7 +42,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     const service = new ReplayTaskRunService();
-    const newRun = await service.call(taskRun);
+    const newRun = await service.call(taskRun, { triggerSource: "api" });
 
     if (!newRun) {
       return json({ error: "Failed to create new run" }, { status: 400 });
