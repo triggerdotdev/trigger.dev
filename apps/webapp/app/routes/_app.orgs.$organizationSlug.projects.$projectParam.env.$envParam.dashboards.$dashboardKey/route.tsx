@@ -7,7 +7,9 @@ import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LogsTaskFilter } from "~/components/logs/LogsTaskFilter";
 import { ModelsFilter, type ModelOption } from "~/components/metrics/ModelsFilter";
+import { OperationsFilter } from "~/components/metrics/OperationsFilter";
 import { PromptsFilter } from "~/components/metrics/PromptsFilter";
+import { ProvidersFilter } from "~/components/metrics/ProvidersFilter";
 import { type WidgetData } from "~/components/metrics/QueryWidget";
 import { QueuesFilter } from "~/components/metrics/QueuesFilter";
 import { ScopeFilter } from "~/components/metrics/ScopeFilter";
@@ -106,6 +108,50 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     );
   }
 
+  let possibleOperations: string[] = [];
+  if (filters.includes("operations")) {
+    const queryFn = clickhouseClient.reader.query({
+      name: "getDistinctOperations",
+      query: `SELECT DISTINCT operation_id FROM trigger_dev.llm_metrics_v1 WHERE organization_id = {organizationId: String} AND project_id = {projectId: String} AND environment_id = {environmentId: String} AND operation_id != '' ORDER BY operation_id`,
+      params: z.object({
+        organizationId: z.string(),
+        projectId: z.string(),
+        environmentId: z.string(),
+      }),
+      schema: z.object({ operation_id: z.string() }),
+    });
+    const [error, rows] = await queryFn({
+      organizationId: project.organizationId,
+      projectId: project.id,
+      environmentId: environment.id,
+    });
+    if (!error) {
+      possibleOperations = rows.map((r) => r.operation_id);
+    }
+  }
+
+  let possibleProviders: string[] = [];
+  if (filters.includes("providers")) {
+    const queryFn = clickhouseClient.reader.query({
+      name: "getDistinctProviders",
+      query: `SELECT DISTINCT gen_ai_system FROM trigger_dev.llm_metrics_v1 WHERE organization_id = {organizationId: String} AND project_id = {projectId: String} AND environment_id = {environmentId: String} AND gen_ai_system != '' ORDER BY gen_ai_system`,
+      params: z.object({
+        organizationId: z.string(),
+        projectId: z.string(),
+        environmentId: z.string(),
+      }),
+      schema: z.object({ gen_ai_system: z.string() }),
+    });
+    const [error, rows] = await queryFn({
+      organizationId: project.organizationId,
+      projectId: project.id,
+      environmentId: environment.id,
+    });
+    if (!error) {
+      possibleProviders = rows.map((r) => r.gen_ai_system);
+    }
+  }
+
   return typedjson({
     ...dashboard,
     filters,
@@ -114,6 +160,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       .sort((a, b) => a.slug.localeCompare(b.slug)),
     possibleModels,
     possiblePrompts,
+    possibleOperations,
+    possibleProviders,
   });
 };
 
@@ -127,6 +175,8 @@ export default function Page() {
     possibleTasks,
     possibleModels,
     possiblePrompts,
+    possibleOperations,
+    possibleProviders,
   } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
@@ -157,6 +207,8 @@ export default function Page() {
             possibleTasks={possibleTasks}
             possibleModels={possibleModels}
             possiblePrompts={possiblePrompts}
+            possibleOperations={possibleOperations}
+            possibleProviders={possibleProviders}
           />
         </div>
       </PageBody>
@@ -173,6 +225,8 @@ export function MetricDashboard({
   possibleTasks,
   possibleModels,
   possiblePrompts,
+  possibleOperations,
+  possibleProviders,
   onLayoutChange,
   onEditWidget,
   onRenameWidget,
@@ -193,6 +247,10 @@ export function MetricDashboard({
   possibleModels?: ModelOption[];
   /** Possible prompt slugs for filtering */
   possiblePrompts?: string[];
+  /** Possible operations for filtering */
+  possibleOperations?: string[];
+  /** Possible providers for filtering */
+  possibleProviders?: string[];
   onLayoutChange?: (layout: LayoutItem[]) => void;
   onEditWidget?: (widgetId: string, widget: WidgetData) => void;
   onRenameWidget?: (widgetId: string, newTitle: string) => void;
@@ -221,6 +279,8 @@ export function MetricDashboard({
   const queues = values("queues").filter((v) => v !== "");
   const models = values("models").filter((v) => v !== "");
   const prompts = values("prompts").filter((v) => v !== "");
+  const operations = values("operations").filter((v) => v !== "");
+  const providers = values("providers").filter((v) => v !== "");
 
   const activeFilters = filterConfig ?? ["tasks", "queues"];
 
@@ -258,6 +318,12 @@ export function MetricDashboard({
         )}
         {activeFilters.includes("prompts") && (
           <PromptsFilter possiblePrompts={possiblePrompts ?? []} />
+        )}
+        {activeFilters.includes("operations") && (
+          <OperationsFilter possibleOperations={possibleOperations ?? []} />
+        )}
+        {activeFilters.includes("providers") && (
+          <ProvidersFilter possibleProviders={possibleProviders ?? []} />
         )}
         <TimeFilter
           defaultPeriod={defaultPeriod}
@@ -315,6 +381,8 @@ export function MetricDashboard({
                     queues={queues.length > 0 ? queues : undefined}
                     responseModels={models.length > 0 ? models : undefined}
                     promptSlugs={prompts.length > 0 ? prompts : undefined}
+                    operations={operations.length > 0 ? operations : undefined}
+                    providers={providers.length > 0 ? providers : undefined}
                     config={widget.display}
                     organizationId={organization.id}
                     projectId={project.id}

@@ -223,7 +223,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // Determine which version to scope generations to
   const versionParam = url.searchParams.get("version");
-  const selectedVersionNumber = versionParam ? Number(versionParam) : currentVersion?.version ?? 1;
+  const selectedVersionNumber = versionParam
+    ? Number(versionParam)
+    : overrideVersion?.version ?? currentVersion?.version ?? 1;
 
   const startTime = fromTime ? new Date(fromTime) : new Date(Date.now() - periodMs);
   const endTime = toTime ? new Date(toTime) : new Date();
@@ -415,6 +417,8 @@ export default function PromptDetailPage() {
   const versionParam = searchValue("version");
   const selectedVersion = versionParam
     ? versions.find((v) => v.version === Number(versionParam)) ?? versions[0]
+    : overrideVersion
+    ? versions.find((v) => v.id === overrideVersion.id) ?? versions[0]
     : currentVersion
     ? versions.find((v) => v.id === currentVersion.id) ?? versions[0]
     : versions[0];
@@ -679,7 +683,7 @@ export default function PromptDetailPage() {
 
               {/* Tab content */}
               <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                {tab === "details" && <DetailsTab prompt={prompt} />}
+                {tab === "details" && <DetailsTab prompt={prompt} selectedVersion={selectedVersion} />}
                 {tab === "preview" && <PreviewTab prompt={prompt} content={content} />}
                 {tab === "versions" && (
                   <VersionsTab
@@ -699,9 +703,9 @@ export default function PromptDetailPage() {
         prompt={prompt}
         content={content}
         isEditingOverride={!!overrideVersion}
-        onSave={(textContent, commitMessage) => {
+        onSave={(textContent, commitMessage, model) => {
           const intent = overrideVersion ? "updateOverride" : "saveVersion";
-          fetcher.submit({ intent, textContent, commitMessage }, { method: "POST" });
+          fetcher.submit({ intent, textContent, commitMessage, model }, { method: "POST" });
           setOverrideDialogOpen(false);
         }}
       />
@@ -729,7 +733,7 @@ function OverrideDialog({
   };
   content: string;
   isEditingOverride: boolean;
-  onSave: (textContent: string, commitMessage: string) => void;
+  onSave: (textContent: string, commitMessage: string, model: string) => void;
 }) {
   const [editedContent, setEditedContent] = useState(content);
   const [commitMessage, setCommitMessage] = useState("");
@@ -762,7 +766,7 @@ function OverrideDialog({
   const undefinedVars = [...templateVars].filter((v) => !schemaVarNames.has(v));
   const unusedVars = variableFields.filter((f) => f.required && !templateVars.has(f.name));
 
-  const hasChanges = editedContent !== content;
+  const hasChanges = editedContent !== content || model !== (prompt.defaultModel ?? "");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -879,7 +883,7 @@ function OverrideDialog({
           <Button
             variant="primary/medium"
             disabled={!hasChanges}
-            onClick={() => onSave(editedContent, commitMessage)}
+            onClick={() => onSave(editedContent, commitMessage, model)}
           >
             {isEditingOverride ? "Save override" : "Create override"}
           </Button>
@@ -893,9 +897,12 @@ function OverrideDialog({
 
 function DetailsTab({
   prompt,
+  selectedVersion,
 }: {
   prompt: ReturnType<typeof useTypedLoaderData<typeof loader>>["prompt"];
+  selectedVersion?: VersionData;
 }) {
+  const effectiveModel = selectedVersion?.model ?? prompt.defaultModel;
   return (
     <div className="space-y-4">
       <Property.Table>
@@ -911,10 +918,10 @@ function DetailsTab({
             <Property.Value>{prompt.description}</Property.Value>
           </Property.Item>
         )}
-        {prompt.defaultModel && (
+        {effectiveModel && (
           <Property.Item>
-            <Property.Label>Default model</Property.Label>
-            <Property.Value>{prompt.defaultModel}</Property.Value>
+            <Property.Label>Model</Property.Label>
+            <Property.Value>{effectiveModel}</Property.Value>
           </Property.Item>
         )}
         {prompt.defaultConfig && (

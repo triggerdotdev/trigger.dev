@@ -77,6 +77,10 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   responseModels?: string[];
   /** Filter to specific prompt slugs */
   promptSlugs?: string[];
+  /** Filter to specific operations (e.g. ai.generateText.doGenerate) */
+  operations?: string[];
+  /** Filter to specific providers (e.g. openai.responses) */
+  providers?: string[];
   /** History options for saving query to billing/audit */
   history?: {
     /** Where the query originated from */
@@ -133,6 +137,8 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     queues,
     responseModels,
     promptSlugs,
+    operations,
+    providers,
     history,
     customOrgConcurrencyLimit,
     ...baseOptions
@@ -222,6 +228,10 @@ export async function executeQuery<TOut extends z.ZodSchema>(
         : undefined,
     prompt_slug:
       promptSlugs && promptSlugs.length > 0 ? { op: "in", values: promptSlugs } : undefined,
+    operation_id:
+      operations && operations.length > 0 ? { op: "in", values: operations } : undefined,
+    gen_ai_system:
+      providers && providers.length > 0 ? { op: "in", values: providers } : undefined,
   } satisfies Record<string, WhereClauseCondition | undefined>;
 
   // Compute the effective time range for timeBucket() interval calculation

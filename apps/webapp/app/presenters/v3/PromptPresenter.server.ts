@@ -56,6 +56,7 @@ export class PromptPresenter extends BasePresenter {
           select: {
             version: true,
             labels: true,
+            model: true,
           },
         },
       },
@@ -64,7 +65,12 @@ export class PromptPresenter extends BasePresenter {
 
     return prompts.map((p) => {
       const currentVersion = p.versions.find((v) => v.labels.includes("current"));
-      const hasOverride = p.versions.some((v) => v.labels.includes("override"));
+      const overrideVersion = p.versions.find((v) => v.labels.includes("override"));
+      const hasOverride = !!overrideVersion;
+
+      // Effective model: override > current version > prompt default
+      const effectiveModel =
+        overrideVersion?.model ?? currentVersion?.model ?? p.defaultModel;
 
       return {
         id: p.id,
@@ -72,7 +78,7 @@ export class PromptPresenter extends BasePresenter {
         slug: p.slug,
         description: p.description,
         tags: p.tags,
-        defaultModel: p.defaultModel,
+        defaultModel: effectiveModel,
         currentVersion: currentVersion ? { version: currentVersion.version } : null,
         hasOverride,
         updatedAt: p.updatedAt,
