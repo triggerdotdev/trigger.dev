@@ -2875,7 +2875,7 @@ model ErrorGroupState {
 
   /// Total occurrence count at the time the error was ignored (from ClickHouse).
   /// Used with ignoredUntilTotalOccurrences to compute occurrences since ignoring.
-  ignoredAtOccurrenceCount     BigInt?
+  ignoredAtOccurrenceCount BigInt?
 
   /**
    * Error was ignored at this date
