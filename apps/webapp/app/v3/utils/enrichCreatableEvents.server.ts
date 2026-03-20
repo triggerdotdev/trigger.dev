@@ -1,7 +1,4 @@
-import { trail } from "agentcrumbs"; // @crumbs
 import type { CreateEventInput, LlmMetricsData } from "../eventRepository/eventRepository.types";
-
-const crumb = trail("webapp"); // @crumbs
 
 // Registry interface — matches ModelPricingRegistry from @internal/llm-pricing
 type CostRegistry = {
@@ -153,20 +150,6 @@ function enrichLlmMetrics(event: CreateEventInput): void {
     }
   }
 
-  // #region @crumbs
-  const telemetryKeys = Object.keys(props).filter((k) => k.startsWith("ai.telemetry.metadata."));
-  const promptKeys = Object.keys(props).filter((k) => k.includes("prompt"));
-  crumb("enrich-metadata-scan", {
-    spanId: event.spanId,
-    message: event.message,
-    telemetryKeyCount: telemetryKeys.length,
-    telemetryKeys: telemetryKeys.slice(0, 20),
-    promptKeys: promptKeys.slice(0, 20),
-    hasGenAiModel: !!props["gen_ai.response.model"],
-    allKeysSample: Object.keys(props).slice(0, 30),
-  });
-  // #endregion @crumbs
-
   for (const [key, value] of Object.entries(props)) {
     if (key.startsWith("ai.telemetry.metadata.") && typeof value === "string") {
       metadata[key.slice("ai.telemetry.metadata.".length)] = value;
@@ -219,7 +202,7 @@ function enrichLlmMetrics(event: CreateEventInput): void {
     tokensPerSecond: avgTokensPerSec,
     metadata,
     promptSlug: metadata["prompt.slug"] ?? "",
-    promptVersion: (() => { crumb("enrich-prompt-version", { spanId: event.spanId, metadataPromptSlug: metadata["prompt.slug"], metadataPromptVersion: metadata["prompt.version"], allMetadataKeys: Object.keys(metadata) }); return parseInt(metadata["prompt.version"] ?? "0", 10) || 0; })(), // @crumbs
+    promptVersion: parseInt(metadata["prompt.version"] ?? "0", 10) || 0,
   };
 
   event._llmMetrics = llmMetrics;

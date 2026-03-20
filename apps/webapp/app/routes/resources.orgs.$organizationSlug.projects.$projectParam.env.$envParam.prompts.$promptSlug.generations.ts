@@ -50,7 +50,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!environment) throw new Response("Environment not found", { status: 404 });
 
   const url = new URL(request.url);
-  const version = Number(url.searchParams.get("version") ?? "1");
+  const versions = url.searchParams.getAll("versions").filter(Boolean).map(Number).filter((n) => !isNaN(n));
   const period = url.searchParams.get("period") ?? "7d";
   const fromTime = url.searchParams.get("from");
   const toTime = url.searchParams.get("to");
@@ -60,14 +60,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const startTime = fromTime ? new Date(fromTime) : new Date(Date.now() - periodMs);
   const endTime = toTime ? new Date(toTime) : new Date();
 
+  const models = url.searchParams.getAll("models").filter(Boolean);
+  const operations = url.searchParams.getAll("operations").filter(Boolean);
+  const providers = url.searchParams.getAll("providers").filter(Boolean);
+
   const presenter = new PromptPresenter(clickhouseClient);
   const result = await presenter.listGenerations({
     environmentId: environment.id,
     promptSlug,
-    promptVersion: version,
+    promptVersions: versions.length > 0 ? versions : undefined,
     startTime,
     endTime,
     cursor: cursorParam,
+    responseModels: models.length > 0 ? models : undefined,
+    operations: operations.length > 0 ? operations : undefined,
+    providers: providers.length > 0 ? providers : undefined,
   });
 
   return json(result satisfies GenerationsResponse);

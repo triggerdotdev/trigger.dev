@@ -9,6 +9,7 @@ const GenerationRowSchema = z.object({
   operation_id: z.string(),
   task_identifier: z.string(),
   response_model: z.string(),
+  prompt_version: z.coerce.number(),
   input_tokens: z.coerce.number(),
   output_tokens: z.coerce.number(),
   total_cost: z.coerce.number(),
@@ -22,6 +23,7 @@ export type GenerationRow = {
   operation_id: string;
   task_identifier: string;
   response_model: string;
+  prompt_version: number;
   input_tokens: number;
   output_tokens: number;
   total_cost: number;
@@ -211,11 +213,14 @@ export class PromptPresenter extends BasePresenter {
   async listGenerations(options: {
     environmentId: string;
     promptSlug: string;
-    promptVersion: number;
+    promptVersions?: number[];
     startTime: Date;
     endTime: Date;
     cursor?: string;
     pageSize?: number;
+    responseModels?: string[];
+    operations?: string[];
+    providers?: string[];
   }): Promise<{ generations: GenerationRow[]; pagination: GenerationsPagination }> {
     const pageSize = options.pageSize ?? 25;
     const decodedCursor = options.cursor ? decodeCursor(options.cursor) : null;
@@ -226,26 +231,51 @@ export class PromptPresenter extends BasePresenter {
                  AND span_id < {cursorSpanId: String}))`
       : "";
 
+    const versionClause = options.promptVersions?.length
+      ? `AND prompt_version IN {promptVersions: Array(UInt32)}`
+      : "";
+    const modelClause = options.responseModels?.length
+      ? `AND response_model IN {responseModels: Array(String)}`
+      : "";
+    const operationClause = options.operations?.length
+      ? `AND operation_id IN {operations: Array(String)}`
+      : "";
+    const providerClause = options.providers?.length
+      ? `AND gen_ai_system IN {providers: Array(String)}`
+      : "";
+
+    // Build a unique query name based on which optional filters are active
+    const filterKey = [
+      decodedCursor ? "c" : "",
+      options.promptVersions?.length ? "v" : "",
+      options.responseModels?.length ? "m" : "",
+      options.operations?.length ? "o" : "",
+      options.providers?.length ? "p" : "",
+    ].join("");
+
     const queryFn = this.clickhouse.reader.query({
-      name: decodedCursor ? "promptGenerationsListCursor" : "promptGenerationsList",
+      name: `promptGenerationsList${filterKey}`,
       query: `SELECT
           run_id, span_id, operation_id, task_identifier, response_model,
+          prompt_version,
           input_tokens, output_tokens, total_cost,
           duration / 1000000 AS duration_ms,
           formatDateTime(start_time, '%Y-%m-%d %H:%i:%S') AS started_at
         FROM trigger_dev.llm_metrics_v1
         WHERE environment_id = {environmentId: String}
           AND prompt_slug = {promptSlug: String}
-          AND prompt_version = {promptVersion: UInt32}
+          ${versionClause}
           AND start_time >= parseDateTimeBestEffort({startTime: String})
           AND start_time <= parseDateTimeBestEffort({endTime: String})
           ${cursorClause}
+          ${modelClause}
+          ${operationClause}
+          ${providerClause}
         ORDER BY start_time DESC, span_id DESC
         LIMIT {fetchLimit: UInt32}`,
       params: z.object({
         environmentId: z.string(),
         promptSlug: z.string(),
-        promptVersion: z.number(),
         startTime: z.string(),
         endTime: z.string(),
         fetchLimit: z.number(),
@@ -255,6 +285,10 @@ export class PromptPresenter extends BasePresenter {
               cursorSpanId: z.string(),
             }
           : {}),
+        ...(options.promptVersions?.length ? { promptVersions: z.array(z.number()) } : {}),
+        ...(options.responseModels?.length ? { responseModels: z.array(z.string()) } : {}),
+        ...(options.operations?.length ? { operations: z.array(z.string()) } : {}),
+        ...(options.providers?.length ? { providers: z.array(z.string()) } : {}),
       }),
       schema: GenerationRowSchema,
     });
@@ -262,7 +296,6 @@ export class PromptPresenter extends BasePresenter {
     const queryParams: Record<string, unknown> = {
       environmentId: options.environmentId,
       promptSlug: options.promptSlug,
-      promptVersion: options.promptVersion,
       startTime: options.startTime.toISOString(),
       endTime: options.endTime.toISOString(),
       fetchLimit: pageSize + 1,
@@ -271,6 +304,18 @@ export class PromptPresenter extends BasePresenter {
     if (decodedCursor) {
       queryParams.cursorStartTime = decodedCursor.startTime;
       queryParams.cursorSpanId = decodedCursor.spanId;
+    }
+    if (options.promptVersions?.length) {
+      queryParams.promptVersions = options.promptVersions;
+    }
+    if (options.responseModels?.length) {
+      queryParams.responseModels = options.responseModels;
+    }
+    if (options.operations?.length) {
+      queryParams.operations = options.operations;
+    }
+    if (options.providers?.length) {
+      queryParams.providers = options.providers;
     }
 
     const [error, rows] = await queryFn(queryParams as any);

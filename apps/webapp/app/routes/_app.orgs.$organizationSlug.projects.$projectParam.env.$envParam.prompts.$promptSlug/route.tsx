@@ -44,7 +44,11 @@ import {
   SelectTrigger,
 } from "~/components/primitives/Select";
 import { TextArea } from "~/components/primitives/TextArea";
+import { ModelsFilter } from "~/components/metrics/ModelsFilter";
+import { OperationsFilter } from "~/components/metrics/OperationsFilter";
+import { ProvidersFilter } from "~/components/metrics/ProvidersFilter";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
+import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { SpanView } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -221,12 +225,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const fromTime = url.searchParams.get("from");
   const toTime = url.searchParams.get("to");
 
-  // Determine which version to scope generations to
-  const versionParam = url.searchParams.get("version");
-  const selectedVersionNumber = versionParam
-    ? Number(versionParam)
-    : overrideVersion?.version ?? currentVersion?.version ?? 1;
-
   const startTime = fromTime ? new Date(fromTime) : new Date(Date.now() - periodMs);
   const endTime = toTime ? new Date(toTime) : new Date();
 
@@ -234,12 +232,20 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   let generations: Awaited<ReturnType<typeof presenter.listGenerations>>["generations"] = [];
   let generationsPagination: { next?: string } = {};
   try {
+    const urlVersions = url.searchParams.getAll("versions").filter(Boolean).map(Number).filter((n) => !isNaN(n));
+    const urlModels = url.searchParams.getAll("models").filter(Boolean);
+    const urlOperations = url.searchParams.getAll("operations").filter(Boolean);
+    const urlProviders = url.searchParams.getAll("providers").filter(Boolean);
+
     const result = await presenter.listGenerations({
       environmentId: environment.id,
       promptSlug: prompt.slug,
-      promptVersion: selectedVersionNumber,
+      promptVersions: urlVersions.length > 0 ? urlVersions : undefined,
       startTime,
       endTime,
+      responseModels: urlModels.length > 0 ? urlModels : undefined,
+      operations: urlOperations.length > 0 ? urlOperations : undefined,
+      providers: urlProviders.length > 0 ? urlProviders : undefined,
     });
     generations = result.generations;
     generationsPagination = result.pagination;
@@ -247,11 +253,34 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     console.error("Prompt generations query exception:", e);
   }
 
-  const [resizableOuter, resizableVertical, resizableGenerations] = await Promise.all([
+  // Load distinct filter values and resizable snapshots in parallel
+  const distinctQuery = (col: string, name: string) =>
+    clickhouseClient.reader.query({
+      name,
+      query: `SELECT DISTINCT ${col} AS val FROM trigger_dev.llm_metrics_v1 WHERE environment_id = {environmentId: String} AND prompt_slug = {promptSlug: String} AND ${col} != '' ORDER BY val`,
+      params: z.object({ environmentId: z.string(), promptSlug: z.string() }),
+      schema: z.object({ val: z.string() }),
+    })({ environmentId: environment.id, promptSlug: prompt.slug });
+
+  const [
+    resizableOuter,
+    resizableVertical,
+    resizableGenerations,
+    [modelsErr, modelsRows],
+    [opsErr, opsRows],
+    [provsErr, provsRows],
+  ] = await Promise.all([
     getResizableSnapshot(request, "prompt-detail"),
     getResizableSnapshot(request, "prompt-vertical"),
     getResizableSnapshot(request, "prompt-generations"),
+    distinctQuery("response_model", "promptDistinctModels"),
+    distinctQuery("operation_id", "promptDistinctOperations"),
+    distinctQuery("gen_ai_system", "promptDistinctProviders"),
   ]);
+
+  const possibleModels = modelsErr ? [] : modelsRows.map((r) => r.val);
+  const possibleOperations = opsErr ? [] : opsRows.map((r) => r.val);
+  const possibleProviders = provsErr ? [] : provsRows.map((r) => r.val);
 
   return typedjson({
     resizable: { outer: resizableOuter, vertical: resizableVertical, generations: resizableGenerations },
@@ -298,6 +327,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     organizationId: project.organizationId,
     projectId: project.id,
     environmentId: environment.id,
+    possibleModels,
+    possibleOperations,
+    possibleProviders,
   });
 };
 
@@ -398,6 +430,9 @@ export default function PromptDetailPage() {
     projectId,
     environmentId,
     resizable,
+    possibleModels,
+    possibleOperations,
+    possibleProviders,
   } = useTypedLoaderData<typeof loader>();
   const fetcher = useFetcher();
   const { value: searchValue, replace: replaceSearch } = useSearchParams();
@@ -433,13 +468,10 @@ export default function PromptDetailPage() {
   };
 
   const switchVersion = (versionNumber: number) => {
-    const v = versions.find((v) => v.version === versionNumber);
-    if (v) {
-      replaceSearch({
-        version: v.labels.includes("current") ? undefined : String(v.version),
-        tab,
-      });
-    }
+    replaceSearch({
+      version: String(versionNumber),
+      tab,
+    });
   };
 
   return (
@@ -567,7 +599,7 @@ export default function PromptDetailPage() {
 
               {/* Tabs panel */}
               <ResizablePanel id="prompt-tabs" min="100px">
-                <div className="grid h-full max-h-full grid-rows-[2rem_1fr] overflow-hidden">
+                <div className="grid h-full max-h-full grid-rows-[2.25rem_1fr] overflow-hidden">
                   {/* Tab bar */}
                   <div className="flex items-center justify-between border-b border-grid-dimmed px-3">
                     <TabContainer>
@@ -604,12 +636,20 @@ export default function PromptDetailPage() {
                         Metrics
                       </TabButton>
                     </TabContainer>
-                    <TimeFilter
-                      defaultPeriod="7d"
-                      labelName="Period"
-                      hideLabel
-                      valueClassName="text-text-bright"
-                    />
+                    <div className="flex items-center gap-1">
+                      <PromptVersionsFilter versions={versions} />
+                      <ModelsFilter
+                        possibleModels={possibleModels.map((m) => ({ model: m, system: "" }))}
+                      />
+                      <OperationsFilter possibleOperations={possibleOperations} />
+                      <ProvidersFilter possibleProviders={possibleProviders} />
+                      <TimeFilter
+                        defaultPeriod="7d"
+                        labelName="Period"
+                        hideLabel
+                        valueClassName="text-text-bright"
+                      />
+                    </div>
                   </div>
 
                   {/* Tab content */}
@@ -617,7 +657,6 @@ export default function PromptDetailPage() {
                     {contentTab === "generations" && (
                       <GenerationsTab
                         promptSlug={prompt.slug}
-                        promptVersion={selectedVersion?.version ?? 1}
                         initialGenerations={generations}
                         initialPagination={generationsPagination}
                         selectedSpan={selectedSpan}
@@ -630,7 +669,6 @@ export default function PromptDetailPage() {
                       <div className="h-full overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
                         <MetricsTab
                           prompt={prompt}
-                          versions={versions}
                           organizationId={organizationId}
                           projectId={projectId}
                           environmentId={environmentId}
@@ -1109,7 +1147,6 @@ type GenerationRow = {
 
 function GenerationsTab({
   promptSlug,
-  promptVersion,
   initialGenerations,
   initialPagination,
   selectedSpan,
@@ -1117,7 +1154,6 @@ function GenerationsTab({
   generationsSnapshot,
 }: {
   promptSlug: string;
-  promptVersion: number;
   initialGenerations: GenerationRow[];
   initialPagination: { next?: string };
   selectedSpan: { runId: string; spanId: string } | null;
@@ -1144,9 +1180,15 @@ function GenerationsTab({
   }/prompts/${encodeURIComponent(promptSlug)}/generations`;
 
   // Track filter state to reset on change
-  const filterKey = `${searchValue("version") ?? ""}-${searchValue("period") ?? "7d"}-${
+  const { values: filterValues } = useSearchParams();
+  const models = filterValues("models").filter((v) => v !== "");
+  const operations = filterValues("operations").filter((v) => v !== "");
+  const providers = filterValues("providers").filter((v) => v !== "");
+
+  const versionFilters = filterValues("versions").filter((v) => v !== "");
+  const filterKey = `${versionFilters.join(",")}-${searchValue("period") ?? "7d"}-${
     searchValue("from") ?? ""
-  }-${searchValue("to") ?? ""}`;
+  }-${searchValue("to") ?? ""}-${models.join(",")}-${operations.join(",")}-${providers.join(",")}`;
   const prevFilterKeyRef = useRef(filterKey);
 
   // Reset when filters change (loader re-runs with new initial data)
@@ -1189,26 +1231,29 @@ function GenerationsTab({
     callback: () => {
       if (pollFetcher.state !== "idle") return;
       const params = new URLSearchParams();
-      params.set("version", String(promptVersion));
+      for (const v of versionFilters) params.append("versions", v);
       params.set("period", searchValue("period") ?? "7d");
       const from = searchValue("from");
       const to = searchValue("to");
       if (from) params.set("from", from);
       if (to) params.set("to", to);
+      for (const m of models) params.append("models", m);
+      for (const o of operations) params.append("operations", o);
+      for (const p of providers) params.append("providers", p);
       pollFetcher.load(`${resourcePath}?${params.toString()}`);
     },
   });
 
-  // Check poll results for new generations
+  // Check poll results for new generations — only react to new poll data, not generation list changes
+  const lastPollDataRef = useRef(pollFetcher.data);
   useEffect(() => {
-    if (pollFetcher.data && pollFetcher.state === "idle") {
+    if (pollFetcher.data && pollFetcher.state === "idle" && pollFetcher.data !== lastPollDataRef.current) {
+      lastPollDataRef.current = pollFetcher.data;
       const existingIds = new Set(generations.map((g) => g.span_id));
       const newCount = pollFetcher.data.generations.filter(
         (g) => !existingIds.has(g.span_id)
       ).length;
-      if (newCount > 0) {
-        setNewGenerationCount(newCount);
-      }
+      setNewGenerationCount(newCount);
     }
   }, [pollFetcher.data, pollFetcher.state, generations]);
 
@@ -1231,12 +1276,15 @@ function GenerationsTab({
     if (!nextCursor || fetcher.state !== "idle") return;
 
     const params = new URLSearchParams();
-    params.set("version", String(promptVersion));
+    for (const v of versionFilters) params.append("versions", v);
     params.set("period", searchValue("period") ?? "7d");
     const from = searchValue("from");
     const to = searchValue("to");
     if (from) params.set("from", from);
     if (to) params.set("to", to);
+    for (const m of models) params.append("models", m);
+    for (const o of operations) params.append("operations", o);
+    for (const p of providers) params.append("providers", p);
     params.set("cursor", nextCursor);
     fetcher.load(`${resourcePath}?${params.toString()}`);
   }, [
@@ -1244,7 +1292,10 @@ function GenerationsTab({
     fetcher,
     searchValue,
     resourcePath,
-    promptVersion,
+    versionFilters,
+    models,
+    operations,
+    providers,
   ]);
 
   // Debounced loading spinner
@@ -1389,6 +1440,7 @@ function GenerationsTab({
                 </div>
                 <div className="mt-0.5 flex items-center justify-between">
                   <div className="flex items-center gap-3 text-text-dimmed">
+                    <span className="text-charcoal-400">v{gen.prompt_version}</span>
                     <span>{gen.response_model}</span>
                     <span>{gen.input_tokens + gen.output_tokens} tokens</span>
                     <span>{formatCost(gen.total_cost)}</span>
@@ -1444,7 +1496,6 @@ function formatCost(cost: number): string {
 
 function MetricsTab({
   prompt,
-  versions,
   organizationId,
   projectId,
   environmentId,
@@ -1453,7 +1504,6 @@ function MetricsTab({
   to,
 }: {
   prompt: { slug: string };
-  versions: VersionData[];
   organizationId: string;
   projectId: string;
   environmentId: string;
@@ -1461,6 +1511,15 @@ function MetricsTab({
   from: string | null;
   to: string | null;
 }) {
+  const { values: filterValues } = useSearchParams();
+  const versionFilters = filterValues("versions").filter((v) => v !== "");
+  const models = filterValues("models").filter((v) => v !== "");
+  const operations = filterValues("operations").filter((v) => v !== "");
+  const providers = filterValues("providers").filter((v) => v !== "");
+
+  const versionFilter =
+    versionFilters.length > 0 ? ` AND prompt_version IN (${versionFilters.join(",")})` : "";
+
   const widgetProps = {
     organizationId,
     projectId,
@@ -1469,6 +1528,9 @@ function MetricsTab({
     period,
     from,
     to,
+    responseModels: models.length > 0 ? models : undefined,
+    operations: operations.length > 0 ? operations : undefined,
+    providers: providers.length > 0 ? providers : undefined,
   };
 
   return (
@@ -1479,7 +1541,7 @@ function MetricsTab({
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-generations`}
             title="Total"
-            query={`SELECT count() AS generations FROM llm_metrics WHERE prompt_slug = '${prompt.slug}'`}
+            query={`SELECT count() AS generations FROM llm_metrics WHERE prompt_slug = '${prompt.slug}'${versionFilter}`}
             config={{
               type: "bignumber",
               column: "generations",
@@ -1493,7 +1555,7 @@ function MetricsTab({
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-tokens`}
             title="Avg input tokens"
-            query={`SELECT round(avg(input_tokens)) AS avg_input FROM llm_metrics WHERE prompt_slug = '${prompt.slug}'`}
+            query={`SELECT round(avg(input_tokens)) AS avg_input FROM llm_metrics WHERE prompt_slug = '${prompt.slug}'${versionFilter}`}
             config={{
               type: "bignumber",
               column: "avg_input",
@@ -1507,7 +1569,7 @@ function MetricsTab({
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-cost`}
             title="Avg input cost"
-            query={`SELECT avg(input_cost) AS avg_cost FROM llm_metrics WHERE prompt_slug = '${prompt.slug}'`}
+            query={`SELECT avg(input_cost) AS avg_cost FROM llm_metrics WHERE prompt_slug = '${prompt.slug}'${versionFilter}`}
             config={{
               type: "bignumber",
               column: "avg_cost",
@@ -1521,7 +1583,7 @@ function MetricsTab({
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-latency`}
             title="Avg latency"
-            query={`SELECT round(avg(duration) / 1000000, 1) AS avg_ms FROM llm_metrics WHERE prompt_slug = '${prompt.slug}'`}
+            query={`SELECT round(avg(duration) / 1000000, 1) AS avg_ms FROM llm_metrics WHERE prompt_slug = '${prompt.slug}'${versionFilter}`}
             config={{
               type: "bignumber",
               column: "avg_ms",
@@ -1537,7 +1599,6 @@ function MetricsTab({
       {/* Version performance */}
       <VersionPerformanceSection
         promptSlug={prompt.slug}
-        versions={versions}
         organizationId={organizationId}
         projectId={projectId}
         environmentId={environmentId}
@@ -1549,73 +1610,10 @@ function MetricsTab({
   );
 }
 
-// ─── Version Filter ──────────────────────────────────────
-
-function VersionFilter({
-  versions,
-  selectedVersions,
-  onChange,
-}: {
-  versions: VersionData[];
-  selectedVersions: string[];
-  onChange: (versions: string[]) => void;
-}) {
-  if (selectedVersions.length === 0 || selectedVersions.every((v) => v === "")) {
-    return (
-      <SelectProvider value={selectedVersions} setValue={onChange} virtualFocus={true}>
-        <SelectTrigger variant="tertiary/small" tooltipTitle="Filter by version">
-          Version
-        </SelectTrigger>
-        <SelectPopover>
-          <SelectList>
-            {versions.map((v) => (
-              <SelectItem key={v.id} value={String(v.version)}>
-                v{v.version}
-                {v.labels.includes("current") ? " (current)" : ""}
-                {v.labels.includes("latest") ? " (latest)" : ""}
-              </SelectItem>
-            ))}
-          </SelectList>
-        </SelectPopover>
-      </SelectProvider>
-    );
-  }
-
-  const summary =
-    selectedVersions.length === 1
-      ? `v${selectedVersions[0]}`
-      : `${selectedVersions.length} versions`;
-
-  return (
-    <SelectProvider value={selectedVersions} setValue={onChange} virtualFocus={true}>
-      <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-        <AppliedFilter
-          label="Version"
-          value={summary}
-          onRemove={() => onChange([])}
-          variant="secondary/small"
-        />
-      </Ariakit.Select>
-      <SelectPopover>
-        <SelectList>
-          {versions.map((v) => (
-            <SelectItem key={v.id} value={String(v.version)}>
-              v{v.version}
-              {v.labels.includes("current") ? " (current)" : ""}
-              {v.labels.includes("latest") ? " (latest)" : ""}
-            </SelectItem>
-          ))}
-        </SelectList>
-      </SelectPopover>
-    </SelectProvider>
-  );
-}
-
 // ─── Version Performance Section ─────────────────────────
 
 function VersionPerformanceSection({
   promptSlug,
-  versions,
   organizationId,
   projectId,
   environmentId,
@@ -1624,7 +1622,6 @@ function VersionPerformanceSection({
   to,
 }: {
   promptSlug: string;
-  versions: VersionData[];
   organizationId: string;
   projectId: string;
   environmentId: string;
@@ -1632,10 +1629,14 @@ function VersionPerformanceSection({
   from: string | null;
   to: string | null;
 }) {
-  const [selectedVersions, setSelectedVersions] = useState<string[]>([]);
+  const { values: filterValues } = useSearchParams();
+  const versionFilters = filterValues("versions").filter((v) => v !== "");
+  const models = filterValues("models").filter((v) => v !== "");
+  const operations = filterValues("operations").filter((v) => v !== "");
+  const providers = filterValues("providers").filter((v) => v !== "");
 
   const versionFilter =
-    selectedVersions.length > 0 ? ` AND prompt_version IN (${selectedVersions.join(",")})` : "";
+    versionFilters.length > 0 ? ` AND prompt_version IN (${versionFilters.join(",")})` : "";
 
   const widgetProps = {
     organizationId,
@@ -1645,24 +1646,21 @@ function VersionPerformanceSection({
     period,
     from,
     to,
+    responseModels: models.length > 0 ? models : undefined,
+    operations: operations.length > 0 ? operations : undefined,
+    providers: providers.length > 0 ? providers : undefined,
   };
 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <Header3>Version performance</Header3>
-        <VersionFilter
-          versions={versions}
-          selectedVersions={selectedVersions}
-          onChange={setSelectedVersions}
-        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         {/* Row 1: Latency + TTFC */}
         <div className="h-96">
           <MetricWidget
-            widgetKey={`prompt-${promptSlug}-perf-latency-${selectedVersions.join(",")}`}
+            widgetKey={`prompt-${promptSlug}-perf-latency-${versionFilters.join(",")}`}
             title="Latency p50 / p95"
             query={`SELECT timeBucket(), round(quantile(0.5)(duration) / 1000000, 1) AS p50, round(quantile(0.95)(duration) / 1000000, 1) AS p95 FROM llm_metrics WHERE prompt_slug = '${promptSlug}'${versionFilter} GROUP BY timeBucket ORDER BY timeBucket`}
             config={{
@@ -1681,7 +1679,7 @@ function VersionPerformanceSection({
         </div>
         <div className="h-96">
           <MetricWidget
-            widgetKey={`prompt-${promptSlug}-perf-ttfc-${selectedVersions.join(",")}`}
+            widgetKey={`prompt-${promptSlug}-perf-ttfc-${versionFilters.join(",")}`}
             title="TTFC p50 / p95"
             query={`SELECT timeBucket(), round(quantile(0.5)(ms_to_first_chunk), 1) AS p50, round(quantile(0.95)(ms_to_first_chunk), 1) AS p95 FROM llm_metrics WHERE prompt_slug = '${promptSlug}' AND ms_to_first_chunk > 0${versionFilter} GROUP BY timeBucket ORDER BY timeBucket`}
             config={{
@@ -1701,7 +1699,7 @@ function VersionPerformanceSection({
         {/* Row 2: Input tokens + Input cost */}
         <div className="h-96">
           <MetricWidget
-            widgetKey={`prompt-${promptSlug}-perf-input-tokens-${selectedVersions.join(",")}`}
+            widgetKey={`prompt-${promptSlug}-perf-input-tokens-${versionFilters.join(",")}`}
             title="Input tokens p50 / p95"
             query={`SELECT timeBucket(), round(quantile(0.5)(input_tokens)) AS p50, round(quantile(0.95)(input_tokens)) AS p95 FROM llm_metrics WHERE prompt_slug = '${promptSlug}'${versionFilter} GROUP BY timeBucket ORDER BY timeBucket`}
             config={{
@@ -1720,7 +1718,7 @@ function VersionPerformanceSection({
         </div>
         <div className="h-96">
           <MetricWidget
-            widgetKey={`prompt-${promptSlug}-perf-input-cost-${selectedVersions.join(",")}`}
+            widgetKey={`prompt-${promptSlug}-perf-input-cost-${versionFilters.join(",")}`}
             title="Input cost per 1k tokens (p50 / p95)"
             query={`SELECT timeBucket(), prettyFormat(quantile(0.5)(input_cost / input_tokens * 1000), 'costInDollars') AS p50, prettyFormat(quantile(0.95)(input_cost / input_tokens * 1000), 'costInDollars') AS p95 FROM llm_metrics WHERE prompt_slug = '${promptSlug}' AND input_tokens > 0${versionFilter} GROUP BY timeBucket ORDER BY timeBucket`}
             config={{
@@ -1740,7 +1738,7 @@ function VersionPerformanceSection({
         {/* Row 3: Output tokens + Output cost */}
         <div className="h-96">
           <MetricWidget
-            widgetKey={`prompt-${promptSlug}-perf-output-tokens-${selectedVersions.join(",")}`}
+            widgetKey={`prompt-${promptSlug}-perf-output-tokens-${versionFilters.join(",")}`}
             title="Output tokens p50 / p95"
             query={`SELECT timeBucket(), round(quantile(0.5)(output_tokens)) AS p50, round(quantile(0.95)(output_tokens)) AS p95 FROM llm_metrics WHERE prompt_slug = '${promptSlug}'${versionFilter} GROUP BY timeBucket ORDER BY timeBucket`}
             config={{
@@ -1759,7 +1757,7 @@ function VersionPerformanceSection({
         </div>
         <div className="h-96">
           <MetricWidget
-            widgetKey={`prompt-${promptSlug}-perf-output-cost-${selectedVersions.join(",")}`}
+            widgetKey={`prompt-${promptSlug}-perf-output-cost-${versionFilters.join(",")}`}
             title="Output cost per 1k tokens (p50 / p95)"
             query={`SELECT timeBucket(), prettyFormat(quantile(0.5)(output_cost / output_tokens * 1000), 'costInDollars') AS p50, prettyFormat(quantile(0.95)(output_cost / output_tokens * 1000), 'costInDollars') AS p95 FROM llm_metrics WHERE prompt_slug = '${promptSlug}' AND output_tokens > 0${versionFilter} GROUP BY timeBucket ORDER BY timeBucket`}
             config={{
@@ -1780,7 +1778,7 @@ function VersionPerformanceSection({
 
       <div className="h-48">
         <MetricWidget
-          widgetKey={`prompt-${promptSlug}-perf-versions-table-${selectedVersions.join(",")}`}
+          widgetKey={`prompt-${promptSlug}-perf-versions-table-${versionFilters.join(",")}`}
           title="Version summary"
           query={`SELECT prompt_version, count() AS calls, round(avg(input_tokens)) AS avg_input_tokens, round(avg(output_tokens)) AS avg_output_tokens, prettyFormat(avg(total_cost), 'costInDollars') AS avg_total_cost, round(quantile(0.5)(duration) / 1000000, 1) AS p50_latency_ms, round(quantile(0.95)(duration) / 1000000, 1) AS p95_latency_ms FROM llm_metrics WHERE prompt_slug = '${promptSlug}'${versionFilter} GROUP BY prompt_version ORDER BY prompt_version DESC`}
           config={{ type: "table", prettyFormatting: true, sorting: [] }}
@@ -1788,6 +1786,80 @@ function VersionPerformanceSection({
         />
       </div>
     </div>
+  );
+}
+
+// ─── Prompt Versions Filter ──────────────────────────────
+
+function PromptVersionsFilter({ versions }: { versions: VersionData[] }) {
+  const { values, replace, del } = useSearchParams();
+  const selected = values("versions");
+
+  const handleChange = (newValues: string[]) => {
+    replace({ versions: newValues });
+  };
+
+  if (selected.length === 0 || selected.every((v) => v === "")) {
+    return (
+      <SelectProvider value={[]} setValue={handleChange} virtualFocus={true}>
+        <SelectTrigger
+          icon={
+            <svg className="size-4">
+              <use xlinkHref={`${tablerSpritePath}#tabler-file-text-ai`} />
+            </svg>
+          }
+          variant="secondary/small"
+          tooltipTitle="Filter by version"
+        >
+          <span className="ml-0.5">Versions</span>
+        </SelectTrigger>
+        <SelectPopover className="min-w-0 max-w-[min(240px,var(--popover-available-width))]">
+          <SelectList>
+            {versions.map((v) => (
+              <SelectItem key={v.version} value={String(v.version)}>
+                v{v.version}
+                {v.labels.includes("current") ? " (current)" : ""}
+                {v.labels.includes("override") ? " (override)" : ""}
+              </SelectItem>
+            ))}
+          </SelectList>
+        </SelectPopover>
+      </SelectProvider>
+    );
+  }
+
+  const summary =
+    selected.length === 1
+      ? `v${selected[0]}`
+      : `${selected.length} versions`;
+
+  return (
+    <SelectProvider value={selected} setValue={handleChange} virtualFocus={true}>
+      <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+        <AppliedFilter
+          label="Version"
+          icon={
+            <svg className="size-4">
+              <use xlinkHref={`${tablerSpritePath}#tabler-file-text-ai`} />
+            </svg>
+          }
+          value={summary}
+          onRemove={() => del(["versions"])}
+          variant="secondary/small"
+        />
+      </Ariakit.Select>
+      <SelectPopover className="min-w-0 max-w-[min(240px,var(--popover-available-width))]">
+        <SelectList>
+          {versions.map((v) => (
+            <SelectItem key={v.version} value={String(v.version)}>
+              v{v.version}
+              {v.labels.includes("current") ? " (current)" : ""}
+              {v.labels.includes("override") ? " (override)" : ""}
+            </SelectItem>
+          ))}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
   );
 }
 
