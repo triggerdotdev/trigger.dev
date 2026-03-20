@@ -1,0 +1,521 @@
+"use client";
+
+import type { UIMessage } from "ai";
+import { useChat } from "@ai-sdk/react";
+import type { TriggerChatTransport } from "@trigger.dev/sdk/chat";
+import { useEffect, useRef, useState } from "react";
+import { Streamdown } from "streamdown";
+import { MODEL_OPTIONS } from "@/lib/models";
+
+function ToolInvocation({ part }: { part: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const toolName =
+    part.type === "dynamic-tool"
+      ? (part.toolName ?? "tool")
+      : part.type.startsWith("tool-")
+        ? part.type.slice(5)
+        : "tool";
+  const state = part.state ?? "input-available";
+  const args = part.input;
+  const result = part.output;
+
+  const isLoading = state === "input-streaming" || state === "input-available";
+  const isError = state === "output-error";
+
+  return (
+    <div className="my-1 rounded border border-gray-200 bg-gray-50 text-xs">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left font-medium text-gray-700 hover:bg-gray-100"
+      >
+        {isLoading && (
+          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+        )}
+        {!isLoading && !isError && <span className="text-green-600">&#10003;</span>}
+        {isError && <span className="text-red-600">&#10007;</span>}
+        <span>{toolName}</span>
+        <span className="ml-auto text-gray-400">{expanded ? "▲" : "▼"}</span>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-gray-200 px-3 py-2 space-y-2">
+          {args && Object.keys(args).length > 0 && (
+            <div>
+              <div className="mb-1 font-medium text-gray-500">Input</div>
+              <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-white p-2 text-gray-800">
+                {JSON.stringify(args, null, 2)}
+              </pre>
+            </div>
+          )}
+          {state === "output-available" && result !== undefined && (
+            <div>
+              <div className="mb-1 font-medium text-gray-500">Output</div>
+              <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-white p-2 text-gray-800">
+                {JSON.stringify(result, null, 2)}
+              </pre>
+            </div>
+          )}
+          {isError && result !== undefined && (
+            <div>
+              <div className="mb-1 font-medium text-red-500">Error</div>
+              <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-red-50 p-2 text-red-700">
+                {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResearchProgress({ part }: { part: any }) {
+  const data = part.data as {
+    status: "fetching" | "done";
+    query: string;
+    current: number;
+    total: number;
+    currentUrl?: string;
+    completedUrls: string[];
+  };
+
+  const isDone = data.status === "done";
+
+  return (
+    <div className="my-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs">
+      <div className="flex items-center gap-2 font-medium text-blue-700">
+        {isDone ? (
+          <span className="text-green-600">&#10003;</span>
+        ) : (
+          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" />
+        )}
+        <span>
+          {isDone
+            ? `Research complete — ${data.total} sources fetched`
+            : `Researching "${data.query}" (${data.current}/${data.total})`}
+        </span>
+      </div>
+      {data.currentUrl && !isDone && (
+        <div className="mt-1 truncate text-blue-500">Fetching {data.currentUrl}</div>
+      )}
+      {data.completedUrls.length > 0 && (
+        <div className="mt-1 space-y-0.5 text-blue-400">
+          {data.completedUrls.map((url, i) => (
+            <div key={i} className="truncate">&#10003; {url}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type TtfbEntry = { turn: number; ttfbMs: number };
+
+function DebugPanel({
+  chatId,
+  model,
+  status,
+  session,
+  dashboardUrl,
+  messageCount,
+  ttfbHistory,
+}: {
+  chatId: string;
+  model: string;
+  status: string;
+  session?: { runId: string; publicAccessToken: string; lastEventId?: string };
+  dashboardUrl?: string;
+  messageCount: number;
+  ttfbHistory: TtfbEntry[];
+}) {
+  const [open, setOpen] = useState(false);
+
+  const runUrl =
+    session?.runId && dashboardUrl
+      ? `${dashboardUrl}/runs/${session.runId}`
+      : undefined;
+
+  const latestTtfb = ttfbHistory.length > 0 ? ttfbHistory[ttfbHistory.length - 1]! : undefined;
+  const avgTtfb =
+    ttfbHistory.length > 0
+      ? Math.round(ttfbHistory.reduce((sum, e) => sum + e.ttfbMs, 0) / ttfbHistory.length)
+      : undefined;
+
+  return (
+    <div className="shrink-0 border-t border-gray-200 bg-gray-50 text-xs text-gray-500">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2 px-4 py-1.5 hover:bg-gray-100"
+      >
+        <span className="font-medium">Debug</span>
+        <span
+          className={`inline-block h-1.5 w-1.5 rounded-full ${
+            status === "streaming"
+              ? "bg-green-500"
+              : session?.runId
+                ? "bg-yellow-500"
+                : "bg-gray-300"
+          }`}
+        />
+        <span>{status}</span>
+        {latestTtfb && (
+          <span className="font-mono text-blue-600">TTFB {latestTtfb.ttfbMs.toLocaleString()}ms</span>
+        )}
+        {session?.runId && (
+          <span className="font-mono">{session.runId.slice(0, 16)}...</span>
+        )}
+        <span className="ml-auto text-gray-400">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-200 px-4 py-2 space-y-1">
+          <Row label="Chat ID" value={chatId} mono />
+          <Row label="Model" value={model} />
+          <Row label="Status" value={status} />
+          <Row label="Messages" value={String(messageCount)} />
+          {session ? (
+            <>
+              <Row label="Run ID" value={session.runId} mono link={runUrl} />
+              <Row label="Last Event ID" value={session.lastEventId ?? "—"} mono />
+            </>
+          ) : (
+            <Row label="Session" value="none" />
+          )}
+          {ttfbHistory.length > 0 && (
+            <>
+              <div className="mt-2 border-t border-gray-200 pt-2">
+                <span className="font-medium text-gray-600">TTFB</span>
+                {avgTtfb !== undefined && (
+                  <span className="ml-2 text-gray-400">avg {avgTtfb.toLocaleString()}ms</span>
+                )}
+              </div>
+              {ttfbHistory.map((entry) => (
+                <div key={entry.turn} className="flex items-center gap-2">
+                  <span className="w-24 shrink-0 text-gray-400">Turn {entry.turn}</span>
+                  <span className="font-mono">{entry.ttfbMs.toLocaleString()}ms</span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Row({
+  label,
+  value,
+  mono,
+  link,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  link?: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-24 shrink-0 text-gray-400">{label}</span>
+      {link ? (
+        <a
+          href={link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`truncate text-blue-600 underline ${mono ? "font-mono" : ""}`}
+        >
+          {value}
+        </a>
+      ) : (
+        <span className={`truncate ${mono ? "font-mono" : ""}`}>{value}</span>
+      )}
+    </div>
+  );
+}
+
+type ChatProps = {
+  chatId: string;
+  initialMessages: UIMessage[];
+  transport: TriggerChatTransport;
+  resume?: boolean;
+  model: string;
+  isNewChat: boolean;
+  onModelChange?: (model: string) => void;
+  session?: { runId: string; publicAccessToken: string; lastEventId?: string };
+  dashboardUrl?: string;
+  onFirstMessage?: (chatId: string, text: string) => void;
+  onMessagesChange?: (chatId: string, messages: UIMessage[]) => void;
+};
+
+export function Chat({
+  chatId,
+  initialMessages,
+  transport,
+  resume: resumeProp,
+  model,
+  isNewChat,
+  onModelChange,
+  session,
+  dashboardUrl,
+  onFirstMessage,
+  onMessagesChange,
+}: ChatProps) {
+  const [input, setInput] = useState("");
+  const hasCalledFirstMessage = useRef(false);
+
+  // TTFB tracking
+  const sendTimestamp = useRef<number | null>(null);
+  const turnCounter = useRef(0);
+  const [ttfbHistory, setTtfbHistory] = useState<TtfbEntry[]>([]);
+
+  const { messages, sendMessage, stop, status, error } = useChat({
+    id: chatId,
+    messages: initialMessages,
+    transport,
+    resume: resumeProp,
+  });
+
+  // Notify parent of first user message (for chat metadata creation)
+  useEffect(() => {
+    if (hasCalledFirstMessage.current) return;
+    const firstUser = messages.find((m) => m.role === "user");
+    if (firstUser) {
+      hasCalledFirstMessage.current = true;
+      const text = firstUser.parts
+        .filter((p: any) => p.type === "text")
+        .map((p: any) => p.text)
+        .join(" ");
+      onFirstMessage?.(chatId, text);
+    }
+  }, [messages, chatId, onFirstMessage]);
+
+  // TTFB detection: record when first assistant content appears after send
+  useEffect(() => {
+    if (status !== "streaming") return;
+    if (sendTimestamp.current === null) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.role === "assistant") {
+      const ttfbMs = Date.now() - sendTimestamp.current;
+      const turn = turnCounter.current;
+      sendTimestamp.current = null;
+      setTtfbHistory((prev) => [...prev, { turn, ttfbMs }]);
+    }
+  }, [status, messages]);
+
+  // Pending message to send after the current turn completes
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+
+  // Handle turn completion: persist messages and auto-send pending message
+  const prevStatus = useRef(status);
+  useEffect(() => {
+    const turnCompleted = prevStatus.current === "streaming" && status === "ready";
+    prevStatus.current = status;
+
+    if (!turnCompleted) return;
+
+    // Persist messages when a turn completes
+    if (messages.length > 0) {
+      onMessagesChange?.(chatId, messages);
+    }
+
+    // Auto-send the pending message
+    if (pendingMessage) {
+      const text = pendingMessage;
+      setPendingMessage(null);
+      turnCounter.current++;
+      sendTimestamp.current = Date.now();
+      sendMessage({ text }, { metadata: { model } });
+    }
+  }, [status, messages, chatId, onMessagesChange, sendMessage, pendingMessage, model]);
+
+  return (
+    <div className="flex h-full flex-col bg-white">
+      {/* Model selector for new chats */}
+      {isNewChat && messages.length === 0 && onModelChange && (
+        <div className="shrink-0 border-b border-gray-200 bg-gray-50 px-4 py-2 flex items-center gap-2">
+          <span className="text-xs text-gray-500">Model:</span>
+          <select
+            value={model}
+            onChange={(e) => onModelChange(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          >
+            {MODEL_OPTIONS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Model badge for existing chats */}
+      {(!isNewChat || messages.length > 0) && (
+        <div className="shrink-0 border-b border-gray-200 bg-gray-50 px-4 py-2">
+          <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+            {model}
+          </span>
+        </div>
+      )}
+
+      {/* Messages */}
+      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+        {messages.length === 0 && (
+          <p className="pt-20 text-center text-sm text-gray-400">Send a message to start chatting.</p>
+        )}
+
+        {messages.map((message, messageIndex) => (
+          <div
+            key={message.id}
+            className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+          >
+            <div className={`max-w-[80%] ${message.role === "user" ? "" : "w-full"}`}>
+              <div
+                className={`rounded-lg px-4 py-2 text-sm ${
+                  message.role === "user"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-900"
+                }`}
+              >
+                {message.parts.map((part, i) => {
+                  if (part.type === "text") {
+                    if (message.role === "assistant") {
+                      return (
+                        <Streamdown
+                          key={i}
+                          animated
+                          isAnimating={
+                            status === "streaming" &&
+                            messageIndex === messages.length - 1
+                          }
+                        >
+                          {part.text}
+                        </Streamdown>
+                      );
+                    }
+                    return <span key={i}>{part.text}</span>;
+                  }
+
+                  if (part.type === "reasoning") {
+                    return (
+                      <details key={i} className="my-1">
+                        <summary className="cursor-pointer text-xs text-gray-400">
+                          Thinking...
+                        </summary>
+                        <div className="mt-1 rounded bg-gray-50 p-2 text-xs text-gray-500 whitespace-pre-wrap">
+                          {part.text}
+                        </div>
+                      </details>
+                    );
+                  }
+
+                  if (part.type === "data-research-progress") {
+                    return <ResearchProgress key={i} part={part} />;
+                  }
+
+                  if (part.type.startsWith("tool-") || part.type === "dynamic-tool") {
+                    return <ToolInvocation key={i} part={part} />;
+                  }
+
+                  if (part.type.startsWith("data-")) {
+                    return (
+                      <div key={i} className="my-1 rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-500">
+                        <span className="font-medium">{part.type}</span>
+                        <pre className="mt-1 overflow-x-auto whitespace-pre-wrap">
+                          {JSON.stringify((part as any).data, null, 2)}
+                        </pre>
+                      </div>
+                    );
+                  }
+
+                  return null;
+                })}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {status === "streaming" && messages[messages.length - 1]?.role !== "assistant" && (
+          <div className="flex justify-start">
+            <div className="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-400">
+              Thinking...
+            </div>
+          </div>
+        )}
+
+        {pendingMessage && (
+          <div className="flex justify-end">
+            <div className="max-w-[80%]">
+              <div className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white opacity-60">
+                {pendingMessage}
+              </div>
+              <div className="mt-1 text-right text-[10px] text-gray-400">
+                Queued — will send when current response finishes
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <div className="shrink-0 border-t border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">
+          {error.message}
+        </div>
+      )}
+
+      {/* Debug panel */}
+      <DebugPanel
+        chatId={chatId}
+        model={model}
+        status={status}
+        session={session}
+        dashboardUrl={dashboardUrl}
+        messageCount={messages.length}
+        ttfbHistory={ttfbHistory}
+      />
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!input.trim()) return;
+          if (status === "streaming") {
+            setPendingMessage(input);
+          } else {
+            turnCounter.current++;
+            sendTimestamp.current = Date.now();
+            sendMessage({ text: input }, { metadata: { model } });
+          }
+          setInput("");
+        }}
+        className="shrink-0 border-t border-gray-200 bg-white p-4"
+      >
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type a message..."
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          />
+          <button
+            type="submit"
+            disabled={!input.trim() || !!pendingMessage}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {status === "streaming" ? "Queue" : "Send"}
+          </button>
+          {status === "streaming" && (
+            <button
+              type="button"
+              onClick={stop}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+            >
+              Stop
+            </button>
+          )}
+        </div>
+      </form>
+    </div>
+  );
+}
