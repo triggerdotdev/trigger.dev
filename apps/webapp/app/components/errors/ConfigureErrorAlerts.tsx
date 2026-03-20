@@ -102,7 +102,7 @@ export function ConfigureErrorAlerts({
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr_auto] overflow-hidden">
-      <div className="flex items-center justify-between border-b border-grid-bright px-4 py-3">
+      <div className="flex items-center justify-between border-b border-grid-bright px-3 py-2">
         <Header2>Configure alerts</Header2>
         <LinkButton
           to={closeHref}
