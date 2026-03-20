@@ -1,5 +1,5 @@
 import { parse } from "@conform-to/zod";
-import { Outlet, useSearchParams } from "@remix-run/react";
+import { Outlet } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageContainer } from "~/components/layout/AppLayout";
@@ -22,6 +22,7 @@ import {
   type CreateAlertChannelOptions,
   CreateAlertChannelService,
 } from "~/v3/services/alerts/createAlertChannel.server";
+import { useSearchParams } from "~/hooks/useSearchParam";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -152,12 +153,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 export default function Page() {
   const { alertData, connectToSlackHref } = useTypedLoaderData<typeof loader>();
-  const [searchParams] = useSearchParams();
-  const showAlerts = searchParams.has("alerts");
+  const { has } = useSearchParams();
+  const showAlerts = has("alerts") ?? false;
 
   return (
-    <PageContainer>
-      <ResizablePanelGroup orientation="horizontal" className="h-full overflow-hidden">
+    <PageContainer className="grid-rows-[1fr]">
+      <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full overflow-hidden">
         <ResizablePanel id="errors-main" min="300px">
           <Outlet />
         </ResizablePanel>
