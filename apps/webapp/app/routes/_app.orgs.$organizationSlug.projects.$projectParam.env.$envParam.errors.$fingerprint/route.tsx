@@ -141,11 +141,32 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return json({ ok: true });
     }
     case "ignore": {
+      let occurrenceCountAtIgnoreTime: number | undefined;
+
+      if (submission.value.totalOccurrences) {
+        const qb = clickhouseClient.errors.listQueryBuilder();
+        qb.where("project_id = {projectId: String}", { projectId: project.id });
+        qb.where("environment_id = {environmentId: String}", {
+          environmentId: environment.id,
+        });
+        qb.where("error_fingerprint = {fingerprint: String}", { fingerprint });
+        qb.where("task_identifier = {taskIdentifier: String}", {
+          taskIdentifier: submission.value.taskIdentifier,
+        });
+        qb.groupBy("error_fingerprint, task_identifier");
+
+        const [err, results] = await qb.execute();
+        if (!err && results && results.length > 0) {
+          occurrenceCountAtIgnoreTime = results[0].occurrence_count;
+        }
+      }
+
       await actions.ignoreError(identifier, {
         userId,
         duration: submission.value.duration,
         occurrenceRateThreshold: submission.value.occurrenceRate,
         totalOccurrencesThreshold: submission.value.totalOccurrences,
+        occurrenceCountAtIgnoreTime,
         reason: submission.value.reason,
       });
       return json({ ok: true });

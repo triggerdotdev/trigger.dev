@@ -38,6 +38,7 @@ export class ErrorGroupActions {
         ignoredUntil: null,
         ignoredUntilOccurrenceRate: null,
         ignoredUntilTotalOccurrences: null,
+        ignoredAtOccurrenceCount: null,
         ignoredAt: null,
         ignoredReason: null,
         ignoredByUserId: null,
@@ -63,6 +64,7 @@ export class ErrorGroupActions {
       duration?: number;
       occurrenceRateThreshold?: number;
       totalOccurrencesThreshold?: number;
+      occurrenceCountAtIgnoreTime?: number;
       reason?: string;
     }
   ) {
@@ -83,6 +85,7 @@ export class ErrorGroupActions {
       ignoredUntil,
       ignoredUntilOccurrenceRate: params.occurrenceRateThreshold ?? null,
       ignoredUntilTotalOccurrences: params.totalOccurrencesThreshold ?? null,
+      ignoredAtOccurrenceCount: params.occurrenceCountAtIgnoreTime ?? null,
       ignoredReason: params.reason ?? null,
       ignoredByUserId: params.userId,
       resolvedAt: null,
@@ -123,6 +126,7 @@ export class ErrorGroupActions {
         ignoredUntil: null,
         ignoredUntilOccurrenceRate: null,
         ignoredUntilTotalOccurrences: null,
+        ignoredAtOccurrenceCount: null,
         ignoredAt: null,
         ignoredReason: null,
         ignoredByUserId: null,
