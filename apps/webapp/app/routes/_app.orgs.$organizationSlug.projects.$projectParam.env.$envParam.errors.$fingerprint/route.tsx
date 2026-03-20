@@ -1,5 +1,5 @@
 import { type LoaderFunctionArgs, type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { type MetaFunction, Form, useFetcher } from "@remix-run/react";
+import { type MetaFunction, Form, useFetcher, useNavigation, useSubmit } from "@remix-run/react";
 import { BellAlertIcon } from "@heroicons/react/20/solid";
 import { parse } from "@conform-to/zod";
 import { z } from "zod";
@@ -657,75 +657,86 @@ function ErrorGroupActionButtons({
   taskIdentifier: string;
   fingerprint: string;
 }) {
-  const fetcher = useFetcher();
+  const navigation = useNavigation();
+  const submit = useSubmit();
   const [customIgnoreOpen, setCustomIgnoreOpen] = useState(false);
-  const isSubmitting = fetcher.state !== "idle";
-
-  const submitAction = (data: Record<string, string>) => {
-    fetcher.submit({ ...data, taskIdentifier }, { method: "post" });
-  };
+  const isSubmitting = navigation.state !== "idle";
 
   return (
-    <div className="flex items-center gap-2">
-      <StatusBadge status={state.status} />
+    <>
+      <Form className="flex items-center gap-2">
+        <StatusBadge status={state.status} />
 
-      {state.status === "UNRESOLVED" && (
-        <>
+        {state.status === "UNRESOLVED" && (
+          <>
+            <Button
+              variant="secondary/small"
+              disabled={isSubmitting}
+              onClick={() => submit({ taskIdentifier, action: "resolve" }, { method: "post" })}
+              type="button"
+            >
+              Resolve
+            </Button>
+            <Popover>
+              <PopoverArrowTrigger>Ignore</PopoverArrowTrigger>
+              <PopoverContent className="min-w-[180px] p-1" align="end">
+                <PopoverMenuItem
+                  title="Ignore for 1 hour"
+                  onClick={() =>
+                    submit(
+                      { taskIdentifier, action: "ignore", duration: String(60 * 60 * 1000) },
+                      { method: "post" }
+                    )
+                  }
+                />
+                <PopoverMenuItem
+                  title="Ignore for 24 hours"
+                  onClick={() =>
+                    submit(
+                      {
+                        taskIdentifier,
+                        action: "ignore",
+                        duration: String(24 * 60 * 60 * 1000),
+                      },
+                      { method: "post" }
+                    )
+                  }
+                />
+                <PopoverMenuItem
+                  title="Ignore forever"
+                  onClick={() => submit({ taskIdentifier, action: "ignore" }, { method: "post" })}
+                />
+                <PopoverMenuItem
+                  title="Custom condition..."
+                  onClick={() => setCustomIgnoreOpen(true)}
+                />
+              </PopoverContent>
+            </Popover>
+          </>
+        )}
+
+        {state.status === "RESOLVED" && (
           <Button
             variant="secondary/small"
             disabled={isSubmitting}
-            onClick={() => submitAction({ action: "resolve" })}
+            onClick={() => submit({ taskIdentifier, action: "unresolve" }, { method: "post" })}
+            type="button"
           >
-            Resolve
+            Unresolve
           </Button>
-          <Popover>
-            <PopoverArrowTrigger>Ignore</PopoverArrowTrigger>
-            <PopoverContent className="min-w-[180px] p-1" align="end">
-              <PopoverMenuItem
-                title="Ignore for 1 hour"
-                onClick={() => submitAction({ action: "ignore", duration: String(60 * 60 * 1000) })}
-              />
-              <PopoverMenuItem
-                title="Ignore for 24 hours"
-                onClick={() =>
-                  submitAction({
-                    action: "ignore",
-                    duration: String(24 * 60 * 60 * 1000),
-                  })
-                }
-              />
-              <PopoverMenuItem
-                title="Ignore forever"
-                onClick={() => submitAction({ action: "ignore" })}
-              />
-              <PopoverMenuItem
-                title="Custom condition..."
-                onClick={() => setCustomIgnoreOpen(true)}
-              />
-            </PopoverContent>
-          </Popover>
-        </>
-      )}
+        )}
 
-      {state.status === "RESOLVED" && (
-        <Button
-          variant="secondary/small"
-          disabled={isSubmitting}
-          onClick={() => submitAction({ action: "unresolve" })}
-        >
-          Unresolve
-        </Button>
-      )}
-
-      {state.status === "IGNORED" && (
-        <Button
-          variant="secondary/small"
-          disabled={isSubmitting}
-          onClick={() => submitAction({ action: "unresolve" })}
-        >
-          Unignore
-        </Button>
-      )}
+        {state.status === "IGNORED" && (
+          <Button
+            variant="secondary/small"
+            disabled={isSubmitting}
+            onClick={() => submit({ taskIdentifier, action: "unresolve" }, { method: "post" })}
+            type="button"
+          >
+            Unignore
+          </Button>
+        )}
+      </Form>
 
       <Dialog open={customIgnoreOpen} onOpenChange={setCustomIgnoreOpen}>
         <DialogContent>
@@ -738,7 +749,7 @@ function ErrorGroupActionButtons({
           />
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }
 

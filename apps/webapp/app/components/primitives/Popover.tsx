@@ -66,6 +66,9 @@ const PopoverMenuItem = React.forwardRef<
     onClick?: React.MouseEventHandler;
     disabled?: boolean;
     openInNewTab?: boolean;
+    name?: string;
+    value?: string;
+    type?: React.ComponentProps<"button">["type"];
   }
 >(
   (
@@ -80,6 +83,9 @@ const PopoverMenuItem = React.forwardRef<
       onClick,
       disabled,
       openInNewTab = false,
+      name,
+      value,
+      type,
     },
     ref
   ) => {
@@ -114,7 +120,6 @@ const PopoverMenuItem = React.forwardRef<
 
     return (
       <button
-        type="button"
         ref={ref as React.Ref<HTMLButtonElement>}
         onClick={onClick}
         disabled={disabled}
@@ -122,6 +127,9 @@ const PopoverMenuItem = React.forwardRef<
           "group/button outline-none focus-custom",
           contentProps.fullWidth ? "w-full" : ""
         )}
+        name={name}
+        value={value}
+        type={type ?? "button"}
       >
         <ButtonContent {...contentProps}>{title}</ButtonContent>
       </button>
@@ -245,8 +253,7 @@ function PopoverArrowTrigger({
 
 const popoverVerticalEllipseVariants = {
   minimal: {
-    trigger:
-      "size-6 rounded-[3px] text-text-dimmed hover:bg-tertiary hover:text-text-bright",
+    trigger: "size-6 rounded-[3px] text-text-dimmed hover:bg-tertiary hover:text-text-bright",
     icon: "size-5",
   },
   secondary: {
