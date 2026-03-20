@@ -1,11 +1,10 @@
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Area, AreaChart, ResponsiveContainer } from "recharts";
+import { Bar, BarChart, ResponsiveContainer } from "recharts";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PromptsNone } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
-import { Badge } from "~/components/primitives/Badge";
 import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import {
@@ -87,19 +86,22 @@ export default function PromptsPage() {
           <TableHeader>
             <TableRow>
               <TableHeaderCell>ID</TableHeaderCell>
-              <TableHeaderCell>Prompt</TableHeaderCell>
+              <TableHeaderCell>Slug</TableHeaderCell>
+              <TableHeaderCell>Description</TableHeaderCell>
               <TableHeaderCell>Model</TableHeaderCell>
-              <TableHeaderCell>Current</TableHeaderCell>
+              <TableHeaderCell>Version</TableHeaderCell>
               <TableHeaderCell>Usage (24h)</TableHeaderCell>
               <TableHeaderCell alignment="right">Last updated</TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
             {prompts.length === 0 ? (
-              <TableBlankRow colSpan={6}>No prompts found</TableBlankRow>
+              <TableBlankRow colSpan={7}>No prompts found</TableBlankRow>
             ) : (
               prompts.map((prompt) => {
                 const path = `${v3PromptsPath(organization, project, environment)}/${prompt.slug}`;
+                const activeVersion = prompt.overrideVersion ?? prompt.currentVersion;
+                const isOverride = !!prompt.overrideVersion;
 
                 return (
                   <TableRow key={prompt.id}>
@@ -107,19 +109,18 @@ export default function PromptsPage() {
                       <TruncatedCopyableValue value={prompt.friendlyId} />
                     </TableCell>
                     <TableCell to={path}>
-                      <div className="flex flex-col">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-text-bright">{prompt.slug}</span>
-                          {prompt.hasOverride && (
-                            <Badge variant="extra-small" className="border-amber-500/30 text-amber-400">
-                              override
-                            </Badge>
-                          )}
-                        </div>
-                        {prompt.description && (
-                          <span className="text-xs text-text-dimmed">{prompt.description}</span>
-                        )}
-                      </div>
+                      <span className="text-text-bright">{prompt.slug}</span>
+                    </TableCell>
+                    <TableCell to={path}>
+                      {prompt.description ? (
+                        <span className="text-text-dimmed" title={prompt.description.length > 80 ? prompt.description : undefined}>
+                          {prompt.description.length > 80
+                            ? prompt.description.slice(0, 80) + "..."
+                            : prompt.description}
+                        </span>
+                      ) : (
+                        <span className="text-charcoal-500">-</span>
+                      )}
                     </TableCell>
                     <TableCell to={path}>
                       <span className="text-text-dimmed">
@@ -127,11 +128,15 @@ export default function PromptsPage() {
                       </span>
                     </TableCell>
                     <TableCell to={path}>
-                      {prompt.currentVersion ? (
+                      {activeVersion ? (
                         <div className="flex items-center gap-1.5">
-                          <div className="size-1.5 rounded-full bg-green-500" />
+                          <div
+                            className={`size-1.5 rounded-full ${
+                              isOverride ? "bg-amber-400" : "bg-green-500"
+                            }`}
+                          />
                           <span className="text-text-bright">
-                            v{prompt.currentVersion.version}
+                            v{activeVersion.version}
                           </span>
                         </div>
                       ) : (
@@ -167,22 +172,14 @@ function UsageSparkline({ data }: { data?: number[] }) {
     <div className="flex items-center gap-2">
       <div className="h-6 w-16">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 1, right: 0, bottom: 1, left: 0 }}>
-            <defs>
-              <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.3} />
-                <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <Area
-              type="monotone"
+          <BarChart data={chartData} margin={{ top: 1, right: 0, bottom: 1, left: 0 }}>
+            <Bar
               dataKey="value"
-              stroke="#3b82f6"
-              strokeWidth={1.5}
-              fill="url(#sparkFill)"
+              fill="#3b82f6"
+              radius={[1, 1, 0, 0]}
               isAnimationActive={false}
             />
-          </AreaChart>
+          </BarChart>
         </ResponsiveContainer>
       </div>
       <span className="text-xs tabular-nums text-text-dimmed">{total.toLocaleString()}</span>

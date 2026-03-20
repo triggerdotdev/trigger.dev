@@ -82,6 +82,7 @@ export class PromptPresenter extends BasePresenter {
         tags: p.tags,
         defaultModel: effectiveModel,
         currentVersion: currentVersion ? { version: currentVersion.version } : null,
+        overrideVersion: overrideVersion ? { version: overrideVersion.version } : null,
         hasOverride,
         updatedAt: p.updatedAt,
       };

@@ -69,7 +69,7 @@ import { MetricWidget } from "~/routes/resources.metric";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { InlineCode } from "~/components/code/InlineCode";
 import { TextLink } from "~/components/primitives/TextLink";
-import { EnvironmentParamSchema, v3RunSpanPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3PromptsPath, v3RunSpanPath } from "~/utils/pathBuilder";
 import { z } from "zod";
 
 const ParamSchema = EnvironmentParamSchema.extend({
@@ -434,6 +434,9 @@ export default function PromptDetailPage() {
     possibleOperations,
     possibleProviders,
   } = useTypedLoaderData<typeof loader>();
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
   const fetcher = useFetcher();
   const { value: searchValue, replace: replaceSearch } = useSearchParams();
 
@@ -486,7 +489,7 @@ export default function PromptDetailPage() {
               </span>
             </div>
           }
-          backButton={{ to: "..", text: "Prompts" }}
+          backButton={{ to: v3PromptsPath(organization, project, environment), text: "Prompts" }}
         />
         <PageAccessories>
           <div className="flex items-center gap-2">
