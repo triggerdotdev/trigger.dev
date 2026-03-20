@@ -419,12 +419,8 @@ model Project {
   onboardingData        Json?
   taskScheduleInstances TaskScheduleInstance[]
   metricsDashboards     MetricsDashboard[]
-  <<<<<<< ours
   llmModels             LlmModel[]
-  ||||||| ancestor
-  =======
   errorGroupStates      ErrorGroupState[]
-  >>>>>>> theirs
 }
 
 enum ProjectVersion {
@@ -2689,7 +2685,7 @@ model ErrorGroupState {
 
   /// Total occurrence count at the time the error was ignored (from ClickHouse).
   /// Used with ignoredUntilTotalOccurrences to compute occurrences since ignoring.
-  ignoredAtOccurrenceCount     BigInt?
+  ignoredAtOccurrenceCount BigInt?
 
   /**
    * Error was ignored at this date
