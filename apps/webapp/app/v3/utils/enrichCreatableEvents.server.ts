@@ -39,6 +39,7 @@ function enrichCreatableEvent(event: CreateEventInput): CreateEventInput {
   event.style = enrichStyle(event);
 
   enrichLlmMetrics(event);
+  enrichPromptResolve(event);
 
   return event;
 }
@@ -200,6 +201,8 @@ function enrichLlmMetrics(event: CreateEventInput): void {
     msToFirstChunk,
     tokensPerSecond: avgTokensPerSec,
     metadata,
+    promptSlug: metadata["prompt.slug"] ?? "",
+    promptVersion: parseInt(metadata["prompt.version"] ?? "0", 10) || 0,
   };
 
   event._llmMetrics = llmMetrics;
@@ -420,4 +423,35 @@ function resolveAiProvider(
   }
 
   return undefined;
+}
+
+function enrichPromptResolve(event: CreateEventInput): void {
+  const props = event.properties;
+  if (!props) return;
+
+  const slug = props["prompt.slug"];
+  const version = props["prompt.version"];
+
+  if (typeof slug !== "string") return;
+
+  const style = (event.style ?? {}) as Record<string, unknown>;
+  const accessory = style.accessory as Record<string, unknown> | undefined;
+  const existingItems =
+    accessory && "items" in accessory
+      ? (accessory.items as Array<{ text: string; icon?: string; variant?: string }>)
+      : [];
+
+  const items = [
+    ...existingItems,
+    {
+      text: `${slug}${typeof version === "number" ? ` v${version}` : ""}`,
+      icon: "tabler-file-text-ai",
+    },
+  ];
+
+  event.style = {
+    ...style,
+    icon: style.icon ?? "tabler-file-text-ai",
+    accessory: { style: "pills" as const, items },
+  } as unknown as typeof event.style;
 }

@@ -51,12 +51,20 @@ export function extractAISpanData(
   const toolDefs = parseToolDefinitions(aiPrompt.tools);
   const providerMeta = parseProviderMetadata(aiResponse.providerMetadata);
   const aiTelemetry = rec(ai.telemetry);
+  const telemetryMetaRaw = rec(aiTelemetry.metadata);
+  const promptMeta = rec(telemetryMetaRaw.prompt);
+  const promptSlug = str(promptMeta.slug);
+  const promptVersion = str(promptMeta.version);
+  const promptModel = str(promptMeta.model);
+  const promptLabels = str(promptMeta.labels);
+  const promptInput = str(promptMeta.input);
   const telemetryMeta = extractTelemetryMetadata(aiTelemetry.metadata);
 
   return {
     model,
     provider: str(g.system) ?? "unknown",
     operationName: str(gOperation.name) ?? str(ai.operationId) ?? "",
+    responseId: str(gResponse.id) || undefined,
     finishReason: str(aiResponse.finishReason),
     serviceTier: providerMeta?.serviceTier,
     resolvedProvider: providerMeta?.resolvedProvider,
@@ -64,6 +72,11 @@ export function extractAISpanData(
     toolCount: toolDefs?.length,
     messageCount: countMessages(aiPrompt.messages),
     telemetryMetadata: telemetryMeta,
+    promptSlug: promptSlug || undefined,
+    promptVersion: promptVersion || undefined,
+    promptModel: promptModel || undefined,
+    promptLabels: promptLabels || undefined,
+    promptInput: promptInput || undefined,
     inputTokens,
     outputTokens,
     totalTokens,

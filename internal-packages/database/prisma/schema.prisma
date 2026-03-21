@@ -228,6 +228,7 @@ model Organization {
   githubAppInstallations   GithubAppInstallation[]
   customerQueries          CustomerQuery[]
   metricsDashboards        MetricsDashboard[]
+  prompts                  Prompt[]
 }
 
 model OrgMember {
@@ -346,6 +347,7 @@ model RuntimeEnvironment {
   waitpointTags        WaitpointTag[]
   BulkActionGroup      BulkActionGroup[]
   customerQueries      CustomerQuery[]
+  prompts              Prompt[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -418,6 +420,7 @@ model Project {
   taskScheduleInstances TaskScheduleInstance[]
   metricsDashboards     MetricsDashboard[]
   llmModels             LlmModel[]
+  prompts               Prompt[]
 }
 
 enum ProjectVersion {
@@ -492,11 +495,12 @@ model BackgroundWorker {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tasks      BackgroundWorkerTask[]
-  attempts   TaskRunAttempt[]
-  lockedRuns TaskRun[]
-  files      BackgroundWorkerFile[]
-  queues     TaskQueue[]
+  tasks          BackgroundWorkerTask[]
+  attempts       TaskRunAttempt[]
+  lockedRuns     TaskRun[]
+  files          BackgroundWorkerFile[]
+  queues         TaskQueue[]
+  promptVersions PromptVersion[]
 
   deployment WorkerDeployment?
 
@@ -530,6 +534,73 @@ model BackgroundWorkerFile {
   createdAt DateTime @default(now())
 
   @@unique([projectId, contentHash])
+}
+
+model Prompt {
+  id         String @id @default(cuid())
+  friendlyId String @unique @map("friendly_id")
+  slug        String
+  description String?
+  type        String  @default("text") // "text" | "chat"
+
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  filePath       String?
+  exportName     String?
+  variableSchema Json?
+  defaultModel   String?
+  defaultConfig  Json?
+
+  tags       String[] @default([])
+  archivedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  versions PromptVersion[]
+
+  @@unique([projectId, runtimeEnvironmentId, slug])
+  @@index([projectId])
+  @@index([runtimeEnvironmentId])
+  @@map("prompts")
+}
+
+model PromptVersion {
+  id      String @id @default(cuid())
+  version Int
+
+  prompt   Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  promptId String
+
+  textContent String?
+  chatContent Json?
+
+  model  String?
+  config Json?
+
+  source        String // "deploy" | "dashboard" | "api"
+  commitMessage String?
+  contentHash   String
+
+  labels String[] @default([])
+
+  worker   BackgroundWorker? @relation(fields: [workerId], references: [id])
+  workerId String?
+
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@unique([promptId, version])
+  @@index([promptId])
+  @@index([contentHash])
+  @@map("prompt_versions")
 }
 
 model BackgroundWorkerTask {

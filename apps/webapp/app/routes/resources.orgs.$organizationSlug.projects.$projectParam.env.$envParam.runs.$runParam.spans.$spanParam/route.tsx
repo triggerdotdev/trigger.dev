@@ -60,7 +60,8 @@ import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
-import { AISpanDetails } from "~/components/runs/v3/ai";
+import { AISpanDetails, AIToolCallSpanDetails, AIEmbedSpanDetails } from "~/components/runs/v3/ai";
+import { PromptSpanDetails } from "~/components/runs/v3/PromptSpanDetails";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import {
@@ -253,33 +254,53 @@ function SpanBody({
 
   span = applySpanOverrides(span, spanOverrides);
 
-  const isAiGeneration = span.entity?.type === "ai-generation";
+  const isAiInspector =
+    span.entity?.type === "ai-generation" ||
+    span.entity?.type === "ai-summary" ||
+    span.entity?.type === "ai-tool-call" ||
+    span.entity?.type === "ai-embed";
 
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center justify-between gap-2 overflow-x-hidden border-b border-grid-bright px-3 pr-2">
-        <div className="flex items-center gap-1 overflow-x-hidden">
-          <RunIcon
-            name={span.style?.icon}
-            spanName={span.message}
-            className="size-5 min-h-5 min-w-5"
-          />
-          <Header2 className={cn("overflow-x-hidden")}>
-            <SpanTitle {...span} size="large" hideAccessory />
-          </Header2>
+    <div className={cn(
+      "grid h-full max-h-full overflow-hidden bg-background-bright",
+      isAiInspector ? "grid-rows-[auto_1fr]" : "grid-rows-[2.5rem_1fr]"
+    )}>
+      <div className="border-b border-grid-bright px-3 pr-2">
+        <div className="flex h-10 items-center justify-between gap-2 overflow-x-hidden">
+          <div className="flex items-center gap-1 overflow-x-hidden">
+            <RunIcon
+              name={span.style?.icon}
+              spanName={span.message}
+              className="size-5 min-h-5 min-w-5"
+            />
+            <Header2 className={cn("overflow-x-hidden")}>
+              <SpanTitle {...span} size="large" hideAccessory />
+            </Header2>
+          </div>
+          {runParam && closePanel && (
+            <Button
+              onClick={closePanel}
+              variant="minimal/small"
+              TrailingIcon={ExitIcon}
+              shortcut={{ key: "esc" }}
+              shortcutPosition="before-trailing-icon"
+              className="pl-1"
+            />
+          )}
         </div>
-        {runParam && closePanel && (
-          <Button
-            onClick={closePanel}
-            variant="minimal/small"
-            TrailingIcon={ExitIcon}
-            shortcut={{ key: "esc" }}
-            shortcutPosition="before-trailing-icon"
-            className="pl-1"
-          />
+        {isAiInspector && (
+          <div className="flex items-center gap-3 pb-1.5 pl-6 text-xs text-text-dimmed">
+            <DateTime date={span.startTime} includeSeconds />
+            {span.duration != null && (
+              <>
+                <span className="text-charcoal-600">/</span>
+                <span className="text-text-bright">{formatSpanDuration(span.duration)}</span>
+              </>
+            )}
+          </div>
         )}
       </div>
-      {isAiGeneration ? (
+      {isAiInspector ? (
         <SpanEntity span={span} />
       ) : (
         <div className="scrollbar-gutter-stable overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
@@ -288,6 +309,15 @@ function SpanBody({
       )}
     </div>
   );
+}
+
+function formatSpanDuration(nanoseconds: number): string {
+  const ms = nanoseconds / 1_000_000;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const mins = Math.floor(ms / 60_000);
+  const secs = ((ms % 60_000) / 1000).toFixed(0);
+  return `${mins}m ${secs}s`;
 }
 
 function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
@@ -1388,16 +1418,28 @@ function SpanEntity({ span }: { span: Span }) {
         />
       );
     }
-    case "ai-generation": {
+    case "ai-generation":
+    case "ai-summary": {
       return (
         <AISpanDetails
           aiData={span.entity.object}
+          promptVersionData={span.entity.promptVersionData}
           rawProperties={typeof span.properties === "string" ? span.properties : span.properties != null ? JSON.stringify(span.properties, null, 2) : undefined}
         />
       );
+    }
+    case "ai-tool-call": {
+      return <AIToolCallSpanDetails data={span.entity.object} />;
+    }
+    case "ai-embed": {
+      return <AIEmbedSpanDetails data={span.entity.object} />;
+    }
+    case "prompt": {
+      return <PromptSpanDetails promptData={span.entity.object} />;
     }
     default: {
       assertNever(span.entity);
     }
   }
 }
+

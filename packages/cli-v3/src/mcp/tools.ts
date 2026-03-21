@@ -19,6 +19,15 @@ import {
   waitForRunToCompleteTool,
 } from "./tools/runs.js";
 import { getCurrentWorker, getTaskSchemaTool, triggerTaskTool } from "./tools/tasks.js";
+import {
+  listPromptsTool,
+  getPromptVersionsTool,
+  promotePromptVersionTool,
+  createPromptOverrideTool,
+  updatePromptOverrideTool,
+  removePromptOverrideTool,
+  reactivatePromptOverrideTool,
+} from "./tools/prompts.js";
 import { respondWithError } from "./utils.js";
 
 /** Tool names that perform write/mutating operations. */
@@ -28,6 +37,11 @@ const WRITE_TOOLS = new Set([
   cancelRunTool.name,
   createProjectInOrgTool.name,
   initializeProjectTool.name,
+  promotePromptVersionTool.name,
+  createPromptOverrideTool.name,
+  updatePromptOverrideTool.name,
+  removePromptOverrideTool.name,
+  reactivatePromptOverrideTool.name,
 ]);
 
 export function registerTools(context: McpContext) {
@@ -57,6 +71,13 @@ export function registerTools(context: McpContext) {
     startDevServerTool,
     stopDevServerTool,
     devServerStatusTool,
+    listPromptsTool,
+    getPromptVersionsTool,
+    promotePromptVersionTool,
+    createPromptOverrideTool,
+    updatePromptOverrideTool,
+    removePromptOverrideTool,
+    reactivatePromptOverrideTool,
   ];
 
   for (const tool of tools) {

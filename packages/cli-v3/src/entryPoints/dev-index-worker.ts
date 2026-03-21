@@ -3,6 +3,7 @@ import {
   type HandleErrorFunction,
   indexerToWorkerMessages,
   resourceCatalog,
+  type PromptManifest,
   type TaskManifest,
   TriggerConfig,
 } from "@trigger.dev/core/v3";
@@ -153,6 +154,7 @@ await sendMessageInCatalog(
   {
     manifest: {
       tasks,
+      prompts: convertPromptSchemasToJsonSchemas(resourceCatalog.listPromptManifests()),
       queues: resourceCatalog.listQueueManifests(),
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
@@ -191,6 +193,23 @@ await new Promise<void>((resolve) => {
     resolve();
   }, 10);
 });
+
+function convertPromptSchemasToJsonSchemas(prompts: PromptManifest[]): PromptManifest[] {
+  return prompts.map((prompt) => {
+    const schema = resourceCatalog.getPromptSchema(prompt.id);
+
+    if (schema) {
+      try {
+        const result = schemaToJsonSchema(schema);
+        return { ...prompt, variableSchema: result?.jsonSchema };
+      } catch {
+        return prompt;
+      }
+    }
+
+    return prompt;
+  });
+}
 
 async function convertSchemasToJsonSchemas(tasks: TaskManifest[]): Promise<TaskManifest[]> {
   const convertedTasks = tasks.map((task) => {

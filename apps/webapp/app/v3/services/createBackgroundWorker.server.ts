@@ -2,6 +2,7 @@ import {
   BackgroundWorkerMetadata,
   BackgroundWorkerSourceFileMetadata,
   CreateBackgroundWorkerRequestBody,
+  PromptResource,
   QueueManifest,
   TaskResource,
 } from "@trigger.dev/core/v3";
@@ -216,6 +217,11 @@ export async function createWorkerResources(
 
   // Create the tasks
   await createWorkerTasks(metadata, queues, worker, environment, prisma, tasksToBackgroundFiles);
+
+  // Register prompts
+  if (metadata.prompts && metadata.prompts.length > 0) {
+    await createWorkerPrompts(metadata.prompts, worker, environment, prisma);
+  }
 }
 
 async function createWorkerTasks(
@@ -700,4 +706,130 @@ export async function createBackgroundFiles(
   }
 
   return results;
+}
+
+import { createHash } from "crypto";
+
+function hashContent(content: string): string {
+  return createHash("sha256").update(content).digest("hex").slice(0, 16);
+}
+
+async function createWorkerPrompts(
+  prompts: PromptResource[],
+  worker: BackgroundWorker,
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction
+) {
+  for (const promptResource of prompts) {
+    try {
+      // Upsert the Prompt record (identity + schema)
+      const prompt = await prisma.prompt.upsert({
+        where: {
+          projectId_runtimeEnvironmentId_slug: {
+            projectId: worker.projectId,
+            runtimeEnvironmentId: environment.id,
+            slug: promptResource.id,
+          },
+        },
+        create: {
+          friendlyId: generateFriendlyId("prompt"),
+          organizationId: environment.organizationId,
+          projectId: worker.projectId,
+          runtimeEnvironmentId: environment.id,
+          slug: promptResource.id,
+          description: promptResource.description,
+          filePath: promptResource.filePath,
+          exportName: promptResource.exportName,
+          variableSchema: promptResource.variableSchema as any,
+          defaultModel: promptResource.model,
+          defaultConfig: promptResource.config as any,
+        },
+        update: {
+          description: promptResource.description,
+          filePath: promptResource.filePath,
+          exportName: promptResource.exportName,
+          variableSchema: promptResource.variableSchema as any,
+          defaultModel: promptResource.model,
+          defaultConfig: promptResource.config as any,
+        },
+      });
+
+      // Compute content hash for dedup
+      const contentString = promptResource.content ?? "";
+      const contentHash = hashContent(contentString);
+
+      // Find the latest version overall (for version numbering) and the latest
+      // code-sourced version (for content dedup). We compare against the latest
+      // code version specifically so that dashboard edits don't interfere with
+      // dedup — if the code hasn't changed since the last deploy, we skip even
+      // if a dashboard edit happened in between.
+      const latestVersion = await prisma.promptVersion.findFirst({
+        where: { promptId: prompt.id },
+        orderBy: { version: "desc" },
+      });
+
+      const latestCodeVersion = await prisma.promptVersion.findFirst({
+        where: { promptId: prompt.id, source: "code" },
+        orderBy: { version: "desc" },
+      });
+
+      if (latestCodeVersion?.contentHash === contentHash) {
+        // Code content unchanged since last deploy — skip creating a new version
+        continue;
+      }
+
+      const nextVersion = (latestVersion?.version ?? 0) + 1;
+
+      // Remove "latest" label from all existing versions
+      if (latestVersion) {
+        await prisma.$executeRaw`
+          UPDATE "prompt_versions"
+          SET "labels" = array_remove("labels", 'latest')
+          WHERE "promptId" = ${prompt.id} AND 'latest' = ANY("labels")
+        `;
+      }
+
+      // Determine labels for the new version.
+      // Deploys always move "current" to the new code version. If a dashboard
+      // override exists, it sits on top via the "override" label and the API
+      // serves that instead — so "current" movement is safe.
+      const labels = ["latest", "current"];
+
+      // Remove "current" from any existing version
+      await prisma.$executeRaw`
+        UPDATE "prompt_versions"
+        SET "labels" = array_remove("labels", 'current')
+        WHERE "promptId" = ${prompt.id} AND 'current' = ANY("labels")
+      `;
+
+      await prisma.promptVersion.create({
+        data: {
+          promptId: prompt.id,
+          version: nextVersion,
+          textContent: contentString,
+          model: promptResource.model,
+          config: promptResource.config as any,
+          source: "code",
+          contentHash,
+          labels,
+          workerId: worker.id,
+        },
+      });
+
+      logger.debug("Registered prompt version", {
+        promptSlug: promptResource.id,
+        version: nextVersion,
+        labels,
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        logger.warn("Prompt version already exists", { prompt: promptResource.id });
+      } else {
+        logger.error("Error creating prompt version", {
+          error: error instanceof Error ? error.message : String(error),
+          prompt: promptResource.id,
+        });
+      }
+    }
+  }
 }

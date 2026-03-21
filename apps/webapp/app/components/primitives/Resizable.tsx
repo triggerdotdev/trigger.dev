@@ -4,16 +4,19 @@ import React from "react";
 import { PanelGroup, Panel, PanelResizer } from "react-window-splitter";
 import { cn } from "~/utils/cn";
 
-const ResizablePanelGroup = ({ className, ...props }: React.ComponentProps<typeof PanelGroup>) => (
-  <PanelGroup
-    className={cn(
-      "flex w-full overflow-hidden data-[panel-group-direction=vertical]:flex-col",
-      className
-    )}
-    autosaveStrategy={props.autosaveId ? "cookie" : undefined}
-    {...props}
-  />
-);
+const ResizablePanelGroup = ({ className, snapshot, ...props }: React.ComponentProps<typeof PanelGroup>) => {
+  return (
+    <PanelGroup
+      className={cn(
+        "flex w-full overflow-hidden data-[panel-group-direction=vertical]:flex-col",
+        className
+      )}
+      autosaveStrategy={props.autosaveId ? "cookie" : undefined}
+      snapshot={snapshot}
+      {...props}
+    />
+  );
+};
 
 const ResizablePanel = Panel;
 

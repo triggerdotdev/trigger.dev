@@ -156,6 +156,8 @@ export type QueryWidgetProps = {
   onDuplicate?: (data: QueryWidgetData) => void;
   /** When true, show table column headers even when there are no rows */
   showTableHeaderOnEmpty?: boolean;
+  /** Column names to hide from table display but keep in row data (useful for linking) */
+  hiddenColumns?: string[];
 };
 
 export function QueryWidget({
@@ -406,6 +408,7 @@ type QueryWidgetBodyProps = {
   setIsFullscreen: (open: boolean) => void;
   isLoading: boolean;
   showTableHeaderOnEmpty?: boolean;
+  hiddenColumns?: string[];
 };
 
 function QueryWidgetBody({
@@ -417,6 +420,7 @@ function QueryWidgetBody({
   setIsFullscreen,
   isLoading,
   showTableHeaderOnEmpty,
+  hiddenColumns,
 }: QueryWidgetBodyProps) {
   const type = config.type;
 
@@ -436,6 +440,7 @@ function QueryWidgetBody({
             prettyFormatting={config.prettyFormatting}
             sorting={config.sorting}
             showHeaderOnEmpty={showTableHeaderOnEmpty}
+            hiddenColumns={hiddenColumns}
           />
           <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
             <DialogContent
