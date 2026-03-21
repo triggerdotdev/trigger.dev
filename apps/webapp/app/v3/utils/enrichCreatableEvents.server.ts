@@ -434,10 +434,11 @@ function enrichPromptResolve(event: CreateEventInput): void {
 
   if (typeof slug !== "string") return;
 
-  const style = event.style ?? {};
+  const style = (event.style ?? {}) as Record<string, unknown>;
+  const accessory = style.accessory as Record<string, unknown> | undefined;
   const existingItems =
-    style.accessory && "items" in style.accessory
-      ? (style.accessory.items as Array<{ text: string; icon?: string; variant?: string }>)
+    accessory && "items" in accessory
+      ? (accessory.items as Array<{ text: string; icon?: string; variant?: string }>)
       : [];
 
   const items = [
@@ -452,5 +453,5 @@ function enrichPromptResolve(event: CreateEventInput): void {
     ...style,
     icon: style.icon ?? "tabler-file-text-ai",
     accessory: { style: "pills" as const, items },
-  };
+  } as unknown as typeof event.style;
 }

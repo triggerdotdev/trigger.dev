@@ -509,7 +509,7 @@ function TraceView({
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
       <ResizablePanelGroup
         autosaveId={resizableSettings.parent.autosaveId}
-        snapshot={resizable.parent}
+        snapshot={resizable.parent as ResizableSnapshot}
         className="h-full max-h-full"
       >
         <ResizablePanel
@@ -539,7 +539,7 @@ function TraceView({
             rootRun={run.rootTaskRun}
             parentRun={run.parentTaskRun}
             isCompleted={run.completedAt !== null}
-            treeSnapshot={resizable.tree}
+            treeSnapshot={resizable.tree as ResizableSnapshot}
           />
         </ResizablePanel>
         <ResizableHandle id={resizableSettings.parent.handleId} />
@@ -585,7 +585,7 @@ function NoLogsView({ run, resizable }: Pick<LoaderData, "run" | "resizable">) {
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
       <ResizablePanelGroup
         autosaveId={resizableSettings.parent.autosaveId}
-        snapshot={resizable.parent}
+        snapshot={resizable.parent as ResizableSnapshot}
         className="h-full max-h-full"
       >
         <ResizablePanel

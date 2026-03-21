@@ -373,7 +373,7 @@ function encodeCursor(startTime: string, spanId: string): string {
 
 function decodeCursor(cursor: string): { startTime: string; spanId: string } | null {
   try {
-    const parsed = JSON.parse(Buffer.from(cursor, "base64").toString("utf-8"));
+    const parsed = JSON.parse(Buffer.from(cursor, "base64").toString("utf-8")) as Record<string, unknown>;
     if (typeof parsed.s === "string" && typeof parsed.i === "string") {
       return { startTime: parsed.s, spanId: parsed.i };
     }

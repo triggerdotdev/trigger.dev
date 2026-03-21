@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { prisma } from "~/db.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 
 export class PromptService extends BaseService {
@@ -36,7 +37,7 @@ export class PromptService extends BaseService {
     const nextVersion = await this.#getNextVersionNumber(promptId);
 
     // Remove any existing override, then create new — wraps in transaction
-    await this._prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`
         UPDATE "prompt_versions"
         SET "labels" = array_remove("labels", 'override')

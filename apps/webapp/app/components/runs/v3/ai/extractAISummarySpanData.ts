@@ -68,7 +68,7 @@ export function extractAISummarySpanData(
   let messageCount: number | undefined;
   if (promptJson) {
     try {
-      const parsed = JSON.parse(promptJson);
+      const parsed = JSON.parse(promptJson) as Record<string, unknown>;
       if (parsed.messages && Array.isArray(parsed.messages)) {
         messageCount = parsed.messages.length;
       } else {
@@ -146,7 +146,7 @@ function parsePromptToDisplayItems(
   responseText?: string
 ): DisplayItem[] | undefined {
   try {
-    const parsed = JSON.parse(promptJson);
+    const parsed = JSON.parse(promptJson) as Record<string, unknown>;
     if (!parsed || typeof parsed !== "object") return undefined;
 
     const items: DisplayItem[] = [];
@@ -162,8 +162,9 @@ function parsePromptToDisplayItems(
     if (Array.isArray(parsed.messages)) {
       for (const msg of parsed.messages) {
         if (!msg || typeof msg !== "object") continue;
-        const role = msg.role;
-        const content = extractMessageContent(msg.content);
+        const m = msg as Record<string, unknown>;
+        const role = m.role;
+        const content = extractMessageContent(m.content);
         if (!content) continue;
 
         switch (role) {
@@ -196,7 +197,11 @@ function extractMessageContent(content: unknown): string | undefined {
   if (Array.isArray(content)) {
     // Extract text parts from content array [{type: "text", text: "..."}]
     return content
-      .filter((p) => p && typeof p === "object" && p.type === "text" && typeof p.text === "string")
+      .filter((p): p is { type: string; text: string } => {
+        if (!p || typeof p !== "object") return false;
+        const o = p as Record<string, unknown>;
+        return o.type === "text" && typeof o.text === "string";
+      })
       .map((p) => p.text)
       .join("\n");
   }
@@ -214,7 +219,7 @@ function parseProviderMetadata(
   if (!jsonStr) return undefined;
 
   try {
-    const parsed = JSON.parse(jsonStr);
+    const parsed = JSON.parse(jsonStr) as Record<string, any>;
     if (!parsed || typeof parsed !== "object") return undefined;
 
     let serviceTier: string | undefined;
