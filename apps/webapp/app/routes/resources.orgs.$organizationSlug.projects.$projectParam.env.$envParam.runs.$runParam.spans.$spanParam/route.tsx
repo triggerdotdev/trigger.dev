@@ -257,27 +257,43 @@ function SpanBody({
   const isAiGeneration = span.entity?.type === "ai-generation";
 
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center justify-between gap-2 overflow-x-hidden border-b border-grid-bright px-3 pr-2">
-        <div className="flex items-center gap-1 overflow-x-hidden">
-          <RunIcon
-            name={span.style?.icon}
-            spanName={span.message}
-            className="size-5 min-h-5 min-w-5"
-          />
-          <Header2 className={cn("overflow-x-hidden")}>
-            <SpanTitle {...span} size="large" hideAccessory />
-          </Header2>
+    <div className={cn(
+      "grid h-full max-h-full overflow-hidden bg-background-bright",
+      isAiGeneration ? "grid-rows-[auto_1fr]" : "grid-rows-[2.5rem_1fr]"
+    )}>
+      <div className="border-b border-grid-bright px-3 pr-2">
+        <div className="flex h-10 items-center justify-between gap-2 overflow-x-hidden">
+          <div className="flex items-center gap-1 overflow-x-hidden">
+            <RunIcon
+              name={span.style?.icon}
+              spanName={span.message}
+              className="size-5 min-h-5 min-w-5"
+            />
+            <Header2 className={cn("overflow-x-hidden")}>
+              <SpanTitle {...span} size="large" hideAccessory />
+            </Header2>
+          </div>
+          {runParam && closePanel && (
+            <Button
+              onClick={closePanel}
+              variant="minimal/small"
+              TrailingIcon={ExitIcon}
+              shortcut={{ key: "esc" }}
+              shortcutPosition="before-trailing-icon"
+              className="pl-1"
+            />
+          )}
         </div>
-        {runParam && closePanel && (
-          <Button
-            onClick={closePanel}
-            variant="minimal/small"
-            TrailingIcon={ExitIcon}
-            shortcut={{ key: "esc" }}
-            shortcutPosition="before-trailing-icon"
-            className="pl-1"
-          />
+        {isAiGeneration && (
+          <div className="flex items-center gap-3 pb-1.5 pl-6 text-xs text-text-dimmed">
+            <DateTime date={span.startTime} includeSeconds />
+            {span.duration != null && (
+              <>
+                <span className="text-charcoal-600">/</span>
+                <span className="text-text-bright">{formatSpanDuration(span.duration)}</span>
+              </>
+            )}
+          </div>
         )}
       </div>
       {isAiGeneration ? (
@@ -289,6 +305,15 @@ function SpanBody({
       )}
     </div>
   );
+}
+
+function formatSpanDuration(nanoseconds: number): string {
+  const ms = nanoseconds / 1_000_000;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const mins = Math.floor(ms / 60_000);
+  const secs = ((ms % 60_000) / 1000).toFixed(0);
+  return `${mins}m ${secs}s`;
 }
 
 function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
