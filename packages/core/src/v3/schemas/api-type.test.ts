@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { InitializeDeploymentRequestBody } from "./api.js";
+import { InitializeDeploymentRequestBody, RunEvent, ListRunEventsResponse, ListRunEventsResponseWithStringDates } from "./api.js";
 import type { InitializeDeploymentRequestBody as InitializeDeploymentRequestBodyType } from "./api.js";
 
 describe("InitializeDeploymentRequestBody", () => {
@@ -137,5 +137,204 @@ describe("InitializeDeploymentRequestBody", () => {
         expect(narrowed.contentHash).toBe("abc123");
       }
     });
+  });
+});
+
+describe("RunEvent Schema", () => {
+  const validEvent = {
+    spanId: "span_123",
+    parentId: "span_root",
+    runId: "run_abc",
+    message: "Test event",
+    style: {
+      icon: "task",
+      variant: "primary",
+    },
+    startTime: "2024-03-14T00:00:00Z",
+    duration: 1234,
+    isError: false,
+    isPartial: false,
+    isCancelled: false,
+    level: "INFO",
+    kind: "TASK",
+    attemptNumber: 1,
+  };
+
+  it("parses a valid event correctly", () => {
+    const result = RunEvent.safeParse(validEvent);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.spanId).toBe("span_123");
+      expect(result.data.startTime).toBeInstanceOf(Date);
+      expect(result.data.level).toBe("INFO");
+    }
+  });
+
+  it("fails on missing required fields", () => {
+    const invalidEvent = { ...validEvent };
+    delete (invalidEvent as any).spanId;
+    const result = RunEvent.safeParse(invalidEvent);
+    expect(result.success).toBe(false);
+  });
+
+  it("fails on invalid level", () => {
+    const invalidEvent = { ...validEvent, level: "INVALID_LEVEL" };
+    const result = RunEvent.safeParse(invalidEvent);
+    expect(result.success).toBe(false);
+  });
+
+  it("coerces startTime to Date", () => {
+    const result = RunEvent.parse(validEvent);
+    expect(result.startTime).toBeInstanceOf(Date);
+    expect(result.startTime.toISOString()).toBe("2024-03-14T00:00:00.000Z");
+  });
+
+  it("handles 19-digit nanosecond startTime strings", () => {
+    const event = { ...validEvent, startTime: "1710374400000000000" };
+    const result = RunEvent.parse(event);
+    expect(result.startTime).toBeInstanceOf(Date);
+    // 1710374400000000000 ns = 1710374400000 ms = 2024-03-14T00:00:00Z
+    expect(result.startTime.toISOString()).toBe("2024-03-14T00:00:00.000Z");
+  });
+
+  it("should handle Date object", () => {
+    const now = new Date();
+    const result = RunEvent.safeParse({
+      ...validEvent,
+      startTime: now,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.startTime.toISOString()).toBe(now.toISOString());
+    }
+  });
+
+  it("handles bigint nanosecond startTime", () => {
+    const event = { ...validEvent, startTime: 1710374400000000000n };
+    const result = RunEvent.parse(event as any);
+    expect(result.startTime).toBeInstanceOf(Date);
+    expect(result.startTime.toISOString()).toBe("2024-03-14T00:00:00.000Z");
+  });
+
+  it("fails on invalid startTime", () => {
+    const event = { ...validEvent, startTime: "not-a-date" };
+    const result = RunEvent.safeParse(event);
+    expect(result.success).toBe(false);
+  });
+
+  describe("startTime edge cases", () => {
+    it("should handle whitespace-padded strings", () => {
+      const result = RunEvent.safeParse({
+        ...validEvent,
+        startTime: "  2024-03-14T00:00:00Z  ",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.startTime.toISOString()).toBe("2024-03-14T00:00:00.000Z");
+      }
+    });
+
+    it("should handle whitespace-padded nanosecond strings", () => {
+      const result = RunEvent.safeParse({
+        ...validEvent,
+        startTime: "  1710374400000000000  ",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.startTime.toISOString()).toBe("2024-03-14T00:00:00.000Z");
+      }
+    });
+
+    it("should fail on empty string", () => {
+      const result = RunEvent.safeParse({
+        ...validEvent,
+        startTime: "",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should fail on whitespace-only string", () => {
+      const result = RunEvent.safeParse({
+        ...validEvent,
+        startTime: "   ",
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  it("allows optional/null parentId", () => {
+    const eventWithoutParent = { ...validEvent };
+    delete (eventWithoutParent as any).parentId;
+    expect(RunEvent.safeParse(eventWithoutParent).success).toBe(true);
+
+    const eventWithNullParent = { ...validEvent, parentId: null };
+    expect(RunEvent.safeParse(eventWithNullParent).success).toBe(true);
+  });
+
+  it("allows nullish attemptNumber", () => {
+    const eventWithNullAttempt = { ...validEvent, attemptNumber: null };
+    const result = RunEvent.safeParse(eventWithNullAttempt);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.attemptNumber).toBe(null);
+    }
+
+    const eventWithoutAttempt = { ...validEvent };
+    delete (eventWithoutAttempt as any).attemptNumber;
+    const result2 = RunEvent.safeParse(eventWithoutAttempt);
+    expect(result2.success).toBe(true);
+  });
+
+  it("supports taskSlug", () => {
+    const eventWithSlug = { ...validEvent, taskSlug: "my-task" };
+    const result = RunEvent.parse(eventWithSlug);
+    expect(result.taskSlug).toBe("my-task");
+  });
+
+  it("ListRunEventsResponseWithStringDates correctly transforms Dates to strings", () => {
+    const rawResponse = {
+      events: [validEvent],
+    };
+
+    const parsed = ListRunEventsResponse.parse(rawResponse);
+    expect(parsed.events[0]!.startTime).toBeInstanceOf(Date);
+
+    const legacy = ListRunEventsResponseWithStringDates.parse(rawResponse);
+    expect(typeof legacy.events[0]!.startTime).toBe("string");
+    expect(legacy.events[0]!.startTime).toBe(parsed.events[0]!.startTime.toISOString());
+  });
+});
+
+describe("ListRunEventsResponse Schema", () => {
+  it("parses a valid wrapped response", () => {
+    const response = {
+      events: [
+        {
+          spanId: "span_1",
+          runId: "run_1",
+          message: "Event 1",
+          style: {},
+          startTime: "2024-03-14T00:00:00Z",
+          duration: 100,
+          isError: false,
+          isPartial: false,
+          isCancelled: false,
+          level: "INFO",
+          kind: "TASK",
+        },
+      ],
+    };
+
+    const result = ListRunEventsResponse.safeParse(response);
+    expect(result.success).toBe(true);
+    if (result.success && result.data) {
+      expect(result.data.events[0]!.spanId).toBe("span_1");
+    }
+  });
+
+  it("fails on plain array", () => {
+    const response = [{ spanId: "span_1" }];
+    const result = ListRunEventsResponse.safeParse(response);
+    expect(result.success).toBe(false);
   });
 });

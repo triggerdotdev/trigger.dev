@@ -61,11 +61,11 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
       accessToken: options.accessToken,
       ...(options.endpoint
         ? {
-            endpoints: {
-              account: options.endpoint,
-              basin: options.endpoint,
-            },
-          }
+          endpoints: {
+            account: options.endpoint,
+            basin: options.endpoint,
+          },
+        }
         : {}),
     });
     this.flushIntervalMs = options.flushIntervalMs ?? 200;
@@ -152,7 +152,9 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
                 return;
               }
               // Convert each chunk to JSON string and wrap in AppendRecord
-              controller.enqueue(AppendRecord.string({ body: JSON.stringify({ data: chunk, id: nanoid(7) }) }));
+              controller.enqueue(
+                AppendRecord.string({ body: JSON.stringify({ data: chunk, id: nanoid(7) }) })
+              );
             },
           })
         )
@@ -223,5 +225,5 @@ async function* streamToAsyncIterator<T>(stream: ReadableStream<T>): AsyncIterab
 function safeReleaseLock(reader: ReadableStreamDefaultReader<any>) {
   try {
     reader.releaseLock();
-  } catch (error) {}
+  } catch (error) { }
 }
