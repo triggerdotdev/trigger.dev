@@ -60,7 +60,7 @@ import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
-import { AISpanDetails } from "~/components/runs/v3/ai";
+import { AISpanDetails, AIToolCallSpanDetails, AIEmbedSpanDetails } from "~/components/runs/v3/ai";
 import { PromptSpanDetails } from "~/components/runs/v3/PromptSpanDetails";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
@@ -254,12 +254,16 @@ function SpanBody({
 
   span = applySpanOverrides(span, spanOverrides);
 
-  const isAiGeneration = span.entity?.type === "ai-generation";
+  const isAiInspector =
+    span.entity?.type === "ai-generation" ||
+    span.entity?.type === "ai-summary" ||
+    span.entity?.type === "ai-tool-call" ||
+    span.entity?.type === "ai-embed";
 
   return (
     <div className={cn(
       "grid h-full max-h-full overflow-hidden bg-background-bright",
-      isAiGeneration ? "grid-rows-[auto_1fr]" : "grid-rows-[2.5rem_1fr]"
+      isAiInspector ? "grid-rows-[auto_1fr]" : "grid-rows-[2.5rem_1fr]"
     )}>
       <div className="border-b border-grid-bright px-3 pr-2">
         <div className="flex h-10 items-center justify-between gap-2 overflow-x-hidden">
@@ -284,7 +288,7 @@ function SpanBody({
             />
           )}
         </div>
-        {isAiGeneration && (
+        {isAiInspector && (
           <div className="flex items-center gap-3 pb-1.5 pl-6 text-xs text-text-dimmed">
             <DateTime date={span.startTime} includeSeconds />
             {span.duration != null && (
@@ -296,7 +300,7 @@ function SpanBody({
           </div>
         )}
       </div>
-      {isAiGeneration ? (
+      {isAiInspector ? (
         <SpanEntity span={span} />
       ) : (
         <div className="scrollbar-gutter-stable overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
@@ -1414,7 +1418,8 @@ function SpanEntity({ span }: { span: Span }) {
         />
       );
     }
-    case "ai-generation": {
+    case "ai-generation":
+    case "ai-summary": {
       return (
         <AISpanDetails
           aiData={span.entity.object}
@@ -1422,6 +1427,12 @@ function SpanEntity({ span }: { span: Span }) {
           rawProperties={typeof span.properties === "string" ? span.properties : span.properties != null ? JSON.stringify(span.properties, null, 2) : undefined}
         />
       );
+    }
+    case "ai-tool-call": {
+      return <AIToolCallSpanDetails data={span.entity.object} />;
+    }
+    case "ai-embed": {
+      return <AIEmbedSpanDetails data={span.entity.object} />;
     }
     case "prompt": {
       return <PromptSpanDetails promptData={span.entity.object} />;
