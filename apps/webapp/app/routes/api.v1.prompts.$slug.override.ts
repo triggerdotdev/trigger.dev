@@ -61,7 +61,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const service = new PromptService();
 
   if (method === "POST") {
-    const rawBody = await request.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      return apiCors(request, json({ error: "Invalid JSON" }, { status: 400 }));
+    }
     const parsed = CreateBody.safeParse(rawBody);
     if (!parsed.success) {
       return apiCors(
@@ -81,7 +86,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   if (method === "PUT" || method === "PATCH") {
-    const rawBody = await request.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      return apiCors(request, json({ error: "Invalid JSON" }, { status: 400 }));
+    }
     const parsed = UpdateBody.safeParse(rawBody);
     if (!parsed.success) {
       return apiCors(
@@ -112,6 +122,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   return apiCors(
     request,
-    json({ error: "Method not allowed" }, { status: 405, headers: { Allow: "POST, PUT, DELETE" } })
+    json({ error: "Method not allowed" }, { status: 405, headers: { Allow: "POST, PUT, PATCH, DELETE" } })
   );
 }

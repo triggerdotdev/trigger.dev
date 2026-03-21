@@ -1148,6 +1148,7 @@ type GenerationRow = {
   operation_id: string;
   task_identifier: string;
   response_model: string;
+  prompt_version: number;
   input_tokens: number;
   output_tokens: number;
   total_cost: number;

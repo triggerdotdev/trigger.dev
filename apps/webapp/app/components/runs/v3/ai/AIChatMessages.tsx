@@ -114,6 +114,8 @@ function SystemSection({
             variant="minimal/small"
             onClick={() => setExpanded(!expanded)}
             LeadingIcon={expanded ? ChevronUpIcon : ChevronDownIcon}
+            aria-label={expanded ? "Collapse" : "Expand"}
+            aria-expanded={expanded}
           />
         )}
       </div>
