@@ -497,12 +497,10 @@ export default function PromptDetailPage() {
               <span className="text-xs text-text-dimmed">
                 v{selectedVersion.version}
                 {isCurrent && <span className="ml-1 text-green-500">current</span>}
+                {selectedVersion.labels.includes("override") && (
+                  <span className="ml-1 text-amber-400">override</span>
+                )}
               </span>
-            )}
-            {overrideVersion && (
-              <Badge variant="extra-small" className="border-amber-500/30 text-amber-400">
-                override active (v{overrideVersion.version})
-              </Badge>
             )}
             {selectedVersion && !isCurrent && selectedVersion.source === "code" && (
               <Button
@@ -529,12 +527,38 @@ export default function PromptDetailPage() {
                   Reactivate as override
                 </Button>
               )}
-            <Button variant="tertiary/small" onClick={() => setOverrideDialogOpen(true)}>
-              {overrideVersion ? "Edit Override" : "Create Override"}
-            </Button>
+            {!overrideVersion && (
+              <Button variant="tertiary/small" onClick={() => setOverrideDialogOpen(true)}>
+                Create Override
+              </Button>
+            )}
           </div>
         </PageAccessories>
       </NavBar>
+      {overrideVersion && (
+        <div className="flex items-center justify-between bg-amber-500/10 px-4 py-2">
+          <span className="text-xs text-amber-300">
+            Override v{overrideVersion.version} is active. API calls resolve this version instead of the deployed prompt.
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="tertiary/small"
+              onClick={() => setOverrideDialogOpen(true)}
+            >
+              Edit
+            </Button>
+            <Button
+              variant="tertiary/small"
+              onClick={() =>
+                fetcher.submit({ intent: "removeOverride" }, { method: "POST" })
+              }
+              disabled={fetcher.state !== "idle"}
+            >
+              Remove
+            </Button>
+          </div>
+        </div>
+      )}
       <PageBody scrollable={false}>
         <ResizablePanelGroup
           autosaveId="prompt-detail"
@@ -553,28 +577,11 @@ export default function PromptDetailPage() {
               <ResizablePanel id="prompt-template" default="250px" min="80px">
                 <div className="flex h-full flex-col overflow-hidden p-3 pb-0">
                   {/* Sticky header */}
-                  <div className="mb-2 flex-shrink-0 space-y-2">
+                  <div className="mb-2 flex-shrink-0">
                     <div className="flex items-center justify-between">
                       <Header3>Template</Header3>
                       {content && <CopyButton value={content} variant="icon" size="extra-small" />}
                     </div>
-                    {overrideVersion && (
-                      <div className="flex items-center justify-between rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2">
-                        <span className="text-xs text-amber-300">
-                          Dashboard override active (v{overrideVersion.version}). This version is
-                          served instead of the deployed version.
-                        </span>
-                        <Button
-                          variant="tertiary/small"
-                          onClick={() =>
-                            fetcher.submit({ intent: "removeOverride" }, { method: "POST" })
-                          }
-                          disabled={fetcher.state !== "idle"}
-                        >
-                          Remove override
-                        </Button>
-                      </div>
-                    )}
                   </div>
                   {/* Scrollable content */}
                   {content ? (
