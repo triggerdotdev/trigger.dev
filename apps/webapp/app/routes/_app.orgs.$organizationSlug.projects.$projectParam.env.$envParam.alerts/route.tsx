@@ -63,6 +63,7 @@ import {
   v3NewProjectAlertPath,
   v3ProjectAlertsPath,
 } from "~/utils/pathBuilder";
+import { alertsWorker } from "~/v3/alertsWorker.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -155,6 +156,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         where: { id: submission.value.id, projectId: project.id },
         data: { enabled: true },
       });
+
+      if (alertChannel.alertTypes.includes("ERROR_GROUP")) {
+        await alertsWorker.enqueue({
+          id: `evaluateErrorAlerts:${project.id}`,
+          job: "v3.evaluateErrorAlerts",
+          payload: {
+            projectId: project.id,
+            scheduledAt: Date.now(),
+          },
+        });
+      }
 
       return redirectWithSuccessMessage(
         v3ProjectAlertsPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
@@ -556,7 +568,7 @@ export function alertTypeTitle(alertType: ProjectAlertType): string {
     case "DEPLOYMENT_SUCCESS":
       return "Deployment success";
     default: {
-      assertNever(alertType);
+      throw new Error(`Unknown alertType: ${alertType}`);
     }
   }
 }

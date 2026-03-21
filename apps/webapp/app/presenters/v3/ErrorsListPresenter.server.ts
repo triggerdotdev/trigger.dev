@@ -9,7 +9,7 @@ const errorsListGranularity = new TimeGranularity([
   { max: "3 months", granularity: "1w" },
   { max: "Infinity", granularity: "30d" },
 ]);
-import { type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { type ErrorGroupStatus, type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { type Direction } from "~/components/ListPagination";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
@@ -22,6 +22,8 @@ export type ErrorsListOptions = {
   projectId: string;
   // filters
   tasks?: string[];
+  versions?: string[];
+  statuses?: ErrorGroupStatus[];
   period?: string;
   from?: number;
   to?: number;
@@ -39,6 +41,8 @@ export const ErrorsListOptionsSchema = z.object({
   userId: z.string().optional(),
   projectId: z.string(),
   tasks: z.array(z.string()).optional(),
+  versions: z.array(z.string()).optional(),
+  statuses: z.array(z.enum(["UNRESOLVED", "RESOLVED", "IGNORED"])).optional(),
   period: z.string().optional(),
   from: z.number().int().nonnegative().optional(),
   to: z.number().int().nonnegative().optional(),
@@ -88,7 +92,11 @@ function decodeCursor(cursor: string): ErrorGroupCursor | null {
   }
 }
 
-function cursorFromRow(row: { occurrence_count: number; error_fingerprint: string; task_identifier: string }): string {
+function cursorFromRow(row: {
+  occurrence_count: number;
+  error_fingerprint: string;
+  task_identifier: string;
+}): string {
   return encodeCursor({
     occurrenceCount: row.occurrence_count,
     fingerprint: row.error_fingerprint,
@@ -123,6 +131,8 @@ export class ErrorsListPresenter extends BasePresenter {
       userId,
       projectId,
       tasks,
+      versions,
+      statuses,
       period,
       search,
       from,
@@ -156,7 +166,9 @@ export class ErrorsListPresenter extends BasePresenter {
 
     const hasFilters =
       (tasks !== undefined && tasks.length > 0) ||
+      (versions !== undefined && versions.length > 0) ||
       (search !== undefined && search !== "") ||
+      (statuses !== undefined && statuses.length > 0) ||
       !time.isDefault;
 
     const possibleTasksAsync = getAllTaskIdentifiers(this.replica, environmentId);
@@ -187,6 +199,10 @@ export class ErrorsListPresenter extends BasePresenter {
 
     if (tasks && tasks.length > 0) {
       queryBuilder.where("task_identifier IN {tasks: Array(String)}", { tasks });
+    }
+
+    if (versions && versions.length > 0) {
+      queryBuilder.where("task_version IN {versions: Array(String)}", { versions });
     }
 
     queryBuilder.groupBy("error_fingerprint, task_identifier");
@@ -254,15 +270,14 @@ export class ErrorsListPresenter extends BasePresenter {
 
     // Fetch global first_seen / last_seen from the errors_v1 summary table
     const fingerprints = errorGroups.map((e) => e.error_fingerprint);
-    const globalSummaryMap = await this.getGlobalSummary(
-      organizationId,
-      projectId,
-      environmentId,
-      fingerprints
-    );
+    const [globalSummaryMap, stateMap] = await Promise.all([
+      this.getGlobalSummary(organizationId, projectId, environmentId, fingerprints),
+      this.getErrorGroupStates(environmentId, errorGroups),
+    ]);
 
-    const transformedErrorGroups = errorGroups.map((error) => {
+    let transformedErrorGroups = errorGroups.map((error) => {
       const global = globalSummaryMap.get(error.error_fingerprint);
+      const state = stateMap.get(`${error.task_identifier}:${error.error_fingerprint}`);
       return {
         errorType: error.error_type,
         errorMessage: error.error_message,
@@ -271,8 +286,17 @@ export class ErrorsListPresenter extends BasePresenter {
         firstSeen: global?.firstSeen ?? new Date(),
         lastSeen: global?.lastSeen ?? new Date(),
         count: error.occurrence_count,
+        status: state?.status ?? "UNRESOLVED",
+        resolvedAt: state?.resolvedAt ?? null,
+        ignoredUntil: state?.ignoredUntil ?? null,
       };
     });
+
+    if (statuses && statuses.length > 0) {
+      transformedErrorGroups = transformedErrorGroups.filter((g) =>
+        statuses.includes(g.status as ErrorGroupStatus)
+      );
+    }
 
     return {
       errorGroups: transformedErrorGroups,
@@ -282,6 +306,8 @@ export class ErrorsListPresenter extends BasePresenter {
       },
       filters: {
         tasks,
+        versions,
+        statuses,
         search,
         period: time,
         from: effectiveFrom,
@@ -365,6 +391,51 @@ export class ErrorsListPresenter extends BasePresenter {
     }
 
     return { data };
+  }
+
+  /**
+   * Batch-fetch ErrorGroupState rows from Postgres for the given ClickHouse error groups.
+   * Returns a map keyed by `${taskIdentifier}:${errorFingerprint}`.
+   */
+  private async getErrorGroupStates(
+    environmentId: string,
+    errorGroups: Array<{ task_identifier: string; error_fingerprint: string }>
+  ) {
+    type StateValue = {
+      status: ErrorGroupStatus;
+      resolvedAt: Date | null;
+      ignoredUntil: Date | null;
+    };
+
+    const result = new Map<string, StateValue>();
+    if (errorGroups.length === 0) return result;
+
+    const states = await this.replica.errorGroupState.findMany({
+      where: {
+        environmentId,
+        OR: errorGroups.map((e) => ({
+          taskIdentifier: e.task_identifier,
+          errorFingerprint: e.error_fingerprint,
+        })),
+      },
+      select: {
+        taskIdentifier: true,
+        errorFingerprint: true,
+        status: true,
+        resolvedAt: true,
+        ignoredUntil: true,
+      },
+    });
+
+    for (const state of states) {
+      result.set(`${state.taskIdentifier}:${state.errorFingerprint}`, {
+        status: state.status,
+        resolvedAt: state.resolvedAt,
+        ignoredUntil: state.ignoredUntil,
+      });
+    }
+
+    return result;
   }
 
   /**

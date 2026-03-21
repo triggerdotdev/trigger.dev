@@ -540,6 +540,14 @@ export function v3ErrorsPath(
   return `${v3EnvironmentPath(organization, project, environment)}/errors`;
 }
 
+export function v3ErrorsConnectToSlackPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3ErrorsPath(organization, project, environment)}/connect-to-slack`;
+}
+
 export function v3ErrorPath(
   organization: OrgForPath,
   project: ProjectForPath,

@@ -7,6 +7,7 @@ import { nanoid } from "nanoid";
 import { env } from "~/env.server";
 import { findProjectByRef } from "~/models/project.server";
 import { encryptSecret } from "~/services/secrets/secretStore.server";
+import { alertsWorker } from "~/v3/alertsWorker.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { BaseService, ServiceValidationError } from "../baseService.server";
 
@@ -60,7 +61,7 @@ export class CreateAlertChannelService extends BaseService {
       : undefined;
 
     if (existingAlertChannel) {
-      return await this._prisma.projectAlertChannel.update({
+      const updated = await this._prisma.projectAlertChannel.update({
         where: { id: existingAlertChannel.id },
         data: {
           name: options.name,
@@ -70,6 +71,12 @@ export class CreateAlertChannelService extends BaseService {
           environmentTypes,
         },
       });
+
+      if (options.alertTypes.includes("ERROR_GROUP")) {
+        await this.#scheduleErrorAlertEvaluation(project.id);
+      }
+
+      return updated;
     }
 
     const alertChannel = await this._prisma.projectAlertChannel.create({
@@ -87,7 +94,22 @@ export class CreateAlertChannelService extends BaseService {
       },
     });
 
+    if (options.alertTypes.includes("ERROR_GROUP")) {
+      await this.#scheduleErrorAlertEvaluation(project.id);
+    }
+
     return alertChannel;
+  }
+
+  async #scheduleErrorAlertEvaluation(projectId: string): Promise<void> {
+    await alertsWorker.enqueue({
+      id: `evaluateErrorAlerts:${projectId}`,
+      job: "v3.evaluateErrorAlerts",
+      payload: {
+        projectId,
+        scheduledAt: Date.now(),
+      },
+    });
   }
 
   async #createProperties(channel: CreateAlertChannelOptions["channel"]) {
