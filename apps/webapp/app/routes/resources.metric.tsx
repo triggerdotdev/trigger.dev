@@ -44,6 +44,7 @@ const MetricWidgetQuery = z.object({
   to: z.string().nullable(),
   taskIdentifiers: z.array(z.string()).optional(),
   queues: z.array(z.string()).optional(),
+  responseModels: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
 });
 
@@ -74,6 +75,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     to,
     taskIdentifiers,
     queues,
+    responseModels,
     tags,
   } = submission.data;
 
@@ -107,6 +109,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     to,
     taskIdentifiers,
     queues,
+    responseModels,
     // Set higher concurrency if many widgets are on screen at once
     customOrgConcurrencyLimit: env.METRIC_WIDGET_DEFAULT_ORG_CONCURRENCY_LIMIT,
   });
@@ -257,6 +260,7 @@ export function MetricWidget({
     props.scope,
     JSON.stringify(props.taskIdentifiers),
     JSON.stringify(props.queues),
+    JSON.stringify(props.responseModels),
   ]);
 
   const data = response?.success

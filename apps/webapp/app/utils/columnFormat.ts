@@ -40,6 +40,19 @@ export function formatQuantity(value: number): string {
 }
 
 /**
+ * Format a dollar amount with adaptive precision — avoids trailing zeros.
+ */
+function formatCostAdaptive(dollars: number): string {
+  if (dollars === 0) return "$0";
+  const abs = Math.abs(dollars);
+  if (abs >= 1000) return `$${dollars.toFixed(2)}`;
+  if (abs >= 1) return `$${dollars.toFixed(2)}`;
+  if (abs >= 0.01) return `$${dollars.toFixed(4)}`;
+  if (abs >= 0.0001) return `$${dollars.toFixed(6)}`;
+  return formatCurrencyAccurate(dollars);
+}
+
+/**
  * Creates a value formatter function for a given column format type.
  * Used by chart tooltips, legend values, and big number cards.
  */
@@ -61,9 +74,9 @@ export function createValueFormatter(
     case "durationSeconds":
       return (v) => formatDurationMilliseconds(v * 1000, { style: "short" });
     case "costInDollars":
-      return (v) => formatCurrencyAccurate(v);
+      return (v) => formatCostAdaptive(v);
     case "cost":
-      return (v) => formatCurrencyAccurate(v / 100);
+      return (v) => formatCostAdaptive(v / 100);
     default:
       return undefined;
   }

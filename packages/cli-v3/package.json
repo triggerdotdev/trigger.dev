@@ -78,7 +78,9 @@
     "test:e2e": "vitest --run -c ./e2e/vitest.config.ts",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "install-mcp": "./install-mcp.sh",
-    "inspector": "npx @modelcontextprotocol/inspector dist/esm/index.js mcp --log-file .mcp.log --api-url http://localhost:3030"
+    "inspector": "npx @modelcontextprotocol/inspector dist/esm/index.js mcp --log-file .mcp.log --api-url http://localhost:3030",
+    "mcp:test": "tsx src/mcp/tools.test.ts",
+    "mcp:smoke": "tsx src/mcp/smoke.test.ts"
   },
   "dependencies": {
     "@clack/prompts": "0.11.0",

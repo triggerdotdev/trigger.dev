@@ -302,6 +302,9 @@ importers:
       '@internal/cache':
         specifier: workspace:*
         version: link:../../internal-packages/cache
+      '@internal/llm-pricing':
+        specifier: workspace:*
+        version: link:../../internal-packages/llm-pricing
       '@internal/redis':
         specifier: workspace:*
         version: link:../../internal-packages/redis
@@ -1124,6 +1127,15 @@ importers:
       '@types/react':
         specifier: 18.2.69
         version: 18.2.69
+
+  internal-packages/llm-pricing:
+    dependencies:
+      '@trigger.dev/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@trigger.dev/database':
+        specifier: workspace:*
+        version: link:../database
 
   internal-packages/otlp-importer:
     dependencies:

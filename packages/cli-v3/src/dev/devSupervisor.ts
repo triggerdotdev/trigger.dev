@@ -80,7 +80,7 @@ class DevSupervisor implements WorkerRuntime {
   private activeRunsPath?: string;
   private watchdogPidPath?: string;
 
-  constructor(public readonly options: WorkerRuntimeOptions) {}
+  constructor(public readonly options: WorkerRuntimeOptions) { }
 
   async init(): Promise<void> {
     logger.debug("[DevSupervisor] initialized worker runtime", { options: this.options });
@@ -117,8 +117,8 @@ class DevSupervisor implements WorkerRuntime {
       typeof processKeepAlive === "boolean"
         ? processKeepAlive
         : typeof processKeepAlive === "object"
-        ? processKeepAlive.enabled
-        : false;
+          ? processKeepAlive.enabled
+          : false;
 
     const maxPoolSize =
       typeof processKeepAlive === "object" ? processKeepAlive.devMaxPoolSize ?? 25 : 25;
@@ -232,6 +232,7 @@ class DevSupervisor implements WorkerRuntime {
           WATCHDOG_API_KEY: this.options.client.accessToken ?? "",
           WATCHDOG_ACTIVE_RUNS: this.activeRunsPath,
           WATCHDOG_PID_FILE: this.watchdogPidPath,
+          WATCHDOG_TMP_DIR: join(triggerDir, "tmp"),
         },
       });
 
@@ -278,10 +279,10 @@ class DevSupervisor implements WorkerRuntime {
     // Clean up files
     try {
       if (this.activeRunsPath) unlinkSync(this.activeRunsPath);
-    } catch {}
+    } catch { }
     try {
       if (this.watchdogPidPath) unlinkSync(this.watchdogPidPath);
-    } catch {}
+    } catch { }
   }
 
   #updateActiveRunsFile() {
@@ -505,6 +506,7 @@ class DevSupervisor implements WorkerRuntime {
           taskRunProcessPool: this.taskRunProcessPool,
           cwd,
           onFinished: () => {
+
             logger.debug("[DevSupervisor] Run finished", { runId: message.run.friendlyId });
 
             //stop the run controller, and remove it
@@ -515,7 +517,9 @@ class DevSupervisor implements WorkerRuntime {
 
             //stop the worker if it is deprecated and there are no more runs
             if (worker.deprecated) {
-              this.#tryDeleteWorker(message.backgroundWorker.friendlyId).finally(() => {});
+              this.#tryDeleteWorker(message.backgroundWorker.friendlyId).catch((err) => {
+                logger.debug("[DevSupervisor] Failed to delete worker", { error: err });
+              });
             }
           },
           onSubscribeToRunNotifications: async (run, snapshot) => {
@@ -612,7 +616,9 @@ class DevSupervisor implements WorkerRuntime {
       }
 
       existingWorker.deprecate();
-      this.#tryDeleteWorker(workerId).finally(() => {});
+      this.#tryDeleteWorker(workerId).catch((err) => {
+        logger.debug("[DevSupervisor] Failed to delete worker", { error: err });
+      });
     }
 
     this.workers.set(worker.serverWorker.id, worker);
@@ -730,35 +736,98 @@ class DevSupervisor implements WorkerRuntime {
   }
 
   /** Deletes the worker if there are no active runs, after a delay */
+  /**
+   * Maximum number of deprecated workers to keep around.
+   * We retain a small buffer of old workers because the server may still
+   * dequeue runs locked to a recently-deprecated worker version.
+   * When the limit is exceeded, the oldest deprecated workers are cleaned up.
+   */
+  static readonly MAX_DEPRECATED_WORKERS = 2;
+
   async #tryDeleteWorker(friendlyId: string) {
     await awaitTimeout(5_000);
-    this.#deleteWorker(friendlyId);
+    this.#cleanupWorker(friendlyId);
   }
 
-  #deleteWorker(friendlyId: string) {
-    logger.debug("[DevSupervisor] Delete worker (if relevant)", {
-      workerId: friendlyId,
-    });
+  #hasActiveRunsForWorker(friendlyId: string): boolean {
+    for (const controller of this.runControllers.values()) {
+      try {
+        if (controller.workerFriendlyId === friendlyId) return true;
+      } catch {
+        // workerFriendlyId may throw if the controller is in an unexpected state
+      }
+    }
+    return false;
+  }
 
+  #cleanupWorker(friendlyId: string) {
     const worker = this.workers.get(friendlyId);
     if (!worker) {
+      return;
+    }
+
+    if (this.#hasActiveRunsForWorker(friendlyId)) {
+      logger.debug("[DevSupervisor] Worker still has active runs, skipping cleanup", {
+        workerId: friendlyId,
+      });
       return;
     }
 
     if (worker.serverWorker?.version) {
       this.taskRunProcessPool?.deprecateVersion(worker.serverWorker?.version);
     }
+
+    // Enforce limit on deprecated workers to bound disk usage.
+    // We keep a few around because the server may still dequeue runs for them.
+    this.#pruneDeprecatedWorkers();
+  }
+
+  #pruneDeprecatedWorkers() {
+    const deprecatedWorkers: Array<{ id: string; worker: BackgroundWorker }> = [];
+
+    for (const [id, worker] of this.workers.entries()) {
+      if (!worker.deprecated) continue;
+
+      if (!this.#hasActiveRunsForWorker(id)) {
+        deprecatedWorkers.push({ id, worker });
+      }
+    }
+
+    // Keep the most recent deprecated workers, remove the rest
+    if (deprecatedWorkers.length <= DevSupervisor.MAX_DEPRECATED_WORKERS) {
+      return;
+    }
+
+    // Remove oldest first (they appear first in insertion order of the Map)
+    const toRemove = deprecatedWorkers.slice(
+      0,
+      deprecatedWorkers.length - DevSupervisor.MAX_DEPRECATED_WORKERS
+    );
+
+    for (const { id, worker } of toRemove) {
+      logger.debug("[DevSupervisor] Pruning old deprecated worker and cleaning up build dir", {
+        workerId: id,
+        version: worker.serverWorker?.version,
+      });
+
+      if (worker.serverWorker?.version) {
+        this.taskRunProcessPool?.deprecateVersion(worker.serverWorker.version);
+      }
+
+      worker.stop();
+      this.workers.delete(id);
+    }
   }
 }
 
 type ValidationIssue =
   | {
-      type: "duplicateTaskId";
-      duplicationTaskIds: string[];
-    }
+    type: "duplicateTaskId";
+    duplicationTaskIds: string[];
+  }
   | {
-      type: "noTasksDefined";
-    };
+    type: "noTasksDefined";
+  };
 
 function validateWorkerManifest(manifest: WorkerManifest): ValidationIssue | undefined {
   const issues: ValidationIssue[] = [];

@@ -728,17 +728,32 @@ export class RunEngine {
 
         //triggerAndWait or batchTriggerAndWait
         if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
-          //this will block the parent run from continuing until this waitpoint is completed (and removed)
-          await this.waitpointSystem.blockRunWithWaitpoint({
-            runId: parentTaskRunId,
-            waitpoints: taskRun.associatedWaitpoint.id,
-            projectId: taskRun.associatedWaitpoint.projectId,
-            organizationId: environment.organization.id,
-            batch,
-            workerId,
-            runnerId,
-            tx: prisma,
-          });
+          if (batch) {
+            // Batch path: lockless insert. The parent is already EXECUTING_WITH_WAITPOINTS
+            // from blockRunWithCreatedBatch, so we only need to insert the TaskRunWaitpoint
+            // row without acquiring the parent run lock. This avoids lock contention when
+            // processing large batches with high concurrency.
+            await this.waitpointSystem.blockRunWithWaitpointLockless({
+              runId: parentTaskRunId,
+              waitpoints: taskRun.associatedWaitpoint.id,
+              projectId: taskRun.associatedWaitpoint.projectId,
+              batch,
+              tx: prisma,
+            });
+          } else {
+            // Single triggerAndWait: acquire the parent run lock to safely transition
+            // the snapshot and insert the waitpoint
+            await this.waitpointSystem.blockRunWithWaitpoint({
+              runId: parentTaskRunId,
+              waitpoints: taskRun.associatedWaitpoint.id,
+              projectId: taskRun.associatedWaitpoint.projectId,
+              organizationId: environment.organization.id,
+              batch,
+              workerId,
+              runnerId,
+              tx: prisma,
+            });
+          }
         }
 
         if (taskRun.delayUntil) {

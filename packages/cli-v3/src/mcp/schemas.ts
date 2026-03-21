@@ -138,7 +138,15 @@ export const GetRunDetailsInput = CommonRunsInput.extend({
   maxTraceLines: z
     .number()
     .int()
-    .describe("The maximum number of lines to show in the trace. Defaults to 500")
+    .describe(
+      "The maximum number of trace lines per page. Defaults to 200. Use the `cursor` parameter to fetch subsequent pages."
+    )
+    .default(200),
+  cursor: z
+    .string()
+    .describe(
+      "Pagination cursor returned from a previous get_run_details call. Pass this to fetch the next page of trace events."
+    )
     .optional(),
 });
 
@@ -200,6 +208,91 @@ export type DeployInput = z.output<typeof DeployInput>;
 export const ListDeploysInput = CommonDeployInput.extend(ApiDeploymentListParams);
 
 export type ListDeploysInput = z.output<typeof ListDeploysInput>;
+
+export const QueryInput = CommonProjectsInput.extend({
+  query: z
+    .string()
+    .describe(
+      "The TRQL query to execute. TRQL is a SQL-style language for analyzing your Trigger.dev data. Use the get_query_schema tool first to discover available tables and columns."
+    ),
+  scope: z
+    .enum(["environment", "project", "organization"])
+    .default("environment")
+    .describe(
+      "Data access scope. 'environment' (default) limits to the current environment, 'project' spans all environments, 'organization' spans all projects."
+    ),
+  period: z
+    .string()
+    .optional()
+    .describe(
+      "Time period shorthand, e.g. '1h', '7d', '30d'. Mutually exclusive with from/to."
+    ),
+  from: z
+    .string()
+    .optional()
+    .describe("Start of time range (ISO 8601). Must be paired with 'to'."),
+  to: z
+    .string()
+    .optional()
+    .describe("End of time range (ISO 8601). Must be paired with 'from'."),
+});
+
+export type QueryInput = z.output<typeof QueryInput>;
+
+export const QuerySchemaInput = CommonProjectsInput.pick({
+  projectRef: true,
+  configPath: true,
+  environment: true,
+  branch: true,
+}).extend({
+  table: z
+    .string()
+    .describe(
+      "The table name to get the schema for (e.g. 'runs', 'metrics', 'llm_metrics')."
+    ),
+});
+
+export type QuerySchemaInput = z.output<typeof QuerySchemaInput>;
+
+export const ListDashboardsInput = CommonProjectsInput.pick({
+  projectRef: true,
+  configPath: true,
+  environment: true,
+  branch: true,
+});
+
+export type ListDashboardsInput = z.output<typeof ListDashboardsInput>;
+
+export const RunDashboardQueryInput = CommonProjectsInput.extend({
+  dashboardKey: z
+    .string()
+    .describe(
+      "The dashboard key (e.g. 'overview', 'llm'). Use list_dashboards to discover available dashboards."
+    ),
+  widgetId: z
+    .string()
+    .describe(
+      "The widget ID to execute. Use list_dashboards to see available widget IDs and their queries."
+    ),
+  period: z
+    .string()
+    .optional()
+    .describe("Time period shorthand, e.g. '1h', '7d', '30d'. Defaults to 1d."),
+  from: z
+    .string()
+    .optional()
+    .describe("Start of time range (ISO 8601). Must be paired with 'to'."),
+  to: z
+    .string()
+    .optional()
+    .describe("End of time range (ISO 8601). Must be paired with 'from'."),
+  scope: z
+    .enum(["environment", "project", "organization"])
+    .default("environment")
+    .describe("Data access scope."),
+});
+
+export type RunDashboardQueryInput = z.output<typeof RunDashboardQueryInput>;
 
 export const ListPreviewBranchesInput = z.object({
   projectRef: ProjectRefSchema,

@@ -57,12 +57,12 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     );
   }
 
-  return redirect(
-    v3RunPath(
-      { slug: run.project.organization.slug },
-      { slug: run.project.slug },
-      { slug: run.runtimeEnvironment.slug },
-      { friendlyId: runParam }
-    )
+  const path = v3RunPath(
+    { slug: run.project.organization.slug },
+    { slug: run.project.slug },
+    { slug: run.runtimeEnvironment.slug },
+    { friendlyId: runParam }
   );
+
+  return redirect(path);
 }
