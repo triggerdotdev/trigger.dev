@@ -134,7 +134,9 @@ export class TriggerTaskServiceV1 extends BaseService {
 
         if (!queueSizeGuard.isWithinLimits) {
           throw new ServiceValidationError(
-            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
+            undefined,
+            "warn"
           );
         }
       }

@@ -895,6 +895,8 @@ class Worker<TCatalog extends WorkerCatalog> {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       const shouldLogError = catalogItem.logErrors ?? true;
+      const errorLogLevel =
+        error && typeof error === "object" && "logLevel" in error ? error.logLevel : undefined;
 
       const logAttributes = {
         name: this.options.name,
@@ -906,10 +908,14 @@ class Worker<TCatalog extends WorkerCatalog> {
         errorMessage,
       };
 
-      if (shouldLogError) {
-        this.logger.error(`Worker error processing item`, logAttributes);
-      } else {
+      if (!shouldLogError) {
         this.logger.info(`Worker failed to process item`, logAttributes);
+      } else if (errorLogLevel === "warn") {
+        this.logger.warn(`Worker error processing item`, logAttributes);
+      } else if (errorLogLevel === "info") {
+        this.logger.info(`Worker error processing item`, logAttributes);
+      } else {
+        this.logger.error(`Worker error processing item`, logAttributes);
       }
 
       // Attempt requeue logic.
@@ -922,13 +928,18 @@ class Worker<TCatalog extends WorkerCatalog> {
         const retryDelay = calculateNextRetryDelay(retrySettings, newAttempt);
 
         if (!retryDelay) {
-          if (shouldLogError) {
-            this.logger.error(`Worker item reached max attempts. Moving to DLQ.`, {
+          if (!shouldLogError || errorLogLevel === "info") {
+            this.logger.info(`Worker item reached max attempts. Moving to DLQ.`, {
+              ...logAttributes,
+              attempt: newAttempt,
+            });
+          } else if (errorLogLevel === "warn") {
+            this.logger.warn(`Worker item reached max attempts. Moving to DLQ.`, {
               ...logAttributes,
               attempt: newAttempt,
             });
           } else {
-            this.logger.info(`Worker item reached max attempts. Moving to DLQ.`, {
+            this.logger.error(`Worker item reached max attempts. Moving to DLQ.`, {
               ...logAttributes,
               attempt: newAttempt,
             });
