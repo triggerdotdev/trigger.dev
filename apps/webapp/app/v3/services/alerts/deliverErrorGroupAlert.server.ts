@@ -25,6 +25,7 @@ import { sendAlertEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { subtle } from "crypto";
+import { generateErrorGroupWebhookPayload } from "./errorGroupWebhook.server";
 
 type ErrorAlertClassification = "new_issue" | "regression" | "unignored";
 
@@ -183,58 +184,15 @@ export class DeliverErrorGroupAlertService {
       return;
     }
 
-    const label = this.#classificationLabel(payload.classification);
-    const errorType = payload.error.errorType || "Error";
-    const task = payload.error.taskIdentifier;
-    const envName = payload.error.environmentName;
-
-    const emoji =
-      payload.classification === "new_issue"
-        ? ":rotating_light:"
-        : payload.classification === "regression"
-          ? ":warning:"
-          : ":bell:";
+    const message = this.#buildErrorGroupSlackMessage(
+      payload,
+      errorLink,
+      channel.project.name
+    );
 
     await this.#postSlackMessage(integration, {
       channel: slackProperties.data.channelId,
-      text: `${label}: ${errorType} in ${task} [${envName}]`,
-      blocks: [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `${emoji} *${label}* in *${task}* [${envName}]`,
-          },
-        },
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: this.#wrapInCodeBlock(
-              payload.error.sampleStackTrace || payload.error.errorMessage
-            ),
-          },
-        },
-        {
-          type: "context",
-          elements: [
-            {
-              type: "mrkdwn",
-              text: `> *${task}* | ${envName} | ${channel.project.name}\n> ${payload.error.occurrenceCount} occurrences | ${this.#formatTimestamp(new Date(Number(payload.error.lastSeen)))}`,
-            },
-          ],
-        },
-        {
-          type: "actions",
-          elements: [
-            {
-              type: "button",
-              text: { type: "plain_text", text: "Investigate" },
-              url: errorLink,
-            },
-          ],
-        },
-      ],
+      ...message,
     });
   }
 
@@ -255,23 +213,9 @@ export class DeliverErrorGroupAlertService {
       return;
     }
 
-    const webhookPayload = {
-      type: "alert.error_group" as const,
+    const webhookPayload = generateErrorGroupWebhookPayload({
       classification: payload.classification,
-      error: {
-        fingerprint: payload.error.fingerprint,
-        type: payload.error.errorType,
-        message: payload.error.errorMessage,
-        stackTrace: payload.error.sampleStackTrace || undefined,
-        firstSeen: payload.error.firstSeen,
-        lastSeen: payload.error.lastSeen,
-        occurrenceCount: payload.error.occurrenceCount,
-        taskIdentifier: payload.error.taskIdentifier,
-      },
-      environment: {
-        id: payload.error.environmentId,
-        name: payload.error.environmentName,
-      },
+      error: payload.error,
       organization: {
         id: channel.project.organizationId,
         slug: channel.project.organization.slug,
@@ -279,12 +223,12 @@ export class DeliverErrorGroupAlertService {
       },
       project: {
         id: channel.project.id,
-        ref: channel.project.externalRef,
+        externalRef: channel.project.externalRef,
         slug: channel.project.slug,
         name: channel.project.name,
       },
       dashboardUrl: errorLink,
-    };
+    });
 
     const rawPayload = JSON.stringify(webhookPayload);
     const hashPayload = Buffer.from(rawPayload, "utf-8");
@@ -352,11 +296,90 @@ export class DeliverErrorGroupAlertService {
     }
   }
 
+  #buildErrorGroupSlackMessage(
+    payload: ErrorAlertPayload,
+    errorLink: string,
+    projectName: string
+  ): Pick<ChatPostMessageArguments, "text" | "blocks" | "attachments"> {
+    const label = this.#classificationLabel(payload.classification);
+    const errorType = payload.error.errorType || "Error";
+    const task = payload.error.taskIdentifier;
+    const envName = payload.error.environmentName;
+
+    return {
+      text: `${label}: ${errorType} in ${task} [${envName}]`,
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*${label} in ${task} [${envName}]*`,
+          },
+        },
+      ],
+      attachments: [
+        {
+          color: "danger",
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: this.#wrapInCodeBlock(
+                  payload.error.sampleStackTrace || payload.error.errorMessage
+                ),
+              },
+            },
+            {
+              type: "section",
+              fields: [
+                {
+                  type: "mrkdwn",
+                  text: `*Task:*\n${task}`,
+                },
+                {
+                  type: "mrkdwn",
+                  text: `*Environment:*\n${envName}`,
+                },
+                {
+                  type: "mrkdwn",
+                  text: `*Project:*\n${projectName}`,
+                },
+                {
+                  type: "mrkdwn",
+                  text: `*Occurrences:*\n${payload.error.occurrenceCount}`,
+                },
+                {
+                  type: "mrkdwn",
+                  text: `*Last seen:*\n${this.#formatTimestamp(new Date(Number(payload.error.lastSeen)))}`,
+                },
+              ],
+            },
+            {
+              type: "actions",
+              elements: [
+                {
+                  type: "button",
+                  text: { type: "plain_text", text: "Investigate" },
+                  url: errorLink,
+                  style: "primary",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+  }
+
   #wrapInCodeBlock(text: string, maxLength = 3000) {
+    const wrapperLength = 6; // ``` prefix + ``` suffix
+    const truncationSuffix = "\n\n...truncated — check dashboard for full error";
+    const innerMax = maxLength - wrapperLength;
+
     const truncated =
-      text.length > maxLength - 10
-        ? text.slice(0, maxLength - 10 - 50) +
-          "\n\ntruncated - check dashboard for complete error message"
+      text.length > innerMax
+        ? text.slice(0, innerMax - truncationSuffix.length) + truncationSuffix
         : text;
     return `\`\`\`${truncated}\`\`\``;
   }
