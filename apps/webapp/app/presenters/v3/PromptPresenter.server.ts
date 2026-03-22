@@ -124,16 +124,19 @@ export class PromptPresenter extends BasePresenter {
       return {};
     }
 
-    // Build a map of slug -> 24 hourly buckets
+    // Build a map of slug -> 24 hourly buckets (use UTC to match ClickHouse)
     const now = new Date();
-    const startHour = new Date(now);
-    startHour.setMinutes(0, 0, 0);
-    startHour.setHours(startHour.getHours() - 23);
+    const startHour = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      now.getUTCHours() - 23,
+      0, 0, 0
+    ));
 
     const bucketKeys: string[] = [];
     for (let i = 0; i < 24; i++) {
-      const h = new Date(startHour);
-      h.setHours(h.getHours() + i);
+      const h = new Date(startHour.getTime() + i * 3600_000);
       // Format to match ClickHouse's toStartOfHour output: "YYYY-MM-DD HH:MM:SS"
       bucketKeys.push(
         h.toISOString().slice(0, 13).replace("T", " ") + ":00:00"
