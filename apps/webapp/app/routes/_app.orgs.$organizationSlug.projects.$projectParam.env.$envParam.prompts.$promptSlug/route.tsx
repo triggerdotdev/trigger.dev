@@ -60,7 +60,7 @@ import { useInterval } from "~/hooks/useInterval";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
+import { PromptPresenter, type GenerationRow } from "~/presenters/v3/PromptPresenter.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { PromptService } from "~/v3/services/promptService.server";
@@ -70,6 +70,7 @@ import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { InlineCode } from "~/components/code/InlineCode";
 import { TextLink } from "~/components/primitives/TextLink";
 import { EnvironmentParamSchema, v3PromptsPath, v3RunSpanPath } from "~/utils/pathBuilder";
+import { parsePeriodToMs } from "~/utils/periods";
 import { z } from "zod";
 
 const ParamSchema = EnvironmentParamSchema.extend({
@@ -334,25 +335,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 // ─── Helpers ─────────────────────────────────────────────
-
-function parsePeriodToMs(period: string): number {
-  const match = period.match(/^(\d+)([mhdw])$/);
-  if (!match) return 7 * 24 * 60 * 60 * 1000; // default 7d
-  const [, numStr, unit] = match;
-  const num = parseInt(numStr, 10);
-  switch (unit) {
-    case "m":
-      return num * 60 * 1000;
-    case "h":
-      return num * 60 * 60 * 1000;
-    case "d":
-      return num * 24 * 60 * 60 * 1000;
-    case "w":
-      return num * 7 * 24 * 60 * 60 * 1000;
-    default:
-      return 7 * 24 * 60 * 60 * 1000;
-  }
-}
 
 type VersionData = {
   id: string;
@@ -1141,20 +1123,6 @@ function PreviewTab({
 }
 
 // ─── Generations Tab ─────────────────────────────────────
-
-type GenerationRow = {
-  run_id: string;
-  span_id: string;
-  operation_id: string;
-  task_identifier: string;
-  response_model: string;
-  prompt_version: number;
-  input_tokens: number;
-  output_tokens: number;
-  total_cost: number;
-  duration_ms: number;
-  start_time: string;
-};
 
 function GenerationsTab({
   promptSlug,

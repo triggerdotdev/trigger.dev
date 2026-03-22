@@ -1,3 +1,4 @@
+import { rec, str, num, parseProviderMetadata, extractTelemetryMetadata } from "./aiHelpers";
 import type { AISpanData, DisplayItem } from "./types";
 
 /**
@@ -115,22 +116,6 @@ export function extractAISummarySpanData(
 }
 
 // ---------------------------------------------------------------------------
-// Primitive helpers
-// ---------------------------------------------------------------------------
-
-function rec(v: unknown): Record<string, unknown> {
-  return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
-}
-
-function str(v: unknown): string | undefined {
-  return typeof v === "string" ? v : undefined;
-}
-
-function num(v: unknown): number | undefined {
-  return typeof v === "number" ? v : undefined;
-}
-
-// ---------------------------------------------------------------------------
 // Prompt parsing
 // ---------------------------------------------------------------------------
 
@@ -208,59 +193,3 @@ function extractMessageContent(content: unknown): string | undefined {
   return undefined;
 }
 
-// ---------------------------------------------------------------------------
-// Provider metadata
-// ---------------------------------------------------------------------------
-
-function parseProviderMetadata(
-  raw: unknown
-): { serviceTier?: string; resolvedProvider?: string; responseId?: string } | undefined {
-  const jsonStr = str(raw);
-  if (!jsonStr) return undefined;
-
-  try {
-    const parsed = JSON.parse(jsonStr) as Record<string, any>;
-    if (!parsed || typeof parsed !== "object") return undefined;
-
-    let serviceTier: string | undefined;
-    let responseId: string | undefined;
-
-    // OpenAI
-    if (parsed.openai) {
-      serviceTier = parsed.openai.serviceTier;
-      responseId = parsed.openai.responseId;
-    }
-
-    // Anthropic
-    if (parsed.anthropic?.usage?.service_tier) {
-      serviceTier = parsed.anthropic.usage.service_tier;
-    }
-
-    return serviceTier || responseId
-      ? { serviceTier, responseId }
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Telemetry metadata
-// ---------------------------------------------------------------------------
-
-function extractTelemetryMetadata(
-  metadata: unknown
-): Record<string, string> | undefined {
-  if (!metadata || typeof metadata !== "object") return undefined;
-
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(metadata as Record<string, unknown>)) {
-    // Skip prompt metadata (handled separately) and non-string values
-    if (key === "prompt") continue;
-    if (typeof value === "string") {
-      result[key] = value;
-    }
-  }
-
-  return Object.keys(result).length > 0 ? result : undefined;
-}

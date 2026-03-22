@@ -3,6 +3,7 @@ import { json } from "@remix-run/node";
 import { z } from "zod";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { parsePeriodToMs } from "~/utils/periods";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
@@ -18,25 +19,6 @@ export type GenerationsResponse = {
   generations: GenerationRow[];
   pagination: GenerationsPagination;
 };
-
-function parsePeriodToMs(period: string): number {
-  const match = period.match(/^(\d+)([mhdw])$/);
-  if (!match) return 7 * 24 * 60 * 60 * 1000;
-  const [, numStr, unit] = match;
-  const num = parseInt(numStr, 10);
-  switch (unit) {
-    case "m":
-      return num * 60 * 1000;
-    case "h":
-      return num * 60 * 60 * 1000;
-    case "d":
-      return num * 24 * 60 * 60 * 1000;
-    case "w":
-      return num * 7 * 24 * 60 * 60 * 1000;
-    default:
-      return 7 * 24 * 60 * 60 * 1000;
-  }
-}
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

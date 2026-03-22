@@ -1,6 +1,8 @@
 import { Header3 } from "~/components/primitives/Headers";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
+import { formatDuration, tryPrettyJson } from "./aiHelpers";
+import { SpanMetricRow as MetricRow } from "./SpanMetricRow";
 
 export type AIToolCallData = {
   toolName: string;
@@ -72,27 +74,3 @@ export function AIToolCallSpanDetails({ data }: { data: AIToolCallData }) {
   );
 }
 
-function MetricRow({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="grid h-7 grid-cols-[1fr_auto] items-center gap-4 rounded-sm px-1.5 transition odd:bg-charcoal-750/40 @[28rem]:grid-cols-[8rem_1fr] hover:bg-white/[0.04]">
-      <span className="text-text-dimmed">{label}</span>
-      <span className="text-right text-text-bright @[28rem]:text-left">{value}</span>
-    </div>
-  );
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  const mins = Math.floor(ms / 60_000);
-  const secs = ((ms % 60_000) / 1000).toFixed(0);
-  return `${mins}m ${secs}s`;
-}
-
-function tryPrettyJson(value: string): string {
-  try {
-    return JSON.stringify(JSON.parse(value), null, 2);
-  } catch {
-    return value;
-  }
-}
