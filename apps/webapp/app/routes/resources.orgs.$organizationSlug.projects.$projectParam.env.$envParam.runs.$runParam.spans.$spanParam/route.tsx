@@ -258,7 +258,8 @@ function SpanBody({
     span.entity?.type === "ai-generation" ||
     span.entity?.type === "ai-summary" ||
     span.entity?.type === "ai-tool-call" ||
-    span.entity?.type === "ai-embed";
+    span.entity?.type === "ai-embed" ||
+    span.entity?.type === "prompt";
 
   return (
     <div className={cn(
