@@ -780,40 +780,44 @@ async function createWorkerPrompts(
 
       const nextVersion = (latestVersion?.version ?? 0) + 1;
 
-      // Remove "latest" label from all existing versions
-      if (latestVersion) {
-        await prisma.$executeRaw`
-          UPDATE "prompt_versions"
-          SET "labels" = array_remove("labels", 'latest')
-          WHERE "promptId" = ${prompt.id} AND 'latest' = ANY("labels")
-        `;
-      }
-
       // Determine labels for the new version.
       // Deploys always move "current" to the new code version. If a dashboard
       // override exists, it sits on top via the "override" label and the API
       // serves that instead — so "current" movement is safe.
       const labels = ["latest", "current"];
 
-      // Remove "current" from any existing version
-      await prisma.$executeRaw`
-        UPDATE "prompt_versions"
-        SET "labels" = array_remove("labels", 'current')
-        WHERE "promptId" = ${prompt.id} AND 'current' = ANY("labels")
-      `;
+      // Wrap label removal + version creation in a transaction so labels
+      // aren't stripped if the create fails (e.g. concurrent deploy race).
+      await prisma.$transaction(async (tx) => {
+        // Remove "latest" label from all existing versions
+        if (latestVersion) {
+          await tx.$executeRaw`
+            UPDATE "prompt_versions"
+            SET "labels" = array_remove("labels", 'latest')
+            WHERE "promptId" = ${prompt.id} AND 'latest' = ANY("labels")
+          `;
+        }
 
-      await prisma.promptVersion.create({
-        data: {
-          promptId: prompt.id,
-          version: nextVersion,
-          textContent: contentString,
-          model: promptResource.model,
-          config: promptResource.config as any,
-          source: "code",
-          contentHash,
-          labels,
-          workerId: worker.id,
-        },
+        // Remove "current" from any existing version
+        await tx.$executeRaw`
+          UPDATE "prompt_versions"
+          SET "labels" = array_remove("labels", 'current')
+          WHERE "promptId" = ${prompt.id} AND 'current' = ANY("labels")
+        `;
+
+        await tx.promptVersion.create({
+          data: {
+            promptId: prompt.id,
+            version: nextVersion,
+            textContent: contentString,
+            model: promptResource.model,
+            config: promptResource.config as any,
+            source: "code",
+            contentHash,
+            labels,
+            workerId: worker.id,
+          },
+        });
       });
 
       logger.debug("Registered prompt version", {
