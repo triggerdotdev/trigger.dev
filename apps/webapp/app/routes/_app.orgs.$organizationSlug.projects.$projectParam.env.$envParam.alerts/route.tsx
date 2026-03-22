@@ -567,6 +567,8 @@ export function alertTypeTitle(alertType: ProjectAlertType): string {
       return "Deployment failure";
     case "DEPLOYMENT_SUCCESS":
       return "Deployment success";
+    case "ERROR_GROUP":
+      return "Error group";
     default: {
       throw new Error(`Unknown alertType: ${alertType}`);
     }
