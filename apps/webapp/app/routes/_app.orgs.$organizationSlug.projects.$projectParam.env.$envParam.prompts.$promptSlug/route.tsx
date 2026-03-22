@@ -731,7 +731,7 @@ export default function PromptDetailPage() {
         open={overrideDialogOpen}
         onOpenChange={setOverrideDialogOpen}
         prompt={prompt}
-        content={content}
+        content={overrideVersion ? getVersionContent(versions.find((v) => v.id === overrideVersion.id) ?? { textContent: null }) : content}
         isEditingOverride={!!overrideVersion}
         currentOverrideModel={overrideVersion ? versions.find((v) => v.id === overrideVersion.id)?.model ?? null : null}
         onSave={(textContent, commitMessage, model) => {
