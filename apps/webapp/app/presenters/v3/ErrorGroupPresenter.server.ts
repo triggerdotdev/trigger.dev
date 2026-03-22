@@ -130,8 +130,9 @@ export class ErrorGroupPresenter extends BasePresenter {
       defaultPeriod: "7d",
     });
 
-    const [summary, affectedVersions, runList, stateRow] = await Promise.all([
-      this.getSummary(organizationId, projectId, environmentId, fingerprint),
+    const summary = await this.getSummary(organizationId, projectId, environmentId, fingerprint);
+
+    const [affectedVersions, runList, stateRow] = await Promise.all([
       this.getAffectedVersions(organizationId, projectId, environmentId, fingerprint),
       this.getRunList(organizationId, environmentId, {
         userId,
@@ -144,7 +145,7 @@ export class ErrorGroupPresenter extends BasePresenter {
         cursor,
         direction,
       }),
-      this.getState(environmentId, fingerprint),
+      this.getState(environmentId, summary?.taskIdentifier, fingerprint),
     ]);
 
     if (summary) {
@@ -323,11 +324,13 @@ export class ErrorGroupPresenter extends BasePresenter {
 
   private async getState(
     environmentId: string,
+    taskIdentifier: string | undefined,
     fingerprint: string
   ): Promise<ErrorGroupState | null> {
     const row = await this.replica.errorGroupState.findFirst({
       where: {
         environmentId,
+        ...(taskIdentifier ? { taskIdentifier } : {}),
         errorFingerprint: fingerprint,
       },
       select: {
