@@ -124,7 +124,12 @@ export function listPrompts(
 ): Promise<ListPromptsResponseBody> {
   const apiClient = apiClientManager.clientOrThrow();
   return apiClient.listPrompts({
-    ...promptSpanOptions("prompts.list()", "all"),
+    tracer,
+    name: "prompts.list()",
+    icon: "tabler-file-text-ai",
+    attributes: {
+      [SemanticInternalAttributes.STYLE_ICON]: "tabler-file-text-ai",
+    },
     onResponseBody: (body, span) => {
       span.setAttribute("prompt.count", body.data.length);
     },
