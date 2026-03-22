@@ -48,10 +48,14 @@ export class PromptService extends BaseService {
     }
   ) {
     const contentHash = createHash("sha256").update(data.textContent).digest("hex").slice(0, 16);
-    const nextVersion = await this.#getNextVersionNumber(promptId);
 
-    // Remove any existing override, then create new — wraps in transaction
-    await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
+      const latest = await tx.promptVersion.findFirst({
+        where: { promptId },
+        orderBy: { version: "desc" },
+      });
+      const nextVersion = (latest?.version ?? 0) + 1;
+
       await tx.$executeRaw`
         UPDATE "prompt_versions"
         SET "labels" = array_remove("labels", 'override')
@@ -71,9 +75,11 @@ export class PromptService extends BaseService {
           createdBy: data.createdBy,
         },
       });
+
+      return { version: nextVersion };
     });
 
-    return { version: nextVersion };
+    return result;
   }
 
   async updateOverride(
@@ -127,8 +133,18 @@ export class PromptService extends BaseService {
       );
     }
 
-    await this.#removeLabel(promptId, "override");
-    await this.#addLabel(versionId, "override");
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "prompt_versions"
+        SET "labels" = array_remove("labels", 'override')
+        WHERE "promptId" = ${promptId} AND 'override' = ANY("labels")
+      `;
+      await tx.$executeRaw`
+        UPDATE "prompt_versions"
+        SET "labels" = array_append("labels", 'override')
+        WHERE "id" = ${versionId} AND NOT ('override' = ANY("labels"))
+      `;
+    });
   }
 
   async #removeLabel(promptId: string, label: string) {
