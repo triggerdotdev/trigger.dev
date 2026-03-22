@@ -159,19 +159,4 @@ export class PromptService extends BaseService {
     `;
   }
 
-  async #addLabel(versionId: string, label: string) {
-    await this._prisma.$executeRaw`
-      UPDATE "prompt_versions"
-      SET "labels" = array_append("labels", ${label})
-      WHERE "id" = ${versionId} AND NOT (${label} = ANY("labels"))
-    `;
-  }
-
-  async #getNextVersionNumber(promptId: string): Promise<number> {
-    const latest = await this._prisma.promptVersion.findFirst({
-      where: { promptId },
-      orderBy: { version: "desc" },
-    });
-    return (latest?.version ?? 0) + 1;
-  }
 }
