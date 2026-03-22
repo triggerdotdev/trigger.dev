@@ -77,6 +77,8 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   responseModels?: string[];
   /** Filter to specific prompt slugs */
   promptSlugs?: string[];
+  /** Filter to specific prompt versions */
+  promptVersions?: number[];
   /** Filter to specific operations (e.g. ai.generateText.doGenerate) */
   operations?: string[];
   /** Filter to specific providers (e.g. openai.responses) */
@@ -137,6 +139,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     queues,
     responseModels,
     promptSlugs,
+    promptVersions,
     operations,
     providers,
     history,
@@ -228,6 +231,10 @@ export async function executeQuery<TOut extends z.ZodSchema>(
         : undefined,
     prompt_slug:
       promptSlugs && promptSlugs.length > 0 ? { op: "in", values: promptSlugs } : undefined,
+    prompt_version:
+      promptVersions && promptVersions.length > 0
+        ? { op: "in", values: promptVersions }
+        : undefined,
     operation_id:
       operations && operations.length > 0 ? { op: "in", values: operations } : undefined,
     gen_ai_system:

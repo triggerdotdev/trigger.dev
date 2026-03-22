@@ -1530,9 +1530,6 @@ function MetricsTab({
   const operations = filterValues("operations").filter((v) => v !== "");
   const providers = filterValues("providers").filter((v) => v !== "");
 
-  const versionFilter =
-    versionFilters.length > 0 ? ` AND prompt_version IN (${versionFilters.join(",")})` : "";
-
   const widgetProps = {
     organizationId,
     projectId,
@@ -1542,6 +1539,7 @@ function MetricsTab({
     from,
     to,
     promptSlugs: [prompt.slug],
+    promptVersions: versionFilters.length > 0 ? versionFilters : undefined,
     responseModels: models.length > 0 ? models : undefined,
     operations: operations.length > 0 ? operations : undefined,
     providers: providers.length > 0 ? providers : undefined,
@@ -1555,7 +1553,7 @@ function MetricsTab({
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-generations`}
             title="Total"
-            query={`SELECT count() AS generations FROM llm_metrics WHERE 1=1${versionFilter}`}
+            query={`SELECT count() AS generations FROM llm_metrics WHERE 1=1`}
             config={{
               type: "bignumber",
               column: "generations",
@@ -1569,7 +1567,7 @@ function MetricsTab({
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-tokens`}
             title="Avg input tokens"
-            query={`SELECT round(avg(input_tokens)) AS avg_input FROM llm_metrics WHERE 1=1${versionFilter}`}
+            query={`SELECT round(avg(input_tokens)) AS avg_input FROM llm_metrics WHERE 1=1`}
             config={{
               type: "bignumber",
               column: "avg_input",
@@ -1583,7 +1581,7 @@ function MetricsTab({
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-cost`}
             title="Avg input cost"
-            query={`SELECT avg(input_cost) AS avg_cost FROM llm_metrics WHERE 1=1${versionFilter}`}
+            query={`SELECT avg(input_cost) AS avg_cost FROM llm_metrics WHERE 1=1`}
             config={{
               type: "bignumber",
               column: "avg_cost",
@@ -1597,7 +1595,7 @@ function MetricsTab({
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-latency`}
             title="Avg latency"
-            query={`SELECT round(avg(duration) / 1000000, 1) AS avg_ms FROM llm_metrics WHERE 1=1${versionFilter}`}
+            query={`SELECT round(avg(duration) / 1000000, 1) AS avg_ms FROM llm_metrics WHERE 1=1`}
             config={{
               type: "bignumber",
               column: "avg_ms",
@@ -1651,9 +1649,6 @@ function VersionPerformanceSection({
   const operations = filterValues("operations").filter((v) => v !== "");
   const providers = filterValues("providers").filter((v) => v !== "");
 
-  const versionFilter =
-    versionFilters.length > 0 ? ` AND prompt_version IN (${versionFilters.join(",")})` : "";
-
   const widgetProps = {
     organizationId,
     projectId,
@@ -1663,6 +1658,7 @@ function VersionPerformanceSection({
     from,
     to,
     promptSlugs: [promptSlug],
+    promptVersions: versionFilters.length > 0 ? versionFilters : undefined,
     responseModels: models.length > 0 ? models : undefined,
     operations: operations.length > 0 ? operations : undefined,
     providers: providers.length > 0 ? providers : undefined,
@@ -1670,16 +1666,13 @@ function VersionPerformanceSection({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-      </div>
-
       <div className="grid grid-cols-2 gap-3">
         {/* Row 1: Latency + TTFC */}
         <div className="h-96">
           <MetricWidget
-            widgetKey={`prompt-${promptSlug}-perf-latency-${versionFilters.join(",")}`}
+            widgetKey={`prompt-${promptSlug}-perf-latency`}
             title="Latency p50 / p95"
-            query={`SELECT timeBucket(), round(quantile(0.5)(duration) / 1000000, 1) AS p50, round(quantile(0.95)(duration) / 1000000, 1) AS p95 FROM llm_metrics WHERE 1=1${versionFilter} GROUP BY timeBucket ORDER BY timeBucket`}
+            query={`SELECT timeBucket(), round(quantile(0.5)(duration) / 1000000, 1) AS p50, round(quantile(0.95)(duration) / 1000000, 1) AS p95 FROM llm_metrics WHERE 1=1 GROUP BY timeBucket ORDER BY timeBucket`}
             config={{
               type: "chart",
               chartType: "line",
@@ -1696,9 +1689,9 @@ function VersionPerformanceSection({
         </div>
         <div className="h-96">
           <MetricWidget
-            widgetKey={`prompt-${promptSlug}-perf-ttfc-${versionFilters.join(",")}`}
+            widgetKey={`prompt-${promptSlug}-perf-ttfc`}
             title="TTFC p50 / p95"
-            query={`SELECT timeBucket(), round(quantile(0.5)(ms_to_first_chunk), 1) AS p50, round(quantile(0.95)(ms_to_first_chunk), 1) AS p95 FROM llm_metrics WHERE ms_to_first_chunk > 0${versionFilter} GROUP BY timeBucket ORDER BY timeBucket`}
+            query={`SELECT timeBucket(), round(quantile(0.5)(ms_to_first_chunk), 1) AS p50, round(quantile(0.95)(ms_to_first_chunk), 1) AS p95 FROM llm_metrics WHERE ms_to_first_chunk > 0 GROUP BY timeBucket ORDER BY timeBucket`}
             config={{
               type: "chart",
               chartType: "line",
@@ -1716,9 +1709,9 @@ function VersionPerformanceSection({
         {/* Row 2: Input tokens + Input cost */}
         <div className="h-96">
           <MetricWidget
-            widgetKey={`prompt-${promptSlug}-perf-input-tokens-${versionFilters.join(",")}`}
+            widgetKey={`prompt-${promptSlug}-perf-input-tokens`}
             title="Input tokens p50 / p95"
-            query={`SELECT timeBucket(), round(quantile(0.5)(input_tokens)) AS p50, round(quantile(0.95)(input_tokens)) AS p95 FROM llm_metrics WHERE 1=1${versionFilter} GROUP BY timeBucket ORDER BY timeBucket`}
+            query={`SELECT timeBucket(), round(quantile(0.5)(input_tokens)) AS p50, round(quantile(0.95)(input_tokens)) AS p95 FROM llm_metrics WHERE 1=1 GROUP BY timeBucket ORDER BY timeBucket`}
             config={{
               type: "chart",
               chartType: "line",
@@ -1735,9 +1728,9 @@ function VersionPerformanceSection({
         </div>
         <div className="h-96">
           <MetricWidget
-            widgetKey={`prompt-${promptSlug}-perf-input-cost-${versionFilters.join(",")}`}
+            widgetKey={`prompt-${promptSlug}-perf-input-cost`}
             title="Input cost per 1k tokens (p50 / p95)"
-            query={`SELECT timeBucket(), prettyFormat(quantile(0.5)(input_cost / input_tokens * 1000), 'costInDollars') AS p50, prettyFormat(quantile(0.95)(input_cost / input_tokens * 1000), 'costInDollars') AS p95 FROM llm_metrics WHERE input_tokens > 0${versionFilter} GROUP BY timeBucket ORDER BY timeBucket`}
+            query={`SELECT timeBucket(), prettyFormat(quantile(0.5)(input_cost / input_tokens * 1000), 'costInDollars') AS p50, prettyFormat(quantile(0.95)(input_cost / input_tokens * 1000), 'costInDollars') AS p95 FROM llm_metrics WHERE input_tokens > 0 GROUP BY timeBucket ORDER BY timeBucket`}
             config={{
               type: "chart",
               chartType: "line",
@@ -1755,9 +1748,9 @@ function VersionPerformanceSection({
         {/* Row 3: Output tokens + Output cost */}
         <div className="h-96">
           <MetricWidget
-            widgetKey={`prompt-${promptSlug}-perf-output-tokens-${versionFilters.join(",")}`}
+            widgetKey={`prompt-${promptSlug}-perf-output-tokens`}
             title="Output tokens p50 / p95"
-            query={`SELECT timeBucket(), round(quantile(0.5)(output_tokens)) AS p50, round(quantile(0.95)(output_tokens)) AS p95 FROM llm_metrics WHERE 1=1${versionFilter} GROUP BY timeBucket ORDER BY timeBucket`}
+            query={`SELECT timeBucket(), round(quantile(0.5)(output_tokens)) AS p50, round(quantile(0.95)(output_tokens)) AS p95 FROM llm_metrics WHERE 1=1 GROUP BY timeBucket ORDER BY timeBucket`}
             config={{
               type: "chart",
               chartType: "line",
@@ -1774,9 +1767,9 @@ function VersionPerformanceSection({
         </div>
         <div className="h-96">
           <MetricWidget
-            widgetKey={`prompt-${promptSlug}-perf-output-cost-${versionFilters.join(",")}`}
+            widgetKey={`prompt-${promptSlug}-perf-output-cost`}
             title="Output cost per 1k tokens (p50 / p95)"
-            query={`SELECT timeBucket(), prettyFormat(quantile(0.5)(output_cost / output_tokens * 1000), 'costInDollars') AS p50, prettyFormat(quantile(0.95)(output_cost / output_tokens * 1000), 'costInDollars') AS p95 FROM llm_metrics WHERE output_tokens > 0${versionFilter} GROUP BY timeBucket ORDER BY timeBucket`}
+            query={`SELECT timeBucket(), prettyFormat(quantile(0.5)(output_cost / output_tokens * 1000), 'costInDollars') AS p50, prettyFormat(quantile(0.95)(output_cost / output_tokens * 1000), 'costInDollars') AS p95 FROM llm_metrics WHERE output_tokens > 0 GROUP BY timeBucket ORDER BY timeBucket`}
             config={{
               type: "chart",
               chartType: "line",
@@ -1795,9 +1788,9 @@ function VersionPerformanceSection({
 
       <div className="h-48">
         <MetricWidget
-          widgetKey={`prompt-${promptSlug}-perf-versions-table-${versionFilters.join(",")}`}
+          widgetKey={`prompt-${promptSlug}-perf-versions-table`}
           title="Version summary"
-          query={`SELECT prompt_version, count() AS calls, round(avg(input_tokens)) AS avg_input_tokens, round(avg(output_tokens)) AS avg_output_tokens, prettyFormat(avg(total_cost), 'costInDollars') AS avg_total_cost, round(quantile(0.5)(duration) / 1000000, 1) AS p50_latency_ms, round(quantile(0.95)(duration) / 1000000, 1) AS p95_latency_ms FROM llm_metrics WHERE 1=1${versionFilter} GROUP BY prompt_version ORDER BY prompt_version DESC`}
+          query={`SELECT prompt_version, count() AS calls, round(avg(input_tokens)) AS avg_input_tokens, round(avg(output_tokens)) AS avg_output_tokens, prettyFormat(avg(total_cost), 'costInDollars') AS avg_total_cost, round(quantile(0.5)(duration) / 1000000, 1) AS p50_latency_ms, round(quantile(0.95)(duration) / 1000000, 1) AS p95_latency_ms FROM llm_metrics WHERE 1=1 GROUP BY prompt_version ORDER BY prompt_version DESC`}
           config={{ type: "table", prettyFormatting: true, sorting: [] }}
           {...widgetProps}
         />
