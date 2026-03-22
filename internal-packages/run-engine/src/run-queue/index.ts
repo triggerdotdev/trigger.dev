@@ -2492,7 +2492,7 @@ export class RunQueue {
       return;
     }
 
-    this.logger.info("Scanning concurrency sets for completed runs");
+    this.logger.debug("Scanning concurrency sets for completed runs");
 
     const stats = {
       streamCallbacks: 0,
