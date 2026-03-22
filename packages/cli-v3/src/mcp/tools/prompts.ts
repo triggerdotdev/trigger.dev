@@ -44,23 +44,6 @@ const ReactivateOverrideInput = CommonProjectsInput.extend({
 });
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-async function fetchPromptApi(
-  apiClient: { fetchClient: typeof fetch; baseUrl: string },
-  path: string,
-  options?: RequestInit
-) {
-  const res = await apiClient.fetchClient(`${apiClient.baseUrl}/api/v1/prompts${path}`, options);
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error ?? `API error ${res.status}`);
-  }
-  return data;
-}
-
-// ---------------------------------------------------------------------------
 // Read tools
 // ---------------------------------------------------------------------------
 
@@ -88,28 +71,17 @@ export const listPromptsTool = {
       branch: input.branch,
     });
 
-    const result = await fetchPromptApi(apiClient, "");
+    const result = await apiClient.listPrompts();
 
-    const prompts = result.data as Array<{
-      slug: string;
-      friendlyId: string;
-      description?: string;
-      defaultModel?: string;
-      currentVersion: number | null;
-      hasOverride: boolean;
-      versionCount: number;
-      tags: string[];
-    }>;
-
-    if (prompts.length === 0) {
+    if (result.data.length === 0) {
       return { content: [{ type: "text" as const, text: "No prompts found." }] };
     }
 
     const lines = ["## Prompts\n"];
-    for (const p of prompts) {
+    for (const p of result.data) {
       const status = p.hasOverride ? " (override active)" : "";
       const version = p.currentVersion != null ? `v${p.currentVersion}` : "no current";
-      lines.push(`- **${p.slug}** — ${version}${status} · ${p.versionCount} versions`);
+      lines.push(`- **${p.slug}** — ${version}${status}`);
       if (p.description) lines.push(`  ${p.description}`);
       if (p.defaultModel) lines.push(`  Model: ${p.defaultModel}`);
     }
@@ -142,24 +114,14 @@ export const getPromptVersionsTool = {
       branch: input.branch,
     });
 
-    const result = await fetchPromptApi(apiClient, `/${input.slug}/versions`);
+    const result = await apiClient.listPromptVersions(input.slug);
 
-    const versions = result.data as Array<{
-      version: number;
-      labels: string[];
-      source: string;
-      model?: string;
-      textContent?: string;
-      commitMessage?: string;
-      createdAt: string;
-    }>;
-
-    if (versions.length === 0) {
+    if (result.data.length === 0) {
       return { content: [{ type: "text" as const, text: "No versions found." }] };
     }
 
     const lines = [`## Versions for "${input.slug}"\n`];
-    for (const v of versions) {
+    for (const v of result.data) {
       const labels = v.labels.length > 0 ? ` [${v.labels.join(", ")}]` : "";
       const model = v.model ? ` · ${v.model}` : "";
       const msg = v.commitMessage ? ` — "${v.commitMessage}"` : "";
@@ -203,11 +165,7 @@ export const promotePromptVersionTool = {
       branch: input.branch,
     });
 
-    await fetchPromptApi(apiClient, `/${input.slug}/promote`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ version: input.version }),
-    });
+    await apiClient.promotePromptVersion(input.slug, { version: input.version });
 
     return {
       content: [
@@ -244,15 +202,11 @@ export const createPromptOverrideTool = {
       branch: input.branch,
     });
 
-    const result = await fetchPromptApi(apiClient, `/${input.slug}/override`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        textContent: input.textContent,
-        model: input.model,
-        commitMessage: input.commitMessage,
-        source: "mcp",
-      }),
+    const result = await apiClient.createPromptOverride(input.slug, {
+      textContent: input.textContent,
+      model: input.model,
+      commitMessage: input.commitMessage,
+      source: "mcp",
     });
 
     return {
@@ -290,14 +244,10 @@ export const updatePromptOverrideTool = {
       branch: input.branch,
     });
 
-    await fetchPromptApi(apiClient, `/${input.slug}/override`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        textContent: input.textContent,
-        model: input.model,
-        commitMessage: input.commitMessage,
-      }),
+    await apiClient.updatePromptOverride(input.slug, {
+      textContent: input.textContent,
+      model: input.model,
+      commitMessage: input.commitMessage,
     });
 
     return {
@@ -332,9 +282,7 @@ export const removePromptOverrideTool = {
       branch: input.branch,
     });
 
-    await fetchPromptApi(apiClient, `/${input.slug}/override`, {
-      method: "DELETE",
-    });
+    await apiClient.removePromptOverride(input.slug);
 
     return {
       content: [
@@ -368,11 +316,7 @@ export const reactivatePromptOverrideTool = {
       branch: input.branch,
     });
 
-    await fetchPromptApi(apiClient, `/${input.slug}/override/reactivate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ version: input.version }),
-    });
+    await apiClient.reactivatePromptOverride(input.slug, { version: input.version });
 
     return {
       content: [
