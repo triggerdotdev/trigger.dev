@@ -10,8 +10,11 @@ import {
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 
-type PromptOptions<TVariables extends TaskSchema | undefined = undefined> = {
-  id: string;
+type PromptOptions<
+  TIdentifier extends string = string,
+  TVariables extends TaskSchema | undefined = undefined,
+> = {
+  id: TIdentifier;
   description?: string;
   model?: string;
   config?: Record<string, unknown>;
@@ -37,13 +40,29 @@ type ResolvedPrompt = {
 
 export type { PromptOptions, ResolvedPrompt };
 
-export type PromptHandle<TVariables extends TaskSchema | undefined = undefined> = {
-  id: string;
+export type PromptHandle<
+  TIdentifier extends string = string,
+  TVariables extends TaskSchema | undefined = undefined,
+> = {
+  id: TIdentifier;
   resolve(
     variables: inferSchemaIn<TVariables>,
     options?: { label?: string; version?: number }
   ): Promise<ResolvedPrompt>;
 };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyPromptHandle = PromptHandle<string, any>;
+
+/** Extract the identifier (id literal type) from a PromptHandle */
+export type PromptIdentifier<T extends AnyPromptHandle> = T extends PromptHandle<infer TId, any>
+  ? TId
+  : string;
+
+/** Extract the variables input type from a PromptHandle */
+export type PromptVariables<T extends AnyPromptHandle> = T extends PromptHandle<any, infer TVariables>
+  ? inferSchemaIn<TVariables>
+  : Record<string, unknown>;
 
 /**
  * Compile a Mustache-style template by substituting `{{variable}}` placeholders.
@@ -101,7 +120,7 @@ function makeToAISDKTelemetry(
 }
 
 function resolveLocally(
-  options: PromptOptions<any>,
+  options: PromptOptions<any, any>,
   variables: Record<string, unknown>
 ): ResolvedPrompt {
   const inputJson = Object.keys(variables).length > 0 ? JSON.stringify(variables) : undefined;
@@ -118,9 +137,12 @@ function resolveLocally(
   };
 }
 
-export function definePrompt<TVariables extends TaskSchema | undefined = undefined>(
-  options: PromptOptions<TVariables>
-): PromptHandle<TVariables> {
+export function definePrompt<
+  TIdentifier extends string,
+  TVariables extends TaskSchema | undefined = undefined,
+>(
+  options: PromptOptions<TIdentifier, TVariables>
+): PromptHandle<TIdentifier, TVariables> {
   const parseVariables = options.variables
     ? getSchemaParseFn(options.variables)
     : undefined;

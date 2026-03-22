@@ -10,7 +10,7 @@ import {
   type PromptOverrideCreatedResponseBody,
   type UpdatePromptOverrideRequestBody,
 } from "@trigger.dev/core/v3";
-import type { ResolvedPrompt } from "./prompt.js";
+import type { AnyPromptHandle, PromptIdentifier, PromptVariables, ResolvedPrompt } from "./prompt.js";
 import { tracer } from "./tracer.js";
 
 function promptSpanOptions(name: string, slug: string) {
@@ -59,9 +59,9 @@ function makeToAISDKTelemetry(
  * compiled text. Works both inside and outside of a task context — requires
  * an API client to be configured (via `configure()` or task runtime).
  */
-export async function resolvePrompt(
-  slug: string,
-  variables?: Record<string, unknown>,
+export async function resolvePrompt<TPromptHandle extends AnyPromptHandle = AnyPromptHandle>(
+  slug: PromptIdentifier<TPromptHandle>,
+  variables?: PromptVariables<TPromptHandle>,
   options?: { label?: string; version?: number; requestOptions?: ApiRequestOptions }
 ): Promise<ResolvedPrompt> {
   const apiClient = apiClientManager.clientOrThrow();

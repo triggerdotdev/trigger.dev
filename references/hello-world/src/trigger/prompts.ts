@@ -302,8 +302,12 @@ export const testPromptManagement = task({
     const versions = await prompts.versions(slug);
     logger.info("Listed versions", { slug, count: versions.data.length });
 
-    // Resolve the prompt (standalone, not via PromptHandle)
-    const resolved = await prompts.resolve(slug, { customerName: "SDK Test", plan: "Enterprise", issue: "Testing management API" });
+    // Resolve the prompt (standalone, typesafe via generic)
+    const resolved = await prompts.resolve<typeof supportPrompt>("customer-support", {
+      customerName: "SDK Test",
+      plan: "Enterprise",
+      issue: "Testing management API",
+    });
     logger.info("Resolved prompt standalone", { version: resolved.version, textLength: resolved.text.length });
 
     // Create an override
@@ -315,7 +319,11 @@ export const testPromptManagement = task({
     logger.info("Created override", { version: override.version });
 
     // Resolve again — should get the override
-    const resolvedOverride = await prompts.resolve(slug, { customerName: "SDK Test", plan: "Enterprise", issue: "Testing override" });
+    const resolvedOverride = await prompts.resolve<typeof supportPrompt>("customer-support", {
+      customerName: "SDK Test",
+      plan: "Enterprise",
+      issue: "Testing override",
+    });
     logger.info("Resolved with override", { version: resolvedOverride.version, text: resolvedOverride.text });
 
     // Update the override
