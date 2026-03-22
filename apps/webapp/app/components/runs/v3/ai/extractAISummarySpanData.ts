@@ -223,7 +223,6 @@ function parseProviderMetadata(
     if (!parsed || typeof parsed !== "object") return undefined;
 
     let serviceTier: string | undefined;
-    let resolvedProvider: string | undefined;
     let responseId: string | undefined;
 
     // OpenAI
@@ -237,8 +236,8 @@ function parseProviderMetadata(
       serviceTier = parsed.anthropic.usage.service_tier;
     }
 
-    return serviceTier || resolvedProvider || responseId
-      ? { serviceTier, resolvedProvider, responseId }
+    return serviceTier || responseId
+      ? { serviceTier, responseId }
       : undefined;
   } catch {
     return undefined;

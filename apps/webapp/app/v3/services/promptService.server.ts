@@ -4,23 +4,37 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 
 export class PromptService extends BaseService {
   async promoteVersion(promptId: string, versionId: string, options?: { sourceGuard?: boolean }) {
-    if (options?.sourceGuard) {
-      const target = await this._prisma.promptVersion.findUnique({
-        where: { id: versionId },
-      });
-      if (!target) {
-        throw new ServiceValidationError("Version not found", 404);
-      }
-      if (target.source !== "code") {
-        throw new ServiceValidationError(
-          "Only code-sourced versions can be promoted. Use the override API instead.",
-          400
-        );
-      }
+    const target = await this._prisma.promptVersion.findUnique({
+      where: { id: versionId },
+    });
+
+    if (!target) {
+      throw new ServiceValidationError("Version not found", 404);
     }
 
-    await this.#removeLabel(promptId, "current");
-    await this.#addLabel(versionId, "current");
+    if (target.promptId !== promptId) {
+      throw new ServiceValidationError("Version does not belong to this prompt", 400);
+    }
+
+    if (options?.sourceGuard && target.source !== "code") {
+      throw new ServiceValidationError(
+        "Only code-sourced versions can be promoted. Use the override API instead.",
+        400
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "prompt_versions"
+        SET "labels" = array_remove("labels", 'current')
+        WHERE "promptId" = ${promptId} AND 'current' = ANY("labels")
+      `;
+      await tx.$executeRaw`
+        UPDATE "prompt_versions"
+        SET "labels" = array_append("labels", 'current')
+        WHERE "id" = ${versionId} AND NOT ('current' = ANY("labels"))
+      `;
+    });
   }
 
   async createOverride(

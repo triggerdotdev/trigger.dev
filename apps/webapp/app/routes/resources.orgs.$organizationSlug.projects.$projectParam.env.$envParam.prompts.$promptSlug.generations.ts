@@ -50,8 +50,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!environment) throw new Response("Environment not found", { status: 404 });
 
   const url = new URL(request.url);
-  const versions = url.searchParams.getAll("versions").filter(Boolean).map(Number).filter((n) => !isNaN(n));
+
+  const versions = url.searchParams
+    .getAll("versions")
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n > 0);
+
   const period = url.searchParams.get("period") ?? "7d";
+  if (!/^\d+[mhdw]$/.test(period)) {
+    return json({ generations: [], pagination: {} } satisfies GenerationsResponse);
+  }
+
   const fromTime = url.searchParams.get("from");
   const toTime = url.searchParams.get("to");
   const cursorParam = url.searchParams.get("cursor") ?? undefined;
@@ -59,6 +68,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const periodMs = parsePeriodToMs(period);
   const startTime = fromTime ? new Date(fromTime) : new Date(Date.now() - periodMs);
   const endTime = toTime ? new Date(toTime) : new Date();
+
+  if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
+    return json({ generations: [], pagination: {} } satisfies GenerationsResponse);
+  }
 
   const models = url.searchParams.getAll("models").filter(Boolean);
   const operations = url.searchParams.getAll("operations").filter(Boolean);

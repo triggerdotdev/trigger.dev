@@ -28,7 +28,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (request.method.toUpperCase() === "OPTIONS") {
     return apiCors(request, json({}));
   }
-  return new Response(null, { status: 405 });
+  return apiCors(request, json({ error: "Method not allowed" }, { status: 405 }));
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
