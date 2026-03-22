@@ -3,7 +3,6 @@ import {
   apiClientManager,
   resourceCatalog,
   SemanticInternalAttributes,
-  taskContext,
   type PromptMetadataWithFunctions,
   type TaskSchema,
   type inferSchemaIn,
@@ -154,11 +153,10 @@ export function definePrompt<TVariables extends TaskSchema | undefined = undefin
         : variables;
       const vars = validated as Record<string, unknown>;
 
-      const ctx = taskContext.ctx;
       const apiClient = apiClientManager.client;
 
-      // If we're running inside a task on the platform, resolve via the API
-      if (ctx && apiClient) {
+      // Resolve via the API when a client is configured (inside tasks or via configure())
+      if (apiClient) {
         const response = await apiClient.resolvePrompt(
           options.id,
           {
