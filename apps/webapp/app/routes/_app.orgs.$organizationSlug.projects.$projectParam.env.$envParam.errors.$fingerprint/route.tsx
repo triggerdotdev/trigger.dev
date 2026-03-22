@@ -678,8 +678,8 @@ function ErrorGroupActionButtons({
               Resolve
             </Button>
             <Popover>
-              <PopoverArrowTrigger>Ignore</PopoverArrowTrigger>
-              <PopoverContent className="min-w-[180px] p-1" align="end">
+              <PopoverArrowTrigger variant="tertiary">Ignore</PopoverArrowTrigger>
+              <PopoverContent className="w-fit p-1" align="end">
                 <PopoverMenuItem
                   title="Ignore for 1 hour"
                   onClick={() =>
