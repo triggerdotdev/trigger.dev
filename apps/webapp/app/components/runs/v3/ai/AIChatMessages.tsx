@@ -9,7 +9,6 @@ import { lazy, Suspense, useState } from "react";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
 import type { DisplayItem, ToolUse } from "./types";
 
@@ -120,11 +119,11 @@ function SystemSection({
         )}
       </div>
       <ChatBubble>
-        <Paragraph variant="small/dimmed" className="streamdown-container">
+        <div className="font-sans text-sm font-normal text-text-dimmed streamdown-container">
           <Suspense fallback={<span className="whitespace-pre-wrap">{displayText}</span>}>
             <StreamdownRenderer>{displayText}</StreamdownRenderer>
           </Suspense>
-        </Paragraph>
+        </div>
       </ChatBubble>
     </div>
   );
@@ -139,11 +138,11 @@ function UserSection({ text }: { text: string }) {
     <div className="flex flex-col gap-1.5 py-2.5">
       <SectionHeader label="User" />
       <ChatBubble>
-        <Paragraph variant="small/dimmed" className="streamdown-container">
+        <div className="font-sans text-sm font-normal text-text-dimmed streamdown-container">
           <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
             <StreamdownRenderer>{text}</StreamdownRenderer>
           </Suspense>
-        </Paragraph>
+        </div>
       </ChatBubble>
     </div>
   );
