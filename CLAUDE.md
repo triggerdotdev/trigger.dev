@@ -18,6 +18,16 @@ pnpm run dev --filter webapp  # Run webapp (http://localhost:3030)
 pnpm run dev --filter trigger.dev --filter "@trigger.dev/*"  # Watch CLI and packages
 ```
 
+### Verifying Webapp Changes
+
+**Never run `pnpm run build --filter webapp` to verify changes.** Building proves almost nothing about correctness. Instead, run typecheck from the repo root:
+
+```bash
+pnpm run typecheck --filter webapp   # ~1-2 minutes
+```
+
+Only run typecheck after major changes (new files, significant refactors, schema changes). For small edits, trust the types and let CI catch issues.
+
 ## Testing
 
 We use vitest exclusively. **Never mock anything** - use testcontainers instead.

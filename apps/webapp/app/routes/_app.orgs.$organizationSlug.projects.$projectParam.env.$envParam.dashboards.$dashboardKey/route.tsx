@@ -98,59 +98,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }
   }
 
-  let possiblePrompts: string[] = [];
-  if (filters.includes("prompts")) {
-    const promptPresenter = new PromptPresenter(clickhouseClient);
-    possiblePrompts = await promptPresenter.getDistinctPromptSlugs(
-      project.organizationId,
-      project.id,
-      environment.id
-    );
-  }
-
-  let possibleOperations: string[] = [];
-  if (filters.includes("operations")) {
-    const queryFn = clickhouseClient.reader.query({
-      name: "getDistinctOperations",
-      query: `SELECT DISTINCT operation_id FROM trigger_dev.llm_metrics_v1 WHERE organization_id = {organizationId: String} AND project_id = {projectId: String} AND environment_id = {environmentId: String} AND operation_id != '' ORDER BY operation_id`,
-      params: z.object({
-        organizationId: z.string(),
-        projectId: z.string(),
-        environmentId: z.string(),
-      }),
-      schema: z.object({ operation_id: z.string() }),
-    });
-    const [error, rows] = await queryFn({
-      organizationId: project.organizationId,
-      projectId: project.id,
-      environmentId: environment.id,
-    });
-    if (!error) {
-      possibleOperations = rows.map((r) => r.operation_id);
-    }
-  }
-
-  let possibleProviders: string[] = [];
-  if (filters.includes("providers")) {
-    const queryFn = clickhouseClient.reader.query({
-      name: "getDistinctProviders",
-      query: `SELECT DISTINCT gen_ai_system FROM trigger_dev.llm_metrics_v1 WHERE organization_id = {organizationId: String} AND project_id = {projectId: String} AND environment_id = {environmentId: String} AND gen_ai_system != '' ORDER BY gen_ai_system`,
-      params: z.object({
-        organizationId: z.string(),
-        projectId: z.string(),
-        environmentId: z.string(),
-      }),
-      schema: z.object({ gen_ai_system: z.string() }),
-    });
-    const [error, rows] = await queryFn({
-      organizationId: project.organizationId,
-      projectId: project.id,
-      environmentId: environment.id,
-    });
-    if (!error) {
-      possibleProviders = rows.map((r) => r.gen_ai_system);
-    }
-  }
+  const promptPresenter = new PromptPresenter(clickhouseClient);
+  const [possiblePrompts, possibleOperations, possibleProviders] = await Promise.all([
+    filters.includes("prompts")
+      ? promptPresenter.getDistinctPromptSlugs(project.organizationId, project.id, environment.id)
+      : ([] as string[]),
+    filters.includes("operations")
+      ? promptPresenter.getDistinctOperations(project.organizationId, project.id, environment.id)
+      : ([] as string[]),
+    filters.includes("providers")
+      ? promptPresenter.getDistinctProviders(project.organizationId, project.id, environment.id)
+      : ([] as string[]),
+  ]);
 
   return typedjson({
     ...dashboard,

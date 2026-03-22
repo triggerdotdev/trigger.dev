@@ -365,6 +365,52 @@ export class PromptPresenter extends BasePresenter {
     }
     return rows.map((r) => r.prompt_slug);
   }
+
+  async getDistinctOperations(
+    organizationId: string,
+    projectId: string,
+    environmentId: string
+  ): Promise<string[]> {
+    const queryFn = this.clickhouse.reader.query({
+      name: "getDistinctOperations",
+      query: `SELECT DISTINCT operation_id FROM trigger_dev.llm_metrics_v1 WHERE organization_id = {organizationId: String} AND project_id = {projectId: String} AND environment_id = {environmentId: String} AND operation_id != '' ORDER BY operation_id`,
+      params: z.object({
+        organizationId: z.string(),
+        projectId: z.string(),
+        environmentId: z.string(),
+      }),
+      schema: z.object({ operation_id: z.string() }),
+    });
+
+    const [error, rows] = await queryFn({ organizationId, projectId, environmentId });
+    if (error) {
+      return [];
+    }
+    return rows.map((r) => r.operation_id);
+  }
+
+  async getDistinctProviders(
+    organizationId: string,
+    projectId: string,
+    environmentId: string
+  ): Promise<string[]> {
+    const queryFn = this.clickhouse.reader.query({
+      name: "getDistinctProviders",
+      query: `SELECT DISTINCT gen_ai_system FROM trigger_dev.llm_metrics_v1 WHERE organization_id = {organizationId: String} AND project_id = {projectId: String} AND environment_id = {environmentId: String} AND gen_ai_system != '' ORDER BY gen_ai_system`,
+      params: z.object({
+        organizationId: z.string(),
+        projectId: z.string(),
+        environmentId: z.string(),
+      }),
+      schema: z.object({ gen_ai_system: z.string() }),
+    });
+
+    const [error, rows] = await queryFn({ organizationId, projectId, environmentId });
+    if (error) {
+      return [];
+    }
+    return rows.map((r) => r.gen_ai_system);
+  }
 }
 
 function encodeCursor(startTime: string, spanId: string): string {

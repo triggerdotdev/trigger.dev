@@ -2,6 +2,16 @@
 
 Remix 2.1.0 app serving as the main API, dashboard, and orchestration engine. Uses an Express server (`server.ts`).
 
+## Verifying Changes
+
+**Never run `pnpm run build --filter webapp` to verify changes.** Building proves almost nothing about correctness. Instead, run typecheck from the repo root:
+
+```bash
+pnpm run typecheck --filter webapp   # ~1-2 minutes
+```
+
+Only run typecheck after major changes (new files, significant refactors, schema changes). For small edits, trust the types and let CI catch issues.
+
 ## Key File Locations
 
 - **Trigger API**: `app/routes/api.v1.tasks.$taskId.trigger.ts`
