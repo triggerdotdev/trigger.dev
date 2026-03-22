@@ -15,7 +15,7 @@ const PromptSlugInput = CommonProjectsInput.extend({
 
 const PromoteInput = CommonProjectsInput.extend({
   slug: z.string().describe("The prompt slug"),
-  version: z.number().int().positive().describe("The version number to promote to current"),
+  version: z.coerce.number().int().positive().describe("The version number to promote to current"),
 });
 
 const CreateOverrideInput = CommonProjectsInput.extend({
@@ -37,7 +37,7 @@ const RemoveOverrideInput = PromptSlugInput;
 const ReactivateOverrideInput = CommonProjectsInput.extend({
   slug: z.string().describe("The prompt slug"),
   version: z
-    .number()
+    .coerce.number()
     .int()
     .positive()
     .describe("The dashboard-sourced version number to reactivate as override"),
