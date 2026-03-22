@@ -4,13 +4,15 @@ Remix 2.1.0 app serving as the main API, dashboard, and orchestration engine. Us
 
 ## Verifying Changes
 
-**Never run `pnpm run build --filter webapp` to verify changes.** Building proves almost nothing about correctness. Instead, run typecheck from the repo root:
+**Never run `pnpm run build --filter webapp` to verify changes.** Building proves almost nothing about correctness. The webapp is an app, not a public package — use typecheck from the repo root:
 
 ```bash
 pnpm run typecheck --filter webapp   # ~1-2 minutes
 ```
 
 Only run typecheck after major changes (new files, significant refactors, schema changes). For small edits, trust the types and let CI catch issues.
+
+Note: Public packages (`packages/*`) use `build` instead. See the root CLAUDE.md for details.
 
 ## Testing Dashboard Changes with Chrome DevTools MCP
 

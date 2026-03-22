@@ -158,7 +158,7 @@ export class PromptPresenter extends BasePresenter {
     promptId: string,
     options?: { version?: number; label?: string }
   ) {
-    if (options?.version) {
+    if (options?.version != null) {
       return this._replica.promptVersion.findUnique({
         where: {
           promptId_version: {
