@@ -1235,9 +1235,9 @@ function GenerationsTab({
     }
   }, [fetcher.data, fetcher.state]);
 
-  // Poll for new generations every 10 seconds (also on focus/visibility)
+  // Poll for new generations periodically (also on focus/visibility)
   useInterval({
-    interval: 5_000,
+    interval: 10_000,
     onLoad: false,
     callback: () => {
       if (pollFetcher.state !== "idle") return;
