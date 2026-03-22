@@ -733,6 +733,7 @@ export default function PromptDetailPage() {
         prompt={prompt}
         content={content}
         isEditingOverride={!!overrideVersion}
+        currentOverrideModel={overrideVersion ? versions.find((v) => v.id === overrideVersion.id)?.model ?? null : null}
         onSave={(textContent, commitMessage, model) => {
           const intent = overrideVersion ? "updateOverride" : "saveVersion";
           fetcher.submit({ intent, textContent, commitMessage, model }, { method: "POST" });
@@ -751,6 +752,7 @@ function OverrideDialog({
   prompt,
   content,
   isEditingOverride,
+  currentOverrideModel,
   onSave,
 }: {
   open: boolean;
@@ -763,20 +765,22 @@ function OverrideDialog({
   };
   content: string;
   isEditingOverride: boolean;
+  currentOverrideModel?: string | null;
   onSave: (textContent: string, commitMessage: string, model: string) => void;
 }) {
+  const effectiveModel = currentOverrideModel ?? prompt.defaultModel ?? "";
   const [editedContent, setEditedContent] = useState(content);
   const [commitMessage, setCommitMessage] = useState("");
-  const [model, setModel] = useState(prompt.defaultModel ?? "");
+  const [model, setModel] = useState(effectiveModel);
 
   // Reset when dialog opens
   useEffect(() => {
     if (open) {
       setEditedContent(content);
       setCommitMessage("");
-      setModel(prompt.defaultModel ?? "");
+      setModel(currentOverrideModel ?? prompt.defaultModel ?? "");
     }
-  }, [open, content, prompt.defaultModel]);
+  }, [open, content, currentOverrideModel, prompt.defaultModel]);
 
   const variableFields = prompt.variableSchema ? extractVariableFields(prompt.variableSchema) : [];
 
@@ -796,7 +800,7 @@ function OverrideDialog({
   const undefinedVars = [...templateVars].filter((v) => !schemaVarNames.has(v));
   const unusedVars = variableFields.filter((f) => f.required && !templateVars.has(f.name));
 
-  const hasChanges = editedContent !== content || model !== (prompt.defaultModel ?? "");
+  const hasChanges = editedContent !== content || model !== effectiveModel;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
