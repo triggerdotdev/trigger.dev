@@ -9,7 +9,7 @@ import {
 import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
 import type { BackgroundWorker, TaskQueue, TaskQueueType } from "@trigger.dev/database";
 import cronstrue from "cronstrue";
-import { Prisma, PrismaClientOrTransaction } from "~/db.server";
+import { $transaction, Prisma, PrismaClientOrTransaction } from "~/db.server";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -788,7 +788,7 @@ async function createWorkerPrompts(
 
       // Wrap label removal + version creation in a transaction so labels
       // aren't stripped if the create fails (e.g. concurrent deploy race).
-      await prisma.$transaction(async (tx) => {
+      await $transaction(prisma, async (tx) => {
         // Remove "latest" label from all existing versions
         if (latestVersion) {
           await tx.$executeRaw`
