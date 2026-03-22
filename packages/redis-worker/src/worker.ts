@@ -745,23 +745,25 @@ class Worker<TCatalog extends WorkerCatalog> {
     ).catch(async (error) => {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const shouldLogError = catalogItem.logErrors ?? true;
+      const errorLogLevel =
+        error && typeof error === "object" && "logLevel" in error ? error.logLevel : undefined;
 
-      if (shouldLogError) {
-        this.logger.error(`Worker error processing batch`, {
-          name: this.options.name,
-          jobType,
-          batchSize: items.length,
-          error,
-          errorMessage,
-        });
+      const logAttributes = {
+        name: this.options.name,
+        jobType,
+        batchSize: items.length,
+        error,
+        errorMessage,
+      };
+
+      if (!shouldLogError) {
+        this.logger.info(`Worker failed to process batch`, logAttributes);
+      } else if (errorLogLevel === "warn") {
+        this.logger.warn(`Worker error processing batch`, logAttributes);
+      } else if (errorLogLevel === "info") {
+        this.logger.info(`Worker error processing batch`, logAttributes);
       } else {
-        this.logger.info(`Worker failed to process batch`, {
-          name: this.options.name,
-          jobType,
-          batchSize: items.length,
-          error,
-          errorMessage,
-        });
+        this.logger.error(`Worker error processing batch`, logAttributes);
       }
 
       // Re-enqueue each item individually with retry logic
@@ -775,20 +777,21 @@ class Worker<TCatalog extends WorkerCatalog> {
           const retryDelay = calculateNextRetryDelay(retrySettings, newAttempt);
 
           if (!retryDelay) {
-            if (shouldLogError) {
-              this.logger.error(`Worker batch item reached max attempts. Moving to DLQ.`, {
-                name: this.options.name,
-                id: item.id,
-                jobType,
-                attempt: newAttempt,
-              });
+            const dlqLogAttributes = {
+              name: this.options.name,
+              id: item.id,
+              jobType,
+              attempt: newAttempt,
+            };
+
+            if (!shouldLogError) {
+              this.logger.info(`Worker batch item reached max attempts. Moving to DLQ.`, dlqLogAttributes);
+            } else if (errorLogLevel === "warn") {
+              this.logger.warn(`Worker batch item reached max attempts. Moving to DLQ.`, dlqLogAttributes);
+            } else if (errorLogLevel === "info") {
+              this.logger.info(`Worker batch item reached max attempts. Moving to DLQ.`, dlqLogAttributes);
             } else {
-              this.logger.info(`Worker batch item reached max attempts. Moving to DLQ.`, {
-                name: this.options.name,
-                id: item.id,
-                jobType,
-                attempt: newAttempt,
-              });
+              this.logger.error(`Worker batch item reached max attempts. Moving to DLQ.`, dlqLogAttributes);
             }
 
             await this.queue.moveToDeadLetterQueue(item.id, errorMessage);
