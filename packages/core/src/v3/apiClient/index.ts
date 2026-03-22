@@ -44,6 +44,14 @@ import {
   RetrieveQueueParam,
   ResolvePromptRequestBody,
   ResolvePromptResponseBody,
+  ListPromptsResponseBody,
+  ListPromptVersionsResponseBody,
+  PromotePromptVersionRequestBody,
+  CreatePromptOverrideRequestBody,
+  UpdatePromptOverrideRequestBody,
+  ReactivatePromptOverrideRequestBody,
+  PromptOkResponseBody,
+  PromptOverrideCreatedResponseBody,
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
   ScheduleObject,
@@ -1583,6 +1591,69 @@ export class ApiClient {
         headers: this.#getHeaders(false),
         body: JSON.stringify(body),
       },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listPrompts(requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ListPromptsResponseBody,
+      `${this.baseUrl}/api/v1/prompts`,
+      { method: "GET", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listPromptVersions(slug: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ListPromptVersionsResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/versions`,
+      { method: "GET", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  promotePromptVersion(slug: string, body: PromotePromptVersionRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/promote`,
+      { method: "POST", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  createPromptOverride(slug: string, body: CreatePromptOverrideRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOverrideCreatedResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override`,
+      { method: "POST", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  updatePromptOverride(slug: string, body: UpdatePromptOverrideRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override`,
+      { method: "PUT", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  removePromptOverride(slug: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override`,
+      { method: "DELETE", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  reactivatePromptOverride(slug: string, body: ReactivatePromptOverrideRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override/reactivate`,
+      { method: "POST", headers: this.#getHeaders(false), body: JSON.stringify(body) },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }

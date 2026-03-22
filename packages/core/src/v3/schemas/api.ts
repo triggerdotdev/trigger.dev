@@ -1660,3 +1660,70 @@ export const ResolvePromptResponseBody = z.object({
   }),
 });
 export type ResolvePromptResponseBody = z.infer<typeof ResolvePromptResponseBody>;
+
+export const ListPromptsResponseBody = z.object({
+  data: z.array(
+    z.object({
+      slug: z.string(),
+      friendlyId: z.string(),
+      description: z.string().nullable(),
+      tags: z.array(z.string()),
+      defaultModel: z.string().nullable(),
+      currentVersion: z.number().nullable(),
+      hasOverride: z.boolean(),
+      updatedAt: z.string(),
+    })
+  ),
+});
+export type ListPromptsResponseBody = z.infer<typeof ListPromptsResponseBody>;
+
+export const ListPromptVersionsResponseBody = z.object({
+  data: z.array(
+    z.object({
+      id: z.string(),
+      version: z.number(),
+      labels: z.array(z.string()),
+      source: z.string(),
+      model: z.string().nullable(),
+      textContent: z.string().nullable(),
+      commitMessage: z.string().nullable(),
+      contentHash: z.string(),
+      createdAt: z.string(),
+    })
+  ),
+});
+export type ListPromptVersionsResponseBody = z.infer<typeof ListPromptVersionsResponseBody>;
+
+export const PromotePromptVersionRequestBody = z.object({
+  version: z.number().int().positive(),
+});
+export type PromotePromptVersionRequestBody = z.infer<typeof PromotePromptVersionRequestBody>;
+
+export const CreatePromptOverrideRequestBody = z.object({
+  textContent: z.string(),
+  model: z.string().optional(),
+  commitMessage: z.string().optional(),
+  source: z.string().optional(),
+});
+export type CreatePromptOverrideRequestBody = z.infer<typeof CreatePromptOverrideRequestBody>;
+
+export const UpdatePromptOverrideRequestBody = z.object({
+  textContent: z.string().optional(),
+  model: z.string().optional(),
+  commitMessage: z.string().optional(),
+});
+export type UpdatePromptOverrideRequestBody = z.infer<typeof UpdatePromptOverrideRequestBody>;
+
+export const ReactivatePromptOverrideRequestBody = z.object({
+  version: z.number().int().positive(),
+});
+export type ReactivatePromptOverrideRequestBody = z.infer<typeof ReactivatePromptOverrideRequestBody>;
+
+export const PromptOkResponseBody = z.object({ ok: z.boolean() });
+export type PromptOkResponseBody = z.infer<typeof PromptOkResponseBody>;
+
+export const PromptOverrideCreatedResponseBody = z.object({
+  ok: z.boolean(),
+  version: z.number(),
+});
+export type PromptOverrideCreatedResponseBody = z.infer<typeof PromptOverrideCreatedResponseBody>;

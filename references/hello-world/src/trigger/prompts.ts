@@ -282,3 +282,60 @@ export const generateObjectWithPromptTask = task({
     return { contact: result.object };
   },
 });
+
+// ─── Prompt management SDK methods ───────────────────────
+
+export const testPromptManagement = task({
+  id: "test-prompt-management",
+  run: async () => {
+    // List all prompts
+    const allPrompts = await prompts.list();
+    logger.info("Listed prompts", { count: allPrompts.data.length, slugs: allPrompts.data.map((p) => p.slug) });
+
+    if (allPrompts.data.length === 0) {
+      return { success: false, reason: "No prompts found — deploy first" };
+    }
+
+    const slug = allPrompts.data[0].slug;
+
+    // List versions
+    const versions = await prompts.versions(slug);
+    logger.info("Listed versions", { slug, count: versions.data.length });
+
+    // Resolve the prompt (standalone, not via PromptHandle)
+    const resolved = await prompts.resolve(slug, { customerName: "SDK Test", plan: "Enterprise", issue: "Testing management API" });
+    logger.info("Resolved prompt standalone", { version: resolved.version, textLength: resolved.text.length });
+
+    // Create an override
+    const override = await prompts.createOverride(slug, {
+      textContent: "Override from SDK test: Hello {{customerName}} on {{plan}}!",
+      model: "gpt-4o-mini",
+      commitMessage: "SDK test override",
+    });
+    logger.info("Created override", { version: override.version });
+
+    // Resolve again — should get the override
+    const resolvedOverride = await prompts.resolve(slug, { customerName: "SDK Test", plan: "Enterprise", issue: "Testing override" });
+    logger.info("Resolved with override", { version: resolvedOverride.version, text: resolvedOverride.text });
+
+    // Update the override
+    await prompts.updateOverride(slug, {
+      textContent: "Updated override: Hi {{customerName}} ({{plan}})!",
+      commitMessage: "SDK test update",
+    });
+    logger.info("Updated override");
+
+    // Remove the override
+    await prompts.removeOverride(slug);
+    logger.info("Removed override");
+
+    // Promote the first version to current
+    if (versions.data.length > 0) {
+      const v = versions.data[versions.data.length - 1].version; // oldest version
+      await prompts.promote(slug, v);
+      logger.info("Promoted version", { version: v });
+    }
+
+    return { success: true, slug, versionsCount: versions.data.length };
+  },
+});
