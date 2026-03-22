@@ -17,6 +17,7 @@ import { ErrorAlertChannelPresenter } from "~/presenters/v3/ErrorAlertChannelPre
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
+import { env } from "~/env.server";
 import { EnvironmentParamSchema, v3ErrorsConnectToSlackPath } from "~/utils/pathBuilder";
 import {
   type CreateAlertChannelOptions,
@@ -137,9 +138,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     processedChannelIds.add(channel.id);
   }
 
+  const editableTypes = new Set<string>(["WEBHOOK"]);
+  if (env.ALERT_FROM_EMAIL !== undefined && env.ALERT_RESEND_API_KEY !== undefined) {
+    editableTypes.add("EMAIL");
+  }
+  if (slackIntegrationId) {
+    editableTypes.add("SLACK");
+  }
+
   const channelsToDelete = existingChannels.filter(
     (ch) =>
       !processedChannelIds.has(ch.id) &&
+      editableTypes.has(ch.type) &&
       ch.alertTypes.length === 1 &&
       ch.alertTypes[0] === "ERROR_GROUP"
   );

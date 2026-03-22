@@ -80,20 +80,20 @@ export const meta: MetaFunction<typeof loader> = ({ data }) => {
 const actionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("resolve"),
-    taskIdentifier: z.string(),
+    taskIdentifier: z.string().min(1),
     resolvedInVersion: z.string().optional(),
   }),
   z.object({
     action: z.literal("ignore"),
-    taskIdentifier: z.string(),
-    duration: z.coerce.number().optional(),
-    occurrenceRate: z.coerce.number().optional(),
-    totalOccurrences: z.coerce.number().optional(),
+    taskIdentifier: z.string().min(1),
+    duration: z.coerce.number().positive().optional(),
+    occurrenceRate: z.coerce.number().positive().optional(),
+    totalOccurrences: z.coerce.number().positive().optional(),
     reason: z.string().optional(),
   }),
   z.object({
     action: z.literal("unresolve"),
-    taskIdentifier: z.string(),
+    taskIdentifier: z.string().min(1),
   }),
 ]);
 
