@@ -106,8 +106,8 @@ export class PromptService extends BaseService {
       where: { id: overrideVer.id },
       data: {
         textContent: contentString,
-        model: data.model || overrideVer.model,
-        commitMessage: data.commitMessage || overrideVer.commitMessage,
+        model: data.model ?? overrideVer.model,
+        commitMessage: data.commitMessage ?? overrideVer.commitMessage,
         contentHash,
       },
     });
@@ -124,6 +124,10 @@ export class PromptService extends BaseService {
 
     if (!target) {
       throw new ServiceValidationError("Version not found", 404);
+    }
+
+    if (target.promptId !== promptId) {
+      throw new ServiceValidationError("Version does not belong to this prompt", 400);
     }
 
     if (target.source === "code") {
