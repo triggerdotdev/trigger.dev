@@ -36,4 +36,6 @@ export interface WorkloadManagerCreateOptions {
   snapshotId: string;
   snapshotFriendlyId: string;
   annotations?: RunAnnotations;
+  // private networking
+  hasPrivateLink?: boolean;
 }

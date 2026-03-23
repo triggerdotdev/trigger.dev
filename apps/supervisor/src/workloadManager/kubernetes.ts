@@ -340,7 +340,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   }
 
   #getSharedLabels(opts: WorkloadManagerCreateOptions): Record<string, string> {
-    return {
+    const labels: Record<string, string> = {
       env: opts.envId,
       envtype: this.#envTypeToLabelValue(opts.envType),
       org: opts.orgId,
@@ -352,6 +352,13 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       // and pool-level scheduling decisions; finer-grained source breakdowns live in run annotations.
       scheduled: String(this.#isScheduledRun(opts)),
     };
+
+    // Add privatelink label for CiliumNetworkPolicy matching
+    if (opts.hasPrivateLink) {
+      labels.privatelink = opts.orgId;
+    }
+
+    return labels;
   }
 
   #getResourceRequestsForMachine(preset: MachinePreset): ResourceQuantities {

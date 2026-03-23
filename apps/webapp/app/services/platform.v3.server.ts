@@ -5,8 +5,12 @@ import {
   defaultMachine as defaultMachineFromPlatform,
   machines as machinesFromPlatform,
   type BillingAlertsResult,
+  type CreatePrivateLinkConnectionBody,
   type Limits,
   type MachineCode,
+  type PrivateLinkConnection,
+  type PrivateLinkConnectionList,
+  type PrivateLinkRegionsResult,
   type ReportUsageResult,
   type SetPlanBody,
   type UpdateBillingAlertsRequest,
@@ -634,6 +638,86 @@ export async function enqueueBuild(
       options,
     });
     throw new Error("Failed to enqueue build");
+  }
+
+  return result;
+}
+
+export async function getPrivateLinks(
+  organizationId: string
+): Promise<PrivateLinkConnectionList | undefined> {
+  if (!client) return undefined;
+
+  const [error, result] = await tryCatch(client.getPrivateLinks(organizationId));
+
+  if (error) {
+    logger.error("Error getting private links", { organizationId, error });
+    return undefined;
+  }
+
+  if (!result.success) {
+    logger.error("Error getting private links - no success", { organizationId, error: result.error });
+    return undefined;
+  }
+
+  return result;
+}
+
+export async function createPrivateLink(
+  organizationId: string,
+  body: CreatePrivateLinkConnectionBody
+): Promise<PrivateLinkConnection | undefined> {
+  if (!client) return undefined;
+
+  const [error, result] = await tryCatch(client.createPrivateLink(organizationId, body));
+
+  if (error) {
+    logger.error("Error creating private link", { organizationId, error });
+    return undefined;
+  }
+
+  if (!result.success) {
+    logger.error("Error creating private link - no success", { organizationId, error: result.error });
+    return undefined;
+  }
+
+  return result;
+}
+
+export async function deletePrivateLink(
+  organizationId: string,
+  connectionId: string
+): Promise<void> {
+  if (!client) return;
+
+  const [error, result] = await tryCatch(client.deletePrivateLink(organizationId, connectionId));
+
+  if (error) {
+    logger.error("Error deleting private link", { organizationId, connectionId, error });
+    return;
+  }
+
+  if (!result.success) {
+    logger.error("Error deleting private link - no success", { organizationId, connectionId, error: result.error });
+    return;
+  }
+}
+
+export async function getPrivateLinkRegions(
+  organizationId: string
+): Promise<PrivateLinkRegionsResult | undefined> {
+  if (!client) return undefined;
+
+  const [error, result] = await tryCatch(client.getPrivateLinkRegions(organizationId));
+
+  if (error) {
+    logger.error("Error getting private link regions", { organizationId, error });
+    return undefined;
+  }
+
+  if (!result.success) {
+    logger.error("Error getting private link regions - no success", { organizationId, error: result.error });
+    return undefined;
   }
 
   return result;
