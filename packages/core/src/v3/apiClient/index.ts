@@ -189,6 +189,7 @@ export class ApiClient {
   public readonly accessToken: string;
   public readonly previewBranch?: string;
   public readonly futureFlags: ApiClientFutureFlags;
+  private readonly additionalHeaders?: Record<string, string>;
   private readonly defaultRequestOptions: ZodFetchOptions;
 
   constructor(
@@ -201,7 +202,9 @@ export class ApiClient {
     this.accessToken = accessToken;
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.previewBranch = previewBranch;
-    this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, requestOptions);
+    const { additionalHeaders, ...restRequestOptions } = requestOptions;
+    this.additionalHeaders = additionalHeaders;
+    this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, restRequestOptions);
     this.futureFlags = futureFlags;
   }
 
@@ -1539,6 +1542,14 @@ export class ApiClient {
         {} as Record<string, string>
       ),
     };
+
+    if (this.additionalHeaders) {
+      for (const [key, value] of Object.entries(this.additionalHeaders)) {
+        if (!(key in headers)) {
+          headers[key] = value;
+        }
+      }
+    }
 
     if (this.previewBranch) {
       headers["x-trigger-branch"] = this.previewBranch;

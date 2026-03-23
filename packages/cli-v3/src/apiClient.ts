@@ -60,16 +60,19 @@ import { VERSION } from "./version.js";
 
 export class CliApiClient {
   private engineURL: string;
+  private source: "cli" | "mcp";
 
   constructor(
     public readonly apiURL: string,
     // TODO: consider making this required
     public readonly accessToken?: string,
-    public readonly branch?: string
+    public readonly branch?: string,
+    options?: { source?: "cli" | "mcp" }
   ) {
     this.apiURL = apiURL.replace(/\/$/, "");
     this.engineURL = this.apiURL;
     this.branch = branch;
+    this.source = options?.source ?? "cli";
   }
 
   async createAuthorizationCode() {
@@ -819,6 +822,7 @@ export class CliApiClient {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.accessToken}`,
       "Content-Type": "application/json",
+      "x-trigger-source": this.source,
     };
 
     if (this.branch) {

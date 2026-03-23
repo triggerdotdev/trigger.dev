@@ -48,6 +48,8 @@ export type BatchTriggerTaskServiceOptions = {
   spanParentAsLink?: boolean;
   oneTimeUseToken?: string;
   realtimeStreamsVersion?: "v1" | "v2";
+  triggerSource?: string;
+  triggerAction?: string;
 };
 
 /**
@@ -678,6 +680,8 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         batchId: batch.id,
         batchIndex: currentIndex,
         realtimeStreamsVersion: options?.realtimeStreamsVersion,
+        triggerSource: parentRunId ? "sdk" : options?.triggerSource ?? "api",
+        triggerAction: options?.triggerAction ?? "trigger",
       },
       "V2"
     );

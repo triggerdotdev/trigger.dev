@@ -837,6 +837,9 @@ model TaskRun {
   metadataType    String  @default("application/json")
   metadataVersion Int     @default(1)
 
+  /// Structured annotations: triggerSource, triggerAction, rootTriggerSource, rootScheduleId
+  annotations Json?
+
   /// Run output
   output     String?
   outputType String  @default("application/json")
