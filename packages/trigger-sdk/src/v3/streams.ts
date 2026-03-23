@@ -25,7 +25,7 @@ import {
   InputStreamOncePromise,
   type InputStreamOnceResult,
   type InputStreamWaitOptions,
-  type InputStreamWaitWithWarmupOptions,
+  type InputStreamWaitWithIdleTimeoutOptions,
   type SendInputStreamOptions,
   type InferInputStreamType,
   type StreamWriteResult,
@@ -842,20 +842,20 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
         }
       });
     },
-    async waitWithWarmup(options) {
+    async waitWithIdleTimeout(options) {
       const self = this;
-      const spanName = options.spanName ?? `inputStream.waitWithWarmup()`;
+      const spanName = options.spanName ?? `inputStream.waitWithIdleTimeout()`;
 
       return tracer.startActiveSpan(
         spanName,
         async (span) => {
-          // Warm phase: keep compute alive
-          if (options.warmTimeoutInSeconds > 0) {
+          // Idle phase: keep compute alive
+          if (options.idleTimeoutInSeconds > 0) {
             const warm = await inputStreams.once(opts.id, {
-              timeoutMs: options.warmTimeoutInSeconds * 1000,
+              timeoutMs: options.idleTimeoutInSeconds * 1000,
             });
             if (warm.ok) {
-              span.setAttribute("wait.resolved", "warm");
+              span.setAttribute("wait.resolved", "idle");
               return { ok: true as const, output: warm.output as TData };
             }
           }
