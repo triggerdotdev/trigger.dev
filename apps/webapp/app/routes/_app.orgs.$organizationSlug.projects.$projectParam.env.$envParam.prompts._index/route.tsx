@@ -115,39 +115,35 @@ export default function PromptsPage() {
                     <TableCell to={path} isTabbableCell>
                       <TruncatedCopyableValue value={prompt.friendlyId} />
                     </TableCell>
-                    <TableCell to={path}>
-                      <span className="text-text-bright">{prompt.slug}</span>
-                    </TableCell>
+                    <TableCell to={path}>{prompt.slug}</TableCell>
                     <TableCell to={path}>
                       {prompt.description ? (
-                        <span className="text-text-dimmed" title={prompt.description.length > 80 ? prompt.description : undefined}>
+                        <span
+                          title={prompt.description.length > 80 ? prompt.description : undefined}
+                        >
                           {prompt.description.length > 80
-                            ? prompt.description.slice(0, 80) + "..."
+                            ? prompt.description.slice(0, 80) + "…"
                             : prompt.description}
                         </span>
                       ) : (
-                        <span className="text-charcoal-500">-</span>
+                        <span>-</span>
                       )}
                     </TableCell>
                     <TableCell to={path}>
-                      <span className="text-text-dimmed">
-                        {prompt.defaultModel ?? <span className="text-charcoal-500">-</span>}
-                      </span>
+                      <span>{prompt.defaultModel ?? <span>-</span>}</span>
                     </TableCell>
                     <TableCell to={path}>
                       {activeVersion ? (
                         <div className="flex items-center gap-1.5">
                           <div
                             className={`size-1.5 rounded-full ${
-                              isOverride ? "bg-amber-400" : "bg-green-500"
+                              isOverride ? "bg-warning" : "bg-success"
                             }`}
                           />
-                          <span className="text-text-bright">
-                            v{activeVersion.version}
-                          </span>
+                          <span>v{activeVersion.version}</span>
                         </div>
                       ) : (
-                        <span className="text-charcoal-500">-</span>
+                        <span>-</span>
                       )}
                     </TableCell>
                     <TableCell to={path}>
@@ -180,12 +176,7 @@ function UsageSparkline({ data }: { data?: number[] }) {
       <div className="h-6 w-16">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 1, right: 0, bottom: 1, left: 0 }}>
-            <Bar
-              dataKey="value"
-              fill="#3b82f6"
-              radius={[1, 1, 0, 0]}
-              isAnimationActive={false}
-            />
+            <Bar dataKey="value" fill="#3b82f6" radius={[1, 1, 0, 0]} isAnimationActive={false} />
           </BarChart>
         </ResponsiveContainer>
       </div>
