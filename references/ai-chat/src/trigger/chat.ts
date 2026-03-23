@@ -1,6 +1,6 @@
 import { chat, ai, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
-import { logger, schemaTask, task } from "@trigger.dev/sdk";
-import { streamText, tool, dynamicTool, stepCountIs, generateId } from "ai";
+import { logger, schemaTask, task, prompts } from "@trigger.dev/sdk";
+import { streamText, tool, dynamicTool, stepCountIs, generateId, createProviderRegistry } from "ai";
 import type { LanguageModel, Tool as AITool, UIMessage } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -16,6 +16,30 @@ import TurndownService from "turndown";
 import { DEFAULT_MODEL, REASONING_MODELS } from "@/lib/models";
 
 const turndown = new TurndownService();
+
+const registry = createProviderRegistry({ openai, anthropic });
+
+const systemPrompt = prompts.define({
+  id: "ai-chat-system",
+  model: "openai:gpt-4o",
+  config: { temperature: 0.7 },
+  variables: z.object({ name: z.string(), plan: z.string() }),
+  content: `You are a helpful AI assistant for {{name}} on the {{plan}} plan.
+
+## Guidelines
+- Be concise and friendly. Prefer short, direct answers unless the user asks for detail.
+- When using tools, explain what you're doing briefly before invoking them.
+- If you don't know something, say so — don't make things up.
+
+## Capabilities
+You can inspect the execution environment, fetch web pages, and perform multi-URL deep research.
+When the user asks you to research a topic, use the deep research tool with relevant URLs.
+
+## Tone
+- Match the user's formality level. If they're casual, be casual back.
+- Use markdown formatting for code blocks, lists, and structured output.
+- Keep responses under a few paragraphs unless the user asks for more.`,
+});
 
 const MODELS: Record<string, () => LanguageModel> = {
   "gpt-4o-mini": () => openai("gpt-4o-mini"),
@@ -263,6 +287,13 @@ export const aiChat = chat.task({
     const tools = await prisma.userTool.findMany({ where: { userId: clientData.userId } });
     userToolDefs.init({ value: tools });
 
+    // Resolve prompt — versioned, overridable from dashboard
+    const resolved = await systemPrompt.resolve({
+      name: user.name,
+      plan: user.plan as string,
+    });
+    chat.prompt.set(resolved);
+
     // Create chat record and session
     await prisma.chat.upsert({
       where: { id: chatId },
@@ -304,6 +335,13 @@ export const aiChat = chat.task({
     // Load user-specific dynamic tools
     const tools = await prisma.userTool.findMany({ where: { userId: clientData.userId } });
     userToolDefs.init({ value: tools });
+
+    // Resolve prompt — versioned, overridable from dashboard
+    const resolved = await systemPrompt.resolve({
+      name: user.name,
+      plan: user.plan as string,
+    });
+    chat.prompt.set(resolved);
 
     if (!continuation) {
       await prisma.chat.upsert({
@@ -361,9 +399,10 @@ export const aiChat = chat.task({
       userContext.preferredModel = clientData.model;
     }
 
-    // Use preferred model if none specified
-    const modelId = clientData?.model ?? userContext.preferredModel ?? undefined;
-    const useReasoning = REASONING_MODELS.has(modelId ?? DEFAULT_MODEL);
+    // Client-specified or user-preferred model overrides the prompt default
+    const modelOverride = clientData?.model ?? userContext.preferredModel ?? undefined;
+    const effectiveModel = modelOverride ?? chat.prompt().model ?? DEFAULT_MODEL;
+    const useReasoning = REASONING_MODELS.has(effectiveModel);
 
     // Build dynamic tools from user's DB-configured tools (loaded in onPreload/onChatStart)
     const dynamicTools: Record<string, AITool<unknown, unknown>> = {};
@@ -380,8 +419,13 @@ export const aiChat = chat.task({
     }
 
     return streamText({
-      model: getModel(modelId),
-      system: `You are a helpful assistant for ${userContext.name} (${userContext.plan} plan). Be concise and friendly.`,
+      // Registry resolves the prompt's model (e.g. "openai:gpt-4o").
+      // Client override takes precedence when provided.
+      ...chat.toStreamTextOptions({
+        registry,
+        telemetry: clientData?.userId ? { userId: clientData.userId } : undefined,
+      }),
+      ...(modelOverride ? { model: getModel(modelOverride) } : {}),
       messages,
       tools: {
         inspectEnvironment,
@@ -397,10 +441,6 @@ export const aiChat = chat.task({
           metadata: { user_id: clientData?.userId },
           ...(useReasoning ? { thinking: { type: "enabled", budgetTokens: 10000 } } : {}),
         },
-      },
-      experimental_telemetry: {
-        isEnabled: true,
-        metadata: clientData?.userId ? { userId: clientData.userId } : undefined,
       },
     });
   },
@@ -426,6 +466,13 @@ async function initUserContext(userId: string, chatId: string, model?: string) {
 
   const tools = await prisma.userTool.findMany({ where: { userId } });
   userToolDefs.init({ value: tools });
+
+  // Resolve prompt for the run
+  const resolved = await systemPrompt.resolve({
+    name: user.name,
+    plan: user.plan as string,
+  });
+  chat.prompt.set(resolved);
 
   await prisma.chat.upsert({
     where: { id: chatId },
@@ -485,8 +532,9 @@ export const aiChatRaw = task({
         userContext.preferredModel = turnClientData.model;
       }
 
-      const modelId = turnClientData?.model ?? userContext.preferredModel ?? undefined;
-      const useReasoning = REASONING_MODELS.has(modelId ?? DEFAULT_MODEL);
+      const modelOverride = turnClientData?.model ?? userContext.preferredModel ?? undefined;
+      const effectiveModel = modelOverride ?? chat.prompt().model ?? DEFAULT_MODEL;
+      const useReasoning = REASONING_MODELS.has(effectiveModel);
       const combinedSignal = AbortSignal.any([runSignal, stop.signal]);
 
       const dynamicTools: Record<string, AITool<unknown, unknown>> = {};
@@ -503,8 +551,8 @@ export const aiChatRaw = task({
       }
 
       const result = streamText({
-        model: getModel(modelId),
-        system: `You are a helpful assistant for ${userContext.name} (${userContext.plan} plan). Be concise and friendly.`,
+        ...chat.toStreamTextOptions({ registry }),
+        ...(modelOverride ? { model: getModel(modelOverride) } : {}),
         messages,
         tools: {
           inspectEnvironment,
@@ -521,7 +569,6 @@ export const aiChatRaw = task({
             ...(useReasoning ? { thinking: { type: "enabled", budgetTokens: 10000 } } : {}),
           },
         },
-        experimental_telemetry: { isEnabled: true },
       });
 
       let response: UIMessage | undefined;
@@ -605,12 +652,13 @@ export const aiChatSession = task({
       userContext.messageCount++;
       if (turnClientData?.model) userContext.preferredModel = turnClientData.model;
 
-      const modelId = turnClientData?.model ?? userContext.preferredModel ?? undefined;
-      const useReasoning = REASONING_MODELS.has(modelId ?? DEFAULT_MODEL);
+      const modelOverride = turnClientData?.model ?? userContext.preferredModel ?? undefined;
+      const effectiveModel = modelOverride ?? chat.prompt().model ?? DEFAULT_MODEL;
+      const useReasoning = REASONING_MODELS.has(effectiveModel);
 
       const result = streamText({
-        model: getModel(modelId),
-        system: `You are a helpful assistant for ${userContext.name} (${userContext.plan} plan). Be concise and friendly.`,
+        ...chat.toStreamTextOptions({ registry }),
+        ...(modelOverride ? { model: getModel(modelOverride) } : {}),
         messages: turn.messages,
         tools: {
           inspectEnvironment,
@@ -626,7 +674,6 @@ export const aiChatSession = task({
             ...(useReasoning ? { thinking: { type: "enabled", budgetTokens: 10000 } } : {}),
           },
         },
-        experimental_telemetry: { isEnabled: true },
       });
 
       await turn.complete(result);
