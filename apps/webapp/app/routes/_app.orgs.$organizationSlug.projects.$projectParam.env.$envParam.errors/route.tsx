@@ -18,7 +18,11 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
 import { env } from "~/env.server";
-import { EnvironmentParamSchema, v3ErrorsConnectToSlackPath } from "~/utils/pathBuilder";
+import {
+  EnvironmentParamSchema,
+  v3ErrorsConnectToSlackPath,
+  v3ErrorsPath,
+} from "~/utils/pathBuilder";
 import {
   type CreateAlertChannelOptions,
   CreateAlertChannelService,
@@ -46,12 +50,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     slug: envParam,
   });
 
+  const errorsPath = v3ErrorsPath({ slug: organizationSlug }, project, { slug: envParam });
+
   return typedjson({
     alertData,
     projectRef: project.externalRef,
     projectId: project.id,
     environmentType: environment.type,
     connectToSlackHref,
+    errorsPath,
   });
 };
 
@@ -162,7 +169,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { alertData, connectToSlackHref } = useTypedLoaderData<typeof loader>();
+  const { alertData, connectToSlackHref, errorsPath } = useTypedLoaderData<typeof loader>();
   const { has } = useSearchParams();
   const showAlerts = has("alerts") ?? false;
 
@@ -176,7 +183,11 @@ export default function Page() {
           <>
             <ResizableHandle id="errors-alerts-handle" />
             <ResizablePanel id="errors-alerts" min="320px" default="420px" max="560px">
-              <ConfigureErrorAlerts {...alertData} connectToSlackHref={connectToSlackHref} />
+              <ConfigureErrorAlerts
+                {...alertData}
+                connectToSlackHref={connectToSlackHref}
+                formAction={errorsPath}
+              />
             </ResizablePanel>
           </>
         )}

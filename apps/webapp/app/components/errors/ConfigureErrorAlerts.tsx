@@ -46,6 +46,7 @@ export const ErrorAlertsFormSchema = z.object({
 
 type ConfigureErrorAlertsProps = ErrorAlertChannelData & {
   connectToSlackHref?: string;
+  formAction: string;
 };
 
 export function ConfigureErrorAlerts({
@@ -55,6 +56,7 @@ export function ConfigureErrorAlerts({
   slack,
   emailAlertsEnabled,
   connectToSlackHref,
+  formAction,
 }: ConfigureErrorAlertsProps) {
   const fetcher = useFetcher<{ ok?: boolean }>();
   const navigate = useNavigate();
@@ -125,7 +127,7 @@ export function ConfigureErrorAlerts({
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <fetcher.Form method="post" {...form.props}>
+        <fetcher.Form method="post" action={formAction} {...form.props}>
           <Fieldset className="flex flex-col gap-3 p-4">
             <div className="flex flex-col">
               <Paragraph variant="small/dimmed">You'll receive alerts when</Paragraph>
