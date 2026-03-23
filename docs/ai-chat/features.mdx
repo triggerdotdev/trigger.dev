@@ -374,7 +374,7 @@ export function Chat({ chatId }) {
 
   // Preload on mount — run starts before the user types anything
   useEffect(() => {
-    transport.preload(chatId, { warmTimeoutInSeconds: 60 });
+    transport.preload(chatId, { idleTimeoutInSeconds: 60 });
   }, [chatId]);
 
   const { messages, sendMessage } = useChat({ id: chatId, transport });
@@ -411,8 +411,8 @@ With `chat.createSession()` or raw tasks, check `payload.trigger === "preload"` 
 ```ts
 if (payload.trigger === "preload") {
   // Initialize early...
-  const result = await chat.messages.waitWithWarmup({
-    warmTimeoutInSeconds: 60,
+  const result = await chat.messages.waitWithIdleTimeout({
+    idleTimeoutInSeconds: 60,
     timeout: "1h",
   });
   if (!result.ok) return;

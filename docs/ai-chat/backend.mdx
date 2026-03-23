@@ -489,19 +489,19 @@ run: async ({ messages, signal }) => {
 },
 ```
 
-#### chat.setWarmTimeoutInSeconds()
+#### chat.setIdleTimeoutInSeconds()
 
-Override how long the run stays warm (active, using compute) after each turn:
+Override how long the run stays idle (active, using compute) after each turn:
 
 ```ts
 run: async ({ messages, signal }) => {
-  chat.setWarmTimeoutInSeconds(60); // Stay warm for 1 minute
+  chat.setIdleTimeoutInSeconds(60); // Stay idle for 1 minute
   return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
 },
 ```
 
 <Info>
-  Longer warm timeout means faster responses but more compute usage. Set to `0` to suspend immediately after each turn (minimum latency cost, slight delay on next message).
+  Longer idle timeout means faster responses but more compute usage. Set to `0` to suspend immediately after each turn (minimum latency cost, slight delay on next message).
 </Info>
 
 #### Stream options
@@ -639,7 +639,7 @@ export const myChat = task({
 
     const session = chat.createSession(payload, {
       signal,
-      warmTimeoutInSeconds: 60,
+      idleTimeoutInSeconds: 60,
       timeout: "1h",
     });
 
@@ -668,7 +668,7 @@ export const myChat = task({
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `signal` | `AbortSignal` | required | Run-level cancel signal (from task context) |
-| `warmTimeoutInSeconds` | `number` | `30` | Seconds to stay warm between turns |
+| `idleTimeoutInSeconds` | `number` | `30` | Seconds to stay idle between turns |
 | `timeout` | `string` | `"1h"` | Duration string for suspend timeout |
 | `maxTurns` | `number` | `100` | Max turns before ending |
 
@@ -736,7 +736,7 @@ Raw task mode also lets you call `.toUIMessageStream()` yourself with any option
 
 | Primitive | Description |
 |-----------|-------------|
-| `chat.messages` | Input stream for incoming messages — use `.waitWithWarmup()` to wait for the next turn |
+| `chat.messages` | Input stream for incoming messages — use `.waitWithIdleTimeout()` to wait for the next turn |
 | `chat.createStopSignal()` | Create a managed stop signal wired to the stop input stream |
 | `chat.pipeAndCapture(result)` | Pipe a `StreamTextResult` to the chat stream and capture the response |
 | `chat.writeTurnComplete()` | Signal the frontend that the current turn is complete |
@@ -759,8 +759,8 @@ export const myChat = task({
 
     // Handle preload — wait for the first real message
     if (currentPayload.trigger === "preload") {
-      const result = await chat.messages.waitWithWarmup({
-        warmTimeoutInSeconds: 60,
+      const result = await chat.messages.waitWithIdleTimeout({
+        idleTimeoutInSeconds: 60,
         timeout: "1h",
         spanName: "waiting for first message",
       });
@@ -818,8 +818,8 @@ export const myChat = task({
       await chat.writeTurnComplete();
 
       // Wait for the next message
-      const next = await chat.messages.waitWithWarmup({
-        warmTimeoutInSeconds: 60,
+      const next = await chat.messages.waitWithIdleTimeout({
+        idleTimeoutInSeconds: 60,
         timeout: "1h",
         spanName: "waiting for next message",
       });
