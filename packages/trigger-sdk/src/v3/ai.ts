@@ -21,6 +21,7 @@ import { type Attributes, trace } from "@opentelemetry/api";
 import { auth } from "./auth.js";
 import { locals } from "./locals.js";
 import { metadata } from "./metadata.js";
+import type { ResolvedPrompt } from "./prompt.js";
 import { streams } from "./streams.js";
 import { createTask } from "./shared.js";
 import { tracer } from "./tracer.js";
@@ -403,6 +404,118 @@ const chatStopControllerKey = locals.create<AbortController>("chat.stopControlle
 const chatUIStreamStaticKey = locals.create<ChatUIMessageStreamOptions>("chat.uiMessageStreamOptions.static");
 /** Per-turn UIMessageStream options, set via chat.setUIMessageStreamOptions(). @internal */
 const chatUIStreamPerTurnKey = locals.create<ChatUIMessageStreamOptions>("chat.uiMessageStreamOptions.perTurn");
+
+// ---------------------------------------------------------------------------
+// chat.prompt — store and retrieve a resolved prompt for the current run
+// ---------------------------------------------------------------------------
+
+/**
+ * A resolved prompt stored via `chat.prompt.set()`. Either a full `ResolvedPrompt`
+ * from `prompts.define().resolve()`, or a lightweight wrapper around a plain string.
+ */
+export type ChatPromptValue = ResolvedPrompt | {
+  text: string;
+  model: undefined;
+  config: undefined;
+  promptId: string;
+  version: number;
+  labels: string[];
+  toAISDKTelemetry: (additionalMetadata?: Record<string, string>) => {
+    experimental_telemetry: { isEnabled: true; metadata: Record<string, string> };
+  };
+};
+
+/** @internal */
+const chatPromptKey = locals.create<ChatPromptValue>("chat.prompt");
+
+/**
+ * Store a resolved prompt (or plain string) for the current run.
+ * Call from any hook (`onPreload`, `onChatStart`, `onTurnStart`) or `run()`.
+ */
+function setChatPrompt(resolved: ResolvedPrompt | string): void {
+  if (typeof resolved === "string") {
+    locals.set(chatPromptKey, {
+      text: resolved,
+      model: undefined,
+      config: undefined,
+      promptId: "",
+      version: 0,
+      labels: [],
+      toAISDKTelemetry: () => ({
+        experimental_telemetry: { isEnabled: true, metadata: {} },
+      }),
+    });
+  } else {
+    locals.set(chatPromptKey, resolved);
+  }
+}
+
+/**
+ * Read the stored prompt. Throws if `chat.prompt.set()` has not been called.
+ */
+function getChatPrompt(): ChatPromptValue {
+  const prompt = locals.get(chatPromptKey);
+  if (!prompt) {
+    throw new Error(
+      "chat.prompt() called before chat.prompt.set(). Set a prompt in onPreload, onChatStart, onTurnStart, or run() first."
+    );
+  }
+  return prompt;
+}
+
+/**
+ * Options for {@link toStreamTextOptions}.
+ */
+export type ToStreamTextOptionsOptions = {
+  /** Additional telemetry metadata merged into `experimental_telemetry.metadata`. */
+  telemetry?: Record<string, string>;
+  /**
+   * An AI SDK provider registry (from `createProviderRegistry`) or any object
+   * with a `languageModel(id)` method. When provided and the stored prompt has
+   * a `model` string, the resolved `LanguageModel` is included in the returned
+   * options so `streamText` uses it directly.
+   *
+   * The model string should use the `"provider:model-id"` format
+   * (e.g. `"openai:gpt-4o"`, `"anthropic:claude-sonnet-4-6"`).
+   */
+  registry?: { languageModel(modelId: string): unknown };
+};
+
+/**
+ * Returns an options object ready to spread into `streamText()`.
+ *
+ * Includes `system`, `experimental_telemetry`, and any config fields
+ * (temperature, maxTokens, etc.) from the stored prompt.
+ *
+ * When a `registry` is provided and the prompt has a `model` string,
+ * the resolved `LanguageModel` is included as `model`.
+ *
+ * If no prompt has been set, returns `{}` (no-op spread).
+ */
+function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<string, unknown> {
+  const prompt = locals.get(chatPromptKey);
+  if (!prompt) return {};
+
+  const result: Record<string, unknown> = {
+    system: prompt.text,
+  };
+
+  // Resolve model via registry if both are present
+  if (options?.registry && prompt.model) {
+    result.model = options.registry.languageModel(prompt.model);
+  }
+
+  // Spread config (temperature, maxTokens, etc.)
+  if (prompt.config) {
+    Object.assign(result, prompt.config);
+  }
+
+  // Add telemetry (forward additional metadata from caller)
+  const telemetry = prompt.toAISDKTelemetry(options?.telemetry);
+  Object.assign(result, telemetry);
+
+  return result;
+}
 
 /**
  * Options for `pipeChat`.
@@ -2302,6 +2415,19 @@ export const chat = {
   MessageAccumulator: ChatMessageAccumulator,
   /** Create a chat session (async iterator). See {@link createChatSession}. */
   createSession: createChatSession,
+  /**
+   * Store and retrieve a resolved prompt for the current run.
+   *
+   * - `chat.prompt.set(resolved)` — store a `ResolvedPrompt` or plain string
+   * - `chat.prompt()` — read the stored prompt (throws if not set)
+   */
+  prompt: Object.assign(getChatPrompt, { set: setChatPrompt }),
+  /**
+   * Returns an options object ready to spread into `streamText()`.
+   * Reads the stored prompt and returns `{ system, experimental_telemetry, ...config }`.
+   * Returns `{}` if no prompt has been set.
+   */
+  toStreamTextOptions,
 };
 
 /**
