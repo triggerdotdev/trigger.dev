@@ -21,12 +21,11 @@ async function authenticateAdmin(request: Request): Promise<Result<AdminUser, Au
     select: { id: true, admin: true },
   });
 
-  if (!user) {
-    return err({ status: 401, message: "Invalid or Missing API key" });
-  }
-
-  if (!user.admin) {
-    return err({ status: 403, message: "You must be an admin to perform this action" });
+  if (!user?.admin) {
+    return err({
+      status: user ? 403 : 401,
+      message: user ? "You must be an admin to perform this action" : "Invalid or Missing API key",
+    });
   }
 
   return ok(user);

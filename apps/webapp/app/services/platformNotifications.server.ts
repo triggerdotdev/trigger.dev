@@ -57,13 +57,17 @@ export type PlatformNotificationWithPayload = {
 export async function getAdminNotificationsList({
   page = 1,
   pageSize = 20,
+  hideArchived = false,
 }: {
   page?: number;
   pageSize?: number;
+  hideArchived?: boolean;
 }) {
+  const where = hideArchived ? { archivedAt: null } : {};
+
   const [notifications, total] = await Promise.all([
     prisma.platformNotification.findMany({
-      where: { archivedAt: null },
+      where,
       orderBy: [{ createdAt: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -80,7 +84,7 @@ export async function getAdminNotificationsList({
         },
       },
     }),
-    prisma.platformNotification.count({ where: { archivedAt: null } }),
+    prisma.platformNotification.count({ where }),
   ]);
 
   return {
@@ -95,6 +99,7 @@ export async function getAdminNotificationsList({
         priority: n.priority,
         startsAt: n.startsAt,
         endsAt: n.endsAt,
+        archivedAt: n.archivedAt,
         createdAt: n.createdAt,
         payload: n.payload,
         payloadTitle: parsed.success ? parsed.data.data.title : null,
@@ -207,20 +212,10 @@ async function upsertInteraction({
   onUpdate: Record<string, unknown>;
   onCreate: Record<string, unknown>;
 }) {
-  const existing = await prisma.platformNotificationInteraction.findUnique({
+  await prisma.platformNotificationInteraction.upsert({
     where: { notificationId_userId: { notificationId, userId } },
-  });
-
-  if (existing) {
-    await prisma.platformNotificationInteraction.update({
-      where: { id: existing.id },
-      data: onUpdate,
-    });
-    return;
-  }
-
-  await prisma.platformNotificationInteraction.create({
-    data: {
+    update: onUpdate,
+    create: {
       notificationId,
       userId,
       firstSeenAt: new Date(),
@@ -280,14 +275,9 @@ export async function recordNotificationClicked({
 // --- Read: recent changelogs (for Help & Feedback) ---
 
 export async function getRecentChangelogs({ limit = 2 }: { limit?: number } = {}) {
-  const now = new Date();
-
   const notifications = await prisma.platformNotification.findMany({
     where: {
       surface: "WEBAPP",
-      archivedAt: null,
-      startsAt: { lte: now },
-      endsAt: { gt: now },
       payload: { path: ["data", "type"], equals: "changelog" },
     },
     orderBy: [{ createdAt: "desc" }],
@@ -417,40 +407,27 @@ export async function getNextCliNotification({
     const parsed = PayloadV1Schema.safeParse(n.payload);
     if (!parsed.success) continue;
 
-    // Upsert interaction: always increment showCount
-    let newShowCount: number;
-    let firstSeenAt: Date;
-
-    if (interaction) {
-      await prisma.platformNotificationInteraction.update({
-        where: { id: interaction.id },
-        data: { showCount: { increment: 1 } },
-      });
-      newShowCount = interaction.showCount + 1;
-      firstSeenAt = interaction.firstSeenAt;
-    } else {
-      const newInteraction = await prisma.platformNotificationInteraction.create({
-        data: {
-          notificationId: n.id,
-          userId,
-          firstSeenAt: now,
-          showCount: 1,
-        },
-      });
-      newShowCount = 1;
-      firstSeenAt = newInteraction.firstSeenAt;
-    }
+    const updated = await prisma.platformNotificationInteraction.upsert({
+      where: { notificationId_userId: { notificationId: n.id, userId } },
+      update: { showCount: { increment: 1 } },
+      create: {
+        notificationId: n.id,
+        userId,
+        firstSeenAt: now,
+        showCount: 1,
+      },
+    });
 
     // If cliShowEvery is set, only return on every N-th request
-    if (n.cliShowEvery !== null && newShowCount % n.cliShowEvery !== 0) {
+    if (n.cliShowEvery !== null && updated.showCount % n.cliShowEvery !== 0) {
       continue;
     }
 
     return {
       id: n.id,
       payload: parsed.data,
-      showCount: newShowCount,
-      firstSeenAt: firstSeenAt.toISOString(),
+      showCount: updated.showCount,
+      firstSeenAt: updated.firstSeenAt.toISOString(),
     };
   }
 
