@@ -464,7 +464,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
    *
    * No-op if a session already exists for this chatId.
    */
-  async preload(chatId: string, options?: { warmTimeoutInSeconds?: number }): Promise<void> {
+  async preload(chatId: string, options?: { idleTimeoutInSeconds?: number }): Promise<void> {
     // Don't preload if session already exists
     if (this.sessions.get(chatId)?.runId) return;
 
@@ -473,8 +473,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       chatId,
       trigger: "preload" as const,
       metadata: this.defaultMetadata,
-      ...(options?.warmTimeoutInSeconds !== undefined
-        ? { warmTimeoutInSeconds: options.warmTimeoutInSeconds }
+      ...(options?.idleTimeoutInSeconds !== undefined
+        ? { idleTimeoutInSeconds: options.idleTimeoutInSeconds }
         : {}),
     };
 
