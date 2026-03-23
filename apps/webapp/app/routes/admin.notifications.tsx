@@ -1,5 +1,5 @@
 import { ChevronRightIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, useFetcher } from "@remix-run/react";
+import { useFetcher, useSearchParams } from "@remix-run/react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import { useRef, useState, useLayoutEffect } from "react";
@@ -36,6 +36,7 @@ const CLI_TYPES = ["info", "warn", "error", "success"] as const;
 
 const SearchParams = z.object({
   page: z.coerce.number().optional(),
+  hideArchived: z.coerce.boolean().optional(),
 });
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -45,10 +46,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const searchParams = createSearchParams(request.url, SearchParams);
   if (!searchParams.success) throw new Error(searchParams.error);
-  const { page: rawPage } = searchParams.params.getAll();
+  const { page: rawPage, hideArchived } = searchParams.params.getAll();
   const page = rawPage ?? 1;
 
-  const data = await getAdminNotificationsList({ page, pageSize: PAGE_SIZE });
+  const data = await getAdminNotificationsList({ page, pageSize: PAGE_SIZE, hideArchived: hideArchived ?? false });
 
   return typedjson({ ...data, userId });
 };
@@ -62,119 +63,126 @@ export async function action({ request }: ActionFunctionArgs) {
   const _action = formData.get("_action");
 
   if (_action === "create" || _action === "create-preview") {
-    const surface = formData.get("surface") as string;
-    const payloadType = formData.get("payloadType") as string;
-    const adminLabel = formData.get("adminLabel") as string;
-    const title = formData.get("title") as string;
-    const description = formData.get("description") as string;
-    const actionUrl = (formData.get("actionUrl") as string) || undefined;
-    const image = (formData.get("image") as string) || undefined;
-    const dismissOnAction = formData.get("dismissOnAction") === "true";
-    const startsAt = formData.get("startsAt") as string;
-    const endsAt = formData.get("endsAt") as string;
-    const priority = Number(formData.get("priority") || "0");
-    const cliMaxShowCount = formData.get("cliMaxShowCount")
-      ? Number(formData.get("cliMaxShowCount"))
-      : undefined;
-    const cliMaxDaysAfterFirstSeen = formData.get("cliMaxDaysAfterFirstSeen")
-      ? Number(formData.get("cliMaxDaysAfterFirstSeen"))
-      : undefined;
-    const cliShowEvery = formData.get("cliShowEvery")
-      ? Number(formData.get("cliShowEvery"))
-      : undefined;
-
-    const discoveryFilePatterns = (formData.get("discoveryFilePatterns") as string) || "";
-    const discoveryContentPattern =
-      (formData.get("discoveryContentPattern") as string) || undefined;
-    const discoveryMatchBehavior = (formData.get("discoveryMatchBehavior") as string) || "";
-
-    if (!adminLabel || !title || !description || !endsAt || !surface || !payloadType) {
-      return typedjson({ error: "Missing required fields" }, { status: 400 });
-    }
-
-    const discovery =
-      discoveryFilePatterns && discoveryMatchBehavior
-        ? {
-            filePatterns: discoveryFilePatterns
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean),
-            ...(discoveryContentPattern ? { contentPattern: discoveryContentPattern } : {}),
-            matchBehavior: discoveryMatchBehavior as "show-if-found" | "show-if-not-found",
-          }
-        : undefined;
-
-    const isPreview = _action === "create-preview";
-
-    const result = await createPlatformNotification({
-      title: isPreview ? `[Preview] ${adminLabel}` : adminLabel,
-      payload: {
-        version: "1" as const,
-        data: {
-          type: payloadType as "info" | "warn" | "error" | "success" | "card" | "changelog",
-          title,
-          description,
-          ...(actionUrl ? { actionUrl } : {}),
-          ...(image ? { image } : {}),
-          ...(dismissOnAction ? { dismissOnAction: true } : {}),
-          ...(discovery ? { discovery } : {}),
-        },
-      },
-      surface: surface as "CLI" | "WEBAPP",
-      scope: isPreview ? "USER" : "GLOBAL",
-      ...(isPreview ? { userId } : {}),
-      startsAt: isPreview
-        ? new Date().toISOString()
-        : startsAt
-          ? new Date(startsAt + "Z").toISOString()
-          : new Date().toISOString(),
-      endsAt: isPreview
-        ? new Date(Date.now() + 60 * 60 * 1000).toISOString()
-        : new Date(endsAt + "Z").toISOString(),
-      priority,
-      ...(surface === "CLI"
-        ? isPreview
-          ? { cliMaxShowCount: 1 }
-          : {
-              cliMaxShowCount,
-              cliMaxDaysAfterFirstSeen,
-              cliShowEvery,
-            }
-        : {}),
-    });
-
-    if (result.isErr()) {
-      const err = result.error;
-      if (err.type === "validation") {
-        return typedjson(
-          { error: err.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") },
-          { status: 400 }
-        );
-      }
-      return typedjson({ error: err.message }, { status: 500 });
-    }
-
-    if (isPreview) {
-      return typedjson({ success: true, previewId: result.value.id });
-    }
-    return typedjson({ success: true, id: result.value.id });
+    return handleCreateAction(formData, userId, _action === "create-preview");
   }
 
   if (_action === "archive") {
-    const notificationId = formData.get("notificationId") as string;
-    if (!notificationId) {
-      return typedjson({ error: "Missing notificationId" }, { status: 400 });
-    }
-
-    await prisma.platformNotification.update({
-      where: { id: notificationId },
-      data: { archivedAt: new Date() },
-    });
-
-    return typedjson({ success: true });
+    return handleArchiveAction(formData);
   }
 
   return typedjson({ error: "Unknown action" }, { status: 400 });
+}
+
+async function handleCreateAction(formData: FormData, userId: string, isPreview: boolean) {
+  const surface = formData.get("surface") as string;
+  const payloadType = formData.get("payloadType") as string;
+  const adminLabel = formData.get("adminLabel") as string;
+  const title = formData.get("title") as string;
+  const description = formData.get("description") as string;
+  const actionUrl = (formData.get("actionUrl") as string) || undefined;
+  const image = (formData.get("image") as string) || undefined;
+  const dismissOnAction = formData.get("dismissOnAction") === "true";
+  const startsAt = formData.get("startsAt") as string;
+  const endsAt = formData.get("endsAt") as string;
+  const priority = Number(formData.get("priority") || "0");
+
+  if (!adminLabel || !title || !description || !endsAt || !surface || !payloadType) {
+    return typedjson({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  const cliMaxShowCount = formData.get("cliMaxShowCount")
+    ? Number(formData.get("cliMaxShowCount"))
+    : undefined;
+  const cliMaxDaysAfterFirstSeen = formData.get("cliMaxDaysAfterFirstSeen")
+    ? Number(formData.get("cliMaxDaysAfterFirstSeen"))
+    : undefined;
+  const cliShowEvery = formData.get("cliShowEvery")
+    ? Number(formData.get("cliShowEvery"))
+    : undefined;
+
+  const discoveryFilePatterns = (formData.get("discoveryFilePatterns") as string) || "";
+  const discoveryContentPattern =
+    (formData.get("discoveryContentPattern") as string) || undefined;
+  const discoveryMatchBehavior = (formData.get("discoveryMatchBehavior") as string) || "";
+
+  const discovery =
+    discoveryFilePatterns && discoveryMatchBehavior
+      ? {
+          filePatterns: discoveryFilePatterns
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          ...(discoveryContentPattern ? { contentPattern: discoveryContentPattern } : {}),
+          matchBehavior: discoveryMatchBehavior as "show-if-found" | "show-if-not-found",
+        }
+      : undefined;
+
+  const result = await createPlatformNotification({
+    title: isPreview ? `[Preview] ${adminLabel}` : adminLabel,
+    payload: {
+      version: "1" as const,
+      data: {
+        type: payloadType as "info" | "warn" | "error" | "success" | "card" | "changelog",
+        title,
+        description,
+        ...(actionUrl ? { actionUrl } : {}),
+        ...(image ? { image } : {}),
+        ...(dismissOnAction ? { dismissOnAction: true } : {}),
+        ...(discovery ? { discovery } : {}),
+      },
+    },
+    surface: surface as "CLI" | "WEBAPP",
+    scope: isPreview ? "USER" : "GLOBAL",
+    ...(isPreview ? { userId } : {}),
+    startsAt: isPreview
+      ? new Date().toISOString()
+      : startsAt
+        ? new Date(startsAt + "Z").toISOString()
+        : new Date().toISOString(),
+    endsAt: isPreview
+      ? new Date(Date.now() + 60 * 60 * 1000).toISOString()
+      : new Date(endsAt + "Z").toISOString(),
+    priority,
+    ...(surface === "CLI"
+      ? isPreview
+        ? { cliMaxShowCount: 1 }
+        : {
+            cliMaxShowCount,
+            cliMaxDaysAfterFirstSeen,
+            cliShowEvery,
+          }
+      : {}),
+  });
+
+  if (result.isErr()) {
+    const err = result.error;
+    if (err.type === "validation") {
+      return typedjson(
+        { error: err.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") },
+        { status: 400 }
+      );
+    }
+    return typedjson({ error: err.message }, { status: 500 });
+  }
+
+  if (isPreview) {
+    return typedjson({ success: true, previewId: result.value.id });
+  }
+  return typedjson({ success: true, id: result.value.id });
+}
+
+async function handleArchiveAction(formData: FormData) {
+  const notificationId = formData.get("notificationId") as string;
+  if (!notificationId) {
+    return typedjson({ error: "Missing notificationId" }, { status: 400 });
+  }
+
+  await prisma.platformNotification.update({
+    where: { id: notificationId },
+    data: { archivedAt: new Date() },
+  });
+
+  return typedjson({ success: true });
 }
 
 export default function AdminNotificationsRoute() {
@@ -205,13 +213,26 @@ export default function AdminNotificationsRoute() {
     }
   };
 
+  const [urlSearchParams, setUrlSearchParams] = useSearchParams();
+  const hideArchived = urlSearchParams.get("hideArchived") === "true";
+
+  const toggleHideArchived = () => {
+    setUrlSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (hideArchived) {
+        next.delete("hideArchived");
+      } else {
+        next.set("hideArchived", "true");
+      }
+      next.delete("page");
+      return next;
+    });
+  };
+
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto px-4 pb-4">
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <Paragraph className="text-text-dimmed">
-            {total} notifications (page {page} of {pageCount || 1})
-          </Paragraph>
+        <div className="flex items-center justify-end">
           <Button variant="primary/small" onClick={() => setShowCreate((v) => !v)}>
             {showCreate ? "Hide form" : "Create Notification"}
           </Button>
@@ -524,6 +545,21 @@ export default function AdminNotificationsRoute() {
           </div>
         )}
 
+        <div className="flex items-center justify-between">
+          <Paragraph className="text-text-dimmed">
+            {total} notifications (page {page} of {pageCount || 1})
+          </Paragraph>
+          <label className="flex items-center gap-2 text-xs text-text-dimmed">
+            <input
+              type="checkbox"
+              checked={hideArchived}
+              onChange={toggleHideArchived}
+              className="rounded border-grid-dimmed bg-charcoal-900"
+            />
+            Hide archived
+          </label>
+        </div>
+
         <Table>
           <TableHeader>
             <TableRow>
@@ -535,8 +571,8 @@ export default function AdminNotificationsRoute() {
               <TableHeaderCell>Ends (UTC)</TableHeaderCell>
               <TableHeaderCell>Seen</TableHeaderCell>
               <TableHeaderCell>Clicked</TableHeaderCell>
-              <TableHeaderCell>Dismissed</TableHeaderCell>
               <TableHeaderCell>Actions</TableHeaderCell>
+              <TableHeaderCell>Status</TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -545,50 +581,56 @@ export default function AdminNotificationsRoute() {
                 <Paragraph>No notifications found</Paragraph>
               </TableBlankRow>
             ) : (
-              notifications.map((n) => (
-                <TableRow key={n.id}>
-                  <TableCell>
-                    <span className="text-sm font-medium text-text-bright">{n.title}</span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge color={n.surface === "CLI" ? "amber" : "blue"}>{n.surface}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge color={n.scope === "GLOBAL" ? "green" : "gray"}>{n.scope}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs text-text-dimmed">{n.payloadType ?? "—"}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs text-text-dimmed">{formatDate(n.startsAt)}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs text-text-dimmed">{formatDate(n.endsAt)}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs font-mono">{n.stats.seen}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs font-mono">{n.stats.clicked}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs font-mono">{n.stats.dismissed}</span>
-                  </TableCell>
-                  <TableCell>
-                    <archiveFetcher.Form method="post" className="inline">
-                      <input type="hidden" name="_action" value="archive" />
-                      <input type="hidden" name="notificationId" value={n.id} />
-                      <Button
-                        type="submit"
-                        variant="danger/small"
-                        disabled={archiveFetcher.state !== "idle"}
-                      >
-                        Archive
-                      </Button>
-                    </archiveFetcher.Form>
-                  </TableCell>
-                </TableRow>
-              ))
+              notifications.map((n) => {
+                const status = getNotificationStatus(n);
+                const isActive = status === "active";
+                return (
+                  <TableRow key={n.id}>
+                    <TableCell>
+                      <span className="text-sm font-medium text-text-bright">{n.title}</span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge color={n.surface === "CLI" ? "amber" : "blue"}>{n.surface}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge color={n.scope === "GLOBAL" ? "green" : "gray"}>{n.scope}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs text-text-dimmed">{n.payloadType ?? "—"}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs text-text-dimmed">{formatDate(n.startsAt)}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs text-text-dimmed">{formatDate(n.endsAt)}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs font-mono">{n.stats.seen}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs font-mono">{n.stats.clicked}</span>
+                    </TableCell>
+                    <TableCell>
+                      {isActive && (
+                        <archiveFetcher.Form method="post" className="inline">
+                          <input type="hidden" name="_action" value="archive" />
+                          <input type="hidden" name="notificationId" value={n.id} />
+                          <Button
+                            type="submit"
+                            variant="danger/small"
+                            disabled={archiveFetcher.state !== "idle"}
+                          >
+                            Archive
+                          </Button>
+                        </archiveFetcher.Form>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={status} />
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -748,4 +790,35 @@ function defaultStartsAt(): string {
 
 function defaultEndsAt(): string {
   return toDatetimeLocalUTC(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
+}
+
+type NotificationStatus = "active" | "pending" | "expired" | "archived";
+
+function getNotificationStatus(n: {
+  archivedAt: string | Date | null;
+  startsAt: string | Date;
+  endsAt: string | Date;
+}): NotificationStatus {
+  if (n.archivedAt) return "archived";
+  const now = new Date();
+  const starts = typeof n.startsAt === "string" ? new Date(n.startsAt) : n.startsAt;
+  const ends = typeof n.endsAt === "string" ? new Date(n.endsAt) : n.endsAt;
+  if (now < starts) return "pending";
+  if (now >= ends) return "expired";
+  return "active";
+}
+
+function StatusBadge({ status }: { status: NotificationStatus }) {
+  const styles: Record<NotificationStatus, string> = {
+    active: "bg-green-500/20 text-green-400",
+    pending: "bg-blue-500/20 text-blue-400",
+    expired: "bg-charcoal-700 text-text-dimmed",
+    archived: "bg-red-500/20 text-red-400",
+  };
+
+  return (
+    <span className={`inline-flex rounded-sm px-1.5 py-0.5 text-[11px] font-medium ${styles[status]}`}>
+      {status}
+    </span>
+  );
 }

@@ -242,7 +242,7 @@ function NotificationCard({
               ref={descriptionRef}
               className={cn(!isExpanded && "line-clamp-3")}
             >
-              <ReactMarkdown components={markdownComponents}>{description}</ReactMarkdown>
+              <ReactMarkdown components={getMarkdownComponents(onLinkClick)}>{description}</ReactMarkdown>
             </div>
             {(isOverflowing || isExpanded) && (
               <button
@@ -269,25 +269,28 @@ function NotificationCard({
   );
 }
 
-const markdownComponents = {
-  p: ({ children }: { children?: React.ReactNode }) => (
-    <p className="my-0.5 text-xs leading-relaxed text-text-dimmed">{children}</p>
-  ),
-  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-indigo-400 underline hover:text-indigo-300 transition-colors"
-    >
-      {children}
-    </a>
-  ),
-  strong: ({ children }: { children?: React.ReactNode }) => (
-    <strong className="font-semibold text-text-bright">{children}</strong>
-  ),
-  em: ({ children }: { children?: React.ReactNode }) => <em>{children}</em>,
-  code: ({ children }: { children?: React.ReactNode }) => (
-    <code className="rounded bg-charcoal-700 px-1 py-0.5 text-[11px]">{children}</code>
-  ),
-};
+function getMarkdownComponents(onLinkClick: () => void) {
+  return {
+    p: ({ children }: { children?: React.ReactNode }) => (
+      <p className="my-0.5 text-xs leading-relaxed text-text-dimmed">{children}</p>
+    ),
+    a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-indigo-400 underline hover:text-indigo-300 transition-colors"
+        onClick={onLinkClick}
+      >
+        {children}
+      </a>
+    ),
+    strong: ({ children }: { children?: React.ReactNode }) => (
+      <strong className="font-semibold text-text-bright">{children}</strong>
+    ),
+    em: ({ children }: { children?: React.ReactNode }) => <em>{children}</em>,
+    code: ({ children }: { children?: React.ReactNode }) => (
+      <code className="rounded bg-charcoal-700 px-1 py-0.5 text-[11px]">{children}</code>
+    ),
+  };
+}
