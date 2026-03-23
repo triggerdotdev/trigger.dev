@@ -121,9 +121,7 @@ const { action, loader } = createActionApiRoute(
           realtimeStreamsVersion: determineRealtimeStreamsVersion(
             realtimeStreamsVersion ?? undefined
           ),
-          triggerSource: body.options?.parentRunId
-            ? "sdk"
-            : triggerSourceHeader ?? "api",
+          triggerSource: isFromWorker ? "sdk" : triggerSourceHeader ?? "api",
           triggerAction: "trigger",
         },
         engineVersion ?? undefined

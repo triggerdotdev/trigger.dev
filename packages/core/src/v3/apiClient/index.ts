@@ -1551,6 +1551,10 @@ export class ApiClient {
       }
     }
 
+    if (!headers["x-trigger-source"]) {
+      headers["x-trigger-source"] = "sdk";
+    }
+
     if (this.previewBranch) {
       headers["x-trigger-branch"] = this.previewBranch;
     }

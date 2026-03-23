@@ -114,7 +114,7 @@ const { action, loader } = createActionApiRoute(
         realtimeStreamsVersion: determineRealtimeStreamsVersion(
           realtimeStreamsVersion ?? undefined
         ),
-        triggerSource: triggerSourceHeader ?? undefined,
+        triggerSource: isFromWorker ? "sdk" : triggerSourceHeader ?? undefined,
         triggerAction: "trigger",
       });
 

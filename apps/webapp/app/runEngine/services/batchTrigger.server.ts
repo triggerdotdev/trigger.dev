@@ -680,7 +680,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         batchId: batch.id,
         batchIndex: currentIndex,
         realtimeStreamsVersion: options?.realtimeStreamsVersion,
-        triggerSource: parentRunId ? "sdk" : options?.triggerSource ?? "api",
+        triggerSource: options?.triggerSource ?? "api",
         triggerAction: options?.triggerAction ?? "trigger",
       },
       "V2"
