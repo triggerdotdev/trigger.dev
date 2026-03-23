@@ -1138,7 +1138,7 @@ importers:
         version: 18.3.1
       react-email:
         specifier: ^2.1.1
-        version: 2.1.2(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(bufferutil@4.0.9)(eslint@8.31.0)
+        version: 2.1.2(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(eslint@8.31.0)
       resend:
         specifier: ^3.2.0
         version: 3.2.0
@@ -2171,10 +2171,10 @@ importers:
     dependencies:
       '@ai-sdk/anthropic':
         specifier: ^3.0.0
-        version: 3.0.50(zod@3.25.76)
+        version: 3.0.54(zod@3.25.76)
       '@ai-sdk/openai':
         specifier: ^3.0.0
-        version: 3.0.19(zod@3.25.76)
+        version: 3.0.41(zod@3.25.76)
       '@ai-sdk/react':
         specifier: ^3.0.0
         version: 3.0.51(react@19.1.0)(zod@3.25.76)
@@ -2183,13 +2183,13 @@ importers:
         version: 7.4.2
       '@prisma/client':
         specifier: ^7.4.2
-        version: 7.4.2(prisma@7.4.2(@types/react@19.0.12)(better-sqlite3@11.10.0)(magicast@0.3.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.5.4))(typescript@5.5.4)
+        version: 7.4.2(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@11.10.0)(magicast@0.3.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.5.4))(typescript@5.5.4)
       '@trigger.dev/sdk':
         specifier: workspace:*
         version: link:../../packages/trigger-sdk
       ai:
         specifier: ^6.0.0
-        version: 6.0.3(zod@3.25.76)
+        version: 6.0.116(zod@3.25.76)
       next:
         specifier: 15.3.3
         version: 15.3.3(@opentelemetry/api@1.9.0)(@playwright/test@1.37.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -2223,16 +2223,16 @@ importers:
         version: 20.14.14
       '@types/react':
         specifier: ^19
-        version: 19.0.12
+        version: 19.2.14
       '@types/react-dom':
         specifier: ^19
-        version: 19.0.4(@types/react@19.0.12)
+        version: 19.0.4(@types/react@19.2.14)
       '@types/turndown':
         specifier: ^5.0.6
         version: 5.0.6
       prisma:
         specifier: ^7.4.2
-        version: 7.4.2(@types/react@19.0.12)(better-sqlite3@11.10.0)(magicast@0.3.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.5.4)
+        version: 7.4.2(@types/react@19.2.14)(better-sqlite3@11.10.0)(magicast@0.3.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.5.4)
       tailwindcss:
         specifier: ^4
         version: 4.0.17
@@ -2990,8 +2990,8 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4
 
-  '@ai-sdk/anthropic@3.0.50':
-    resolution: {integrity: sha512-BkCUgGTp/iZJuuFBF1wv7GGnrEJg7X7hqbaa+/t4HTBt9dZn3e6NFn5NhPUvo2p5SreUeHEl0As0r2uaVn3K9Q==}
+  '@ai-sdk/anthropic@3.0.54':
+    resolution: {integrity: sha512-UhSPZ63FsTNO7PQCfxsqJIgkij1sivU3qfXydlSd4ugshpkNhd2v9s78G/40/G5C3pKSRfp/CfaSvivrneQfCg==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -3010,6 +3010,12 @@ packages:
 
   '@ai-sdk/gateway@3.0.2':
     resolution: {integrity: sha512-giJEg9ob45htbu3iautK+2kvplY2JnTj7ir4wZzYSQWvqGatWfBBfDuNCU5wSJt9BCGjymM5ZS9ziD42JGCZBw==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/gateway@3.0.22':
+    resolution: {integrity: sha512-NgnlY73JNuooACHqUIz5uMOEWvqR1MMVbb2soGLMozLY1fgwEIF5iJFDAGa5/YArlzw2ATVU7zQu7HkR/FUjgA==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -3104,14 +3110,20 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/provider-utils@4.0.16':
-    resolution: {integrity: sha512-kBvDqNkt5EwlzF9FujmNhhtl8FYg3e8FO8P5uneKliqfRThWemzBj+wfYr7ZCymAQhTRnwSSz1/SOqhOAwmx9g==}
+  '@ai-sdk/provider-utils@4.0.17':
+    resolution: {integrity: sha512-oyCeFINTYK0B8ZGUBiQc05G5vytPlKSmTTtm19xfJuUgoi8zkvvRcoPQci4mSnyfpPn2XSFFDfsALG8uGcapfg==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
   '@ai-sdk/provider-utils@4.0.19':
     resolution: {integrity: sha512-3eG55CrSWCu2SXlqq2QCsFjo3+E7+Gmg7i/oRVoSZzIodTuDSfLb3MRje67xE9RFea73Zao7Lm4mADIfUETKGg==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/provider-utils@4.0.9':
+    resolution: {integrity: sha512-bB4r6nfhBOpmoS9mePxjRoCy+LnzP3AfhyMGCkGL4Mn9clVNlqEeKj26zEKEtB6yoSVcT1IQ0Zh9fytwMCDnow==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -11218,9 +11230,6 @@ packages:
   '@types/react@19.2.14':
     resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
 
-  '@types/react@19.2.14':
-    resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
-
   '@types/readable-stream@4.0.14':
     resolution: {integrity: sha512-xZn/AuUbCMShGsqH/ehZtGDwQtbx00M9rZ2ENLe4tOjFZ/JFeWMhEZkk2fEe1jAUqqEAURIkFJ7Az/go8mM1/w==}
 
@@ -12896,9 +12905,6 @@ packages:
 
   csstype@3.2.0:
     resolution: {integrity: sha512-si++xzRAY9iPp60roQiFta7OFbhrgvcthrhlNAGeQptSY25uJjkfUV8OArC3KLocB8JT8ohz+qgxWCmz8RhjIg==}
-
-  csstype@3.2.3:
-    resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
@@ -19398,8 +19404,8 @@ packages:
   tailwind-merge@3.3.1:
     resolution: {integrity: sha512-gBXpgUm/3rp1lMZZrM/w7D8GKqshif0zAymAhbCyIt8KMe+0v9DQ7cdYLR4FHH/cKpdTXb+A/tKKU3eolfsI+g==}
 
-  tailwind-merge@3.4.0:
-    resolution: {integrity: sha512-uSaO4gnW+b3Y2aWoWfFpX62vn2sR3skfhbjsEnaBI81WD1wBLlHZe5sWf0AqjksNdYTbGBEd0UasQMT3SNV15g==}
+  tailwind-merge@3.5.0:
+    resolution: {integrity: sha512-I8K9wewnVDkL1NTGoqWmVEIlUcB9gFriAEkXkfCjX5ib8ezGxtR3xD7iZIxrfArjEsH7F1CHD4RFUtxefdqV/A==}
 
   tailwind-scrollbar-hide@1.1.7:
     resolution: {integrity: sha512-X324n9OtpTmOMqEgDUEA/RgLrNfBF/jwJdctaPZDzB3mppxJk7TLIDmOreEDm1Bq4R9LSPu4Epf8VSdovNU+iA==}
@@ -20763,10 +20769,10 @@ snapshots:
       '@ai-sdk/provider-utils': 3.0.3(zod@3.25.76)
       zod: 3.25.76
 
-  '@ai-sdk/anthropic@3.0.50(zod@3.25.76)':
+  '@ai-sdk/anthropic@3.0.54(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
-      '@ai-sdk/provider-utils': 4.0.16(zod@3.25.76)
+      '@ai-sdk/provider-utils': 4.0.17(zod@3.25.76)
       zod: 3.25.76
 
   '@ai-sdk/gateway@1.0.6(zod@3.25.76)':
@@ -20787,6 +20793,13 @@ snapshots:
       '@ai-sdk/provider': 3.0.0
       '@ai-sdk/provider-utils': 4.0.1(zod@3.25.76)
       '@vercel/oidc': 3.0.5
+      zod: 3.25.76
+
+  '@ai-sdk/gateway@3.0.22(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.5
+      '@ai-sdk/provider-utils': 4.0.9(zod@3.25.76)
+      '@vercel/oidc': 3.1.0
       zod: 3.25.76
 
   '@ai-sdk/gateway@3.0.66(zod@3.25.76)':
@@ -20886,7 +20899,7 @@ snapshots:
       eventsource-parser: 3.0.6
       zod: 3.25.76
 
-  '@ai-sdk/provider-utils@4.0.16(zod@3.25.76)':
+  '@ai-sdk/provider-utils@4.0.17(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
       '@standard-schema/spec': 1.1.0
@@ -20894,6 +20907,13 @@ snapshots:
       zod: 3.25.76
 
   '@ai-sdk/provider-utils@4.0.19(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.8
+      '@standard-schema/spec': 1.1.0
+      eventsource-parser: 3.0.6
+      zod: 3.25.76
+
+  '@ai-sdk/provider-utils@4.0.9(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 3.0.5
       '@standard-schema/spec': 1.1.0
@@ -24484,7 +24504,7 @@ snapshots:
     dependencies:
       hono: 4.11.8
 
-  '@hono/node-ws@1.0.4(@hono/node-server@1.12.2(hono@4.5.11))(bufferutil@4.0.9)':
+  '@hono/node-ws@1.0.4(@hono/node-server@1.12.2(hono@4.11.8))(bufferutil@4.0.9)':
     dependencies:
       '@hono/node-server': 1.12.2(hono@4.5.11)
       ws: 8.18.3(bufferutil@4.0.9)
@@ -26113,11 +26133,11 @@ snapshots:
       prisma: 6.20.0-integration-next.8(@types/react@19.2.14)(magicast@0.3.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.5.4)
       typescript: 5.5.4
 
-  '@prisma/client@7.4.2(prisma@7.4.2(@types/react@19.0.12)(better-sqlite3@11.10.0)(magicast@0.3.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.5.4))(typescript@5.5.4)':
+  '@prisma/client@7.4.2(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@11.10.0)(magicast@0.3.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.5.4))(typescript@5.5.4)':
     dependencies:
       '@prisma/client-runtime-utils': 7.4.2
     optionalDependencies:
-      prisma: 7.4.2(@types/react@19.0.12)(better-sqlite3@11.10.0)(magicast@0.3.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.5.4)
+      prisma: 7.4.2(@types/react@19.2.14)(better-sqlite3@11.10.0)(magicast@0.3.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.5.4)
       typescript: 5.5.4
 
   '@prisma/config@6.14.0(magicast@0.3.5)':
@@ -26351,9 +26371,9 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@prisma/studio-core@0.13.1(@types/react@19.0.12)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@prisma/studio-core@0.13.1(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@types/react': 19.0.12
+      '@types/react': 19.2.14
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
@@ -31935,6 +31955,10 @@ snapshots:
     dependencies:
       '@types/react': 19.0.12
 
+  '@types/react-dom@19.0.4(@types/react@19.2.14)':
+    dependencies:
+      '@types/react': 19.2.14
+
   '@types/react@18.2.48':
     dependencies:
       '@types/prop-types': 15.7.5
@@ -32262,7 +32286,7 @@ snapshots:
       chalk: 4.1.2
       css-what: 5.1.0
       cssesc: 3.0.0
-      csstype: 3.2.0
+      csstype: 3.2.3
       deep-object-diff: 1.1.9
       deepmerge: 4.3.1
       media-query-parser: 2.0.2
@@ -33927,8 +33951,6 @@ snapshots:
 
   csstype@3.2.3: {}
 
-  csstype@3.2.3: {}
-
   csv-generate@3.4.3: {}
 
   csv-parse@4.16.3: {}
@@ -34382,7 +34404,7 @@ snapshots:
   dom-helpers@5.2.1:
     dependencies:
       '@babel/runtime': 7.28.4
-      csstype: 3.2.0
+      csstype: 3.2.3
 
   dom-serializer@2.0.0:
     dependencies:
@@ -38431,7 +38453,7 @@ snapshots:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
       css-tree: 1.1.3
-      csstype: 3.2.0
+      csstype: 3.2.3
       fastest-stable-stringify: 2.0.2
       inline-style-prefixer: 7.0.1
       react: 18.2.0
@@ -39789,12 +39811,12 @@ snapshots:
       - react
       - react-dom
 
-  prisma@7.4.2(@types/react@19.0.12)(better-sqlite3@11.10.0)(magicast@0.3.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.5.4):
+  prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@11.10.0)(magicast@0.3.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.5.4):
     dependencies:
       '@prisma/config': 7.4.2(magicast@0.3.5)
       '@prisma/dev': 0.20.0(typescript@5.5.4)
       '@prisma/engines': 7.4.2
-      '@prisma/studio-core': 0.13.1(@types/react@19.0.12)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@prisma/studio-core': 0.13.1(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       mysql2: 3.15.3
       postgres: 3.4.7
     optionalDependencies:
@@ -40136,7 +40158,7 @@ snapshots:
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
 
-  react-email@2.1.2(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(bufferutil@4.0.9)(eslint@8.31.0):
+  react-email@2.1.2(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(eslint@8.31.0):
     dependencies:
       '@babel/parser': 7.24.1
       '@radix-ui/colors': 1.0.1
@@ -40173,8 +40195,8 @@ snapshots:
       react: 18.3.1
       react-dom: 18.2.0(react@18.3.1)
       shelljs: 0.8.5
-      socket.io: 4.7.3(bufferutil@4.0.9)
-      socket.io-client: 4.7.3(bufferutil@4.0.9)
+      socket.io: 4.7.3
+      socket.io-client: 4.7.3
       sonner: 1.3.1(react-dom@18.2.0(react@18.3.1))(react@18.3.1)
       source-map-js: 1.0.2
       stacktrace-parser: 0.1.10
@@ -41426,7 +41448,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  socket.io-client@4.7.3(bufferutil@4.0.9):
+  socket.io-client@4.7.3:
     dependencies:
       '@socket.io/component-emitter': 3.1.0
       debug: 4.3.7(supports-color@10.0.0)
@@ -41455,7 +41477,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  socket.io@4.7.3(bufferutil@4.0.9):
+  socket.io@4.7.3:
     dependencies:
       accepts: 1.3.8
       base64id: 2.0.0
@@ -41709,7 +41731,7 @@ snapshots:
       remark-parse: 11.0.0
       remark-rehype: 11.1.2
       remend: 1.2.1
-      tailwind-merge: 3.4.0
+      tailwind-merge: 3.5.0
       unified: 11.0.5
       unist-util-visit: 5.0.0
       unist-util-visit-parents: 6.0.1
@@ -41995,7 +42017,7 @@ snapshots:
 
   tailwind-merge@3.3.1: {}
 
-  tailwind-merge@3.4.0: {}
+  tailwind-merge@3.5.0: {}
 
   tailwind-scrollbar-hide@1.1.7: {}
 
