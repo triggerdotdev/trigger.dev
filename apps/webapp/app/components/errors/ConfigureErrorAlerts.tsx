@@ -7,9 +7,9 @@ import {
   LockClosedIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
-import { useFetcher } from "@remix-run/react";
+import { useFetcher, useNavigate } from "@remix-run/react";
 import { SlackIcon } from "@trigger.dev/companyicons";
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout, variantClasses } from "~/components/primitives/Callout";
@@ -55,7 +55,8 @@ export function ConfigureErrorAlerts({
   emailAlertsEnabled,
   connectToSlackHref,
 }: ConfigureErrorAlertsProps) {
-  const fetcher = useFetcher();
+  const fetcher = useFetcher<{ ok?: boolean }>();
+  const navigate = useNavigate();
   const location = useOptimisticLocation();
   const isSubmitting = fetcher.state !== "idle";
 
@@ -76,6 +77,12 @@ export function ConfigureErrorAlerts({
     const qs = params.toString();
     return qs ? `?${qs}` : location.pathname;
   })();
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.ok) {
+      navigate(closeHref, { replace: true });
+    }
+  }, [fetcher.state, fetcher.data, closeHref, navigate]);
 
   const emailFieldValues = useRef<string[]>(
     existingEmails.length > 0 ? [...existingEmails.map((e) => e.email), ""] : [""]
@@ -313,6 +320,7 @@ export function ConfigureErrorAlerts({
           type="submit"
           form="configure-error-alerts"
           disabled={isSubmitting}
+          isLoading={isSubmitting}
           fullWidth
         >
           {isSubmitting ? "Saving…" : "Save"}
