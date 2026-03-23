@@ -6,7 +6,7 @@ import { PromptsNone } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { DateTime } from "~/components/primitives/DateTime";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import {
   Table,
   TableBlankRow,
@@ -24,7 +24,9 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema, v3PromptsPath } from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3PromptsPath } from "~/utils/pathBuilder";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { BookOpenIcon } from "@heroicons/react/24/solid";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Prompts | Trigger.dev" }];
@@ -80,6 +82,11 @@ export default function PromptsPage() {
     <PageContainer>
       <NavBar>
         <PageTitle title="Prompts" />
+        <PageAccessories>
+          <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("/prompts")}>
+            Prompts docs
+          </LinkButton>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <Table containerClassName="border-t-0">
