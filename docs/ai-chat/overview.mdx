@@ -13,7 +13,7 @@ The `@trigger.dev/sdk` provides a custom [ChatTransport](https://sdk.vercel.ai/d
 2. The first message triggers a Trigger.dev task; subsequent messages resume the **same run** via input streams
 3. The task streams `UIMessageChunk` events back via Trigger.dev's realtime streams
 4. The AI SDK's `useChat` processes the stream natively — text, tool calls, reasoning, etc.
-5. Between turns, the run stays warm briefly then suspends (freeing compute) until the next message
+5. Between turns, the run stays idle briefly then suspends (freeing compute) until the next message
 
 No custom API routes needed. Your chat backend is a Trigger.dev task.
 
@@ -47,7 +47,7 @@ sequenceDiagram
     API-->>useChat: SSE: turn complete + refreshed token
     useChat->>useChat: Close stream, update session
     Task->>Task: onTurnComplete({ messages, stopped: false })
-    Task->>Task: Wait for next message (warm → suspend)
+    Task->>Task: Wait for next message (idle → suspend)
 ```
 
 ### Multi-turn flow
@@ -78,7 +78,7 @@ sequenceDiagram
     useChat-->>User: Render streaming text
     Task->>API: Write __trigger_turn_complete
     Task->>Task: onTurnComplete({ turn: 1 })
-    Task->>Task: Wait for next message (warm → suspend)
+    Task->>Task: Wait for next message (idle → suspend)
 ```
 
 ### Stop signal flow
@@ -130,7 +130,7 @@ After each turn, the run goes through two phases of waiting:
 If no message arrives within the turn timeout, the run ends gracefully. The next message from the frontend will automatically start a fresh run.
 
 <Info>
-  You are not charged for compute during the suspended phase. Only the warm phase uses compute resources.
+  You are not charged for compute during the suspended phase. Only the idle phase uses compute resources.
 </Info>
 
 ### What the backend accumulates

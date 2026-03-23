@@ -19,9 +19,9 @@ Options for `chat.task()`.
 | `onTurnComplete` | `(event: TurnCompleteEvent) => Promise<void> \| void` | — | Fires after each turn completes |
 | `maxTurns` | `number` | `100` | Max conversational turns per run |
 | `turnTimeout` | `string` | `"1h"` | How long to wait for next message |
-| `warmTimeoutInSeconds` | `number` | `30` | Seconds to stay warm before suspending |
+| `idleTimeoutInSeconds` | `number` | `30` | Seconds to stay idle before suspending |
 | `chatAccessTokenTTL` | `string` | `"1h"` | How long the scoped access token remains valid |
-| `preloadWarmTimeoutInSeconds` | `number` | Same as `warmTimeoutInSeconds` | Warm timeout after `onPreload` fires |
+| `preloadIdleTimeoutInSeconds` | `number` | Same as `idleTimeoutInSeconds` | Idle timeout after `onPreload` fires |
 | `preloadTimeout` | `string` | Same as `turnTimeout` | Suspend timeout for preloaded runs |
 | `uiMessageStreamOptions` | `ChatUIMessageStreamOptions` | — | Default options for `toUIMessageStream()`. Per-turn override via `chat.setUIMessageStreamOptions()` |
 
@@ -113,7 +113,7 @@ Options for `chat.createSession()`.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `signal` | `AbortSignal` | required | Run-level cancel signal |
-| `warmTimeoutInSeconds` | `number` | `30` | Seconds to stay warm between turns |
+| `idleTimeoutInSeconds` | `number` | `30` | Seconds to stay idle between turns |
 | `timeout` | `string` | `"1h"` | Duration string for suspend timeout |
 | `maxTurns` | `number` | `100` | Max turns before ending |
 
@@ -151,12 +151,12 @@ All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
 | `chat.pipeAndCapture(source, options?)` | Pipe and capture the response `UIMessage` |
 | `chat.writeTurnComplete(options?)` | Signal the frontend that the current turn is complete |
 | `chat.createStopSignal()` | Create a managed stop signal wired to the stop input stream |
-| `chat.messages` | Input stream for incoming messages — use `.waitWithWarmup()` |
+| `chat.messages` | Input stream for incoming messages — use `.waitWithIdleTimeout()` |
 | `chat.local<T>({ id })` | Create a per-run typed local (see [Per-run data](/ai-chat/features#per-run-data-with-chatlocal)) |
 | `chat.createAccessToken(taskId)` | Create a public access token for a chat task |
 | `chat.setTurnTimeout(duration)` | Override turn timeout at runtime (e.g. `"2h"`) |
 | `chat.setTurnTimeoutInSeconds(seconds)` | Override turn timeout at runtime (in seconds) |
-| `chat.setWarmTimeoutInSeconds(seconds)` | Override warm timeout at runtime |
+| `chat.setIdleTimeoutInSeconds(seconds)` | Override idle timeout at runtime |
 | `chat.setUIMessageStreamOptions(options)` | Override `toUIMessageStream()` options for the current turn |
 | `chat.defer(promise)` | Run background work in parallel with streaming, awaited before `onTurnComplete` |
 | `chat.isStopped()` | Check if the current turn was stopped by the user |
@@ -226,7 +226,7 @@ const transport = useTriggerChatTransport({
 Eagerly trigger a run before the first message.
 
 ```ts
-transport.preload(chatId, { warmTimeoutInSeconds?: number }): Promise<void>
+transport.preload(chatId, { idleTimeoutInSeconds?: number }): Promise<void>
 ```
 
 No-op if a session already exists for this chatId. See [Preload](/ai-chat/features#preload) for full details.
