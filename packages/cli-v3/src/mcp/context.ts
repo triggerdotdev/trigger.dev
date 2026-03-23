@@ -109,7 +109,9 @@ export class McpContext {
       );
     }
 
-    return new ApiClient(cliApiClient.apiURL, jwt.data.token);
+    return new ApiClient(cliApiClient.apiURL, jwt.data.token, undefined, {
+      additionalHeaders: { "x-trigger-source": "mcp" },
+    });
   }
 
   public async getCwd() {

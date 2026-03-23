@@ -106,6 +106,8 @@ function createScheduleEngine() {
             scheduleInstanceId,
             queueTimestamp: exactScheduleTime,
             overrideCreatedAt: exactScheduleTime,
+            triggerSource: "schedule",
+            triggerAction: "trigger",
           }
         );
 

@@ -296,6 +296,7 @@ export class BatchQueue {
       realtimeStreamsVersion: options.realtimeStreamsVersion,
       idempotencyKey: options.idempotencyKey,
       processingConcurrency: options.processingConcurrency,
+      triggerSource: options.triggerSource,
     };
 
     // Store metadata in completion tracker
