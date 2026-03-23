@@ -321,8 +321,8 @@ export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadat
   continuation?: boolean;
   /** The run ID of the previous run (only set when `continuation` is true). */
   previousRunId?: string;
-  /** Override warm timeout for this run (seconds). Set by transport.preload(). */
-  warmTimeoutInSeconds?: number;
+  /** Override idle timeout for this run (seconds). Set by transport.preload(). */
+  idleTimeoutInSeconds?: number;
 };
 
 /**
@@ -896,16 +896,16 @@ export type ChatTaskOptions<
   turnTimeout?: string;
 
   /**
-   * How long (in seconds) to keep the run warm after each turn before suspending.
-   * During this window the run stays active and can respond instantly to the
-   * next message. After this timeout, the run suspends (frees compute) and waits
-   * via `inputStream.wait()`.
+   * How long (in seconds) the run stays idle (active, using compute) after each
+   * turn, waiting for the next message. During this window responses are instant.
+   * After this timeout the run suspends (frees compute) and waits via
+   * `inputStream.wait()`.
    *
    * Set to `0` to suspend immediately after each turn.
    *
    * @default 30
    */
-  warmTimeoutInSeconds?: number;
+  idleTimeoutInSeconds?: number;
 
   /**
    * How long the `chatAccessToken` (scoped to this run) remains valid.
@@ -919,14 +919,14 @@ export type ChatTaskOptions<
   chatAccessTokenTTL?: string;
 
   /**
-   * How long (in seconds) to keep the run warm after `onPreload` fires,
+   * How long (in seconds) the run stays idle after `onPreload` fires,
    * waiting for the first message before suspending.
    *
    * Only applies to preloaded runs (triggered via `transport.preload()`).
    *
-   * @default Same as `warmTimeoutInSeconds`
+   * @default Same as `idleTimeoutInSeconds`
    */
-  preloadWarmTimeoutInSeconds?: number;
+  preloadIdleTimeoutInSeconds?: number;
 
   /**
    * How long to wait (suspended) for the first message after a preloaded run starts.
@@ -1010,9 +1010,9 @@ function chatTask<
     onTurnComplete,
     maxTurns = 100,
     turnTimeout = "1h",
-    warmTimeoutInSeconds = 30,
+    idleTimeoutInSeconds = 30,
     chatAccessTokenTTL = "1h",
-    preloadWarmTimeoutInSeconds,
+    preloadIdleTimeoutInSeconds,
     preloadTimeout,
     uiMessageStreamOptions,
     ...restOptions
@@ -1111,18 +1111,18 @@ function chatTask<
           }
 
           // Wait for the first real message — use preload-specific timeouts if configured
-          const effectivePreloadWarmTimeout =
-            payload.warmTimeoutInSeconds
-            ?? preloadWarmTimeoutInSeconds
-            ?? warmTimeoutInSeconds;
+          const effectivePreloadIdleTimeout =
+            payload.idleTimeoutInSeconds
+            ?? preloadIdleTimeoutInSeconds
+            ?? idleTimeoutInSeconds;
 
           const effectivePreloadTimeout =
             (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined)
             ?? preloadTimeout
             ?? turnTimeout;
 
-          const preloadResult = await messagesInput.waitWithWarmup({
-            warmTimeoutInSeconds: effectivePreloadWarmTimeout,
+          const preloadResult = await messagesInput.waitWithIdleTimeout({
+            idleTimeoutInSeconds: effectivePreloadIdleTimeout,
             timeout: effectivePreloadTimeout,
             spanName: "waiting for first message",
           });
@@ -1493,14 +1493,14 @@ function chatTask<
                 return "continue";
               }
 
-              // Wait for the next message — stay warm briefly, then suspend
-              const effectiveWarmTimeout =
-                (metadata.get(WARM_TIMEOUT_METADATA_KEY) as number | undefined) ?? warmTimeoutInSeconds;
+              // Wait for the next message — stay idle briefly, then suspend
+              const effectiveIdleTimeout =
+                (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ?? idleTimeoutInSeconds;
               const effectiveTurnTimeout =
                 (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
 
-              const next = await messagesInput.waitWithWarmup({
-                warmTimeoutInSeconds: effectiveWarmTimeout,
+              const next = await messagesInput.waitWithIdleTimeout({
+                idleTimeoutInSeconds: effectiveIdleTimeout,
                 timeout: effectiveTurnTimeout,
                 spanName: "waiting for next message",
               });
@@ -1554,7 +1554,7 @@ function chatTask<
 // ---------------------------------------------------------------------------
 
 const TURN_TIMEOUT_METADATA_KEY = "chat.turnTimeout";
-const WARM_TIMEOUT_METADATA_KEY = "chat.warmTimeout";
+const IDLE_TIMEOUT_METADATA_KEY = "chat.idleTimeout";
 
 /**
  * Override the turn timeout for subsequent turns in the current run.
@@ -1597,24 +1597,24 @@ function setTurnTimeoutInSeconds(seconds: number): void {
 }
 
 /**
- * Override the warm timeout for subsequent turns in the current run.
+ * Override the idle timeout for subsequent turns in the current run.
  *
- * The warm timeout controls how long the run stays active (using compute)
+ * The idle timeout controls how long the run stays active (using compute)
  * after each turn, waiting for the next message. During this window,
  * responses are instant. After it expires, the run suspends.
  *
- * @param seconds - Number of seconds to stay warm (0 to suspend immediately)
+ * @param seconds - Number of seconds to stay idle (0 to suspend immediately)
  *
  * @example
  * ```ts
  * run: async ({ messages, signal }) => {
- *   chat.setWarmTimeoutInSeconds(60);
+ *   chat.setIdleTimeoutInSeconds(60);
  *   return streamText({ model, messages, abortSignal: signal });
  * }
  * ```
  */
-function setWarmTimeoutInSeconds(seconds: number): void {
-  metadata.set(WARM_TIMEOUT_METADATA_KEY, seconds);
+function setIdleTimeoutInSeconds(seconds: number): void {
+  metadata.set(IDLE_TIMEOUT_METADATA_KEY, seconds);
 }
 
 /**
@@ -1937,8 +1937,8 @@ class ChatMessageAccumulator {
 export type ChatSessionOptions = {
   /** Run-level cancel signal (from task context). */
   signal: AbortSignal;
-  /** Seconds to stay warm between turns before suspending. @default 30 */
-  warmTimeoutInSeconds?: number;
+  /** Seconds to stay idle between turns before suspending. @default 30 */
+  idleTimeoutInSeconds?: number;
   /** Duration string for suspend timeout. @default "1h" */
   timeout?: string;
   /** Max turns before ending. @default 100 */
@@ -1988,7 +1988,7 @@ export type ChatTurn = {
  * Create a chat session that yields turns as an async iterator.
  *
  * Handles: preload wait, stop signals, message accumulation, turn-complete
- * signaling, and warm/suspend between turns. You control: initialization,
+ * signaling, and idle/suspend between turns. You control: initialization,
  * model/tool selection, persistence, and any custom per-turn logic.
  *
  * @example
@@ -2021,7 +2021,7 @@ function createChatSession(
 ): AsyncIterable<ChatTurn> {
   const {
     signal: runSignal,
-    warmTimeoutInSeconds = 30,
+    idleTimeoutInSeconds = 30,
     timeout = "1h",
     maxTurns = 100,
   } = options;
@@ -2039,8 +2039,8 @@ function createChatSession(
 
           // First turn: handle preload — wait for the first real message
           if (turn === 0 && currentPayload.trigger === "preload") {
-            const result = await messagesInput.waitWithWarmup({
-              warmTimeoutInSeconds: currentPayload.warmTimeoutInSeconds ?? warmTimeoutInSeconds,
+            const result = await messagesInput.waitWithIdleTimeout({
+              idleTimeoutInSeconds: currentPayload.idleTimeoutInSeconds ?? idleTimeoutInSeconds,
               timeout,
               spanName: "waiting for first message",
             });
@@ -2053,8 +2053,8 @@ function createChatSession(
 
           // Subsequent turns: wait for the next message
           if (turn > 0) {
-            const next = await messagesInput.waitWithWarmup({
-              warmTimeoutInSeconds,
+            const next = await messagesInput.waitWithIdleTimeout({
+              idleTimeoutInSeconds,
               timeout,
               spanName: "waiting for next message",
             });
@@ -2391,8 +2391,8 @@ export const chat = {
   setTurnTimeout,
   /** Override the turn timeout at runtime (seconds). See {@link setTurnTimeoutInSeconds}. */
   setTurnTimeoutInSeconds,
-  /** Override the warm timeout at runtime. See {@link setWarmTimeoutInSeconds}. */
-  setWarmTimeoutInSeconds,
+  /** Override the idle timeout at runtime. See {@link setIdleTimeoutInSeconds}. */
+  setIdleTimeoutInSeconds,
   /** Override toUIMessageStream() options for the current turn. See {@link setUIMessageStreamOptions}. */
   setUIMessageStreamOptions,
   /** Check if the current turn was stopped by the user. See {@link isStopped}. */
