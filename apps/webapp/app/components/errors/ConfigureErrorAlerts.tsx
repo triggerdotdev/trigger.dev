@@ -13,6 +13,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout, variantClasses } from "~/components/primitives/Callout";
+import { useToast } from "~/components/primitives/Toast";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2, Header3 } from "~/components/primitives/Headers";
@@ -57,6 +58,7 @@ export function ConfigureErrorAlerts({
 }: ConfigureErrorAlertsProps) {
   const fetcher = useFetcher<{ ok?: boolean }>();
   const navigate = useNavigate();
+  const toast = useToast();
   const location = useOptimisticLocation();
   const isSubmitting = fetcher.state !== "idle";
 
@@ -80,9 +82,10 @@ export function ConfigureErrorAlerts({
 
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.ok) {
+      toast.success("Alert settings saved");
       navigate(closeHref, { replace: true });
     }
-  }, [fetcher.state, fetcher.data, closeHref, navigate]);
+  }, [fetcher.state, fetcher.data, closeHref, navigate, toast]);
 
   const emailFieldValues = useRef<string[]>(
     existingEmails.length > 0 ? [...existingEmails.map((e) => e.email), ""] : [""]

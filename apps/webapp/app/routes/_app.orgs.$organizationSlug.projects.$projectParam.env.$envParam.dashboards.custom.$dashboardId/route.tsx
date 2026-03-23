@@ -5,7 +5,6 @@ import { Form, useNavigation } from "@remix-run/react";
 import { IconChartHistogram, IconEdit, IconTypography } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { toast } from "sonner";
 import { z } from "zod";
 import { defaultChartConfig } from "~/components/code/ChartConfigPanel";
 import { Feedback } from "~/components/Feedback";
@@ -33,7 +32,7 @@ import {
   PopoverVerticalEllipseTrigger,
 } from "~/components/primitives/Popover";
 import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
-import { ToastUI } from "~/components/primitives/Toast";
+import { useToast } from "~/components/primitives/Toast";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { QueryEditor, type QueryEditorSaveData } from "~/components/query/QueryEditor";
 import { $replica, prisma } from "~/db.server";
@@ -206,7 +205,8 @@ export default function Page() {
   const widgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/widgets`;
   const layoutActionUrl = widgetActionUrl;
 
-  // Handle sync errors by showing a toast
+  const toast = useToast();
+
   const handleSyncError = useCallback((error: Error, action: string) => {
     const actionMessages: Record<string, string> = {
       add: "Failed to add widget",
@@ -218,15 +218,8 @@ export default function Page() {
 
     const message = actionMessages[action] || "Failed to save changes";
 
-    toast.custom((t) => (
-      <ToastUI
-        variant="error"
-        message={`${message}. Your changes may not be saved.`}
-        t={t as string}
-        title="Sync Error"
-      />
-    ));
-  }, []);
+    toast.error(`${message}. Your changes may not be saved.`, { title: "Sync Error" });
+  }, [toast]);
 
   // Add title dialog state
   const [showAddTitleDialog, setShowAddTitleDialog] = useState(false);
