@@ -855,7 +855,7 @@ export class BatchTriggerV3Service extends BaseService {
         skipChecks: true,
         runFriendlyId: task.runId,
         realtimeStreamsVersion: options?.realtimeStreamsVersion,
-        triggerSource: task.item.options?.parentRunId
+        triggerSource: batch.dependentTaskAttemptId
           ? "sdk"
           : options?.triggerSource ?? "api",
         triggerAction: options?.triggerAction ?? "trigger",
