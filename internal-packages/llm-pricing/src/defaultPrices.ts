@@ -991,7 +991,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
   },
   {
     "modelName": "gemini-1.0-pro-latest",
-    "matchPattern": "(?i)^(google/)?(gemini-1.0-pro-latest)(@[a-zA-Z0-9]+)?$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-1.0-pro-latest)(@[a-zA-Z0-9]+)?$",
     "startDate": "2024-04-11T10:27:46.517Z",
     "pricingTiers": [
       {
@@ -1008,7 +1008,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
   },
   {
     "modelName": "gemini-1.0-pro",
-    "matchPattern": "(?i)^(google/)?(gemini-1.0-pro)(@[a-zA-Z0-9]+)?$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-1.0-pro)(@[a-zA-Z0-9]+)?$",
     "startDate": "2024-04-11T10:27:46.517Z",
     "pricingTiers": [
       {
@@ -1025,7 +1025,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
   },
   {
     "modelName": "gemini-1.0-pro-001",
-    "matchPattern": "(?i)^(google/)?(gemini-1.0-pro-001)(@[a-zA-Z0-9]+)?$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-1.0-pro-001)(@[a-zA-Z0-9]+)?$",
     "startDate": "2024-04-11T10:27:46.517Z",
     "pricingTiers": [
       {
@@ -1042,7 +1042,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
   },
   {
     "modelName": "gemini-pro",
-    "matchPattern": "(?i)^(google/)?(gemini-pro)(@[a-zA-Z0-9]+)?$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-pro)(@[a-zA-Z0-9]+)?$",
     "startDate": "2024-04-11T10:27:46.517Z",
     "pricingTiers": [
       {
@@ -1059,7 +1059,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
   },
   {
     "modelName": "gemini-1.5-pro-latest",
-    "matchPattern": "(?i)^(google/)?(gemini-1.5-pro-latest)(@[a-zA-Z0-9]+)?$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-1.5-pro-latest)(@[a-zA-Z0-9]+)?$",
     "startDate": "2024-04-11T10:27:46.517Z",
     "pricingTiers": [
       {
@@ -1601,7 +1601,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
   },
   {
     "modelName": "gemini-2.0-flash-001",
-    "matchPattern": "(?i)^(google/)?(gemini-2.0-flash-001)(@[a-zA-Z0-9]+)?$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-2.0-flash-001)(@[a-zA-Z0-9]+)?$",
     "startDate": "2025-02-06T11:11:35.241Z",
     "pricingTiers": [
       {
@@ -1618,7 +1618,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
   },
   {
     "modelName": "gemini-2.0-flash-lite-preview-02-05",
-    "matchPattern": "(?i)^(google/)?(gemini-2.0-flash-lite-preview-02-05)(@[a-zA-Z0-9]+)?$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-2.0-flash-lite-preview-02-05)(@[a-zA-Z0-9]+)?$",
     "startDate": "2025-02-06T11:11:35.241Z",
     "pricingTiers": [
       {
@@ -1889,7 +1889,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
   },
   {
     "modelName": "gemini-2.0-flash",
-    "matchPattern": "(?i)^(google/)?(gemini-2.0-flash)(@[a-zA-Z0-9]+)?$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-2.0-flash)(@[a-zA-Z0-9]+)?$",
     "startDate": "2025-04-22T10:11:35.241Z",
     "pricingTiers": [
       {
@@ -1906,7 +1906,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
   },
   {
     "modelName": "gemini-2.0-flash-lite-preview",
-    "matchPattern": "(?i)^(google/)?(gemini-2.0-flash-lite-preview)(@[a-zA-Z0-9]+)?$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-2.0-flash-lite-preview)(@[a-zA-Z0-9]+)?$",
     "startDate": "2025-04-22T10:11:35.241Z",
     "pricingTiers": [
       {
@@ -2163,7 +2163,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
   },
   {
     "modelName": "gemini-2.5-flash",
-    "matchPattern": "(?i)^(google/)?(gemini-2.5-flash)$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-2.5-flash)$",
     "startDate": "2025-07-03T13:44:06.964Z",
     "pricingTiers": [
       {
@@ -2180,6 +2180,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
           "input_cached_tokens": 3e-8,
           "cached_content_token_count": 3e-8,
           "output": 0.0000025,
+          "output_text": 0.0000025,
           "output_modality_1": 0.0000025,
           "candidates_token_count": 0.0000025,
           "candidatesTokenCount": 0.0000025,
@@ -2193,7 +2194,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
   },
   {
     "modelName": "gemini-2.5-flash-lite",
-    "matchPattern": "(?i)^(google/)?(gemini-2.5-flash-lite)$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-2.5-flash-lite)$",
     "startDate": "2025-07-03T13:44:06.964Z",
     "pricingTiers": [
       {
@@ -2210,6 +2211,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
           "input_cached_tokens": 2.5e-8,
           "cached_content_token_count": 2.5e-8,
           "output": 4e-7,
+          "output_text": 4e-7,
           "output_modality_1": 4e-7,
           "candidates_token_count": 4e-7,
           "candidatesTokenCount": 4e-7,
@@ -2599,7 +2601,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
   },
   {
     "modelName": "gemini-2.5-pro",
-    "matchPattern": "(?i)^(google/)?(gemini-2.5-pro)$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-2.5-pro)$",
     "startDate": "2025-11-26T13:27:53.545Z",
     "pricingTiers": [
       {
@@ -2616,6 +2618,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
           "input_cached_tokens": 1.25e-7,
           "cached_content_token_count": 1.25e-7,
           "output": 0.00001,
+          "output_text": 0.00001,
           "output_modality_1": 0.00001,
           "candidates_token_count": 0.00001,
           "candidatesTokenCount": 0.00001,
@@ -2644,6 +2647,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
           "input_cached_tokens": 2.5e-7,
           "cached_content_token_count": 2.5e-7,
           "output": 0.000015,
+          "output_text": 0.000015,
           "output_modality_1": 0.000015,
           "candidates_token_count": 0.000015,
           "candidatesTokenCount": 0.000015,
@@ -2656,7 +2660,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
   },
   {
     "modelName": "gemini-3-pro-preview",
-    "matchPattern": "(?i)^(google/)?(gemini-3-pro-preview)$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-3-pro-preview)$",
     "startDate": "2025-11-26T13:27:53.545Z",
     "pricingTiers": [
       {
@@ -2666,12 +2670,14 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
         "conditions": [],
         "prices": {
           "input": 0.000002,
+          "input_text": 0.000002,
           "input_modality_1": 0.000002,
           "prompt_token_count": 0.000002,
           "promptTokenCount": 0.000002,
           "input_cached_tokens": 2e-7,
           "cached_content_token_count": 2e-7,
           "output": 0.000012,
+          "output_text": 0.000012,
           "output_modality_1": 0.000012,
           "candidates_token_count": 0.000012,
           "candidatesTokenCount": 0.000012,
@@ -2693,12 +2699,14 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
         ],
         "prices": {
           "input": 0.000004,
+          "input_text": 0.000004,
           "input_modality_1": 0.000004,
           "prompt_token_count": 0.000004,
           "promptTokenCount": 0.000004,
           "input_cached_tokens": 4e-7,
           "cached_content_token_count": 4e-7,
           "output": 0.000018,
+          "output_text": 0.000018,
           "output_modality_1": 0.000018,
           "candidates_token_count": 0.000018,
           "candidatesTokenCount": 0.000018,
@@ -2711,7 +2719,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
   },
   {
     "modelName": "gemini-3.1-pro-preview",
-    "matchPattern": "(?i)^(google/)?(gemini-3.1-pro-preview(-customtools)?)$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-3.1-pro-preview(-customtools)?)$",
     "startDate": "2026-02-19T00:00:00.000Z",
     "pricingTiers": [
       {
@@ -2722,11 +2730,13 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
         "prices": {
           "input": 0.000002,
           "input_modality_1": 0.000002,
+          "input_text": 0.000002,
           "prompt_token_count": 0.000002,
           "promptTokenCount": 0.000002,
           "input_cached_tokens": 2e-7,
           "cached_content_token_count": 2e-7,
           "output": 0.000012,
+          "output_text": 0.000012,
           "output_modality_1": 0.000012,
           "candidates_token_count": 0.000012,
           "candidatesTokenCount": 0.000012,
@@ -2749,11 +2759,13 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
         "prices": {
           "input": 0.000004,
           "input_modality_1": 0.000004,
+          "input_text": 0.000004,
           "prompt_token_count": 0.000004,
           "promptTokenCount": 0.000004,
           "input_cached_tokens": 4e-7,
           "cached_content_token_count": 4e-7,
           "output": 0.000018,
+          "output_text": 0.000018,
           "output_modality_1": 0.000018,
           "candidates_token_count": 0.000018,
           "candidatesTokenCount": 0.000018,
@@ -2925,8 +2937,84 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
     ]
   },
   {
+    "modelName": "gpt-5.4-mini",
+    "matchPattern": "(?i)^(openai\\/)?(gpt-5.4-mini)$",
+    "startDate": "2026-03-18T00:00:00.000Z",
+    "pricingTiers": [
+      {
+        "name": "Standard",
+        "isDefault": true,
+        "priority": 0,
+        "conditions": [],
+        "prices": {
+          "input": 7.5e-7,
+          "input_cached_tokens": 7.5e-8,
+          "input_cache_read": 7.5e-8,
+          "output": 0.0000045
+        }
+      }
+    ]
+  },
+  {
+    "modelName": "gpt-5.4-mini-2026-03-17",
+    "matchPattern": "(?i)^(openai\\/)?(gpt-5.4-mini-2026-03-17)$",
+    "startDate": "2026-03-18T00:00:00.000Z",
+    "pricingTiers": [
+      {
+        "name": "Standard",
+        "isDefault": true,
+        "priority": 0,
+        "conditions": [],
+        "prices": {
+          "input": 7.5e-7,
+          "input_cached_tokens": 7.5e-8,
+          "input_cache_read": 7.5e-8,
+          "output": 0.0000045
+        }
+      }
+    ]
+  },
+  {
+    "modelName": "gpt-5.4-nano",
+    "matchPattern": "(?i)^(openai\\/)?(gpt-5.4-nano)$",
+    "startDate": "2026-03-18T00:00:00.000Z",
+    "pricingTiers": [
+      {
+        "name": "Standard",
+        "isDefault": true,
+        "priority": 0,
+        "conditions": [],
+        "prices": {
+          "input": 2e-7,
+          "input_cached_tokens": 2e-8,
+          "input_cache_read": 2e-8,
+          "output": 0.00000125
+        }
+      }
+    ]
+  },
+  {
+    "modelName": "gpt-5.4-nano-2026-03-17",
+    "matchPattern": "(?i)^(openai\\/)?(gpt-5.4-nano-2026-03-17)$",
+    "startDate": "2026-03-18T00:00:00.000Z",
+    "pricingTiers": [
+      {
+        "name": "Standard",
+        "isDefault": true,
+        "priority": 0,
+        "conditions": [],
+        "prices": {
+          "input": 2e-7,
+          "input_cached_tokens": 2e-8,
+          "input_cache_read": 2e-8,
+          "output": 0.00000125
+        }
+      }
+    ]
+  },
+  {
     "modelName": "gemini-3-flash-preview",
-    "matchPattern": "(?i)^(google/)?(gemini-3-flash-preview)$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-3-flash-preview)$",
     "startDate": "2025-12-21T12:01:42.282Z",
     "pricingTiers": [
       {
@@ -2936,12 +3024,14 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
         "conditions": [],
         "prices": {
           "input": 5e-7,
+          "input_text": 5e-7,
           "input_modality_1": 5e-7,
           "prompt_token_count": 5e-7,
           "promptTokenCount": 5e-7,
           "input_cached_tokens": 5e-8,
           "cached_content_token_count": 5e-8,
           "output": 0.000003,
+          "output_text": 0.000003,
           "output_modality_1": 0.000003,
           "candidates_token_count": 0.000003,
           "candidatesTokenCount": 0.000003,
@@ -2954,7 +3044,7 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
   },
   {
     "modelName": "gemini-3.1-flash-lite-preview",
-    "matchPattern": "(?i)^(google/)?(gemini-3.1-flash-lite-preview)$",
+    "matchPattern": "(?i)^(google(ai)?/)?(gemini-3.1-flash-lite-preview)$",
     "startDate": "2026-03-03T00:00:00.000Z",
     "pricingTiers": [
       {
@@ -2965,11 +3055,13 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
         "prices": {
           "input": 2.5e-7,
           "input_modality_1": 2.5e-7,
+          "input_text": 2.5e-7,
           "prompt_token_count": 2.5e-7,
           "promptTokenCount": 2.5e-7,
           "input_cached_tokens": 2.5e-8,
           "cached_content_token_count": 2.5e-8,
           "output": 0.0000015,
+          "output_text": 0.0000015,
           "output_modality_1": 0.0000015,
           "candidates_token_count": 0.0000015,
           "candidatesTokenCount": 0.0000015,

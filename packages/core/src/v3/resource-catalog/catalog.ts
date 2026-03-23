@@ -1,5 +1,5 @@
-import { QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
-import { TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
+import { PromptManifest, QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
+import { PromptMetadataWithFunctions, TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
 
 export interface ResourceCatalog {
   setCurrentFileContext(filePath: string, entryPoint: string): void;
@@ -14,4 +14,8 @@ export interface ResourceCatalog {
   registerQueueMetadata(queue: QueueManifest): void;
   listQueueManifests(): Array<QueueManifest>;
   getTaskSchema(id: string): TaskSchema | undefined;
+  registerPromptMetadata(prompt: PromptMetadataWithFunctions): void;
+  listPromptManifests(): Array<PromptManifest>;
+  getPrompt(id: string): PromptMetadataWithFunctions | undefined;
+  getPromptSchema(id: string): TaskSchema | undefined;
 }

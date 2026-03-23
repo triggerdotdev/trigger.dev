@@ -532,6 +532,25 @@ export function v3LogsPath(
   return `${v3EnvironmentPath(organization, project, environment)}/logs`;
 }
 
+export function v3PromptsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/prompts`;
+}
+
+export function v3PromptPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  promptSlug: string,
+  version?: string | number
+) {
+  const base = `${v3PromptsPath(organization, project, environment)}/${promptSlug}`;
+  return version != null ? `${base}?version=${version}` : base;
+}
+
 export function v3ErrorsPath(
   organization: OrgForPath,
   project: ProjectForPath,

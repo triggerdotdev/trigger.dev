@@ -638,6 +638,18 @@ export const llmMetricsSchema: TableSchema = {
         coreColumn: true,
       }),
     },
+    trace_id: {
+      name: "trace_id",
+      ...column("String", {
+        description: "The trace ID",
+      }),
+    },
+    span_id: {
+      name: "span_id",
+      ...column("String", {
+        description: "The span ID",
+      }),
+    },
     task_identifier: {
       name: "task_identifier",
       ...column("LowCardinality(String)", {
@@ -819,6 +831,21 @@ export const llmMetricsSchema: TableSchema = {
       ...column("UInt64", {
         description: "Span duration in nanoseconds",
         customRenderType: "durationNs",
+      }),
+    },
+    prompt_slug: {
+      name: "prompt_slug",
+      ...column("LowCardinality(String)", {
+        description: "The managed prompt slug used for this LLM call",
+        example: "customer-support",
+        coreColumn: true,
+      }),
+    },
+    prompt_version: {
+      name: "prompt_version",
+      ...column("UInt32", {
+        description: "The managed prompt version number used for this LLM call",
+        example: "3",
       }),
     },
     metadata: {

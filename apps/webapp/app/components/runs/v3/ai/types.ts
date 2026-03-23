@@ -62,6 +62,7 @@ export type AISpanData = {
   model: string;
   provider: string;
   operationName: string;
+  responseId?: string;
 
   // Categorical tags
   finishReason?: string;
@@ -73,6 +74,13 @@ export type AISpanData = {
   messageCount?: number;
   /** User-defined telemetry metadata (from ai.telemetry.metadata) */
   telemetryMetadata?: Record<string, string>;
+
+  // Prompt metadata (from ai.telemetry.metadata.prompt)
+  promptSlug?: string;
+  promptVersion?: string;
+  promptModel?: string;
+  promptLabels?: string;
+  promptInput?: string;
 
   // Token counts
   inputTokens: number;

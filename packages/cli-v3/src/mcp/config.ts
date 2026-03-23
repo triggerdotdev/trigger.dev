@@ -165,4 +165,46 @@ export const toolsMetadata = {
     description:
       "Check the status of the dev server and view recent output. Shows whether it is stopped, starting, ready, or has errors, along with recent log lines.",
   },
+  list_prompts: {
+    name: "list_prompts",
+    title: "List Prompts",
+    description:
+      "List all managed prompts in the project environment. Shows slug, current version, override status, and version count.",
+  },
+  get_prompt_versions: {
+    name: "get_prompt_versions",
+    title: "Get Prompt Versions",
+    description:
+      "List all versions for a specific prompt. Shows version number, labels (current, override, latest), source (code or dashboard), model, and content.",
+  },
+  promote_prompt_version: {
+    name: "promote_prompt_version",
+    title: "Promote Prompt Version",
+    description:
+      "Promote a prompt version to be the current active version. Only code-sourced versions can be promoted — dashboard overrides must use the override tools instead.",
+  },
+  create_prompt_override: {
+    name: "create_prompt_override",
+    title: "Create Prompt Override",
+    description:
+      "Create a dashboard override for a prompt. The override takes precedence over the current code version when resolving the prompt. Provide the full text content for the override.",
+  },
+  update_prompt_override: {
+    name: "update_prompt_override",
+    title: "Update Prompt Override",
+    description:
+      "Update the active dashboard override for a prompt. Only works if an override is currently active.",
+  },
+  remove_prompt_override: {
+    name: "remove_prompt_override",
+    title: "Remove Prompt Override",
+    description:
+      "Remove the active dashboard override for a prompt, reverting to the current code version.",
+  },
+  reactivate_prompt_override: {
+    name: "reactivate_prompt_override",
+    title: "Reactivate Prompt Override",
+    description:
+      "Reactivate a previous dashboard-sourced version as the active override. Use get_prompt_versions to find dashboard versions that can be reactivated.",
+  },
 };

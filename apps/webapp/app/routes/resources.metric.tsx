@@ -45,6 +45,10 @@ const MetricWidgetQuery = z.object({
   taskIdentifiers: z.array(z.string()).optional(),
   queues: z.array(z.string()).optional(),
   responseModels: z.array(z.string()).optional(),
+  promptSlugs: z.array(z.string()).optional(),
+  promptVersions: z.array(z.number()).optional(),
+  operations: z.array(z.string()).optional(),
+  providers: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
 });
 
@@ -76,6 +80,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     taskIdentifiers,
     queues,
     responseModels,
+    promptSlugs,
+    promptVersions,
+    operations,
+    providers,
     tags,
   } = submission.data;
 
@@ -110,6 +118,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     taskIdentifiers,
     queues,
     responseModels,
+    promptSlugs,
+    promptVersions,
+    operations,
+    providers,
     // Set higher concurrency if many widgets are on screen at once
     customOrgConcurrencyLimit: env.METRIC_WIDGET_DEFAULT_ORG_CONCURRENCY_LIMIT,
   });
@@ -158,6 +170,8 @@ type MetricWidgetProps = {
   onDelete?: () => void;
   /** Callback when duplicate is clicked - receives current data */
   onDuplicate?: (data: QueryWidgetData) => void;
+  /** Column names to hide from table display but keep in row data (useful for linking) */
+  hiddenColumns?: string[];
 } & z.infer<typeof MetricWidgetQuery>;
 
 export function MetricWidget({
@@ -171,6 +185,7 @@ export function MetricWidget({
   onRename,
   onDelete,
   onDuplicate,
+  hiddenColumns,
   ...props
 }: MetricWidgetProps) {
   const [response, setResponse] = useState<MetricWidgetActionResponse | null>(null);
@@ -261,6 +276,10 @@ export function MetricWidget({
     JSON.stringify(props.taskIdentifiers),
     JSON.stringify(props.queues),
     JSON.stringify(props.responseModels),
+    JSON.stringify(props.promptSlugs),
+    JSON.stringify(props.promptVersions),
+    JSON.stringify(props.operations),
+    JSON.stringify(props.providers),
   ]);
 
   const data = response?.success
@@ -286,6 +305,7 @@ export function MetricWidget({
         onRename={onRename}
         onDelete={onDelete}
         onDuplicate={onDuplicate}
+        hiddenColumns={hiddenColumns}
       />
     </div>
   );

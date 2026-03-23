@@ -1,9 +1,15 @@
-import { CheckIcon, ClipboardDocumentIcon, CodeBracketSquareIcon } from "@heroicons/react/20/solid";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  ClipboardDocumentIcon,
+  CodeBracketSquareIcon,
+} from "@heroicons/react/20/solid";
 import { lazy, Suspense, useState } from "react";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
-import { Paragraph } from "~/components/primitives/Paragraph";
+import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
 import type { DisplayItem, ToolUse } from "./types";
 
 // Lazy load streamdown to avoid SSR issues
@@ -17,13 +23,25 @@ const StreamdownRenderer = lazy(() =>
   }))
 );
 
-export function AIChatMessages({ items }: { items: DisplayItem[] }) {
+export type PromptLink = {
+  slug: string;
+  version?: string;
+  path: string;
+};
+
+export function AIChatMessages({
+  items,
+  promptLink,
+}: {
+  items: DisplayItem[];
+  promptLink?: PromptLink;
+}) {
   return (
     <div className="flex flex-col gap-1">
       {items.map((item, i) => {
         switch (item.type) {
           case "system":
-            return <SystemSection key={i} text={item.text} />;
+            return <SystemSection key={i} text={item.text} promptLink={promptLink} />;
           case "user":
             return <UserSection key={i} text={item.text} />;
           case "tool-use":
@@ -61,7 +79,13 @@ export function ChatBubble({ children }: { children: React.ReactNode }) {
 // System
 // ---------------------------------------------------------------------------
 
-function SystemSection({ text }: { text: string }) {
+function SystemSection({
+  text,
+  promptLink,
+}: {
+  text: string;
+  promptLink?: PromptLink;
+}) {
   const [expanded, setExpanded] = useState(false);
   const isLong = text.length > 150;
   const preview = isLong ? text.slice(0, 150) + "..." : text;
@@ -69,25 +93,37 @@ function SystemSection({ text }: { text: string }) {
 
   return (
     <div className="flex flex-col gap-1.5 py-2.5">
-      <SectionHeader
-        label="System"
-        right={
-          isLong ? (
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="text-[10px] text-text-link hover:underline"
-            >
-              {expanded ? "Collapse" : "Expand"}
-            </button>
-          ) : undefined
-        }
-      />
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Header3>System</Header3>
+          {promptLink && (
+            <LinkButton to={promptLink.path} variant="minimal/small">
+              <span className="flex items-center gap-1">
+                <svg className="size-3.5 shrink-0 text-text-dimmed">
+                  <use xlinkHref={`${tablerSpritePath}#tabler-file-text-ai`} />
+                </svg>
+                {promptLink.slug}
+                {promptLink.version ? ` v${promptLink.version}` : ""}
+              </span>
+            </LinkButton>
+          )}
+        </div>
+        {isLong && (
+          <Button
+            variant="minimal/small"
+            onClick={() => setExpanded(!expanded)}
+            LeadingIcon={expanded ? ChevronUpIcon : ChevronDownIcon}
+            aria-label={expanded ? "Collapse" : "Expand"}
+            aria-expanded={expanded}
+          />
+        )}
+      </div>
       <ChatBubble>
-        <Paragraph variant="small/dimmed" className="streamdown-container">
+        <div className="font-sans text-sm font-normal text-text-dimmed streamdown-container">
           <Suspense fallback={<span className="whitespace-pre-wrap">{displayText}</span>}>
             <StreamdownRenderer>{displayText}</StreamdownRenderer>
           </Suspense>
-        </Paragraph>
+        </div>
       </ChatBubble>
     </div>
   );
@@ -102,11 +138,11 @@ function UserSection({ text }: { text: string }) {
     <div className="flex flex-col gap-1.5 py-2.5">
       <SectionHeader label="User" />
       <ChatBubble>
-        <Paragraph variant="small/dimmed" className="streamdown-container">
+        <div className="font-sans text-sm font-normal text-text-dimmed streamdown-container">
           <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
             <StreamdownRenderer>{text}</StreamdownRenderer>
           </Suspense>
-        </Paragraph>
+        </div>
       </ChatBubble>
     </div>
   );
@@ -185,11 +221,11 @@ export function AssistantResponse({
       />
       {mode === "rendered" ? (
         <ChatBubble>
-          <Paragraph variant="small/dimmed" className="streamdown-container">
+          <div className="font-sans text-sm font-normal text-text-dimmed streamdown-container">
             <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
               <StreamdownRenderer>{text}</StreamdownRenderer>
             </Suspense>
-          </Paragraph>
+          </div>
         </ChatBubble>
       ) : (
         <CodeBlock

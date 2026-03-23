@@ -1,3 +1,4 @@
+import { rec, str, num, parseProviderMetadata, extractTelemetryMetadata } from "./aiHelpers";
 import type { AISpanData, DisplayItem, ToolDefinition, ToolUse } from "./types";
 
 /**
@@ -51,12 +52,20 @@ export function extractAISpanData(
   const toolDefs = parseToolDefinitions(aiPrompt.tools);
   const providerMeta = parseProviderMetadata(aiResponse.providerMetadata);
   const aiTelemetry = rec(ai.telemetry);
+  const telemetryMetaRaw = rec(aiTelemetry.metadata);
+  const promptMeta = rec(telemetryMetaRaw.prompt);
+  const promptSlug = str(promptMeta.slug);
+  const promptVersion = str(promptMeta.version);
+  const promptModel = str(promptMeta.model);
+  const promptLabels = str(promptMeta.labels);
+  const promptInput = str(promptMeta.input);
   const telemetryMeta = extractTelemetryMetadata(aiTelemetry.metadata);
 
   return {
     model,
     provider: str(g.system) ?? "unknown",
     operationName: str(gOperation.name) ?? str(ai.operationId) ?? "",
+    responseId: str(gResponse.id) || undefined,
     finishReason: str(aiResponse.finishReason),
     serviceTier: providerMeta?.serviceTier,
     resolvedProvider: providerMeta?.resolvedProvider,
@@ -64,6 +73,11 @@ export function extractAISpanData(
     toolCount: toolDefs?.length,
     messageCount: countMessages(aiPrompt.messages),
     telemetryMetadata: telemetryMeta,
+    promptSlug: promptSlug || undefined,
+    promptVersion: promptVersion || undefined,
+    promptModel: promptModel || undefined,
+    promptLabels: promptLabels || undefined,
+    promptInput: promptInput || undefined,
     inputTokens,
     outputTokens,
     totalTokens,
@@ -82,22 +96,6 @@ export function extractAISpanData(
     toolDefinitions: toolDefs,
     items: buildDisplayItems(aiPrompt.messages, aiResponse.toolCalls, toolDefs),
   };
-}
-
-// ---------------------------------------------------------------------------
-// Primitive helpers
-// ---------------------------------------------------------------------------
-
-function rec(v: unknown): Record<string, unknown> {
-  return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
-}
-
-function str(v: unknown): string | undefined {
-  return typeof v === "string" ? v : undefined;
-}
-
-function num(v: unknown): number | undefined {
-  return typeof v === "number" ? v : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -419,49 +417,6 @@ function parseToolDefinitions(raw: unknown): ToolDefinition[] | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Provider metadata (service tier, inference geo, etc.)
-// ---------------------------------------------------------------------------
-
-function parseProviderMetadata(
-  raw: unknown
-): { serviceTier?: string; resolvedProvider?: string; gatewayCost?: string } | undefined {
-  if (typeof raw !== "string") return undefined;
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    if (!parsed || typeof parsed !== "object") return undefined;
-
-    let serviceTier: string | undefined;
-    let resolvedProvider: string | undefined;
-    let gatewayCost: string | undefined;
-
-    // Anthropic: { anthropic: { usage: { service_tier: "standard" } } }
-    const anthropic = rec(parsed.anthropic);
-    serviceTier = str(rec(anthropic.usage).service_tier);
-
-    // Azure/OpenAI: { azure: { serviceTier: "default" } } or { openai: { serviceTier: "..." } }
-    if (!serviceTier) {
-      serviceTier = str(rec(parsed.azure).serviceTier) ?? str(rec(parsed.openai).serviceTier);
-    }
-
-    // Gateway: { gateway: { routing: { finalProvider, resolvedProvider }, cost } }
-    const gateway = rec(parsed.gateway);
-    const routing = rec(gateway.routing);
-    resolvedProvider = str(routing.finalProvider) ?? str(routing.resolvedProvider);
-    gatewayCost = str(gateway.cost);
-
-    // OpenRouter: { openrouter: { provider: "xAI" } }
-    if (!resolvedProvider) {
-      resolvedProvider = str(rec(parsed.openrouter).provider);
-    }
-
-    if (!serviceTier && !resolvedProvider && !gatewayCost) return undefined;
-    return { serviceTier, resolvedProvider, gatewayCost };
-  } catch {
-    return undefined;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Tool choice parsing
 // ---------------------------------------------------------------------------
 
@@ -495,19 +450,3 @@ function countMessages(raw: unknown): number | undefined {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Telemetry metadata
-// ---------------------------------------------------------------------------
-
-function extractTelemetryMetadata(raw: unknown): Record<string, string> | undefined {
-  if (!raw || typeof raw !== "object") return undefined;
-
-  const result: Record<string, string> = {};
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      result[key] = String(value);
-    }
-  }
-
-  return Object.keys(result).length > 0 ? result : undefined;
-}

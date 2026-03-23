@@ -43,6 +43,8 @@ export type LlmMetricsData = {
   msToFirstChunk: number;
   tokensPerSecond: number;
   metadata: Record<string, string>;
+  promptSlug: string;
+  promptVersion: number;
 };
 
 export type CreateEventInput = Omit<

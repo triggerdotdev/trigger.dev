@@ -528,7 +528,7 @@ export class RunsReplicationService {
     this._lastAcknowledgedAt = now;
     this._lastAcknowledgedLsn = this._latestCommitEndLsn;
 
-    this.logger.info("acknowledge_latest_transaction", {
+    this.logger.debug("acknowledge_latest_transaction", {
       commitEndLsn: this._latestCommitEndLsn,
       lastAcknowledgedAt: this._lastAcknowledgedAt,
     });

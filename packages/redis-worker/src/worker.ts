@@ -1024,7 +1024,7 @@ class Worker<TCatalog extends WorkerCatalog> {
     Promise.allSettled(enqueuePromises).then((results) => {
       results.forEach((result) => {
         if (result.status === "fulfilled") {
-          this.logger.info("Enqueued cron job", { result: result.value });
+          this.logger.debug("Enqueued cron job", { result: result.value });
         } else {
           this.logger.error("Failed to enqueue cron job", { reason: result.reason });
         }
@@ -1050,7 +1050,7 @@ class Worker<TCatalog extends WorkerCatalog> {
       availableAt,
     });
 
-    this.logger.info("Enqueued cron job", {
+    this.logger.debug("Enqueued cron job", {
       identifier,
       cron,
       job,

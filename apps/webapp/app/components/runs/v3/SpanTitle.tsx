@@ -49,22 +49,22 @@ function SpanAccessory({
     }
     case "pills": {
       return (
-        <div className="flex items-center gap-1">
+        <span className="flex items-center gap-1">
           {accessory.items.map((item, index) => (
             <SpanPill key={index} text={item.text} icon={item.icon} />
           ))}
-        </div>
+        </span>
       );
     }
     default: {
       return (
-        <div className={cn("flex gap-1")}>
+        <span className={cn("flex gap-1")}>
           {accessory.items.map((item, index) => (
             <span key={index} className={cn("inline-flex items-center gap-1")}>
               {item.text}
             </span>
           ))}
-        </div>
+        </span>
       );
     }
   }
