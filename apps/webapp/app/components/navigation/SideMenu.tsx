@@ -11,7 +11,6 @@ import {
   Cog8ToothIcon,
   CogIcon,
   ExclamationTriangleIcon,
-  PuzzlePieceIcon,
   FolderIcon,
   FolderOpenIcon,
   GlobeAmericasIcon,
@@ -19,19 +18,20 @@ import {
   KeyIcon,
   PencilSquareIcon,
   PlusIcon,
+  PuzzlePieceIcon,
   RectangleStackIcon,
-  DocumentTextIcon,
   ServerStackIcon,
-  SparklesIcon,
   Squares2X2Icon,
   TableCellsIcon,
   UsersIcon,
-  BugAntIcon,
 } from "@heroicons/react/20/solid";
 import { Link, useFetcher, useNavigation } from "@remix-run/react";
+import { IconBugFilled } from "@tabler/icons-react";
 import { LayoutGroup, motion } from "framer-motion";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
+import { AIMetricsIcon } from "~/assets/icons/AIMetricsIcon";
+import { AIPromptsIcon } from "~/assets/icons/AIPromptsIcon";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
@@ -75,13 +75,13 @@ import {
   v3DeploymentsPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
-  v3LogsPath,
   v3ErrorsPath,
-  v3PromptsPath,
+  v3LogsPath,
   v3ProjectAlertsPath,
   v3ProjectPath,
   v3ProjectSettingsGeneralPath,
   v3ProjectSettingsIntegrationsPath,
+  v3PromptsPath,
   v3QueuesPath,
   v3RunsPath,
   v3SchedulesPath,
@@ -117,7 +117,6 @@ import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
 import { type SideMenuSectionId } from "./sideMenuTypes";
-import { IconBugFilled } from "@tabler/icons-react";
 
 /** Get the collapsed state for a specific side menu section from user preferences */
 function getSectionCollapsed(
@@ -461,26 +460,25 @@ export function SideMenu({
               title="AI"
               isSideMenuCollapsed={isCollapsed}
               itemSpacingClassName="space-y-0"
-              initialCollapsed={getSectionCollapsed(
-                user.dashboardPreferences.sideMenu,
-                "ai"
-              )}
+              initialCollapsed={getSectionCollapsed(user.dashboardPreferences.sideMenu, "ai")}
               onCollapseToggle={handleSectionToggle("ai")}
             >
               <SideMenuItem
                 name="Prompts"
-                icon={DocumentTextIcon}
-                activeIconColor="text-purple-500"
-                inactiveIconColor="text-purple-500"
+                icon={AIPromptsIcon}
+                trailingIconClassName="size-6"
+                activeIconColor="text-aiPrompts"
+                inactiveIconColor="text-aiPrompts"
                 to={v3PromptsPath(organization, project, environment)}
                 data-action="prompts"
                 isCollapsed={isCollapsed}
               />
               <SideMenuItem
                 name="AI Metrics"
-                icon={SparklesIcon}
-                activeIconColor="text-purple-500"
-                inactiveIconColor="text-purple-500"
+                icon={AIMetricsIcon}
+                trailingIconClassName="size-5"
+                activeIconColor="text-aiMetrics"
+                inactiveIconColor="text-aiMetrics"
                 to={v3BuiltInDashboardPath(organization, project, environment, "llm")}
                 data-action="ai-metrics"
                 isCollapsed={isCollapsed}
