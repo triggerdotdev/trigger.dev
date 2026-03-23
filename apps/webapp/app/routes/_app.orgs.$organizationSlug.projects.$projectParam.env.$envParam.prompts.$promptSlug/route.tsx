@@ -1,5 +1,6 @@
 import * as Ariakit from "@ariakit/react";
-import { ArrowPathIcon, SparklesIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon } from "@heroicons/react/20/solid";
+import { DialogClose } from "@radix-ui/react-dialog";
 import { type MetaFunction, useFetcher } from "@remix-run/react";
 import {
   type ActionFunctionArgs,
@@ -7,25 +8,29 @@ import {
   type LoaderFunctionArgs,
   redirect,
 } from "@remix-run/server-runtime";
-import { DialogClose } from "@radix-ui/react-dialog";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { TextEditor } from "~/components/code/TextEditor";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { ModelsFilter } from "~/components/metrics/ModelsFilter";
+import { OperationsFilter } from "~/components/metrics/OperationsFilter";
+import { ProvidersFilter } from "~/components/metrics/ProvidersFilter";
+import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Badge } from "~/components/primitives/Badge";
-import { DateTime } from "~/components/primitives/DateTime";
 import { Button } from "~/components/primitives/Buttons";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { CopyButton } from "~/components/primitives/CopyButton";
+import { CopyableText } from "~/components/primitives/CopyableText";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
+import { Header3 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Spinner } from "~/components/primitives/Spinner";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
   ResizableHandle,
@@ -33,9 +38,6 @@ import {
   ResizablePanelGroup,
   type ResizableSnapshot,
 } from "~/components/primitives/Resizable";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
-import { CopyButton } from "~/components/primitives/CopyButton";
-import { CopyableText } from "~/components/primitives/CopyableText";
 import {
   SelectItem,
   SelectList,
@@ -43,35 +45,34 @@ import {
   SelectProvider,
   SelectTrigger,
 } from "~/components/primitives/Select";
+import { Spinner } from "~/components/primitives/Spinner";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextArea } from "~/components/primitives/TextArea";
-import { ModelsFilter } from "~/components/metrics/ModelsFilter";
-import { OperationsFilter } from "~/components/metrics/OperationsFilter";
-import { ProvidersFilter } from "~/components/metrics/ProvidersFilter";
-import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
-import { SpanView } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
+import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useInterval } from "~/hooks/useInterval";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { prisma } from "~/db.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
-import { useInterval } from "~/hooks/useInterval";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { PromptPresenter, type GenerationRow } from "~/presenters/v3/PromptPresenter.server";
+import { type GenerationRow, PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
+import { SpanView } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { PromptService } from "~/v3/services/promptService.server";
 
-import { MetricWidget } from "~/routes/resources.metric";
-import { InfoPanel } from "~/components/primitives/InfoPanel";
+import { z } from "zod";
+import { AIPromptsIcon } from "~/assets/icons/AIPromptsIcon";
 import { InlineCode } from "~/components/code/InlineCode";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { TextLink } from "~/components/primitives/TextLink";
+import { MetricWidget } from "~/routes/resources.metric";
 import { EnvironmentParamSchema, v3PromptsPath, v3RunSpanPath } from "~/utils/pathBuilder";
 import { parsePeriodToMs } from "~/utils/periods";
-import { z } from "zod";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   promptSlug: z.string(),
@@ -233,7 +234,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   let generations: Awaited<ReturnType<typeof presenter.listGenerations>>["generations"] = [];
   let generationsPagination: { next?: string } = {};
   try {
-    const urlVersions = url.searchParams.getAll("versions").filter(Boolean).map(Number).filter((n) => !isNaN(n));
+    const urlVersions = url.searchParams
+      .getAll("versions")
+      .filter(Boolean)
+      .map(Number)
+      .filter((n) => !isNaN(n));
     const urlModels = url.searchParams.getAll("models").filter(Boolean);
     const urlOperations = url.searchParams.getAll("operations").filter(Boolean);
     const urlProviders = url.searchParams.getAll("providers").filter(Boolean);
@@ -284,7 +289,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const possibleProviders = provsErr ? [] : provsRows.map((r) => r.val);
 
   return typedjson({
-    resizable: { outer: resizableOuter, vertical: resizableVertical, generations: resizableGenerations },
+    resizable: {
+      outer: resizableOuter,
+      vertical: resizableVertical,
+      generations: resizableGenerations,
+    },
     prompt: {
       id: prompt.id,
       friendlyId: prompt.friendlyId,
@@ -520,20 +529,16 @@ export default function PromptDetailPage() {
       {overrideVersion && (
         <div className="flex items-center justify-between bg-amber-500/10 px-4 py-2">
           <span className="text-xs text-amber-300">
-            Override v{overrideVersion.version} is active. API calls resolve this version instead of the deployed prompt.
+            Override v{overrideVersion.version} is active. API calls resolve this version instead of
+            the deployed prompt.
           </span>
           <div className="flex items-center gap-2">
-            <Button
-              variant="tertiary/small"
-              onClick={() => setOverrideDialogOpen(true)}
-            >
+            <Button variant="tertiary/small" onClick={() => setOverrideDialogOpen(true)}>
               Edit
             </Button>
             <Button
               variant="tertiary/small"
-              onClick={() =>
-                fetcher.submit({ intent: "removeOverride" }, { method: "POST" })
-              }
+              onClick={() => fetcher.submit({ intent: "removeOverride" }, { method: "POST" })}
               disabled={fetcher.state !== "idle"}
             >
               Remove
@@ -679,7 +684,13 @@ export default function PromptDetailPage() {
           <ResizableHandle id="prompt-sidebar-handle" />
 
           {/* Sidebar */}
-          <ResizablePanel id="prompt-sidebar" default="380px" min="280px" max="500px" isStaticAtRest>
+          <ResizablePanel
+            id="prompt-sidebar"
+            default="380px"
+            min="280px"
+            max="500px"
+            isStaticAtRest
+          >
             <div className="grid h-full max-h-full grid-rows-[2rem_1fr] overflow-hidden bg-background-bright">
               {/* Tabs */}
               <div className="overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
@@ -713,7 +724,9 @@ export default function PromptDetailPage() {
 
               {/* Tab content */}
               <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                {tab === "details" && <DetailsTab prompt={prompt} selectedVersion={selectedVersion} />}
+                {tab === "details" && (
+                  <DetailsTab prompt={prompt} selectedVersion={selectedVersion} />
+                )}
                 {tab === "preview" && <PreviewTab prompt={prompt} content={content} />}
                 {tab === "versions" && (
                   <VersionsTab
@@ -731,9 +744,17 @@ export default function PromptDetailPage() {
         open={overrideDialogOpen}
         onOpenChange={setOverrideDialogOpen}
         prompt={prompt}
-        content={overrideVersion ? getVersionContent(versions.find((v) => v.id === overrideVersion.id) ?? { textContent: null }) : content}
+        content={
+          overrideVersion
+            ? getVersionContent(
+                versions.find((v) => v.id === overrideVersion.id) ?? { textContent: null }
+              )
+            : content
+        }
         isEditingOverride={!!overrideVersion}
-        currentOverrideModel={overrideVersion ? versions.find((v) => v.id === overrideVersion.id)?.model ?? null : null}
+        currentOverrideModel={
+          overrideVersion ? versions.find((v) => v.id === overrideVersion.id)?.model ?? null : null
+        }
         onSave={(textContent, commitMessage, model) => {
           const intent = overrideVersion ? "updateOverride" : "saveVersion";
           fetcher.submit({ intent, textContent, commitMessage, model }, { method: "POST" });
@@ -1230,7 +1251,11 @@ function GenerationsTab({
   // Check poll results for new generations — only react to new poll data, not generation list changes
   const lastPollDataRef = useRef(pollFetcher.data);
   useEffect(() => {
-    if (pollFetcher.data && pollFetcher.state === "idle" && pollFetcher.data !== lastPollDataRef.current) {
+    if (
+      pollFetcher.data &&
+      pollFetcher.state === "idle" &&
+      pollFetcher.data !== lastPollDataRef.current
+    ) {
       lastPollDataRef.current = pollFetcher.data;
       const existingIds = new Set(generations.map((g) => g.span_id));
       const newCount = pollFetcher.data.generations.filter(
@@ -1245,9 +1270,7 @@ function GenerationsTab({
     if (pollFetcher.data) {
       setGenerations((prev) => {
         const existingIds = new Set(prev.map((g) => g.span_id));
-        const newRows = pollFetcher.data!.generations.filter(
-          (g) => !existingIds.has(g.span_id)
-        );
+        const newRows = pollFetcher.data!.generations.filter((g) => !existingIds.has(g.span_id));
         return newRows.length > 0 ? [...newRows, ...prev] : prev;
       });
     }
@@ -1359,8 +1382,8 @@ function GenerationsTab({
       <div className="flex h-full items-center justify-center">
         <InfoPanel
           title="No generations yet"
-          icon={SparklesIcon}
-          iconClassName="text-purple-500"
+          icon={AIPromptsIcon}
+          iconClassName="text-aiPrompts"
           panelClassName="max-w-md"
         >
           <Paragraph variant="small">
@@ -1376,7 +1399,11 @@ function GenerationsTab({
   }
 
   return (
-    <ResizablePanelGroup autosaveId="prompt-generations" snapshot={generationsSnapshot} className="h-full">
+    <ResizablePanelGroup
+      autosaveId="prompt-generations"
+      snapshot={generationsSnapshot}
+      className="h-full"
+    >
       {/* Span list */}
       <ResizablePanel id="prompt-gen-list" min="200px">
         <div
@@ -1452,10 +1479,7 @@ function GenerationsTab({
       {/* Span inspector */}
       <ResizablePanel id="prompt-gen-inspector" default="40%" min="200px" isStaticAtRest>
         {selectedSpan ? (
-          <SpanView
-            runParam={selectedSpan.runId}
-            spanId={selectedSpan.spanId}
-          />
+          <SpanView runParam={selectedSpan.runId} spanId={selectedSpan.spanId} />
         ) : (
           <div className="flex h-full items-center justify-center bg-background-bright">
             <Paragraph variant="small" className="text-text-dimmed">
@@ -1810,10 +1834,7 @@ function PromptVersionsFilter({ versions }: { versions: VersionData[] }) {
     );
   }
 
-  const summary =
-    selected.length === 1
-      ? `v${selected[0]}`
-      : `${selected.length} versions`;
+  const summary = selected.length === 1 ? `v${selected[0]}` : `${selected.length} versions`;
 
   return (
     <SelectProvider value={selected} setValue={handleChange} virtualFocus={true}>
