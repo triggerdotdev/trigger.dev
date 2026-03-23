@@ -5,11 +5,9 @@ import {
   type ErrorGroupAlertData,
 } from "~/v3/services/alerts/errorGroupWebhook.server";
 
-function createMockAlertData(
-  overrides: Partial<ErrorGroupAlertData> = {}
-): ErrorGroupAlertData {
-  const now = new Date();
-  const earlier = new Date(now.getTime() - 3600000); // 1 hour ago
+function createMockAlertData(overrides: Partial<ErrorGroupAlertData> = {}): ErrorGroupAlertData {
+  const now = Date.now();
+  const earlier = now - 3600000; // 1 hour ago
 
   return {
     classification: "new_issue",
@@ -23,8 +21,8 @@ function createMockAlertData(
       sampleStackTrace: `TypeError: Cannot read property 'id' of undefined
     at processPayment (src/tasks/payment.ts:42:15)
     at Object.run (src/tasks/payment.ts:15:20)`,
-      firstSeen: earlier.toISOString(),
-      lastSeen: now.toISOString(),
+      firstSeen: String(earlier),
+      lastSeen: String(now),
       occurrenceCount: 5,
     },
     organization: {
@@ -38,7 +36,8 @@ function createMockAlertData(
       slug: "my-project",
       name: "My Project",
     },
-    dashboardUrl: "https://cloud.trigger.dev/orgs/acme-corp/projects/my-project/errors/fp_test_12345",
+    dashboardUrl:
+      "https://cloud.trigger.dev/orgs/acme-corp/projects/my-project/errors/fp_test_12345",
     ...overrides,
   };
 }
@@ -74,7 +73,8 @@ describe("generateErrorGroupWebhookPayload", () => {
           slug: "my-project",
           name: "My Project",
         },
-        dashboardUrl: "https://cloud.trigger.dev/orgs/acme-corp/projects/my-project/errors/fp_test_12345",
+        dashboardUrl:
+          "https://cloud.trigger.dev/orgs/acme-corp/projects/my-project/errors/fp_test_12345",
       },
     });
 
@@ -177,8 +177,8 @@ describe("generateErrorGroupWebhookPayload", () => {
     const alertData = createMockAlertData({
       error: {
         ...createMockAlertData().error,
-        firstSeen: firstSeen.toISOString(),
-        lastSeen: lastSeen.toISOString(),
+        firstSeen: String(firstSeen.getTime()),
+        lastSeen: String(lastSeen.getTime()),
       },
     });
 
