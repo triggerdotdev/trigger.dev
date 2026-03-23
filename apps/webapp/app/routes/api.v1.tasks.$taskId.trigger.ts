@@ -22,6 +22,15 @@ import {
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "~/v3/services/triggerTask.server";
 
+const ALLOWED_TRIGGER_SOURCES = new Set(["sdk", "cli", "mcp"]);
+
+export function sanitizeTriggerSource(value: string | null | undefined): string | undefined {
+  if (value && ALLOWED_TRIGGER_SOURCES.has(value)) {
+    return value;
+  }
+  return undefined;
+}
+
 const ParamsSchema = z.object({
   taskId: z.string(),
 });
@@ -121,7 +130,7 @@ const { action, loader } = createActionApiRoute(
           realtimeStreamsVersion: determineRealtimeStreamsVersion(
             realtimeStreamsVersion ?? undefined
           ),
-          triggerSource: isFromWorker ? "sdk" : triggerSourceHeader ?? "api",
+          triggerSource: isFromWorker ? "sdk" : sanitizeTriggerSource(triggerSourceHeader) ?? "api",
           triggerAction: "trigger",
         },
         engineVersion ?? undefined
