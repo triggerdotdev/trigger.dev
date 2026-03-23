@@ -93,7 +93,7 @@ export class ErrorAlertEvaluator {
       return;
     }
 
-    const states = await this.getErrorGroupStates(projectId, activeErrors, envIds);
+    const states = await this.getErrorGroupStates(activeErrors);
     const stateMap = this.buildStateMap(states);
 
     const occurrenceCounts = await this.getOccurrenceCountsSince(projectId, envIds, scheduledAt);
@@ -322,18 +322,17 @@ export class ErrorAlertEvaluator {
   }
 
   private async getErrorGroupStates(
-    projectId: string,
-    activeErrors: ActiveErrorsSinceQueryResult[],
-    envIds: string[]
+    activeErrors: ActiveErrorsSinceQueryResult[]
   ): Promise<ErrorGroupState[]> {
-    const fingerprints = [...new Set(activeErrors.map((e) => e.error_fingerprint))];
-    if (fingerprints.length === 0) return [];
+    if (activeErrors.length === 0) return [];
 
     return this._replica.errorGroupState.findMany({
       where: {
-        projectId,
-        errorFingerprint: { in: fingerprints },
-        environmentId: { in: envIds },
+        OR: activeErrors.map((e) => ({
+          environmentId: e.environment_id,
+          taskIdentifier: e.task_identifier,
+          errorFingerprint: e.error_fingerprint,
+        })),
       },
     });
   }

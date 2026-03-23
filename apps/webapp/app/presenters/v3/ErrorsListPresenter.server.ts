@@ -168,18 +168,45 @@ export class ErrorsListPresenter extends BasePresenter {
       (tasks !== undefined && tasks.length > 0) ||
       (versions !== undefined && versions.length > 0) ||
       (search !== undefined && search !== "") ||
-      (statuses !== undefined && statuses.length > 0) ||
-      !time.isDefault;
+      (statuses !== undefined && statuses.length > 0);
 
     const possibleTasksAsync = getAllTaskIdentifiers(this.replica, environmentId);
 
-    const [possibleTasks, displayableEnvironment] = await Promise.all([
+    // Pre-filter by status: since status lives in Postgres (ErrorGroupState) and the error
+    // list comes from ClickHouse, we resolve inclusion/exclusion sets upfront so that
+    // ClickHouse pagination operates on the correctly filtered dataset.
+    const statusFilterAsync = this.resolveStatusFilter(environmentId, statuses);
+
+    const [possibleTasks, displayableEnvironment, statusFilter] = await Promise.all([
       possibleTasksAsync,
       findDisplayableEnvironment(environmentId, userId),
+      statusFilterAsync,
     ]);
 
     if (!displayableEnvironment) {
       throw new ServiceValidationError("No environment found");
+    }
+
+    if (statusFilter.empty) {
+      return {
+        errorGroups: [],
+        pagination: {
+          next: undefined,
+          previous: undefined,
+        },
+        filters: {
+          tasks,
+          versions,
+          statuses,
+          search,
+          period: time,
+          from: effectiveFrom,
+          to: effectiveTo,
+          hasFilters,
+          possibleTasks,
+          wasClampedByRetention,
+        },
+      };
     }
 
     // Query the per-minute error_occurrences_v1 table for time-scoped counts
@@ -203,6 +230,19 @@ export class ErrorsListPresenter extends BasePresenter {
 
     if (versions && versions.length > 0) {
       queryBuilder.where("task_version IN {versions: Array(String)}", { versions });
+    }
+
+    if (statusFilter.includeKeys) {
+      queryBuilder.where(
+        "concat(task_identifier, '::', error_fingerprint) IN ({statusIncludeKeys: Array(String)})",
+        { statusIncludeKeys: statusFilter.includeKeys }
+      );
+    }
+    if (statusFilter.excludeKeys) {
+      queryBuilder.where(
+        "concat(task_identifier, '::', error_fingerprint) NOT IN ({statusExcludeKeys: Array(String)})",
+        { statusExcludeKeys: statusFilter.excludeKeys }
+      );
     }
 
     queryBuilder.groupBy("error_fingerprint, task_identifier");
@@ -291,12 +331,6 @@ export class ErrorsListPresenter extends BasePresenter {
         ignoredUntil: state?.ignoredUntil ?? null,
       };
     });
-
-    if (statuses && statuses.length > 0) {
-      transformedErrorGroups = transformedErrorGroups.filter((g) =>
-        statuses.includes(g.status as ErrorGroupStatus)
-      );
-    }
 
     return {
       errorGroups: transformedErrorGroups,
@@ -391,6 +425,61 @@ export class ErrorsListPresenter extends BasePresenter {
     }
 
     return { data };
+  }
+
+  /**
+   * Determines which (task, fingerprint) pairs to include or exclude from the ClickHouse
+   * query based on the requested status filter. Since status lives in Postgres and errors
+   * live in ClickHouse, we resolve the filter set here so ClickHouse pagination is correct.
+   *
+   * - UNRESOLVED is the default (no ErrorGroupState row), so filtering FOR it means
+   *   excluding groups with non-matching explicit statuses.
+   * - RESOLVED/IGNORED are explicit, so filtering for them means including only matching groups.
+   */
+  private async resolveStatusFilter(
+    environmentId: string,
+    statuses?: ErrorGroupStatus[]
+  ): Promise<{
+    includeKeys?: string[];
+    excludeKeys?: string[];
+    empty: boolean;
+  }> {
+    if (!statuses || statuses.length === 0) {
+      return { empty: false };
+    }
+
+    const allStatuses: ErrorGroupStatus[] = ["UNRESOLVED", "RESOLVED", "IGNORED"];
+    const excludedStatuses = allStatuses.filter((s) => !statuses.includes(s));
+
+    if (excludedStatuses.length === 0) {
+      return { empty: false };
+    }
+
+    if (statuses.includes("UNRESOLVED")) {
+      const excluded = await this.replica.errorGroupState.findMany({
+        where: { environmentId, status: { in: excludedStatuses } },
+        select: { taskIdentifier: true, errorFingerprint: true },
+      });
+      if (excluded.length === 0) {
+        return { empty: false };
+      }
+      return {
+        excludeKeys: excluded.map((g) => `${g.taskIdentifier}::${g.errorFingerprint}`),
+        empty: false,
+      };
+    }
+
+    const included = await this.replica.errorGroupState.findMany({
+      where: { environmentId, status: { in: statuses } },
+      select: { taskIdentifier: true, errorFingerprint: true },
+    });
+    if (included.length === 0) {
+      return { empty: true };
+    }
+    return {
+      includeKeys: included.map((g) => `${g.taskIdentifier}::${g.errorFingerprint}`),
+      empty: false,
+    };
   }
 
   /**

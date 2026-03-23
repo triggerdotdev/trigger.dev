@@ -2907,6 +2907,5 @@ model ErrorGroupState {
   updatedAt DateTime @updatedAt
 
   @@unique([environmentId, taskIdentifier, errorFingerprint])
-  @@index([status])
-  @@index([ignoredUntil])
+  @@index([environmentId, status])
 }
