@@ -253,7 +253,7 @@ export const deepResearch = schemaTask({
 export const aiChat = chat.task({
   id: "ai-chat",
   clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
-  warmTimeoutInSeconds: 60,
+  idleTimeoutInSeconds: 60,
   chatAccessTokenTTL: "2h",
   uiMessageStreamOptions: {
     sendReasoning: true,
@@ -493,8 +493,8 @@ export const aiChatRaw = task({
         await initUserContext(clientData.userId, currentPayload.chatId, clientData.model);
       }
 
-      const result = await chat.messages.waitWithWarmup({
-        warmTimeoutInSeconds: payload.warmTimeoutInSeconds ?? 60,
+      const result = await chat.messages.waitWithIdleTimeout({
+        idleTimeoutInSeconds: payload.idleTimeoutInSeconds ?? 60,
         timeout: "1h",
         spanName: "waiting for first message",
       });
@@ -611,8 +611,8 @@ export const aiChatRaw = task({
 
       await chat.writeTurnComplete();
 
-      const next = await chat.messages.waitWithWarmup({
-        warmTimeoutInSeconds: 60,
+      const next = await chat.messages.waitWithIdleTimeout({
+        idleTimeoutInSeconds: 60,
         timeout: "1h",
         spanName: "waiting for next message",
       });
@@ -640,7 +640,7 @@ export const aiChatSession = task({
 
     const session = chat.createSession(payload, {
       signal,
-      warmTimeoutInSeconds: payload.warmTimeoutInSeconds ?? 60,
+      idleTimeoutInSeconds: payload.idleTimeoutInSeconds ?? 60,
       timeout: "1h",
     });
 

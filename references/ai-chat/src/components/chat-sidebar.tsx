@@ -26,8 +26,8 @@ type ChatSidebarProps = {
   onDeleteChat: (id: string) => void;
   preloadEnabled: boolean;
   onPreloadChange: (enabled: boolean) => void;
-  warmTimeoutInSeconds: number;
-  onWarmTimeoutChange: (seconds: number) => void;
+  idleTimeoutInSeconds: number;
+  onIdleTimeoutChange: (seconds: number) => void;
   taskMode: string;
   onTaskModeChange: (mode: string) => void;
 };
@@ -40,8 +40,8 @@ export function ChatSidebar({
   onDeleteChat,
   preloadEnabled,
   onPreloadChange,
-  warmTimeoutInSeconds,
-  onWarmTimeoutChange,
+  idleTimeoutInSeconds,
+  onIdleTimeoutChange,
   taskMode,
   onTaskModeChange,
 }: ChatSidebarProps) {
@@ -101,13 +101,13 @@ export function ChatSidebar({
           Preload new chats
         </label>
         <div className="flex items-center gap-2 text-xs text-gray-500">
-          <span className="shrink-0">Warm timeout</span>
+          <span className="shrink-0">Idle timeout</span>
           <input
             type="number"
             min={0}
             step={5}
-            value={warmTimeoutInSeconds}
-            onChange={(e) => onWarmTimeoutChange(Number(e.target.value))}
+            value={idleTimeoutInSeconds}
+            onChange={(e) => onIdleTimeoutChange(Number(e.target.value))}
             className="w-16 rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 outline-none focus:border-blue-500"
           />
           <span>s</span>
