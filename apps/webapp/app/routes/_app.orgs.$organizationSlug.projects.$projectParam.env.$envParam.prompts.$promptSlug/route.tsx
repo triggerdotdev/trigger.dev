@@ -1188,10 +1188,7 @@ function GenerationPopoverMenu({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverVerticalEllipseTrigger
-        onClick={(e) => e.stopPropagation()}
-        className="shrink-0"
-      />
+      <PopoverVerticalEllipseTrigger onClick={(e) => e.stopPropagation()} className="shrink-0" />
       <PopoverContent
         className="min-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         align="end"
@@ -1522,25 +1519,23 @@ function GenerationsTab({
                 <RadioButtonCircle checked={isSelected} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center">
-                    <span className="font-medium text-text-bright">
+                    <span className="truncate font-medium text-text-bright">
                       {gen.operation_id || gen.task_identifier}
                     </span>
                   </div>
-                  <div className="mt-0.5 flex items-center gap-3 text-xs text-text-dimmed">
-                    <span className="text-charcoal-400">v{gen.prompt_version}</span>
-                    <span>{gen.response_model}</span>
-                    <span>{gen.input_tokens + gen.output_tokens} tokens</span>
-                    <span>{formatCost(gen.total_cost)}</span>
-                    <span>{Math.round(gen.duration_ms)}ms</span>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-text-dimmed">
+                    <span className="whitespace-nowrap text-charcoal-400">v{gen.prompt_version}</span>
+                    <span className="whitespace-nowrap">{gen.response_model}</span>
+                    <span className="whitespace-nowrap">{gen.input_tokens + gen.output_tokens} tokens</span>
+                    <span className="whitespace-nowrap">{formatCost(gen.total_cost)}</span>
+                    <span className="whitespace-nowrap">{Math.round(gen.duration_ms)}ms</span>
                   </div>
                 </div>
                 <span className="shrink-0 text-xs text-text-dimmed">{gen.start_time}</span>
                 <GenerationPopoverMenu
                   isSelected={isSelected}
                   runPath={runPath}
-                  onViewDetails={() =>
-                    onSelectSpan({ runId: gen.run_id, spanId: gen.span_id })
-                  }
+                  onViewDetails={() => onSelectSpan({ runId: gen.run_id, spanId: gen.span_id })}
                 />
               </div>
             );
@@ -1559,13 +1554,13 @@ function GenerationsTab({
       <ResizableHandle id="prompt-gen-handle" />
 
       {/* Span inspector */}
-      <ResizablePanel id="prompt-gen-inspector" default="430px" min="200px" isStaticAtRest>
+      <ResizablePanel id="prompt-gen-inspector" default="430px" min="320px" isStaticAtRest>
         {selectedSpan ? (
           <SpanView runParam={selectedSpan.runId} spanId={selectedSpan.spanId} />
         ) : (
           <div className="flex h-full items-center justify-center bg-background-bright">
             <Paragraph variant="small" className="text-text-dimmed">
-              Select a generation to inspect
+              Select a generation to view details
             </Paragraph>
           </div>
         )}
