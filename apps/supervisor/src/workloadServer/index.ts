@@ -27,7 +27,8 @@ import { env } from "../env.js";
 import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
 import { TimerWheel } from "../services/timerWheel.js";
 import { parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
-import { buildOtlpTracePayload, sendOtlpTrace } from "../otlpTrace.js";
+import { buildOtlpTracePayload } from "../otlpPayload.js";
+import { sendOtlpTrace } from "../otlpTrace.js";
 
 // Use the official export when upgrading to socket.io@4.8.0
 interface DefaultEventsMap {
@@ -469,7 +470,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     httpServer.route("/api/v1/compute/snapshot-complete", "POST", {
       bodySchema: ComputeSnapshotCallbackBody,
       handler: async ({ reply, body }) => {
-        this.logger.info("Compute snapshot callback", {
+        this.logger.debug("Compute snapshot callback", {
           snapshotId: body.snapshot_id,
           instanceId: body.instance_id,
           status: body.status,
@@ -504,7 +505,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           });
 
           if (result.success) {
-            this.logger.info("Suspend completion submitted", {
+            this.logger.debug("Suspend completion submitted", {
               runId,
               instanceId: body.instance_id,
               snapshotId: body.snapshot_id,
@@ -553,7 +554,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     > = io.of("/workload");
 
     websocketServer.on("disconnect", (socket) => {
-      this.logger.log("[WS] disconnect", socket.id);
+      this.logger.verbose("[WS] disconnect", socket.id);
     });
     websocketServer.use(async (socket, next) => {
       const setSocketDataFromHeader = (
@@ -635,7 +636,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         socket.data.runFriendlyId = undefined;
       };
 
-      socketLogger.log("wsServer socket connected", { ...getSocketMetadata() });
+      socketLogger.debug("wsServer socket connected", { ...getSocketMetadata() });
 
       // FIXME: where does this get set?
       if (socket.data.runFriendlyId) {
@@ -643,7 +644,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       }
 
       socket.on("disconnecting", (reason, description) => {
-        socketLogger.log("Socket disconnecting", { ...getSocketMetadata(), reason, description });
+        socketLogger.verbose("Socket disconnecting", { ...getSocketMetadata(), reason, description });
 
         if (socket.data.runFriendlyId) {
           runDisconnected(socket.data.runFriendlyId);
@@ -651,7 +652,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       });
 
       socket.on("disconnect", (reason, description) => {
-        socketLogger.log("Socket disconnected", { ...getSocketMetadata(), reason, description });
+        socketLogger.debug("Socket disconnected", { ...getSocketMetadata(), reason, description });
       });
 
       socket.on("error", (error) => {
@@ -672,7 +673,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           ...message,
         });
 
-        log.log("Handling run:start");
+        log.debug("Handling run:start");
 
         try {
           runConnected(message.run.friendlyId);
@@ -688,11 +689,13 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           ...message,
         });
 
-        log.log("Handling run:stop");
+        log.debug("Handling run:stop");
 
         try {
           runDisconnected(message.run.friendlyId);
-          this.runTraceContexts.delete(message.run.friendlyId);
+          // Don't delete trace context here - run:stop fires after each snapshot/shutdown
+          // but the run may be restored on a new VM and snapshot again. Trace context is
+          // re-populated on dequeue, and entries are small (4 strings per run).
         } catch (error) {
           log.error("run:stop error", { error });
         }
@@ -799,7 +802,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       spanAttributes,
     });
 
-    sendOtlpTrace(`${env.TRIGGER_API_URL}/otel`, payload);
+    sendOtlpTrace(payload);
   }
 
   registerRunTraceContext(runFriendlyId: string, ctx: RunTraceContext) {

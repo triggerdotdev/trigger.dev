@@ -84,6 +84,7 @@ const Env = z
     COMPUTE_GATEWAY_TIMEOUT_MS: z.coerce.number().int().default(30_000),
     COMPUTE_SNAPSHOTS_ENABLED: BoolEnv.default(false),
     COMPUTE_TRACE_SPANS_ENABLED: BoolEnv.default(true),
+    COMPUTE_TRACE_OTLP_ENDPOINT: z.string().url().optional(), // Override for span export (derived from TRIGGER_API_URL if unset)
     COMPUTE_SNAPSHOT_DELAY_MS: z.coerce.number().int().min(0).max(60_000).default(5_000),
 
     // Kubernetes settings
@@ -168,6 +169,10 @@ const Env = z
         path: ["TRIGGER_WORKLOAD_API_DOMAIN"],
       });
     }
-  });
+  })
+  .transform((data) => ({
+    ...data,
+    COMPUTE_TRACE_OTLP_ENDPOINT: data.COMPUTE_TRACE_OTLP_ENDPOINT ?? `${data.TRIGGER_API_URL}/otel`,
+  }));
 
 export const env = Env.parse(stdEnv);

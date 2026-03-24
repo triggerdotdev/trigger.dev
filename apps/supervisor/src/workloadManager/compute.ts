@@ -8,7 +8,8 @@ import {
 } from "./types.js";
 import { env } from "../env.js";
 import { getRunnerId } from "../util.js";
-import { buildOtlpTracePayload, sendOtlpTrace } from "../otlpTrace.js";
+import { buildOtlpTracePayload } from "../otlpPayload.js";
+import { sendOtlpTrace } from "../otlpTrace.js";
 import { tryCatch } from "@trigger.dev/core";
 
 type ComputeWorkloadManagerOptions = WorkloadManagerOptions & {
@@ -171,7 +172,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
     } finally {
       event.durationMs = Math.round(performance.now() - startMs);
       event.ok ??= false;
-      this.logger.info("create instance", event);
+      this.logger.debug("create instance", event);
     }
   }
 
@@ -222,7 +223,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       return false;
     }
 
-    this.logger.info("snapshot request accepted", { runnerId: opts.runnerId });
+    this.logger.debug("snapshot request accepted", { runnerId: opts.runnerId });
     return true;
   }
 
@@ -253,7 +254,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       return false;
     }
 
-    this.logger.info("delete instance success", { runnerId });
+    this.logger.debug("delete instance success", { runnerId });
     return true;
   }
 
@@ -312,7 +313,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
     });
 
     // Use the platform API URL, not the runner OTLP endpoint (which may be a VM gateway IP)
-    sendOtlpTrace(`${env.TRIGGER_API_URL}/otel`, payload);
+    sendOtlpTrace(payload);
   }
 
   async restore(opts: {
@@ -347,7 +348,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       memory_mb: opts.machine.memory * 1024,
     };
 
-    this.logger.debug("restore request body", { url, body });
+    this.logger.verbose("restore request body", { url, body });
 
     const startMs = performance.now();
 
@@ -382,7 +383,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       return false;
     }
 
-    this.logger.info("restore request success", {
+    this.logger.debug("restore request success", {
       snapshotId: opts.snapshotId,
       runnerId: opts.runnerId,
       durationMs,
@@ -444,7 +445,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       },
     });
 
-    sendOtlpTrace(`${env.TRIGGER_API_URL}/otel`, payload);
+    sendOtlpTrace(payload);
   }
 }
 
