@@ -65,6 +65,7 @@ export const loader = createLoaderApiRoute(
         : undefined;
 
     const triggeredRuns = await $replica.taskRun.findMany({
+      take: 50,
       select: {
         friendlyId: true,
         taskIdentifier: true,
@@ -72,6 +73,7 @@ export const loader = createLoaderApiRoute(
         createdAt: true,
       },
       where: {
+        runtimeEnvironmentId: authentication.environment.id,
         parentSpanId: params.spanId,
       },
     });
