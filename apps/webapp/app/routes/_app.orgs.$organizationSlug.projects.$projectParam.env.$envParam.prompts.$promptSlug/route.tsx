@@ -32,6 +32,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
@@ -717,7 +718,10 @@ export default function PromptDetailPage() {
               </div>
 
               {/* Tab content */}
-              <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+              <div className={cn(
+                "overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+                tab === "versions" ? "py-0" : "px-3 py-3"
+              )}>
                 {tab === "details" && (
                   <DetailsTab prompt={prompt} selectedVersion={selectedVersion} />
                 )}
@@ -1870,72 +1874,58 @@ function VersionsTab({
   onSelectVersion: (version: number) => void;
 }) {
   return (
-    <div>
+    <div className="divide-y divide-grid-dimmed border-b border-grid-dimmed">
       {versions.map((v) => {
         const isSelected = selectedVersion?.id === v.id;
         const isCurrent = v.labels.includes("current");
         const isLatest = v.labels.includes("latest");
         const isOverride = v.labels.includes("override");
 
-        const dotColor = isOverride
-          ? "bg-amber-400"
-          : isCurrent
-          ? "bg-green-500"
-          : "bg-charcoal-600";
-
         return (
           <div
             key={v.id}
             onClick={() => onSelectVersion(v.version)}
-            className={`group flex cursor-pointer items-start gap-2.5 border-b border-grid-dimmed px-3 py-2 transition last:border-0 ${
-              isSelected ? "bg-indigo-500/10" : "hover:bg-charcoal-850"
-            }`}
+            className={cn(
+              "flex cursor-pointer items-center gap-3 px-3 py-3 text-sm transition",
+              isSelected ? "bg-indigo-500/10 hover:bg-indigo-500/[0.07]" : "hover:bg-charcoal-750"
+            )}
           >
-            {/* Timeline dot */}
-            <div className="flex flex-col items-center pt-1.5">
-              <div className={`size-2 rounded-full ${dotColor}`} />
-            </div>
-
-            {/* Content */}
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className={`text-xs font-medium ${
-                      isSelected ? "text-text-bright" : "text-text-bright"
-                    }`}
-                  >
-                    v{v.version}
-                  </span>
-                  {isOverride && (
-                    <Badge variant="extra-small" className="border-amber-500/30 text-amber-400">
-                      override
-                    </Badge>
+            <RadioButtonCircle checked={isSelected} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <div
+                  className={cn(
+                    "size-2 shrink-0 rounded-full",
+                    isOverride
+                      ? "bg-amber-400"
+                      : isCurrent
+                      ? "bg-green-500"
+                      : "bg-charcoal-600"
                   )}
-                  {isCurrent && <Badge variant="extra-small">current</Badge>}
-                  {isLatest && !isCurrent && <Badge variant="extra-small">latest</Badge>}
-                </div>
-                <span className="text-xxs text-text-dimmed">
-                  <DateTime date={v.createdAt} />
+                />
+                <span className="font-medium text-text-bright">v{v.version}</span>
+                {isOverride && (
+                  <Badge variant="extra-small" className="border-amber-500/30 text-amber-400">
+                    override
+                  </Badge>
+                )}
+                {isCurrent && <Badge variant="extra-small">current</Badge>}
+                {isLatest && !isCurrent && <Badge variant="extra-small">latest</Badge>}
+                <span className={cn("text-xs", v.source !== "code" ? "text-amber-400" : "text-text-dimmed")}>
+                  {v.source}
                 </span>
               </div>
-
-              <div className="flex items-center gap-1.5 text-xxs text-text-dimmed">
-                <span className={v.source !== "code" ? "text-amber-400" : ""}>{v.source}</span>
-                {v.model && (
-                  <>
-                    <span className="text-charcoal-600">/</span>
-                    <span>{v.model}</span>
-                  </>
-                )}
-                {v.commitMessage && (
-                  <>
-                    <span className="text-charcoal-600">/</span>
-                    <span className="truncate">{v.commitMessage}</span>
-                  </>
-                )}
-              </div>
+              {(v.model || v.commitMessage) && (
+                <div className="flex items-center gap-1.5 truncate text-xs text-text-dimmed">
+                  {v.model && <span>{v.model}</span>}
+                  {v.model && v.commitMessage && <span className="text-charcoal-600">/</span>}
+                  {v.commitMessage && <span className="truncate">{v.commitMessage}</span>}
+                </div>
+              )}
             </div>
+            <span className="shrink-0 text-xs text-text-dimmed">
+              <DateTime date={v.createdAt} />
+            </span>
           </div>
         );
       })}
