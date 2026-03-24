@@ -1037,7 +1037,6 @@ function PreviewTab({
   content: string;
 }) {
   const variableFields = prompt.variableSchema ? extractVariableFields(prompt.variableSchema) : [];
-
   const [testVariables, setTestVariables] = useState<Record<string, string>>(() =>
     Object.fromEntries(variableFields.map((f) => [f.name, ""]))
   );
@@ -1049,14 +1048,20 @@ function PreviewTab({
       {variableFields.length > 0 ? (
         <>
           <div className="space-y-3">
-            <Header3>Variables</Header3>
-            {variableFields.map((field) => (
-              <InputGroup key={field.name}>
+            <div>
+              <Header3 className="mb-1">Variables</Header3>
+              <Paragraph variant="small">
+                Fill in values to preview your resolved prompt template.
+              </Paragraph>
+            </div>
+            {variableFields.map((field, index) => (
+              <InputGroup className="max-w-full" key={field.name}>
                 <Label variant="small" required={field.required}>
                   {field.name}
                 </Label>
                 {field.enumValues ? (
                   <select
+                    autoFocus={index === 0}
                     className="h-6 w-full rounded border border-charcoal-650 bg-background-bright px-1 text-xs text-text-bright focus:border-indigo-500 focus:outline-none"
                     value={testVariables[field.name] ?? ""}
                     onChange={(e) =>
@@ -1066,7 +1071,7 @@ function PreviewTab({
                       }))
                     }
                   >
-                    <option value="">Select...</option>
+                    <option value="">Select…</option>
                     {field.enumValues.map((v) => (
                       <option key={v} value={v}>
                         {v}
@@ -1075,8 +1080,9 @@ function PreviewTab({
                   </select>
                 ) : field.isLongText ? (
                   <TextArea
+                    autoFocus={index === 0}
                     rows={3}
-                    className="text-xs"
+                    className="w-full text-sm"
                     placeholder={field.placeholder}
                     value={testVariables[field.name] ?? ""}
                     onChange={(e) =>
@@ -1088,6 +1094,7 @@ function PreviewTab({
                   />
                 ) : (
                   <Input
+                    autoFocus={index === 0}
                     variant="small"
                     placeholder={field.placeholder}
                     value={testVariables[field.name] ?? ""}
@@ -1104,38 +1111,28 @@ function PreviewTab({
             ))}
           </div>
 
-          <div className="space-y-1">
-            <Header3>Resolved output</Header3>
-            {previewText ? (
-              <div className="overflow-auto rounded border border-indigo-500/30 bg-charcoal-900 p-3">
+          {previewText && (
+            <div className="space-y-1.5">
+              <Header3>Resolved output</Header3>
+              <div className="overflow-auto rounded border border-grid-bright bg-background-dimmed p-3">
                 <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-text-bright">
                   {previewText}
                 </pre>
               </div>
-            ) : (
-              <div className="rounded border border-grid-dimmed bg-charcoal-900/50 p-3">
-                <Paragraph variant="extra-small" className="text-charcoal-500">
-                  Fill in variables to see the resolved prompt
-                </Paragraph>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </>
       ) : (
-        <div className="space-y-1">
-          <Header3>Resolved output</Header3>
-          {content ? (
-            <div className="overflow-auto rounded border border-grid-dimmed bg-charcoal-900 p-3">
+        content && (
+          <>
+            <Header3>Resolved output</Header3>
+            <div className="overflow-auto rounded border border-grid-bright bg-background-dimmed p-3">
               <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-text-bright">
                 {content}
               </pre>
             </div>
-          ) : (
-            <Paragraph variant="small" className="text-charcoal-500">
-              No content to preview
-            </Paragraph>
-          )}
-        </div>
+          </>
+        )
       )}
     </div>
   );
