@@ -565,34 +565,24 @@ export default function PromptDetailPage() {
             >
               {/* Template panel */}
               <ResizablePanel id="prompt-template" default="250px" min="80px">
-                <div className="flex h-full flex-col overflow-hidden p-3 pb-0">
-                  {/* Sticky header */}
-                  <div className="mb-2 flex-shrink-0">
-                    <div className="flex items-center justify-between">
-                      <Header3>Template</Header3>
-                      {content && <CopyButton value={content} variant="icon" size="extra-small" />}
-                    </div>
+                {content ? (
+                  <CodeBlock
+                    code={content}
+                    language="markdown"
+                    showLineNumbers={false}
+                    showCopyButton={true}
+                    showTextWrapping={false}
+                    showOpenInModal={true}
+                    className="h-full overflow-y-auto border-none p-2 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 [&_pre]:text-sm"
+                    maxLines={undefined}
+                  />
+                ) : (
+                  <div className="p-3">
+                    <Paragraph variant="small" className="text-text-dimmed">
+                      No content
+                    </Paragraph>
                   </div>
-                  {/* Scrollable content */}
-                  {content ? (
-                    <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                      <CodeBlock
-                        code={content}
-                        language="markdown"
-                        showLineNumbers={false}
-                        showCopyButton={false}
-                        showTextWrapping={false}
-                        showOpenInModal={false}
-                      />
-                    </div>
-                  ) : (
-                    <div className="rounded border border-grid-dimmed p-3">
-                      <Paragraph variant="small" className="text-text-dimmed">
-                        No content
-                      </Paragraph>
-                    </div>
-                  )}
-                </div>
+                )}
               </ResizablePanel>
 
               <ResizableHandle id="prompt-vertical-handle" />
