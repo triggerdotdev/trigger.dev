@@ -190,39 +190,107 @@ export const myChat = chat.task({
 });
 ```
 
-## Low-level compaction
+## Using with chat.createSession()
 
-For `chat.createSession()` or raw task mode, use `chat.compact()` and `chat.compactionStep()` directly inside a custom `prepareStep`:
+Pass the same `compaction` config to `chat.createSession()`. The session handles outer-loop compaction automatically inside `turn.complete()`:
 
 ```ts
-const result = streamText({
-  model: openai("gpt-4o"),
-  messages,
-  prepareStep: async ({ messages: stepMessages, steps }) => {
-    const result = await chat.compact(stepMessages, steps, {
-      threshold: 80_000,
-      summarize: async (msgs) =>
-        generateText({ model: openai("gpt-4o-mini"), messages: msgs }).then((r) => r.text),
-    });
-    return result.type === "skipped" ? undefined : result;
+const session = chat.createSession(payload, {
+  signal,
+  idleTimeoutInSeconds: 60,
+  timeout: "1h",
+  compaction: {
+    shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
+    summarize: async ({ messages }) =>
+      generateText({ model: openai("gpt-4o-mini"), messages }).then((r) => r.text),
+    compactUIMessages: ({ uiMessages, summary }) => [
+      { id: generateId(), role: "assistant",
+        parts: [{ type: "text", text: `[Summary]\n\n${summary}` }] },
+      ...uiMessages.slice(-4),
+    ],
   },
 });
+
+for await (const turn of session) {
+  const result = streamText({
+    model: openai("gpt-4o"),
+    messages: turn.messages,
+    abortSignal: turn.signal,
+  });
+
+  await turn.complete(result);
+  // Outer-loop compaction runs automatically after complete()
+
+  await db.chat.update({
+    where: { id: turn.chatId },
+    data: { messages: turn.uiMessages },
+  });
+}
 ```
 
-Or use the higher-level `chat.compactionStep()` factory:
+## Using with raw tasks (MessageAccumulator)
+
+Pass `compaction` to the `MessageAccumulator` constructor. Use `prepareStep()` for inner-loop compaction and `compactIfNeeded()` for the outer loop:
 
 ```ts
-const result = streamText({
-  model: openai("gpt-4o"),
-  messages,
-  prepareStep: chat.compactionStep({
+const conversation = new chat.MessageAccumulator({
+  compaction: {
+    shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
+    summarize: async ({ messages }) =>
+      generateText({ model: openai("gpt-4o-mini"), messages }).then((r) => r.text),
+    compactUIMessages: ({ summary }) => [
+      { id: generateId(), role: "assistant",
+        parts: [{ type: "text", text: `[Summary]\n\n${summary}` }] },
+    ],
+  },
+});
+
+for (let turn = 0; turn < 100; turn++) {
+  const messages = await conversation.addIncoming(payload.messages, payload.trigger, turn);
+
+  const result = streamText({
+    model: openai("gpt-4o"),
+    messages,
+    prepareStep: conversation.prepareStep(), // Inner-loop compaction
+  });
+
+  const response = await chat.pipeAndCapture(result);
+  if (response) await conversation.addResponse(response);
+
+  // Outer-loop compaction
+  const usage = await result.totalUsage;
+  await conversation.compactIfNeeded(usage, { chatId: payload.chatId, turn });
+
+  await db.chat.update({ data: { messages: conversation.uiMessages } });
+  await chat.writeTurnComplete();
+}
+```
+
+## Fully manual compaction
+
+For maximum control, use `chat.compact()` directly inside a custom `prepareStep`:
+
+```ts
+prepareStep: async ({ messages: stepMessages, steps }) => {
+  const result = await chat.compact(stepMessages, steps, {
     threshold: 80_000,
     summarize: async (msgs) =>
       generateText({ model: openai("gpt-4o-mini"), messages: msgs }).then((r) => r.text),
-  }),
-});
+  });
+  return result.type === "skipped" ? undefined : result;
+},
+```
+
+Or use the `chat.compactionStep()` factory:
+
+```ts
+prepareStep: chat.compactionStep({
+  threshold: 80_000,
+  summarize: async (msgs) =>
+    generateText({ model: openai("gpt-4o-mini"), messages: msgs }).then((r) => r.text),
+}),
 ```
 
 <Note>
-  The low-level APIs only handle inner-loop compaction (between tool-call steps). For full coverage including single-step turns, use the `compaction` option on `chat.task()`.
+  The fully manual APIs only handle inner-loop compaction (between tool-call steps). For outer-loop coverage, use the `compaction` option on `chat.task()`, `chat.createSession()`, or `MessageAccumulator`.
 </Note>
