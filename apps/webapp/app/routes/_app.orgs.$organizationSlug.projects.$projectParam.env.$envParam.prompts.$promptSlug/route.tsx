@@ -853,7 +853,7 @@ function OverrideDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col !gap-0 overflow-hidden px-0 pt-0 md:max-w-4xl lg:max-w-6xl">
+      <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col !gap-0 overflow-hidden pl-0 pr-3 pt-0 md:max-w-4xl lg:max-w-6xl">
         <DialogHeader className="px-4 py-2.5">
           {isEditingOverride ? "Edit override" : "Create override"}
         </DialogHeader>
@@ -863,7 +863,7 @@ function OverrideDialog({
           className="-mx-3 w-auto flex-1 border-b border-t border-grid-dimmed"
         >
           {/* Editor */}
-          <ResizablePanel id="override-editor" min="300px">
+          <ResizablePanel id="override-editor" min="300px" className="bg-[#121317]">
             <TextEditor
               className="h-full"
               autoFocus
@@ -959,9 +959,9 @@ function OverrideDialog({
         </ResizablePanelGroup>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-2 px-4 pt-3">
+        <div className="flex items-center justify-between gap-2 pl-4 pr-2 pt-3">
           <DialogClose asChild>
-            <Button variant="tertiary/medium">Cancel</Button>
+            <Button variant="secondary/medium">Cancel</Button>
           </DialogClose>
           <Button
             variant="primary/medium"
