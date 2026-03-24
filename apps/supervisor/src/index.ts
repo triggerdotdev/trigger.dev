@@ -198,13 +198,13 @@ class ManagedSupervisor {
     }
 
     this.workerSession.on("runNotification", async ({ time, run }) => {
-      this.logger.log("runNotification", { time, run });
+      this.logger.verbose("runNotification", { time, run });
 
       this.workloadServer.notifyRun({ run });
     });
 
     this.workerSession.on("runQueueMessage", async ({ time, message, dequeueResponseMs, pollingIntervalMs }) => {
-      this.logger.log(`Received message with timestamp ${time.toLocaleString()}`, message);
+      this.logger.verbose(`Received message with timestamp ${time.toLocaleString()}`, message);
 
       if (message.completedWaitpoints.length > 0) {
         this.logger.debug("Run has completed waitpoints", {
@@ -221,7 +221,7 @@ class ManagedSupervisor {
       const { checkpoint, ...rest } = message;
 
       if (checkpoint) {
-        this.logger.log("Restoring run", { runId: message.run.id });
+        this.logger.debug("Restoring run", { runId: message.run.id });
 
         if (this.isComputeMode && this.computeManager && env.COMPUTE_SNAPSHOTS_ENABLED) {
           try {
@@ -244,7 +244,7 @@ class ManagedSupervisor {
             });
 
             if (didRestore) {
-              this.logger.log("Compute restore successful", { runId: message.run.id, runnerId });
+              this.logger.debug("Compute restore successful", { runId: message.run.id, runnerId });
             } else {
               this.logger.error("Compute restore failed", { runId: message.run.id, runnerId });
             }
@@ -271,7 +271,7 @@ class ManagedSupervisor {
           });
 
           if (didRestore) {
-            this.logger.log("Restore successful", { runId: message.run.id });
+            this.logger.debug("Restore successful", { runId: message.run.id });
           } else {
             this.logger.error("Restore failed", { runId: message.run.id });
           }
@@ -282,14 +282,14 @@ class ManagedSupervisor {
         return;
       }
 
-      this.logger.log("Scheduling run", { runId: message.run.id });
+      this.logger.debug("Scheduling run", { runId: message.run.id });
 
       const warmStartStart = performance.now();
       const didWarmStart = await this.tryWarmStart(message);
       const warmStartCheckMs = Math.round(performance.now() - warmStartStart);
 
       if (didWarmStart) {
-        this.logger.log("Warm start successful", { runId: message.run.id });
+        this.logger.debug("Warm start successful", { runId: message.run.id });
         return;
       }
 
