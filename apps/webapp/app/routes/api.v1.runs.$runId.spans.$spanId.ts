@@ -54,7 +54,10 @@ export const loader = createLoaderApiRoute(
       return json({ error: "Span not found" }, { status: 404 });
     }
 
-    const durationMs = span.duration / 1_000_000;
+    // Postgres eventRepository returns duration in ms, ClickHouse returns nanoseconds
+    const isClickhouse =
+      run.taskEventStore === "clickhouse" || run.taskEventStore === "clickhouse_v2";
+    const durationMs = isClickhouse ? span.duration / 1_000_000 : span.duration;
 
     const aiData =
       span.properties && typeof span.properties === "object"
@@ -91,7 +94,6 @@ export const loader = createLoaderApiRoute(
         isCancelled: span.isCancelled,
         level: span.level,
         startTime: span.startTime,
-        duration: span.duration,
         durationMs,
         properties,
         events: span.events?.length ? span.events : undefined,

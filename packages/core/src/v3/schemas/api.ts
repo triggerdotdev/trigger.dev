@@ -1634,7 +1634,6 @@ export const RetrieveSpanDetailResponseBody = z.object({
   isCancelled: z.boolean(),
   level: z.string(),
   startTime: z.coerce.date(),
-  duration: z.number(),
   durationMs: z.number(),
   properties: z.record(z.any()).optional(),
   events: z.array(z.any()).optional(),
