@@ -1,5 +1,5 @@
 import * as Ariakit from "@ariakit/react";
-import { ArrowPathIcon, ChevronUpDownIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon, ChevronUpDownIcon, EyeIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { type MetaFunction, useFetcher } from "@remix-run/react";
 import {
@@ -10,6 +10,7 @@ import {
 } from "@remix-run/server-runtime";
 
 import { AnimatePresence, motion } from "framer-motion";
+import { ClipboardCheckIcon, ClipboardIcon, GitBranchPlusIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { CodeBlock } from "~/components/code/CodeBlock";
@@ -21,9 +22,6 @@ import { ProvidersFilter } from "~/components/metrics/ProvidersFilter";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
-import { CopyButton } from "~/components/primitives/CopyButton";
-import { ClipboardCheckIcon, ClipboardIcon, GitBranchPlusIcon } from "lucide-react";
-import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
@@ -33,9 +31,15 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { RadioButtonCircle } from "~/components/primitives/RadioButton";
-import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverTrigger,
+  PopoverVerticalEllipseTrigger,
+} from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
+import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -52,7 +56,6 @@ import {
 import { Spinner } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextArea } from "~/components/primitives/TextArea";
-import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -71,14 +74,14 @@ import { PromptService } from "~/v3/services/promptService.server";
 
 import { z } from "zod";
 import { AIPromptsIcon } from "~/assets/icons/AIPromptsIcon";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InlineCode } from "~/components/code/InlineCode";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
-import { TextLink } from "~/components/primitives/TextLink";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { MetricWidget } from "~/routes/resources.metric";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, v3PromptsPath, v3RunSpanPath } from "~/utils/pathBuilder";
 import { parsePeriodToMs } from "~/utils/periods";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   promptSlug: z.string(),
@@ -1172,6 +1175,52 @@ function PreviewTab({
   );
 }
 
+function GenerationPopoverMenu({
+  isSelected,
+  runPath,
+  onViewDetails,
+}: {
+  isSelected: boolean;
+  runPath: string;
+  onViewDetails: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverVerticalEllipseTrigger
+        onClick={(e) => e.stopPropagation()}
+        className="shrink-0"
+      />
+      <PopoverContent
+        className="min-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        align="end"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex flex-col gap-1 p-1">
+          <PopoverMenuItem
+            to={runPath}
+            icon={RunsIcon}
+            leadingIconClassName="text-runs"
+            title="Jump to run"
+          />
+          {!isSelected && (
+            <PopoverMenuItem
+              icon={EyeIcon}
+              leadingIconClassName="text-text-dimmed"
+              title="View details"
+              onClick={() => {
+                onViewDetails();
+                setOpen(false);
+              }}
+            />
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ─── Generations Tab ─────────────────────────────────────
 
 function GenerationsTab({
@@ -1463,28 +1512,36 @@ function GenerationsTab({
                 key={`${gen.run_id}-${gen.span_id}-${i}`}
                 data-generation-item
                 onClick={() => onSelectSpan({ runId: gen.run_id, spanId: gen.span_id })}
-                className={`cursor-pointer border-b border-grid-dimmed px-3 py-2 text-xs transition last:border-0 ${
-                  isSelected ? "bg-indigo-500/10" : "hover:bg-charcoal-850"
-                }`}
+                className={cn(
+                  "group/gen flex cursor-pointer items-center gap-3 border-b border-grid-dimmed px-3 py-3 text-sm transition",
+                  isSelected
+                    ? "bg-indigo-500/10 hover:bg-indigo-500/[0.07]"
+                    : "hover:bg-charcoal-750"
+                )}
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-text-bright">
-                    {gen.operation_id || gen.task_identifier}
-                  </span>
-                  <span className="text-text-dimmed">{gen.start_time}</span>
-                </div>
-                <div className="mt-0.5 flex items-center justify-between">
-                  <div className="flex items-center gap-3 text-text-dimmed">
+                <RadioButtonCircle checked={isSelected} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center">
+                    <span className="font-medium text-text-bright">
+                      {gen.operation_id || gen.task_identifier}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-3 text-xs text-text-dimmed">
                     <span className="text-charcoal-400">v{gen.prompt_version}</span>
                     <span>{gen.response_model}</span>
                     <span>{gen.input_tokens + gen.output_tokens} tokens</span>
                     <span>{formatCost(gen.total_cost)}</span>
                     <span>{Math.round(gen.duration_ms)}ms</span>
                   </div>
-                  <TextLink to={runPath} className="text-xs" onClick={(e) => e.stopPropagation()}>
-                    View run
-                  </TextLink>
                 </div>
+                <span className="shrink-0 text-xs text-text-dimmed">{gen.start_time}</span>
+                <GenerationPopoverMenu
+                  isSelected={isSelected}
+                  runPath={runPath}
+                  onViewDetails={() =>
+                    onSelectSpan({ runId: gen.run_id, spanId: gen.span_id })
+                  }
+                />
               </div>
             );
           })}
@@ -1502,7 +1559,7 @@ function GenerationsTab({
       <ResizableHandle id="prompt-gen-handle" />
 
       {/* Span inspector */}
-      <ResizablePanel id="prompt-gen-inspector" default="40%" min="200px" isStaticAtRest>
+      <ResizablePanel id="prompt-gen-inspector" default="430px" min="200px" isStaticAtRest>
         {selectedSpan ? (
           <SpanView runParam={selectedSpan.runId} spanId={selectedSpan.spanId} />
         ) : (
