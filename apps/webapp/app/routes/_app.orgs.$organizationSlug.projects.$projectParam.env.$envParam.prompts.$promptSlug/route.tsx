@@ -959,7 +959,7 @@ function OverrideDialog({
         </ResizablePanelGroup>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-2 pl-4 pr-2 pt-3">
+        <div className="flex items-center justify-between gap-2 pl-4 pr-1 pt-3">
           <DialogClose asChild>
             <Button variant="secondary/medium">Cancel</Button>
           </DialogClose>
