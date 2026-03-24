@@ -218,6 +218,51 @@ export const myChat = chat.task({
   Persist `lastEventId` alongside the session. When the transport reconnects after a page refresh, it uses this to skip past already-seen events — preventing duplicate messages.
 </Tip>
 
+### Using prompts
+
+Use [AI Prompts](/ai/prompts) to manage your system prompt as versioned, overridable config. Store the resolved prompt in a lifecycle hook with `chat.prompt.set()`, then spread `chat.toStreamTextOptions()` into `streamText` — it includes the system prompt, model, config, and telemetry automatically.
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { prompts } from "@trigger.dev/sdk";
+import { streamText, createProviderRegistry } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+const registry = createProviderRegistry({ openai });
+
+const systemPrompt = prompts.define({
+  id: "my-chat-system",
+  model: "openai:gpt-4o",
+  config: { temperature: 0.7 },
+  variables: z.object({ name: z.string() }),
+  content: `You are a helpful assistant for {{name}}.`,
+});
+
+export const myChat = chat.task({
+  id: "my-chat",
+  clientDataSchema: z.object({ userId: z.string() }),
+  onChatStart: async ({ clientData }) => {
+    const user = await db.user.findUnique({ where: { id: clientData.userId } });
+    const resolved = await systemPrompt.resolve({ name: user.name });
+    chat.prompt.set(resolved);
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      ...chat.toStreamTextOptions({ registry }), // system, model, config, telemetry
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+`chat.toStreamTextOptions()` returns an object with `system`, `model` (resolved via the registry), `temperature`, and `experimental_telemetry` — all from the stored prompt. Properties you set after the spread (like a client-selected model) take precedence.
+
+<Tip>
+  See [Prompts](/ai/prompts) for the full guide — defining templates, variable schemas, dashboard overrides, and the management SDK.
+</Tip>
+
 ### Stop generation
 
 #### How stop works
@@ -475,6 +520,44 @@ export function Chat({ chatId, initialMessages, initialSessions }) {
 }
 ```
 </CodeGroup>
+
+### prepareMessages
+
+Transform model messages before they're used anywhere — in `run()`, in compaction rebuilds, and in compaction results. Define once, applied everywhere.
+
+Use this for Anthropic cache breaks, injecting system context, stripping PII, etc.
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  prepareMessages: ({ messages, reason }) => {
+    // Add Anthropic cache breaks to the last message
+    if (messages.length === 0) return messages;
+    const last = messages[messages.length - 1];
+    return [
+      ...messages.slice(0, -1),
+      {
+        ...last,
+        providerOptions: {
+          ...last.providerOptions,
+          anthropic: { cacheControl: { type: "ephemeral" } },
+        },
+      },
+    ];
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+The `reason` field tells you why messages are being prepared:
+
+| Reason | Description |
+|--------|-------------|
+| `"run"` | Messages being passed to `run()` for `streamText` |
+| `"compaction-rebuild"` | Rebuilding from a previous compaction summary |
+| `"compaction-result"` | Fresh compaction just produced these messages |
 
 ### Runtime configuration
 
