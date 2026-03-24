@@ -81,14 +81,21 @@
             ]
           },
           {
-            "group": "AI Chat",
+            "group": "AI",
             "pages": [
-              "ai-chat/overview",
-              "ai-chat/quick-start",
-              "ai-chat/backend",
-              "ai-chat/frontend",
-              "ai-chat/features",
-              "ai-chat/reference"
+              "ai/prompts",
+              {
+                "group": "Chat",
+                "pages": [
+                  "ai-chat/overview",
+                  "ai-chat/quick-start",
+                  "ai-chat/backend",
+                  "ai-chat/frontend",
+                  "ai-chat/features",
+                  "ai-chat/compaction",
+                  "ai-chat/reference"
+                ]
+              }
             ]
           },
           {
