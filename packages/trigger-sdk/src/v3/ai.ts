@@ -2908,6 +2908,11 @@ async function pipeChatAndCapture(
 class ChatMessageAccumulator {
   modelMessages: ModelMessage[] = [];
   uiMessages: UIMessage[] = [];
+  private _compaction?: ChatTaskCompactionOptions;
+
+  constructor(options?: { compaction?: ChatTaskCompactionOptions }) {
+    this._compaction = options?.compaction;
+  }
 
   /**
    * Add incoming messages from the transport payload.
@@ -2958,6 +2963,84 @@ class ChatMessageAccumulator {
       // Conversion failed — skip model message accumulation for this response
     }
   }
+
+  /**
+   * Returns a `prepareStep` function for inner-loop compaction.
+   * Only available when `compaction` was provided to the constructor.
+   * Pass the result to `streamText({ prepareStep: conversation.prepareStep() })`.
+   */
+  prepareStep(): ((args: { messages: ModelMessage[]; steps: CompactionStep[] }) => Promise<{ messages: ModelMessage[] } | undefined>) | undefined {
+    if (!this._compaction) return undefined;
+    const comp = this._compaction;
+    return async ({ messages, steps }) => {
+      const result = await chatCompact(messages, steps, {
+        shouldCompact: comp.shouldCompact,
+        summarize: (msgs) => comp.summarize({ messages: msgs, source: "inner" }),
+      });
+      return result.type === "skipped" ? undefined : result;
+    };
+  }
+
+  /**
+   * Run outer-loop compaction if needed. Call after adding the response
+   * and capturing usage. Applies `compactModelMessages` and `compactUIMessages`
+   * callbacks if configured.
+   *
+   * @returns `true` if compaction was performed, `false` otherwise.
+   */
+  async compactIfNeeded(usage: LanguageModelUsage | undefined, context?: {
+    chatId?: string;
+    turn?: number;
+    clientData?: unknown;
+    totalUsage?: LanguageModelUsage;
+  }): Promise<boolean> {
+    if (!this._compaction || !usage) return false;
+
+    const shouldTrigger = await this._compaction.shouldCompact({
+      messages: this.modelMessages,
+      totalTokens: usage.totalTokens,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      usage,
+      totalUsage: context?.totalUsage,
+      chatId: context?.chatId,
+      turn: context?.turn,
+      clientData: context?.clientData,
+      source: "outer",
+    });
+
+    if (!shouldTrigger) return false;
+
+    const summary = await this._compaction.summarize({
+      messages: this.modelMessages,
+      usage,
+      totalUsage: context?.totalUsage,
+      chatId: context?.chatId,
+      turn: context?.turn,
+      clientData: context?.clientData,
+      source: "outer",
+    });
+
+    const compactEvent: CompactMessagesEvent = {
+      summary,
+      uiMessages: this.uiMessages,
+      modelMessages: this.modelMessages,
+      chatId: context?.chatId ?? "",
+      turn: context?.turn ?? 0,
+      clientData: context?.clientData,
+      source: "outer",
+    };
+
+    this.modelMessages = this._compaction.compactModelMessages
+      ? await this._compaction.compactModelMessages(compactEvent)
+      : [{ role: "assistant" as const, content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }] }];
+
+    if (this._compaction.compactUIMessages) {
+      this.uiMessages = await this._compaction.compactUIMessages(compactEvent);
+    }
+
+    return true;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2973,6 +3056,8 @@ export type ChatSessionOptions = {
   timeout?: string;
   /** Max turns before ending. @default 100 */
   maxTurns?: number;
+  /** Automatic context compaction — same options as `chat.task({ compaction })`. */
+  compaction?: ChatTaskCompactionOptions;
 };
 
 export type ChatTurn = {
@@ -3065,6 +3150,7 @@ function createChatSession(
     idleTimeoutInSeconds = 30,
     timeout = "1h",
     maxTurns = 100,
+    compaction: sessionCompaction,
   } = options;
 
   return {
@@ -3168,12 +3254,60 @@ function createChatSession(
               }
 
               // Capture token usage from the streamText result
+              let turnUsage: LanguageModelUsage | undefined;
               if (typeof (source as any).totalUsage?.then === "function") {
                 try {
                   const usage: LanguageModelUsage = await (source as any).totalUsage;
+                  turnUsage = usage;
                   previousTurnUsage = usage;
                   cumulativeUsage = addUsage(cumulativeUsage, usage);
                 } catch { /* non-fatal */ }
+              }
+
+              // Outer-loop compaction (same logic as chat.task)
+              if (sessionCompaction && turnUsage && !turnObj.stopped) {
+                const shouldTrigger = await sessionCompaction.shouldCompact({
+                  messages: accumulator.modelMessages,
+                  totalTokens: turnUsage.totalTokens,
+                  inputTokens: turnUsage.inputTokens,
+                  outputTokens: turnUsage.outputTokens,
+                  usage: turnUsage,
+                  totalUsage: cumulativeUsage,
+                  chatId: currentPayload.chatId,
+                  turn,
+                  clientData: currentPayload.metadata,
+                  source: "outer",
+                });
+
+                if (shouldTrigger) {
+                  const summary = await sessionCompaction.summarize({
+                    messages: accumulator.modelMessages,
+                    usage: turnUsage,
+                    totalUsage: cumulativeUsage,
+                    chatId: currentPayload.chatId,
+                    turn,
+                    clientData: currentPayload.metadata,
+                    source: "outer",
+                  });
+
+                  const compactEvent: CompactMessagesEvent = {
+                    summary,
+                    uiMessages: accumulator.uiMessages,
+                    modelMessages: accumulator.modelMessages,
+                    chatId: currentPayload.chatId,
+                    turn,
+                    clientData: currentPayload.metadata,
+                    source: "outer",
+                  };
+
+                  accumulator.modelMessages = sessionCompaction.compactModelMessages
+                    ? await sessionCompaction.compactModelMessages(compactEvent)
+                    : [{ role: "assistant" as const, content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }] }];
+
+                  if (sessionCompaction.compactUIMessages) {
+                    accumulator.uiMessages = await sessionCompaction.compactUIMessages(compactEvent);
+                  }
+                }
               }
 
               await chatWriteTurnComplete();

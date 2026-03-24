@@ -1,7 +1,7 @@
 import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
 import { logger, task, prompts } from "@trigger.dev/sdk";
 import { streamText, generateText, tool, dynamicTool, stepCountIs, generateId, createProviderRegistry } from "ai";
-import type { LanguageModel, Tool as AITool, UIMessage } from "ai";
+import type { LanguageModel, LanguageModelUsage, Tool as AITool, UIMessage } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
@@ -565,7 +565,27 @@ export const aiChatRaw = task({
     }
 
     const stop = chat.createStopSignal();
-    const conversation = new chat.MessageAccumulator();
+    const conversation = new chat.MessageAccumulator({
+      compaction: {
+        shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > COMPACT_AFTER_TOKENS,
+        summarize: async ({ messages: msgs }) => {
+          const resolved = await compactionPrompt.resolve({});
+          return generateText({
+            model: registry.languageModel(resolved.model ?? "openai:gpt-4o-mini"),
+            ...resolved.toAISDKTelemetry(),
+            messages: [...msgs, { role: "user" as const, content: resolved.text }],
+          }).then((r) => r.text);
+        },
+        // Flatten to summary only in the raw task variant
+        compactUIMessages: ({ summary }) => [
+          {
+            id: generateId(),
+            role: "assistant" as const,
+            parts: [{ type: "text" as const, text: `[Summary]\n\n${summary}` }],
+          },
+        ],
+      },
+    });
 
     for (let turn = 0; turn < 100; turn++) {
       stop.reset();
@@ -622,33 +642,7 @@ export const aiChatRaw = task({
             ...(useReasoning ? { thinking: { type: "enabled", budgetTokens: 10000 } } : {}),
           },
         },
-        // Low-level compaction using chat.compact() — gives full control
-        // while chat.compact handles the decision tree + stream chunks
-        prepareStep: async ({ messages: stepMessages, steps }) => {
-          // Custom logic before/around compaction
-          const lastStep = steps.at(-1);
-          if (lastStep?.usage.totalTokens) {
-            logger.info("Raw task: step usage", { totalTokens: lastStep.usage.totalTokens, turn });
-          }
-
-          const result = await chat.compact(stepMessages, steps, {
-            threshold: COMPACT_AFTER_TOKENS,
-            summarize: async (msgs) => {
-              const resolved = await compactionPrompt.resolve({});
-              return generateText({
-                model: registry.languageModel(resolved.model ?? "openai:gpt-4o-mini"),
-                ...resolved.toAISDKTelemetry(),
-                messages: [...msgs, { role: "user" as const, content: resolved.text }],
-              }).then((r) => r.text);
-            },
-          });
-
-          if (result.type === "compacted") {
-            logger.info("Raw task: compacted", { summary: result.summary.slice(0, 100) });
-          }
-
-          return result.type === "skipped" ? undefined : result;
-        },
+        prepareStep: conversation.prepareStep(),
       });
 
       let response: UIMessage | undefined;
@@ -672,6 +666,14 @@ export const aiChatRaw = task({
       }
 
       if (runSignal.aborted) break;
+
+      // Outer-loop compaction — runs if token threshold exceeded
+      let turnUsage: LanguageModelUsage | undefined;
+      try { turnUsage = await result.totalUsage; } catch { /* non-fatal */ }
+      await conversation.compactIfNeeded(turnUsage, {
+        chatId: currentPayload.chatId,
+        turn,
+      });
 
       // Persist messages
       await prisma.chat.update({
@@ -722,6 +724,26 @@ export const aiChatSession = task({
       signal,
       idleTimeoutInSeconds: payload.idleTimeoutInSeconds ?? 60,
       timeout: "1h",
+      compaction: {
+        shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > COMPACT_AFTER_TOKENS,
+        summarize: async ({ messages: msgs }) => {
+          const resolved = await compactionPrompt.resolve({});
+          return generateText({
+            model: registry.languageModel(resolved.model ?? "openai:gpt-4o-mini"),
+            ...resolved.toAISDKTelemetry(),
+            messages: [...msgs, { role: "user" as const, content: resolved.text }],
+          }).then((r) => r.text);
+        },
+        // Keep summary + last 4 messages in the session variant
+        compactUIMessages: ({ uiMessages, summary }) => [
+          {
+            id: generateId(),
+            role: "assistant" as const,
+            parts: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }],
+          },
+          ...uiMessages.slice(-4),
+        ],
+      },
     });
 
     for await (const turn of session) {
@@ -753,31 +775,6 @@ export const aiChatSession = task({
             metadata: { user_id: turnClientData?.userId },
             ...(useReasoning ? { thinking: { type: "enabled", budgetTokens: 10000 } } : {}),
           },
-        },
-        // Low-level compaction — same pattern as raw task
-        prepareStep: async ({ messages: stepMessages, steps }) => {
-          const lastStep = steps.at(-1);
-          if (lastStep?.usage.totalTokens) {
-            logger.info("Session: step usage", { totalTokens: lastStep.usage.totalTokens, turn: turn.number });
-          }
-
-          const result = await chat.compact(stepMessages, steps, {
-            threshold: COMPACT_AFTER_TOKENS,
-            summarize: async (msgs) => {
-              const resolved = await compactionPrompt.resolve({});
-              return generateText({
-                model: registry.languageModel(resolved.model ?? "openai:gpt-4o-mini"),
-                ...resolved.toAISDKTelemetry(),
-                messages: [...msgs, { role: "user" as const, content: resolved.text }],
-              }).then((r) => r.text);
-            },
-          });
-
-          if (result.type === "compacted") {
-            logger.info("Session: compacted", { summary: result.summary.slice(0, 100) });
-          }
-
-          return result.type === "skipped" ? undefined : result;
         },
       });
 
