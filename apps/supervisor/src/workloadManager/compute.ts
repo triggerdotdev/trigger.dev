@@ -1,4 +1,6 @@
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
+import { parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
+import { flattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
 import {
   type WorkloadManager,
   type WorkloadManagerCreateOptions,
@@ -6,6 +8,7 @@ import {
 } from "./types.js";
 import { env } from "../env.js";
 import { getRunnerId } from "../util.js";
+import { buildOtlpTracePayload, sendOtlpTrace } from "../otlpTrace.js";
 import { tryCatch } from "@trigger.dev/core";
 
 type ComputeWorkloadManagerOptions = WorkloadManagerOptions & {
@@ -158,6 +161,13 @@ export class ComputeWorkloadManager implements WorkloadManager {
 
       event.instanceId = data.id;
       event.ok = true;
+
+      // Parse timing data from compute response (optional - requires gateway timing flag)
+      if (data._timing) {
+        event.timing = data._timing;
+      }
+
+      this.#emitProvisionSpan(opts, startMs, data._timing);
     } finally {
       event.durationMs = Math.round(performance.now() - startMs);
       event.ok ??= false;
@@ -247,12 +257,76 @@ export class ComputeWorkloadManager implements WorkloadManager {
     return true;
   }
 
+  #emitProvisionSpan(
+    opts: WorkloadManagerCreateOptions,
+    startMs: number,
+    timing?: unknown
+  ) {
+    if (!env.COMPUTE_TRACE_SPANS_ENABLED) return;
+    const traceparent =
+      opts.traceContext &&
+      "traceparent" in opts.traceContext &&
+      typeof opts.traceContext.traceparent === "string"
+        ? opts.traceContext.traceparent
+        : undefined;
+
+    const parsed = parseTraceparent(traceparent);
+    if (!parsed) return;
+
+    const endMs = performance.now();
+    const now = Date.now();
+    const provisionStartEpochMs = now - (endMs - startMs);
+    const endEpochMs = now;
+
+    // Span starts at dequeue time so events (dequeue) render in the thin-line section
+    // before "Started". The actual provision call time is in provisionStartEpochMs.
+    // Subtract 1ms so compute span always sorts before the attempt span (same dequeue time)
+    const startEpochMs = opts.dequeuedAt.getTime() - 1;
+
+    const spanAttributes: Record<string, string | number | boolean> = {
+      "compute.type": "create",
+      "compute.provision_start_ms": provisionStartEpochMs,
+      ...(timing ? (flattenAttributes(timing, "compute") as Record<string, string | number | boolean>) : {}),
+    };
+
+    if (opts.dequeueResponseMs !== undefined) {
+      spanAttributes["supervisor.dequeue_response_ms"] = opts.dequeueResponseMs;
+    }
+    if (opts.warmStartCheckMs !== undefined) {
+      spanAttributes["supervisor.warm_start_check_ms"] = opts.warmStartCheckMs;
+    }
+
+    const payload = buildOtlpTracePayload({
+      traceId: parsed.traceId,
+      parentSpanId: parsed.spanId,
+      spanName: "compute.provision",
+      startTimeMs: startEpochMs,
+      endTimeMs: endEpochMs,
+      resourceAttributes: {
+        "ctx.environment.id": opts.envId,
+        "ctx.organization.id": opts.orgId,
+        "ctx.project.id": opts.projectId,
+        "ctx.run.id": opts.runFriendlyId,
+      },
+      spanAttributes,
+    });
+
+    // Use the platform API URL, not the runner OTLP endpoint (which may be a VM gateway IP)
+    sendOtlpTrace(`${env.TRIGGER_API_URL}/otel`, payload);
+  }
+
   async restore(opts: {
     snapshotId: string;
     runnerId: string;
     runFriendlyId: string;
     snapshotFriendlyId: string;
     machine: { cpu: number; memory: number };
+    // Trace context for OTel span emission
+    traceContext?: Record<string, unknown>;
+    envId?: string;
+    orgId?: string;
+    projectId?: string;
+    dequeuedAt?: Date;
   }): Promise<boolean> {
     const url = `${this.opts.gatewayUrl}/api/snapshots/${opts.snapshotId}/restore`;
 
@@ -275,6 +349,8 @@ export class ComputeWorkloadManager implements WorkloadManager {
 
     this.logger.debug("restore request body", { url, body });
 
+    const startMs = performance.now();
+
     const [error, response] = await tryCatch(
       fetch(url, {
         method: "POST",
@@ -284,11 +360,14 @@ export class ComputeWorkloadManager implements WorkloadManager {
       })
     );
 
+    const durationMs = Math.round(performance.now() - startMs);
+
     if (error) {
       this.logger.error("restore request failed", {
         snapshotId: opts.snapshotId,
         runnerId: opts.runnerId,
         error: error instanceof Error ? error.message : String(error),
+        durationMs,
       });
       return false;
     }
@@ -298,6 +377,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
         snapshotId: opts.snapshotId,
         runnerId: opts.runnerId,
         status: response.status,
+        durationMs,
       });
       return false;
     }
@@ -305,7 +385,66 @@ export class ComputeWorkloadManager implements WorkloadManager {
     this.logger.info("restore request success", {
       snapshotId: opts.snapshotId,
       runnerId: opts.runnerId,
+      durationMs,
     });
+
+    this.#emitRestoreSpan(opts, startMs);
+
     return true;
   }
+
+  #emitRestoreSpan(
+    opts: {
+      snapshotId: string;
+      runnerId: string;
+      runFriendlyId: string;
+      traceContext?: Record<string, unknown>;
+      envId?: string;
+      orgId?: string;
+      projectId?: string;
+      dequeuedAt?: Date;
+    },
+    startMs: number
+  ) {
+    if (!env.COMPUTE_TRACE_SPANS_ENABLED) return;
+
+    const traceparent =
+      opts.traceContext &&
+      "traceparent" in opts.traceContext &&
+      typeof opts.traceContext.traceparent === "string"
+        ? opts.traceContext.traceparent
+        : undefined;
+
+    const parsed = parseTraceparent(traceparent);
+    if (!parsed || !opts.envId || !opts.orgId || !opts.projectId) return;
+
+    const endMs = performance.now();
+    const now = Date.now();
+    const restoreStartEpochMs = now - (endMs - startMs);
+    const endEpochMs = now;
+
+    // Subtract 1ms so restore span always sorts before the attempt span
+    const startEpochMs = (opts.dequeuedAt?.getTime() ?? restoreStartEpochMs) - 1;
+
+    const payload = buildOtlpTracePayload({
+      traceId: parsed.traceId,
+      parentSpanId: parsed.spanId,
+      spanName: "compute.restore",
+      startTimeMs: startEpochMs,
+      endTimeMs: endEpochMs,
+      resourceAttributes: {
+        "ctx.environment.id": opts.envId,
+        "ctx.organization.id": opts.orgId,
+        "ctx.project.id": opts.projectId,
+        "ctx.run.id": opts.runFriendlyId,
+      },
+      spanAttributes: {
+        "compute.type": "restore",
+        "compute.snapshot_id": opts.snapshotId,
+      },
+    });
+
+    sendOtlpTrace(`${env.TRIGGER_API_URL}/otel`, payload);
+  }
 }
+

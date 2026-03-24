@@ -39,4 +39,6 @@ export interface WorkloadManagerCreateOptions {
   runFriendlyId: string;
   snapshotId: string;
   snapshotFriendlyId: string;
+  // Trace context for OTel span emission (W3C format: { traceparent: "00-...", tracestate?: "..." })
+  traceContext?: Record<string, unknown>;
 }

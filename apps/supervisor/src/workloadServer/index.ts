@@ -26,6 +26,8 @@ import { register } from "../metrics.js";
 import { env } from "../env.js";
 import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
 import { TimerWheel } from "../services/timerWheel.js";
+import { parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
+import { buildOtlpTracePayload, sendOtlpTrace } from "../otlpTrace.js";
 
 // Use the official export when upgrading to socket.io@4.8.0
 interface DefaultEventsMap {
@@ -61,12 +63,20 @@ const ComputeSnapshotCallbackBody = z.object({
   status: z.enum(["completed", "failed"]),
   error: z.string().optional(),
   metadata: z.record(z.string()).optional(),
+  duration_ms: z.number().optional(),
 });
 
 type DelayedSnapshot = {
   runnerId: string;
   runFriendlyId: string;
   snapshotFriendlyId: string;
+};
+
+type RunTraceContext = {
+  traceparent: string;
+  envId: string;
+  orgId: string;
+  projectId: string;
 };
 
 type WorkloadServerOptions = {
@@ -102,6 +112,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   >();
 
   private readonly workerClient: SupervisorHttpClient;
+  private readonly runTraceContexts = new Map<string, RunTraceContext>();
   private readonly snapshotDelayWheel?: TimerWheel<DelayedSnapshot>;
 
   constructor(opts: WorkloadServerOptions) {
@@ -464,6 +475,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           status: body.status,
           error: body.error,
           metadata: body.metadata,
+          durationMs: body.duration_ms,
         });
 
         const runId = body.metadata?.runId;
@@ -474,6 +486,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           reply.empty(400);
           return;
         }
+
+        // Emit snapshot span (best-effort - requires trace context from dequeue on this instance)
+        this.#emitSnapshotSpan(runId, body.duration_ms, body.snapshot_id);
 
         if (body.status === "completed") {
           const result = await this.workerClient.submitSuspendCompletion({
@@ -677,6 +692,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
         try {
           runDisconnected(message.run.friendlyId);
+          this.runTraceContexts.delete(message.run.friendlyId);
         } catch (error) {
           log.error("run:stop error", { error });
         }
@@ -742,6 +758,52 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         runnerId: snapshot.runnerId,
       });
     }
+  }
+
+  #emitSnapshotSpan(runFriendlyId: string, durationMs?: number, snapshotId?: string) {
+    if (!env.COMPUTE_TRACE_SPANS_ENABLED) return;
+
+    const ctx = this.runTraceContexts.get(runFriendlyId);
+    if (!ctx) return;
+
+    const parsed = parseTraceparent(ctx.traceparent);
+    if (!parsed) return;
+
+    const endEpochMs = Date.now();
+    const startEpochMs = durationMs ? endEpochMs - durationMs : endEpochMs;
+
+    const spanAttributes: Record<string, string | number | boolean> = {
+      "compute.type": "snapshot",
+    };
+
+    if (durationMs !== undefined) {
+      spanAttributes["compute.total_ms"] = durationMs;
+    }
+
+    if (snapshotId) {
+      spanAttributes["compute.snapshot_id"] = snapshotId;
+    }
+
+    const payload = buildOtlpTracePayload({
+      traceId: parsed.traceId,
+      parentSpanId: parsed.spanId,
+      spanName: "compute.snapshot",
+      startTimeMs: startEpochMs,
+      endTimeMs: endEpochMs,
+      resourceAttributes: {
+        "ctx.environment.id": ctx.envId,
+        "ctx.organization.id": ctx.orgId,
+        "ctx.project.id": ctx.projectId,
+        "ctx.run.id": runFriendlyId,
+      },
+      spanAttributes,
+    });
+
+    sendOtlpTrace(`${env.TRIGGER_API_URL}/otel`, payload);
+  }
+
+  registerRunTraceContext(runFriendlyId: string, ctx: RunTraceContext) {
+    this.runTraceContexts.set(runFriendlyId, ctx);
   }
 
   async start() {

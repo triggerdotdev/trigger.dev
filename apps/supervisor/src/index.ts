@@ -236,6 +236,11 @@ class ManagedSupervisor {
               runFriendlyId: message.run.friendlyId,
               snapshotFriendlyId: message.snapshot.friendlyId,
               machine: message.run.machine,
+              traceContext: message.run.traceContext,
+              envId: message.environment.id,
+              orgId: message.organization.id,
+              projectId: message.project.id,
+              dequeuedAt: message.dequeuedAt,
             });
 
             if (didRestore) {
@@ -288,6 +293,24 @@ class ManagedSupervisor {
         return;
       }
 
+      if (env.COMPUTE_TRACE_SPANS_ENABLED) {
+        const traceparent =
+          message.run.traceContext &&
+          "traceparent" in message.run.traceContext &&
+          typeof message.run.traceContext.traceparent === "string"
+            ? message.run.traceContext.traceparent
+            : undefined;
+
+        if (traceparent) {
+          this.workloadServer.registerRunTraceContext(message.run.friendlyId, {
+            traceparent,
+            envId: message.environment.id,
+            orgId: message.organization.id,
+            projectId: message.project.id,
+          });
+        }
+      }
+
       try {
         if (!message.deployment.friendlyId) {
           // mostly a type guard, deployments always exists for deployed environments
@@ -315,6 +338,7 @@ class ManagedSupervisor {
           snapshotId: message.snapshot.id,
           snapshotFriendlyId: message.snapshot.friendlyId,
           placementTags: message.placementTags,
+          traceContext: message.run.traceContext,
         });
 
         // Disabled for now

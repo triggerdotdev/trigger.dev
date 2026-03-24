@@ -83,6 +83,7 @@ const Env = z
     COMPUTE_GATEWAY_AUTH_TOKEN: z.string().optional(),
     COMPUTE_GATEWAY_TIMEOUT_MS: z.coerce.number().int().default(30_000),
     COMPUTE_SNAPSHOTS_ENABLED: BoolEnv.default(false),
+    COMPUTE_TRACE_SPANS_ENABLED: BoolEnv.default(true),
     COMPUTE_SNAPSHOT_DELAY_MS: z.coerce.number().int().min(0).max(60_000).default(5_000),
 
     // Kubernetes settings
