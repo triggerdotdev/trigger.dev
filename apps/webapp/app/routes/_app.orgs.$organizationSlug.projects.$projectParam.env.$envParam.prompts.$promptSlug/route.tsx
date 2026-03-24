@@ -22,7 +22,7 @@ import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
 import { CopyButton } from "~/components/primitives/CopyButton";
-import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
+import { ClipboardCheckIcon, ClipboardIcon, GitBranchPlusIcon } from "lucide-react";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
@@ -537,7 +537,7 @@ export default function PromptDetailPage() {
               )}
             {!overrideVersion && (
               <Button variant="secondary/small" onClick={() => setOverrideDialogOpen(true)}>
-                Create Override
+                Create override
               </Button>
             )}
           </div>
@@ -620,8 +620,8 @@ export default function PromptDetailPage() {
               <ResizablePanel id="prompt-tabs" min="100px">
                 <div className="grid h-full max-h-full grid-rows-[2.25rem_1fr] overflow-hidden">
                   {/* Tab bar */}
-                  <div className="flex items-center justify-between border-b border-grid-dimmed px-3">
-                    <TabContainer>
+                  <div className="flex items-center justify-between border-b border-grid-dimmed pl-3 pr-1.5">
+                    <TabContainer className="-mb-1">
                       <TabButton
                         isActive={contentTab === "generations"}
                         layoutId="prompt-content"
@@ -655,7 +655,7 @@ export default function PromptDetailPage() {
                         Metrics
                       </TabButton>
                     </TabContainer>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                       <PromptVersionsFilter versions={versions} />
                       <ModelsFilter
                         possibleModels={possibleModels.map((m) => ({ model: m, system: "" }))}
@@ -1567,10 +1567,10 @@ function MetricsTab({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Summary big numbers */}
-      <div className="grid grid-cols-4 gap-2">
-        <div className="h-32">
+      <div className="grid grid-cols-4 gap-3">
+        <div className="h-44">
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-generations`}
             title="Total"
@@ -1584,7 +1584,7 @@ function MetricsTab({
             {...widgetProps}
           />
         </div>
-        <div className="h-32">
+        <div className="h-44">
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-tokens`}
             title="Avg input tokens"
@@ -1598,7 +1598,7 @@ function MetricsTab({
             {...widgetProps}
           />
         </div>
-        <div className="h-32">
+        <div className="h-44">
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-cost`}
             title="Avg input cost"
@@ -1612,7 +1612,7 @@ function MetricsTab({
             {...widgetProps}
           />
         </div>
-        <div className="h-32">
+        <div className="h-44">
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-latency`}
             title="Avg latency"
@@ -1834,11 +1834,7 @@ function PromptVersionsFilter({ versions }: { versions: VersionData[] }) {
     return (
       <SelectProvider value={[]} setValue={handleChange} virtualFocus={true}>
         <SelectTrigger
-          icon={
-            <svg className="size-4">
-              <use xlinkHref={`${tablerSpritePath}#tabler-file-text-ai`} />
-            </svg>
-          }
+          icon={<GitBranchPlusIcon className="size-4" />}
           variant="secondary/small"
           tooltipTitle="Filter by version"
           shortcut={{ key: "e" }}
@@ -1867,11 +1863,7 @@ function PromptVersionsFilter({ versions }: { versions: VersionData[] }) {
       <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
         <AppliedFilter
           label="Version"
-          icon={
-            <svg className="size-4">
-              <use xlinkHref={`${tablerSpritePath}#tabler-file-text-ai`} />
-            </svg>
-          }
+          icon={<GitBranchPlusIcon className="size-4" />}
           value={summary}
           onRemove={() => del(["versions"])}
           variant="secondary/small"
