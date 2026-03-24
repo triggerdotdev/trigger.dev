@@ -602,7 +602,7 @@ export default function PromptDetailPage() {
                     showCopyButton={true}
                     showTextWrapping={false}
                     showOpenInModal={true}
-                    className="h-full overflow-y-auto border-none p-2 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 [&_pre]:text-sm"
+                    className="h-full rounded-none border-none [&_pre]:px-3 [&_pre]:py-2 [&_pre]:text-sm"
                     maxLines={undefined}
                   />
                 ) : (
