@@ -249,12 +249,16 @@ export class InitializeDeploymentService extends BaseService {
         new Date(Date.now() + timeoutMs)
       );
 
-      // For github integration there is no artifactKey, hence we skip it here
+      // For self-hosted native builds, progressing the deployment is the action that actually
+      // transitions the deployment out of PENDING and starts the local build path.
+      // For github integration there is no artifactKey, hence we skip it here.
       if (payload.isNativeBuild && payload.artifactKey && !payload.skipEnqueue) {
         const result = await deploymentService
-          .enqueueBuild(environment, deployment, payload.artifactKey, {
-            skipPromotion: payload.skipPromotion,
-            configFilePath: payload.configFilePath,
+          .progressDeployment(environment, deployment.friendlyId, {
+            contentHash: payload.contentHash,
+            git: payload.gitMeta,
+            runtime: payload.runtime,
+            buildServerMetadata,
           })
           .orElse((error) => {
             logger.error("Failed to enqueue build", {
