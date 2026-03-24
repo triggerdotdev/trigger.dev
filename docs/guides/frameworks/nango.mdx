@@ -66,7 +66,7 @@ sequenceDiagram
     npm install @nangohq/frontend
     ```
 
-    The frontend SDK requires a short-lived **connect session token** issued by your backend — this replaces the old public key approach. Add an API route that creates the session:
+    The frontend SDK requires a short-lived **connect session token** issued by your backend. Add an API route that creates the session:
 
     ```ts app/api/nango-session/route.ts
     import { NextResponse } from "next/server";
@@ -84,6 +84,12 @@ sequenceDiagram
           end_user: { id: userId },
         }),
       });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("Nango error:", response.status, text);
+        return NextResponse.json({ error: text }, { status: response.status });
+      }
 
       const { data } = await response.json();
       return NextResponse.json({ token: data.token });
@@ -124,10 +130,6 @@ sequenceDiagram
       return <button onClick={connectGitHub}>Analyze my PRs</button>;
     }
     ```
-
-    <Note>
-      The session token expires after 30 minutes and is used only to open the OAuth popup — it is not stored. The `connectionId` returned by `nango.auth()` is the stable identifier you pass to future task runs to retrieve the user's access token.
-    </Note>
 
   </Step>
 </Steps>
@@ -242,7 +244,7 @@ export async function POST(req: Request) {
 
 ## Step 4: Set environment variables
 
-Add the following to your `.env` file. Trigger.dev dev mode reads from `.env`, not `.env.local`, so keep task-related secrets there:
+Add the following to your `.env.local` file:
 
 ```bash
 NANGO_SECRET_KEY=      # From Nango dashboard → Environment → Secret key
