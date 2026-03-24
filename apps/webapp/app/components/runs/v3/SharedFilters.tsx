@@ -11,7 +11,7 @@ import {
   subWeeks,
 } from "date-fns";
 import parse from "parse-duration";
-import { startTransition, useCallback, useEffect, useState, type ReactNode } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Callout } from "~/components/primitives/Callout";
@@ -23,7 +23,8 @@ import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import { ComboboxProvider, SelectPopover, SelectProvider } from "~/components/primitives/Select";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { type ShortcutDefinition } from "~/hooks/useShortcutKeys";
+import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { cn } from "~/utils/cn";
 import { organizationBillingPath } from "~/utils/pathBuilder";
 import { Button, LinkButton } from "../../primitives/Buttons";
@@ -347,6 +348,8 @@ export interface TimeFilterProps {
   /** Label name used in the filter display, defaults to "Created" */
   labelName?: string;
   hideLabel?: boolean;
+  /** Keyboard shortcut to open the dropdown */
+  shortcut?: ShortcutDefinition;
   applyShortcut?: ShortcutDefinition | undefined;
   /** Callback when the user applies a time filter selection, receives the applied values */
   onValueChange?: (values: TimeFilterApplyValues) => void;
@@ -363,6 +366,7 @@ export function TimeFilter({
   to,
   labelName = "Created",
   hideLabel = false,
+  shortcut,
   applyShortcut,
   onValueChange,
   maxPeriodDays,
@@ -372,6 +376,16 @@ export function TimeFilter({
   const periodValue = period ?? value("period");
   const fromValue = from ?? value("from");
   const toValue = to ?? value("to");
+  const triggerRef = useRef<HTMLDivElement>(null);
+
+  useShortcutKeys({
+    shortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
 
   const constrained = timeFilters({
     period: periodValue,
@@ -386,16 +400,37 @@ export function TimeFilter({
       {() => (
         <TimeDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter
-                label={hideLabel ? undefined : constrained.label}
-                icon={filterIcon("period")}
-                value={constrained.valueLabel}
-                removable={false}
-                variant="secondary/small"
-                valueClassName={valueClassName}
-              />
-            </Ariakit.Select>
+            <Ariakit.TooltipProvider timeout={200}>
+              <Ariakit.TooltipAnchor
+                render={
+                  <Ariakit.Select
+                    ref={triggerRef}
+                    render={<div className="group cursor-pointer focus-custom" />}
+                  />
+                }
+              >
+                <AppliedFilter
+                  label={hideLabel ? undefined : constrained.label}
+                  icon={filterIcon("period")}
+                  value={constrained.valueLabel}
+                  removable={false}
+                  variant="secondary/small"
+                  valueClassName={valueClassName}
+                />
+              </Ariakit.TooltipAnchor>
+              {shortcut && (
+                <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span>Filter by time period</span>
+                    <ShortcutKey
+                      className="size-4 flex-none"
+                      shortcut={shortcut}
+                      variant="small"
+                    />
+                  </div>
+                </Ariakit.Tooltip>
+              )}
+            </Ariakit.TooltipProvider>
           }
           period={constrained.period}
           from={constrained.from}
