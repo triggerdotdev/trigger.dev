@@ -146,6 +146,11 @@ export function VercelOnboardingModal({
       }
       return "project-selection";
     }
+    // If onboarding was already completed but GitHub is not connected,
+    // go directly to the github-connection step (e.g., returning from GitHub App installation)
+    if (onboardingData?.isOnboardingComplete && !onboardingData?.isGitHubConnected) {
+      return "github-connection";
+    }
     // For marketplace origin, skip env-mapping step and go directly to env-var-sync
     if (!fromMarketplaceContext) {
       const customEnvs = (onboardingData?.customEnvironments?.length ?? 0) > 0 && hasStagingEnvironment;
@@ -1159,26 +1164,7 @@ export function VercelOnboardingModal({
                     >
                       Complete
                     </Button>
-                  ) : (
-                    <Button
-                      variant="tertiary/medium"
-                      onClick={() => {
-                        trackOnboarding("vercel onboarding github skipped");
-                        setState("completed");
-                        if (fromMarketplaceContext && nextUrl) {
-                          const validUrl = safeRedirectUrl(nextUrl);
-                          if (validUrl) {
-                            window.location.href = validUrl;
-                          }
-                        }
-                      }}
-                    >
-                      Skip for now
-                    </Button>
-                  )
-                }
-                cancelButton={
-                  isGitHubConnectedForOnboarding && fromMarketplaceContext && nextUrl ? (
+                  ) : !fromMarketplaceContext ? (
                     <Button
                       variant="tertiary/medium"
                       onClick={() => {
