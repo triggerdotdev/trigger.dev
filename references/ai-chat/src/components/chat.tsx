@@ -3,6 +3,7 @@
 import type { UIMessage } from "ai";
 import { useChat } from "@ai-sdk/react";
 import type { TriggerChatTransport } from "@trigger.dev/sdk/chat";
+import type { CompactionChunkData } from "@trigger.dev/sdk/ai";
 import { useEffect, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import { MODEL_OPTIONS } from "@/lib/models";
@@ -11,10 +12,10 @@ function ToolInvocation({ part }: { part: any }) {
   const [expanded, setExpanded] = useState(false);
   const toolName =
     part.type === "dynamic-tool"
-      ? (part.toolName ?? "tool")
+      ? part.toolName ?? "tool"
       : part.type.startsWith("tool-")
-        ? part.type.slice(5)
-        : "tool";
+      ? part.type.slice(5)
+      : "tool";
   const state = part.state ?? "input-available";
   const args = part.input;
   const result = part.output;
@@ -102,7 +103,9 @@ function ResearchProgress({ part }: { part: any }) {
       {data.completedUrls.length > 0 && (
         <div className="mt-1 space-y-0.5 text-blue-400">
           {data.completedUrls.map((url, i) => (
-            <div key={i} className="truncate">&#10003; {url}</div>
+            <div key={i} className="truncate">
+              &#10003; {url}
+            </div>
           ))}
         </div>
       )}
@@ -132,9 +135,7 @@ function DebugPanel({
   const [open, setOpen] = useState(false);
 
   const runUrl =
-    session?.runId && dashboardUrl
-      ? `${dashboardUrl}/runs/${session.runId}`
-      : undefined;
+    session?.runId && dashboardUrl ? `${dashboardUrl}/runs/${session.runId}` : undefined;
 
   const latestTtfb = ttfbHistory.length > 0 ? ttfbHistory[ttfbHistory.length - 1]! : undefined;
   const avgTtfb =
@@ -155,17 +156,17 @@ function DebugPanel({
             status === "streaming"
               ? "bg-green-500"
               : session?.runId
-                ? "bg-yellow-500"
-                : "bg-gray-300"
+              ? "bg-yellow-500"
+              : "bg-gray-300"
           }`}
         />
         <span>{status}</span>
         {latestTtfb && (
-          <span className="font-mono text-blue-600">TTFB {latestTtfb.ttfbMs.toLocaleString()}ms</span>
+          <span className="font-mono text-blue-600">
+            TTFB {latestTtfb.ttfbMs.toLocaleString()}ms
+          </span>
         )}
-        {session?.runId && (
-          <span className="font-mono">{session.runId.slice(0, 16)}...</span>
-        )}
+        {session?.runId && <span className="font-mono">{session.runId}</span>}
         <span className="ml-auto text-gray-400">{open ? "▲" : "▼"}</span>
       </button>
 
@@ -362,7 +363,9 @@ export function Chat({
       {/* Messages */}
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
         {messages.length === 0 && (
-          <p className="pt-20 text-center text-sm text-gray-400">Send a message to start chatting.</p>
+          <p className="pt-20 text-center text-sm text-gray-400">
+            Send a message to start chatting.
+          </p>
         )}
 
         {messages.map((message, messageIndex) => (
@@ -373,9 +376,7 @@ export function Chat({
             <div className={`max-w-[80%] ${message.role === "user" ? "" : "w-full"}`}>
               <div
                 className={`rounded-lg px-4 py-2 text-sm ${
-                  message.role === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-100 text-gray-900"
+                  message.role === "user" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-900"
                 }`}
               >
                 {message.parts.map((part, i) => {
@@ -386,8 +387,7 @@ export function Chat({
                           key={i}
                           animated
                           isAnimating={
-                            status === "streaming" &&
-                            messageIndex === messages.length - 1
+                            status === "streaming" && messageIndex === messages.length - 1
                           }
                         >
                           {part.text}
@@ -414,13 +414,41 @@ export function Chat({
                     return <ResearchProgress key={i} part={part} />;
                   }
 
+                  if (part.type === "data-compaction") {
+                    const data = (part as any).data as CompactionChunkData;
+                    return (
+                      <div
+                        key={i}
+                        className={`my-2 flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${
+                          data.status === "compacting"
+                            ? "border-blue-200 bg-blue-50 text-blue-700"
+                            : "border-amber-200 bg-amber-50 text-amber-700"
+                        }`}
+                      >
+                        <span>{data.status === "compacting" ? "⏳" : "✂️"}</span>
+                        <span>
+                          {data.status === "compacting"
+                            ? `Compacting conversation${
+                                data.totalTokens
+                                  ? ` (${data.totalTokens.toLocaleString()} tokens)`
+                                  : ""
+                              }...`
+                            : "Conversation compacted"}
+                        </span>
+                      </div>
+                    );
+                  }
+
                   if (part.type.startsWith("tool-") || part.type === "dynamic-tool") {
                     return <ToolInvocation key={i} part={part} />;
                   }
 
                   if (part.type.startsWith("data-")) {
                     return (
-                      <div key={i} className="my-1 rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-500">
+                      <div
+                        key={i}
+                        className="my-1 rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-500"
+                      >
                         <span className="font-medium">{part.type}</span>
                         <pre className="mt-1 overflow-x-auto whitespace-pre-wrap">
                           {JSON.stringify((part as any).data, null, 2)}

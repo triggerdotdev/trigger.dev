@@ -1,6 +1,6 @@
-import { chat, ai, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
-import { logger, schemaTask, task, prompts } from "@trigger.dev/sdk";
-import { streamText, tool, dynamicTool, stepCountIs, generateId, createProviderRegistry } from "ai";
+import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
+import { logger, task, prompts } from "@trigger.dev/sdk";
+import { streamText, generateText, tool, dynamicTool, stepCountIs, generateId, createProviderRegistry } from "ai";
 import type { LanguageModel, Tool as AITool, UIMessage } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -16,8 +16,23 @@ import TurndownService from "turndown";
 import { DEFAULT_MODEL, REASONING_MODELS } from "@/lib/models";
 
 const turndown = new TurndownService();
+const COMPACT_AFTER_TOKENS = Number(process.env.COMPACT_AFTER_TOKENS) || 80_000;
 
 const registry = createProviderRegistry({ openai, anthropic });
+
+const compactionPrompt = prompts.define({
+  id: "ai-chat-compaction",
+  model: "openai:gpt-4o-mini",
+  content: `You are a conversation compactor. You will receive a transcript of a multi-turn conversation between a user and an assistant.
+
+Produce a concise summary that captures:
+- The topics discussed and questions asked
+- Any key facts, answers, or decisions reached
+- Important context needed to continue the conversation naturally
+
+Write in third person (e.g. "The user asked about..." / "The assistant explained...").
+Keep it under 300 words. Do not include greetings or filler.`,
+});
 
 const systemPrompt = prompts.define({
   id: "ai-chat-system",
@@ -157,59 +172,40 @@ const userToolDefs = chat.local<{
 }>({ id: "userToolDefs" });
 
 // --------------------------------------------------------------------------
-// Subtask: deep research — fetches multiple URLs and streams progress
-// back to the parent chat via chat.stream using data-* chunks
+// Deep research — fetches multiple URLs and synthesizes the results.
+// Plain tool (not a subtask) to avoid parallel wait issues.
 // --------------------------------------------------------------------------
-export const deepResearch = schemaTask({
-  id: "deep-research",
+const deepResearch = tool({
   description:
     "Research a topic by fetching multiple URLs and synthesizing the results. " +
     "Streams progress updates to the chat as it works.",
-  schema: z.object({
+  inputSchema: z.object({
     query: z.string().describe("The research query or topic"),
     urls: z.array(z.string().url()).describe("URLs to fetch and analyze"),
   }),
-  run: async ({ query, urls }) => {
-    // Access chat context from the parent chat.task — typed via typeof aiChat
-    const { chatId, clientData } = ai.chatContextOrThrow<typeof aiChat>();
-    console.log(`Deep research for chat ${chatId}, user ${clientData?.userId}`);
-
+  execute: async ({ query, urls }) => {
     const partId = generateId();
     const results: { url: string; status: number; snippet: string }[] = [];
-
-    // Stream progress using data-research-progress chunks.
-    // Using the same id means each write updates the same part in the message.
-    function streamProgress(progress: {
-      status: "fetching" | "done";
-      query: string;
-      current: number;
-      total: number;
-      currentUrl?: string;
-      completedUrls: string[];
-    }) {
-      return chat.stream.writer({
-        target: "root",
-        execute: ({ write }) => {
-          write({
-            type: "data-research-progress" as any,
-            id: partId,
-            data: progress,
-          });
-        },
-      });
-    }
 
     for (let i = 0; i < urls.length; i++) {
       const url = urls[i]!;
 
-      // Update progress — fetching
-      const { waitUntilComplete } = streamProgress({
-        status: "fetching",
-        query,
-        current: i + 1,
-        total: urls.length,
-        currentUrl: url,
-        completedUrls: results.map((r) => r.url),
+      // Stream progress — runs in the chat.task process, so no target needed
+      const { waitUntilComplete } = chat.stream.writer({
+        execute: ({ write }) => {
+          write({
+            type: "data-research-progress" as any,
+            id: partId,
+            data: {
+              status: "fetching" as const,
+              query,
+              current: i + 1,
+              total: urls.length,
+              currentUrl: url,
+              completedUrls: results.map((r) => r.url),
+            },
+          });
+        },
       });
       await waitUntilComplete();
 
@@ -236,13 +232,21 @@ export const deepResearch = schemaTask({
       }
     }
 
-    // Final progress update — done
-    const { waitUntilComplete: waitForDone } = streamProgress({
-      status: "done",
-      query,
-      current: urls.length,
-      total: urls.length,
-      completedUrls: results.map((r) => r.url),
+    // Final progress — done
+    const { waitUntilComplete: waitForDone } = chat.stream.writer({
+      execute: ({ write }) => {
+        write({
+          type: "data-research-progress" as any,
+          id: partId,
+          data: {
+            status: "done" as const,
+            query,
+            current: urls.length,
+            total: urls.length,
+            completedUrls: results.map((r) => r.url),
+          },
+        });
+      },
     });
     await waitForDone();
 
@@ -255,6 +259,46 @@ export const aiChat = chat.task({
   clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
   idleTimeoutInSeconds: 60,
   chatAccessTokenTTL: "2h",
+  compaction: {
+    shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > COMPACT_AFTER_TOKENS,
+    summarize: async ({ messages }) => {
+      const resolved = await compactionPrompt.resolve({});
+      return generateText({
+        model: registry.languageModel(resolved.model ?? "openai:gpt-4o-mini"),
+        messages: [...messages, { role: "user" as const, content: resolved.text }],
+        ...resolved.toAISDKTelemetry(),
+      }).then((r) => r.text);
+    },
+    compactUIMessages: ({ uiMessages, summary }) => {
+      return [
+        {
+          id: generateId(),
+          role: "assistant" as const,
+          parts: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }],
+        },
+        ...uiMessages.slice(-2),
+      ];
+    },
+  },
+  prepareMessages: ({ messages, reason }) => {
+    // Add Anthropic cache breaks to the last message for prompt caching.
+    // Applied everywhere — run(), compaction rebuilds, compaction results.
+    if (messages.length === 0) return messages;
+    const last = messages[messages.length - 1]!;
+    return [
+      ...messages.slice(0, -1),
+      {
+        ...last,
+        providerOptions: {
+          ...last.providerOptions,
+          anthropic: {
+            ...(last.providerOptions?.anthropic as Record<string, unknown> | undefined),
+            cacheControl: { type: "ephemeral" },
+          },
+        },
+      },
+    ];
+  },
   uiMessageStreamOptions: {
     sendReasoning: true,
     onError: (error) => {
@@ -362,12 +406,21 @@ export const aiChat = chat.task({
       update: { runId, publicAccessToken: chatAccessToken },
     });
   },
+  onCompacted: async ({ summary, totalTokens, messageCount, chatId, turn }) => {
+    logger.info("Conversation compacted", {
+      chatId,
+      turn,
+      totalTokens,
+      messageCount,
+      summaryLength: summary.length,
+    });
+  },
   onTurnStart: async ({ chatId, uiMessages }) => {
     // Persist messages so mid-stream refresh still shows the user message.
     // Deferred — runs in parallel with streaming, awaited before onTurnComplete.
     chat.defer(prisma.chat.update({ where: { id: chatId }, data: { messages: uiMessages as any } }));
   },
-  onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId, clientData, stopped }) => {
+  onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
     // Persist final messages + assistant response + stream position
     await prisma.chat.update({
       where: { id: chatId },
@@ -426,11 +479,11 @@ export const aiChat = chat.task({
         telemetry: clientData?.userId ? { userId: clientData.userId } : undefined,
       }),
       ...(modelOverride ? { model: getModel(modelOverride) } : {}),
-      messages,
+      messages: messages,
       tools: {
         inspectEnvironment,
         webFetch,
-        deepResearch: ai.tool(deepResearch),
+        deepResearch,
         ...dynamicTools,
       },
       stopWhen: stepCountIs(10),
@@ -553,11 +606,11 @@ export const aiChatRaw = task({
       const result = streamText({
         ...chat.toStreamTextOptions({ registry }),
         ...(modelOverride ? { model: getModel(modelOverride) } : {}),
-        messages,
+        messages: messages,
         tools: {
           inspectEnvironment,
           webFetch,
-          deepResearch: ai.tool(deepResearch),
+          deepResearch,
           ...dynamicTools,
         },
         stopWhen: stepCountIs(10),
@@ -568,6 +621,33 @@ export const aiChatRaw = task({
             metadata: { user_id: turnClientData?.userId },
             ...(useReasoning ? { thinking: { type: "enabled", budgetTokens: 10000 } } : {}),
           },
+        },
+        // Low-level compaction using chat.compact() — gives full control
+        // while chat.compact handles the decision tree + stream chunks
+        prepareStep: async ({ messages: stepMessages, steps }) => {
+          // Custom logic before/around compaction
+          const lastStep = steps.at(-1);
+          if (lastStep?.usage.totalTokens) {
+            logger.info("Raw task: step usage", { totalTokens: lastStep.usage.totalTokens, turn });
+          }
+
+          const result = await chat.compact(stepMessages, steps, {
+            threshold: COMPACT_AFTER_TOKENS,
+            summarize: async (msgs) => {
+              const resolved = await compactionPrompt.resolve({});
+              return generateText({
+                model: registry.languageModel(resolved.model ?? "openai:gpt-4o-mini"),
+                ...resolved.toAISDKTelemetry(),
+                messages: [...msgs, { role: "user" as const, content: resolved.text }],
+              }).then((r) => r.text);
+            },
+          });
+
+          if (result.type === "compacted") {
+            logger.info("Raw task: compacted", { summary: result.summary.slice(0, 100) });
+          }
+
+          return result.type === "skipped" ? undefined : result;
         },
       });
 
@@ -663,7 +743,7 @@ export const aiChatSession = task({
         tools: {
           inspectEnvironment,
           webFetch,
-          deepResearch: ai.tool(deepResearch),
+          deepResearch,
         },
         stopWhen: stepCountIs(10),
         abortSignal: turn.signal,
@@ -673,6 +753,31 @@ export const aiChatSession = task({
             metadata: { user_id: turnClientData?.userId },
             ...(useReasoning ? { thinking: { type: "enabled", budgetTokens: 10000 } } : {}),
           },
+        },
+        // Low-level compaction — same pattern as raw task
+        prepareStep: async ({ messages: stepMessages, steps }) => {
+          const lastStep = steps.at(-1);
+          if (lastStep?.usage.totalTokens) {
+            logger.info("Session: step usage", { totalTokens: lastStep.usage.totalTokens, turn: turn.number });
+          }
+
+          const result = await chat.compact(stepMessages, steps, {
+            threshold: COMPACT_AFTER_TOKENS,
+            summarize: async (msgs) => {
+              const resolved = await compactionPrompt.resolve({});
+              return generateText({
+                model: registry.languageModel(resolved.model ?? "openai:gpt-4o-mini"),
+                ...resolved.toAISDKTelemetry(),
+                messages: [...msgs, { role: "user" as const, content: resolved.text }],
+              }).then((r) => r.text);
+            },
+          });
+
+          if (result.type === "compacted") {
+            logger.info("Session: compacted", { summary: result.summary.slice(0, 100) });
+          }
+
+          return result.type === "skipped" ? undefined : result;
         },
       });
 

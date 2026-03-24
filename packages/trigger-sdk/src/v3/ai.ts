@@ -3,6 +3,7 @@ import {
   AnyTask,
   getSchemaParseFn,
   isSchemaZodEsque,
+  logger,
   SemanticInternalAttributes,
   Task,
   taskContext,
@@ -14,7 +15,7 @@ import {
   type TaskSchema,
   type TaskWithSchema,
 } from "@trigger.dev/core/v3";
-import type { ModelMessage, UIMessage, UIMessageChunk, UIMessageStreamOptions } from "ai";
+import type { ModelMessage, UIMessage, UIMessageChunk, UIMessageStreamOptions, LanguageModelUsage } from "ai";
 import type { StreamWriteResult } from "@trigger.dev/core/v3";
 import { convertToModelMessages, dynamicTool, generateId as generateMessageId, jsonSchema, JSONSchema7, Schema, Tool, ToolCallOptions, zodSchema } from "ai";
 import { type Attributes, trace } from "@opentelemetry/api";
@@ -32,6 +33,15 @@ import {
 } from "./chat-constants.js";
 
 const METADATA_KEY = "tool.execute.options";
+
+/**
+ * Wrapper around `convertToModelMessages` that always passes
+ * `ignoreIncompleteToolCalls: true` to prevent failures from
+ * stopped/aborted conversations with partial tool parts.
+ */
+function toModelMessages(messages: UIMessage[]): Promise<ModelMessage[]> {
+  return convertToModelMessages(messages, { ignoreIncompleteToolCalls: true });
+}
 
 export type ToolCallExecutionOptions = {
   toolCallId: string;
@@ -380,7 +390,12 @@ export type ChatTaskSignals = {
  * The full payload passed to a `chatTask` run function.
  * Extends `ChatTaskPayload` (the wire payload) with abort signals.
  */
-export type ChatTaskRunPayload<TClientData = unknown> = ChatTaskPayload<TClientData> & ChatTaskSignals;
+export type ChatTaskRunPayload<TClientData = unknown> = ChatTaskPayload<TClientData> & ChatTaskSignals & {
+  /** Token usage from the previous turn. Undefined on turn 0. */
+  previousTurnUsage?: LanguageModelUsage;
+  /** Cumulative token usage across all completed turns so far. */
+  totalUsage: LanguageModelUsage;
+};
 
 // Input streams for bidirectional chat communication
 const messagesInput = streams.input<ChatTaskWirePayload>({ id: CHAT_MESSAGES_STREAM_ID });
@@ -404,6 +419,620 @@ const chatStopControllerKey = locals.create<AbortController>("chat.stopControlle
 const chatUIStreamStaticKey = locals.create<ChatUIMessageStreamOptions>("chat.uiMessageStreamOptions.static");
 /** Per-turn UIMessageStream options, set via chat.setUIMessageStreamOptions(). @internal */
 const chatUIStreamPerTurnKey = locals.create<ChatUIMessageStreamOptions>("chat.uiMessageStreamOptions.perTurn");
+
+// ---------------------------------------------------------------------------
+// Token usage helpers (internal)
+// ---------------------------------------------------------------------------
+
+/** Convenience re-export of the AI SDK's `LanguageModelUsage` type. */
+export type ChatTurnUsage = LanguageModelUsage;
+
+function emptyUsage(): LanguageModelUsage {
+  return {
+    inputTokens: undefined,
+    outputTokens: undefined,
+    totalTokens: undefined,
+    inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+    outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+  };
+}
+
+function addUsage(a: LanguageModelUsage, b: LanguageModelUsage): LanguageModelUsage {
+  const add = (x: number | undefined, y: number | undefined) =>
+    x != null || y != null ? (x ?? 0) + (y ?? 0) : undefined;
+  return {
+    inputTokens: add(a.inputTokens, b.inputTokens),
+    outputTokens: add(a.outputTokens, b.outputTokens),
+    totalTokens: add(a.totalTokens, b.totalTokens),
+    inputTokenDetails: {
+      noCacheTokens: add(a.inputTokenDetails?.noCacheTokens, b.inputTokenDetails?.noCacheTokens),
+      cacheReadTokens: add(a.inputTokenDetails?.cacheReadTokens, b.inputTokenDetails?.cacheReadTokens),
+      cacheWriteTokens: add(a.inputTokenDetails?.cacheWriteTokens, b.inputTokenDetails?.cacheWriteTokens),
+    },
+    outputTokenDetails: {
+      textTokens: add(a.outputTokenDetails?.textTokens, b.outputTokenDetails?.textTokens),
+      reasoningTokens: add(a.outputTokenDetails?.reasoningTokens, b.outputTokenDetails?.reasoningTokens),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// chat.setMessages — replace accumulated messages for compaction
+// ---------------------------------------------------------------------------
+
+/** @internal */
+const chatOverrideMessagesKey = locals.create<UIMessage[]>("chat.overrideMessages");
+
+/**
+ * Replace the accumulated conversation messages for the current run.
+ *
+ * Call from `onTurnStart` to compact before `run()` executes, or from
+ * `onTurnComplete` to compact before the next turn. Takes `UIMessage[]`
+ * and converts to `ModelMessage[]` internally.
+ */
+function setChatMessages(uiMessages: UIMessage[]): void {
+  locals.set(chatOverrideMessagesKey, uiMessages);
+}
+
+/**
+ * Model-only message override. Set by compaction to replace only the model
+ * messages (what goes to the LLM) without affecting UI messages (what gets
+ * persisted and displayed). This preserves full conversation history for the
+ * user while keeping LLM context compact.
+ * @internal
+ */
+const chatOverrideModelMessagesKey = locals.create<ModelMessage[]>("chat.overrideModelMessages");
+
+// ---------------------------------------------------------------------------
+// chat.compaction — prepareStep compaction API
+// ---------------------------------------------------------------------------
+
+/** State stored in locals during prepareStep compaction. */
+interface CompactionState {
+  summary: string;
+  baseResponseMessageCount: number;
+}
+
+/** @internal */
+const chatCompactionStateKey = locals.create<CompactionState>("chat.compaction");
+const chatOnCompactedKey = locals.create<(event: CompactedEvent) => Promise<void> | void>("chat.onCompacted");
+const chatPrepareMessagesKey = locals.create<(event: PrepareMessagesEvent<unknown>) => ModelMessage[] | Promise<ModelMessage[]>>("chat.prepareMessages");
+
+/**
+ * Event passed to `summarize` callbacks.
+ */
+export type SummarizeEvent = {
+  /** The current model messages to summarize. */
+  messages: ModelMessage[];
+  /** Full usage object from the triggering step/turn. */
+  usage?: LanguageModelUsage;
+  /** Cumulative token usage across all completed turns. Present in chat.task contexts. */
+  totalUsage?: LanguageModelUsage;
+  /** The chat session ID (if running inside a chat.task). */
+  chatId?: string;
+  /** The current turn number (0-indexed, if inside a chat.task). */
+  turn?: number;
+  /** Custom data from the frontend (if inside a chat.task). */
+  clientData?: unknown;
+  /**
+   * Where compaction is running:
+   * - `"inner"` — between tool-call steps (prepareStep)
+   * - `"outer"` — between turns
+   */
+  source?: "inner" | "outer";
+  /** The step number (0-indexed). Only present when `source` is `"inner"`. */
+  stepNumber?: number;
+};
+
+/**
+ * Event passed to `compactUIMessages` and `compactModelMessages` callbacks.
+ */
+export type CompactMessagesEvent = {
+  /** The generated summary text. */
+  summary: string;
+  /** The current UI messages (full conversation). */
+  uiMessages: UIMessage[];
+  /** The current model messages (full conversation). */
+  modelMessages: ModelMessage[];
+  /** The chat session ID. */
+  chatId: string;
+  /** The current turn number (0-indexed). */
+  turn: number;
+  /** Custom data from the frontend. */
+  clientData?: unknown;
+  /**
+   * Where compaction is running:
+   * - `"inner"` — between tool-call steps (prepareStep)
+   * - `"outer"` — between turns
+   */
+  source: "inner" | "outer";
+};
+
+/**
+ * Options for the `compaction` field on `chat.task()`.
+ *
+ * Handles compaction automatically in both the inner loop (prepareStep, between
+ * tool-call steps) and the outer loop (between turns, for single-step responses
+ * where prepareStep never fires).
+ */
+export type ChatTaskCompactionOptions = {
+  /** Decide whether to compact. Return true to trigger compaction. */
+  shouldCompact: (event: ShouldCompactEvent) => boolean | Promise<boolean>;
+  /** Generate a summary from the current messages. Return the summary text. */
+  summarize: (event: SummarizeEvent) => Promise<string>;
+  /**
+   * Transform UI messages after compaction (what gets persisted and displayed).
+   * Default: preserve all UI messages unchanged.
+   *
+   * @example
+   * ```ts
+   * // Flatten to summary
+   * compactUIMessages: ({ summary }) => [{
+   *   id: generateId(), role: "assistant",
+   *   parts: [{ type: "text", text: `[Summary]\n\n${summary}` }],
+   * }],
+   *
+   * // Summary + keep last 4 messages
+   * compactUIMessages: ({ uiMessages, summary }) => [
+   *   { id: generateId(), role: "assistant",
+   *     parts: [{ type: "text", text: `[Summary]\n\n${summary}` }] },
+   *   ...uiMessages.slice(-4),
+   * ],
+   * ```
+   */
+  compactUIMessages?: (event: CompactMessagesEvent) => UIMessage[] | Promise<UIMessage[]>;
+  /**
+   * Transform model messages after compaction (what gets sent to the LLM).
+   * Default: replace all with a single summary message.
+   *
+   * @example
+   * ```ts
+   * // Summary + keep last 2 model messages
+   * compactModelMessages: ({ modelMessages, summary }) => [
+   *   { role: "user", content: summary },
+   *   ...modelMessages.slice(-2),
+   * ],
+   * ```
+   */
+  compactModelMessages?: (event: CompactMessagesEvent) => ModelMessage[] | Promise<ModelMessage[]>;
+};
+
+/** @internal */
+const chatTaskCompactionKey = locals.create<ChatTaskCompactionOptions>("chat.taskCompaction");
+
+/**
+ * Event passed to the `prepareMessages` hook.
+ */
+export type PrepareMessagesEvent<TClientData = unknown> = {
+  /** The messages to transform. Return the transformed array. */
+  messages: ModelMessage[];
+  /** Why messages are being prepared. */
+  reason:
+    | "run"                // Messages being passed to run() for streamText
+    | "compaction-rebuild" // Rebuilding from a previous compaction summary
+    | "compaction-result"; // Fresh compaction just produced these messages
+  /** The chat session ID. */
+  chatId: string;
+  /** The current turn number (0-indexed). */
+  turn: number;
+  /** Custom data from the frontend. */
+  clientData?: TClientData;
+};
+
+/**
+ * Data shape for `data-compaction` stream chunks emitted during compaction.
+ * Use to type the `data` field when rendering compaction parts in the frontend.
+ */
+export type CompactionChunkData = {
+  status: "compacting" | "complete";
+  totalTokens: number | undefined;
+};
+
+/**
+ * Event passed to the `onCompacted` callback.
+ */
+export type CompactedEvent = {
+  /** The generated summary text. */
+  summary: string;
+  /** The messages that were compacted (pre-compaction). */
+  messages: ModelMessage[];
+  /** Number of messages before compaction. */
+  messageCount: number;
+  /** Token usage from the step that triggered compaction. */
+  usage: LanguageModelUsage;
+  /** Total token count that triggered compaction. */
+  totalTokens: number | undefined;
+  /** Input token count from the triggering step. */
+  inputTokens: number | undefined;
+  /** Output token count from the triggering step. */
+  outputTokens: number | undefined;
+  /** The step number where compaction occurred (0-indexed). */
+  stepNumber: number;
+  /** The chat session ID (if running inside a chat.task). */
+  chatId?: string;
+  /** The current turn number (if running inside a chat.task). */
+  turn?: number;
+};
+
+/**
+ * Event passed to `shouldCompact` callbacks.
+ */
+export type ShouldCompactEvent = {
+  /** The current model messages (full conversation). */
+  messages: ModelMessage[];
+  /** Total token count from the triggering step/turn. */
+  totalTokens: number | undefined;
+  /** Input token count from the triggering step/turn. */
+  inputTokens: number | undefined;
+  /** Output token count from the triggering step/turn. */
+  outputTokens: number | undefined;
+  /** Full usage object from the triggering step/turn. */
+  usage?: LanguageModelUsage;
+  /** Cumulative token usage across all completed turns. Present in chat.task contexts. */
+  totalUsage?: LanguageModelUsage;
+  /** The chat session ID (if running inside a chat.task). */
+  chatId?: string;
+  /** The current turn number (0-indexed, if inside a chat.task). */
+  turn?: number;
+  /** Custom data from the frontend (if inside a chat.task). */
+  clientData?: unknown;
+  /**
+   * Where this check is running:
+   * - `"inner"` — between tool-call steps (prepareStep)
+   * - `"outer"` — between turns (after response, before onBeforeTurnComplete)
+   */
+  source?: "inner" | "outer";
+  /** The step number (0-indexed). Only present when `source` is `"inner"`. */
+  stepNumber?: number;
+  /** The steps array from prepareStep. Only present when `source` is `"inner"`. */
+  steps?: CompactionStep[];
+};
+
+/**
+ * Options for `chat.compaction()` — the high-level prepareStep factory.
+ */
+export type CompactionOptions = {
+  /** Generate a summary from the current messages. Return the summary text. */
+  summarize: (messages: ModelMessage[]) => Promise<string>;
+  /** Token threshold — compact when totalTokens exceeds this. Ignored if `shouldCompact` is provided. */
+  threshold?: number;
+  /** Custom compaction trigger. When provided, used instead of `threshold`. */
+  shouldCompact?: (event: ShouldCompactEvent) => boolean | Promise<boolean>;
+};
+
+/** A step object as received in prepareStep's `steps` array. */
+export type CompactionStep = {
+  usage: LanguageModelUsage;
+  finishReason: string;
+  content: Array<{ type: string; toolCallId?: string }>;
+  response: { messages: Array<any> };
+};
+
+/**
+ * Result of `chat.compact()`. Discriminated union so you can inspect
+ * what happened, but also directly compatible with prepareStep's return type.
+ *
+ * - `"skipped"` — no compaction needed (first step, boundary unsafe, or under threshold). Return `undefined` to prepareStep.
+ * - `"rebuilt"` — previous compaction exists, messages rebuilt from summary + new response messages.
+ * - `"compacted"` — compaction just happened, includes the generated summary.
+ */
+export type CompactResult =
+  | { type: "skipped" }
+  | { type: "rebuilt"; messages: ModelMessage[] }
+  | { type: "compacted"; messages: ModelMessage[]; summary: string };
+
+/**
+ * Options for `chat.compact()` — the low-level compaction function.
+ */
+export type CompactOptions = {
+  /** Generate a summary from the current messages. Return the summary text. */
+  summarize: (messages: ModelMessage[]) => Promise<string>;
+  /** Token threshold — compact when totalTokens exceeds this. Ignored if `shouldCompact` is provided. */
+  threshold?: number;
+  /** Custom compaction trigger. When provided, used instead of `threshold`. */
+  shouldCompact?: (event: ShouldCompactEvent) => boolean | Promise<boolean>;
+};
+
+/**
+ * Check that no tool calls are in-flight in a step's content.
+ * Used before compaction to avoid losing tool state mid-execution.
+ * @internal
+ */
+function isStepBoundarySafe(step: {
+  finishReason: string;
+  content: Array<{ type: string; toolCallId?: string }>;
+}): boolean {
+  if (step.finishReason === "error") return false;
+  const callIds = new Set(
+    step.content.filter((p) => p.type === "tool-call").map((p) => p.toolCallId)
+  );
+  const settledIds = new Set(
+    step.content
+      .filter((p) => p.type === "tool-result" || p.type === "tool-error")
+      .map((p) => p.toolCallId)
+  );
+  return ![...callIds].some((id) => !settledIds.has(id));
+}
+
+/**
+ * Apply the prepareMessages hook if one is set in locals.
+ * @internal
+ */
+async function applyPrepareMessages(messages: ModelMessage[], reason: PrepareMessagesEvent["reason"]): Promise<ModelMessage[]> {
+  const hook = locals.get(chatPrepareMessagesKey);
+  if (!hook) return messages;
+
+  const turnCtx = locals.get(chatTurnContextKey);
+
+  return tracer.startActiveSpan(
+    "prepareMessages()",
+    async () => {
+      return hook({
+        messages,
+        reason,
+        chatId: turnCtx?.chatId ?? "",
+        turn: turnCtx?.turn ?? 0,
+        clientData: turnCtx?.clientData,
+      });
+    },
+    {
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+        [SemanticInternalAttributes.COLLAPSED]: true,
+        "chat.prepareMessages.reason": reason,
+        "chat.prepareMessages.messageCount": messages.length,
+      },
+    }
+  );
+}
+
+/**
+ * Read the current compaction state. Returns the summary and base message count
+ * if compaction has occurred in this turn, or `undefined` if not.
+ *
+ * Use in a custom `prepareStep` to rebuild from a previous compaction:
+ * ```ts
+ * const state = chat.getCompactionState();
+ * if (state) {
+ *   return { messages: [{ role: "user", content: state.summary }, ...newMsgs] };
+ * }
+ * ```
+ */
+function getCompactionState(): CompactionState | undefined {
+  return locals.get(chatCompactionStateKey);
+}
+
+/**
+ * Low-level compaction for use inside a custom `prepareStep`.
+ *
+ * Handles the full decision tree: first step, already-compacted rebuild,
+ * boundary safety, threshold check, summarization, stream chunks, state
+ * storage, and accumulator update.
+ *
+ * Returns a `CompactResult` — inspect `result.type` to see what happened,
+ * or convert to a prepareStep return with `result.type === "skipped" ? undefined : result`.
+ *
+ * @example
+ * ```ts
+ * prepareStep: async ({ messages, steps }) => {
+ *   // your custom logic here...
+ *   const result = await chat.compact(messages, steps, {
+ *     threshold: 80_000,
+ *     summarize: async (msgs) => generateText({ model, messages: msgs }).then(r => r.text),
+ *   });
+ *   if (result.type === "compacted") {
+ *     logger.info("Compacted!", { summary: result.summary });
+ *   }
+ *   return result.type === "skipped" ? undefined : result;
+ * },
+ * ```
+ */
+async function chatCompact(
+  messages: ModelMessage[],
+  steps: CompactionStep[],
+  options: CompactOptions
+): Promise<CompactResult> {
+  const currentStep = steps.at(-1);
+
+  // First step — nothing to check
+  if (!currentStep) {
+    return { type: "skipped" };
+  }
+
+  // Already compacted — rebuild from summary + new response messages
+  const state = locals.get(chatCompactionStateKey);
+  if (state && isStepBoundarySafe(currentStep)) {
+    return {
+      type: "rebuilt",
+      messages: await applyPrepareMessages([
+        { role: "user" as const, content: state.summary },
+        ...currentStep.response.messages.slice(state.baseResponseMessageCount),
+      ], "compaction-rebuild"),
+    };
+  }
+
+  // Boundary unsafe — skip
+  if (!isStepBoundarySafe(currentStep)) {
+    return { type: "skipped" };
+  }
+
+  const totalTokens = currentStep.usage.totalTokens;
+  const inputTokens = currentStep.usage.inputTokens;
+  const outputTokens = currentStep.usage.outputTokens;
+
+  const turnCtx = locals.get(chatTurnContextKey);
+  const stepNumber = steps.length - 1;
+
+  const shouldTrigger = options.shouldCompact
+    ? await options.shouldCompact({
+        messages,
+        totalTokens,
+        inputTokens,
+        outputTokens,
+        usage: currentStep.usage,
+        source: "inner",
+        stepNumber,
+        steps,
+        chatId: turnCtx?.chatId,
+        turn: turnCtx?.turn,
+        clientData: turnCtx?.clientData,
+      })
+    : (totalTokens != null && options.threshold != null && totalTokens > options.threshold);
+
+  if (!shouldTrigger) {
+    return { type: "skipped" };
+  }
+
+  const result = await tracer.startActiveSpan(
+    "context compaction",
+    async (span) => {
+      const compactionId = generateMessageId();
+      let summary!: string;
+
+      const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+        spanName: "stream compaction chunks",
+        collapsed: true,
+        execute: async ({ write }) => {
+          write({ type: "step-start" });
+          write({
+            type: "data-compaction",
+            id: compactionId,
+            data: { status: "compacting", totalTokens },
+          });
+
+          // Generate summary
+          summary = await options.summarize(messages);
+
+          // Store state in locals for subsequent steps
+          locals.set(chatCompactionStateKey, {
+            summary,
+            baseResponseMessageCount: currentStep.response.messages.length,
+          });
+
+          // Set model-only override — UI messages stay intact for persistence.
+          // The summary becomes the model message history for the next turn,
+          // while accumulatedUIMessages keeps the full conversation for display.
+          locals.set(chatOverrideModelMessagesKey, [
+            { role: "assistant" as const, content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }] },
+          ]);
+
+          // Fire onCompacted hook
+          const onCompactedHook = locals.get(chatOnCompactedKey);
+          if (onCompactedHook) {
+            await onCompactedHook({
+              summary,
+              messages,
+              messageCount: messages.length,
+              usage: currentStep.usage,
+              totalTokens,
+              inputTokens,
+              outputTokens,
+              stepNumber,
+              chatId: turnCtx?.chatId,
+              turn: turnCtx?.turn,
+            });
+          }
+
+          write({
+            type: "data-compaction",
+            id: compactionId,
+            data: { status: "complete", totalTokens },
+          });
+          write({ type: "finish-step" });
+        },
+      });
+      await waitUntilComplete();
+
+      // Set attributes after we have the summary
+      span.setAttribute("compaction.summary_length", summary.length);
+
+      return {
+        type: "compacted" as const,
+        messages: await applyPrepareMessages(
+          [{ role: "user" as const, content: summary }],
+          "compaction-result"
+        ),
+        summary,
+      };
+    },
+    {
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "tabler-scissors",
+        "compaction.threshold": options.threshold,
+        "compaction.total_tokens": totalTokens ?? 0,
+        "compaction.input_tokens": inputTokens ?? 0,
+        "compaction.message_count": messages.length,
+        "compaction.step_number": stepNumber,
+        ...(turnCtx?.chatId ? { "compaction.chat_id": turnCtx.chatId } : {}),
+        ...(turnCtx?.turn != null ? { "compaction.turn": turnCtx.turn } : {}),
+        ...accessoryAttributes({
+          items: [
+            { text: `${totalTokens ?? 0} tokens`, variant: "normal" },
+            { text: `${messages.length} msgs`, variant: "normal" },
+          ],
+          style: "codepath",
+        }),
+      },
+    }
+  );
+
+  return result;
+}
+
+/**
+ * Returns a `prepareStep` function that handles context compaction automatically.
+ *
+ * Monitors token usage between tool-call steps. When `totalTokens` exceeds
+ * the threshold, generates a summary via `summarize()`, replaces the message
+ * history, and emits `data-compaction` stream chunks for the frontend.
+ *
+ * @example
+ * ```ts
+ * return streamText({
+ *   ...chat.toStreamTextOptions({ registry }),
+ *   messages: chat.addCacheBreaks(messages),
+ *   prepareStep: chat.compactionStep({
+ *     threshold: 80_000,
+ *     summarize: async (messages) => {
+ *       return generateText({ model, messages: [...messages, { role: "user", content: "Summarize." }] })
+ *         .then((r) => r.text);
+ *     },
+ *   }),
+ *   tools: { ... },
+ * });
+ * ```
+ */
+function chatCompactionStep(options: CompactionOptions): (args: { messages: ModelMessage[]; steps: CompactionStep[] }) => Promise<{ messages: ModelMessage[] } | undefined> {
+  return async ({ messages, steps }) => {
+    const result = await chatCompact(messages, steps, options);
+    return result.type === "skipped" ? undefined : result;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// chat.isCompactionSafe — check if it's safe to compact messages
+// ---------------------------------------------------------------------------
+
+/**
+ * Checks whether it's safe to compact the message history. Returns `false`
+ * if any tool calls are in-flight (incomplete tool invocations without results).
+ *
+ * Call before `chat.setMessages()` to avoid corrupting tool-call state.
+ */
+function isCompactionSafe(messages: UIMessage[]): boolean {
+  for (const msg of messages) {
+    if (msg.role !== "assistant") continue;
+    for (const part of msg.parts as any[]) {
+      if (part.type === "tool-invocation") {
+        const state = part.toolInvocation?.state ?? part.state;
+        if (state !== "result" && state !== "error") {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
 
 // ---------------------------------------------------------------------------
 // chat.prompt — store and retrieve a resolved prompt for the current run
@@ -513,6 +1142,32 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
   // Add telemetry (forward additional metadata from caller)
   const telemetry = prompt.toAISDKTelemetry(options?.telemetry);
   Object.assign(result, telemetry);
+
+  // Auto-inject prepareStep when task-level compaction is configured.
+  // We build a custom prepareStep instead of using chatCompactionStep so we
+  // can pass the enriched SummarizeEvent to taskCompaction.summarize.
+  const taskCompaction = locals.get(chatTaskCompactionKey);
+  if (taskCompaction) {
+    result.prepareStep = async ({ messages, steps }: { messages: ModelMessage[]; steps: CompactionStep[] }) => {
+      const compactResult = await chatCompact(messages, steps, {
+        shouldCompact: taskCompaction.shouldCompact,
+        summarize: (msgs) => {
+          const ctx = locals.get(chatTurnContextKey);
+          const lastStep = steps.at(-1);
+          return taskCompaction.summarize({
+            messages: msgs,
+            usage: lastStep?.usage,
+            source: "inner",
+            stepNumber: steps.length - 1,
+            chatId: ctx?.chatId,
+            turn: ctx?.turn,
+            clientData: ctx?.clientData,
+          });
+        },
+      });
+      return compactResult.type === "skipped" ? undefined : compactResult;
+    };
+  }
 
   return result;
 }
@@ -729,6 +1384,10 @@ export type TurnStartEvent<TClientData = unknown> = {
   previousRunId?: string;
   /** Whether this run was preloaded before the first message. */
   preloaded: boolean;
+  /** Token usage from the previous turn. Undefined on turn 0. */
+  previousTurnUsage?: LanguageModelUsage;
+  /** Cumulative token usage across all completed turns so far. */
+  totalUsage: LanguageModelUsage;
 };
 
 /**
@@ -780,6 +1439,10 @@ export type TurnCompleteEvent<TClientData = unknown> = {
   previousRunId?: string;
   /** Whether this run was preloaded before the first message. */
   preloaded: boolean;
+  /** Token usage for this turn. Undefined if usage couldn't be captured (e.g. manual pipeChat). */
+  usage?: LanguageModelUsage;
+  /** Cumulative token usage across all turns in this run (including this turn). */
+  totalUsage: LanguageModelUsage;
 };
 
 export type ChatTaskOptions<
@@ -864,10 +1527,71 @@ export type ChatTaskOptions<
   onTurnStart?: (event: TurnStartEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void;
 
   /**
-   * Called after each turn completes (after the response is captured, before waiting
-   * for the next message). Also fires on the final turn.
+   * Called after the response is captured but before the stream closes.
+   * The stream is still open, so you can write custom chunks to the frontend
+   * (e.g. compaction progress). Use this for compaction, post-processing,
+   * or any work where the user should see real-time status updates.
    *
-   * Use this to persist the conversation to your database after each assistant response.
+   * @example
+   * ```ts
+   * onBeforeTurnComplete: async ({ messages, uiMessages, usage }) => {
+   *   if (usage?.inputTokens && usage.inputTokens > 5000) {
+   *     await chat.stream.append({ type: "data-compaction", id: generateId(), data: { status: "compacting" } });
+   *     // ... compact messages ...
+   *     chat.setMessages(compactedMessages);
+   *     await chat.stream.append({ type: "data-compaction", id: generateId(), data: { status: "complete" } });
+   *   }
+   * }
+   * ```
+   */
+  onBeforeTurnComplete?: (event: TurnCompleteEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void;
+
+  /**
+   * Called when conversation compaction occurs (via `chat.compact()` or
+   * `chat.compactionStep()`). Use for logging, billing, or persisting the summary.
+   *
+   * @example
+   * ```ts
+   * onCompacted: async ({ summary, totalTokens, chatId }) => {
+   *   logger.info("Compacted", { totalTokens, chatId });
+   *   await db.compactionLog.create({ data: { chatId, summary } });
+   * }
+   * ```
+   */
+  onCompacted?: (event: CompactedEvent) => Promise<void> | void;
+
+  /**
+   * Automatic context compaction. When provided, compaction runs automatically
+   * in both the inner loop (prepareStep, between tool-call steps) and the
+   * outer loop (between turns, for single-step responses where prepareStep
+   * never fires).
+   *
+   * The `shouldCompact` callback decides when to compact, and `summarize`
+   * generates the summary. The prepareStep is auto-injected into
+   * `chat.toStreamTextOptions()` — if you provide your own `prepareStep`
+   * after spreading, it overrides the auto-injected one.
+   *
+   * @example
+   * ```ts
+   * chat.task({
+   *   id: "my-chat",
+   *   compaction: {
+   *     shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
+   *     summarize: async (messages) =>
+   *       generateText({ model, messages: [...messages, { role: "user", content: "Summarize." }] })
+   *         .then((r) => r.text),
+   *   },
+   *   run: async ({ messages, signal }) => {
+   *     return streamText({ ...chat.toStreamTextOptions({ registry }), messages });
+   *   },
+   * });
+   * ```
+   */
+  compaction?: ChatTaskCompactionOptions;
+
+  /**
+   * Called after the stream closes for this turn. Use this to persist the
+   * conversation to your database after each assistant response.
    *
    * @example
    * ```ts
@@ -939,6 +1663,28 @@ export type ChatTaskOptions<
   preloadTimeout?: string;
 
   /**
+   * Transform model messages before they're used anywhere — in `run()`,
+   * in compaction rebuilds, and in compaction results.
+   *
+   * Define once, applied everywhere. Use for Anthropic cache breaks,
+   * injecting system context, stripping PII, etc.
+   *
+   * @example
+   * ```ts
+   * prepareMessages: async ({ messages, reason }) => {
+   *   // Add Anthropic cache breaks to the last message
+   *   if (messages.length === 0) return messages;
+   *   const last = messages[messages.length - 1];
+   *   return [...messages.slice(0, -1), {
+   *     ...last,
+   *     providerOptions: { ...last.providerOptions, anthropic: { cacheControl: { type: "ephemeral" } } },
+   *   }];
+   * }
+   * ```
+   */
+  prepareMessages?: (event: PrepareMessagesEvent<inferSchemaOut<TClientDataSchema>>) => ModelMessage[] | Promise<ModelMessage[]>;
+
+  /**
    * Default options for `toUIMessageStream()` when auto-piping or using
    * `turn.complete()` / `chat.pipeAndCapture()`.
    *
@@ -1007,6 +1753,10 @@ function chatTask<
     onPreload,
     onChatStart,
     onTurnStart,
+    onBeforeTurnComplete,
+    onCompacted,
+    compaction,
+    prepareMessages,
     onTurnComplete,
     maxTurns = 100,
     turnTimeout = "1h",
@@ -1036,6 +1786,19 @@ function chatTask<
         locals.set(chatUIStreamStaticKey, uiMessageStreamOptions);
       }
 
+      // Store onCompacted hook in locals so chat.compact() can call it
+      if (onCompacted) {
+        locals.set(chatOnCompactedKey, onCompacted);
+      }
+
+      if (prepareMessages) {
+        locals.set(chatPrepareMessagesKey, prepareMessages);
+      }
+
+      if (compaction) {
+        locals.set(chatTaskCompactionKey, compaction);
+      }
+
       let currentWirePayload = payload;
       const continuation = payload.continuation ?? false;
       const previousRunId = payload.previousRunId;
@@ -1049,6 +1812,10 @@ function chatTask<
       // Accumulated UI messages for persistence. Mirrors the model accumulator
       // but in frontend-friendly UIMessage format (with parts, id, etc.).
       let accumulatedUIMessages: UIMessage[] = [];
+
+      // Token usage tracking across turns
+      let previousTurnUsage: LanguageModelUsage | undefined;
+      let cumulativeUsage: LanguageModelUsage = emptyUsage();
 
       // Mutable reference to the current turn's stop controller so the
       // stop input stream listener (registered once) can abort the right turn.
@@ -1177,9 +1944,10 @@ function chatTask<
 
           const turnResult = await tracer.startActiveSpan(
             `chat turn ${turn + 1}`,
-            async () => {
+            async (turnSpan) => {
               locals.set(chatPipeCountKey, 0);
               locals.set(chatDeferKey, new Set());
+              locals.set(chatCompactionStateKey, undefined);
 
               // Store chat context for auto-detection by ai.tool subtasks
               locals.set(chatTurnContextKey, {
@@ -1217,7 +1985,7 @@ function chatTask<
               // Convert the incoming UIMessages to model messages and update the accumulator.
               // Turn 1: full history from the frontend → replaces the accumulator.
               // Turn 2+: only the new message(s) → appended to the accumulator.
-              const incomingModelMessages = await convertToModelMessages(cleanedUIMessages);
+              const incomingModelMessages = await toModelMessages(cleanedUIMessages);
 
               // Track new messages for this turn (user input + assistant response).
               const turnNewModelMessages: ModelMessage[] = [];
@@ -1312,7 +2080,17 @@ function chatTask<
                       continuation,
                       previousRunId,
                       preloaded,
+                      previousTurnUsage,
+                      totalUsage: cumulativeUsage,
                     });
+
+                    // Check if onTurnStart replaced messages (compaction)
+                    const turnStartOverride = locals.get(chatOverrideMessagesKey);
+                    if (turnStartOverride) {
+                      locals.set(chatOverrideMessagesKey, undefined);
+                      accumulatedUIMessages = [...turnStartOverride];
+                      accumulatedMessages = await toModelMessages(turnStartOverride);
+                    }
                   },
                   {
                     attributes: {
@@ -1341,15 +2119,18 @@ function chatTask<
               let resolveOnFinish: () => void;
               const onFinishPromise = new Promise<void>((r) => { resolveOnFinish = r; });
               let onFinishAttached = false;
+              let runResult: unknown;
 
               try {
-                const result = await userRun({
+                runResult = await userRun({
                   ...restWire,
-                  messages: accumulatedMessages,
+                  messages: await applyPrepareMessages(accumulatedMessages, "run"),
                   clientData,
                   continuation,
                   previousRunId,
                   preloaded,
+                  previousTurnUsage,
+                  totalUsage: cumulativeUsage,
                   signal: combinedSignal,
                   cancelSignal,
                   stopSignal,
@@ -1358,9 +2139,9 @@ function chatTask<
                 // Auto-pipe if the run function returned a StreamTextResult or similar,
                 // but only if pipeChat() wasn't already called manually during this turn.
                 // We call toUIMessageStream ourselves to attach onFinish for response capture.
-                if ((locals.get(chatPipeCountKey) ?? 0) === 0 && isUIMessageStreamable(result)) {
+                if ((locals.get(chatPipeCountKey) ?? 0) === 0 && isUIMessageStreamable(runResult)) {
                   onFinishAttached = true;
-                  const uiStream = result.toUIMessageStream({
+                  const uiStream = runResult.toUIMessageStream({
                     ...resolveUIMessageStreamOptions(),
                     onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
                       capturedResponseMessage = responseMessage;
@@ -1389,6 +2170,79 @@ function chatTask<
                 await onFinishPromise;
               }
 
+              // Capture token usage from the streamText result (if available).
+              // totalUsage is a PromiseLike that resolves after the stream is consumed.
+              let turnUsage: LanguageModelUsage | undefined;
+              if (runResult != null && typeof (runResult as any).totalUsage?.then === "function") {
+                try {
+                  turnUsage = await (runResult as any).totalUsage;
+                } catch { /* non-fatal — usage capture failed */ }
+              }
+              if (turnUsage) {
+                cumulativeUsage = addUsage(cumulativeUsage, turnUsage);
+                previousTurnUsage = turnUsage;
+
+                // Add usage attributes to the turn span
+                if (turnUsage.inputTokens != null) {
+                  turnSpan.setAttribute("gen_ai.usage.input_tokens", turnUsage.inputTokens);
+                }
+                if (turnUsage.outputTokens != null) {
+                  turnSpan.setAttribute("gen_ai.usage.output_tokens", turnUsage.outputTokens);
+                }
+                if (turnUsage.totalTokens != null) {
+                  turnSpan.setAttribute("gen_ai.usage.total_tokens", turnUsage.totalTokens);
+                }
+                if (cumulativeUsage.totalTokens != null) {
+                  turnSpan.setAttribute("gen_ai.usage.cumulative_total_tokens", cumulativeUsage.totalTokens);
+                }
+                if (cumulativeUsage.inputTokens != null) {
+                  turnSpan.setAttribute("gen_ai.usage.cumulative_input_tokens", cumulativeUsage.inputTokens);
+                }
+                if (cumulativeUsage.outputTokens != null) {
+                  turnSpan.setAttribute("gen_ai.usage.cumulative_output_tokens", cumulativeUsage.outputTokens);
+                }
+              }
+
+              // Check if run() (e.g. via prepareStep) replaced messages during this turn.
+              // This supports intra-turn compaction — the compacted messages become the
+              // new base, and the response gets appended on top.
+              const runOverride = locals.get(chatOverrideMessagesKey);
+              if (runOverride) {
+                locals.set(chatOverrideMessagesKey, undefined);
+                accumulatedUIMessages = [...runOverride];
+                accumulatedMessages = await toModelMessages(runOverride);
+              }
+
+              // Check if compaction set a model-only override (preserves UI messages).
+              // Apply compactUIMessages/compactModelMessages callbacks if configured.
+              const modelOnlyOverride = locals.get(chatOverrideModelMessagesKey);
+              if (modelOnlyOverride) {
+                const compactionSummary = locals.get(chatCompactionStateKey)?.summary ?? "";
+                const taskCompactionConfig = locals.get(chatTaskCompactionKey);
+                locals.set(chatOverrideModelMessagesKey, undefined);
+
+                const compactEvent: CompactMessagesEvent = {
+                  summary: compactionSummary,
+                  uiMessages: accumulatedUIMessages,
+                  modelMessages: accumulatedMessages,
+                  chatId: currentWirePayload.chatId,
+                  turn,
+                  clientData,
+                  source: "inner",
+                };
+
+                // Apply model messages: callback or default (use override)
+                accumulatedMessages = taskCompactionConfig?.compactModelMessages
+                  ? await taskCompactionConfig.compactModelMessages(compactEvent)
+                  : modelOnlyOverride;
+
+                // Apply UI messages: callback or default (preserve all)
+                if (taskCompactionConfig?.compactUIMessages) {
+                  accumulatedUIMessages = await taskCompactionConfig.compactUIMessages(compactEvent);
+                }
+
+              }
+
               // Determine if the user stopped generation this turn (not a full run cancel).
               const wasStopped = stopController.signal.aborted && !runSignal.aborted;
 
@@ -1412,7 +2266,7 @@ function chatTask<
                 accumulatedUIMessages.push(capturedResponseMessage);
                 turnNewUIMessages.push(capturedResponseMessage);
                 try {
-                  const responseModelMessages = await convertToModelMessages([
+                  const responseModelMessages = await toModelMessages([
                     stripProviderMetadata(capturedResponseMessage),
                   ]);
                   accumulatedMessages.push(...responseModelMessages);
@@ -1428,15 +2282,8 @@ function chatTask<
 
               if (runSignal.aborted) return "exit";
 
-              // Write turn-complete control chunk so frontend closes its stream.
-              // Capture the lastEventId from the stream writer for resume support.
-              const turnCompleteResult = await writeTurnCompleteChunk(
-                currentWirePayload.chatId,
-                turnAccessToken
-              );
-
               // Await deferred background work (e.g. DB writes from onTurnStart)
-              // before firing onTurnComplete so hooks can rely on the work being done.
+              // before firing hooks so they can rely on the work being done.
               const deferredWork = locals.get(chatDeferKey);
               if (deferredWork && deferredWork.size > 0) {
                 await Promise.race([
@@ -1445,29 +2292,199 @@ function chatTask<
                 ]);
               }
 
-              // Fire onTurnComplete after response capture
+              // Outer-loop compaction: runs between turns for single-step responses
+              // where prepareStep never fires (no tool calls = no step boundaries).
+              // Only triggers when: task has compaction configured, prepareStep didn't
+              // already compact this turn, and shouldCompact returns true.
+              const outerCompaction = locals.get(chatTaskCompactionKey);
+              const innerCompactionState = locals.get(chatCompactionStateKey);
+
+              if (outerCompaction && !innerCompactionState && turnUsage && !wasStopped) {
+                const shouldTrigger = await outerCompaction.shouldCompact({
+                  messages: accumulatedMessages,
+                  totalTokens: turnUsage.totalTokens,
+                  inputTokens: turnUsage.inputTokens,
+                  outputTokens: turnUsage.outputTokens,
+                  usage: turnUsage,
+                  totalUsage: cumulativeUsage,
+                  chatId: currentWirePayload.chatId,
+                  turn,
+                  clientData,
+                  source: "outer",
+                });
+
+                if (shouldTrigger) {
+                  await tracer.startActiveSpan(
+                    "context compaction (outer loop)",
+                    async (compactionSpan) => {
+                      const compactionId = generateMessageId();
+
+                      const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+                        spanName: "stream compaction chunks",
+                        collapsed: true,
+                        execute: async ({ write }) => {
+                          write({
+                            type: "data-compaction",
+                            id: compactionId,
+                            data: { status: "compacting", totalTokens: turnUsage.totalTokens },
+                          });
+
+                          const summary = await outerCompaction.summarize({
+                            messages: accumulatedMessages,
+                            usage: turnUsage,
+                            totalUsage: cumulativeUsage,
+                            chatId: currentWirePayload.chatId,
+                            turn,
+                            clientData,
+                            source: "outer",
+                          });
+
+                          // Apply compactModelMessages/compactUIMessages callbacks, or defaults.
+
+                          const outerCompactEvent: CompactMessagesEvent = {
+                            summary,
+                            uiMessages: accumulatedUIMessages,
+                            modelMessages: accumulatedMessages,
+                            chatId: currentWirePayload.chatId,
+                            turn,
+                            clientData,
+                            source: "outer",
+                          };
+
+                          // Model messages: callback or default (replace with summary)
+                          accumulatedMessages = outerCompaction.compactModelMessages
+                            ? await outerCompaction.compactModelMessages(outerCompactEvent)
+                            : [{ role: "assistant" as const, content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }] }];
+
+                          // UI messages: callback or default (preserve all)
+                          if (outerCompaction.compactUIMessages) {
+                            accumulatedUIMessages = await outerCompaction.compactUIMessages(outerCompactEvent);
+                          }
+
+                          // Fire onCompacted hook
+                          const onCompactedHook = locals.get(chatOnCompactedKey);
+                          if (onCompactedHook) {
+                            await onCompactedHook({
+                              summary,
+                              messages: accumulatedMessages,
+                              messageCount: accumulatedMessages.length,
+                              usage: turnUsage,
+                              totalTokens: turnUsage.totalTokens,
+                              inputTokens: turnUsage.inputTokens,
+                              outputTokens: turnUsage.outputTokens,
+                              stepNumber: -1, // outer loop, not a step
+                              chatId: currentWirePayload.chatId,
+                              turn,
+                            });
+                          }
+
+                          compactionSpan.setAttribute("compaction.summary_length", summary.length);
+
+                          write({
+                            type: "data-compaction",
+                            id: compactionId,
+                            data: { status: "complete", totalTokens: turnUsage.totalTokens },
+                          });
+                        },
+                      });
+                      await waitUntilComplete();
+                    },
+                    {
+                      attributes: {
+                        [SemanticInternalAttributes.STYLE_ICON]: "tabler-scissors",
+                        "compaction.total_tokens": turnUsage.totalTokens ?? 0,
+                        "compaction.input_tokens": turnUsage.inputTokens ?? 0,
+                        "compaction.message_count": accumulatedMessages.length,
+                        "compaction.outer_loop": true,
+                        "compaction.turn": turn,
+                        ...(currentWirePayload.chatId ? { "compaction.chat_id": currentWirePayload.chatId } : {}),
+                        ...accessoryAttributes({
+                          items: [
+                            { text: `${turnUsage.totalTokens ?? 0} tokens`, variant: "normal" },
+                            { text: `${accumulatedMessages.length} msgs`, variant: "normal" },
+                            { text: "outer loop", variant: "normal" },
+                          ],
+                          style: "codepath",
+                        }),
+                      },
+                    }
+                  );
+                }
+              }
+
+              const turnCompleteEvent = {
+                chatId: currentWirePayload.chatId,
+                messages: accumulatedMessages,
+                uiMessages: accumulatedUIMessages,
+                newMessages: turnNewModelMessages,
+                newUIMessages: turnNewUIMessages,
+                responseMessage: capturedResponseMessage,
+                rawResponseMessage,
+                turn,
+                runId: currentRunId,
+                chatAccessToken: turnAccessToken,
+                clientData,
+                stopped: wasStopped,
+                continuation,
+                previousRunId,
+                preloaded,
+                usage: turnUsage,
+                totalUsage: cumulativeUsage,
+              };
+
+              // Fire onBeforeTurnComplete — stream is still open so the hook
+              // can write custom chunks to the frontend (e.g. compaction progress).
+              if (onBeforeTurnComplete) {
+                await tracer.startActiveSpan(
+                  "onBeforeTurnComplete()",
+                  async () => {
+                    await onBeforeTurnComplete(turnCompleteEvent);
+
+                    // Check if the hook replaced messages (compaction)
+                    const override = locals.get(chatOverrideMessagesKey);
+                    if (override) {
+                      locals.set(chatOverrideMessagesKey, undefined);
+                      accumulatedUIMessages = [...override];
+                      accumulatedMessages = await toModelMessages(override);
+                      // Update event so onTurnComplete sees compacted messages
+                      turnCompleteEvent.messages = accumulatedMessages;
+                      turnCompleteEvent.uiMessages = accumulatedUIMessages;
+                    }
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                      [SemanticInternalAttributes.COLLAPSED]: true,
+                      "chat.id": currentWirePayload.chatId,
+                      "chat.turn": turn + 1,
+                    },
+                  }
+                );
+              }
+
+              // Write turn-complete control chunk — closes the frontend stream.
+              const turnCompleteResult = await writeTurnCompleteChunk(
+                currentWirePayload.chatId,
+                turnAccessToken
+              );
+
+              // Fire onTurnComplete — stream is closed, use for persistence.
               if (onTurnComplete) {
                 await tracer.startActiveSpan(
                   "onTurnComplete()",
                   async () => {
                     await onTurnComplete({
-                      chatId: currentWirePayload.chatId,
-                      messages: accumulatedMessages,
-                      uiMessages: accumulatedUIMessages,
-                      newMessages: turnNewModelMessages,
-                      newUIMessages: turnNewUIMessages,
-                      responseMessage: capturedResponseMessage,
-                      rawResponseMessage,
-                      turn,
-                      runId: currentRunId,
-                      chatAccessToken: turnAccessToken,
+                      ...turnCompleteEvent,
                       lastEventId: turnCompleteResult.lastEventId,
-                      clientData,
-                      stopped: wasStopped,
-                      continuation,
-                      previousRunId,
-                      preloaded,
                     });
+
+                    // Check if onTurnComplete replaced messages (compaction)
+                    const turnCompleteOverride = locals.get(chatOverrideMessagesKey);
+                    if (turnCompleteOverride) {
+                      locals.set(chatOverrideMessagesKey, undefined);
+                      accumulatedUIMessages = [...turnCompleteOverride];
+                      accumulatedMessages = await toModelMessages(turnCompleteOverride);
+                    }
                   },
                   {
                     attributes: {
@@ -1482,6 +2499,10 @@ function chatTask<
                       "chat.messages.count": accumulatedMessages.length,
                       "chat.response.parts.count": capturedResponseMessage?.parts?.length ?? 0,
                       "chat.new_messages.count": turnNewUIMessages.length,
+                      ...(turnUsage?.inputTokens != null ? { "gen_ai.usage.input_tokens": turnUsage.inputTokens } : {}),
+                      ...(turnUsage?.outputTokens != null ? { "gen_ai.usage.output_tokens": turnUsage.outputTokens } : {}),
+                      ...(turnUsage?.totalTokens != null ? { "gen_ai.usage.total_tokens": turnUsage.totalTokens } : {}),
+                      ...(cumulativeUsage.totalTokens != null ? { "gen_ai.usage.cumulative_total_tokens": cumulativeUsage.totalTokens } : {}),
                     },
                   }
                 );
@@ -1900,7 +2921,7 @@ class ChatMessageAccumulator {
     const cleaned = messages.map((m) =>
       m.role === "assistant" ? cleanupAbortedParts(m) : m
     );
-    const model = await convertToModelMessages(cleaned);
+    const model = await toModelMessages(cleaned);
 
     if (turn === 0 || trigger === "regenerate-message") {
       this.modelMessages = model;
@@ -1916,13 +2937,22 @@ class ChatMessageAccumulator {
    * Add the assistant's response to the accumulator.
    * Call after `pipeAndCapture` with the captured response.
    */
+  /**
+   * Replace all accumulated messages (for compaction).
+   * Converts UIMessages to ModelMessages internally.
+   */
+  async setMessages(uiMessages: UIMessage[]): Promise<void> {
+    this.uiMessages = [...uiMessages];
+    this.modelMessages = await toModelMessages(uiMessages);
+  }
+
   async addResponse(response: UIMessage): Promise<void> {
     if (!response.id) {
       response = { ...response, id: generateMessageId() };
     }
     this.uiMessages.push(response);
     try {
-      const msgs = await convertToModelMessages([stripProviderMetadata(response)]);
+      const msgs = await toModelMessages([stripProviderMetadata(response)]);
       this.modelMessages.push(...msgs);
     } catch {
       // Conversion failed — skip model message accumulation for this response
@@ -1955,15 +2985,26 @@ export type ChatTurn = {
   /** Client data from the transport (`metadata` field on the wire payload). */
   clientData: unknown;
   /** Full accumulated model messages — pass directly to `streamText`. */
-  messages: ModelMessage[];
+  readonly messages: ModelMessage[];
   /** Full accumulated UI messages — use for persistence. */
-  uiMessages: UIMessage[];
+  readonly uiMessages: UIMessage[];
   /** Combined stop+cancel AbortSignal (fresh each turn). */
   signal: AbortSignal;
   /** Whether the user stopped generation this turn. */
   readonly stopped: boolean;
   /** Whether this is a continuation run. */
   continuation: boolean;
+  /** Token usage from the previous turn. Undefined on turn 0. */
+  previousTurnUsage?: LanguageModelUsage;
+  /** Cumulative token usage across all completed turns so far. */
+  totalUsage: LanguageModelUsage;
+
+  /**
+   * Replace accumulated messages (for compaction). Takes UIMessages and
+   * converts to ModelMessages internally. After calling this, `turn.messages`
+   * reflects the compacted history.
+   */
+  setMessages(uiMessages: UIMessage[]): Promise<void>;
 
   /**
    * Easy path: pipe stream, capture response, accumulate it,
@@ -2032,6 +3073,8 @@ function createChatSession(
       let turn = -1;
       const stop = createStopSignal();
       const accumulator = new ChatMessageAccumulator();
+      let previousTurnUsage: LanguageModelUsage | undefined;
+      let cumulativeUsage: LanguageModelUsage = emptyUsage();
 
       return {
         async next(): Promise<IteratorResult<ChatTurn>> {
@@ -2088,11 +3131,17 @@ function createChatSession(
             chatId: currentPayload.chatId,
             trigger: currentPayload.trigger,
             clientData: currentPayload.metadata,
-            messages,
-            uiMessages: accumulator.uiMessages,
+            get messages() { return accumulator.modelMessages; },
+            get uiMessages() { return accumulator.uiMessages; },
             signal: combinedSignal,
             get stopped() { return stop.signal.aborted && !runSignal.aborted; },
             continuation: currentPayload.continuation ?? false,
+            previousTurnUsage,
+            totalUsage: cumulativeUsage,
+
+            async setMessages(uiMessages: UIMessage[]) {
+              await accumulator.setMessages(uiMessages);
+            },
 
             async complete(source: UIMessageStreamable) {
               let response: UIMessage | undefined;
@@ -2116,6 +3165,15 @@ function createChatSession(
                   ? cleanupAbortedParts(response)
                   : response;
                 await accumulator.addResponse(cleaned);
+              }
+
+              // Capture token usage from the streamText result
+              if (typeof (source as any).totalUsage?.then === "function") {
+                try {
+                  const usage: LanguageModelUsage = await (source as any).totalUsage;
+                  previousTurnUsage = usage;
+                  cumulativeUsage = addUsage(cumulativeUsage, usage);
+                } catch { /* non-fatal */ }
               }
 
               await chatWriteTurnComplete();
@@ -2356,7 +3414,6 @@ function chatLocal<T extends Record<string, unknown>>(options: { id: string }): 
   }) as ChatLocal<T>;
 }
 
-
 /**
  * Extracts the client data (metadata) type from a chat task.
  * Use this to type the `metadata` option on the transport.
@@ -2428,6 +3485,20 @@ export const chat = {
    * Returns `{}` if no prompt has been set.
    */
   toStreamTextOptions,
+  /**
+   * Replace the accumulated conversation messages for compaction.
+   * Call from `onTurnStart` or `onTurnComplete`. Takes `UIMessage[]` and
+   * converts to `ModelMessage[]` internally.
+   */
+  setMessages: setChatMessages,
+  /** Check if it's safe to compact messages (no in-flight tool calls). */
+  isCompactionSafe,
+  /** Returns a `prepareStep` function that handles context compaction automatically. */
+  compactionStep: chatCompactionStep,
+  /** Low-level compaction for use inside a custom `prepareStep`. */
+  compact: chatCompact,
+  /** Read the current compaction state (summary + base message count). */
+  getCompactionState,
 };
 
 /**
