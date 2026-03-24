@@ -661,8 +661,18 @@ function define<TPart>(opts: RealtimeDefineStreamOptions): RealtimeDefinedStream
     read(runId, options) {
       return read(runId, opts.id, options);
     },
-    append(value, options) {
-      return append(opts.id, value as BodyInit, options);
+    async append(value, options) {
+      // Use a single-write writer so objects are serialized the same way
+      // as stream.writer() — the raw append API sends BodyInit which
+      // doesn't serialize objects correctly for SSE consumers.
+      const { waitUntilComplete } = writer(opts.id, {
+        ...options,
+        spanName: "streams.append()",
+        execute: ({ write }) => {
+          write(value);
+        },
+      });
+      await waitUntilComplete();
     },
     writer(options) {
       return writer(opts.id, options);
