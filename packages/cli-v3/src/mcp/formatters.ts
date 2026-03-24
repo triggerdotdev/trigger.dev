@@ -3,6 +3,7 @@ import {
   ListRunResponseItem,
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
+  RetrieveSpanDetailResponseBody,
 } from "@trigger.dev/core/v3/schemas";
 import type { CursorPageResponse } from "@trigger.dev/core/v3/zodfetch";
 
@@ -235,10 +236,11 @@ function formatSpan(
 
   // Format span header
   const statusIndicator = getStatusIndicator(span.data);
-  const duration = formatDuration(span.data.duration);
+  // Trace durations are nanoseconds from ClickHouse
+  const duration = formatDuration(span.data.duration / 1_000_000);
   const startTime = formatDateTime(span.data.startTime);
 
-  lines.push(`${indent}${prefix} ${span.data.message} ${statusIndicator}`);
+  lines.push(`${indent}${prefix} [${span.id}] ${span.data.message} ${statusIndicator}`);
   lines.push(`${indent}   Duration: ${duration}`);
   lines.push(`${indent}   Started: ${startTime}`);
 
@@ -458,4 +460,95 @@ export function formatQueryResults(rows: Record<string, unknown>[]): string {
   );
 
   return [header, separator, ...body].join("\n");
+}
+
+export function formatSpanDetail(span: RetrieveSpanDetailResponseBody): string {
+  const lines: string[] = [];
+
+  const statusIndicator = span.isCancelled
+    ? "[CANCELLED]"
+    : span.isError
+    ? "[ERROR]"
+    : span.isPartial
+    ? "[IN PROGRESS]"
+    : "[COMPLETED]";
+
+  lines.push(`## Span: ${span.message} ${statusIndicator}`);
+  lines.push(`Span ID: ${span.spanId}`);
+  if (span.parentId) lines.push(`Parent ID: ${span.parentId}`);
+  lines.push(`Run ID: ${span.runId}`);
+  lines.push(`Level: ${span.level}`);
+  lines.push(`Started: ${formatDateTime(span.startTime)}`);
+  lines.push(`Duration: ${formatDuration(span.durationMs)}`);
+  if (span.entityType) lines.push(`Entity Type: ${span.entityType}`);
+
+  if (span.ai) {
+    lines.push("");
+    lines.push("### AI Details");
+    lines.push(`Model: ${span.ai.model}`);
+    lines.push(`Provider: ${span.ai.provider}`);
+    lines.push(`Operation: ${span.ai.operationName}`);
+    lines.push(
+      `Tokens: ${span.ai.inputTokens} in / ${span.ai.outputTokens} out (${span.ai.totalTokens} total)`
+    );
+    if (span.ai.cachedTokens) {
+      lines.push(`Cached tokens: ${span.ai.cachedTokens}`);
+    }
+    if (span.ai.reasoningTokens) {
+      lines.push(`Reasoning tokens: ${span.ai.reasoningTokens}`);
+    }
+    if (span.ai.totalCost !== undefined) {
+      lines.push(`Cost: $${span.ai.totalCost.toFixed(6)}`);
+      if (span.ai.inputCost !== undefined && span.ai.outputCost !== undefined) {
+        lines.push(
+          `  Input: $${span.ai.inputCost.toFixed(6)}, Output: $${span.ai.outputCost.toFixed(6)}`
+        );
+      }
+    }
+    if (span.ai.tokensPerSecond !== undefined) {
+      lines.push(`Speed: ${span.ai.tokensPerSecond} tokens/sec`);
+    }
+    if (span.ai.msToFirstChunk !== undefined) {
+      lines.push(`Time to first chunk: ${span.ai.msToFirstChunk.toFixed(0)}ms`);
+    }
+    if (span.ai.finishReason) {
+      lines.push(`Finish reason: ${span.ai.finishReason}`);
+    }
+    if (span.ai.responseText) {
+      lines.push("");
+      lines.push("### AI Response");
+      lines.push(span.ai.responseText);
+    }
+  }
+
+  if (span.properties && Object.keys(span.properties).length > 0) {
+    lines.push("");
+    lines.push("### Properties");
+    lines.push(JSON.stringify(span.properties, null, 2));
+  }
+
+  if (span.events && span.events.length > 0) {
+    lines.push("");
+    lines.push(`### Events (${span.events.length})`);
+    const maxEvents = 10;
+    for (let i = 0; i < Math.min(span.events.length, maxEvents); i++) {
+      const event = span.events[i];
+      if (typeof event === "object" && event !== null) {
+        lines.push(JSON.stringify(event, null, 2));
+      }
+    }
+    if (span.events.length > maxEvents) {
+      lines.push(`... and ${span.events.length - maxEvents} more events`);
+    }
+  }
+
+  if (span.triggeredRuns && span.triggeredRuns.length > 0) {
+    lines.push("");
+    lines.push("### Triggered Runs");
+    for (const run of span.triggeredRuns) {
+      lines.push(`- ${run.runId} (${run.taskIdentifier}) - ${run.status.toLowerCase()}`);
+    }
+  }
+
+  return lines.join("\n");
 }
