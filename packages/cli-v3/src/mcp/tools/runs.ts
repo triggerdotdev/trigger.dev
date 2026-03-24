@@ -101,12 +101,26 @@ export const getRunDetailsTool = {
       const filePath = path.join(getTraceCacheDir(), `${input.runId}.txt`);
       fs.writeFileSync(filePath, fullTrace, "utf-8");
 
+      // Only cache runs in terminal states — active runs need fresh traces
+      const terminalStatuses = new Set([
+        "COMPLETED",
+        "CANCELED",
+        "FAILED",
+        "CRASHED",
+        "SYSTEM_FAILURE",
+        "EXPIRED",
+        "TIMED_OUT",
+      ]);
+
       cached = {
         filePath,
         totalLines: traceLines.length,
         expiresAt: Date.now() + TRACE_CACHE_TTL_MS,
       };
-      traceCache.set(input.runId, cached);
+
+      if (terminalStatuses.has(runResult.status)) {
+        traceCache.set(input.runId, cached);
+      }
     }
 
     // Read the requested page
