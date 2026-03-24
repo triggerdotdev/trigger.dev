@@ -490,13 +490,25 @@ export default function PromptDetailPage() {
         <PageAccessories>
           <div className="flex items-center gap-2">
             {selectedVersion && (
-              <span className="text-xs text-text-dimmed">
-                v{selectedVersion.version}
-                {isCurrent && <span className="ml-1 text-green-500">current</span>}
+              <div className="flex items-center gap-1.5">
+                <div
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    selectedVersion.labels.includes("override")
+                      ? "bg-amber-400"
+                      : isCurrent
+                      ? "bg-green-500"
+                      : "bg-charcoal-550"
+                  )}
+                />
+                <span className="text-xs text-text-dimmed">v{selectedVersion.version}</span>
+                {isCurrent && <Badge variant="extra-small">current</Badge>}
                 {selectedVersion.labels.includes("override") && (
-                  <span className="ml-1 text-amber-400">override</span>
+                  <Badge variant="extra-small" className="border-amber-500/30 text-amber-400">
+                    override
+                  </Badge>
                 )}
-              </span>
+              </div>
             )}
             {selectedVersion && !isCurrent && selectedVersion.source === "code" && (
               <Button
