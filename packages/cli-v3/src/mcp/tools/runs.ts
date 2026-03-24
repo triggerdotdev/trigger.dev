@@ -3,8 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { toolsMetadata } from "../config.js";
-import { formatRun, formatRunList, formatRunShape, formatRunTrace } from "../formatters.js";
-import { CommonRunsInput, GetRunDetailsInput, ListRunsInput, WaitForRunInput } from "../schemas.js";
+import { formatRun, formatRunList, formatRunShape, formatRunTrace, formatSpanDetail } from "../formatters.js";
+import { CommonRunsInput, GetRunDetailsInput, GetSpanDetailsInput, ListRunsInput, WaitForRunInput } from "../schemas.js";
 import { respondWithError, toolHandler } from "../utils.js";
 
 // Cache formatted traces in temp files keyed by runId.
@@ -152,6 +152,51 @@ export const getRunDetailsTool = {
           text: content.join("\n"),
         },
       ],
+    };
+  }),
+};
+
+export const getSpanDetailsTool = {
+  name: toolsMetadata.get_span_details.name,
+  title: toolsMetadata.get_span_details.title,
+  description: toolsMetadata.get_span_details.description,
+  inputSchema: GetSpanDetailsInput.shape,
+  handler: toolHandler(GetSpanDetailsInput.shape, async (input, { ctx }) => {
+    ctx.logger?.log("calling get_span_details", { input });
+
+    if (ctx.options.devOnly && input.environment !== "dev") {
+      return respondWithError(
+        `This MCP server is only available for the dev environment. You tried to access the ${input.environment} environment. Remove the --dev-only flag to access other environments.`
+      );
+    }
+
+    const projectRef = await ctx.getProjectRef({
+      projectRef: input.projectRef,
+      cwd: input.configPath,
+    });
+
+    const apiClient = await ctx.getApiClient({
+      projectRef,
+      environment: input.environment,
+      scopes: [`read:runs:${input.runId}`],
+      branch: input.branch,
+    });
+
+    const spanDetail = await apiClient.retrieveSpan(input.runId, input.spanId);
+    const formatted = formatSpanDetail(spanDetail);
+
+    const runUrl = await ctx.getDashboardUrl(
+      `/projects/v3/${projectRef}/runs/${input.runId}`
+    );
+
+    const content = [formatted];
+    if (runUrl) {
+      content.push("");
+      content.push(`[View run in dashboard](${runUrl})`);
+    }
+
+    return {
+      content: [{ type: "text", text: content.join("\n") }],
     };
   }),
 };

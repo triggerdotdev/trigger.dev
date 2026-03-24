@@ -70,6 +70,12 @@ export const toolsMetadata = {
     description:
       "Get the details and trace of a run. Trace events are paginated — the first call returns run details and the first page of trace lines. Pass the returned cursor to fetch subsequent pages without re-fetching the trace. The run ID starts with run_.",
   },
+  get_span_details: {
+    name: "get_span_details",
+    title: "Get Span Details",
+    description:
+      "Get detailed information about a specific span within a run trace. Use get_run_details first to see the trace and find span IDs (shown as [spanId] in the trace output). Returns timing, properties/attributes, error info, and for AI spans: model, tokens, cost, and response data.",
+  },
   wait_for_run_to_complete: {
     name: "wait_for_run_to_complete",
     title: "Wait for Run to Complete",

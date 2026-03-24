@@ -15,6 +15,7 @@ import { getQuerySchemaTool, queryTool } from "./tools/query.js";
 import {
   cancelRunTool,
   getRunDetailsTool,
+  getSpanDetailsTool,
   listRunsTool,
   waitForRunToCompleteTool,
 } from "./tools/runs.js";
@@ -56,6 +57,7 @@ export function registerTools(context: McpContext) {
     triggerTaskTool,
     listRunsTool,
     getRunDetailsTool,
+    getSpanDetailsTool,
     waitForRunToCompleteTool,
     cancelRunTool,
     deployTool,

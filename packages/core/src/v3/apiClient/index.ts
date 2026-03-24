@@ -54,6 +54,7 @@ import {
   PromptOverrideCreatedResponseBody,
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
+  RetrieveSpanDetailResponseBody,
   ScheduleObject,
   SendInputStreamResponseBody,
   StreamBatchItemsResponse,
@@ -594,6 +595,18 @@ export class ApiClient {
     return zodfetch(
       RetrieveRunTraceResponseBody,
       `${this.baseUrl}/api/v1/runs/${runId}/trace`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveSpan(runId: string, spanId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      RetrieveSpanDetailResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runId}/spans/${spanId}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),

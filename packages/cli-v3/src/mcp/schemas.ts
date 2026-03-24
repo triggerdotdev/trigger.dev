@@ -152,6 +152,16 @@ export const GetRunDetailsInput = CommonRunsInput.extend({
 
 export type GetRunDetailsInput = z.output<typeof GetRunDetailsInput>;
 
+export const GetSpanDetailsInput = CommonRunsInput.extend({
+  spanId: z
+    .string()
+    .describe(
+      "The span ID to get details for. You can find span IDs in the trace output from get_run_details — they appear as [spanId] before each span message."
+    ),
+});
+
+export type GetSpanDetailsInput = z.output<typeof GetSpanDetailsInput>;
+
 export const ListRunsInput = CommonProjectsInput.extend({
   cursor: z.string().describe("The cursor to use for pagination, starts with run_").optional(),
   limit: z

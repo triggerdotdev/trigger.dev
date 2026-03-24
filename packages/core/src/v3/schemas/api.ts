@@ -1624,6 +1624,55 @@ export const RetrieveRunTraceResponseBody = z.object({
 
 export type RetrieveRunTraceResponseBody = z.infer<typeof RetrieveRunTraceResponseBody>;
 
+export const RetrieveSpanDetailResponseBody = z.object({
+  spanId: z.string(),
+  parentId: z.string().nullable(),
+  runId: z.string(),
+  message: z.string(),
+  isError: z.boolean(),
+  isPartial: z.boolean(),
+  isCancelled: z.boolean(),
+  level: z.string(),
+  startTime: z.coerce.date(),
+  duration: z.number(),
+  durationMs: z.number(),
+  properties: z.record(z.any()).optional(),
+  events: z.array(z.any()).optional(),
+  entityType: z.string().optional(),
+  ai: z
+    .object({
+      model: z.string(),
+      provider: z.string(),
+      operationName: z.string(),
+      inputTokens: z.number(),
+      outputTokens: z.number(),
+      totalTokens: z.number(),
+      cachedTokens: z.number().optional(),
+      reasoningTokens: z.number().optional(),
+      inputCost: z.number().optional(),
+      outputCost: z.number().optional(),
+      totalCost: z.number().optional(),
+      tokensPerSecond: z.number().optional(),
+      msToFirstChunk: z.number().optional(),
+      durationMs: z.number(),
+      finishReason: z.string().optional(),
+      responseText: z.string().optional(),
+    })
+    .optional(),
+  triggeredRuns: z
+    .array(
+      z.object({
+        runId: z.string(),
+        taskIdentifier: z.string(),
+        status: z.string(),
+        createdAt: z.coerce.date(),
+      })
+    )
+    .optional(),
+});
+
+export type RetrieveSpanDetailResponseBody = z.infer<typeof RetrieveSpanDetailResponseBody>;
+
 export const CreateStreamResponseBody = z.object({
   version: z.string(),
 });
