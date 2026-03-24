@@ -56,6 +56,11 @@ export function rootPath() {
   return `/`;
 }
 
+/** Given a path, it makes it an impersonation path */
+export function impersonate(path: string) {
+  return `/@${path}`;
+}
+
 export function accountPath() {
   return `/account`;
 }
@@ -525,6 +530,25 @@ export function v3LogsPath(
   environment: EnvironmentForPath
 ) {
   return `${v3EnvironmentPath(organization, project, environment)}/logs`;
+}
+
+export function v3PromptsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/prompts`;
+}
+
+export function v3PromptPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  promptSlug: string,
+  version?: string | number
+) {
+  const base = `${v3PromptsPath(organization, project, environment)}/${promptSlug}`;
+  return version != null ? `${base}?version=${version}` : base;
 }
 
 export function v3ErrorsPath(

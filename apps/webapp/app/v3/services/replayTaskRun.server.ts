@@ -18,6 +18,7 @@ type OverrideOptions = {
   payload?: string;
   metadata?: unknown;
   bulkActionId?: string;
+  triggerSource?: string;
 } & RunOptionsData;
 
 export class ReplayTaskRunService extends BaseService {
@@ -123,6 +124,8 @@ export class ReplayTaskRunService extends BaseService {
           realtimeStreamsVersion: determineRealtimeStreamsVersion(
             existingTaskRun.realtimeStreamsVersion
           ),
+          triggerSource: overrideOptions.triggerSource ?? "api",
+          triggerAction: "replay",
         }
       );
 

@@ -27,7 +27,7 @@ export class PerformBulkActionService extends BaseService {
     switch (item.group.type) {
       case "REPLAY": {
         const service = new ReplayTaskRunService(this._prisma);
-        const result = await service.call(item.sourceRun);
+        const result = await service.call(item.sourceRun, { triggerSource: "dashboard" });
 
         await this._prisma.bulkActionItem.update({
           where: { id: item.id },

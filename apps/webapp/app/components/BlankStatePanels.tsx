@@ -4,11 +4,13 @@ import {
   BookOpenIcon,
   ChatBubbleLeftRightIcon,
   ClockIcon,
+  DocumentTextIcon,
   PlusIcon,
   QuestionMarkCircleIcon,
   RectangleGroupIcon,
   RectangleStackIcon,
   ServerStackIcon,
+  SparklesIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
 import { useLocation } from "react-use";
@@ -684,5 +686,57 @@ function DeploymentOnboardingSteps() {
         <Paragraph>This page will automatically refresh when your tasks are deployed.</Paragraph>
       </StepContentContainer>
     </PackageManagerProvider>
+  );
+}
+
+export function PromptsNone() {
+  return (
+    <InfoPanel
+      title="Define your first prompt"
+      icon={SparklesIcon}
+      iconClassName="text-purple-500"
+      panelClassName="max-w-lg"
+      accessory={
+        <LinkButton to={docsPath("prompt-management")} variant="docs/small" LeadingIcon={BookOpenIcon}>
+          Prompt docs
+        </LinkButton>
+      }
+    >
+      <Paragraph spacing variant="small">
+        Managed prompts let you define AI prompts in code with typesafe variables, then edit and
+        version them from the dashboard without redeploying.
+      </Paragraph>
+      <Paragraph spacing variant="small">
+        Add a prompt to your project using <InlineCode variant="small">prompts.define()</InlineCode>:
+      </Paragraph>
+      <div className="rounded border border-grid-dimmed bg-charcoal-900 p-3">
+        <pre className="text-xs leading-relaxed text-text-dimmed">
+          <span className="text-purple-400">import</span>
+          {" { prompts } "}
+          <span className="text-purple-400">from</span>
+          {' "@trigger.dev/sdk";\n'}
+          <span className="text-purple-400">import</span>
+          {" { z } "}
+          <span className="text-purple-400">from</span>
+          {' "zod";\n\n'}
+          <span className="text-purple-400">export const</span>
+          {" myPrompt = "}
+          <span className="text-blue-400">prompts.define</span>
+          {"({\n"}
+          {"  id: "}
+          <span className="text-green-400">"my-prompt"</span>
+          {",\n"}
+          {"  variables: z.object({\n"}
+          {"    name: z.string(),\n"}
+          {"  }),\n"}
+          {"  content: "}
+          <span className="text-green-400">{"`Hello {{name}}!`"}</span>
+          {",\n"});</pre>
+      </div>
+      <Paragraph variant="small" className="mt-2">
+        Deploy your project and your prompts will appear here with version history and a live
+        editor.
+      </Paragraph>
+    </InfoPanel>
   );
 }

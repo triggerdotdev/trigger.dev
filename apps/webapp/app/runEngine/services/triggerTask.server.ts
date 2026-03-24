@@ -6,6 +6,7 @@ import {
 import { Tracer } from "@opentelemetry/api";
 import { tryCatch } from "@trigger.dev/core/utils";
 import {
+  RunAnnotations,
   TaskRunError,
   taskRunErrorEnhancer,
   taskRunErrorToString,
@@ -289,6 +290,17 @@ export class RunEngineTriggerTaskService {
 
       const workerQueue = await this.queueConcern.getWorkerQueue(environment, body.options?.region);
 
+      // Build annotations for this run
+      const triggerSource = options.triggerSource ?? "api";
+      const triggerAction = options.triggerAction ?? "trigger";
+      const parentAnnotations = RunAnnotations.safeParse(parentRun?.annotations).data;
+      const annotations = {
+        triggerSource,
+        triggerAction,
+        rootTriggerSource: parentAnnotations?.rootTriggerSource ?? triggerSource,
+        rootScheduleId: parentAnnotations?.rootScheduleId || options.scheduleId || undefined,
+      };
+
       try {
         return await this.traceEventConcern.traceRun(
           triggerRequest,
@@ -369,6 +381,7 @@ export class RunEngineTriggerTaskService {
                 planType,
                 realtimeStreamsVersion: options.realtimeStreamsVersion,
                 debounce: body.options?.debounce,
+                annotations,
                 // When debouncing with triggerAndWait, create a span for the debounced trigger
                 onDebounced:
                   body.options?.debounce && body.options?.resumeParentOnCompletion

@@ -6,6 +6,10 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LogsTaskFilter } from "~/components/logs/LogsTaskFilter";
+import { ModelsFilter, type ModelOption } from "~/components/metrics/ModelsFilter";
+import { OperationsFilter } from "~/components/metrics/OperationsFilter";
+import { PromptsFilter } from "~/components/metrics/PromptsFilter";
+import { ProvidersFilter } from "~/components/metrics/ProvidersFilter";
 import { type WidgetData } from "~/components/metrics/QueryWidget";
 import { QueuesFilter } from "~/components/metrics/QueuesFilter";
 import { ScopeFilter } from "~/components/metrics/ScopeFilter";
@@ -22,10 +26,13 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
 import {
+  type BuiltInDashboardFilter,
   type LayoutItem,
   type Widget,
   MetricDashboardPresenter,
 } from "~/presenters/v3/MetricDashboardPresenter.server";
+import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
@@ -66,11 +73,54 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     getAllTaskIdentifiers($replica, environment.id),
   ]);
 
+  const filters = dashboard.filters ?? ["tasks", "queues"];
+
+  // Load distinct models from ClickHouse if the dashboard has a models filter
+  let possibleModels: { model: string; system: string }[] = [];
+  if (filters.includes("models")) {
+    const queryFn = clickhouseClient.reader.query({
+      name: "getDistinctModels",
+      query: `SELECT response_model, any(gen_ai_system) AS gen_ai_system FROM trigger_dev.llm_metrics_v1 WHERE organization_id = {organizationId: String} AND project_id = {projectId: String} AND environment_id = {environmentId: String} AND response_model != '' GROUP BY response_model ORDER BY response_model`,
+      params: z.object({
+        organizationId: z.string(),
+        projectId: z.string(),
+        environmentId: z.string(),
+      }),
+      schema: z.object({ response_model: z.string(), gen_ai_system: z.string() }),
+    });
+    const [error, rows] = await queryFn({
+      organizationId: project.organizationId,
+      projectId: project.id,
+      environmentId: environment.id,
+    });
+    if (!error) {
+      possibleModels = rows.map((r) => ({ model: r.response_model, system: r.gen_ai_system }));
+    }
+  }
+
+  const promptPresenter = new PromptPresenter(clickhouseClient);
+  const [possiblePrompts, possibleOperations, possibleProviders] = await Promise.all([
+    filters.includes("prompts")
+      ? promptPresenter.getDistinctPromptSlugs(project.organizationId, project.id, environment.id)
+      : ([] as string[]),
+    filters.includes("operations")
+      ? promptPresenter.getDistinctOperations(project.organizationId, project.id, environment.id)
+      : ([] as string[]),
+    filters.includes("providers")
+      ? promptPresenter.getDistinctProviders(project.organizationId, project.id, environment.id)
+      : ([] as string[]),
+  ]);
+
   return typedjson({
     ...dashboard,
+    filters,
     possibleTasks: possibleTasks
       .map((task) => ({ slug: task.slug, triggerSource: task.triggerSource }))
       .sort((a, b) => a.slug.localeCompare(b.slug)),
+    possibleModels,
+    possiblePrompts,
+    possibleOperations,
+    possibleProviders,
   });
 };
 
@@ -80,7 +130,12 @@ export default function Page() {
     title,
     layout: dashboardLayout,
     defaultPeriod,
+    filters,
     possibleTasks,
+    possibleModels,
+    possiblePrompts,
+    possibleOperations,
+    possibleProviders,
   } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
@@ -107,7 +162,12 @@ export default function Page() {
             widgets={dashboardLayout.widgets}
             defaultPeriod={defaultPeriod}
             editable={false}
+            filters={filters}
             possibleTasks={possibleTasks}
+            possibleModels={possibleModels}
+            possiblePrompts={possiblePrompts}
+            possibleOperations={possibleOperations}
+            possibleProviders={possibleProviders}
           />
         </div>
       </PageBody>
@@ -120,7 +180,12 @@ export function MetricDashboard({
   widgets,
   defaultPeriod,
   editable,
+  filters: filterConfig,
   possibleTasks,
+  possibleModels,
+  possiblePrompts,
+  possibleOperations,
+  possibleProviders,
   onLayoutChange,
   onEditWidget,
   onRenameWidget,
@@ -133,8 +198,18 @@ export function MetricDashboard({
   widgets: Record<string, Widget>;
   defaultPeriod: string;
   editable: boolean;
+  /** Which filters to show. Defaults to ["tasks", "queues"]. */
+  filters?: BuiltInDashboardFilter[];
   /** Possible tasks for filtering */
   possibleTasks?: { slug: string; triggerSource: TaskTriggerSource }[];
+  /** Possible models for filtering */
+  possibleModels?: ModelOption[];
+  /** Possible prompt slugs for filtering */
+  possiblePrompts?: string[];
+  /** Possible operations for filtering */
+  possibleOperations?: string[];
+  /** Possible providers for filtering */
+  possibleProviders?: string[];
   onLayoutChange?: (layout: LayoutItem[]) => void;
   onEditWidget?: (widgetId: string, widget: WidgetData) => void;
   onRenameWidget?: (widgetId: string, newTitle: string) => void;
@@ -161,6 +236,12 @@ export function MetricDashboard({
   const scope = parsedScope.success ? parsedScope.data : "environment";
   const tasks = values("tasks").filter((v) => v !== "");
   const queues = values("queues").filter((v) => v !== "");
+  const models = values("models").filter((v) => v !== "");
+  const prompts = values("prompts").filter((v) => v !== "");
+  const operations = values("operations").filter((v) => v !== "");
+  const providers = values("providers").filter((v) => v !== "");
+
+  const activeFilters = filterConfig ?? ["tasks", "queues"];
 
   const handleLayoutChange = useCallback(
     (newLayout: readonly LayoutItem[]) => {
@@ -187,8 +268,22 @@ export function MetricDashboard({
     <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
       <div className="flex items-center gap-1 border-b border-b-grid-bright py-2 pl-2 pr-3">
         <ScopeFilter />
-        <LogsTaskFilter possibleTasks={possibleTasks ?? []} />
-        <QueuesFilter />
+        {activeFilters.includes("tasks") && (
+          <LogsTaskFilter possibleTasks={possibleTasks ?? []} />
+        )}
+        {activeFilters.includes("queues") && <QueuesFilter />}
+        {activeFilters.includes("models") && (
+          <ModelsFilter possibleModels={possibleModels ?? []} />
+        )}
+        {activeFilters.includes("prompts") && (
+          <PromptsFilter possiblePrompts={possiblePrompts ?? []} />
+        )}
+        {activeFilters.includes("operations") && (
+          <OperationsFilter possibleOperations={possibleOperations ?? []} />
+        )}
+        {activeFilters.includes("providers") && (
+          <ProvidersFilter possibleProviders={possibleProviders ?? []} />
+        )}
         <TimeFilter
           defaultPeriod={defaultPeriod}
           labelName="Period"
@@ -243,6 +338,10 @@ export function MetricDashboard({
                     to={to ?? null}
                     taskIdentifiers={tasks.length > 0 ? tasks : undefined}
                     queues={queues.length > 0 ? queues : undefined}
+                    responseModels={models.length > 0 ? models : undefined}
+                    promptSlugs={prompts.length > 0 ? prompts : undefined}
+                    operations={operations.length > 0 ? operations : undefined}
+                    providers={providers.length > 0 ? providers : undefined}
                     config={widget.display}
                     organizationId={organization.id}
                     projectId={project.id}

@@ -540,6 +540,25 @@ export const DeploymentTriggeredVia = z
 
 export type DeploymentTriggeredVia = z.infer<typeof DeploymentTriggeredVia>;
 
+export const TriggerSource = z
+  .enum(["sdk", "api", "dashboard", "cli", "mcp", "schedule"])
+  .or(anyString);
+
+export type TriggerSource = z.infer<typeof TriggerSource>;
+
+export const TriggerAction = z.enum(["trigger", "replay", "test"]).or(anyString);
+
+export type TriggerAction = z.infer<typeof TriggerAction>;
+
+export const RunAnnotations = z.object({
+  triggerSource: TriggerSource,
+  triggerAction: TriggerAction,
+  rootTriggerSource: TriggerSource,
+  rootScheduleId: z.string().optional(),
+});
+
+export type RunAnnotations = z.infer<typeof RunAnnotations>;
+
 export const UpsertBranchRequestBody = z.object({
   git: GitMeta.optional(),
   env: z.enum(["preview"]),
@@ -1550,8 +1569,8 @@ export const ApiDeploymentListResponseItem = z.object({
   createdAt: z.coerce.date(),
   shortCode: z.string(),
   version: z.string(),
-  runtime: z.string(),
-  runtimeVersion: z.string(),
+  runtime: z.string().nullable(),
+  runtimeVersion: z.string().nullable(),
   status: z.enum([
     "PENDING",
     "BUILDING",
@@ -1624,6 +1643,54 @@ export const RetrieveRunTraceResponseBody = z.object({
 
 export type RetrieveRunTraceResponseBody = z.infer<typeof RetrieveRunTraceResponseBody>;
 
+export const RetrieveSpanDetailResponseBody = z.object({
+  spanId: z.string(),
+  parentId: z.string().nullable(),
+  runId: z.string(),
+  message: z.string(),
+  isError: z.boolean(),
+  isPartial: z.boolean(),
+  isCancelled: z.boolean(),
+  level: z.string(),
+  startTime: z.coerce.date(),
+  durationMs: z.number(),
+  properties: z.record(z.any()).optional(),
+  events: z.array(z.any()).optional(),
+  entityType: z.string().optional(),
+  ai: z
+    .object({
+      model: z.string(),
+      provider: z.string(),
+      operationName: z.string(),
+      inputTokens: z.number(),
+      outputTokens: z.number(),
+      totalTokens: z.number(),
+      cachedTokens: z.number().optional(),
+      reasoningTokens: z.number().optional(),
+      inputCost: z.number().optional(),
+      outputCost: z.number().optional(),
+      totalCost: z.number().optional(),
+      tokensPerSecond: z.number().optional(),
+      msToFirstChunk: z.number().optional(),
+      durationMs: z.number(),
+      finishReason: z.string().optional(),
+      responseText: z.string().optional(),
+    })
+    .optional(),
+  triggeredRuns: z
+    .array(
+      z.object({
+        runId: z.string(),
+        taskIdentifier: z.string(),
+        status: z.string(),
+        createdAt: z.coerce.date(),
+      })
+    )
+    .optional(),
+});
+
+export type RetrieveSpanDetailResponseBody = z.infer<typeof RetrieveSpanDetailResponseBody>;
+
 export const CreateStreamResponseBody = z.object({
   version: z.string(),
 });
@@ -1639,3 +1706,91 @@ export const SendInputStreamResponseBody = z.object({
   ok: z.boolean(),
 });
 export type SendInputStreamResponseBody = z.infer<typeof SendInputStreamResponseBody>;
+
+export const ResolvePromptRequestBody = z.object({
+  variables: z.record(z.unknown()).default({}),
+  label: z.string().optional(),
+  version: z.number().optional(),
+});
+export type ResolvePromptRequestBody = z.infer<typeof ResolvePromptRequestBody>;
+
+export const ResolvePromptResponseBody = z.object({
+  data: z.object({
+    promptId: z.string(),
+    slug: z.string(),
+    version: z.number(),
+    labels: z.array(z.string()),
+    template: z.string().optional(),
+    text: z.string().optional(),
+    model: z.string().optional().nullable(),
+    config: z.record(z.unknown()).optional().nullable(),
+  }),
+});
+export type ResolvePromptResponseBody = z.infer<typeof ResolvePromptResponseBody>;
+
+export const ListPromptsResponseBody = z.object({
+  data: z.array(
+    z.object({
+      slug: z.string(),
+      friendlyId: z.string(),
+      description: z.string().nullable(),
+      tags: z.array(z.string()),
+      defaultModel: z.string().nullable(),
+      currentVersion: z.number().nullable(),
+      hasOverride: z.boolean(),
+      updatedAt: z.string(),
+    })
+  ),
+});
+export type ListPromptsResponseBody = z.infer<typeof ListPromptsResponseBody>;
+
+export const ListPromptVersionsResponseBody = z.object({
+  data: z.array(
+    z.object({
+      id: z.string(),
+      version: z.number(),
+      labels: z.array(z.string()),
+      source: z.string(),
+      model: z.string().nullable(),
+      textContent: z.string().nullable(),
+      commitMessage: z.string().nullable(),
+      contentHash: z.string(),
+      createdAt: z.string(),
+    })
+  ),
+});
+export type ListPromptVersionsResponseBody = z.infer<typeof ListPromptVersionsResponseBody>;
+
+export const PromotePromptVersionRequestBody = z.object({
+  version: z.number().int().positive(),
+});
+export type PromotePromptVersionRequestBody = z.infer<typeof PromotePromptVersionRequestBody>;
+
+export const CreatePromptOverrideRequestBody = z.object({
+  textContent: z.string(),
+  model: z.string().optional(),
+  commitMessage: z.string().optional(),
+  source: z.string().optional(),
+});
+export type CreatePromptOverrideRequestBody = z.infer<typeof CreatePromptOverrideRequestBody>;
+
+export const UpdatePromptOverrideRequestBody = z.object({
+  textContent: z.string().optional(),
+  model: z.string().optional(),
+  commitMessage: z.string().optional(),
+});
+export type UpdatePromptOverrideRequestBody = z.infer<typeof UpdatePromptOverrideRequestBody>;
+
+export const ReactivatePromptOverrideRequestBody = z.object({
+  version: z.number().int().positive(),
+});
+export type ReactivatePromptOverrideRequestBody = z.infer<typeof ReactivatePromptOverrideRequestBody>;
+
+export const PromptOkResponseBody = z.object({ ok: z.boolean() });
+export type PromptOkResponseBody = z.infer<typeof PromptOkResponseBody>;
+
+export const PromptOverrideCreatedResponseBody = z.object({
+  ok: z.boolean(),
+  version: z.number(),
+});
+export type PromptOverrideCreatedResponseBody = z.infer<typeof PromptOverrideCreatedResponseBody>;

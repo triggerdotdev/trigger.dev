@@ -1294,7 +1294,7 @@ export class VercelIntegrationRepository {
                 );
 
                 if (envVarsResult.isErr()) {
-                  logger.error("pullEnvVarsFromVercel: Failed to get env vars", {
+                  logger.warn("pullEnvVarsFromVercel: Failed to get env vars", {
                     triggerEnvType: mapping.triggerEnvType,
                     vercelTarget: mapping.vercelTarget,
                     error: envVarsResult.error.message,

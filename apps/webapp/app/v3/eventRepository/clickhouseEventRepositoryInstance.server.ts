@@ -64,6 +64,10 @@ function initializeClickhouseRepository() {
     asyncInsertMaxDataSize: env.EVENTS_CLICKHOUSE_ASYNC_INSERT_MAX_DATA_SIZE,
     asyncInsertBusyTimeoutMs: env.EVENTS_CLICKHOUSE_ASYNC_INSERT_BUSY_TIMEOUT_MS,
     startTimeMaxAgeMs: env.EVENTS_CLICKHOUSE_START_TIME_MAX_AGE_MS,
+    llmMetricsBatchSize: env.LLM_METRICS_BATCH_SIZE,
+    llmMetricsFlushInterval: env.LLM_METRICS_FLUSH_INTERVAL_MS,
+    llmMetricsMaxBatchSize: env.LLM_METRICS_MAX_BATCH_SIZE,
+    llmMetricsMaxConcurrency: env.LLM_METRICS_MAX_CONCURRENCY,
     version: "v1",
   });
 
@@ -97,6 +101,10 @@ function initializeClickhouseRepositoryV2() {
     waitForAsyncInsert: env.EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT === "1",
     asyncInsertMaxDataSize: env.EVENTS_CLICKHOUSE_ASYNC_INSERT_MAX_DATA_SIZE,
     asyncInsertBusyTimeoutMs: env.EVENTS_CLICKHOUSE_ASYNC_INSERT_BUSY_TIMEOUT_MS,
+    llmMetricsBatchSize: env.LLM_METRICS_BATCH_SIZE,
+    llmMetricsFlushInterval: env.LLM_METRICS_FLUSH_INTERVAL_MS,
+    llmMetricsMaxBatchSize: env.LLM_METRICS_MAX_BATCH_SIZE,
+    llmMetricsMaxConcurrency: env.LLM_METRICS_MAX_CONCURRENCY,
     version: "v2",
   });
 

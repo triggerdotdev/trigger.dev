@@ -222,6 +222,12 @@ export type TriggerParams = {
     mode?: "leading" | "trailing";
     maxDelay?: string;
   };
+  annotations?: {
+    triggerSource: string;
+    triggerAction: string;
+    rootTriggerSource: string;
+    rootScheduleId?: string;
+  };
   /**
    * Called when a run is debounced (existing delayed run found with triggerAndWait).
    * Return spanIdToComplete to enable span closing when the run completes.

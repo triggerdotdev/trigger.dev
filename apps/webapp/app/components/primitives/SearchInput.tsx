@@ -6,22 +6,25 @@ import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { cn } from "~/utils/cn";
 
-export type LogsSearchInputProps = {
+export type SearchInputProps = {
   placeholder?: string;
+  /** Additional URL params to reset when searching or clearing (e.g. pagination). Defaults to ["cursor", "direction"]. */
+  resetParams?: string[];
 };
 
-export function LogsSearchInput({ placeholder = "Search logs…" }: LogsSearchInputProps) {
+export function SearchInput({
+  placeholder = "Search logs…",
+  resetParams = ["cursor", "direction"],
+}: SearchInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { value, replace, del } = useSearchParams();
 
-  // Get initial search value from URL
   const initialSearch = value("search") ?? "";
 
   const [text, setText] = useState(initialSearch);
   const [isFocused, setIsFocused] = useState(false);
 
-  // Update text when URL search param changes (only when not focused to avoid overwriting user input)
   useEffect(() => {
     const urlSearch = value("search") ?? "";
     if (urlSearch !== text && !isFocused) {
@@ -30,21 +33,22 @@ export function LogsSearchInput({ placeholder = "Search logs…" }: LogsSearchIn
   }, [value, text, isFocused]);
 
   const handleSubmit = useCallback(() => {
+    const resetValues = Object.fromEntries(resetParams.map((p) => [p, undefined]));
     if (text.trim()) {
-      replace({ search: text.trim() });
+      replace({ search: text.trim(), ...resetValues });
     } else {
-      del("search");
+      del(["search", ...resetParams]);
     }
-  }, [text, replace, del]);
+  }, [text, replace, del, resetParams]);
 
   const handleClear = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>) => {
       e.preventDefault();
       e.stopPropagation();
       setText("");
-      del(["search", "cursor", "direction"]);
+      del(["search", ...resetParams]);
     },
-    [del]
+    [del, resetParams]
   );
 
   return (
@@ -82,12 +86,12 @@ export function LogsSearchInput({ placeholder = "Search logs…" }: LogsSearchIn
           icon={<MagnifyingGlassIcon className="size-4" />}
           accessory={
             text.length > 0 ? (
-              <div className="-mr-1 flex items-center gap-1">
-                <ShortcutKey shortcut={{ key: "enter" }} variant="small" />
+              <div className="-mr-1 flex items-center gap-1.5">
+                <ShortcutKey shortcut={{ key: "enter" }} variant="medium" className="border-none" />
                 <button
                   type="button"
                   onClick={handleClear}
-                  className="flex size-4.5 items-center justify-center rounded-[2px] border border-text-dimmed/40 text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+                  className="flex size-4.5 items-center justify-center rounded-[2px] border border-text-dimmed/40 text-text-dimmed transition hover:bg-charcoal-600 hover:text-text-bright"
                   title="Clear search"
                 >
                   <XMarkIcon className="size-3" />

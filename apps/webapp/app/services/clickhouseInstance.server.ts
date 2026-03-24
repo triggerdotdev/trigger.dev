@@ -71,6 +71,34 @@ function initializeLogsClickhouseClient() {
   });
 }
 
+export const adminClickhouseClient = singleton(
+  "adminClickhouseClient",
+  initializeAdminClickhouseClient
+);
+
+function initializeAdminClickhouseClient() {
+  if (!env.ADMIN_CLICKHOUSE_URL) {
+    throw new Error("ADMIN_CLICKHOUSE_URL is not set");
+  }
+
+  const url = new URL(env.ADMIN_CLICKHOUSE_URL);
+  url.searchParams.delete("secure");
+
+  return new ClickHouse({
+    url: url.toString(),
+    name: "admin-clickhouse",
+    keepAlive: {
+      enabled: env.CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.CLICKHOUSE_LOG_LEVEL,
+    compression: {
+      request: true,
+    },
+    maxOpenConnections: env.CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+  });
+}
+
 export const queryClickhouseClient = singleton(
   "queryClickhouseClient",
   initializeQueryClickhouseClient
@@ -82,6 +110,9 @@ function initializeQueryClickhouseClient() {
   }
 
   const url = new URL(env.QUERY_CLICKHOUSE_URL);
+
+  // Remove secure param
+  url.searchParams.delete("secure");
 
   return new ClickHouse({
     url: url.toString(),

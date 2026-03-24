@@ -59,3 +59,4 @@ export * as queues from "./queues.js";
 export type { ImportEnvironmentVariablesParams } from "./envvars.js";
 
 export { configure, auth } from "./auth.js";
+export * as prompts from "./prompts.js";

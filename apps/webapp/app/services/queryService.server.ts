@@ -73,6 +73,16 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   taskIdentifiers?: string[];
   /** Filter to specific queues */
   queues?: string[];
+  /** Filter to specific response models */
+  responseModels?: string[];
+  /** Filter to specific prompt slugs */
+  promptSlugs?: string[];
+  /** Filter to specific prompt versions */
+  promptVersions?: number[];
+  /** Filter to specific operations (e.g. ai.generateText.doGenerate) */
+  operations?: string[];
+  /** Filter to specific providers (e.g. openai.responses) */
+  providers?: string[];
   /** History options for saving query to billing/audit */
   history?: {
     /** Where the query originated from */
@@ -127,6 +137,11 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     environmentId,
     taskIdentifiers,
     queues,
+    responseModels,
+    promptSlugs,
+    promptVersions,
+    operations,
+    providers,
     history,
     customOrgConcurrencyLimit,
     ...baseOptions
@@ -210,6 +225,20 @@ export async function executeQuery<TOut extends z.ZodSchema>(
         ? { op: "in", values: taskIdentifiers }
         : undefined,
     queue: queues && queues.length > 0 ? { op: "in", values: queues } : undefined,
+    response_model:
+      responseModels && responseModels.length > 0
+        ? { op: "in", values: responseModels }
+        : undefined,
+    prompt_slug:
+      promptSlugs && promptSlugs.length > 0 ? { op: "in", values: promptSlugs } : undefined,
+    prompt_version:
+      promptVersions && promptVersions.length > 0
+        ? { op: "in", values: promptVersions }
+        : undefined,
+    operation_id:
+      operations && operations.length > 0 ? { op: "in", values: operations } : undefined,
+    gen_ai_system:
+      providers && providers.length > 0 ? { op: "in", values: providers } : undefined,
   } satisfies Record<string, WhereClauseCondition | undefined>;
 
   // Compute the effective time range for timeBucket() interval calculation
