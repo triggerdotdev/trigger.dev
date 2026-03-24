@@ -1076,7 +1076,9 @@ const BuildKitMetadata = z.object({
   "image.name": z.string().optional(),
 });
 
-// Don't push if the image tag is a local address, unless the user explicitly wants to push
+// Self-hosted installations commonly use a local registry such as localhost:5000.
+// In that case we still need to push, otherwise the deployment can complete while the
+// supervisor later fails with "No such image".
 function shouldPush(imageTag: string, push?: boolean) {
   switch (push) {
     case true: {
@@ -1086,11 +1088,7 @@ function shouldPush(imageTag: string, push?: boolean) {
       return false;
     }
     case undefined: {
-      return imageTag.startsWith("localhost") ||
-        imageTag.startsWith("127.0.0.1") ||
-        imageTag.startsWith("0.0.0.0")
-        ? false
-        : true;
+      return true;
     }
     default: {
       assertExhaustive(push);
