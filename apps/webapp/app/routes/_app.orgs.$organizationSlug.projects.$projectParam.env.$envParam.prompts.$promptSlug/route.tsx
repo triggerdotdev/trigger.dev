@@ -9,6 +9,7 @@ import {
   redirect,
 } from "@remix-run/server-runtime";
 
+import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { CodeBlock } from "~/components/code/CodeBlock";
@@ -474,7 +475,7 @@ export default function PromptDetailPage() {
   };
 
   return (
-    <PageContainer>
+    <PageContainer className="grid-rows-[auto_auto_1fr]">
       <NavBar>
         <PageTitle
           title={
@@ -530,26 +531,41 @@ export default function PromptDetailPage() {
           </div>
         </PageAccessories>
       </NavBar>
-      {overrideVersion && (
-        <div className="flex items-center justify-between bg-amber-500/10 px-4 py-2">
-          <span className="text-xs text-amber-300">
-            Override v{overrideVersion.version} is active. API calls resolve this version instead of
-            the deployed prompt.
-          </span>
-          <div className="flex items-center gap-2">
-            <Button variant="tertiary/small" onClick={() => setOverrideDialogOpen(true)}>
-              Edit
-            </Button>
-            <Button
-              variant="tertiary/small"
-              onClick={() => fetcher.submit({ intent: "removeOverride" }, { method: "POST" })}
-              disabled={fetcher.state !== "idle"}
+      <div>
+        <AnimatePresence initial={false}>
+          {overrideVersion && (
+            <motion.div
+              className="flex flex-wrap items-center justify-between gap-2 overflow-hidden border-b border-amber-500/10 bg-amber-500/10 pl-4 pr-2"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
             >
-              Remove
-            </Button>
-          </div>
-        </div>
-      )}
+              <span className="py-1.5 text-xs text-amber-300">
+                Override v{overrideVersion.version} is active. API calls resolve to this version
+                instead of the deployed prompt.
+              </span>
+              <div className="flex items-center gap-2 py-1.5">
+                <Button
+                  variant="tertiary/small"
+                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
+                  onClick={() => setOverrideDialogOpen(true)}
+                >
+                  Edit
+                </Button>
+                <Button
+                  variant="tertiary/small"
+                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
+                  onClick={() => fetcher.submit({ intent: "removeOverride" }, { method: "POST" })}
+                  disabled={fetcher.state !== "idle"}
+                >
+                  Remove
+                </Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
       <PageBody scrollable={false}>
         <ResizablePanelGroup
           autosaveId="prompt-detail"
@@ -718,10 +734,12 @@ export default function PromptDetailPage() {
               </div>
 
               {/* Tab content */}
-              <div className={cn(
-                "overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
-                tab === "versions" ? "py-0" : "px-3 py-3"
-              )}>
+              <div
+                className={cn(
+                  "overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+                  tab === "versions" ? "py-0" : "px-3 py-3"
+                )}
+              >
                 {tab === "details" && (
                   <DetailsTab prompt={prompt} selectedVersion={selectedVersion} />
                 )}
@@ -1896,11 +1914,7 @@ function VersionsTab({
                 <div
                   className={cn(
                     "size-2 shrink-0 rounded-full",
-                    isOverride
-                      ? "bg-amber-400"
-                      : isCurrent
-                      ? "bg-green-500"
-                      : "bg-charcoal-600"
+                    isOverride ? "bg-amber-400" : isCurrent ? "bg-green-500" : "bg-charcoal-600"
                   )}
                 />
                 <span className="font-medium text-text-bright">v{v.version}</span>
@@ -1911,7 +1925,12 @@ function VersionsTab({
                 )}
                 {isCurrent && <Badge variant="extra-small">current</Badge>}
                 {isLatest && !isCurrent && <Badge variant="extra-small">latest</Badge>}
-                <span className={cn("text-xs", v.source !== "code" ? "text-amber-400" : "text-text-dimmed")}>
+                <span
+                  className={cn(
+                    "text-xs",
+                    v.source !== "code" ? "text-amber-400" : "text-text-dimmed"
+                  )}
+                >
                   {v.source}
                 </span>
               </div>
