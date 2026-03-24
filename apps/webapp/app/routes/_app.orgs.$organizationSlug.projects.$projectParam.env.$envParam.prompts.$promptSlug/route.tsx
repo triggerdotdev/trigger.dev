@@ -1,5 +1,5 @@
 import * as Ariakit from "@ariakit/react";
-import { ArrowPathIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon, ChevronUpDownIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { type MetaFunction, useFetcher } from "@remix-run/react";
 import {
@@ -21,6 +21,7 @@ import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
 import { CopyButton } from "~/components/primitives/CopyButton";
+import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
@@ -31,6 +32,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
   ResizableHandle,
@@ -71,8 +73,10 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { TextLink } from "~/components/primitives/TextLink";
 import { MetricWidget } from "~/routes/resources.metric";
+import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, v3PromptsPath, v3RunSpanPath } from "~/utils/pathBuilder";
 import { parsePeriodToMs } from "~/utils/periods";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   promptSlug: z.string(),
@@ -473,12 +477,11 @@ export default function PromptDetailPage() {
       <NavBar>
         <PageTitle
           title={
-            <div className="flex items-center gap-2">
-              <span>{prompt.slug}</span>
-              <span className="font-mono text-xs text-text-dimmed">
-                <CopyableText value={prompt.friendlyId} />
-              </span>
-            </div>
+            <PromptCopyPopover
+              slug={prompt.slug}
+              friendlyId={prompt.friendlyId}
+              description={prompt.description}
+            />
           }
           backButton={{ to: v3PromptsPath(organization, project, environment), text: "Prompts" }}
         />
@@ -495,7 +498,7 @@ export default function PromptDetailPage() {
             )}
             {selectedVersion && !isCurrent && selectedVersion.source === "code" && (
               <Button
-                variant="tertiary/small"
+                variant="secondary/small"
                 onClick={() => handlePromote(selectedVersion.id)}
                 disabled={fetcher.state !== "idle"}
               >
@@ -506,7 +509,7 @@ export default function PromptDetailPage() {
               selectedVersion.source !== "code" &&
               !selectedVersion.labels.includes("override") && (
                 <Button
-                  variant="tertiary/small"
+                  variant="secondary/small"
                   onClick={() =>
                     fetcher.submit(
                       { intent: "reactivateOverride", versionId: selectedVersion.id },
@@ -519,7 +522,7 @@ export default function PromptDetailPage() {
                 </Button>
               )}
             {!overrideVersion && (
-              <Button variant="tertiary/small" onClick={() => setOverrideDialogOpen(true)}>
+              <Button variant="secondary/small" onClick={() => setOverrideDialogOpen(true)}>
                 Create Override
               </Button>
             )}
@@ -1948,5 +1951,110 @@ function VersionsTab({
         );
       })}
     </div>
+  );
+}
+
+const MAX_DESCRIPTION_PREVIEW = 80;
+
+function PromptCopyPopover({
+  slug,
+  friendlyId,
+  description,
+}: {
+  slug: string;
+  friendlyId: string;
+  description: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger className="-ml-1.5 flex items-center gap-1 rounded py-1.5 pl-2 pr-1.5 font-mono text-xs text-text-dimmed transition focus-custom hover:bg-charcoal-750 hover:text-text-bright">
+        {slug}
+        <ChevronUpDownIcon className="size-4 text-charcoal-500" />
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="flex min-w-0 flex-col p-1"
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          const el = e.currentTarget as HTMLElement;
+          el.style.pointerEvents = "none";
+          requestAnimationFrame(() => {
+            el.style.pointerEvents = "";
+          });
+        }}
+      >
+        <CopyPopoverItem label="Copy slug" value={slug} onCopied={() => setOpen(false)} />
+        <CopyPopoverItem
+          label="Copy friendly ID"
+          value={friendlyId}
+          onCopied={() => setOpen(false)}
+        />
+        {description && (
+          <CopyPopoverItem
+            label="Copy description"
+            value={description}
+            preview={
+              description.length > MAX_DESCRIPTION_PREVIEW
+                ? description.slice(0, MAX_DESCRIPTION_PREVIEW) + "…"
+                : description
+            }
+            onCopied={() => setOpen(false)}
+          />
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function CopyPopoverItem({
+  label,
+  value,
+  preview,
+  onCopied,
+}: {
+  label: string;
+  value: string;
+  preview?: string;
+  onCopied?: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => {
+      setCopied(false);
+      onCopied?.();
+    }, 600);
+  };
+
+  return (
+    <SimpleTooltip
+      button={
+        <button
+          type="button"
+          onClick={handleCopy}
+          className={cn(
+            "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition",
+            copied
+              ? "text-green-500"
+              : "text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+          )}
+        >
+          {copied ? (
+            <ClipboardCheckIcon className="size-3.5 shrink-0" />
+          ) : (
+            <ClipboardIcon className="size-3.5 shrink-0" />
+          )}
+          {label}
+        </button>
+      }
+      content={<span className="max-w-64 break-all font-mono text-xs">{preview ?? value}</span>}
+      side="right"
+      disableHoverableContent
+      asChild
+    />
   );
 }
