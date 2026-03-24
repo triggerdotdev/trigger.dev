@@ -13,12 +13,12 @@ import { useProject } from "~/hooks/useProject";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { v3PromptPath } from "~/utils/pathBuilder";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { AIChatMessages, AssistantResponse, ChatBubble } from "./AIChatMessages";
-import type { PromptLink } from "./AIChatMessages";
+import { AIChatMessages, AssistantResponse, ChatBubble, type PromptLink } from "./AIChatMessages";
 import { AIStatsSummary, AITagsRow } from "./AIModelSummary";
 import { AIToolsInventory } from "./AIToolsInventory";
 import type { AISpanData, DisplayItem } from "./types";
 import type { PromptSpanData } from "~/presenters/v3/SpanPresenter.server";
+import { SpanHorizontalTimeline } from "~/components/runs/v3/SpanHorizontalTimeline";
 
 const StreamdownRenderer = lazy(() =>
   import("streamdown").then((mod) => ({
@@ -36,10 +36,14 @@ export function AISpanDetails({
   aiData,
   promptVersionData,
   rawProperties,
+  startTime,
+  duration,
 }: {
   aiData: AISpanData;
   promptVersionData?: PromptSpanData;
   rawProperties?: string;
+  startTime?: string | Date;
+  duration?: number | null;
 }) {
   const [tab, setTab] = useState<AITab>("overview");
   const isAdmin = useHasAdminAccess();
@@ -109,7 +113,12 @@ export function AISpanDetails({
 
       {/* Tab content */}
       <div className="scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        {tab === "overview" && <OverviewTab aiData={aiData} />}
+        {tab === "overview" && (
+          <>
+            {startTime && <div className="px-3"><SpanHorizontalTimeline startTime={startTime} duration={duration ?? null} /></div>}
+            <OverviewTab aiData={aiData} />
+          </>
+        )}
         {tab === "messages" && <MessagesTab aiData={aiData} promptLink={promptLink} />}
         {tab === "tools" && <ToolsTab aiData={aiData} />}
         {tab === "prompt" && promptVersionData && (
