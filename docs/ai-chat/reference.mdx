@@ -17,6 +17,9 @@ Options for `chat.task()`.
 | `onChatStart` | `(event: ChatStartEvent) => Promise<void> \| void` | — | Fires on turn 0 before `run()` |
 | `onTurnStart` | `(event: TurnStartEvent) => Promise<void> \| void` | — | Fires every turn before `run()` |
 | `onTurnComplete` | `(event: TurnCompleteEvent) => Promise<void> \| void` | — | Fires after each turn completes |
+| `onCompacted` | `(event: CompactedEvent) => Promise<void> \| void` | — | Fires when compaction occurs. See [Compaction](/ai-chat/compaction) |
+| `compaction` | `ChatTaskCompactionOptions` | — | Automatic context compaction. See [Compaction](/ai-chat/compaction) |
+| `prepareMessages` | `(event: PrepareMessagesEvent) => ModelMessage[]` | — | Transform model messages before use (cache breaks, context injection, etc.) |
 | `maxTurns` | `number` | `100` | Max conversational turns per run |
 | `turnTimeout` | `string` | `"1h"` | How long to wait for next message |
 | `idleTimeoutInSeconds` | `number` | `30` | Seconds to stay idle before suspending |
@@ -105,6 +108,50 @@ Passed to the `onTurnComplete` callback.
 | `lastEventId` | `string \| undefined` | Stream position for resumption |
 | `stopped` | `boolean` | Whether the user stopped generation during this turn |
 | `continuation` | `boolean` | Whether this run is continuing an existing chat |
+| `usage` | `LanguageModelUsage \| undefined` | Token usage for this turn |
+| `totalUsage` | `LanguageModelUsage` | Cumulative token usage across all turns |
+
+## ChatTaskCompactionOptions
+
+Options for the `compaction` field on `chat.task()`. See [Compaction](/ai-chat/compaction) for usage guide.
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `shouldCompact` | `(event: ShouldCompactEvent) => boolean \| Promise<boolean>` | Yes | Decide whether to compact. Return `true` to trigger |
+| `summarize` | `(event: SummarizeEvent) => Promise<string>` | Yes | Generate a summary from the current messages |
+| `compactUIMessages` | `(event: CompactMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | No | Transform UI messages after compaction. Default: preserve all |
+| `compactModelMessages` | `(event: CompactMessagesEvent) => ModelMessage[] \| Promise<ModelMessage[]>` | No | Transform model messages after compaction. Default: replace all with summary |
+
+## CompactMessagesEvent
+
+Passed to `compactUIMessages` and `compactModelMessages` callbacks.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `summary` | `string` | The generated summary text |
+| `uiMessages` | `UIMessage[]` | Current UI messages (full conversation) |
+| `modelMessages` | `ModelMessage[]` | Current model messages (full conversation) |
+| `chatId` | `string` | Chat session ID |
+| `turn` | `number` | Current turn (0-indexed) |
+| `clientData` | `unknown` | Custom data from the frontend |
+| `source` | `"inner" \| "outer"` | Whether compaction is between steps or between turns |
+
+## CompactedEvent
+
+Passed to the `onCompacted` callback.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `summary` | `string` | The generated summary text |
+| `messages` | `ModelMessage[]` | Messages that were compacted (pre-compaction) |
+| `messageCount` | `number` | Number of messages before compaction |
+| `usage` | `LanguageModelUsage` | Token usage from the triggering step/turn |
+| `totalTokens` | `number \| undefined` | Total token count that triggered compaction |
+| `inputTokens` | `number \| undefined` | Input token count |
+| `outputTokens` | `number \| undefined` | Output token count |
+| `stepNumber` | `number` | Step number (-1 for outer loop) |
+| `chatId` | `string \| undefined` | Chat session ID |
+| `turn` | `number \| undefined` | Current turn |
 
 ## ChatSessionOptions
 
