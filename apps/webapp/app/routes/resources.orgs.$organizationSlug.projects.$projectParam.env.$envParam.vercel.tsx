@@ -113,6 +113,7 @@ const CompleteOnboardingFormSchema = z.object({
   syncEnvVarsMapping: z.string().optional(),
   next: z.string().optional(),
   skipRedirect: z.string().optional().transform((val) => val === "true"),
+  origin: z.string().optional(),
 });
 
 const SkipOnboardingFormSchema = z.object({

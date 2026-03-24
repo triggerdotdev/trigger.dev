@@ -3,7 +3,8 @@ import { parse } from "@conform-to/zod";
 import { CheckCircleIcon, LockClosedIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigation, useNavigate, useSearchParams, useLocation } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { typedjson, useTypedFetcher } from "remix-typedjson";
+import { redirect,
+typedjson, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
@@ -39,6 +40,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { logger } from "~/services/logger.server";
+import { triggerInitialDeployment } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import {
   githubAppInstallPath,
@@ -208,6 +210,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
 
     if (resultOrFail.isOk()) {
+      // Trigger initial deployment for marketplace flows now that GitHub is connected
+      if (redirectUrl) {
+        try {
+          if (redirectUrl.includes("origin=marketplace")) {
+            await triggerInitialDeployment(projectId, { environment: "prod" });
+          }
+        } catch (error) {
+          logger.error("Invalid redirect URL, skipping initial deployment trigger", { redirectUrl, error });
+          // Invalid redirectUrl, skip initial deployment check
+        }
+      }
+
       return redirectWithMessage(
         request,
         redirectUrl,
