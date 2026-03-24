@@ -958,7 +958,7 @@ function DetailsTab({
         <Property.Item>
           <Property.Label>Slug</Property.Label>
           <Property.Value>
-            <code className="text-xs">{prompt.slug}</code>
+            <code className="text-sm">{prompt.slug}</code>
           </Property.Value>
         </Property.Item>
         {prompt.description && (
@@ -975,7 +975,7 @@ function DetailsTab({
         )}
         {prompt.defaultConfig && (
           <Property.Item>
-            <Property.Label>Config</Property.Label>
+            <Property.Label className="mb-1.5">Config</Property.Label>
             <Property.Value>
               <CodeBlock
                 code={JSON.stringify(prompt.defaultConfig, null, 2)}
@@ -989,7 +989,7 @@ function DetailsTab({
           <Property.Item>
             <Property.Label>Source</Property.Label>
             <Property.Value>
-              <code className="text-xs">
+              <code className="text-sm">
                 {prompt.filePath}
                 {prompt.exportName ? ` (${prompt.exportName})` : ""}
               </code>
