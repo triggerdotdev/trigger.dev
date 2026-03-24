@@ -236,7 +236,11 @@ function formatSpan(
 
   // Format span header
   const statusIndicator = getStatusIndicator(span.data);
-  const duration = formatDuration(span.data.duration);
+  // Trace durations from ClickHouse are nanoseconds, from Postgres are milliseconds.
+  // Normalize: values over 1e6 are nanoseconds (1e6 ns = 1ms; 1e6 ms = 16min).
+  const durationMs =
+    span.data.duration > 1_000_000 ? span.data.duration / 1_000_000 : span.data.duration;
+  const duration = formatDuration(durationMs);
   const startTime = formatDateTime(span.data.startTime);
 
   lines.push(`${indent}${prefix} [${span.id}] ${span.data.message} ${statusIndicator}`);
