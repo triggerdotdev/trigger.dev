@@ -648,6 +648,7 @@ export default function PromptDetailPage() {
                         labelName="Period"
                         hideLabel
                         valueClassName="text-text-bright"
+                        shortcut={{ key: "t" }}
                       />
                     </div>
                   </div>
@@ -1819,6 +1820,7 @@ function PromptVersionsFilter({ versions }: { versions: VersionData[] }) {
           }
           variant="secondary/small"
           tooltipTitle="Filter by version"
+          shortcut={{ key: "e" }}
         >
           <span className="ml-0.5">Versions</span>
         </SelectTrigger>
