@@ -19,6 +19,7 @@ Options for `chat.task()`.
 | `onTurnComplete` | `(event: TurnCompleteEvent) => Promise<void> \| void` | — | Fires after each turn completes |
 | `onCompacted` | `(event: CompactedEvent) => Promise<void> \| void` | — | Fires when compaction occurs. See [Compaction](/ai-chat/compaction) |
 | `compaction` | `ChatTaskCompactionOptions` | — | Automatic context compaction. See [Compaction](/ai-chat/compaction) |
+| `pendingMessages` | `PendingMessagesOptions` | — | Mid-execution message injection. See [Pending Messages](/ai-chat/pending-messages) |
 | `prepareMessages` | `(event: PrepareMessagesEvent) => ModelMessage[]` | — | Transform model messages before use (cache breaks, context injection, etc.) |
 | `maxTurns` | `number` | `100` | Max conversational turns per run |
 | `turnTimeout` | `string` | `"1h"` | How long to wait for next message |
@@ -152,6 +153,57 @@ Passed to the `onCompacted` callback.
 | `stepNumber` | `number` | Step number (-1 for outer loop) |
 | `chatId` | `string \| undefined` | Chat session ID |
 | `turn` | `number \| undefined` | Current turn |
+
+## PendingMessagesOptions
+
+Options for the `pendingMessages` field. See [Pending Messages](/ai-chat/pending-messages) for usage guide.
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `shouldInject` | `(event: PendingMessagesBatchEvent) => boolean \| Promise<boolean>` | No | Decide whether to inject the batch between tool-call steps. If absent, no injection. |
+| `prepare` | `(event: PendingMessagesBatchEvent) => ModelMessage[] \| Promise<ModelMessage[]>` | No | Transform the batch before injection. Default: convert each via `convertToModelMessages`. |
+| `onReceived` | `(event: PendingMessageReceivedEvent) => void \| Promise<void>` | No | Called when a message arrives during streaming (per-message). |
+| `onInjected` | `(event: PendingMessagesInjectedEvent) => void \| Promise<void>` | No | Called after a batch is injected via prepareStep. |
+
+## PendingMessagesBatchEvent
+
+Passed to `shouldInject` and `prepare` callbacks.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `messages` | `UIMessage[]` | All pending messages (batch) |
+| `modelMessages` | `ModelMessage[]` | Current conversation |
+| `steps` | `CompactionStep[]` | Completed steps so far |
+| `stepNumber` | `number` | Current step (0-indexed) |
+| `chatId` | `string` | Chat session ID |
+| `turn` | `number` | Current turn (0-indexed) |
+| `clientData` | `unknown` | Custom data from the frontend |
+
+## PendingMessagesInjectedEvent
+
+Passed to `onInjected` callback.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `messages` | `UIMessage[]` | All injected UI messages |
+| `injectedModelMessages` | `ModelMessage[]` | The model messages that were injected |
+| `chatId` | `string` | Chat session ID |
+| `turn` | `number` | Current turn |
+| `stepNumber` | `number` | Step where injection occurred |
+
+## UsePendingMessagesReturn
+
+Return value of `usePendingMessages` hook. See [Pending Messages — Frontend](/ai-chat/pending-messages#frontend-usependingmessages-hook).
+
+| Property/Method | Type | Description |
+|-----------------|------|-------------|
+| `pending` | `PendingMessage[]` | Current pending messages with mode and injection status |
+| `steer` | `(text: string) => void` | Send a steering message (or normal message when not streaming) |
+| `queue` | `(text: string) => void` | Queue for next turn (or send normally when not streaming) |
+| `promoteToSteering` | `(id: string) => void` | Convert a queued message to steering |
+| `isInjectionPoint` | `(part: unknown) => boolean` | Check if an assistant message part is an injection confirmation |
+| `getInjectedMessageIds` | `(part: unknown) => string[]` | Get message IDs from an injection point |
+| `getInjectedMessages` | `(part: unknown) => InjectedMessage[]` | Get messages (id + text) from an injection point |
 
 ## ChatSessionOptions
 
