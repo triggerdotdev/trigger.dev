@@ -2,6 +2,7 @@ import { z } from "zod";
 import { errAsync, fromPromise, type ResultAsync } from "neverthrow";
 import { prisma } from "~/db.server";
 import { type PlatformNotificationScope, type PlatformNotificationSurface } from "@trigger.dev/database";
+import { incrementCliRequestCounter } from "./platformNotificationCounter.server";
 
 // --- Payload schema (spec v1) ---
 
@@ -9,6 +10,7 @@ const DiscoverySchema = z.object({
   filePatterns: z.array(z.string().min(1)).min(1),
   contentPattern: z
     .string()
+    .max(200)
     .optional()
     .refine(
       (val) => {
@@ -104,6 +106,12 @@ export async function getAdminNotificationsList({
         payload: n.payload,
         payloadTitle: parsed.success ? parsed.data.data.title : null,
         payloadType: parsed.success ? parsed.data.data.type : null,
+        payloadDescription: parsed.success ? parsed.data.data.description : null,
+        payloadActionUrl: parsed.success ? parsed.data.data.actionUrl : null,
+        payloadImage: parsed.success ? parsed.data.data.image : null,
+        cliMaxShowCount: n.cliMaxShowCount,
+        cliMaxDaysAfterFirstSeen: n.cliMaxDaysAfterFirstSeen,
+        cliShowEvery: n.cliShowEvery,
         stats: {
           seen: n._count.interactions,
           clicked: n.interactions.filter((i) => i.webappClickedAt !== null).length,
@@ -275,6 +283,9 @@ export async function recordNotificationClicked({
 // --- Read: recent changelogs (for Help & Feedback) ---
 
 export async function getRecentChangelogs({ limit = 2 }: { limit?: number } = {}) {
+  // NOTE: Intentionally not filtering by archivedAt, startsAt, or endsAt.
+  // We want to show archived and expired changelogs in the "What's new" section
+  // so users can still find recent release notes.
   const notifications = await prisma.platformNotification.findMany({
     where: {
       surface: "WEBAPP",
@@ -296,27 +307,52 @@ export async function getRecentChangelogs({ limit = 2 }: { limit?: number } = {}
 // --- CLI: next notification for CLI surface ---
 
 function isCliNotificationExpired(
-  interaction: { firstSeenAt: Date; showCount: number } | null,
-  notification: { cliMaxDaysAfterFirstSeen: number | null; cliMaxShowCount: number | null }
+  interaction: {
+    userId: string;
+    firstSeenAt: Date;
+    showCount: number;
+    cliDismissedAt: Date | null;
+  } | null,
+  notification: {
+    id: string;
+    cliMaxDaysAfterFirstSeen: number | null;
+    cliMaxShowCount: number | null;
+  }
 ): boolean {
   if (!interaction) return false;
+
+  let expired = false;
 
   if (
     notification.cliMaxShowCount !== null &&
     interaction.showCount >= notification.cliMaxShowCount
   ) {
-    return true;
+    expired = true;
   }
 
-  if (notification.cliMaxDaysAfterFirstSeen !== null) {
+  if (!expired && notification.cliMaxDaysAfterFirstSeen !== null) {
     const daysSinceFirstSeen =
       (Date.now() - interaction.firstSeenAt.getTime()) / (1000 * 60 * 60 * 24);
     if (daysSinceFirstSeen > notification.cliMaxDaysAfterFirstSeen) {
-      return true;
+      expired = true;
     }
   }
 
-  return false;
+  // For time-based expiration, persist the dismiss on the next request
+  // (showCount-based dismissal is handled inline at display time)
+  if (expired && !interaction.cliDismissedAt) {
+    void prisma.platformNotificationInteraction.update({
+      where: {
+        notificationId_userId: {
+          notificationId: notification.id,
+          userId: interaction.userId,
+        },
+      },
+      data: { cliDismissedAt: new Date() },
+    });
+  }
+
+  return expired;
 }
 
 export async function getNextCliNotification({
@@ -398,6 +434,11 @@ export async function getNextCliNotification({
 
   const sorted = [...notifications].sort(compareNotifications);
 
+  // Global per-user request counter stored in Redis, used for cliShowEvery modulo.
+  // This is independent of per-notification showCount so that cliMaxShowCount
+  // correctly tracks actual displays, not API encounters.
+  const requestCounter = await incrementCliRequestCounter(userId);
+
   for (const n of sorted) {
     const interaction = n.interactions[0] ?? null;
 
@@ -407,21 +448,32 @@ export async function getNextCliNotification({
     const parsed = PayloadV1Schema.safeParse(n.payload);
     if (!parsed.success) continue;
 
+    // Check cliShowEvery using the global request counter
+    if (n.cliShowEvery !== null && requestCounter % n.cliShowEvery !== 0) {
+      continue;
+    }
+
+    // Only increment showCount when the notification will actually be displayed.
+    // If this display reaches cliMaxShowCount, also set cliDismissedAt now
+    // so it's recorded immediately rather than waiting for a future request.
+    const reachedMaxShows =
+      n.cliMaxShowCount !== null &&
+      ((interaction?.showCount ?? 0) + 1) >= n.cliMaxShowCount;
+
     const updated = await prisma.platformNotificationInteraction.upsert({
       where: { notificationId_userId: { notificationId: n.id, userId } },
-      update: { showCount: { increment: 1 } },
+      update: {
+        showCount: { increment: 1 },
+        ...(reachedMaxShows ? { cliDismissedAt: now } : {}),
+      },
       create: {
         notificationId: n.id,
         userId,
         firstSeenAt: now,
         showCount: 1,
+        ...(reachedMaxShows ? { cliDismissedAt: now } : {}),
       },
     });
-
-    // If cliShowEvery is set, only return on every N-th request
-    if (n.cliShowEvery !== null && updated.showCount % n.cliShowEvery !== 0) {
-      continue;
-    }
 
     return {
       id: n.id,
@@ -471,7 +523,9 @@ export const CreatePlatformNotificationSchema = z
   .superRefine((data, ctx) => {
     validateScopeForeignKeys(data, ctx);
     validateSurfaceFields(data, ctx);
+    validatePayloadTypeForSurface(data, ctx);
     validateStartsAt(data, ctx);
+    validateEndsAt(data, ctx);
   });
 
 function validateScopeForeignKeys(
@@ -531,6 +585,34 @@ function validateStartsAt(data: { startsAt?: Date }, ctx: z.RefinementCtx) {
       code: "custom",
       message: "startsAt must be within the last hour or in the future",
       path: ["startsAt"],
+    });
+  }
+}
+
+const CLI_TYPES = new Set(["info", "warn", "error", "success"]);
+const WEBAPP_TYPES = new Set(["card", "changelog"]);
+
+function validatePayloadTypeForSurface(
+  data: { surface: string; payload: PayloadV1 },
+  ctx: z.RefinementCtx
+) {
+  const allowedTypes = data.surface === "CLI" ? CLI_TYPES : WEBAPP_TYPES;
+  if (!allowedTypes.has(data.payload.data.type)) {
+    ctx.addIssue({
+      code: "custom",
+      message: `payload.data.type "${data.payload.data.type}" is not allowed for ${data.surface} surface`,
+      path: ["payload", "data", "type"],
+    });
+  }
+}
+
+function validateEndsAt(data: { startsAt?: Date; endsAt: Date }, ctx: z.RefinementCtx) {
+  const effectiveStart = data.startsAt ?? new Date();
+  if (data.endsAt <= effectiveStart) {
+    ctx.addIssue({
+      code: "custom",
+      message: "endsAt must be after startsAt",
+      path: ["endsAt"],
     });
   }
 }

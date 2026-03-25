@@ -95,26 +95,32 @@ export async function awaitAndDisplayPlatformNotification(
 ): Promise<void> {
   if (!notificationPromise) return;
 
-  // Race against a short delay — if the promise resolves quickly, skip the spinner
-  const pending = Symbol("pending");
-  const raceResult = await Promise.race([
-    notificationPromise,
-    new Promise<typeof pending>((resolve) => setTimeout(() => resolve(pending), SPINNER_DELAY_MS)),
-  ]);
+  try {
+    // Race against a short delay — if the promise resolves quickly, skip the spinner
+    const pending = Symbol("pending");
+    const raceResult = await Promise.race([
+      notificationPromise,
+      new Promise<typeof pending>((resolve) =>
+        setTimeout(() => resolve(pending), SPINNER_DELAY_MS)
+      ),
+    ]);
 
-  if (raceResult !== pending) {
-    displayPlatformNotification(raceResult);
-    return;
-  }
+    if (raceResult !== pending) {
+      displayPlatformNotification(raceResult);
+      return;
+    }
 
-  // Still pending after delay — show a spinner while waiting
-  const $spinner = spinner();
-  $spinner.start("Checking for notifications");
-  const notification = await notificationPromise;
+    // Still pending after delay — show a spinner while waiting
+    const $spinner = spinner();
+    $spinner.start("Checking for notifications");
+    const notification = await notificationPromise;
 
-  if (notification) {
-    $spinner.stop(formatNotificationMessage(notification));
-  } else {
-    $spinner.stop("No new notifications");
+    if (notification) {
+      $spinner.stop(formatNotificationMessage(notification));
+    } else {
+      $spinner.stop("No new notifications");
+    }
+  } catch (error) {
+    logger.debug("Platform notification display failed silently", { error });
   }
 }

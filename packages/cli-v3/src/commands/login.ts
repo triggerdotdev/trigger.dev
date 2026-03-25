@@ -289,10 +289,16 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
           options?.profile
         );
 
-        // Fetch platform notification in parallel with whoAmI
-        const notificationPromise = fetchPlatformNotification({
-          apiClient: new CliApiClient(authConfig?.apiUrl ?? opts.defaultApiUrl, indexResult.token),
-        });
+        // Only fetch notifications for standalone login, not when embedded in dev
+        // (dev.ts handles its own notification fetch to avoid double counting)
+        const notificationPromise = opts.embedded
+          ? undefined
+          : fetchPlatformNotification({
+              apiClient: new CliApiClient(
+                authConfig?.apiUrl ?? opts.defaultApiUrl,
+                indexResult.token
+              ),
+            });
 
         const whoAmIResult = await whoAmI(
           {

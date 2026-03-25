@@ -262,11 +262,24 @@ function NotificationCard({
         </div>
 
         {image && (
-          <img src={image} alt="" className="mt-1.5 rounded" />
+          <img src={sanitizeImageUrl(image)} alt="" className="mt-1.5 rounded" />
         )}
       </div>
     </Wrapper>
   );
+}
+
+/** Sanitize image URL to prevent XSS via javascript: or data: URIs. */
+function sanitizeImageUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+      return parsed.href;
+    }
+    return "";
+  } catch {
+    return "";
+  }
 }
 
 function getMarkdownComponents(onLinkClick: () => void) {
@@ -280,7 +293,10 @@ function getMarkdownComponents(onLinkClick: () => void) {
         target="_blank"
         rel="noopener noreferrer"
         className="text-indigo-400 underline hover:text-indigo-300 transition-colors"
-        onClick={onLinkClick}
+        onClick={(e) => {
+          e.stopPropagation();
+          onLinkClick();
+        }}
       >
         {children}
       </a>

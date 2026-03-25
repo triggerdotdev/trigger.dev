@@ -42,7 +42,12 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: message }, { status });
   }
 
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const result = await createPlatformNotification(body as CreatePlatformNotificationInput);
 
   if (result.isErr()) {

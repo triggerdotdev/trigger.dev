@@ -126,6 +126,21 @@ async function checkContentPattern(
 ): Promise<boolean> {
   const useFastPath = !REGEX_METACHARACTERS.test(contentPattern);
 
+  // Pre-compile regex once outside the loop to avoid repeated compilation
+  // and to catch invalid patterns early
+  let regex: RegExp | undefined;
+  if (!useFastPath) {
+    try {
+      regex = new RegExp(contentPattern);
+    } catch (error) {
+      logger.debug("Discovery: invalid regex pattern, skipping content check", {
+        contentPattern,
+        error,
+      });
+      return false;
+    }
+  }
+
   logger.debug("Discovery: checking content pattern", {
     contentPattern,
     useFastPath,
@@ -140,9 +155,7 @@ async function checkContentPattern(
       continue;
     }
 
-    const matches = useFastPath
-      ? content.includes(contentPattern)
-      : new RegExp(contentPattern).test(content);
+    const matches = useFastPath ? content.includes(contentPattern) : regex!.test(content);
 
     logger.debug("Discovery: content check result", { filePath, matches });
 

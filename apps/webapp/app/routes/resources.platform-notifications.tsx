@@ -34,13 +34,13 @@ const POLL_INTERVAL_MS = 60000; // 1 minute
 
 export function usePlatformNotifications(organizationId: string, projectId: string) {
   const fetcher = useFetcher<typeof loader>();
-  const hasInitiallyFetched = useRef(false);
+  const lastLoadedUrl = useRef<string | null>(null);
 
   useEffect(() => {
     const url = `/resources/platform-notifications?organizationId=${encodeURIComponent(organizationId)}&projectId=${encodeURIComponent(projectId)}`;
 
-    if (!hasInitiallyFetched.current && fetcher.state === "idle") {
-      hasInitiallyFetched.current = true;
+    if (lastLoadedUrl.current !== url && fetcher.state === "idle") {
+      lastLoadedUrl.current = url;
       fetcher.load(url);
     }
 

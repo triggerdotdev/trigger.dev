@@ -7,6 +7,12 @@ import ReactMarkdown from "react-markdown";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { Button } from "~/components/primitives/Buttons";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { PaginationControls } from "~/components/primitives/Pagination";
@@ -201,6 +207,7 @@ export default function AdminNotificationsRoute() {
   const [actionUrl, setActionUrl] = useState("");
   const [image, setImage] = useState("");
   const [payloadType, setPayloadType] = useState<string>("card");
+  const [detailNotification, setDetailNotification] = useState<(typeof notifications)[number] | null>(null);
 
   const typeOptions = surface === "WEBAPP" ? WEBAPP_TYPES : CLI_TYPES;
 
@@ -295,6 +302,30 @@ export default function AdminNotificationsRoute() {
                   />
                 </div>
               </div>
+
+              {/* CLI live preview */}
+              {surface === "CLI" && (title || description) && (
+                <div>
+                  <p className="text-[10px] font-medium text-text-dimmed/60 uppercase tracking-wider mb-1">
+                    CLI Preview
+                  </p>
+                  <div className="rounded border border-grid-dimmed bg-charcoal-900 p-3 font-mono text-xs leading-relaxed">
+                    {title && (
+                      <p className="font-bold text-text-bright">
+                        <CliColorMarkup text={title} fallbackClass="text-text-bright" />
+                      </p>
+                    )}
+                    {description && (
+                      <p className="text-text-dimmed">
+                        <CliColorMarkup text={description} fallbackClass="text-text-dimmed" />
+                      </p>
+                    )}
+                    {actionUrl && (
+                      <p className="text-text-dimmed underline">{actionUrl}</p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="text-xs font-medium text-text-dimmed">Title</label>
@@ -571,6 +602,7 @@ export default function AdminNotificationsRoute() {
               <TableHeaderCell>Ends (UTC)</TableHeaderCell>
               <TableHeaderCell>Seen</TableHeaderCell>
               <TableHeaderCell>Clicked</TableHeaderCell>
+              <TableHeaderCell>Dismissed</TableHeaderCell>
               <TableHeaderCell>Actions</TableHeaderCell>
               <TableHeaderCell>Status</TableHeaderCell>
             </TableRow>
@@ -587,7 +619,13 @@ export default function AdminNotificationsRoute() {
                 return (
                   <TableRow key={n.id}>
                     <TableCell>
-                      <span className="text-sm font-medium text-text-bright">{n.title}</span>
+                      <button
+                        type="button"
+                        onClick={() => setDetailNotification(n)}
+                        className="text-sm font-medium text-text-bright hover:text-indigo-400 transition-colors text-left"
+                      >
+                        {n.title}
+                      </button>
                     </TableCell>
                     <TableCell>
                       <Badge color={n.surface === "CLI" ? "amber" : "blue"}>{n.surface}</Badge>
@@ -609,6 +647,9 @@ export default function AdminNotificationsRoute() {
                     </TableCell>
                     <TableCell>
                       <span className="text-xs font-mono">{n.stats.clicked}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs font-mono">{n.stats.dismissed}</span>
                     </TableCell>
                     <TableCell>
                       {isActive && (
@@ -637,7 +678,141 @@ export default function AdminNotificationsRoute() {
 
         <PaginationControls currentPage={page} totalPages={pageCount} />
       </div>
+
+      <Dialog
+        open={detailNotification !== null}
+        onOpenChange={(open) => {
+          if (!open) setDetailNotification(null);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          {detailNotification && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{detailNotification.title}</DialogTitle>
+              </DialogHeader>
+              <NotificationDetailContent notification={detailNotification} />
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </main>
+  );
+}
+
+function NotificationDetailContent({
+  notification: n,
+}: {
+  notification: {
+    id: string;
+    friendlyId: string;
+    surface: string;
+    scope: string;
+    priority: number;
+    startsAt: Date;
+    endsAt: Date;
+    archivedAt: Date | null;
+    createdAt: Date;
+    payloadTitle: string | null;
+    payloadType: string | null;
+    payloadDescription: string | null;
+    payloadActionUrl: string | null | undefined;
+    payloadImage: string | null | undefined;
+    cliMaxShowCount: number | null;
+    cliMaxDaysAfterFirstSeen: number | null;
+    cliShowEvery: number | null;
+    stats: { seen: number; clicked: number; dismissed: number };
+  };
+}) {
+  return (
+    <div className="space-y-4">
+      {/* Preview */}
+      {n.payloadTitle && n.payloadDescription && (
+        <div>
+          <p className="mb-1 text-xs font-medium text-text-dimmed">Preview</p>
+          {n.surface === "WEBAPP" ? (
+            <NotificationPreviewCard
+              title={n.payloadTitle}
+              description={n.payloadDescription}
+              actionUrl={n.payloadActionUrl ?? undefined}
+              image={n.payloadImage ?? undefined}
+            />
+          ) : (
+            <div className="rounded border border-grid-dimmed bg-charcoal-900 p-3 font-mono text-xs leading-relaxed">
+              <p className="font-bold text-text-bright">
+                <CliColorMarkup text={n.payloadTitle} fallbackClass="text-text-bright" />
+              </p>
+              <p className="text-text-dimmed">
+                <CliColorMarkup text={n.payloadDescription} fallbackClass="text-text-dimmed" />
+              </p>
+              {n.payloadActionUrl && (
+                <p className="text-text-dimmed underline">{n.payloadActionUrl}</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Details grid */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+        <DetailRow label="ID" value={n.friendlyId} />
+        <DetailRow label="Surface" value={n.surface} />
+        <DetailRow label="Scope" value={n.scope} />
+        <DetailRow label="Type" value={n.payloadType ?? "—"} />
+        <DetailRow label="Priority" value={String(n.priority)} />
+        <DetailRow label="Created" value={formatDate(n.createdAt)} />
+        <DetailRow label="Starts" value={formatDate(n.startsAt)} />
+        <DetailRow label="Ends" value={formatDate(n.endsAt)} />
+        {n.archivedAt && <DetailRow label="Archived" value={formatDate(n.archivedAt)} />}
+        {n.payloadActionUrl && <DetailRow label="Action URL" value={n.payloadActionUrl} />}
+      </div>
+
+      {/* CLI settings */}
+      {n.surface === "CLI" && (n.cliMaxShowCount || n.cliMaxDaysAfterFirstSeen || n.cliShowEvery) && (
+        <div>
+          <p className="mb-1 text-xs font-medium text-text-dimmed">CLI Settings</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            {n.cliMaxShowCount != null && (
+              <DetailRow label="Max show count" value={String(n.cliMaxShowCount)} />
+            )}
+            {n.cliMaxDaysAfterFirstSeen != null && (
+              <DetailRow label="Max days after first seen" value={String(n.cliMaxDaysAfterFirstSeen)} />
+            )}
+            {n.cliShowEvery != null && (
+              <DetailRow label="Show every N-th" value={String(n.cliShowEvery)} />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Stats */}
+      <div>
+        <p className="mb-1 text-xs font-medium text-text-dimmed">Stats</p>
+        <div className="grid grid-cols-3 gap-2">
+          <StatCard label="Seen" value={n.stats.seen} />
+          <StatCard label="Clicked" value={n.stats.clicked} />
+          <StatCard label="Dismissed" value={n.stats.dismissed} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <>
+      <span className="text-text-dimmed">{label}</span>
+      <span className="text-text-bright break-all">{value}</span>
+    </>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded border border-grid-dimmed bg-charcoal-900 p-2 text-center">
+      <p className="text-lg font-mono font-medium text-text-bright">{value}</p>
+      <p className="text-xs text-text-dimmed">{label}</p>
+    </div>
   );
 }
 
@@ -712,9 +887,8 @@ function NotificationPreviewCard({
           )}
         </div>
 
-        {/* lgtm[js/xss-through-dom] React JSX sets src via setAttribute, not raw HTML interpolation — safe from XSS */}
         {image && (
-          <img src={image} alt="" className="mt-1.5 rounded px-2 pb-2" />
+          <img src={sanitizeImageUrl(image)} alt="" className="mt-1.5 rounded px-2 pb-2" />
         )}
       </div>
     </Wrapper>
@@ -744,6 +918,72 @@ const markdownComponents = {
     <code className="rounded bg-charcoal-700 px-1 py-0.5 text-[11px]">{children}</code>
   ),
 };
+
+const CLI_COLOR_MAP: Record<string, string> = {
+  red: "text-red-500",
+  green: "text-green-500",
+  yellow: "text-yellow-500",
+  blue: "text-blue-500",
+  magenta: "text-fuchsia-500",
+  cyan: "text-cyan-500",
+  white: "text-white",
+  gray: "text-gray-400",
+  redBright: "text-red-400",
+  greenBright: "text-green-400",
+  yellowBright: "text-yellow-400",
+  blueBright: "text-blue-400",
+  magentaBright: "text-fuchsia-400",
+  cyanBright: "text-cyan-400",
+  whiteBright: "text-white",
+  bold: "font-bold",
+};
+
+function CliColorMarkup({ text, fallbackClass }: { text: string; fallbackClass?: string }) {
+  const parts: React.ReactNode[] = [];
+  let pos = 0;
+  let key = 0;
+
+  while (pos < text.length) {
+    const braceIdx = text.indexOf("{", pos);
+    if (braceIdx === -1) {
+      parts.push(text.slice(pos));
+      break;
+    }
+
+    const closeIdx = text.indexOf("}", braceIdx);
+    if (closeIdx === -1) {
+      parts.push(text.slice(pos));
+      break;
+    }
+
+    const tagName = text.slice(braceIdx + 1, closeIdx);
+    if (CLI_COLOR_MAP[tagName]) {
+      // Found opening tag — look for matching close tag
+      const closeTag = `{/${tagName}}`;
+      const endIdx = text.indexOf(closeTag, closeIdx + 1);
+      if (endIdx !== -1) {
+        // Push text before the tag
+        if (braceIdx > pos) {
+          parts.push(<span key={key++} className={fallbackClass}>{text.slice(pos, braceIdx)}</span>);
+        }
+        // Push styled content
+        parts.push(
+          <span key={key++} className={CLI_COLOR_MAP[tagName]}>
+            {text.slice(closeIdx + 1, endIdx)}
+          </span>
+        );
+        pos = endIdx + closeTag.length;
+        continue;
+      }
+    }
+
+    // Not a recognized tag — treat as literal
+    parts.push(text.slice(pos, closeIdx + 1));
+    pos = closeIdx + 1;
+  }
+
+  return <>{parts}</>;
+}
 
 function Badge({
   children,
@@ -791,6 +1031,19 @@ function defaultStartsAt(): string {
 
 function defaultEndsAt(): string {
   return toDatetimeLocalUTC(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
+}
+
+/** Sanitize image URL to prevent XSS via javascript: or data: URIs. */
+function sanitizeImageUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+      return parsed.href;
+    }
+    return "";
+  } catch {
+    return "";
+  }
 }
 
 type NotificationStatus = "active" | "pending" | "expired" | "archived";
