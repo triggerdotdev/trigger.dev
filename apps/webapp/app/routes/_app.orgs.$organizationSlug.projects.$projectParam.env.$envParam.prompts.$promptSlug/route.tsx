@@ -673,7 +673,7 @@ export default function PromptDetailPage() {
                         labelName="Period"
                         hideLabel
                         valueClassName="text-text-bright"
-                        shortcut={{ key: "t" }}
+                        shortcut={{ key: "w" }}
                       />
                     </div>
                   </div>
@@ -741,7 +741,7 @@ export default function PromptDetailPage() {
                     isActive={tab === "preview"}
                     layoutId="prompt-sidebar"
                     onClick={() => replaceSearch({ tab: "preview", version: versionParam })}
-                    shortcut={{ key: "p" }}
+                    shortcut={{ key: "i" }}
                   >
                     Preview
                   </TabButton>
