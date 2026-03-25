@@ -98,7 +98,7 @@ import {
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Tasks | Trigger.dev`,
+      title: `Tasks | AirTrigger`,
     },
   ];
 };
@@ -601,7 +601,7 @@ function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="overflow-y-scroll p-3 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-scroll p-3 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
         <div className="mb-2 flex items-center justify-between gap-2 border-b border-grid-dimmed pb-2">
           <Header2 className="flex items-center gap-2">
             <LightBulbIcon className="size-4 min-w-4 text-sun-500" />
@@ -673,7 +673,7 @@ function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
         <LinkWithIcon to={docsPath("/cli-dev")} description="Running the CLI" isExternal />
         <LinkWithIcon
           to={docsPath("/how-it-works")}
-          description="How Trigger.dev works"
+          description="How AirTrigger works"
           isExternal
         />
         <div className="mb-2 flex items-center gap-2 border-b border-grid-dimmed pb-2 pt-6">
@@ -773,14 +773,14 @@ function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
       <Dialog open={isVideoDialogOpen} onOpenChange={setIsVideoDialogOpen}>
         <DialogContent className="sm:max-w-screen-lg">
           <DialogHeader className="mb-4 pt-1">
-            <DialogTitle>Trigger.dev walkthrough</DialogTitle>
+            <DialogTitle>AirTrigger walkthrough</DialogTitle>
           </DialogHeader>
           <div className="aspect-video">
             <iframe
               width="100%"
               height="100%"
               src="https://www.youtube.com/embed/YH_4c0K7fGM?si=BcX6MAt_V139sRw9"
-              title="Trigger.dev walkthrough"
+              title="AirTrigger walkthrough"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               referrerPolicy="strict-origin-when-cross-origin"
               allowFullScreen

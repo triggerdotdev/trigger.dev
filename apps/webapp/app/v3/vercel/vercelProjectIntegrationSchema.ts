@@ -42,7 +42,7 @@ export const envSlugArrayField = z.string().optional().transform((val): EnvSlug[
 export const VercelIntegrationConfigSchema = z.object({
   atomicBuilds: z.array(EnvSlugSchema).nullable().optional(),
   pullEnvVarsBeforeBuild: z.array(EnvSlugSchema).nullable().optional(),
-  /** Maps a custom Vercel environment to Trigger.dev's staging environment. */
+  /** Maps a custom Vercel environment to AirTrigger's staging environment. */
   vercelStagingEnvironment: z.object({
     environmentId: z.string(),
     displayName: z.string(),
@@ -98,7 +98,7 @@ export function createDefaultVercelIntegrationData(
 }
 
 /**
- * Maps a Trigger.dev environment type to its Vercel target identifier(s).
+ * Maps a AirTrigger environment type to its Vercel target identifier(s).
  * Returns null for STAGING when no custom environment is configured.
  */
 export function envTypeToVercelTarget(

@@ -31,7 +31,7 @@ export default function Email(props: MfaEnabledEmailProps) {
           <Text style={h1}>Multi-factor authentication enabled</Text>
           <Text style={paragraphLight}>Hi there,</Text>
           <Text style={paragraphLight}>
-            Multi-factor authentication was successfully enabled for your Trigger.dev account (
+            Multi-factor authentication was successfully enabled for your AirTrigger account (
             {userEmail}). If you did not make this change, contact our support team immediately.
           </Text>
           <Text style={paragraphLight}>
@@ -53,7 +53,7 @@ export default function Email(props: MfaEnabledEmailProps) {
             Your account now has an additional layer of protection and you'll need to enter a code
             from your authenticator app when logging in.
           </Text>
-          <Image path="/emails/logo-mono.png" width="120" height="22" alt="Trigger.dev" />
+          <Image path="/emails/logo-mono.png" width="120" height="22" alt="AirTrigger" />
           <Footer />
         </Container>
       </Body>

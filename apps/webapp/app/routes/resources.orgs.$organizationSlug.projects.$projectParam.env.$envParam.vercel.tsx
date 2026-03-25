@@ -724,7 +724,7 @@ function ConnectedVercelProjectForm({
                 <div>
                   <Label>Map Vercel environment to Staging</Label>
                   <Hint className="mb-2">
-                    Select which custom Vercel environment should map to Trigger.dev's Staging
+                    Select which custom Vercel environment should map to AirTrigger's Staging
                     environment.
                   </Hint>
                   <Select
@@ -798,7 +798,7 @@ function ConnectedVercelProjectForm({
                       <p className="font-sans text-xs font-normal text-text-dimmed">
                         Atomic deployments require the "Auto-assign Custom Domains" setting to be
                         disabled on your Vercel project. Without this, Vercel will promote
-                        deployments before Trigger.dev is ready.
+                        deployments before AirTrigger is ready.
                       </p>
                       <Form method="post" action={actionUrl}>
                         <input type="hidden" name="action" value="disable-auto-assign" />

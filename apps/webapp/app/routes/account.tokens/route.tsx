@@ -47,7 +47,7 @@ import { docsPath, personalAccessTokensPath } from "~/utils/pathBuilder";
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Personal Access Tokens | Trigger.dev`,
+      title: `Personal Access Tokens | AirTrigger`,
     },
   ];
 };

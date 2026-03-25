@@ -10,7 +10,7 @@ export default function Email({ magicLink }: { magicLink: string }) {
       <Preview>Log in with this magic link 🪄</Preview>
       <Body style={main}>
         <Container style={container}>
-          <Text style={h1}>Log in to Trigger.dev</Text>
+          <Text style={h1}>Log in to AirTrigger</Text>
           <Link
             href={magicLink}
             target="_blank"
@@ -30,7 +30,7 @@ export default function Email({ magicLink }: { magicLink: string }) {
           >
             If you didn&apos;t try to log in, you can safely ignore this email.
           </Text>
-          <Image path="/emails/logo-mono.png" width="120" height="22" alt="Trigger.dev" />
+          <Image path="/emails/logo-mono.png" width="120" height="22" alt="AirTrigger" />
           <Footer />
         </Container>
       </Body>

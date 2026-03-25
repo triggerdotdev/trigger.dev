@@ -238,7 +238,7 @@ export default function Page() {
           className="pl-1"
         />
       </div>
-      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
         <div className="space-y-3">
           <div className="p-3">
             <Property.Table>

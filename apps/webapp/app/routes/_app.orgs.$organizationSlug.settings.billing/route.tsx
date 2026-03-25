@@ -22,7 +22,7 @@ import { Callout } from "~/components/primitives/Callout";
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Billing | Trigger.dev`,
+      title: `Billing | AirTrigger`,
     },
   ];
 };

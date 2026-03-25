@@ -15,8 +15,8 @@ const client = singleton(
     new EmailClient({
       transport: buildTransportOptions(),
       imagesBaseUrl: env.APP_ORIGIN,
-      from: env.FROM_EMAIL ?? "team@email.trigger.dev",
-      replyTo: env.REPLY_TO_EMAIL ?? "help@email.trigger.dev",
+      from: env.FROM_EMAIL ?? "team@email.airtrigger.dev",
+      replyTo: env.REPLY_TO_EMAIL ?? "help@email.airtrigger.dev",
     })
 );
 
@@ -26,9 +26,9 @@ const alertsClient = singleton(
     new EmailClient({
       transport: buildTransportOptions(true),
       imagesBaseUrl: env.APP_ORIGIN,
-      from: env.ALERT_FROM_EMAIL ?? "noreply@alerts.trigger.dev",
+      from: env.ALERT_FROM_EMAIL ?? "noreply@alerts.airtrigger.dev",
       // Fallback to `REPLY_TO_EMAIL` for backwards compat
-      replyTo: env.ALERT_REPLY_TO_EMAIL ?? env.REPLY_TO_EMAIL ?? "help@email.trigger.dev",
+      replyTo: env.ALERT_REPLY_TO_EMAIL ?? env.REPLY_TO_EMAIL ?? "help@email.airtrigger.dev",
     })
 );
 

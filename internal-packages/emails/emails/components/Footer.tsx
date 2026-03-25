@@ -7,9 +7,9 @@ export function Footer() {
     <>
       <Hr style={hr} />
       <Text style={footer}>
-        ©Trigger.dev, 1111B S Governors Ave STE 6433, Dover, DE 19904 |{" "}
-        <Link style={footerAnchor} href="https://trigger.dev/">
-          Trigger.dev
+        ©AirTrigger, 1111B S Governors Ave STE 6433, Dover, DE 19904 |{" "}
+        <Link style={footerAnchor} href="https://airtrigger.dev/">
+          AirTrigger
         </Link>
       </Text>
     </>

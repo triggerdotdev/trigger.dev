@@ -54,7 +54,7 @@ import {
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Batches | Trigger.dev`,
+      title: `Batches | AirTrigger`,
     },
   ];
 };

@@ -14,7 +14,7 @@ const ParamsSchema = z.object({
 });
 
 /**
- * API endpoint to retrieve connected Vercel projects for a Trigger.dev project.
+ * API endpoint to retrieve connected Vercel projects for a AirTrigger project.
  *
  * GET /api/v1/orgs/:organizationSlug/projects/:projectParam/vercel/projects
  *

@@ -86,7 +86,7 @@ import { DialogClose } from "@radix-ui/react-dialog";
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Deployments | Trigger.dev`,
+      title: `Deployments | AirTrigger`,
     },
   ];
 };

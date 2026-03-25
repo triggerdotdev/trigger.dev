@@ -64,7 +64,7 @@ import { Callout } from "~/components/primitives/Callout";
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Runs | Trigger.dev`,
+      title: `Runs | AirTrigger`,
     },
   ];
 };

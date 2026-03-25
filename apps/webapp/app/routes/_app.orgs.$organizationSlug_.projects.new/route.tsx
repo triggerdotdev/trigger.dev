@@ -419,7 +419,7 @@ export default function Page() {
                 </InputGroup>
 
                 <InputGroup>
-                  <Label>What are you trying to do with Trigger.dev?</Label>
+                  <Label>What are you trying to do with AirTrigger?</Label>
                   <input type="hidden" name="goals" value={JSON.stringify(selectedGoals)} />
                   <MultiSelectField
                     value={selectedGoals}
@@ -435,7 +435,7 @@ export default function Page() {
                         variant="small"
                         value={goalsOther}
                         onChange={(e) => setGoalsOther(e.target.value)}
-                        placeholder="Tell us what you're trying to do with Trigger.dev"
+                        placeholder="Tell us what you're trying to do with AirTrigger"
                         spellCheck={false}
                         containerClassName="h-8"
                       />

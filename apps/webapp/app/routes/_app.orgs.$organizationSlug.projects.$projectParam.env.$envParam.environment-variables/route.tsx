@@ -81,7 +81,7 @@ import { shouldSyncEnvVar, isPullEnvVarsEnabledForEnvironment, type TriggerEnvir
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Environment variables | Trigger.dev`,
+      title: `Environment variables | AirTrigger`,
     },
   ];
 };

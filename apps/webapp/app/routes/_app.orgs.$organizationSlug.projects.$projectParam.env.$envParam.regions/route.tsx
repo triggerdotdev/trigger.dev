@@ -305,7 +305,7 @@ export default function Page() {
                     panelClassName="max-w-full gap-1"
                   >
                     <Paragraph variant="extra-small" className="flex items-baseline gap-x-0.5">
-                      Trigger.dev is fully GDPR compliant. Learn more in our{" "}
+                      AirTrigger is fully GDPR compliant. Learn more in our{" "}
                       <TextLink to="https://security.trigger.dev">security portal</TextLink> or{" "}
                       <Feedback
                         button={

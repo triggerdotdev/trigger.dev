@@ -267,7 +267,7 @@ export function AIQueryInput({
               onChange={(e) => setPrompt(e.target.value)}
               disabled={isLoading}
               rows={8}
-              className="m-0 min-h-10 w-full resize-none border-0 bg-background-bright px-3 py-2.5 text-sm text-text-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-text-dimmed focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+              className="m-0 min-h-10 w-full resize-none border-0 bg-background-bright px-3 py-2.5 text-sm text-text-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300 file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-text-dimmed focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && prompt.trim() && !isLoading) {
                   e.preventDefault();
@@ -400,7 +400,7 @@ export function AIQueryInput({
                     </Button>
                   )}
                 </div>
-                <div className="streamdown-container max-h-96 overflow-y-auto text-xs text-text-dimmed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                <div className="streamdown-container max-h-96 overflow-y-auto text-xs text-text-dimmed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
                   <Suspense fallback={<p className="whitespace-pre-wrap">{thinking}</p>}>
                     <StreamdownRenderer isAnimating={isLoading}>{thinking}</StreamdownRenderer>
                   </Suspense>

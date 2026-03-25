@@ -14,7 +14,7 @@ export function TimezoneList({ timezones }: { timezones: string[] }) {
   return (
     <div
       ref={parentRef}
-      className="max-h-[calc(min(480px,var(--popover-available-height))-2.35rem)] overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+      className="max-h-[calc(min(480px,var(--popover-available-height))-2.35rem)] overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
     >
       <div
         style={{

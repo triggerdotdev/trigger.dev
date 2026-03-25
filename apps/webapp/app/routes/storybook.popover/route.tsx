@@ -16,7 +16,7 @@ export default function Story() {
       <Popover onOpenChange={(open) => setIsOpen(open)}>
         <PopoverArrowTrigger isOpen={isOpen}>My Blog</PopoverArrowTrigger>
         <PopoverContent
-          className="min-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
           align="start"
         >
           <Fragment>

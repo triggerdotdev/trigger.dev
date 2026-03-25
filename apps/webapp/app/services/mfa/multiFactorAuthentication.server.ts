@@ -136,7 +136,7 @@ export class MultiFactorAuthenticationService {
     });
 
     // Return the secret and the recovery codes
-    const otpAuthUrl = createOTP(secret).url("trigger.dev", user.email);
+    const otpAuthUrl = createOTP(secret).url("airtrigger", user.email);
 
     const displaySecret = base32.encode(secret, {
       padding: false,
@@ -182,7 +182,7 @@ export class MultiFactorAuthenticationService {
 
     if (!isValid) {
       // Return the secret and the recovery codes
-      const otpAuthUrl = createOTP(secret).url("trigger.dev", user.email);
+      const otpAuthUrl = createOTP(secret).url("airtrigger", user.email);
 
       const displaySecret = base32.encode(secret, {
         padding: false,

@@ -50,7 +50,7 @@ import {
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Bulk actions | Trigger.dev`,
+      title: `Bulk actions | AirTrigger`,
     },
   ];
 };

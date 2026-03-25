@@ -59,7 +59,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
             switch (body.data.type) {
               case "deployment_context":
-                errorMessage = `Artifact size (${sizeMB} MB) exceeds the allowed limit of ${limitMB} MB. Make sure you are in the correct directory of your Trigger.dev project. Reach out to us if you are seeing this error consistently.`;
+                errorMessage = `Artifact size (${sizeMB} MB) exceeds the allowed limit of ${limitMB} MB. Make sure you are in the correct directory of your AirTrigger project. Reach out to us if you are seeing this error consistently.`;
                 break;
               default:
                 body.data.type satisfies never;

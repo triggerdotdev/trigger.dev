@@ -102,7 +102,7 @@ export default function Email(props: BulkActionCompletedEmailProps) {
           >
             View bulk action
           </Button>
-          <Image path="/emails/logo-mono.png" width="120" height="22" alt="Trigger.dev" />
+          <Image path="/emails/logo-mono.png" width="120" height="22" alt="AirTrigger" />
           <Footer />
         </Container>
       </Body>

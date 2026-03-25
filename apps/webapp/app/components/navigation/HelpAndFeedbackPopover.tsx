@@ -98,7 +98,7 @@ export function HelpAndFeedback({
         disableHoverableContent
       />
       <PopoverContent
-        className="min-w-[14rem] divide-y divide-grid-bright overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="min-w-[14rem] divide-y divide-grid-bright overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
         side={isCollapsed ? "right" : "top"}
         sideOffset={isCollapsed ? 8 : 4}
         align="start"
@@ -112,7 +112,7 @@ export function HelpAndFeedback({
               trailingIconClassName="text-text-dimmed"
               inactiveIconColor="text-green-500"
               activeIconColor="text-green-500"
-              to="https://trigger.dev/docs"
+              to="/docs"
               data-action="documentation"
               target="_blank"
             />
@@ -125,7 +125,7 @@ export function HelpAndFeedback({
               trailingIconClassName="text-text-dimmed"
               inactiveIconColor="text-green-500"
               activeIconColor="text-green-500"
-              to="https://status.trigger.dev/"
+              to="#"
               data-action="status"
               target="_blank"
             />
@@ -136,7 +136,7 @@ export function HelpAndFeedback({
               trailingIconClassName="text-text-dimmed"
               inactiveIconColor="text-sun-500"
               activeIconColor="text-sun-500"
-              to="https://feedback.trigger.dev/"
+              to="#"
               data-action="suggest-a-feature"
               target="_blank"
             />
@@ -147,7 +147,7 @@ export function HelpAndFeedback({
               trailingIconClassName="text-text-dimmed"
               inactiveIconColor="text-sun-500"
               activeIconColor="text-sun-500"
-              to="https://trigger.dev/changelog"
+              to="#"
               data-action="changelog"
               target="_blank"
             />
@@ -181,7 +181,7 @@ export function HelpAndFeedback({
                         <Icon icon={SlackIcon} className="h-10 w-10 min-w-[2.5rem]" />
                         <Paragraph variant="base/bright">
                           As a subscriber, you have access to a dedicated Slack channel for 1-to-1
-                          support with the Trigger.dev team.
+                          support with the AirTrigger team.
                         </Paragraph>
                       </div>
                       <hr className="border-charcoal-800" />
@@ -189,11 +189,11 @@ export function HelpAndFeedback({
                         <StepNumber stepNumber="1" title="Email us" />
                         <StepContentContainer>
                           <Paragraph>
-                            Send us an email to this address from your Trigger.dev account email
+                            Send us an email to this address from your AirTrigger account email
                             address:
                             <ClipboardField
                               variant="secondary/medium"
-                              value="priority-support@trigger.dev"
+                              value="support@airtrigger.dev"
                               className="my-2"
                             />
                           </Paragraph>
@@ -215,7 +215,7 @@ export function HelpAndFeedback({
               icon={DiscordIcon}
               trailingIcon={ArrowUpRightIcon}
               trailingIconClassName="text-text-dimmed"
-              to="https://trigger.dev/discord"
+              to="#"
               data-action="join our discord"
               target="_blank"
             />
@@ -226,7 +226,7 @@ export function HelpAndFeedback({
               trailingIconClassName="text-text-dimmed"
               inactiveIconColor="text-rose-500"
               activeIconColor="text-rose-500"
-              to="https://cal.com/team/triggerdotdev/founders-call"
+              to="#"
               data-action="book-a-call"
               target="_blank"
             />

@@ -32,7 +32,7 @@ import { accountPath } from "~/utils/pathBuilder";
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Your profile | Trigger.dev`,
+      title: `Your profile | AirTrigger`,
     },
   ];
 };

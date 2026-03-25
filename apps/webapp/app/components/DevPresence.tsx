@@ -169,8 +169,8 @@ export function DevPresencePanel({ isConnected }: { isConnected: boolean | undef
             {isConnected === undefined
               ? "Checking connection..."
               : isConnected
-              ? "Your local dev server is connected to Trigger.dev"
-              : "Your local dev server is not connected to Trigger.dev"}
+              ? "Your local dev server is connected to AirTrigger"
+              : "Your local dev server is not connected to AirTrigger"}
           </Paragraph>
         </div>
         {isConnected ? null : (
@@ -180,7 +180,7 @@ export function DevPresencePanel({ isConnected }: { isConnected: boolean | undef
             </PackageManagerProvider>
             <Paragraph variant="small">
               Run this CLI <InlineCode variant="extra-small">dev</InlineCode> command to connect to
-              the Trigger.dev servers to start developing locally. Keep it running while you develop
+              the AirTrigger servers to start developing locally. Keep it running while you develop
               to stay connected. Learn more in the{" "}
               <TextLink to={docsPath("cli-dev")}>CLI docs</TextLink>.
             </Paragraph>
@@ -210,7 +210,7 @@ export function DevDisconnectedBanner({ isConnected }: { isConnected: boolean | 
                 iconSpacing="gap-1"
                 LeadingIcon={<ConnectionIcon isConnected={false} />}
               >
-                Your local dev server is not connected to Trigger.dev
+                Your local dev server is not connected to AirTrigger
               </Button>
             </DialogTrigger>
           </motion.div>

@@ -297,7 +297,7 @@ export function TechnologyPicker({
               />
             </div>
 
-            <Ariakit.ComboboxList className="overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 focus-custom">
+            <Ariakit.ComboboxList className="overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300 focus-custom">
               {filteredOptions.map((option) => (
                 <Ariakit.ComboboxItem
                   key={option}

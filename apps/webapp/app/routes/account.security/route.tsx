@@ -14,7 +14,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Security | Trigger.dev`,
+      title: `Security | AirTrigger`,
     },
   ];
 };

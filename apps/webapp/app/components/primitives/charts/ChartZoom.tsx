@@ -127,7 +127,7 @@ export function ZoomTooltip({
           "absolute whitespace-nowrap rounded border px-2 py-1 text-xxs tabular-nums",
           invalidSelection
             ? "border-amber-800 bg-amber-950 text-amber-400"
-            : "border-blue-800 bg-[#1B2334] text-blue-400"
+            : "border-blue-800 bg-blue-50 text-blue-400"
         )}
         style={{
           left: coordinate?.x,
@@ -141,7 +141,7 @@ export function ZoomTooltip({
             "absolute -top-[5px] left-1/2 h-2 w-2 -translate-x-1/2 rotate-45",
             invalidSelection
               ? "border-l border-t border-amber-800 bg-amber-950"
-              : "border-l border-t border-blue-800 bg-[#1B2334]"
+              : "border-l border-t border-blue-800 bg-blue-50"
           )}
         />
       </div>

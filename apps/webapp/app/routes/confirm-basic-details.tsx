@@ -234,7 +234,7 @@ export default function Page() {
         <MainCenteredContainer className="max-w-[29rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
           <Form method="post" {...form.props}>
             <FormTitle
-              title="Welcome to Trigger.dev"
+              title="Welcome to AirTrigger"
               LeadingIcon={
                 <MotionHand
                   style={{

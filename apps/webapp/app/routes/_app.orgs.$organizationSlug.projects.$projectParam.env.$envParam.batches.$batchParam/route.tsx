@@ -111,7 +111,7 @@ export default function Page() {
       </div>
 
       {/* Scrollable content */}
-      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
         <div className="space-y-3">
           {/* Progress meter for v2 batches */}
           {showProgressMeter && (

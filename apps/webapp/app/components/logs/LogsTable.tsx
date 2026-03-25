@@ -115,7 +115,7 @@ export function LogsTable({
   }, [hasMore, isLoadingMore, onLoadMore]);
 
   return (
-    <div className="relative h-full overflow-auto border-t scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+    <div className="relative h-full overflow-auto border-t scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
       <Table variant="compact/mono" containerClassName="overflow-visible" showTopBorder={false}>
         <TableHeader className="sticky top-0 z-10">
           <TableRow>

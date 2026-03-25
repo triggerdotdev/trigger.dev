@@ -193,7 +193,7 @@ export function BuildSettingsFields({
         </div>
         <Hint className="pr-6">
           When enabled, production deployments wait for Vercel deployment to complete before
-          promoting the Trigger.dev deployment. This will disable the "Auto-assign Custom
+          promoting the AirTrigger deployment. This will disable the "Auto-assign Custom
           Production Domains" option in your Vercel project settings to perform staged
           deployments.{" "}
           <TextLink href="https://trigger.dev/docs/vercel-integration#atomic-deployments" target="_blank">

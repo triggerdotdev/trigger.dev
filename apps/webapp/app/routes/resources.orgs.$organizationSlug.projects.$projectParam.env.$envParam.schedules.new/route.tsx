@@ -202,7 +202,7 @@ export function UpsertScheduleForm({
           {schedule?.friendlyId ? "Edit schedule" : "New schedule"}
         </Header2>
       </div>
-      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
         <div className="p-3">
           {schedule && <input type="hidden" name="friendlyId" value={schedule.friendlyId} />}
           <Fieldset>

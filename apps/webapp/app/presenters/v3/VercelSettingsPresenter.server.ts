@@ -528,7 +528,7 @@ export class VercelSettingsPresenter extends BasePresenter {
         const projectEnvVars = projectEnvVarsResult.isOk() ? projectEnvVarsResult.value : [];
         const sharedEnvVars = sharedEnvVarsResult.isOk() ? sharedEnvVarsResult.value : [];
 
-        // Filter out TRIGGER_SECRET_KEY and TRIGGER_VERSION (managed by Trigger.dev) and merge project + shared env vars
+        // Filter out TRIGGER_SECRET_KEY and TRIGGER_VERSION (managed by AirTrigger) and merge project + shared env vars
         const excludedKeys = new Set(["TRIGGER_SECRET_KEY", "TRIGGER_VERSION"]);
         const projectEnvVarKeys = new Set(projectEnvVars.map((v) => v.key));
         const mergedEnvVars: VercelEnvironmentVariable[] = [

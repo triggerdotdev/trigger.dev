@@ -1,7 +1,7 @@
 /** @type {import('@remix-run/dev').AppConfig} */
 module.exports = {
   dev: {
-    port: 8002,
+    port: 8003,
   },
   tailwind: true,
   cacheDirectory: "./node_modules/.cache/remix",

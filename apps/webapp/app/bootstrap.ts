@@ -40,7 +40,7 @@ async function createWorkerGroup() {
 
   console.log(`
 ==========================
-Trigger.dev Bootstrap - Worker Token
+AirTrigger Bootstrap - Worker Token
 
 WARNING: This will only be shown once. Save it now!
 

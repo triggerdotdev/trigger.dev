@@ -114,7 +114,7 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
                     panelClassName="w-full mb-2"
                   >
                     <Paragraph variant="small">
-                      The quickest way to get answers from the Trigger.dev team and community is to{" "}
+                      The quickest way to get answers from the AirTrigger team and community is to{" "}
                       <TextLink to="https://trigger.dev/discord">ask in our Discord</TextLink>.
                     </Paragraph>
                   </InfoPanel>

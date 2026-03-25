@@ -435,7 +435,7 @@ export function BranchesNoBranchableEnvironment() {
       }
     >
       <Paragraph spacing variant="small">
-        Preview branches in Trigger.dev create isolated environments for testing new features before
+        Preview branches in AirTrigger create isolated environments for testing new features before
         production.
       </Paragraph>
       <Paragraph variant="small">

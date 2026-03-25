@@ -36,7 +36,7 @@ import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Usage | Trigger.dev`,
+      title: `Usage | AirTrigger`,
     },
   ];
 };

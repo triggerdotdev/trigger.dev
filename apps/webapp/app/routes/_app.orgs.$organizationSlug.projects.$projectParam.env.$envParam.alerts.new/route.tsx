@@ -341,9 +341,9 @@ export default function Page() {
                       >
                         To receive alerts in the{" "}
                         <InlineCode variant="extra-small">{selectedSlackChannel.name}</InlineCode>{" "}
-                        channel, you need to invite the @Trigger.dev Slack Bot. Go to the channel in
+                        channel, you need to invite the @AirTrigger Slack Bot. Go to the channel in
                         Slack and type:{" "}
-                        <InlineCode variant="extra-small">/invite @Trigger.dev</InlineCode>.
+                        <InlineCode variant="extra-small">/invite @AirTrigger</InlineCode>.
                       </Callout>
                     )}
 

@@ -647,8 +647,8 @@ export async function generateJWTTokenForEnvironment(
   })
     .setProtectedHeader({ alg: JWT_ALGORITHM })
     .setIssuedAt()
-    .setIssuer("https://id.trigger.dev")
-    .setAudience("https://api.trigger.dev")
+    .setIssuer("https://id.airtrigger.dev")
+    .setAudience("https://api.airtrigger.dev")
     .setExpirationTime(calculateJWTExpiration())
     .sign(JWT_SECRET);
 
@@ -671,8 +671,8 @@ export async function validateJWTTokenAndRenew<T extends z.ZodTypeAny>(
     }
 
     const { payload: rawPayload } = await jwtVerify(jwt, JWT_SECRET, {
-      issuer: "https://id.trigger.dev",
-      audience: "https://api.trigger.dev",
+      issuer: "https://id.airtrigger.dev",
+      audience: "https://api.airtrigger.dev",
     });
 
     const payload = payloadSchema.safeParse(rawPayload);
@@ -744,8 +744,8 @@ async function renewJWTToken(payload: Record<string, string>) {
   const jwt = await new SignJWT(payload)
     .setProtectedHeader({ alg: JWT_ALGORITHM })
     .setIssuedAt()
-    .setIssuer("https://id.trigger.dev")
-    .setAudience("https://api.trigger.dev")
+    .setIssuer("https://id.airtrigger.dev")
+    .setAudience("https://api.airtrigger.dev")
     .setExpirationTime(calculateJWTExpiration())
     .sign(JWT_SECRET);
 

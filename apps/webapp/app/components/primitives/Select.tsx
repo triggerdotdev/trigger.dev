@@ -433,7 +433,7 @@ export function SelectList(props: SelectListProps) {
     <Component
       {...props}
       className={cn(
-        "overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 focus-custom",
+        "overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300 focus-custom",
         props.className
       )}
     />

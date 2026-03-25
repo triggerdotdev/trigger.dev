@@ -9,17 +9,17 @@ export default function Email({ name }: { name?: string }) {
       <Preview>Power up your workflows</Preview>
       <Body style={main}>
         <Text style={paragraphLight}>Hey {name ?? "there"},</Text>
-        <Text style={paragraphLight}>I’m Matt, CEO of Trigger.dev.</Text>
+        <Text style={paragraphLight}>I’m Matt, CEO of AirTrigger.</Text>
         <Text style={paragraphLight}>
           Our goal is to give developers like you the ability to effortlessly create powerful
           workflows in code.
         </Text>
         <Text style={paragraphLight}>
           We recommend{" "}
-          <Link style={anchor} href="https://app.trigger.dev/templates">
+          <Link style={anchor} href="https://app.airtrigger.dev/templates">
             getting started with one of our templates
           </Link>{" "}
-          to get familiar with how Trigger.dev works, and then moving on to create your own
+          to get familiar with how AirTrigger works, and then moving on to create your own
           workflows.
         </Text>
 
@@ -35,11 +35,11 @@ export default function Email({ name }: { name?: string }) {
           to connect with the community and our team.
         </Text>
 
-        <Text style={paragraphLight}>We hope you enjoy using Trigger.dev!</Text>
+        <Text style={paragraphLight}>We hope you enjoy using AirTrigger!</Text>
 
         <Text style={bullets}>Best,</Text>
         <Text style={bullets}>Matt</Text>
-        <Text style={paragraphLight}>CEO, Trigger.dev</Text>
+        <Text style={paragraphLight}>CEO, AirTrigger</Text>
         <Text style={footerItalic}>
           If you don’t want me to contact you again, please just let me know and I’ll update your
           preferences.

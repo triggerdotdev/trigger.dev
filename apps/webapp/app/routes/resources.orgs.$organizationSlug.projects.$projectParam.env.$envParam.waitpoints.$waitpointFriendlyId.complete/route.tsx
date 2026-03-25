@@ -344,8 +344,8 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { id: string } 
             contentClassName="normal-case tracking-normal max-w-xs"
           />
         </div>
-        <div className="overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-          <div className="max-h-[70vh] min-h-40 overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
+          <div className="max-h-[70vh] min-h-40 overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
             <JSONEditor
               autoFocus
               defaultValue={currentJson.current}

@@ -345,7 +345,7 @@ export function RealtimeStreamViewer({
       {/* Content */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-x-auto overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="flex-1 overflow-x-auto overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
       >
         {error && (
           <div className="border-b border-error/20 bg-error/10 p-3">

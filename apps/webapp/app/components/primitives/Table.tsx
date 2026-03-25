@@ -86,7 +86,7 @@ export const Table = forwardRef<HTMLTableElement, TableProps & { variant?: Table
       <TableContext.Provider value={{ variant }}>
         <div
           className={cn(
-            "overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+            "overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300",
             showTopBorder && "border-t",
             containerClassName,
             fullWidth && "w-full"
@@ -493,7 +493,7 @@ export const TableCellMenu = forwardRef<
                   className="duration-0 group-hover/table-row:text-text-bright"
                 />
                 <PopoverContent
-                  className="min-w-[10rem] max-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                  className="min-w-[10rem] max-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
                   align="end"
                 >
                   <div className="flex flex-col gap-1 p-1">{popoverContent}</div>

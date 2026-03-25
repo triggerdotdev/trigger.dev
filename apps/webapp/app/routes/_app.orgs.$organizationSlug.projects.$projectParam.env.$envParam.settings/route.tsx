@@ -12,7 +12,7 @@ import { EnvironmentParamSchema, v3ProjectSettingsGeneralPath, v3ProjectSettings
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Project settings | Trigger.dev`,
+      title: `Project settings | AirTrigger`,
     },
   ];
 };

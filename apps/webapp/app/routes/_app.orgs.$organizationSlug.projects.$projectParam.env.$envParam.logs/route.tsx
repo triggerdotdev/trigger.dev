@@ -51,7 +51,7 @@ function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Logs | Trigger.dev`,
+      title: `Logs | AirTrigger`,
     },
   ];
 };

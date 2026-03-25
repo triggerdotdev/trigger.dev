@@ -1,7 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 const colors = require("tailwindcss/colors");
 
-// V2
+// V2 (legacy, kept for compatibility)
 const slate = {
   450: "#7E8FA6",
   500: "#6B7C95",
@@ -54,39 +54,39 @@ const midnight = {
   900: "#0B1018",
 };
 
-// V3
+// V3 — charcoal kept for compatibility, but semantics are now light
 const charcoal = {
-  100: "#E8E9EC",
-  200: "#D7D9DD",
-  300: "#B5B8C0",
-  400: "#878C99",
-  500: "#5F6570",
-  550: "#4D525B",
-  600: "#3B3E45",
-  650: "#2C3034",
-  700: "#272A2E",
-  750: "#212327",
-  775: "#1C1E21",
-  800: "#1A1B1F",
-  850: "#15171A",
-  900: "#121317",
-  950: "#0D0E12",
-  1000: "#0B0C0F",
+  100: "#F8F9FA",
+  200: "#F1F3F5",
+  300: "#E9ECEF",
+  400: "#868E96",
+  500: "#495057",
+  550: "#343A40",
+  600: "#DEE2E6",
+  650: "#E9ECEF",
+  700: "#F1F3F5",
+  750: "#F8F9FA",
+  775: "#FAFBFC",
+  800: "#FFFFFF",
+  850: "#FFFFFF",
+  900: "#FAFBFC",
+  950: "#F8F9FA",
+  1000: "#F1F3F5",
 };
 
 const apple = {
-  100: "#E4FFC9",
-  200: "#CFFFA0",
-  300: "#BFFF81",
-  400: "#AFFF62",
-  500: "#A8FF53",
-  600: "#82D134",
-  700: "#6FB12F",
-  750: "#5E932A",
-  800: "#45711A",
-  850: "#2E4E10",
-  900: "#20370A",
-  950: "#152506",
+  100: "#F0FAF0",
+  200: "#D1F0D1",
+  300: "#A3E0A3",
+  400: "#4CAF50",
+  500: "#2E7D32",
+  600: "#1B5E20",
+  700: "#174F1C",
+  750: "#134218",
+  800: "#0E3513",
+  850: "#0A280F",
+  900: "#071C0A",
+  950: "#041006",
 };
 
 const mint = {
@@ -118,7 +118,7 @@ const sun = {
 };
 
 const lavender = {
-  50: "##f4f2ff",
+  50: "#f4f2ff",
   100: "#eae8ff",
   200: "#d7d4ff",
   300: "#bab2ff",
@@ -131,53 +131,53 @@ const lavender = {
   950: "#230c69",
 };
 
-/** Trigger.dev custom palette */
+/** AirTrigger light theme palette */
 
-/** Text colors */
-const primary = apple[500];
-const secondary = charcoal[650];
-const tertiary = charcoal[700];
-const textLink = lavender[400];
-const textDimmed = charcoal[400];
-const textBright = charcoal[200];
-const backgroundBright = charcoal[800];
-const backgroundDimmed = charcoal[850];
-const gridBright = charcoal[700];
-const gridDimmed = charcoal[750];
-const success = mint[500];
-const pending = colors.blue[500];
-const warning = colors.amber[500];
+/** Semantic color tokens — light mode */
+const primary = "#2E7D32";
+const secondary = "#F1F3F5";
+const tertiary = "#F8F9FA";
+const textLink = lavender[600];
+const textDimmed = "#6B7280";
+const textBright = "#111827";
+const backgroundBright = "#FFFFFF";
+const backgroundDimmed = "#F9FAFB";
+const gridBright = "#E5E7EB";
+const gridDimmed = "#F3F4F6";
+const success = mint[600];
+const pending = colors.blue[600];
+const warning = colors.amber[600];
 const error = colors.rose[600];
-const devEnv = colors.pink[500];
-const stagingEnv = colors.orange[400];
-const previewEnv = colors.yellow[400];
-const prodEnv = mint[500];
+const devEnv = colors.pink[600];
+const stagingEnv = colors.orange[500];
+const previewEnv = colors.yellow[500];
+const prodEnv = mint[600];
 
 /** Icon colors */
-const tasks = colors.blue[500];
-const runs = colors.indigo[500];
-const batches = colors.pink[500];
-const schedules = colors.yellow[500];
-const queues = colors.purple[500];
-const query = colors.blue[500];
-const metrics = colors.green[500];
-const customDashboards = charcoal[400];
-const deployments = colors.green[500];
-const concurrency = colors.amber[500];
-const limits = colors.purple[500];
-const regions = colors.green[500];
-const logs = colors.pink[500];
-const tests = colors.lime[500];
-const apiKeys = colors.amber[500];
-const environmentVariables = colors.pink[500];
-const alerts = colors.red[500];
-const projectSettings = colors.blue[500];
-const orgSettings = colors.blue[500];
-const docs = colors.blue[500];
-const bulkActions = colors.emerald[500];
+const tasks = colors.blue[600];
+const runs = colors.indigo[600];
+const batches = colors.pink[600];
+const schedules = colors.yellow[600];
+const queues = colors.purple[600];
+const query = colors.blue[600];
+const metrics = colors.green[600];
+const customDashboards = "#6B7280";
+const deployments = colors.green[600];
+const concurrency = colors.amber[600];
+const limits = colors.purple[600];
+const regions = colors.green[600];
+const logs = colors.pink[600];
+const tests = colors.lime[600];
+const apiKeys = colors.amber[600];
+const environmentVariables = colors.pink[600];
+const alerts = colors.red[600];
+const projectSettings = colors.blue[600];
+const orgSettings = colors.blue[600];
+const docs = colors.blue[600];
+const bulkActions = colors.emerald[600];
 
 /** Other variables */
-const radius = "0.5rem";
+const radius = "0.625rem";
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -192,7 +192,7 @@ module.exports = {
     },
     extend: {
       fontFamily: {
-        sans: ["Geist Variable", "Helvetica Neue", "Helvetica", "Arial", "sans-serif"],
+        sans: ["Geist Variable", "Inter", "Helvetica Neue", "Helvetica", "Arial", "sans-serif"],
         mono: ["Geist Mono Variable", "monaco", "Consolas", "Lucida Console", "monospace"],
       },
       fontSize: {
@@ -271,15 +271,19 @@ module.exports = {
         sm: `calc(${radius} - 4px)`,
       },
       boxShadow: {
-        "glow-primary": "0 0 10px 5px rgba(218, 244, 55, 0.2)",
-        "glow-secondary": "0 0 10px 5px rgba(79, 70, 229, 0.2)",
-        "glow-pink": "0 0 10px 5px rgba(236, 72, 153, 0.2)",
+        "glow-primary": "0 0 10px 5px rgba(46, 125, 50, 0.1)",
+        "glow-secondary": "0 0 10px 5px rgba(79, 70, 229, 0.1)",
+        "glow-pink": "0 0 10px 5px rgba(236, 72, 153, 0.1)",
+        sm: "0 1px 2px 0 rgb(0 0 0 / 0.03)",
+        DEFAULT: "0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06)",
+        md: "0 4px 6px -1px rgb(0 0 0 / 0.06), 0 2px 4px -2px rgb(0 0 0 / 0.06)",
+        lg: "0 10px 15px -3px rgb(0 0 0 / 0.06), 0 4px 6px -4px rgb(0 0 0 / 0.06)",
       },
       outlineWidth: {
         3: "3px",
       },
       textShadow: {
-        custom: "1px 1px 1px rgba(0, 0, 0, 0.5)", // Offset-X | Offset-Y | Blur radius | Color
+        custom: "none",
       },
       keyframes: {
         "accordion-down": {
@@ -312,8 +316,8 @@ module.exports = {
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(closest-side, var(--tw-gradient-stops))",
-        "gradient-primary": `linear-gradient(90deg, acid-500 0%, toxic-500 100%)`,
-        "gradient-primary-hover": `linear-gradient(80deg, acid-600 0%, toxic-600 100%)`,
+        "gradient-primary": `linear-gradient(90deg, #2E7D32 0%, #43A047 100%)`,
+        "gradient-primary-hover": `linear-gradient(80deg, #1B5E20 0%, #2E7D32 100%)`,
         "gradient-secondary": `linear-gradient(90deg, hsl(271 91 65) 0%, hsl(221 83 53) 100%)`,
         "gradient-radial-secondary ": `radial-gradient(hsl(271 91 65), hsl(221 83 53))`,
       },

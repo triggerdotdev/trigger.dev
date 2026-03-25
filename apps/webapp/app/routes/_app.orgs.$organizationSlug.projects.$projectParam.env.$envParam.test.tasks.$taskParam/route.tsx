@@ -548,7 +548,7 @@ function StandardTaskForm({
         </ResizablePanel>
         <ResizableHandle id="test-task-handle" />
         <ResizablePanel id="test-task-options" min="300px" default="300px" max="360px">
-          <div className="h-full overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="h-full overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
             <Fieldset className="px-3 py-3">
               <Hint>
                 Options enable you to control the execution behavior of your task.{" "}
@@ -1030,7 +1030,7 @@ function ScheduledTaskForm({
           />
         </div>
       </div>
-      <div className="grow overflow-y-scroll p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="grow overflow-y-scroll p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
         <Fieldset>
           <InputGroup>
             <Label htmlFor={timestamp.id} variant="small">
@@ -1453,7 +1453,7 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="min-w-[294px] p-0" align="end" sideOffset={6}>
-        <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
           <div className="p-1">
             {runs.map((run) => (
               <button
@@ -1534,7 +1534,7 @@ function RunTemplatesPopover({
           </Button>
         </PopoverTrigger>
         <PopoverContent className="min-w-[279px] p-0" align="end" sideOffset={6}>
-          <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
             <div className="p-1">
               {templates.map((template) => (
                 <div

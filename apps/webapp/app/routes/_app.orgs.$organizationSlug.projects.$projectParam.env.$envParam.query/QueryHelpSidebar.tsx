@@ -36,7 +36,7 @@ export function QueryHelpSidebar({
         onValueChange={onTabChange}
         className="flex min-h-0 flex-col overflow-hidden pt-1"
       >
-        <div className="h-fit overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="h-fit overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
           <ClientTabsList variant="underline" className="mx-3 shrink-0">
             <ClientTabsTrigger
               value="ai"
@@ -76,7 +76,7 @@ export function QueryHelpSidebar({
         </div>
         <ClientTabsContent
           value="ai"
-          className="min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
         >
           <div className="min-w-64 p-3">
             <AITabContent
@@ -89,7 +89,7 @@ export function QueryHelpSidebar({
         </ClientTabsContent>
         <ClientTabsContent
           value="guide"
-          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
         >
           <div className="min-w-64 p-3">
             <TRQLGuideContent onTryExample={onTryExample} />
@@ -97,7 +97,7 @@ export function QueryHelpSidebar({
         </ClientTabsContent>
         <ClientTabsContent
           value="schema"
-          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
         >
           <div className="min-w-64 p-3">
             <TableSchemaContent />
@@ -105,7 +105,7 @@ export function QueryHelpSidebar({
         </ClientTabsContent>
         <ClientTabsContent
           value="examples"
-          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
         >
           <div className="min-w-64 p-3">
             <ExamplesContent onTryExample={onTryExample} />

@@ -6,9 +6,9 @@ export type TriggerFeatures = {
 
 function isManagedCloud(host: string): boolean {
   return (
-    host === "cloud.trigger.dev" ||
-    host === "test-cloud.trigger.dev" ||
-    host === "internal.trigger.dev" ||
+    host === "cloud.airtrigger.dev" ||
+    host === "test-cloud.airtrigger.dev" ||
+    host === "internal.airtrigger.dev" ||
     process.env.CLOUD_ENV === "development"
   );
 }

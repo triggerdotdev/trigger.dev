@@ -355,7 +355,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
             <div
               dir="ltr"
               className={cn(
-                "px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+                "px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300",
                 !isWrapped && "overflow-x-auto",
                 isWrapped && "overflow-y-auto"
               )}
@@ -409,7 +409,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
             ) : (
               <div
                 dir="ltr"
-                className="overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                className="overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
               >
                 <pre className="relative mr-2 p-2 font-mono text-base leading-relaxed" dir="ltr">
                   {highlightSearchText(code, searchTerm)}
@@ -490,7 +490,7 @@ function HighlightCode({
   }, []);
 
   const containerClasses = cn(
-    "px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+    "px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300",
     !isWrapped && "overflow-x-auto",
     isWrapped && "overflow-y-auto",
     className

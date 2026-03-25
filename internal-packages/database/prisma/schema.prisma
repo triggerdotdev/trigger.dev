@@ -65,6 +65,7 @@ model User {
   impersonationsReceived  ImpersonationAuditLog[] @relation("ImpersonationTarget")
   customerQueries         CustomerQuery[]
   metricsDashboards       MetricsDashboard[]
+  agentConfigs            AgentConfig[]
 }
 
 model MfaBackupCode {
@@ -2576,4 +2577,101 @@ model MetricsDashboard {
 
   /// Fast lookup for the list
   @@index([projectId, createdAt(sort: Desc)])
+}
+
+/// OpenClaw Agent Configuration
+model AgentConfig {
+  id String @id @default(cuid())
+
+  /// Owner of this agent
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  /// Agent display name
+  name String
+
+  /// Model selected (e.g., claude-3.5-sonnet)
+  model String
+
+  /// Messaging platform (slack, discord, telegram)
+  messagingPlatform String
+
+  /// Tools/skills enabled (JSON array)
+  tools Json
+
+  /// Container name on VPS
+  containerName String?
+
+  /// Container port (e.g., 8001, 8002)
+  containerPort Int?
+
+  /// Slack workspace ID for routing
+  slackWorkspaceId String?
+
+  /// Webhook token for Slack
+  slackWebhookToken String?
+
+  /// User's API keys (encrypted)
+  apiKeys Json?
+
+  /// Health status
+  status String @default("provisioning") // provisioning, healthy, unhealthy, stopped
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  executions AgentExecution[]
+  healthChecks AgentHealthCheck[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([slackWorkspaceId])
+}
+
+/// Execution history
+model AgentExecution {
+  id String @id @default(cuid())
+
+  agent   AgentConfig @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agentId String
+
+  /// Input message
+  message String
+
+  /// Output response
+  response String
+
+  /// Tools used in this execution
+  toolsUsed Json?
+
+  /// Execution time in ms
+  executionTimeMs Int
+
+  /// Token usage
+  inputTokens Int?
+  outputTokens Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([agentId, createdAt(sort: Desc)])
+}
+
+/// Health check history
+model AgentHealthCheck {
+  id String @id @default(cuid())
+
+  agent   AgentConfig @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agentId String
+
+  /// Response time in ms
+  responseTimeMs Int?
+
+  /// Healthy or not
+  isHealthy Boolean
+
+  /// Error message if unhealthy
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+
+  @@index([agentId, createdAt(sort: Desc)])
 }

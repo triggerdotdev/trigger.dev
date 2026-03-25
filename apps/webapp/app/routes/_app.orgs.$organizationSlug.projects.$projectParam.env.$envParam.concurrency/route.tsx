@@ -74,7 +74,7 @@ import { AllocateConcurrencyService } from "~/v3/services/allocateConcurrency.se
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Manage concurrency | Trigger.dev`,
+      title: `Manage concurrency | AirTrigger`,
     },
   ];
 };

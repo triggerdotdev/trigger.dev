@@ -612,9 +612,9 @@ export async function enqueueBuild(
 
 function isCloud(): boolean {
   const acceptableHosts = [
-    "https://cloud.trigger.dev",
-    "https://test-cloud.trigger.dev",
-    "https://internal.trigger.dev",
+    "https://cloud.airtrigger.dev",
+    "https://test-cloud.airtrigger.dev",
+    "https://internal.airtrigger.dev",
   ];
 
   if (acceptableHosts.includes(env.LOGIN_ORIGIN)) {

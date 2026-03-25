@@ -67,7 +67,7 @@ import {
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Alerts | Trigger.dev`,
+      title: `Alerts | AirTrigger`,
     },
   ];
 };

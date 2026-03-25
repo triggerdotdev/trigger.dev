@@ -276,7 +276,7 @@ function SpanBody({
           />
         )}
       </div>
-      <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
         <SpanEntity span={span} />
       </div>
     </div>
@@ -362,7 +362,7 @@ function RunBody({
           />
         )}
       </div>
-      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
         <TabContainer>
           <TabButton
             isActive={!tab || tab === "overview"}
@@ -407,7 +407,7 @@ function RunBody({
           </TabButton>
         </TabContainer>
       </div>
-      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
         <div>
           {tab === "detail" ? (
             <div className="flex flex-col gap-4 py-3">
@@ -1324,7 +1324,7 @@ function SpanEntity({ span }: { span: Span }) {
     case "waitpoint": {
       return (
         <div className="grid h-full grid-rows-[1fr_auto]">
-          <div className="flex flex-col gap-4 overflow-y-auto px-3 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="flex flex-col gap-4 overflow-y-auto px-3 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
             <div>
               <Header2>Waitpoint</Header2>
               <Paragraph variant="small">

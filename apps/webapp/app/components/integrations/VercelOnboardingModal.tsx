@@ -707,7 +707,7 @@ export function VercelOnboardingModal({
             <div className="flex flex-col gap-4">
               <Header3>Select Vercel Project</Header3>
               <Paragraph className="text-sm">
-                Choose which Vercel project to connect with this Trigger.dev project.
+                Choose which Vercel project to connect with this AirTrigger project.
                 Your API keys will be automatically synced to Vercel.
               </Paragraph>
 
@@ -788,7 +788,7 @@ export function VercelOnboardingModal({
             <div className="flex flex-col gap-4">
               <Header3>Map Vercel Environment to Staging</Header3>
               <Paragraph className="text-sm">
-                Select which custom Vercel environment should map to Trigger.dev's Staging
+                Select which custom Vercel environment should map to AirTrigger's Staging
                 environment. Production and Preview environments are mapped automatically.
                 If you skip this step, the{" "}
                 <code className="rounded bg-charcoal-700 px-1 py-0.5 text-text-bright">TRIGGER_SECRET_KEY</code>{" "}
@@ -1080,13 +1080,13 @@ export function VercelOnboardingModal({
             <div className="flex flex-col gap-4">
               <Header3>Connect GitHub Repository</Header3>
               <Paragraph className="text-sm">
-                To fully integrate with Vercel, Trigger.dev needs access to your source code.
+                To fully integrate with Vercel, AirTrigger needs access to your source code.
                 This allows automatic deployments and build synchronization.
               </Paragraph>
 
               <Callout variant="info">
                 <p className="text-xs">
-                  Connecting your GitHub repository enables Trigger.dev to read your source code
+                  Connecting your GitHub repository enables AirTrigger to read your source code
                   and automatically create deployments when you push changes to Vercel.
                 </p>
               </Callout>

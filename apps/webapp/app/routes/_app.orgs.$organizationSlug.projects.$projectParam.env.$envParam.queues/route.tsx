@@ -90,7 +90,7 @@ const SearchParamsSchema = z.object({
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Queues | Trigger.dev`,
+      title: `Queues | AirTrigger`,
     },
   ];
 };

@@ -57,7 +57,7 @@ export function SideMenuHeader({
             <EllipsisHorizontalIcon className="h-4 w-4 text-charcoal-500 transition group-hover:text-text-bright" />
           </PopoverCustomTrigger>
           <PopoverContent
-            className="min-w-max overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+            className="min-w-max overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
             align="start"
           >
             <div className="flex flex-col gap-1 p-1">{children}</div>

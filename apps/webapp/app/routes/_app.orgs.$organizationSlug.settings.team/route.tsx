@@ -50,7 +50,7 @@ import {
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Team | Trigger.dev`,
+      title: `Team | AirTrigger`,
     },
   ];
 };

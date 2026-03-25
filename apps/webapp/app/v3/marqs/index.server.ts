@@ -2621,7 +2621,7 @@ export const marqs = singleton("marqs", getMarQSClient);
 function getMarQSClient() {
   if (!env.REDIS_HOST || !env.REDIS_PORT) {
     throw new Error(
-      "Could not initialize Trigger.dev because process.env.REDIS_HOST and process.env.REDIS_PORT are required to be set."
+      "Could not initialize AirTrigger because process.env.REDIS_HOST and process.env.REDIS_PORT are required to be set."
     );
   }
 

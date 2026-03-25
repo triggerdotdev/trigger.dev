@@ -45,7 +45,7 @@ import { docsPath, EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Waitpoint tokens | Trigger.dev`,
+      title: `Waitpoint tokens | AirTrigger`,
     },
   ];
 };

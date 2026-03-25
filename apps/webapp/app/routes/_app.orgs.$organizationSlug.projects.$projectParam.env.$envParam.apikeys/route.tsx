@@ -40,7 +40,7 @@ import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `API keys | Trigger.dev`,
+      title: `API keys | AirTrigger`,
     },
   ];
 };
@@ -177,7 +177,7 @@ export default function Page() {
                   <div className="flex flex-col gap-2">
                     <div>
                       You need to set these environment variables in your backend. This allows the
-                      SDK to authenticate with Trigger.dev.
+                      SDK to authenticate with AirTrigger.
                     </div>
                     <CodeBlock
                       language="javascript"

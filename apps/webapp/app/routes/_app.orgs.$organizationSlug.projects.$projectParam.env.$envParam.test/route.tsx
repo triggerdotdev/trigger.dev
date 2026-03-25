@@ -40,7 +40,7 @@ import { docsPath, EnvironmentParamSchema, v3TestTaskPath } from "~/utils/pathBu
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Test | Trigger.dev`,
+      title: `Test | AirTrigger`,
     },
   ];
 };

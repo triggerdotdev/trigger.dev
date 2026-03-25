@@ -111,7 +111,7 @@ export function QueryHistoryPopover({
         sideOffset={6}
         style={{ maxHeight: "var(--radix-popover-content-available-height)" }}
       >
-        <div className="max-h-[40rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="max-h-[40rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
           <div className="p-1">
             {history.map((item) => {
               // Format time filter display

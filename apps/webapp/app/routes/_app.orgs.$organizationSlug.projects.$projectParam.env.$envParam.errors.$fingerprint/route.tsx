@@ -50,7 +50,7 @@ import { CopyableText } from "~/components/primitives/CopyableText";
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
     {
-      title: `Error Details | Trigger.dev`,
+      title: `Error Details | AirTrigger`,
     },
   ];
 };

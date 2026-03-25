@@ -44,7 +44,7 @@ export const meta: MetaFunction = ({ matches }) => {
 
   return [
     ...parentMeta,
-    { title: `Login to Trigger.dev` },
+    { title: `Login to AirTrigger` },
     {
       name: "viewport",
       content: "width=device-width,initial-scale=1",

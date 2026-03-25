@@ -57,7 +57,7 @@ import { ServiceValidationError } from "~/v3/services/baseService.server";
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Errors | Trigger.dev`,
+      title: `Errors | AirTrigger`,
     },
   ];
 };

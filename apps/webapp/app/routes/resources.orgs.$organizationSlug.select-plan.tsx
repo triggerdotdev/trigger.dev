@@ -355,7 +355,7 @@ export function TierFree({
           <div className="flex flex-col gap-2 rounded-sm border border-warning p-4">
             <ExclamationTriangleIcon className="size-6 text-warning" />
             <Paragraph variant="small/bright">
-              Your Trigger.dev account failed to be verified for the Free plan because your GitHub
+              Your AirTrigger account failed to be verified for the Free plan because your GitHub
               account is too new. We require verification to prevent malicious use of our platform.
             </Paragraph>
             <Paragraph variant="small/bright">

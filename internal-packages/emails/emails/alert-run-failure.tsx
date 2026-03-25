@@ -97,7 +97,7 @@ export default function Email(props: AlertRunEmailProps) {
             Investigate this error
           </Link>
 
-          <Image path="/emails/logo-mono.png" width="120" height="22" alt="Trigger.dev" />
+          <Image path="/emails/logo-mono.png" width="120" height="22" alt="AirTrigger" />
           <Footer />
         </Container>
       </Body>

@@ -31,7 +31,7 @@ export default function Email(props: MfaDisabledEmailProps) {
           <Text style={h1}>Multi-factor authentication disabled</Text>
           <Text style={paragraphLight}>Hi there,</Text>
           <Text style={paragraphLight}>
-            You have successfully disabled multi-factor authentication (MFA) for your Trigger.dev
+            You have successfully disabled multi-factor authentication (MFA) for your AirTrigger
             account ({userEmail}). Your account no longer has the additional security layer provided
             by MFA.
           </Text>
@@ -39,7 +39,7 @@ export default function Email(props: MfaDisabledEmailProps) {
             You can re-enable MFA at any time from your account security page. If you didn't disable
             MFA, please contact our support team immediately.
           </Text>
-          <Image path="/emails/logo-mono.png" width="120" height="22" alt="Trigger.dev" />
+          <Image path="/emails/logo-mono.png" width="120" height="22" alt="AirTrigger" />
           <Footer />
         </Container>
       </Body>

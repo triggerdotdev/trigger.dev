@@ -32,7 +32,7 @@ export const headers = () => ({
 export const meta: MetaFunction = ({ data }) => {
   const typedData = data as UseDataFunctionReturn<typeof loader>;
   return [
-    { title: typedData?.appEnv ? `Trigger.dev${appEnvTitleTag(typedData.appEnv)}` : "Trigger.dev" },
+    { title: typedData?.appEnv ? `AirTrigger${appEnvTitleTag(typedData.appEnv)}` : "AirTrigger" },
     {
       name: "viewport",
       content: "width=1024, initial-scale=1",
@@ -40,7 +40,7 @@ export const meta: MetaFunction = ({ data }) => {
     {
       name: "robots",
       content:
-        typeof window === "undefined" || window.location.hostname !== "cloud.trigger.dev"
+        typeof window === "undefined" || window.location.hostname !== "cloud.airtrigger.dev"
           ? "noindex, nofollow"
           : "index, follow",
     },

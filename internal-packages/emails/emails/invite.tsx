@@ -26,7 +26,7 @@ export default function Email({
         <Container style={container}>
           <Text style={h1}>{`You've been invited to ${orgName}`}</Text>
           <Text style={paragraphLight}>
-            {inviterName ?? inviterEmail} has invited you to join their organization on Trigger.dev.
+            {inviterName ?? inviterEmail} has invited you to join their organization on AirTrigger.
           </Text>
           <Link
             href={inviteLink}
@@ -40,7 +40,7 @@ export default function Email({
             Click here to view the invitation
           </Link>
 
-          <Image path="/emails/logo-mono.png" width="120" height="22" alt="Trigger.dev" />
+          <Image path="/emails/logo-mono.png" width="120" height="22" alt="AirTrigger" />
           <Footer />
         </Container>
       </Body>

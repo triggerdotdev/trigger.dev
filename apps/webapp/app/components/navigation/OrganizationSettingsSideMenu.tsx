@@ -68,7 +68,7 @@ export function OrganizationSettingsSideMenu({
           <span className="text-text-bright">Back to app</span>
         </LinkButton>
       </div>
-      <div className="mb-6 flex grow flex-col gap-4 overflow-y-auto px-1 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="mb-6 flex grow flex-col gap-4 overflow-y-auto px-1 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
         <div className="flex flex-col">
           <div className="mb-1">
             <SideMenuHeader title="Organization" />
