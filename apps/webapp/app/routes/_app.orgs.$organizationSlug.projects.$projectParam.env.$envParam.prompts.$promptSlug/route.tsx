@@ -626,7 +626,7 @@ export default function PromptDetailPage() {
               <ResizablePanel id="prompt-tabs" min="100px">
                 <div className="grid h-full max-h-full grid-rows-[2.25rem_1fr] overflow-hidden">
                   {/* Tab bar */}
-                  <div className="flex items-center justify-between border-b border-grid-dimmed pl-3 pr-1.5">
+                  <div className="flex items-center justify-between border-b border-grid-dimmed bg-background-bright pl-3 pr-1.5">
                     <TabContainer className="-mb-1">
                       <TabButton
                         isActive={contentTab === "generations"}
