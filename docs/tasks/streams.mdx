@@ -1,10 +1,12 @@
 ---
-title: "Realtime Streams"
+title: "Streaming data from tasks"
 sidebarTitle: "Streams"
-description: "Stream data in realtime from your Trigger.dev tasks to your frontend or backend applications."
+description: "Pipe continuous data from your Trigger.dev tasks to frontend or backend clients in real time. Stream AI completions, file chunks, progress updates, and more."
 ---
 
-Realtime Streams allow you to pipe streaming data from your Trigger.dev tasks to your frontend or backend applications in real-time. This is perfect for use cases like streaming AI completions, progress updates, or any continuous data flow. You can also **send data into** running tasks with [Input Streams](#input-streams) for bidirectional flows (e.g. cancel buttons, approvals).
+**Streams let you pipe data from a running task to your frontend or backend as it's produced.** Think AI completions token by token, progress updates, or file chunks. You can also **send data into** running tasks with [Input Streams](#input-streams) for bidirectional flows (cancel buttons, approvals).
+
+For subscribing to **run state changes** (status, metadata, tags) instead, see [Realtime](/realtime/overview).
 
 <Note>
   Streams require SDK version **4.1.0 or later** (`@trigger.dev/sdk` and `@trigger.dev/react-hooks`).
@@ -14,7 +16,7 @@ Realtime Streams allow you to pipe streaming data from your Trigger.dev tasks to
 
 ## Overview
 
-Realtime Streams provide:
+Streams provide:
 
 - **Unlimited stream length** (previously capped at 2000 chunks)
 - **Unlimited active streams per run** (previously 5)

@@ -1,21 +1,21 @@
 ---
-title: Subscribing to runs
-sidebarTitle: Subscribe
-description: Get live updates from runs, batches, metadata, and more in your frontend application.
+title: "Progress and status updates in React"
+sidebarTitle: "Progress & status"
+description: "Build progress bars, status indicators, and live dashboards by subscribing to background task updates from React components."
 ---
 
-These hooks allow you to subscribe to runs, batches, and streams using [Trigger.dev Realtime](/realtime). They automatically include real-time updates for run status, metadata, output, and other properties.
+**Subscribe to a run and your component re-renders whenever its status, metadata, or tags change.** Build progress bars, deployment monitors, or any UI that needs to reflect what a background task is doing right now.
 
-## Hooks
+For streaming continuous data (AI tokens, file chunks), see [Streaming data](/realtime/react-hooks/streams) instead.
 
-## Triggering + Realtime hooks
+## Trigger + subscribe combo hooks
 
-For triggering tasks and immediately subscribing to their runs, we provide combo hooks, details on how to use them can be found in the [triggering](/realtime/react-hooks/triggering) section.
+Trigger a task and immediately subscribe to its run. Details in the [triggering](/realtime/react-hooks/triggering) section.
 
 - **[`useRealtimeTaskTrigger`](/realtime/react-hooks/triggering#userealtimetasktrigger)** - Trigger a task and subscribe to the run
 - **[`useRealtimeTaskTriggerWithStreams`](/realtime/react-hooks/triggering#userealtimetasktriggerwithstreams)** - Trigger a task and subscribe to both run updates and streams
 
-## Other Realtime subscription hooks
+## Subscribe hooks
 
 ### useRealtimeRun
 
@@ -654,3 +654,21 @@ export function MyComponent({
 ```
 
 This allows you to change the ID of the subscription based on some state. Passing in a different ID will unsubscribe from the current subscription and subscribe to the new one (and remove any cached data).
+
+## Frequently asked questions
+
+### How do I show a progress bar for a background task in React?
+
+Use `metadata.set()` inside your task to update a progress value, then read it with `useRealtimeRun` in your component. The hook re-renders your component on every metadata change. See [Using metadata to show progress](#using-metadata-to-show-progress-in-your-ui) above for a complete example.
+
+### What's the difference between subscribing to runs and streaming data?
+
+Subscribing (this page) gives you **run state**: status, metadata, and tags. It's for progress bars, status badges, and dashboards. [Streaming](/realtime/react-hooks/streams) gives you **continuous data** like AI tokens or file chunks. Use subscribing for "how far along is my task?" and streaming for "show me the output as it generates."
+
+### Can I subscribe to multiple runs at once?
+
+Yes. Use `useRealtimeRunsWithTag` to subscribe to all runs with a specific tag (e.g., `user:123`), or `useRealtimeBatch` for all runs in a batch. Each yields an array of run objects that update in real time.
+
+### Do I need to set up polling or WebSockets?
+
+No. The hooks handle the connection automatically using Trigger.dev's Realtime infrastructure (built on [Electric SQL](/realtime/how-it-works)). Just pass a run ID and an access token.

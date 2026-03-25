@@ -137,7 +137,7 @@
               "realtime/run-object",
               "realtime/auth",
               {
-                "group": "React hooks (frontend)",
+                "group": "React hooks",
                 "pages": [
                   "realtime/react-hooks/overview",
                   "realtime/react-hooks/triggering",
