@@ -26,20 +26,30 @@ Sign up at [Trigger.dev Cloud](https://cloud.trigger.dev) (or [self-host](/open-
 
 </Steps>
 
+## Triggering tasks from your app
+
+The test page in the dashboard is great for verifying your task works. To trigger tasks from your own code, you'll need to set the `TRIGGER_SECRET_KEY` environment variable. Grab it from the API Keys page in the dashboard and add it to your `.env` file.
+
+```bash .env
+TRIGGER_SECRET_KEY=tr_dev_...
+```
+
+See [Triggering](/triggering) for the full guide, or jump straight to framework-specific setup for [Next.js](/guides/frameworks/nextjs), [Remix](/guides/frameworks/remix), or [Node.js](/guides/frameworks/nodejs).
+
 ## Next steps
 
 <CardGroup cols={2}>
 <Card title="Building with AI" icon="brain" href="/building-with-ai">
-  Learn how to build Trigger.dev projects using AI coding assistants
+  Build Trigger.dev projects using AI coding assistants
 </Card>
   <Card title="How to trigger your tasks" icon="bolt" href="/triggering">
-    Learn how to trigger tasks from your code.
+    Trigger tasks from your backend code
   </Card>
   <Card title="Writing tasks" icon="wand-magic-sparkles" href="/tasks/overview">
-    Tasks are the core of Trigger.dev. Learn what they are and how to write them.
+    Task options, lifecycle hooks, retries, and queues
   </Card>
   <Card title="Guides and example projects" icon="books" href="/guides/introduction">
-  Guides and examples for triggering tasks from your code.
+  Framework guides and working example repos
 </Card>
 
 </CardGroup>

@@ -643,6 +643,10 @@
       "destination": "/config/config-file"
     },
     {
+      "source": "/guides/frameworks",
+      "destination": "/guides/frameworks/nextjs"
+    },
+    {
       "source": "/guides/frameworks/introduction",
       "destination": "/guides/introduction"
     },
