@@ -117,6 +117,13 @@ const Env = z.object({
   KUBERNETES_PROJECT_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(50),
   KUBERNETES_PROJECT_AFFINITY_TOPOLOGY_KEY: z.string().trim().min(1).default("kubernetes.io/hostname"),
 
+  // Schedule affinity settings - runs from schedule trees prefer a dedicated pool
+  KUBERNETES_SCHEDULE_AFFINITY_ENABLED: BoolEnv.default(false),
+  KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_KEY: z.string().default("node.cluster.x-k8s.io/machinepool"),
+  KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_VALUE: z.string().default("scheduled-runs"),
+  KUBERNETES_SCHEDULE_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(80),
+  KUBERNETES_SCHEDULE_ANTI_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(20),
+
   // Placement tags settings
   PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),
   PLACEMENT_TAGS_PREFIX: z.string().default("node.cluster.x-k8s.io"),

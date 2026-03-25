@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { Enum, MachinePreset, RuntimeEnvironmentType, TaskRunExecution } from "./common.js";
 import { EnvironmentType } from "./schemas.js";
+import { RunAnnotations } from "./api.js";
 import type * as DB_TYPES from "@trigger.dev/database";
 
 export const TaskRunExecutionStatus = {
@@ -259,6 +260,7 @@ export const DequeuedMessage = z.object({
     attemptNumber: z.number(),
     masterQueue: z.string(),
     traceContext: z.record(z.unknown()),
+    annotations: RunAnnotations.optional(),
   }),
   environment: z.object({
     id: z.string(),
