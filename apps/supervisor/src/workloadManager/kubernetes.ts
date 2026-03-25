@@ -444,7 +444,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       return {
         preferredDuringSchedulingIgnoredDuringExecution: [
           {
-            weight: 100,
+            weight: env.KUBERNETES_LARGE_MACHINE_AFFINITY_WEIGHT,
             preference: {
               matchExpressions: [
                 {
