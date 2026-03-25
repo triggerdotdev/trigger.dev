@@ -2545,7 +2545,7 @@ export class RunQueue {
         return;
       }
 
-      this.logger.info("Processing concurrency keys from stream", {
+      this.logger.debug("Processing concurrency keys from stream", {
         keys: uniqueKeys,
       });
 
@@ -2615,9 +2615,9 @@ export class RunQueue {
   }
 
   private async processCurrentConcurrencyRunIds(concurrencyKey: string, runIds: string[]) {
-    this.logger.info("Processing concurrency set with runs", {
+    this.logger.debug("Processing concurrency set with runs", {
       concurrencyKey,
-      runIds: runIds.slice(0, 5), // Log first 5 for debugging,
+      runIds: runIds.slice(0, 5),
       runIdsLength: runIds.length,
     });
 
@@ -2625,12 +2625,12 @@ export class RunQueue {
     const completedRuns = await this.options.concurrencySweeper?.callback(runIds);
 
     if (!completedRuns) {
-      this.logger.info("No completed runs found in concurrency set", { concurrencyKey });
+      this.logger.debug("No completed runs found in concurrency set", { concurrencyKey });
       return;
     }
 
     if (completedRuns.length === 0) {
-      this.logger.info("No completed runs found in concurrency set", { concurrencyKey });
+      this.logger.debug("No completed runs found in concurrency set", { concurrencyKey });
       return;
     }
 

@@ -251,7 +251,9 @@ export class BatchTriggerV3Service extends BaseService {
 
           if (!queueSizeGuard.isWithinLimits) {
             throw new ServiceValidationError(
-              `Cannot trigger ${newRunCount} tasks as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+              `Cannot trigger ${newRunCount} tasks as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
+              undefined,
+              "warn"
             );
           }
 
