@@ -193,7 +193,7 @@ export class DeliverErrorGroupAlertService {
     await this.#postSlackMessage(integration, {
       channel: slackProperties.data.channelId,
       ...message,
-    });
+    } as ChatPostMessageArguments);
   }
 
   async #sendWebhook(
@@ -300,7 +300,7 @@ export class DeliverErrorGroupAlertService {
     payload: ErrorAlertPayload,
     errorLink: string,
     projectName: string
-  ): Pick<ChatPostMessageArguments, "text" | "blocks" | "attachments"> {
+  ): { text: string; blocks: object[]; attachments: object[] } {
     const label = this.#classificationLabel(payload.classification);
     const errorType = payload.error.errorType || "Error";
     const task = payload.error.taskIdentifier;

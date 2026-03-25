@@ -289,6 +289,20 @@ export class ErrorGroupPresenter extends BasePresenter {
       firstSeen: parseClickHouseDateTime(record.first_seen),
       lastSeen: parseClickHouseDateTime(record.last_seen),
       affectedVersions: [],
+      state: {
+        status: "UNRESOLVED" as const,
+        resolvedAt: null,
+        resolvedInVersion: null,
+        resolvedBy: null,
+        ignoredAt: null,
+        ignoredUntil: null,
+        ignoredReason: null,
+        ignoredByUserId: null,
+        ignoredByUserDisplayName: null,
+        ignoredUntilOccurrenceRate: null,
+        ignoredUntilTotalOccurrences: null,
+        ignoredAtOccurrenceCount: null,
+      },
     };
   }
 
