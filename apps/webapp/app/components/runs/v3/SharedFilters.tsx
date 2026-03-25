@@ -376,7 +376,7 @@ export function TimeFilter({
   const periodValue = period ?? value("period");
   const fromValue = from ?? value("from");
   const toValue = to ?? value("to");
-  const triggerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useShortcutKeys({
     shortcut,

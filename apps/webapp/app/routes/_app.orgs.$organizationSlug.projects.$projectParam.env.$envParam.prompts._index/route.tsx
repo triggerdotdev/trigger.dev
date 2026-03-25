@@ -83,7 +83,7 @@ export default function PromptsPage() {
       <NavBar>
         <PageTitle title="Prompts" />
         <PageAccessories>
-          <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("/prompts")}>
+          <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("ai/prompts")}>
             Prompts docs
           </LinkButton>
         </PageAccessories>
