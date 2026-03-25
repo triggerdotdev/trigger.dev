@@ -14,7 +14,7 @@ alwaysApply: false
 
 ## Essential requirements when generating task code
 
-1. You MUST use `@trigger.dev/sdk/v3`
+1. You MUST import from `@trigger.dev/sdk` (NEVER `@trigger.dev/sdk/v3`)
 2. You MUST NEVER use `client.defineJob`
 3. YOU MUST `export` every task, including subtasks
 4. If you are able to generate an example payload for a task, do so.
@@ -53,7 +53,7 @@ Instead, you MUST ALWAYS generate ONLY this pattern:
 ```ts
 // ✅ ALWAYS GENERATE THIS EXACT PATTERN
 
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 //1. You need to export each task, even if it's a subtask
 export const helloWorld = task({
@@ -71,7 +71,7 @@ export const helloWorld = task({
 A task is a function that can run for a long time with resilience to failure:
 
 ```ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 export const helloWorld = task({
   id: "hello-world",
@@ -271,7 +271,7 @@ Global lifecycle hooks can also be defined in `trigger.config.ts` to apply to al
 ## Correct Schedules task (cron) implementations
 
 ```ts
-import { schedules } from "@trigger.dev/sdk/v3";
+import { schedules } from "@trigger.dev/sdk";
 
 export const firstScheduledTask = schedules.task({
   id: "first-scheduled-task",
@@ -312,7 +312,7 @@ export const firstScheduledTask = schedules.task({
 ### Attach a Declarative schedule
 
 ```ts
-import { schedules } from "@trigger.dev/sdk/v3";
+import { schedules } from "@trigger.dev/sdk";
 
 // Sepcify a cron pattern (UTC)
 export const firstScheduledTask = schedules.task({
@@ -326,7 +326,7 @@ export const firstScheduledTask = schedules.task({
 ```
 
 ```ts
-import { schedules } from "@trigger.dev/sdk/v3";
+import { schedules } from "@trigger.dev/sdk";
 
 // Specify a specific timezone like this:
 export const secondScheduledTask = schedules.task({
@@ -375,7 +375,7 @@ const createdSchedule = await schedules.create({
 Schema tasks validate payloads against a schema before execution:
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { z } from "zod";
 
 const myTask = schemaTask({
@@ -400,7 +400,7 @@ When you trigger a task from your backend code, you need to set the `TRIGGER_SEC
 Triggers a single run of a task with specified payload and options without importing the task. Use type-only imports for full type checking.
 
 ```ts
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import type { emailSequence } from "~/trigger/emails";
 
 export async function POST(request: Request) {
@@ -418,7 +418,7 @@ export async function POST(request: Request) {
 Triggers multiple runs of a single task with different payloads without importing the task.
 
 ```ts
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import type { emailSequence } from "~/trigger/emails";
 
 export async function POST(request: Request) {
@@ -436,7 +436,7 @@ export async function POST(request: Request) {
 Triggers multiple runs of different tasks at once, useful when you need to execute multiple tasks simultaneously.
 
 ```ts
-import { batch } from "@trigger.dev/sdk/v3";
+import { batch } from "@trigger.dev/sdk";
 import type { myTask1, myTask2 } from "~/trigger/myTasks";
 
 export async function POST(request: Request) {
@@ -621,7 +621,7 @@ const handle = await myTask.trigger(
 Access metadata inside a run:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -713,7 +713,7 @@ Trigger.dev Realtime enables subscribing to runs for real-time updates on run st
 Subscribe to a run after triggering a task:
 
 ```ts
-import { runs, tasks } from "@trigger.dev/sdk/v3";
+import { runs, tasks } from "@trigger.dev/sdk";
 
 async function myBackend() {
   const handle = await tasks.trigger("my-task", { some: "data" });
@@ -735,7 +735,7 @@ async function myBackend() {
 You can infer types of run's payload and output by passing the task type:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 import type { myTask } from "./trigger/my-task";
 
 for await (const run of runs.subscribeToRun<typeof myTask>(handle.id)) {
@@ -752,7 +752,7 @@ for await (const run of runs.subscribeToRun<typeof myTask>(handle.id)) {
 Stream data in realtime from inside your tasks using the metadata system:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 
 export type STREAMS = {
@@ -947,7 +947,7 @@ For most use cases, Realtime hooks are preferred over SWR hooks with polling due
 For client-side usage, generate a public access token with appropriate scopes:
 
 ```ts
-import { auth } from "@trigger.dev/sdk/v3";
+import { auth } from "@trigger.dev/sdk";
 
 const publicToken = await auth.createPublicToken({
   scopes: {
@@ -967,7 +967,7 @@ Idempotency ensures that an operation produces the same result when called multi
 Provide an `idempotencyKey` when triggering a task to ensure it runs only once with that key:
 
 ```ts
-import { idempotencyKeys, task } from "@trigger.dev/sdk/v3";
+import { idempotencyKeys, task } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -1058,7 +1058,7 @@ function hash(payload: any): string {
 
 ```ts
 // onFailure executes after all retries are exhausted; use for notifications, logging, or side effects on final failure:
-import { task, logger } from "@trigger.dev/sdk/v3";
+import { task, logger } from "@trigger.dev/sdk";
 
 export const loggingExample = task({
   id: "logging-example",
@@ -1078,7 +1078,7 @@ export const loggingExample = task({
 The `trigger.config.ts` file configures your Trigger.dev project, specifying task locations, retry settings, telemetry, and build options.
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -1226,7 +1226,7 @@ await myTask.trigger({ name: "Alice", age: 30 });
 
 Before generating any code, you MUST verify:
 
-1. Are you importing from `@trigger.dev/sdk/v3`? If not, STOP and FIX.
+1. Are you importing from `@trigger.dev/sdk` (NOT `@trigger.dev/sdk/v3`)? If not, STOP and FIX.
 2. Have you exported every task? If not, STOP and FIX.
 3. Have you generated any DEPRECATED code patterns? If yes, STOP and FIX.
 
