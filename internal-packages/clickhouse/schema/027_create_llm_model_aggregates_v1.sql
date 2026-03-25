@@ -44,8 +44,8 @@ AS SELECT
   sum(input_tokens)  AS total_input_tokens,
   sum(output_tokens) AS total_output_tokens,
   sum(total_cost)    AS total_cost,
-  quantilesState(0.5, 0.9, 0.95, 0.99)(ms_to_first_chunk) AS ttfc_quantiles,
-  quantilesState(0.5, 0.9, 0.95, 0.99)(tokens_per_second)  AS tps_quantiles,
+  quantilesStateIf(0.5, 0.9, 0.95, 0.99)(ms_to_first_chunk, ms_to_first_chunk > 0) AS ttfc_quantiles,
+  quantilesStateIf(0.5, 0.9, 0.95, 0.99)(tokens_per_second, tokens_per_second > 0)  AS tps_quantiles,
   quantilesState(0.5, 0.9, 0.95, 0.99)(duration)           AS duration_quantiles,
   sumMap(map(finish_reason, toUInt64(1)))                    AS finish_reason_counts
 FROM trigger_dev.llm_metrics_v1
@@ -53,5 +53,5 @@ WHERE response_model != ''
 GROUP BY response_model, base_response_model, gen_ai_system, minute;
 
 -- +goose Down
-DROP VIEW IF EXISTS trigger_dev.llm_model_aggregates_mv_v1;
+DROP TABLE IF EXISTS trigger_dev.llm_model_aggregates_mv_v1;
 DROP TABLE IF EXISTS trigger_dev.llm_model_aggregates_v1;

@@ -214,7 +214,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
 
   // Force tenant isolation and time period limits
   // Global tables (no tenantColumns) skip tenant isolation — they contain anonymized cross-tenant data
-  const isGlobalTable = !matchedSchema?.tenantColumns;
+  const isGlobalTable = matchedSchema != null && !matchedSchema.tenantColumns;
   const enforcedWhereClause = {
     ...(isGlobalTable
       ? {}

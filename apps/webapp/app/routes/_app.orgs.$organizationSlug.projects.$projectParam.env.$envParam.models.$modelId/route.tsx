@@ -95,6 +95,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
+/** Escape a value for safe interpolation into a TSQL single-quoted string. */
+function escapeTSQL(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
 function bignumberConfig(column: string, opts?: { aggregation?: "sum" | "avg" | "first"; suffix?: string; abbreviate?: boolean }): QueryWidgetConfig {
   return { type: "bignumber", column, aggregation: opts?.aggregation ?? "sum", abbreviate: opts?.abbreviate ?? false, suffix: opts?.suffix };
 }
@@ -425,7 +430,7 @@ function GlobalMetricsTab({
           <MetricWidget
             widgetKey={`${modelName}-calls`}
             title="Total Calls"
-            query={`SELECT sum(call_count) AS total_calls FROM llm_models WHERE response_model = '${modelName}'`}
+            query={`SELECT sum(call_count) AS total_calls FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}'`}
             config={bignumberConfig("total_calls", { abbreviate: true })}
             {...widgetProps}
           />
@@ -434,7 +439,7 @@ function GlobalMetricsTab({
           <MetricWidget
             widgetKey={`${modelName}-ttfc-p50`}
             title="p50 TTFC"
-            query={`SELECT round(quantilesMerge(0.5)(ttfc_quantiles)[1], 0) AS ttfc_p50 FROM llm_models WHERE response_model = '${modelName}'`}
+            query={`SELECT round(quantilesMerge(0.5)(ttfc_quantiles)[1], 0) AS ttfc_p50 FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}'`}
             config={bignumberConfig("ttfc_p50", { aggregation: "avg", suffix: "ms" })}
             {...widgetProps}
           />
@@ -443,7 +448,7 @@ function GlobalMetricsTab({
           <MetricWidget
             widgetKey={`${modelName}-ttfc-p90`}
             title="p90 TTFC"
-            query={`SELECT round(quantilesMerge(0.9)(ttfc_quantiles)[1], 0) AS ttfc_p90 FROM llm_models WHERE response_model = '${modelName}'`}
+            query={`SELECT round(quantilesMerge(0.9)(ttfc_quantiles)[1], 0) AS ttfc_p90 FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}'`}
             config={bignumberConfig("ttfc_p90", { aggregation: "avg", suffix: "ms" })}
             {...widgetProps}
           />
@@ -452,7 +457,7 @@ function GlobalMetricsTab({
           <MetricWidget
             widgetKey={`${modelName}-tps`}
             title="Tokens/sec (p50)"
-            query={`SELECT round(quantilesMerge(0.5)(tps_quantiles)[1], 0) AS tps_p50 FROM llm_models WHERE response_model = '${modelName}'`}
+            query={`SELECT round(quantilesMerge(0.5)(tps_quantiles)[1], 0) AS tps_p50 FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}'`}
             config={bignumberConfig("tps_p50", { aggregation: "avg" })}
             {...widgetProps}
           />
@@ -465,7 +470,7 @@ function GlobalMetricsTab({
           <MetricWidget
             widgetKey={`${modelName}-calls-time`}
             title="Calls over time"
-            query={`SELECT timeBucket(), sum(call_count) AS calls FROM llm_models WHERE response_model = '${modelName}' GROUP BY timeBucket ORDER BY timeBucket`}
+            query={`SELECT timeBucket(), sum(call_count) AS calls FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY timeBucket ORDER BY timeBucket`}
             config={chartConfig({ chartType: "bar", xAxisColumn: "timebucket", yAxisColumns: ["calls"] })}
             {...widgetProps}
           />
@@ -474,7 +479,7 @@ function GlobalMetricsTab({
           <MetricWidget
             widgetKey={`${modelName}-ttfc-time`}
             title="TTFC over time"
-            query={`SELECT timeBucket(), round(quantilesMerge(0.5)(ttfc_quantiles)[1], 0) AS ttfc_p50, round(quantilesMerge(0.9)(ttfc_quantiles)[1], 0) AS ttfc_p90 FROM llm_models WHERE response_model = '${modelName}' GROUP BY timeBucket ORDER BY timeBucket`}
+            query={`SELECT timeBucket(), round(quantilesMerge(0.5)(ttfc_quantiles)[1], 0) AS ttfc_p50, round(quantilesMerge(0.9)(ttfc_quantiles)[1], 0) AS ttfc_p90 FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY timeBucket ORDER BY timeBucket`}
             config={chartConfig({ chartType: "line", xAxisColumn: "timebucket", yAxisColumns: ["ttfc_p50", "ttfc_p90"], aggregation: "avg" })}
             {...widgetProps}
           />
@@ -519,7 +524,7 @@ function YourUsageTab({
           <MetricWidget
             widgetKey={`${modelName}-user-calls`}
             title="Your Calls"
-            query={`SELECT count() AS total_calls FROM llm_metrics WHERE response_model = '${modelName}'`}
+            query={`SELECT count() AS total_calls FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}'`}
             config={bignumberConfig("total_calls", { abbreviate: true })}
             {...widgetProps}
           />
@@ -528,7 +533,7 @@ function YourUsageTab({
           <MetricWidget
             widgetKey={`${modelName}-user-cost`}
             title="Your Cost"
-            query={`SELECT sum(total_cost) AS total_cost FROM llm_metrics WHERE response_model = '${modelName}'`}
+            query={`SELECT sum(total_cost) AS total_cost FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}'`}
             config={bignumberConfig("total_cost", { aggregation: "sum" })}
             {...widgetProps}
           />
@@ -537,7 +542,7 @@ function YourUsageTab({
           <MetricWidget
             widgetKey={`${modelName}-user-ttfc`}
             title="Avg TTFC"
-            query={`SELECT round(avg(ms_to_first_chunk), 0) AS avg_ttfc FROM llm_metrics WHERE response_model = '${modelName}' AND ms_to_first_chunk > 0`}
+            query={`SELECT round(avg(ms_to_first_chunk), 0) AS avg_ttfc FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}' AND ms_to_first_chunk > 0`}
             config={bignumberConfig("avg_ttfc", { aggregation: "avg", suffix: "ms" })}
             {...widgetProps}
           />
@@ -546,7 +551,7 @@ function YourUsageTab({
           <MetricWidget
             widgetKey={`${modelName}-user-tps`}
             title="Avg Tokens/sec"
-            query={`SELECT round(avg(tokens_per_second), 0) AS avg_tps FROM llm_metrics WHERE response_model = '${modelName}' AND tokens_per_second > 0`}
+            query={`SELECT round(avg(tokens_per_second), 0) AS avg_tps FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}' AND tokens_per_second > 0`}
             config={bignumberConfig("avg_tps", { aggregation: "avg" })}
             {...widgetProps}
           />
@@ -559,7 +564,7 @@ function YourUsageTab({
           <MetricWidget
             widgetKey={`${modelName}-user-cost-time`}
             title="Cost over time"
-            query={`SELECT timeBucket(), sum(total_cost) AS cost FROM llm_metrics WHERE response_model = '${modelName}' GROUP BY timeBucket ORDER BY timeBucket`}
+            query={`SELECT timeBucket(), sum(total_cost) AS cost FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY timeBucket ORDER BY timeBucket`}
             config={chartConfig({ chartType: "bar", xAxisColumn: "timebucket", yAxisColumns: ["cost"] })}
             {...widgetProps}
           />
@@ -568,7 +573,7 @@ function YourUsageTab({
           <MetricWidget
             widgetKey={`${modelName}-user-tokens-time`}
             title="Tokens over time"
-            query={`SELECT timeBucket(), sum(input_tokens) AS input_tokens, sum(output_tokens) AS output_tokens FROM llm_metrics WHERE response_model = '${modelName}' GROUP BY timeBucket ORDER BY timeBucket`}
+            query={`SELECT timeBucket(), sum(input_tokens) AS input_tokens, sum(output_tokens) AS output_tokens FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY timeBucket ORDER BY timeBucket`}
             config={chartConfig({ chartType: "bar", xAxisColumn: "timebucket", yAxisColumns: ["input_tokens", "output_tokens"] })}
             {...widgetProps}
           />
@@ -580,7 +585,7 @@ function YourUsageTab({
         <MetricWidget
           widgetKey={`${modelName}-user-tasks`}
           title="Cost by task"
-          query={`SELECT task_identifier, count() AS calls, sum(total_cost) AS cost FROM llm_metrics WHERE response_model = '${modelName}' GROUP BY task_identifier ORDER BY cost DESC LIMIT 20`}
+          query={`SELECT task_identifier, count() AS calls, sum(total_cost) AS cost FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY task_identifier ORDER BY cost DESC LIMIT 20`}
           config={{ type: "table", prettyFormatting: true, sorting: [] }}
           {...widgetProps}
         />
