@@ -1,10 +1,13 @@
 import type { PrismaClient } from "@trigger.dev/database";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { defaultModelPrices } from "./defaultPrices.js";
+import { modelCatalog } from "./modelCatalog.js";
+import { syncLlmCatalog } from "./sync.js";
 
 export async function seedLlmPricing(prisma: PrismaClient): Promise<{
   modelsCreated: number;
   modelsSkipped: number;
+  modelsUpdated: number;
 }> {
   let modelsCreated = 0;
   let modelsSkipped = 0;
@@ -23,6 +26,9 @@ export async function seedLlmPricing(prisma: PrismaClient): Promise<{
       continue;
     }
 
+    // Look up catalog metadata for this model
+    const catalog = modelCatalog[modelDef.modelName];
+
     // Create model + tiers atomically so partial models can't be left behind
     await prisma.$transaction(async (tx) => {
       const model = await tx.llmModel.create({
@@ -32,6 +38,14 @@ export async function seedLlmPricing(prisma: PrismaClient): Promise<{
           matchPattern: modelDef.matchPattern,
           startDate: modelDef.startDate ? new Date(modelDef.startDate) : null,
           source: "default",
+          // Catalog metadata (from model-catalog.json)
+          provider: catalog?.provider ?? null,
+          description: catalog?.description ?? null,
+          contextWindow: catalog?.contextWindow ?? null,
+          maxOutputTokens: catalog?.maxOutputTokens ?? null,
+          capabilities: catalog?.capabilities ?? [],
+          isHidden: catalog?.isHidden ?? false,
+          baseModelName: catalog?.baseModelName ?? null,
         },
       });
 
@@ -58,5 +72,8 @@ export async function seedLlmPricing(prisma: PrismaClient): Promise<{
     modelsCreated++;
   }
 
-  return { modelsCreated, modelsSkipped };
+  // Sync catalog metadata on existing default models
+  const syncResult = await syncLlmCatalog(prisma);
+
+  return { modelsCreated, modelsSkipped, modelsUpdated: syncResult.modelsUpdated };
 }

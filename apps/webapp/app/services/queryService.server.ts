@@ -213,11 +213,20 @@ export async function executeQuery<TOut extends z.ZodSchema>(
   const periodClipped = requestedFromDate !== null && requestedFromDate < maxQueryPeriodDate;
 
   // Force tenant isolation and time period limits
+  // Global tables (no tenantColumns) skip tenant isolation — they contain anonymized cross-tenant data
+  const isGlobalTable = !matchedSchema?.tenantColumns;
   const enforcedWhereClause = {
-    organization_id: { op: "eq", value: organizationId },
-    project_id:
-      scope === "project" || scope === "environment" ? { op: "eq", value: projectId } : undefined,
-    environment_id: scope === "environment" ? { op: "eq", value: environmentId } : undefined,
+    ...(isGlobalTable
+      ? {}
+      : {
+          organization_id: { op: "eq", value: organizationId },
+          project_id:
+            scope === "project" || scope === "environment"
+              ? { op: "eq", value: projectId }
+              : undefined,
+          environment_id:
+            scope === "environment" ? { op: "eq", value: environmentId } : undefined,
+        }),
     [timeColumn]: { op: "gte", value: maxQueryPeriodDate },
     // Optional filters for tasks and queues
     task_identifier:

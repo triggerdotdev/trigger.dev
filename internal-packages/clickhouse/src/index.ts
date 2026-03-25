@@ -29,6 +29,11 @@ import {
 import { insertMetrics } from "./metrics.js";
 import { insertLlmMetrics } from "./llmMetrics.js";
 import {
+  getGlobalModelMetrics,
+  getGlobalModelComparison,
+  getPopularModels,
+} from "./llmModelAggregates.js";
+import {
   getErrorGroups,
   getErrorInstances,
   getErrorGroupsListQueryBuilder,
@@ -46,6 +51,7 @@ export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
 export type * from "./metrics.js";
 export type * from "./llmMetrics.js";
+export type * from "./llmModelAggregates.js";
 export type * from "./errors.js";
 export type * from "./client/queryBuilder.js";
 
@@ -230,6 +236,14 @@ export class ClickHouse {
   get llmMetrics() {
     return {
       insert: insertLlmMetrics(this.writer),
+    };
+  }
+
+  get llmModelAggregates() {
+    return {
+      globalMetrics: getGlobalModelMetrics(this.reader),
+      comparison: getGlobalModelComparison(this.reader),
+      popular: getPopularModels(this.reader),
     };
   }
 

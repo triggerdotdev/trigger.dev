@@ -2670,6 +2670,15 @@ model LlmModel {
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
+  // Catalog metadata for model registry
+  provider        String?  @map("provider")
+  description     String?  @map("description")
+  contextWindow   Int?     @map("context_window")
+  maxOutputTokens Int?     @map("max_output_tokens")
+  capabilities    String[] @default([]) @map("capabilities")
+  isHidden        Boolean  @default(false) @map("is_hidden")
+  baseModelName   String?  @map("base_model_name")
+
   pricingTiers LlmPricingTier[]
   prices       LlmPrice[]
 

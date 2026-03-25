@@ -531,6 +531,14 @@ export const TSQL_AGGREGATIONS: Record<string, TSQLFunctionMeta> = {
   quantile: { clickhouseName: "quantile", minArgs: 1, maxArgs: 1, minParams: 1, maxParams: 1, aggregate: true },
   quantileIf: { clickhouseName: "quantileIf", minArgs: 2, maxArgs: 2, minParams: 1, maxParams: 1, aggregate: true },
   quantiles: { clickhouseName: "quantiles", minArgs: 1, aggregate: true },
+  // -Merge combinators for AggregatingMergeTree tables
+  quantilesMerge: { clickhouseName: "quantilesMerge", minArgs: 1, maxArgs: 1, minParams: 1, aggregate: true },
+  quantileMerge: { clickhouseName: "quantileMerge", minArgs: 1, maxArgs: 1, minParams: 1, maxParams: 1, aggregate: true },
+  sumMerge: { clickhouseName: "sumMerge", minArgs: 1, maxArgs: 1, aggregate: true },
+  avgMerge: { clickhouseName: "avgMerge", minArgs: 1, maxArgs: 1, aggregate: true },
+  countMerge: { clickhouseName: "countMerge", minArgs: 1, maxArgs: 1, aggregate: true },
+  minMerge: { clickhouseName: "minMerge", minArgs: 1, maxArgs: 1, aggregate: true },
+  maxMerge: { clickhouseName: "maxMerge", minArgs: 1, maxArgs: 1, aggregate: true },
 
   // Statistical functions
   simpleLinearRegression: { clickhouseName: "simpleLinearRegression", minArgs: 2, maxArgs: 2, aggregate: true },

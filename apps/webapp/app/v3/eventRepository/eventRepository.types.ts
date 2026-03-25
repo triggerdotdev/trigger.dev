@@ -25,6 +25,7 @@ export type LlmMetricsData = {
   genAiSystem: string;
   requestModel: string;
   responseModel: string;
+  baseResponseModel: string;
   matchedModelId: string;
   operationId: string;
   finishReason: string;

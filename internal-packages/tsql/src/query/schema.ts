@@ -367,8 +367,8 @@ export interface TableSchema {
   clickhouseName: string;
   /** Column definitions for this table */
   columns: Record<string, ColumnSchema>;
-  /** Tenant isolation column configuration */
-  tenantColumns: TenantColumnConfig;
+  /** Tenant isolation column configuration. Omit for global tables with no tenant scoping. */
+  tenantColumns?: TenantColumnConfig;
   /** Description of the table for documentation/autocomplete */
   description?: string;
   /** Whether this table can be joined to other tables */
@@ -866,9 +866,11 @@ export function sanitizeErrorMessage(message: string, schemas: TableSchema[]): s
     // Map table names
     tableNameMap.set(table.clickhouseName, table.name);
 
-    // Collect tenant column names to strip
+    // Collect tenant column names to strip (global tables have no tenant columns)
     const tenantCols = table.tenantColumns;
-    columnsToStrip.push(tenantCols.organizationId, tenantCols.projectId, tenantCols.environmentId);
+    if (tenantCols) {
+      columnsToStrip.push(tenantCols.organizationId, tenantCols.projectId, tenantCols.environmentId);
+    }
 
     // Collect required filter columns to strip
     if (table.requiredFilters) {

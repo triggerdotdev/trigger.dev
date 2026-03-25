@@ -305,9 +305,9 @@ importers:
       '@internal/cache':
         specifier: workspace:*
         version: link:../../internal-packages/cache
-      '@internal/llm-pricing':
+      '@internal/llm-model-catalog':
         specifier: workspace:*
-        version: link:../../internal-packages/llm-pricing
+        version: link:../../internal-packages/llm-model-catalog
       '@internal/redis':
         specifier: workspace:*
         version: link:../../internal-packages/redis
@@ -1131,7 +1131,7 @@ importers:
         specifier: 18.2.69
         version: 18.2.69
 
-  internal-packages/llm-pricing:
+  internal-packages/llm-model-catalog:
     dependencies:
       '@trigger.dev/core':
         specifier: workspace:*

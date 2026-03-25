@@ -41,6 +41,12 @@ const SaveSchema = z.object({
   modelName: z.string().min(1),
   matchPattern: z.string().min(1),
   pricingTiersJson: z.string(),
+  provider: z.string().optional(),
+  description: z.string().optional(),
+  contextWindow: z.string().optional(),
+  maxOutputTokens: z.string().optional(),
+  capabilities: z.string().optional(),
+  isHidden: z.string().optional(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -95,9 +101,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     // Update model
+    const { provider, description, contextWindow, maxOutputTokens, capabilities, isHidden } = parsed.data;
     await prisma.llmModel.update({
       where: { id: modelId },
-      data: { modelName, matchPattern },
+      data: {
+        modelName,
+        matchPattern,
+        provider: provider || null,
+        description: description || null,
+        contextWindow: contextWindow ? parseInt(contextWindow) || null : null,
+        maxOutputTokens: maxOutputTokens ? parseInt(maxOutputTokens) || null : null,
+        capabilities: capabilities ? capabilities.split(",").map((s) => s.trim()).filter(Boolean) : [],
+        isHidden: isHidden === "on",
+      },
     });
 
     // Replace tiers
@@ -135,6 +151,12 @@ export default function AdminLlmModelDetailRoute() {
 
   const [modelName, setModelName] = useState(model.modelName);
   const [matchPattern, setMatchPattern] = useState(model.matchPattern);
+  const [provider, setProvider] = useState(model.provider ?? "");
+  const [description, setDescription] = useState(model.description ?? "");
+  const [contextWindow, setContextWindow] = useState(model.contextWindow?.toString() ?? "");
+  const [maxOutputTokens, setMaxOutputTokens] = useState(model.maxOutputTokens?.toString() ?? "");
+  const [capabilities, setCapabilities] = useState(model.capabilities?.join(", ") ?? "");
+  const [isHidden, setIsHidden] = useState(model.isHidden ?? false);
   const [testInput, setTestInput] = useState("");
   const [tiers, setTiers] = useState(() =>
     model.pricingTiers.map((t) => ({
@@ -234,6 +256,83 @@ export default function AdminLlmModelDetailRoute() {
                   </span>
                 )}
               </div>
+            </div>
+
+            {/* Catalog metadata */}
+            <div className="space-y-2 border-t border-grid-dimmed pt-4">
+              <label className="text-sm font-medium text-text-bright">Catalog Metadata</label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-text-dimmed">Provider</label>
+                  <Input
+                    name="provider"
+                    value={provider}
+                    onChange={(e) => setProvider(e.target.value)}
+                    variant="medium"
+                    fullWidth
+                    placeholder="openai, anthropic, google"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-text-dimmed">Context Window</label>
+                  <Input
+                    name="contextWindow"
+                    value={contextWindow}
+                    onChange={(e) => setContextWindow(e.target.value)}
+                    variant="medium"
+                    fullWidth
+                    placeholder="128000"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-text-dimmed">Description</label>
+                <Input
+                  name="description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  variant="medium"
+                  fullWidth
+                  placeholder="Brief model description"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-text-dimmed">Max Output Tokens</label>
+                  <Input
+                    name="maxOutputTokens"
+                    value={maxOutputTokens}
+                    onChange={(e) => setMaxOutputTokens(e.target.value)}
+                    variant="medium"
+                    fullWidth
+                    placeholder="16384"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-text-dimmed">Capabilities (comma-separated)</label>
+                  <Input
+                    name="capabilities"
+                    value={capabilities}
+                    onChange={(e) => setCapabilities(e.target.value)}
+                    variant="medium"
+                    fullWidth
+                    placeholder="vision, tool_use, streaming, json_mode"
+                  />
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 text-xs text-text-dimmed">
+                <input
+                  type="checkbox"
+                  name="isHidden"
+                  checked={isHidden}
+                  onChange={(e) => setIsHidden(e.target.checked)}
+                />
+                Hidden (exclude from model registry)
+              </label>
             </div>
 
             {/* Pricing tiers */}

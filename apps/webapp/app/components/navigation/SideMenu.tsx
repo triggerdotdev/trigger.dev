@@ -10,6 +10,7 @@ import {
   ClockIcon,
   Cog8ToothIcon,
   CogIcon,
+  CubeIcon,
   ExclamationTriangleIcon,
   FolderIcon,
   FolderOpenIcon,
@@ -77,11 +78,12 @@ import {
   v3EnvironmentVariablesPath,
   v3ErrorsPath,
   v3LogsPath,
+  v3PromptsPath,
+  v3ModelsPath,
   v3ProjectAlertsPath,
   v3ProjectPath,
   v3ProjectSettingsGeneralPath,
   v3ProjectSettingsIntegrationsPath,
-  v3PromptsPath,
   v3QueuesPath,
   v3RunsPath,
   v3SchedulesPath,
@@ -456,34 +458,48 @@ export function SideMenu({
               />
             </div>
 
-            <SideMenuSection
-              title="AI"
-              isSideMenuCollapsed={isCollapsed}
-              itemSpacingClassName="space-y-0"
-              initialCollapsed={getSectionCollapsed(user.dashboardPreferences.sideMenu, "ai")}
-              onCollapseToggle={handleSectionToggle("ai")}
-            >
-              <SideMenuItem
-                name="Prompts"
-                icon={AIPromptsIcon}
-                trailingIconClassName="size-6"
-                activeIconColor="text-aiPrompts"
-                inactiveIconColor="text-aiPrompts"
-                to={v3PromptsPath(organization, project, environment)}
-                data-action="prompts"
-                isCollapsed={isCollapsed}
-              />
-              <SideMenuItem
-                name="AI Metrics"
-                icon={AIMetricsIcon}
-                trailingIconClassName="size-5"
-                activeIconColor="text-aiMetrics"
-                inactiveIconColor="text-aiMetrics"
-                to={v3BuiltInDashboardPath(organization, project, environment, "llm")}
-                data-action="ai-metrics"
-                isCollapsed={isCollapsed}
-              />
-            </SideMenuSection>
+            {(user.admin || user.isImpersonating || featureFlags.hasAiAccess) && (
+              <SideMenuSection
+                title="AI"
+                isSideMenuCollapsed={isCollapsed}
+                itemSpacingClassName="space-y-0"
+                initialCollapsed={getSectionCollapsed(
+                  user.dashboardPreferences.sideMenu,
+                  "ai"
+                )}
+                onCollapseToggle={handleSectionToggle("ai")}
+              >
+                <SideMenuItem
+                  name="Prompts"
+                  icon={AIPromptsIcon}
+                  trailingIconClassName="size-6"
+                  activeIconColor="text-aiPrompts"
+                  inactiveIconColor="text-aiPrompts"
+                  to={v3PromptsPath(organization, project, environment)}
+                  data-action="prompts"
+                  isCollapsed={isCollapsed}
+                />
+                <SideMenuItem
+                  name="Models"
+                  icon={CubeIcon}
+                  activeIconColor="text-purple-500"
+                  inactiveIconColor="text-purple-500"
+                  to={v3ModelsPath(organization, project, environment)}
+                  data-action="models"
+                  isCollapsed={isCollapsed}
+                />
+                <SideMenuItem
+                  name="AI Metrics"
+                  icon={AIMetricsIcon}
+                  trailingIconClassName="size-5"
+                  activeIconColor="text-aiMetrics"
+                  inactiveIconColor="text-aiMetrics"
+                  to={v3BuiltInDashboardPath(organization, project, environment, "llm")}
+                  data-action="ai-metrics"
+                  isCollapsed={isCollapsed}
+                />
+              </SideMenuSection>
+            )}
 
             {(user.admin || user.isImpersonating || featureFlags.hasQueryAccess) && (
               <SideMenuSection

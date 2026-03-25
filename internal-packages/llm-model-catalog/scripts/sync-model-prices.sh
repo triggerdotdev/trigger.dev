@@ -8,7 +8,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$(dirname "$SCRIPT_DIR")"
 JSON_TARGET="$PACKAGE_DIR/src/default-model-prices.json"
-TS_TARGET="$PACKAGE_DIR/src/defaultPrices.ts"
 SOURCE_URL="https://raw.githubusercontent.com/langfuse/langfuse/main/worker/src/constants/default-model-prices.json"
 
 CHECK_MODE=false
@@ -37,41 +36,11 @@ if $CHECK_MODE; then
     echo "Model prices are up to date ($MODEL_COUNT models)"
     exit 0
   else
-    echo "Model prices are OUTDATED. Run 'pnpm run sync-prices' in @internal/llm-pricing to update."
+    echo "Model prices are OUTDATED. Run 'pnpm run sync-prices' in @internal/llm-model-catalog to update."
     exit 1
   fi
 fi
 
 cp "$TMPFILE" "$JSON_TARGET"
 echo "Updated default-model-prices.json ($MODEL_COUNT models)"
-
-# Generate the TypeScript module from the JSON
-echo "Generating defaultPrices.ts..."
-node -e "
-const data = JSON.parse(require('fs').readFileSync('$JSON_TARGET', 'utf-8'));
-const stripped = data.map(e => ({
-  modelName: e.modelName.trim(),
-  matchPattern: e.matchPattern,
-  startDate: e.createdAt,
-  pricingTiers: e.pricingTiers.map(t => ({
-    name: t.name,
-    isDefault: t.isDefault,
-    priority: t.priority,
-    conditions: t.conditions.map(c => ({
-      usageDetailPattern: c.usageDetailPattern,
-      operator: c.operator,
-      value: c.value,
-    })),
-    prices: t.prices,
-  })),
-}));
-
-let out = 'import type { DefaultModelDefinition } from \"./types.js\";\n\n';
-out += '// Auto-generated from Langfuse default-model-prices.json — do not edit manually.\n';
-out += '// Run \`pnpm run sync-prices\` to update from upstream.\n';
-out += '// Source: https://github.com/langfuse/langfuse\n\n';
-out += 'export const defaultModelPrices: DefaultModelDefinition[] = ';
-out += JSON.stringify(stripped, null, 2) + ';\n';
-require('fs').writeFileSync('$TS_TARGET', out);
-console.log('Generated defaultPrices.ts with ' + stripped.length + ' models');
-"
+echo "Run 'pnpm run generate' to regenerate defaultPrices.ts"
