@@ -479,15 +479,17 @@ export function SideMenu({
                   data-action="prompts"
                   isCollapsed={isCollapsed}
                 />
-                <SideMenuItem
-                  name="Models"
-                  icon={CubeIcon}
-                  activeIconColor="text-purple-500"
-                  inactiveIconColor="text-purple-500"
-                  to={v3ModelsPath(organization, project, environment)}
-                  data-action="models"
-                  isCollapsed={isCollapsed}
-                />
+                {(user.admin || user.isImpersonating || featureFlags.hasAiModelsAccess) && (
+                  <SideMenuItem
+                    name="Models"
+                    icon={CubeIcon}
+                    activeIconColor="text-purple-500"
+                    inactiveIconColor="text-purple-500"
+                    to={v3ModelsPath(organization, project, environment)}
+                    data-action="models"
+                    isCollapsed={isCollapsed}
+                  />
+                )}
                 <SideMenuItem
                   name="AI Metrics"
                   icon={AIMetricsIcon}
