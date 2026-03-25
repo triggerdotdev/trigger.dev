@@ -1,5 +1,5 @@
 import { ChevronRightIcon } from "@heroicons/react/20/solid";
-import { TaskEventStyle } from "@trigger.dev/core/v3";
+import { type TaskEventStyle } from "@trigger.dev/core/v3";
 import type { TaskEventLevel } from "@trigger.dev/database";
 import { Fragment } from "react";
 import { cn } from "~/utils/cn";
@@ -19,7 +19,7 @@ type SpanTitleProps = {
 export function SpanTitle(event: SpanTitleProps) {
   return (
     <span className={cn("flex items-center gap-x-2 overflow-x-hidden", eventTextClassName(event))}>
-      <span className="truncate">{event.message}</span>{" "}
+      <span className="truncate text-text-bright">{event.message}</span>{" "}
       {!event.hideAccessory && (
         <SpanAccessory accessory={event.style.accessory} size={event.size} />
       )}

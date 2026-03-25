@@ -10,6 +10,7 @@ import { useProject } from "~/hooks/useProject";
 import { v3PromptPath } from "~/utils/pathBuilder";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import type { PromptSpanData } from "~/presenters/v3/SpanPresenter.server";
+import { SpanHorizontalTimeline } from "~/components/runs/v3/SpanHorizontalTimeline";
 
 const StreamdownRenderer = lazy(() =>
   import("streamdown").then((mod) => ({
@@ -23,7 +24,15 @@ const StreamdownRenderer = lazy(() =>
 
 type PromptTab = "overview" | "input" | "template";
 
-export function PromptSpanDetails({ promptData }: { promptData: PromptSpanData }) {
+export function PromptSpanDetails({
+  promptData,
+  startTime,
+  duration,
+}: {
+  promptData: PromptSpanData;
+  startTime?: string | Date;
+  duration?: number | null;
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -73,6 +82,7 @@ export function PromptSpanDetails({ promptData }: { promptData: PromptSpanData }
       <div className="scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         {tab === "overview" && (
           <div className="flex flex-col px-3">
+            {startTime && <SpanHorizontalTimeline startTime={startTime} duration={duration ?? null} />}
             <div className="flex flex-col gap-1 py-2.5">
               <div className="flex flex-col text-xs @container">
                 <MetricRow
