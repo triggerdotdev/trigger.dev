@@ -1,18 +1,13 @@
-import { BackgroundWorker, TaskRun } from "@trigger.dev/database";
-
-import {
-  IOPacket,
-  RunChainState,
-  TaskRunError,
-  TriggerTaskRequestBody,
-} from "@trigger.dev/core/v3";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { BackgroundWorker, TaskRun } from "@trigger.dev/database";
+import type { IOPacket, TaskRunError, TriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { ReportUsagePlan } from "@trigger.dev/platform";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
   idempotencyKeyExpiresAt?: Date;
   triggerVersion?: string;
-  traceContext?: Record<string, string | undefined>;
+  traceContext?: Record<string, unknown>;
   spanParentAsLink?: boolean;
   parentAsLinkType?: "replay" | "trigger";
   batchId?: string;
@@ -22,6 +17,7 @@ export type TriggerTaskServiceOptions = {
   skipChecks?: boolean;
   oneTimeUseToken?: string;
   overrideCreatedAt?: Date;
+  planType?: string;
 };
 
 // domain/triggerTask.ts
@@ -66,19 +62,19 @@ export interface QueueManager {
     lockedBackgroundWorker?: LockedBackgroundWorker
   ): Promise<QueueProperties>;
   getQueueName(request: TriggerTaskRequest): Promise<string>;
-  validateQueueLimits(env: AuthenticatedEnvironment): Promise<QueueValidationResult>;
-  getWorkerQueue(env: AuthenticatedEnvironment): Promise<string | undefined>;
+  validateQueueLimits(
+    env: AuthenticatedEnvironment,
+    queueName: string,
+    itemsToAdd?: number
+  ): Promise<QueueValidationResult>;
+  getWorkerQueue(
+    env: AuthenticatedEnvironment,
+    regionOverride?: string
+  ): Promise<string | undefined>;
 }
 
 export interface PayloadProcessor {
   process(request: TriggerTaskRequest): Promise<IOPacket>;
-}
-
-export interface RunNumberIncrementer {
-  incrementRunNumber<T>(
-    request: TriggerTaskRequest,
-    callback: (num: number) => Promise<T>
-  ): Promise<T | undefined>;
 }
 
 export interface TagValidationParams {
@@ -109,9 +105,19 @@ export type ValidationResult =
       error: Error;
     };
 
+export type EntitlementValidationResult =
+  | {
+      ok: true;
+      plan?: ReportUsagePlan;
+    }
+  | {
+      ok: false;
+      error: Error;
+    };
+
 export interface TriggerTaskValidator {
   validateTags(params: TagValidationParams): ValidationResult;
-  validateEntitlement(params: EntitlementValidationParams): Promise<ValidationResult>;
+  validateEntitlement(params: EntitlementValidationParams): Promise<EntitlementValidationResult>;
   validateMaxAttempts(params: MaxAttemptsValidationParams): ValidationResult;
   validateParentRun(params: ParentRunValidationParams): ValidationResult;
 }
@@ -119,28 +125,53 @@ export interface TriggerTaskValidator {
 export type TracedEventSpan = {
   traceId: string;
   spanId: string;
-  traceContext: Record<string, string | undefined>;
+  traceContext: Record<string, unknown>;
   traceparent?: {
     traceId: string;
     spanId: string;
   };
   setAttribute: (key: string, value: string) => void;
   failWithError: (error: TaskRunError) => void;
+  /**
+   * Stop the span without writing any event.
+   * Used when a debounced run is returned - the span for the debounced
+   * trigger is created separately via traceDebouncedRun.
+   */
+  stop: () => void;
 };
 
 export interface TraceEventConcern {
   traceRun<T>(
     request: TriggerTaskRequest,
-    callback: (span: TracedEventSpan) => Promise<T>
+    parentStore: string | undefined,
+    callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T>;
   traceIdempotentRun<T>(
     request: TriggerTaskRequest,
+    parentStore: string | undefined,
     options: {
       existingRun: TaskRun;
       idempotencyKey: string;
       incomplete: boolean;
       isError: boolean;
     },
-    callback: (span: TracedEventSpan) => Promise<T>
+    callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T>;
+  traceDebouncedRun<T>(
+    request: TriggerTaskRequest,
+    parentStore: string | undefined,
+    options: {
+      existingRun: TaskRun;
+      debounceKey: string;
+      incomplete: boolean;
+      isError: boolean;
+    },
+    callback: (span: TracedEventSpan, store: string) => Promise<T>
+  ): Promise<T>;
+}
+
+export type TriggerRacepoints = "idempotencyKey";
+
+export interface TriggerRacepointSystem {
+  waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void>;
 }

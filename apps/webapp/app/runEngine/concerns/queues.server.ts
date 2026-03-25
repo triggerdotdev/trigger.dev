@@ -13,13 +13,59 @@ import {
 import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.server";
 import type { RunEngine } from "~/v3/runEngine.server";
 import { env } from "~/env.server";
-import { EngineServiceValidationError } from "./errors";
+import { tryCatch } from "@trigger.dev/core/v3";
+import { ServiceValidationError } from "~/v3/services/common.server";
+import { createCache, createLRUMemoryStore, DefaultStatefulContext, Namespace } from "@internal/cache";
+import { singleton } from "~/utils/singleton";
+
+// LRU cache for environment queue sizes to reduce Redis calls
+const queueSizeCache = singleton("queueSizeCache", () => {
+  const ctx = new DefaultStatefulContext();
+  const memory = createLRUMemoryStore(env.QUEUE_SIZE_CACHE_MAX_SIZE, "queue-size-cache");
+
+  return createCache({
+    queueSize: new Namespace<number>(ctx, {
+      stores: [memory],
+      fresh: env.QUEUE_SIZE_CACHE_TTL_MS,
+      stale: env.QUEUE_SIZE_CACHE_TTL_MS + 1000,
+    }),
+  });
+});
+
+/**
+ * Extract the queue name from a queue option that may be:
+ * - An object with a string `name` property: { name: "queue-name" }
+ * - A double-wrapped object (bug case): { name: { name: "queue-name", ... } }
+ *
+ * This handles the case where the SDK accidentally double-wraps the queue
+ * option when it's already an object with a name property.
+ */
+function extractQueueName(queue: { name?: unknown } | undefined): string | undefined {
+  if (!queue?.name) {
+    return undefined;
+  }
+
+  // Normal case: queue.name is a string
+  if (typeof queue.name === "string") {
+    return queue.name;
+  }
+
+  // Double-wrapped case: queue.name is an object with its own name property
+  if (typeof queue.name === "object" && queue.name !== null && "name" in queue.name) {
+    const innerName = (queue.name as { name: unknown }).name;
+    if (typeof innerName === "string") {
+      return innerName;
+    }
+  }
+
+  return undefined;
+}
 
 export class DefaultQueueManager implements QueueManager {
   constructor(
     private readonly prisma: PrismaClientOrTransaction,
     private readonly engine: RunEngine
-  ) {}
+  ) { }
 
   async resolveQueueProperties(
     request: TriggerTaskRequest,
@@ -31,8 +77,8 @@ export class DefaultQueueManager implements QueueManager {
     // Determine queue name based on lockToVersion and provided options
     if (lockedBackgroundWorker) {
       // Task is locked to a specific worker version
-      if (request.body.options?.queue?.name) {
-        const specifiedQueueName = request.body.options.queue.name;
+      const specifiedQueueName = extractQueueName(request.body.options?.queue);
+      if (specifiedQueueName) {
         // A specific queue name is provided
         const specifiedQueue = await this.prisma.taskQueue.findFirst({
           // Validate it exists for the locked worker
@@ -44,9 +90,8 @@ export class DefaultQueueManager implements QueueManager {
         });
 
         if (!specifiedQueue) {
-          throw new EngineServiceValidationError(
-            `Specified queue '${specifiedQueueName}' not found or not associated with locked version '${
-              lockedBackgroundWorker.version ?? "<unknown>"
+          throw new ServiceValidationError(
+            `Specified queue '${specifiedQueueName}' not found or not associated with locked version '${lockedBackgroundWorker.version ?? "<unknown>"
             }'.`
           );
         }
@@ -67,9 +112,8 @@ export class DefaultQueueManager implements QueueManager {
         });
 
         if (!lockedTask) {
-          throw new EngineServiceValidationError(
-            `Task '${request.taskId}' not found on locked version '${
-              lockedBackgroundWorker.version ?? "<unknown>"
+          throw new ServiceValidationError(
+            `Task '${request.taskId}' not found on locked version '${lockedBackgroundWorker.version ?? "<unknown>"
             }'.`
           );
         }
@@ -82,9 +126,8 @@ export class DefaultQueueManager implements QueueManager {
             workerId: lockedBackgroundWorker.id,
             version: lockedBackgroundWorker.version,
           });
-          throw new EngineServiceValidationError(
-            `Default queue configuration for task '${request.taskId}' missing on locked version '${
-              lockedBackgroundWorker.version ?? "<unknown>"
+          throw new ServiceValidationError(
+            `Default queue configuration for task '${request.taskId}' missing on locked version '${lockedBackgroundWorker.version ?? "<unknown>"
             }'.`
           );
         }
@@ -96,7 +139,7 @@ export class DefaultQueueManager implements QueueManager {
       // Task is not locked to a specific version, use regular logic
       if (request.body.options?.lockToVersion) {
         // This should only happen if the findFirst failed, indicating the version doesn't exist
-        throw new EngineServiceValidationError(
+        throw new ServiceValidationError(
           `Task locked to version '${request.body.options.lockToVersion}', but no worker found with that version.`
         );
       }
@@ -125,8 +168,10 @@ export class DefaultQueueManager implements QueueManager {
     const { taskId, environment, body } = request;
     const { queue } = body.options ?? {};
 
-    if (queue?.name) {
-      return queue.name;
+    // Use extractQueueName to handle double-wrapped queue objects
+    const queueName = extractQueueName(queue);
+    if (queueName) {
+      return queueName;
     }
 
     const defaultQueueName = `task/${taskId}`;
@@ -176,11 +221,21 @@ export class DefaultQueueManager implements QueueManager {
     return task.queue.name ?? defaultQueueName;
   }
 
-  async validateQueueLimits(environment: AuthenticatedEnvironment): Promise<QueueValidationResult> {
-    const queueSizeGuard = await guardQueueSizeLimitsForEnv(this.engine, environment);
+  async validateQueueLimits(
+    environment: AuthenticatedEnvironment,
+    queueName: string,
+    itemsToAdd?: number
+  ): Promise<QueueValidationResult> {
+    const queueSizeGuard = await guardQueueSizeLimitsForQueue(
+      this.engine,
+      environment,
+      queueName,
+      itemsToAdd
+    );
 
     logger.debug("Queue size guard result", {
       queueSizeGuard,
+      queueName,
       environment: {
         id: environment.id,
         type: environment.type,
@@ -196,7 +251,10 @@ export class DefaultQueueManager implements QueueManager {
     };
   }
 
-  async getWorkerQueue(environment: AuthenticatedEnvironment): Promise<string | undefined> {
+  async getWorkerQueue(
+    environment: AuthenticatedEnvironment,
+    regionOverride?: string
+  ): Promise<string | undefined> {
     if (environment.type === "DEVELOPMENT") {
       return environment.id;
     }
@@ -206,19 +264,26 @@ export class DefaultQueueManager implements QueueManager {
       engine: this.engine,
     });
 
-    const workerGroup = await workerGroupService.getDefaultWorkerGroupForProject({
-      projectId: environment.projectId,
-    });
+    const [error, workerGroup] = await tryCatch(
+      workerGroupService.getDefaultWorkerGroupForProject({
+        projectId: environment.projectId,
+        regionOverride,
+      })
+    );
+
+    if (error) {
+      throw new ServiceValidationError(error.message);
+    }
 
     if (!workerGroup) {
-      throw new EngineServiceValidationError("No worker group found");
+      throw new ServiceValidationError("No worker group found");
     }
 
     return workerGroup.masterQueue;
   }
 }
 
-function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): number | undefined {
+export function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): number | undefined {
   if (environment.type === "DEVELOPMENT") {
     return environment.organization.maximumDevQueueSize ?? env.MAXIMUM_DEV_QUEUE_SIZE;
   } else {
@@ -226,9 +291,10 @@ function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): nu
   }
 }
 
-async function guardQueueSizeLimitsForEnv(
+async function guardQueueSizeLimitsForQueue(
   engine: RunEngine,
   environment: AuthenticatedEnvironment,
+  queueName: string,
   itemsToAdd: number = 1
 ) {
   const maximumSize = getMaximumSizeForEnvironment(environment);
@@ -237,7 +303,7 @@ async function guardQueueSizeLimitsForEnv(
     return { isWithinLimits: true };
   }
 
-  const queueSize = await engine.lengthOfEnvQueue(environment);
+  const queueSize = await getCachedQueueSize(engine, environment, queueName);
   const projectedSize = queueSize + itemsToAdd;
 
   return {
@@ -245,4 +311,21 @@ async function guardQueueSizeLimitsForEnv(
     maximumSize,
     queueSize,
   };
+}
+
+async function getCachedQueueSize(
+  engine: RunEngine,
+  environment: AuthenticatedEnvironment,
+  queueName: string
+): Promise<number> {
+  if (!env.QUEUE_SIZE_CACHE_ENABLED) {
+    return engine.lengthOfQueue(environment, queueName);
+  }
+
+  const cacheKey = `${environment.id}:${queueName}`;
+  const result = await queueSizeCache.queueSize.swr(cacheKey, async () => {
+    return engine.lengthOfQueue(environment, queueName);
+  });
+
+  return result.val ?? 0;
 }

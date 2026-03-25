@@ -48,7 +48,7 @@ export function configureTriggerTaskCommand(program: Command) {
 
 export async function triggerTaskCommand(taskName: string, options: unknown) {
   return await wrapCommandAction("trigger", TriggerTaskOptions, options, async (opts) => {
-    await printInitialBanner(false);
+    await printInitialBanner(false, opts.profile);
     return await triggerTask(taskName, opts);
   });
 }

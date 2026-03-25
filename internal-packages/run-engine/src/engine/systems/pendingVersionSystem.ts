@@ -50,7 +50,7 @@ export class PendingVersionSystem {
       queues: backgroundWorker.queues.map((queue) => queue.name),
     });
 
-    const pendingRuns = await this.$.prisma.taskRun.findMany({
+    const pendingRuns = await this.$.readOnlyPrisma.taskRun.findMany({
       where: {
         runtimeEnvironmentId: backgroundWorker.runtimeEnvironmentId,
         projectId: backgroundWorker.projectId,

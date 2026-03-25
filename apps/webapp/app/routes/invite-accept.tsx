@@ -18,6 +18,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
     );
   }
 
+  if (!user) {
+    return redirectWithSuccessMessage("/", request, "Please log in to accept the invite.", {
+      ephemeral: false,
+    });
+  }
+
   const invite = await getInviteFromToken({ token });
   if (!invite) {
     return redirectWithErrorMessage(
@@ -26,12 +32,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
       "Invite not found. Please ask the person who invited you to send another invite.",
       { ephemeral: false }
     );
-  }
-
-  if (!user) {
-    return redirectWithSuccessMessage("/", request, "Please log in to accept the invite.", {
-      ephemeral: false,
-    });
   }
 
   if (invite.email !== user.email) {

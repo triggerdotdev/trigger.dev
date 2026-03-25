@@ -1,5 +1,9 @@
-import { prisma } from "~/db.server";
+import { type Prisma, prisma } from "~/db.server";
 import { createEnvironment } from "./organization.server";
+import { customAlphabet } from "nanoid";
+
+const tokenValueLength = 40;
+const tokenGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", tokenValueLength);
 
 export async function getTeamMembersAndInvites({
   userId,
@@ -95,14 +99,19 @@ export async function inviteMembers({
     throw new Error("User does not have access to this organization");
   }
 
-  const created = await prisma.orgMemberInvite.createMany({
-    data: emails.map((email) => ({
-      email,
-      organizationId: org.id,
-      inviterId: userId,
-      role: "MEMBER",
-    })),
-    skipDuplicates: true,
+  const invites = [...new Set(emails)].map(
+    (email) =>
+      ({
+        email,
+        token: tokenGenerator(),
+        organizationId: org.id,
+        inviterId: userId,
+        role: "MEMBER",
+      } satisfies Prisma.OrgMemberInviteCreateManyInput)
+  );
+
+  await prisma.orgMemberInvite.createMany({
+    data: invites,
   });
 
   return await prisma.orgMemberInvite.findMany({
@@ -147,12 +156,19 @@ export async function getUsersInvites({ email }: { email: string }) {
   });
 }
 
-export async function acceptInvite({ userId, inviteId }: { userId: string; inviteId: string }) {
+export async function acceptInvite({
+  user,
+  inviteId,
+}: {
+  user: { id: string; email: string };
+  inviteId: string;
+}) {
   return await prisma.$transaction(async (tx) => {
     // 1. Delete the invite and get the invite details
     const invite = await tx.orgMemberInvite.delete({
       where: {
         id: inviteId,
+        email: user.email,
       },
       include: {
         organization: {
@@ -167,7 +183,7 @@ export async function acceptInvite({ userId, inviteId }: { userId: string; invit
     const member = await tx.orgMember.create({
       data: {
         organizationId: invite.organizationId,
-        userId,
+        userId: user.id,
         role: invite.role,
       },
     });
@@ -187,7 +203,7 @@ export async function acceptInvite({ userId, inviteId }: { userId: string; invit
     // 4. Check for other invites
     const remainingInvites = await tx.orgMemberInvite.findMany({
       where: {
-        email: invite.email,
+        email: user.email,
       },
     });
 
@@ -195,28 +211,29 @@ export async function acceptInvite({ userId, inviteId }: { userId: string; invit
   });
 }
 
-export async function declineInvite({ userId, inviteId }: { userId: string; inviteId: string }) {
+export async function declineInvite({
+  user,
+  inviteId,
+}: {
+  user: { id: string; email: string };
+  inviteId: string;
+}) {
   return await prisma.$transaction(async (tx) => {
     //1. delete invite
     const declinedInvite = await prisma.orgMemberInvite.delete({
       where: {
         id: inviteId,
+        email: user.email,
       },
       include: {
         organization: true,
       },
     });
 
-    //2. get email
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { email: true },
-    });
-
-    //3. check for other invites
+    //2. check for other invites
     const remainingInvites = await prisma.orgMemberInvite.findMany({
       where: {
-        email: user!.email,
+        email: user.email,
       },
     });
 
@@ -224,10 +241,11 @@ export async function declineInvite({ userId, inviteId }: { userId: string; invi
   });
 }
 
-export async function resendInvite({ inviteId }: { inviteId: string }) {
+export async function resendInvite({ inviteId, userId }: { inviteId: string; userId: string }) {
   return await prisma.orgMemberInvite.update({
     where: {
       id: inviteId,
+      inviterId: userId,
     },
     data: {
       updatedAt: new Date(),
@@ -241,26 +259,27 @@ export async function resendInvite({ inviteId }: { inviteId: string }) {
 
 export async function revokeInvite({
   userId,
-  slug,
+  orgSlug,
   inviteId,
 }: {
   userId: string;
-  slug: string;
+  orgSlug: string;
   inviteId: string;
 }) {
-  const org = await prisma.organization.findFirst({
-    where: { slug, members: { some: { userId } } },
-  });
-
-  if (!org) {
-    throw new Error("User does not have access to this organization");
-  }
-  const invite = await prisma.orgMemberInvite.delete({
+  const invite = await prisma.orgMemberInvite.findFirst({
     where: {
       id: inviteId,
-      organizationId: org.id,
+      organization: {
+        slug: orgSlug,
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
     },
     select: {
+      id: true,
       email: true,
       organization: true,
     },
@@ -269,6 +288,12 @@ export async function revokeInvite({
   if (!invite) {
     throw new Error("Invite not found");
   }
+
+  await prisma.orgMemberInvite.delete({
+    where: {
+      id: invite.id,
+    },
+  });
 
   return { email: invite.email, organization: invite.organization };
 }

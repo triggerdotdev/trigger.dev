@@ -128,7 +128,18 @@ class ManagedSupervisor {
       dequeueIdleIntervalMs: env.TRIGGER_DEQUEUE_IDLE_INTERVAL_MS,
       queueConsumerEnabled: env.TRIGGER_DEQUEUE_ENABLED,
       maxRunCount: env.TRIGGER_DEQUEUE_MAX_RUN_COUNT,
-      maxConsumerCount: env.TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT,
+      metricsRegistry: register,
+      scaling: {
+        strategy: env.TRIGGER_DEQUEUE_SCALING_STRATEGY,
+        minConsumerCount: env.TRIGGER_DEQUEUE_MIN_CONSUMER_COUNT,
+        maxConsumerCount: env.TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT,
+        scaleUpCooldownMs: env.TRIGGER_DEQUEUE_SCALING_UP_COOLDOWN_MS,
+        scaleDownCooldownMs: env.TRIGGER_DEQUEUE_SCALING_DOWN_COOLDOWN_MS,
+        targetRatio: env.TRIGGER_DEQUEUE_SCALING_TARGET_RATIO,
+        ewmaAlpha: env.TRIGGER_DEQUEUE_SCALING_EWMA_ALPHA,
+        batchWindowMs: env.TRIGGER_DEQUEUE_SCALING_BATCH_WINDOW_MS,
+        dampingFactor: env.TRIGGER_DEQUEUE_SCALING_DAMPING_FACTOR,
+      },
       runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
       heartbeatIntervalSeconds: env.TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS,
       sendRunDebugLogs: env.SEND_RUN_DEBUG_LOGS,
@@ -233,6 +244,12 @@ class ManagedSupervisor {
       }
 
       try {
+        if (!message.deployment.friendlyId) {
+          // mostly a type guard, deployments always exists for deployed environments
+          // a proper fix would be to use a discriminated union schema to differentiate between dequeued runs in dev and in deployed environments.
+          throw new Error("Deployment is missing");
+        }
+
         await this.workloadManager.create({
           dequeuedAt: message.dequeuedAt,
           envId: message.environment.id,
@@ -241,12 +258,16 @@ class ManagedSupervisor {
           machine: message.run.machine,
           orgId: message.organization.id,
           projectId: message.project.id,
+          deploymentFriendlyId: message.deployment.friendlyId,
+          deploymentVersion: message.backgroundWorker.version,
           runId: message.run.id,
           runFriendlyId: message.run.friendlyId,
           version: message.version,
           nextAttemptNumber: message.run.attemptNumber,
           snapshotId: message.snapshot.id,
           snapshotFriendlyId: message.snapshot.friendlyId,
+          placementTags: message.placementTags,
+          annotations: message.run.annotations,
         });
 
         // Disabled for now

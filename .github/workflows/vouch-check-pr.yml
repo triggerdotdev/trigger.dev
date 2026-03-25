@@ -1,0 +1,44 @@
+name: Vouch - Check PR
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+jobs:
+  check-vouch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: mitchellh/vouch/action/check-pr@c6d80ead49839655b61b422700b7a3bc9d0804a9 # v1.4.2
+        with:
+          pr-number: ${{ github.event.pull_request.number }}
+          auto-close: true
+          require-vouch: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  require-draft:
+    needs: check-vouch
+    if: >
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.author_association != 'MEMBER' &&
+      github.event.pull_request.author_association != 'OWNER' &&
+      github.event.pull_request.author_association != 'COLLABORATOR'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close non-draft PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          STATE=$(gh pr view ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --json state -q '.state')
+          if [ "$STATE" != "OPEN" ]; then
+            echo "PR is already closed, skipping."
+            exit 0
+          fi
+          gh pr close ${{ github.event.pull_request.number }} \
+            --repo ${{ github.repository }} \
+            --comment "Thanks for your contribution! We require all external PRs to be opened in **draft** status first so you can address CodeRabbit review comments and ensure CI passes before requesting a review. Please re-open this PR as a draft. See [CONTRIBUTING.md](https://github.com/${{ github.repository }}/blob/main/CONTRIBUTING.md#pr-workflow) for details."

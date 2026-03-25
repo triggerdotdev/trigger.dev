@@ -138,13 +138,17 @@ export default function AdminDashboardRoute() {
                     <TableCell isSticky={true}>
                       <Form method="post" reloadDocument>
                         <input type="hidden" name="id" value={user.id} />
-
                         <Button
                           type="submit"
                           name="action"
                           value="impersonate"
                           className="mr-2"
                           variant="tertiary/small"
+                          shortcut={
+                            users.length === 1
+                              ? { modifiers: ["mod"], key: "enter", enabledOnInputElements: true }
+                              : undefined
+                          }
                         >
                           Impersonate
                         </Button>

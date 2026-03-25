@@ -4,7 +4,13 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
-import type { EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
+import type {
+  EnvironmentType,
+  MachinePreset,
+  MachinePresetName,
+  PlacementTag,
+} from "@trigger.dev/core/v3";
+import { PlacementTagProcessor } from "@trigger.dev/core/v3/serverOnly";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
 import { getRunnerId } from "../util.js";
@@ -13,19 +19,84 @@ type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
 };
 
+const cpuRequestRatioByMachinePreset: Record<MachinePresetName, number | undefined> = {
+  micro: env.KUBERNETES_CPU_REQUEST_RATIO_MICRO,
+  "small-1x": env.KUBERNETES_CPU_REQUEST_RATIO_SMALL_1X,
+  "small-2x": env.KUBERNETES_CPU_REQUEST_RATIO_SMALL_2X,
+  "medium-1x": env.KUBERNETES_CPU_REQUEST_RATIO_MEDIUM_1X,
+  "medium-2x": env.KUBERNETES_CPU_REQUEST_RATIO_MEDIUM_2X,
+  "large-1x": env.KUBERNETES_CPU_REQUEST_RATIO_LARGE_1X,
+  "large-2x": env.KUBERNETES_CPU_REQUEST_RATIO_LARGE_2X,
+};
+
+const memoryRequestRatioByMachinePreset: Record<MachinePresetName, number | undefined> = {
+  micro: env.KUBERNETES_MEMORY_REQUEST_RATIO_MICRO,
+  "small-1x": env.KUBERNETES_MEMORY_REQUEST_RATIO_SMALL_1X,
+  "small-2x": env.KUBERNETES_MEMORY_REQUEST_RATIO_SMALL_2X,
+  "medium-1x": env.KUBERNETES_MEMORY_REQUEST_RATIO_MEDIUM_1X,
+  "medium-2x": env.KUBERNETES_MEMORY_REQUEST_RATIO_MEDIUM_2X,
+  "large-1x": env.KUBERNETES_MEMORY_REQUEST_RATIO_LARGE_1X,
+  "large-2x": env.KUBERNETES_MEMORY_REQUEST_RATIO_LARGE_2X,
+};
+
 export class KubernetesWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("kubernetes-workload-provider");
   private k8s: K8sApi;
   private namespace = env.KUBERNETES_NAMESPACE;
+  private placementTagProcessor: PlacementTagProcessor;
+
+  // Resource settings
+  private readonly cpuRequestMinCores = env.KUBERNETES_CPU_REQUEST_MIN_CORES;
+  private readonly cpuRequestRatio = env.KUBERNETES_CPU_REQUEST_RATIO;
+  private readonly memoryRequestMinGb = env.KUBERNETES_MEMORY_REQUEST_MIN_GB;
+  private readonly memoryRequestRatio = env.KUBERNETES_MEMORY_REQUEST_RATIO;
+  private readonly memoryOverheadGb = env.KUBERNETES_MEMORY_OVERHEAD_GB;
 
   constructor(private opts: WorkloadManagerOptions) {
     this.k8s = createK8sApi();
+    this.placementTagProcessor = new PlacementTagProcessor({
+      enabled: env.PLACEMENT_TAGS_ENABLED,
+      prefix: env.PLACEMENT_TAGS_PREFIX,
+    });
 
     if (opts.workloadApiDomain) {
       this.logger.warn("[KubernetesWorkloadManager] ⚠️ Custom workload API domain", {
         domain: opts.workloadApiDomain,
       });
     }
+  }
+
+  private addPlacementTags(
+    podSpec: Omit<k8s.V1PodSpec, "containers">,
+    placementTags?: PlacementTag[]
+  ): Omit<k8s.V1PodSpec, "containers"> {
+    const nodeSelector = this.placementTagProcessor.convertToNodeSelector(
+      placementTags,
+      podSpec.nodeSelector
+    );
+
+    return {
+      ...podSpec,
+      nodeSelector,
+    };
+  }
+
+  private stripImageDigest(imageRef: string): string {
+    if (!env.KUBERNETES_STRIP_IMAGE_DIGEST) {
+      return imageRef;
+    }
+
+    const atIndex = imageRef.lastIndexOf("@");
+
+    if (atIndex === -1) {
+      return imageRef;
+    }
+
+    return imageRef.substring(0, atIndex);
+  }
+
+  private clamp(value: number, min: number, max: number): number {
+    return Math.min(Math.max(value, min), max);
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
@@ -48,12 +119,13 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             },
           },
           spec: {
-            ...this.#defaultPodSpec,
+            ...this.addPlacementTags(this.#defaultPodSpec, opts.placementTags),
+            affinity: this.#getAffinity(opts),
             terminationGracePeriodSeconds: 60 * 60,
             containers: [
               {
                 name: "run-controller",
-                image: opts.image,
+                image: this.stripImageDigest(opts.image),
                 ports: [
                   {
                     containerPort: 8000,
@@ -76,6 +148,14 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                   {
                     name: "TRIGGER_ENV_ID",
                     value: opts.envId,
+                  },
+                  {
+                    name: "TRIGGER_DEPLOYMENT_ID",
+                    value: opts.deploymentFriendlyId,
+                  },
+                  {
+                    name: "TRIGGER_DEPLOYMENT_VERSION",
+                    value: opts.deploymentVersion,
                   },
                   {
                     name: "TRIGGER_SNAPSHOT_ID",
@@ -228,6 +308,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       restartPolicy: "Never",
       automountServiceAccountToken: false,
       imagePullSecrets: this.getImagePullSecrets(),
+      ...(env.KUBERNETES_SCHEDULER_NAME
+        ? {
+            schedulerName: env.KUBERNETES_SCHEDULER_NAME,
+          }
+        : {}),
       ...(env.KUBERNETES_WORKER_NODETYPE_LABEL
         ? {
             nodeSelector: {
@@ -250,26 +335,50 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     };
   }
 
+  #isScheduledRun(opts: WorkloadManagerCreateOptions): boolean {
+    return opts.annotations?.rootTriggerSource === "schedule";
+  }
+
   #getSharedLabels(opts: WorkloadManagerCreateOptions): Record<string, string> {
     return {
       env: opts.envId,
       envtype: this.#envTypeToLabelValue(opts.envType),
       org: opts.orgId,
       project: opts.projectId,
+      machine: opts.machine.name,
+      // We intentionally use a boolean label rather than exposing the full trigger source
+      // (e.g. sdk, api, cli, mcp, schedule) to keep label cardinality low in metrics.
+      // The schedule vs non-schedule distinction is all we need for the current metrics
+      // and pool-level scheduling decisions; finer-grained source breakdowns live in run annotations.
+      scheduled: String(this.#isScheduledRun(opts)),
     };
   }
 
   #getResourceRequestsForMachine(preset: MachinePreset): ResourceQuantities {
+    const cpuRatio = cpuRequestRatioByMachinePreset[preset.name] ?? this.cpuRequestRatio;
+    const memoryRatio = memoryRequestRatioByMachinePreset[preset.name] ?? this.memoryRequestRatio;
+
+    const cpuRequest = preset.cpu * cpuRatio;
+    const memoryRequest = preset.memory * memoryRatio;
+
+    // Clamp between min and max
+    const clampedCpu = this.clamp(cpuRequest, this.cpuRequestMinCores, preset.cpu);
+    const clampedMemory = this.clamp(memoryRequest, this.memoryRequestMinGb, preset.memory);
+
     return {
-      cpu: `${preset.cpu * 0.75}`,
-      memory: `${preset.memory}G`,
+      cpu: `${clampedCpu}`,
+      memory: `${clampedMemory}G`,
     };
   }
 
   #getResourceLimitsForMachine(preset: MachinePreset): ResourceQuantities {
+    const memoryLimit = this.memoryOverheadGb
+      ? preset.memory + this.memoryOverheadGb
+      : preset.memory;
+
     return {
       cpu: `${preset.cpu}`,
-      memory: `${preset.memory}G`,
+      memory: `${memoryLimit}G`,
     };
   }
 
@@ -283,6 +392,158 @@ export class KubernetesWorkloadManager implements WorkloadManager {
         ...this.#defaultResourceLimits,
         ...this.#getResourceLimitsForMachine(preset),
       },
+    };
+  }
+
+  #isLargeMachine(preset: MachinePreset): boolean {
+    return preset.name.startsWith("large-");
+  }
+
+  #getAffinity(opts: WorkloadManagerCreateOptions): k8s.V1Affinity | undefined {
+    const largeNodeAffinity = this.#getNodeAffinityRules(opts.machine);
+    const scheduleNodeAffinity = this.#getScheduleNodeAffinityRules(this.#isScheduledRun(opts));
+    const podAffinity = this.#getProjectPodAffinity(opts.projectId);
+
+    // Merge node affinity rules from multiple sources
+    const preferred = [
+      ...(largeNodeAffinity?.preferredDuringSchedulingIgnoredDuringExecution ?? []),
+      ...(scheduleNodeAffinity?.preferredDuringSchedulingIgnoredDuringExecution ?? []),
+    ];
+    // Only large machine affinity produces hard requirements (non-large runs must stay off the large pool).
+    // Schedule affinity is soft both ways.
+    const required = [
+      ...(largeNodeAffinity?.requiredDuringSchedulingIgnoredDuringExecution?.nodeSelectorTerms ?? []),
+    ];
+
+    const hasNodeAffinity = preferred.length > 0 || required.length > 0;
+
+    if (!hasNodeAffinity && !podAffinity) {
+      return undefined;
+    }
+
+    return {
+      ...(hasNodeAffinity && {
+        nodeAffinity: {
+          ...(preferred.length > 0 && { preferredDuringSchedulingIgnoredDuringExecution: preferred }),
+          ...(required.length > 0 && {
+            requiredDuringSchedulingIgnoredDuringExecution: { nodeSelectorTerms: required },
+          }),
+        },
+      }),
+      ...(podAffinity && { podAffinity }),
+    };
+  }
+
+  #getNodeAffinityRules(preset: MachinePreset): k8s.V1NodeAffinity | undefined {
+    if (!env.KUBERNETES_LARGE_MACHINE_AFFINITY_ENABLED) {
+      return undefined;
+    }
+
+    if (this.#isLargeMachine(preset)) {
+      // soft preference for the large-machine pool, falls back to standard if unavailable
+      return {
+        preferredDuringSchedulingIgnoredDuringExecution: [
+          {
+            weight: env.KUBERNETES_LARGE_MACHINE_AFFINITY_WEIGHT,
+            preference: {
+              matchExpressions: [
+                {
+                  key: env.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_KEY,
+                  operator: "In",
+                  values: [env.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_VALUE],
+                },
+              ],
+            },
+          },
+        ],
+      };
+    }
+
+    // not schedulable in the large-machine pool
+    return {
+      requiredDuringSchedulingIgnoredDuringExecution: {
+        nodeSelectorTerms: [
+          {
+            matchExpressions: [
+              {
+                key: env.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_KEY,
+                operator: "NotIn",
+                values: [env.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_VALUE],
+              },
+            ],
+          },
+        ],
+      },
+    };
+  }
+
+  #getScheduleNodeAffinityRules(isScheduledRun: boolean): k8s.V1NodeAffinity | undefined {
+    if (!env.KUBERNETES_SCHEDULE_AFFINITY_ENABLED || !env.KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_VALUE) {
+      return undefined;
+    }
+
+    if (isScheduledRun) {
+      // soft preference for the schedule pool
+      return {
+        preferredDuringSchedulingIgnoredDuringExecution: [
+          {
+            weight: env.KUBERNETES_SCHEDULE_AFFINITY_WEIGHT,
+            preference: {
+              matchExpressions: [
+                {
+                  key: env.KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_KEY,
+                  operator: "In",
+                  values: [env.KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_VALUE],
+                },
+              ],
+            },
+          },
+        ],
+      };
+    }
+
+    // soft anti-affinity: non-schedule runs prefer to avoid the schedule pool
+    return {
+      preferredDuringSchedulingIgnoredDuringExecution: [
+        {
+          weight: env.KUBERNETES_SCHEDULE_ANTI_AFFINITY_WEIGHT,
+          preference: {
+            matchExpressions: [
+              {
+                key: env.KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_KEY,
+                operator: "NotIn",
+                values: [env.KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_VALUE],
+              },
+            ],
+          },
+        },
+      ],
+    };
+  }
+
+  #getProjectPodAffinity(projectId: string): k8s.V1PodAffinity | undefined {
+    if (!env.KUBERNETES_PROJECT_AFFINITY_ENABLED) {
+      return undefined;
+    }
+
+    return {
+      preferredDuringSchedulingIgnoredDuringExecution: [
+        {
+          weight: env.KUBERNETES_PROJECT_AFFINITY_WEIGHT,
+          podAffinityTerm: {
+            labelSelector: {
+              matchExpressions: [
+                {
+                  key: "project",
+                  operator: "In",
+                  values: [projectId],
+                },
+              ],
+            },
+            topologyKey: env.KUBERNETES_PROJECT_AFFINITY_TOPOLOGY_KEY,
+          },
+        },
+      ],
     };
   }
 }

@@ -500,6 +500,53 @@ describe("flattenAttributes", () => {
     expect(result["bigint"]).toBe("999");
     expect(typeof result["symbol"]).toBe("string");
   });
+
+  it("respects maxDepth limit", () => {
+    const obj = {
+      a: {
+        b: {
+          c: {
+            d: {
+              e: {
+                f: "deep",
+              },
+            },
+          },
+        },
+      },
+    };
+
+    // With maxDepth of 3, should not include keys deeper than 3 levels
+    const result = flattenAttributes(obj, undefined, undefined, 3);
+
+    // a.b.c should exist (depth 3)
+    expect(result["a.b.c"]).toBeUndefined(); // c is an object, not a leaf
+    // a.b.c.d should not exist (would require going to depth 4)
+    expect(result["a.b.c.d"]).toBeUndefined();
+    expect(result["a.b.c.d.e.f"]).toBeUndefined();
+  });
+
+  it("does not crash with deeply nested objects", () => {
+    // Create object iteratively with 500 levels of nesting
+    let deepObj: any = { value: "leaf" };
+    for (let i = 0; i < 500; i++) {
+      deepObj = { n: deepObj };
+    }
+
+    // Should complete without stack overflow
+    expect(() => flattenAttributes(deepObj)).not.toThrow();
+  });
+
+  it("does not crash with deeply nested arrays", () => {
+    // Create deeply nested array structure iteratively
+    let deepArray: any = ["leaf"];
+    for (let i = 0; i < 500; i++) {
+      deepArray = [deepArray];
+    }
+
+    // Should complete without stack overflow
+    expect(() => flattenAttributes({ arr: deepArray })).not.toThrow();
+  });
 });
 
 describe("unflattenAttributes", () => {
@@ -580,5 +627,44 @@ describe("unflattenAttributes", () => {
       name: "Alice",
       blogPosts: [{ title: "Post 1", author: "[Circular Reference]" }],
     });
+  });
+
+  it("respects maxDepth limit and skips overly deep keys", () => {
+    // Create a flattened object with keys at various depths
+    const flattened = {
+      "a.b.c": "shallow", // depth 3 - should be included
+      "a.b.c.d.e.f.g": "deep", // depth 7 - should be skipped with maxDepth=5
+      "x.y": "also shallow", // depth 2 - should be included
+    };
+
+    const result = unflattenAttributes(flattened, undefined, 5);
+
+    // Shallow keys should be included
+    expect(result).toHaveProperty("a.b.c", "shallow");
+    expect(result).toHaveProperty("x.y", "also shallow");
+
+    // Deep key should be skipped (not create the nested structure)
+    expect((result as any)?.a?.b?.c?.d?.e?.f?.g).toBeUndefined();
+  });
+
+  it("uses default maxDepth of 128", () => {
+    // Create a key with 129 parts - should be skipped
+    const deepKey = Array(129).fill("x").join(".");
+    const flattened = {
+      [deepKey]: "too deep",
+      "a.b": "shallow",
+    };
+
+    const result = unflattenAttributes(flattened);
+
+    // Shallow key should work
+    expect(result).toHaveProperty("a.b", "shallow");
+
+    // Deep key should be skipped
+    let current: any = result;
+    for (let i = 0; i < 129 && current; i++) {
+      current = current?.x;
+    }
+    expect(current).toBeUndefined();
   });
 });

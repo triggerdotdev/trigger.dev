@@ -1,0 +1,18 @@
+{
+  "name": "references-telemetry",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "trigger dev",
+    "deploy": "trigger deploy"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "workspace:*",
+    "@opentelemetry/resources": "2.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "trigger.dev": "workspace:*",
+    "typescript": "^5"
+  }
+}

@@ -1,9 +1,21 @@
 import { useNavigation } from "@remix-run/react";
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { Popover, PopoverContent, PopoverCustomTrigger } from "../primitives/Popover";
 import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 
-export function SideMenuHeader({ title, children }: { title: string; children?: React.ReactNode }) {
+export function SideMenuHeader({
+  title,
+  children,
+  isCollapsed = false,
+  collapsedTitle,
+}: {
+  title: string;
+  children?: React.ReactNode;
+  isCollapsed?: boolean;
+  /** When provided, this text stays visible when collapsed and the rest fades out */
+  collapsedTitle?: string;
+}) {
   const [isHeaderMenuOpen, setHeaderMenuOpen] = useState(false);
   const navigation = useNavigation();
 
@@ -11,9 +23,34 @@ export function SideMenuHeader({ title, children }: { title: string; children?: 
     setHeaderMenuOpen(false);
   }, [navigation.location?.pathname]);
 
+  // If collapsedTitle is provided and title starts with it, split the title
+  const hasCollapsedTitle = collapsedTitle && title.startsWith(collapsedTitle);
+  const visiblePart = hasCollapsedTitle ? collapsedTitle : title;
+  const fadingPart = hasCollapsedTitle ? title.slice(collapsedTitle.length) : "";
+
   return (
-    <div className="group flex items-center justify-between pl-1.5">
-      <h2 className="text-xs">{title}</h2>
+    <motion.div
+      className="group flex h-4 items-center justify-between overflow-hidden pl-1.5"
+      initial={false}
+      animate={{
+        opacity: hasCollapsedTitle ? 1 : isCollapsed ? 0 : 1,
+      }}
+      transition={{ duration: 0.15, ease: "easeOut" }}
+    >
+      <h2 className="text-xs whitespace-nowrap">
+        {visiblePart}
+        {fadingPart && (
+          <motion.span
+            initial={false}
+            animate={{
+              opacity: isCollapsed ? 0 : 1,
+            }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+          >
+            {fadingPart}
+          </motion.span>
+        )}
+      </h2>
       {children !== undefined ? (
         <Popover onOpenChange={(open) => setHeaderMenuOpen(open)} open={isHeaderMenuOpen}>
           <PopoverCustomTrigger className="p-1">
@@ -27,6 +64,6 @@ export function SideMenuHeader({ title, children }: { title: string; children?: 
           </PopoverContent>
         </Popover>
       ) : null}
-    </div>
+    </motion.div>
   );
 }

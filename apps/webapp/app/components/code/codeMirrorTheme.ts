@@ -11,9 +11,10 @@ export function darkTheme(): Extension {
     ivory = "#abb2bf",
     stone = "#7d8799",
     malibu = "#61afef",
-    sage = "#98c379",
+    sage = "#afec73",
     whiskey = "#d19a66",
     violet = "#c678dd",
+    lilac = "#9b99ff",
     darkBackground = "#21252b",
     highlightBackground = "rgba(71,85,105,0.2)",
     background = "#121317",
@@ -66,9 +67,10 @@ export function darkTheme(): Extension {
       },
 
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: cursor },
-      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
-        backgroundColor: selection,
-      },
+      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
+        {
+          backgroundColor: selection,
+        },
 
       ".cm-panels": { backgroundColor: darkBackground, color: ivory },
       ".cm-panels.cm-panels-top": { borderBottom: "2px solid black" },
@@ -86,8 +88,8 @@ export function darkTheme(): Extension {
       ".cm-selectionMatch": { backgroundColor: "#aafe661a" },
 
       "&.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket": {
-        backgroundColor: "#bad0f847",
-        outline: "1px solid #515a6b",
+        backgroundColor: "rgba(18, 19, 23, 0.9)",
+        outline: "1px solid rgba(81, 90, 107, 0.5)",
       },
 
       ".cm-gutters": {
@@ -165,15 +167,21 @@ export function darkTheme(): Extension {
         backgroundColor: scrollbarBg,
       },
     },
-    { dark: true }
+    { dark: true },
   );
 
   /// The highlighting style for code in the JSON Hero theme.
   const jsonHeroHighlightStyle = HighlightStyle.define([
     { tag: tags.keyword, color: violet },
     {
-      tag: [tags.name, tags.deleted, tags.character, tags.propertyName, tags.macroName],
-      color: coral,
+      tag: [
+        tags.name,
+        tags.deleted,
+        tags.character,
+        tags.propertyName,
+        tags.macroName,
+      ],
+      color: lilac,
     },
     { tag: [tags.function(tags.variableName), tags.labelName], color: malibu },
     {
@@ -186,6 +194,7 @@ export function darkTheme(): Extension {
         tags.typeName,
         tags.className,
         tags.number,
+        tags.bool,
         tags.changed,
         tags.annotation,
         tags.modifier,
@@ -213,7 +222,7 @@ export function darkTheme(): Extension {
     { tag: tags.link, color: stone, textDecoration: "underline" },
     { tag: tags.heading, fontWeight: "bold", color: coral },
     {
-      tag: [tags.atom, tags.bool, tags.special(tags.variableName)],
+      tag: [tags.atom, tags.special(tags.variableName)],
       color: whiskey,
     },
     {

@@ -1,11 +1,27 @@
-import { ArrowUturnLeftIcon, BookOpenIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction, Outlet, useLocation, useNavigate, useParams } from "@remix-run/react";
+import {
+  ArrowPathIcon,
+  ArrowUturnLeftIcon,
+  BookOpenIcon,
+  NoSymbolIcon,
+} from "@heroicons/react/20/solid";
+import {
+  Form,
+  type MetaFunction,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useNavigation,
+  useParams,
+} from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { CogIcon, GitBranchIcon } from "lucide-react";
 import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PromoteIcon } from "~/assets/icons/PromoteIcon";
+import { VercelLink } from "~/components/integrations/VercelLink";
 import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
+import { OctoKitty } from "~/components/GitHubLoginButton";
 import { GitMetadata } from "~/components/GitMetadata";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { UserAvatar } from "~/components/UserProfilePhoto";
@@ -13,7 +29,15 @@ import { MainCenteredContainer, PageBody, PageContainer } from "~/components/lay
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
+import {
+  Dialog,
+  DialogDescription,
+  DialogContent,
+  DialogHeader,
+  DialogTrigger,
+  DialogFooter,
+} from "~/components/primitives/Dialog";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -37,10 +61,6 @@ import {
   deploymentStatusDescription,
   deploymentStatuses,
 } from "~/components/runs/v3/DeploymentStatus";
-import {
-  PromoteDeploymentDialog,
-  RollbackDeploymentDialog,
-} from "~/components/runs/v3/RollbackDeploymentDialog";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -50,9 +70,18 @@ import {
 } from "~/presenters/v3/DeploymentListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { titleCase } from "~/utils";
-import { EnvironmentParamSchema, docsPath, v3DeploymentPath } from "~/utils/pathBuilder";
+import { cn } from "~/utils/cn";
+import {
+  EnvironmentParamSchema,
+  docsPath,
+  v3DeploymentPath,
+  v3ProjectSettingsIntegrationsPath,
+} from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
+import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
+import { env } from "~/env.server";
+import { DialogClose } from "@radix-ui/react-dialog";
 
 export const meta: MetaFunction = () => {
   return [
@@ -108,7 +137,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       ? result.deployments.find((d) => d.version === version)
       : undefined;
 
-    return typedjson({ ...result, selectedDeployment });
+    const autoReloadPollIntervalMs = env.DEPLOYMENTS_AUTORELOAD_POLL_INTERVAL_MS;
+
+    return typedjson({ ...result, selectedDeployment, autoReloadPollIntervalMs });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -122,13 +153,23 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { deployments, currentPage, totalPages, selectedDeployment } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    deployments,
+    currentPage,
+    totalPages,
+    selectedDeployment,
+    connectedGithubRepository,
+    environmentGitHubBranch,
+    autoReloadPollIntervalMs,
+    hasVercelIntegration,
+  } = useTypedLoaderData<typeof loader>();
   const hasDeployments = totalPages > 0;
 
   const { deploymentParam } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+
+  useAutoRevalidate({ interval: autoReloadPollIntervalMs, onFocus: true });
 
   // If we have a selected deployment from the version param, show it
   useEffect(() => {
@@ -160,8 +201,8 @@ export default function Page() {
         <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
           <ResizablePanel id="deployments-main" min="100px" className="max-h-full">
             {hasDeployments ? (
-              <div className="grid max-h-full grid-rows-[1fr_auto]">
-                <Table containerClassName="border-t-0">
+              <div className="flex h-full max-h-full flex-col">
+                <Table containerClassName="border-t-0 grow">
                   <TableHeader>
                     <TableRow>
                       <TableHeaderCell>Deploy</TableHeaderCell>
@@ -195,6 +236,7 @@ export default function Page() {
                       <TableHeaderCell>Deployed at</TableHeaderCell>
                       <TableHeaderCell>Deployed by</TableHeaderCell>
                       <TableHeaderCell>Git</TableHeaderCell>
+                      {hasVercelIntegration && <TableHeaderCell>Linked</TableHeaderCell>}
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
@@ -245,21 +287,20 @@ export default function Page() {
                               )}
                             </TableCell>
                             <TableCell to={path} isSelected={isSelected}>
-                              {deployment.deployedBy ? (
-                                <div className="flex items-center gap-1">
-                                  <UserAvatar
-                                    avatarUrl={deployment.deployedBy.avatarUrl}
-                                    name={
-                                      deployment.deployedBy.name ??
-                                      deployment.deployedBy.displayName
-                                    }
-                                    className="h-4 w-4"
-                                  />
-                                  <Paragraph variant="extra-small">
-                                    {deployment.deployedBy.name ??
-                                      deployment.deployedBy.displayName}
-                                  </Paragraph>
-                                </div>
+                              {deployment.git?.source === "trigger_github_app" ? (
+                                <UserTag
+                                  name={deployment.git.ghUsername ?? "GitHub Integration"}
+                                  avatarUrl={deployment.git.ghUserAvatarUrl}
+                                />
+                              ) : deployment.deployedBy ? (
+                                <UserTag
+                                  name={
+                                    deployment.deployedBy.name ??
+                                    deployment.deployedBy.displayName ??
+                                    ""
+                                  }
+                                  avatarUrl={deployment.deployedBy.avatarUrl ?? undefined}
+                                />
                               ) : (
                                 "–"
                               )}
@@ -269,6 +310,22 @@ export default function Page() {
                                 <GitMetadata git={deployment.git} />
                               </div>
                             </TableCell>
+                            {hasVercelIntegration && (
+                              <TableCell isSelected={isSelected}>
+                                {deployment.vercelDeploymentUrl ? (
+                                  <div
+                                    className="-ml-1 flex items-center"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <VercelLink
+                                      vercelDeploymentUrl={deployment.vercelDeploymentUrl}
+                                    />
+                                  </div>
+                                ) : (
+                                  "–"
+                                )}
+                              </TableCell>
+                            )}
                             <DeploymentActionsCell
                               deployment={deployment}
                               path={path}
@@ -279,7 +336,7 @@ export default function Page() {
                         );
                       })
                     ) : (
-                      <TableBlankRow colSpan={8}>
+                      <TableBlankRow colSpan={hasVercelIntegration ? 9 : 8}>
                         <Paragraph className="flex items-center justify-center">
                           No deploys match your filters
                         </Paragraph>
@@ -287,18 +344,45 @@ export default function Page() {
                     )}
                   </TableBody>
                 </Table>
-                {totalPages > 1 && (
-                  <div className="-mt-px flex justify-end border-t border-grid-dimmed py-2 pr-2">
-                    <PaginationControls currentPage={currentPage} totalPages={totalPages} />
-                  </div>
-                )}
+                <div
+                  className={cn(
+                    "-mt-px flex flex-wrap justify-end gap-2 border-t border-grid-dimmed px-3 pb-[7px] pt-[6px]",
+                    connectedGithubRepository && environmentGitHubBranch && "justify-between"
+                  )}
+                >
+                  {connectedGithubRepository && environmentGitHubBranch && (
+                    <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap text-sm">
+                      <OctoKitty className="size-4" />
+                      Automatically triggered by pushes to{" "}
+                      <div className="flex max-w-32 items-center gap-1 truncate rounded bg-grid-dimmed px-1 font-mono">
+                        <GitBranchIcon className="size-3 shrink-0" />
+                        <span className="max-w-28 truncate">{environmentGitHubBranch}</span>
+                      </div>{" "}
+                      in
+                      <a
+                        href={connectedGithubRepository.repository.htmlUrl}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="max-w-52 truncate text-sm text-text-dimmed underline transition-colors hover:text-text-bright"
+                      >
+                        {connectedGithubRepository.repository.fullName}
+                      </a>
+                      <LinkButton
+                        variant="minimal/small"
+                        LeadingIcon={CogIcon}
+                        to={v3ProjectSettingsIntegrationsPath(organization, project, environment)}
+                      />
+                    </div>
+                  )}
+                  <PaginationControls currentPage={currentPage} totalPages={totalPages} />
+                </div>
               </div>
             ) : environment.type === "DEVELOPMENT" ? (
-              <MainCenteredContainer className="max-w-md">
+              <MainCenteredContainer className="max-w-prose">
                 <DeploymentsNoneDev />
               </MainCenteredContainer>
             ) : (
-              <MainCenteredContainer className="max-w-md">
+              <MainCenteredContainer className="max-w-prose">
                 <DeploymentsNone />
               </MainCenteredContainer>
             )}
@@ -307,7 +391,7 @@ export default function Page() {
           {deploymentParam && (
             <>
               <ResizableHandle id="deployments-handle" />
-              <ResizablePanel id="deployments-inspector" min="400px" max="700px">
+              <ResizablePanel id="deployments-inspector" min="500px" max="800px">
                 <Outlet />
               </ResizablePanel>
             </>
@@ -315,6 +399,15 @@ export default function Page() {
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
+  );
+}
+
+export function UserTag({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
+  return (
+    <div className="flex items-center gap-1">
+      <UserAvatar avatarUrl={avatarUrl} name={name} className="h-4 w-4" />
+      <Paragraph variant="extra-small">{name}</Paragraph>
+    </div>
   );
 }
 
@@ -339,7 +432,10 @@ function DeploymentActionsCell({
     compareDeploymentVersions(deployment.version, currentDeployment.version) === -1;
   const canBePromoted = canBeMadeCurrent && !canBeRolledBack;
 
-  if (!canBeRolledBack && !canBePromoted) {
+  const finalStatuses = ["CANCELED", "DEPLOYED", "FAILED", "TIMED_OUT"];
+  const canBeCanceled = !finalStatuses.includes(deployment.status);
+
+  if (!canBeRolledBack && !canBePromoted && !canBeCanceled) {
     return (
       <TableCell to={path} isSelected={isSelected}>
         {""}
@@ -363,7 +459,7 @@ function DeploymentActionsCell({
                   fullWidth
                   textAlignLeft
                 >
-                  Rollback…
+                  Rollback
                 </Button>
               </DialogTrigger>
               <RollbackDeploymentDialog
@@ -383,7 +479,7 @@ function DeploymentActionsCell({
                   fullWidth
                   textAlignLeft
                 >
-                  Promote…
+                  Promote
                 </Button>
               </DialogTrigger>
               <PromoteDeploymentDialog
@@ -393,8 +489,155 @@ function DeploymentActionsCell({
               />
             </Dialog>
           )}
+          {canBeCanceled && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon={NoSymbolIcon}
+                  leadingIconClassName="text-error"
+                  fullWidth
+                  textAlignLeft
+                >
+                  Cancel
+                </Button>
+              </DialogTrigger>
+              <CancelDeploymentDialog
+                projectId={project.id}
+                deploymentShortCode={deployment.shortCode}
+                redirectPath={`${location.pathname}${location.search}`}
+              />
+            </Dialog>
+          )}
         </>
       }
     />
+  );
+}
+
+type RollbackDeploymentDialogProps = {
+  projectId: string;
+  deploymentShortCode: string;
+  redirectPath: string;
+};
+
+function RollbackDeploymentDialog({
+  projectId,
+  deploymentShortCode,
+  redirectPath,
+}: RollbackDeploymentDialogProps) {
+  const navigation = useNavigation();
+
+  const formAction = `/resources/${projectId}/deployments/${deploymentShortCode}/rollback`;
+  const isLoading = navigation.formAction === formAction;
+
+  return (
+    <DialogContent key="rollback">
+      <DialogHeader>Rollback to this deployment?</DialogHeader>
+      <DialogDescription>
+        This deployment will become the default for all future runs. Tasks triggered but not
+        included in this deploy will remain queued until you roll back to or create a new deployment
+        with these tasks included.
+      </DialogDescription>
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button variant="tertiary/medium">Cancel</Button>
+        </DialogClose>
+        <Form
+          action={`/resources/${projectId}/deployments/${deploymentShortCode}/rollback`}
+          method="post"
+        >
+          <Button
+            type="submit"
+            name="redirectUrl"
+            value={redirectPath}
+            variant="primary/medium"
+            LeadingIcon={isLoading ? SpinnerWhite : ArrowPathIcon}
+            disabled={isLoading}
+            shortcut={{ modifiers: ["mod"], key: "enter" }}
+          >
+            {isLoading ? "Rolling back..." : "Rollback deployment"}
+          </Button>
+        </Form>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+function PromoteDeploymentDialog({
+  projectId,
+  deploymentShortCode,
+  redirectPath,
+}: RollbackDeploymentDialogProps) {
+  const navigation = useNavigation();
+
+  const formAction = `/resources/${projectId}/deployments/${deploymentShortCode}/promote`;
+  const isLoading = navigation.formAction === formAction;
+
+  return (
+    <DialogContent key="promote">
+      <DialogHeader>Promote this deployment?</DialogHeader>
+      <DialogDescription>
+        This deployment will become the default for all future runs not explicitly tied to a
+        specific deployment.
+      </DialogDescription>
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button variant="tertiary/medium">Cancel</Button>
+        </DialogClose>
+        <Form
+          action={`/resources/${projectId}/deployments/${deploymentShortCode}/promote`}
+          method="post"
+        >
+          <Button
+            type="submit"
+            name="redirectUrl"
+            value={redirectPath}
+            variant="primary/medium"
+            LeadingIcon={isLoading ? SpinnerWhite : ArrowPathIcon}
+            disabled={isLoading}
+            shortcut={{ modifiers: ["mod"], key: "enter" }}
+          >
+            {isLoading ? "Promoting..." : "Promote deployment"}
+          </Button>
+        </Form>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+function CancelDeploymentDialog({
+  projectId,
+  deploymentShortCode,
+  redirectPath,
+}: RollbackDeploymentDialogProps) {
+  const navigation = useNavigation();
+
+  const formAction = `/resources/${projectId}/deployments/${deploymentShortCode}/cancel`;
+  const isLoading = navigation.formAction === formAction;
+
+  return (
+    <DialogContent key="cancel">
+      <DialogHeader>Cancel this deployment?</DialogHeader>
+      <DialogDescription>Canceling a deployment cannot be undone. Are you sure?</DialogDescription>
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button variant="tertiary/medium">Back</Button>
+        </DialogClose>
+        <Form action={formAction} method="post">
+          <Button
+            type="submit"
+            name="redirectUrl"
+            value={redirectPath}
+            variant="danger/medium"
+            LeadingIcon={isLoading ? SpinnerWhite : NoSymbolIcon}
+            disabled={isLoading}
+            shortcut={{ modifiers: ["mod"], key: "enter" }}
+          >
+            {isLoading ? "Canceling..." : "Cancel deployment"}
+          </Button>
+        </Form>
+      </DialogFooter>
+    </DialogContent>
   );
 }

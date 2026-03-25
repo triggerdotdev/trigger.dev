@@ -18,6 +18,7 @@ export const action = createActionWorkerApiRoute(
     authenticatedWorker,
     body,
     params,
+    runnerId,
   }): Promise<TypedResponse<WorkerApiRunAttemptCompleteResponseBody>> => {
     const { completion } = body;
     const { runFriendlyId, snapshotFriendlyId } = params;
@@ -26,6 +27,7 @@ export const action = createActionWorkerApiRoute(
       runFriendlyId,
       snapshotFriendlyId,
       completion,
+      runnerId,
     });
 
     return json({ result: completeResult });

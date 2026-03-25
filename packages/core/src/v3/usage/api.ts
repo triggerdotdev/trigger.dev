@@ -1,7 +1,7 @@
 const API_NAME = "usage";
 
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
-import type { UsageManager, UsageMeasurement, UsageSample } from "./types.js";
+import type { InitialUsageState, UsageManager, UsageMeasurement, UsageSample } from "./types.js";
 import { NoopUsageManager } from "./noopUsageManager.js";
 
 const NOOP_USAGE_MANAGER = new NoopUsageManager();
@@ -51,6 +51,10 @@ export class UsageAPI implements UsageManager {
   public reset() {
     this.#getUsageManager().reset();
     this.disable();
+  }
+
+  public getInitialState(): InitialUsageState {
+    return this.#getUsageManager().getInitialState();
   }
 
   #getUsageManager(): UsageManager {

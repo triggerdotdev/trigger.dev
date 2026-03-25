@@ -7,7 +7,7 @@ const containerBase =
   "has-[:focus-visible]:outline-none has-[:focus-visible]:ring-1 has-[:focus-visible]:ring-charcoal-650 has-[:focus-visible]:ring-offset-0 has-[:focus]:border-ring has-[:focus]:outline-none has-[:focus]:ring-1 has-[:focus]:ring-ring has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 ring-offset-background transition cursor-text";
 
 const inputBase =
-  "h-full w-full text-text-bright bg-transparent file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed outline-none ring-0 border-none";
+  "h-full w-full text-text-bright bg-transparent file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed outline-none ring-0 border-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-inner-spin-button]:m-0 [&]:[-moz-appearance:textfield]";
 
 const variants = {
   large: {
@@ -40,6 +40,24 @@ const variants = {
   "secondary-small": {
     container:
       "px-1 h-6 w-full rounded border border-charcoal-600 hover:border-charcoal-550 bg-grid-dimmed hover:bg-charcoal-650",
+    input: "px-1 rounded text-xs",
+    iconSize: "size-3 ml-0.5",
+    accessory: "pr-0.5",
+  },
+  "outline/large": {
+    container: "px-1 h-10 w-full rounded border border-grid-bright hover:border-charcoal-550",
+    input: "px-2 rounded text-sm",
+    iconSize: "size-4 ml-1",
+    accessory: "pr-1",
+  },
+  "outline/medium": {
+    container: "px-1 h-8 w-full rounded border border-grid-bright hover:border-charcoal-550",
+    input: "px-1 rounded text-sm",
+    iconSize: "size-4 ml-0.5",
+    accessory: "pr-1",
+  },
+  "outline/small": {
+    container: "px-1 h-6 w-full rounded border border-grid-bright hover:border-charcoal-550",
     input: "px-1 rounded text-xs",
     iconSize: "size-3 ml-0.5",
     accessory: "pr-0.5",

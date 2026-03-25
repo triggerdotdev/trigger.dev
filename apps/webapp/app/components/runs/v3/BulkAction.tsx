@@ -1,5 +1,5 @@
 import { ArrowPathIcon, CheckCircleIcon, NoSymbolIcon } from "@heroicons/react/20/solid";
-import { BulkActionStatus, type BulkActionType } from "@trigger.dev/database";
+import type { BulkActionStatus, BulkActionType } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";

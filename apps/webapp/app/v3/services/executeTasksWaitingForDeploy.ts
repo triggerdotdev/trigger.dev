@@ -33,7 +33,7 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
 
     const maxCount = env.LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_SIZE;
 
-    const runsWaitingForDeploy = await this._prisma.taskRun.findMany({
+    const runsWaitingForDeploy = await this._replica.taskRun.findMany({
       where: {
         runtimeEnvironmentId: backgroundWorker.runtimeEnvironmentId,
         projectId: backgroundWorker.projectId,

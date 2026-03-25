@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ActionFunction, LoaderFunctionArgs, json, redirect } from "@remix-run/node";
+import { type ActionFunction, type LoaderFunctionArgs, json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -17,6 +17,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { invitesPath, rootPath } from "~/utils/pathBuilder";
 import { EnvelopeIcon } from "@heroicons/react/20/solid";
+import { BackgroundWrapper } from "~/components/BackgroundWrapper";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -35,7 +36,7 @@ const schema = z.object({
 });
 
 export const action: ActionFunction = async ({ request }) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
 
   const formData = await request.formData();
   const submission = parse(formData, { schema });
@@ -48,7 +49,7 @@ export const action: ActionFunction = async ({ request }) => {
     if (submission.intent === "accept") {
       const { remainingInvites, organization } = await acceptInvite({
         inviteId: submission.value.inviteId,
-        userId,
+        user: { id: user.id, email: user.email },
       });
 
       if (remainingInvites.length === 0) {
@@ -63,7 +64,7 @@ export const action: ActionFunction = async ({ request }) => {
     } else if (submission.intent === "decline") {
       const { remainingInvites, organization } = await declineInvite({
         inviteId: submission.value.inviteId,
-        userId,
+        user: { id: user.id, email: user.email },
       });
       if (remainingInvites.length === 0) {
         return redirectWithSuccessMessage(
@@ -98,49 +99,51 @@ export default function Page() {
   });
 
   return (
-    <AppContainer>
-      <MainCenteredContainer>
-        <div>
-          <FormTitle
-            LeadingIcon={<EnvelopeIcon className="size-6 text-cyan-500" />}
-            className="mb-0 text-sky-500"
-            title={simplur`You have ${invites.length} new invitation[|s]`}
-          />
-          {invites.map((invite) => (
-            <Form key={invite.id} method="post" {...form.props}>
-              <Fieldset>
-                <InputGroup className="flex items-center justify-between border-b border-charcoal-800 py-4">
-                  <div className="flex flex-col gap-y-0.5 overflow-hidden">
-                    <Header2 className="truncate">{invite.organization.title}</Header2>
-                    <Paragraph variant="small" className="truncate">
-                      Invited by {invite.inviter.displayName ?? invite.inviter.email}
-                    </Paragraph>
-                    <input name="inviteId" type="hidden" value={invite.id} />
-                  </div>
-                  <div className="flex flex-col gap-y-1">
-                    <Button
-                      type="submit"
-                      name={conform.INTENT}
-                      value="accept"
-                      variant={"primary/small"}
-                    >
-                      Accept
-                    </Button>
-                    <Button
-                      type="submit"
-                      name={conform.INTENT}
-                      value="decline"
-                      variant={"secondary/small"}
-                    >
-                      Decline
-                    </Button>
-                  </div>
-                </InputGroup>
-              </Fieldset>
-            </Form>
-          ))}
-        </div>
-      </MainCenteredContainer>
+    <AppContainer className="bg-charcoal-900">
+      <BackgroundWrapper>
+        <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+          <div>
+            <FormTitle
+              LeadingIcon={<EnvelopeIcon className="size-6 text-cyan-500" />}
+              className="mb-0 text-sky-500"
+              title={simplur`You have ${invites.length} new invitation[|s]`}
+            />
+            {invites.map((invite) => (
+              <Form key={invite.id} method="post" {...form.props}>
+                <Fieldset>
+                  <InputGroup className="flex items-center justify-between border-b border-charcoal-800 py-4">
+                    <div className="flex flex-col gap-y-0.5 overflow-hidden">
+                      <Header2 className="truncate">{invite.organization.title}</Header2>
+                      <Paragraph variant="small" className="truncate">
+                        Invited by {invite.inviter.displayName ?? invite.inviter.email}
+                      </Paragraph>
+                      <input name="inviteId" type="hidden" value={invite.id} />
+                    </div>
+                    <div className="flex flex-col gap-y-1">
+                      <Button
+                        type="submit"
+                        name={conform.INTENT}
+                        value="accept"
+                        variant={"primary/small"}
+                      >
+                        Accept
+                      </Button>
+                      <Button
+                        type="submit"
+                        name={conform.INTENT}
+                        value="decline"
+                        variant={"secondary/small"}
+                      >
+                        Decline
+                      </Button>
+                    </div>
+                  </InputGroup>
+                </Fieldset>
+              </Form>
+            ))}
+          </div>
+        </MainCenteredContainer>
+      </BackgroundWrapper>
     </AppContainer>
   );
 }

@@ -22,7 +22,7 @@ This task downloads a video from a provided URL and uploads it to Supabase Stora
 
 ```ts trigger/supabase-storage-upload.ts
 import { createClient } from "@supabase/supabase-js";
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 import fetch from "node-fetch";
 
 // Initialize Supabase client
@@ -92,7 +92,7 @@ This task downloads a video from a provided URL, saves it to a temporary file, a
 
 ```ts trigger/supabase-storage-upload-s3.ts
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 import fetch from "node-fetch";
 
 // Initialize S3 client for Supabase Storage

@@ -5,7 +5,7 @@ import { createApiKeyForEnv, createPkApiKeyForEnv } from "~/models/api-key.serve
 import { type CreateBranchOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
 import { isValidGitBranchName, sanitizeBranchName } from "~/v3/gitBranch";
 import { logger } from "./logger.server";
-import { getLimit } from "./platform.v3.server";
+import { getCurrentPlan, getLimit } from "./platform.v3.server";
 
 export class UpsertBranchService {
   #prismaClient: PrismaClient;
@@ -14,7 +14,16 @@ export class UpsertBranchService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(userId: string, { parentEnvironmentId, branchName, git }: CreateBranchOptions) {
+  public async call(
+    // The orgFilter approach is not ideal but we need to keep it this way for now because of how the service is used in routes and api endpoints.
+    // Currently authorization checks are spread across the controller/route layer and the service layer. Often we check in multiple places for org/project membership.
+    // Ideally we would take care of both the authentication and authorization checks in the controllers and routes.
+    // That would unify how we handle authorization and org/project membership checks. Also it would make the service layer queries simpler.
+    orgFilter:
+      | { type: "userMembership"; userId: string }
+      | { type: "orgId"; organizationId: string },
+    { parentEnvironmentId, branchName, git }: CreateBranchOptions
+  ) {
     const sanitizedBranchName = sanitizeBranchName(branchName);
     if (!sanitizedBranchName) {
       return {
@@ -34,13 +43,16 @@ export class UpsertBranchService {
       const parentEnvironment = await this.#prismaClient.runtimeEnvironment.findFirst({
         where: {
           id: parentEnvironmentId,
-          organization: {
-            members: {
-              some: {
-                userId: userId,
-              },
-            },
-          },
+          organization:
+            orgFilter.type === "userMembership"
+              ? {
+                  members: {
+                    some: {
+                      userId: orgFilter.userId,
+                    },
+                  },
+                }
+              : { id: orgFilter.organizationId },
         },
         include: {
           organization: {
@@ -165,7 +177,10 @@ export async function checkBranchLimit(
   const count = newBranchName
     ? usedEnvs.filter((env) => env.branchName !== newBranchName).length
     : usedEnvs.length;
-  const limit = await getLimit(organizationId, "branches", 100_000_000);
+  const baseLimit = await getLimit(organizationId, "branches", 100_000_000);
+  const currentPlan = await getCurrentPlan(organizationId);
+  const purchasedBranches = currentPlan?.v3Subscription?.addOns?.branches?.purchased ?? 0;
+  const limit = baseLimit + purchasedBranches;
 
   return {
     used: count,

@@ -31,3 +31,12 @@ export const veryLongTask = task({
 This allows you to write linear code without having to worry about the complexity of scheduling or managing cron jobs.
 
 <PausedExecutionFree />
+
+## Wait idempotency
+
+You can pass an idempotency key to any wait function, allowing you to skip waits if the same idempotency key is used again. This can be useful if you want to skip waits when retrying a task, for example:
+
+```ts
+// Specify the idempotency key and TTL when waiting for a duration:
+await wait.for({ seconds: 10 }, { idempotencyKey: "my-idempotency-key", idempotencyKeyTTL: "1h" });
+```

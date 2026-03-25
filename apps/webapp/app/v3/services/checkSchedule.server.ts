@@ -92,7 +92,7 @@ export class CheckScheduleService extends BaseService {
       const limit = await getLimit(project.organizationId, "schedules", 100_000_000);
       const schedulesCount = await CheckScheduleService.getUsedSchedulesCount({
         prisma: this._prisma,
-        environments: project.environments,
+        projectId,
       });
 
       if (schedulesCount >= limit) {
@@ -105,26 +105,25 @@ export class CheckScheduleService extends BaseService {
 
   static async getUsedSchedulesCount({
     prisma,
-    environments,
+    projectId,
   }: {
     prisma: PrismaClientOrTransaction;
-    environments: { id: string; type: RuntimeEnvironmentType; archivedAt: Date | null }[];
+    projectId: string;
   }) {
-    const deployedEnvironments = environments.filter(
-      (env) => env.type !== "DEVELOPMENT" && !env.archivedAt
-    );
-    const schedulesCount = await prisma.taskScheduleInstance.count({
+    return await prisma.taskScheduleInstance.count({
       where: {
-        environmentId: {
-          in: deployedEnvironments.map((env) => env.id),
-        },
+        projectId,
         active: true,
+        environment: {
+          type: {
+            not: "DEVELOPMENT",
+          },
+          archivedAt: null,
+        },
         taskSchedule: {
           active: true,
         },
       },
     });
-
-    return schedulesCount;
   }
 }

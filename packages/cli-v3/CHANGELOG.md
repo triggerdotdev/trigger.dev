@@ -1,5 +1,356 @@
 # trigger.dev
 
+## 4.4.3
+
+### Patch Changes
+
+- Auto-cancel in-flight dev runs when the CLI exits, using a detached watchdog process that survives pnpm SIGKILL ([#3191](https://github.com/triggerdotdev/trigger.dev/pull/3191))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.3`
+  - `@trigger.dev/build@4.4.3`
+  - `@trigger.dev/schema-to-json@4.4.3`
+
+## 4.4.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.4.2`
+  - `@trigger.dev/core@4.4.2`
+  - `@trigger.dev/schema-to-json@4.4.2`
+
+## 4.4.1
+
+### Patch Changes
+
+- Add OTEL metrics pipeline for task workers. Workers collect process CPU/memory, Node.js runtime metrics (event loop utilization, event loop delay, heap usage), and user-defined custom metrics via `otel.metrics.getMeter()`. Metrics are exported to ClickHouse with 10-second aggregation buckets and 1m/5m rollups, and are queryable through the dashboard query engine with typed attribute columns, `prettyFormat()` for human-readable values, and AI query support. ([#3061](https://github.com/triggerdotdev/trigger.dev/pull/3061))
+- Updated dependencies:
+  - `@trigger.dev/build@4.4.1`
+  - `@trigger.dev/core@4.4.1`
+  - `@trigger.dev/schema-to-json@4.4.1`
+
+## 4.4.0
+
+### Patch Changes
+
+- Fix runner getting stuck indefinitely when `execute()` is called on a dead child process. ([#2978](https://github.com/triggerdotdev/trigger.dev/pull/2978))
+- Add optional `timeoutInSeconds` parameter to the `wait_for_run_to_complete` MCP tool. Defaults to 60 seconds. If the run doesn't complete within the timeout, the current state of the run is returned instead of waiting indefinitely. ([#3035](https://github.com/triggerdotdev/trigger.dev/pull/3035))
+- Fixed a minor issue in the deployment command on distinguishing between local builds for the cloud vs local builds for self-hosting setups. ([#3070](https://github.com/triggerdotdev/trigger.dev/pull/3070))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.0`
+  - `@trigger.dev/build@4.4.0`
+  - `@trigger.dev/schema-to-json@4.4.0`
+
+## 4.3.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.3`
+  - `@trigger.dev/build@4.3.3`
+  - `@trigger.dev/schema-to-json@4.3.3`
+
+## 4.3.2
+
+### Patch Changes
+
+- fix(cli): update command should preserve existing package.json order ([#2810](https://github.com/triggerdotdev/trigger.dev/pull/2810))
+- Updated dependencies:
+  - `@trigger.dev/build@4.3.2`
+  - `@trigger.dev/core@4.3.2`
+  - `@trigger.dev/schema-to-json@4.3.2`
+
+## 4.3.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.1`
+  - `@trigger.dev/build@4.3.1`
+  - `@trigger.dev/schema-to-json@4.3.1`
+
+## 4.3.0
+
+### Minor Changes
+
+- feat(cli): deterministic image builds for deployments ([#2778](https://github.com/triggerdotdev/trigger.dev/pull/2778))
+- feat(cli): enable zstd compression for deployment images ([#2773](https://github.com/triggerdotdev/trigger.dev/pull/2773))
+
+### Patch Changes
+
+- The new `triggeredVia` field is now populated in deployments via the CLI. ([#2767](https://github.com/triggerdotdev/trigger.dev/pull/2767))
+- fix(dev): stop max listeners exceeded warning messages when running more than 10 runs concurrently ([#2771](https://github.com/triggerdotdev/trigger.dev/pull/2771))
+- Upgrade @modelcontextprotocol/sdk to 1.24.3 ([#2768](https://github.com/triggerdotdev/trigger.dev/pull/2768))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.0`
+  - `@trigger.dev/build@4.3.0`
+  - `@trigger.dev/schema-to-json@4.3.0`
+
+## 4.2.0
+
+### Minor Changes
+
+- feat(cli): upgrade bun deployments to v1.3.3 ([#2756](https://github.com/triggerdotdev/trigger.dev/pull/2756))
+
+### Patch Changes
+
+- fix(otel): exported logs and spans will now have matching trace IDs ([#2724](https://github.com/triggerdotdev/trigger.dev/pull/2724))
+- The `--force-local-build` flag is now renamed to just `--local-build` ([#2702](https://github.com/triggerdotdev/trigger.dev/pull/2702))
+- fix(cli): header will always print the correct profile ([#2728](https://github.com/triggerdotdev/trigger.dev/pull/2728))
+- feat: add ability to set custom resource properties through trigger.config.ts or via the OTEL_RESOURCE_ATTRIBUTES env var ([#2704](https://github.com/triggerdotdev/trigger.dev/pull/2704))
+- feat(cli): implements content-addressable store for the dev CLI build outputs, reducing disk usage ([#2725](https://github.com/triggerdotdev/trigger.dev/pull/2725))
+- Added support for native build server builds in the deploy command (`--native-build-server`) ([#2702](https://github.com/triggerdotdev/trigger.dev/pull/2702))
+- Updated dependencies:
+  - `@trigger.dev/build@4.2.0`
+  - `@trigger.dev/core@4.2.0`
+  - `@trigger.dev/schema-to-json@4.2.0`
+
+## 4.1.2
+
+### Patch Changes
+
+- - dev runs will no longer get stuck in DEQUEUED status ([#2699](https://github.com/triggerdotdev/trigger.dev/pull/2699))
+  - prevent an ENOENT "System failure" in some dev runs when making the first change after running the dev CLI.
+- Updated dependencies:
+  - `@trigger.dev/build@4.1.2`
+  - `@trigger.dev/core@4.1.2`
+  - `@trigger.dev/schema-to-json@4.1.2`
+
+## 4.1.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.1.1`
+  - `@trigger.dev/core@4.1.1`
+  - `@trigger.dev/schema-to-json@4.1.1`
+
+## 4.1.0
+
+### Patch Changes
+
+- Added external cache support for local image builds ([#2682](https://github.com/triggerdotdev/trigger.dev/pull/2682))
+- Updated dependencies:
+  - `@trigger.dev/build@4.1.0`
+  - `@trigger.dev/core@4.1.0`
+  - `@trigger.dev/schema-to-json@4.1.0`
+
+## 4.0.7
+
+### Patch Changes
+
+- Fix for the MCP tool that gets run logs to help debugging ([#2653](https://github.com/triggerdotdev/trigger.dev/pull/2653))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.7`
+  - `@trigger.dev/core@4.0.7`
+  - `@trigger.dev/schema-to-json@4.0.7`
+
+## 4.0.6
+
+### Patch Changes
+
+- Added a hint about the `--force-local-build` flag on failed deployments due to upstream provider outages. ([#2646](https://github.com/triggerdotdev/trigger.dev/pull/2646))
+- Fixed misleading error message in the CLI when config file is missing ("maxDuration" is now required). A useful error message is now shown, including a hint about the `--config` flag. ([#2650](https://github.com/triggerdotdev/trigger.dev/pull/2650))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.6`
+  - `@trigger.dev/build@4.0.6`
+  - `@trigger.dev/schema-to-json@4.0.6`
+
+## 4.0.5
+
+### Patch Changes
+
+- Stop failing attempt spans when a run is cancelled ([#2530](https://github.com/triggerdotdev/trigger.dev/pull/2530))
+- Move max duration handling into the parent process ([#2637](https://github.com/triggerdotdev/trigger.dev/pull/2637))
+- Added INSTALLING status to the deployment status enum. ([#2544](https://github.com/triggerdotdev/trigger.dev/pull/2544))
+- Fix SIGTERM handling during warm start long poll ([#2593](https://github.com/triggerdotdev/trigger.dev/pull/2593))
+- Added support for deployments with local builds. ([#2628](https://github.com/triggerdotdev/trigger.dev/pull/2628))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.5`
+  - `@trigger.dev/build@4.0.5`
+  - `@trigger.dev/schema-to-json@4.0.5`
+
+## 4.0.4
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/schema-to-json@4.0.4`
+  - `@trigger.dev/build@4.0.4`
+  - `@trigger.dev/core@4.0.4`
+
+## 4.0.3
+
+### Patch Changes
+
+- Improves our schema to JSON Schema conversion, fixes zod 4 and a few other schema libraries, also correctly sets the dependencies ([#2483](https://github.com/triggerdotdev/trigger.dev/pull/2483))
+- Add the mcpName property to the CLI package.json to allow publishing our MCP server to the Anthropic MCP registry ([#2510](https://github.com/triggerdotdev/trigger.dev/pull/2510))
+- Added new CLI command to list and view environment variables ([#2485](https://github.com/triggerdotdev/trigger.dev/pull/2485))
+- Attach to existing deployment for deployments triggered in the build server. If `TRIGGER_EXISTING_DEPLOYMENT_ID` env var is set, the `deploy` command now skips the deployment initialization. ([#2501](https://github.com/triggerdotdev/trigger.dev/pull/2501))
+- - Reduce restore times by 5s due to immediate polling ([#2516](https://github.com/triggerdotdev/trigger.dev/pull/2516))
+  - Fix `s is not a function` and surface underlying error messages
+- Reduce restore recovery time and fix deprecated runner false positives ([#2523](https://github.com/triggerdotdev/trigger.dev/pull/2523))
+- Added the heartbeats.yield utility to allow tasks that do continuous CPU-heavy work to heartbeat and continue running ([#2489](https://github.com/triggerdotdev/trigger.dev/pull/2489))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.3`
+  - `@trigger.dev/build@4.0.3`
+  - `@trigger.dev/schema-to-json@4.0.3`
+
+## 4.0.2
+
+### Patch Changes
+
+- add wait_for_run_to_complete tool so agents don't spam the get_run_details call after triggering ([#2445](https://github.com/triggerdotdev/trigger.dev/pull/2445))
+- fix(mcp): don't require a trigger.config.ts file to be present when installing rules ([#2453](https://github.com/triggerdotdev/trigger.dev/pull/2453))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.2`
+  - `@trigger.dev/core@4.0.2`
+  - `@trigger.dev/schema-to-json@4.0.2`
+
+## 4.0.1
+
+### Patch Changes
+
+- feat: Add official MCP server, install MCP and rules CLI commands and wizards ([#2384](https://github.com/triggerdotdev/trigger.dev/pull/2384))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.1`
+  - `@trigger.dev/core@4.0.1`
+  - `@trigger.dev/schema-to-json@4.0.1`
+
+## 4.0.0
+
+### Major Changes
+
+- Trigger.dev v4 release. Please see our upgrade to v4 docs to view the full changelog: https://trigger.dev/docs/upgrade-to-v4 ([#1869](https://github.com/triggerdotdev/trigger.dev/pull/1869))
+
+### Patch Changes
+
+- Make the default of legacyDevProcessCwdBehaviour true instead of false (prevents breaking prismaExtension) ([#2387](https://github.com/triggerdotdev/trigger.dev/pull/2387))
+- Added experimental_devProcessCwdInBuildDir config option to opt-in to new process.cwd behavior when executing tasks in the dev CLI. Currently process.cwd maps to the "root" of your trigger.dev project (the directory that contains your trigger.config.ts file). Setting experimental_devProcessCwdInBuildDir to true changes process.cwd to instead be the temporary build directory inside of the .trigger directory. ([#2269](https://github.com/triggerdotdev/trigger.dev/pull/2269))
+- Fix dev runs ([#2094](https://github.com/triggerdotdev/trigger.dev/pull/2094))
+- The dev command will now use the platform-provided engine URL ([#1949](https://github.com/triggerdotdev/trigger.dev/pull/1949))
+- Run Engine 2.0 (alpha) ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575))
+- Fix update command version mismatch detection ([#2199](https://github.com/triggerdotdev/trigger.dev/pull/2199))
+- fix: prevent circular reference errors on task indexing when using schemaTask ([#2383](https://github.com/triggerdotdev/trigger.dev/pull/2383))
+- Add external log exporters and fix missing external trace exporters in deployed tasks ([#2038](https://github.com/triggerdotdev/trigger.dev/pull/2038))
+- Allow any runs to finish after SIGTERM but disable warm starts ([#2316](https://github.com/triggerdotdev/trigger.dev/pull/2316))
+- Gracefully shutdown task run processes using SIGTERM followed by SIGKILL after a 1s timeout. This also prevents cancelled or completed runs from leaving orphaned Ttask run processes behind ([#2299](https://github.com/triggerdotdev/trigger.dev/pull/2299))
+- Enhance deploy command output to better distinguish between local and remote builds ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+- Switch to profile after successful login ([#2192](https://github.com/triggerdotdev/trigger.dev/pull/2192))
+- Fixes a bug that would allow processes that had OOM errors to be incorrectly reused when experimental_processKeepAlive was enabled ([#2261](https://github.com/triggerdotdev/trigger.dev/pull/2261))
+- Runtime agnostic SDK config via env vars ([#2132](https://github.com/triggerdotdev/trigger.dev/pull/2132))
+- improve contrast for chalkWorker in light mode ([#2239](https://github.com/triggerdotdev/trigger.dev/pull/2239))
+- Expose esbuild `keepNames` option (experimental) ([#2091](https://github.com/triggerdotdev/trigger.dev/pull/2091))
+- Add `experimental_autoDetectExternal` trigger config option ([#2083](https://github.com/triggerdotdev/trigger.dev/pull/2083))
+- Add project details to the whoami command ([#2231](https://github.com/triggerdotdev/trigger.dev/pull/2231))
+- fix: waitUntil now correctly waits for metadata.streams to finish ([#2399](https://github.com/triggerdotdev/trigger.dev/pull/2399))
+- Log images sizes for self-hosted deploys ([#1764](https://github.com/triggerdotdev/trigger.dev/pull/1764))
+- Display clickable links in Cursor terminal ([#1998](https://github.com/triggerdotdev/trigger.dev/pull/1998))
+- Fix init.ts in custom trigger dirs ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- Add import timings and bundle size analysis, the dev command will now warn about slow imports ([#2114](https://github.com/triggerdotdev/trigger.dev/pull/2114))
+- Fix update command version range handling ([#2153](https://github.com/triggerdotdev/trigger.dev/pull/2153))
+- All experimental flags have been promoted to non-experimental, but the experimental ones still work (for now). keepNames and autoDetectExternal now default to true. ([#2371](https://github.com/triggerdotdev/trigger.dev/pull/2371))
+- fix(runner): prevent retry immediately race condition which can cause stuck runs that end up being system failures ([#2402](https://github.com/triggerdotdev/trigger.dev/pull/2402))
+- Upgrade to bun v1.2.20 ([#2398](https://github.com/triggerdotdev/trigger.dev/pull/2398))
+- Init command will now correctly install v4-beta packages ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- Fix metadata collapsing correctness ([#2115](https://github.com/triggerdotdev/trigger.dev/pull/2115))
+- Improve warm start times by eagerly creating the child TaskRunProcess when a previous run as completed ([#1879](https://github.com/triggerdotdev/trigger.dev/pull/1879))
+- - Resolve issue where CLI could get stuck during deploy finalization ([#2138](https://github.com/triggerdotdev/trigger.dev/pull/2138))
+  - Unify local and remote build logic, with multi-platform build support
+  - Improve switch command; now accepts profile name as an argument
+  - Registry configuration is now fully managed by the webapp
+  - The deploy `--self-hosted` flag is no longer required
+  - Enhance deployment error reporting and image digest retrieval
+- Fix init.ts detection when using the sentry esbuild plugin ([#2051](https://github.com/triggerdotdev/trigger.dev/pull/2051))
+- - Correctly resolve waitpoints that come in early ([#2006](https://github.com/triggerdotdev/trigger.dev/pull/2006))
+  - Ensure correct state before requesting suspension
+  - Fix race conditions in snapshot processing
+- experimental processKeepAlive ([#2183](https://github.com/triggerdotdev/trigger.dev/pull/2183))
+- Fixes runLimiter check on #dequeueRuns ([#1953](https://github.com/triggerdotdev/trigger.dev/pull/1953))
+- Update nypm package to support test-based bun.lock files ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- Added AI assistance link when you have build errors ([#1925](https://github.com/triggerdotdev/trigger.dev/pull/1925))
+- Handle flush errors gracefully in dev ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914))
+- - Improve playwright non-headless chrome installation ([#2347](https://github.com/triggerdotdev/trigger.dev/pull/2347))
+  - Prevent spinner message duplication in narrow terminals
+- Added support for Preview branches in v4 projects ([#2086](https://github.com/triggerdotdev/trigger.dev/pull/2086))
+- Can now set project ref using the TRIGGER_PROJECT_REF env var ([#2109](https://github.com/triggerdotdev/trigger.dev/pull/2109))
+- Add runtime version detection for display in the dashboard ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+- Update profile switcher ([#2150](https://github.com/triggerdotdev/trigger.dev/pull/2150))
+- Update base images to latest compatible versions. The `node-22` runtime now uses v22.16.0 and `bun` uses the latest v1.2.18 release. The default `node` runtime is unchanged and points at v21.7.3. ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+- Improve usage flushing ([#1931](https://github.com/triggerdotdev/trigger.dev/pull/1931))
+- fix: default machine config indexing now works ([#1979](https://github.com/triggerdotdev/trigger.dev/pull/1979))
+- Prevent large outputs from overwriting each other ([#1971](https://github.com/triggerdotdev/trigger.dev/pull/1971))
+- Fail fast in CI when running deploy with missing `TRIGGER_ACCESS_TOKEN` and add useful error message with link to docs ([#2258](https://github.com/triggerdotdev/trigger.dev/pull/2258))
+- Always print full deploy logs in CI ([#2006](https://github.com/triggerdotdev/trigger.dev/pull/2006))
+- Upgrade to zod 3.25.76 ([#2352](https://github.com/triggerdotdev/trigger.dev/pull/2352))
+- TriggerApiError 4xx errors will no longer cause tasks to be retried ([#1970](https://github.com/triggerdotdev/trigger.dev/pull/1970))
+- - Fix polling interval reset bug that could create duplicate intervals ([#1987](https://github.com/triggerdotdev/trigger.dev/pull/1987))
+  - Protect against unexpected attempt number changes
+  - Prevent run execution zombies after warm starts
+- Fix stalled run detection ([#1934](https://github.com/triggerdotdev/trigger.dev/pull/1934))
+- Managed run controller performance and reliability improvements ([#1927](https://github.com/triggerdotdev/trigger.dev/pull/1927))
+- Fix init.ts auto-import for deployed workers ([#2041](https://github.com/triggerdotdev/trigger.dev/pull/2041))
+- fix: external traces now respect parent sampling, and prevent broken traces when there is no external trace context ([#2395](https://github.com/triggerdotdev/trigger.dev/pull/2395))
+- v4: New lifecycle hooks ([#1817](https://github.com/triggerdotdev/trigger.dev/pull/1817))
+- Output esbuild metafile, can be inspected after `deploy --dry run` ([#2087](https://github.com/triggerdotdev/trigger.dev/pull/2087))
+- Fix QUEUED status snapshot handler ([#1963](https://github.com/triggerdotdev/trigger.dev/pull/1963))
+- Serialize metadata to prevent invalid metadata from breaking run completions ([#2219](https://github.com/triggerdotdev/trigger.dev/pull/2219))
+- If you pass a directory when calling deploy we validate it exists and give helpful hints ([#2013](https://github.com/triggerdotdev/trigger.dev/pull/2013))
+- Expose esbuild `minify` option (experimental) ([#2091](https://github.com/triggerdotdev/trigger.dev/pull/2091))
+- Fix `syncEnvVars` for non-preview deployments ([#2131](https://github.com/triggerdotdev/trigger.dev/pull/2131))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0`
+  - `@trigger.dev/build@4.0.0`
+  - `@trigger.dev/schema-to-json@4.0.0`
+
+## 4.0.0-v4-beta.28
+
+### Patch Changes
+
+- Make the default of legacyDevProcessCwdBehaviour true instead of false (prevents breaking prismaExtension) ([#2387](https://github.com/triggerdotdev/trigger.dev/pull/2387))
+- fix: prevent circular reference errors on task indexing when using schemaTask ([#2383](https://github.com/triggerdotdev/trigger.dev/pull/2383))
+- fix: waitUntil now correctly waits for metadata.streams to finish ([#2399](https://github.com/triggerdotdev/trigger.dev/pull/2399))
+- fix(runner): prevent retry immediately race condition which can cause stuck runs that end up being system failures ([#2402](https://github.com/triggerdotdev/trigger.dev/pull/2402))
+- Upgrade to bun v1.2.20 ([#2398](https://github.com/triggerdotdev/trigger.dev/pull/2398))
+- fix: external traces now respect parent sampling, and prevent broken traces when there is no external trace context ([#2395](https://github.com/triggerdotdev/trigger.dev/pull/2395))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.28`
+  - `@trigger.dev/build@4.0.0-v4-beta.28`
+  - `@trigger.dev/schema-to-json@4.0.0-v4-beta.28`
+
+## 4.0.0-v4-beta.27
+
+### Patch Changes
+
+- improve contrast for chalkWorker in light mode ([#2239](https://github.com/triggerdotdev/trigger.dev/pull/2239))
+- All experimental flags have been promoted to non-experimental, but the experimental ones still work (for now). keepNames and autoDetectExternal now default to true. ([#2371](https://github.com/triggerdotdev/trigger.dev/pull/2371))
+- - Improve playwright non-headless chrome installation ([#2347](https://github.com/triggerdotdev/trigger.dev/pull/2347))
+  - Prevent spinner message duplication in narrow terminals
+- Upgrade to zod 3.25.76 ([#2352](https://github.com/triggerdotdev/trigger.dev/pull/2352))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.27`
+  - `@trigger.dev/core@4.0.0-v4-beta.27`
+  - `@trigger.dev/schema-to-json@4.0.0-v4-beta.27`
+
+## 4.0.0-v4-beta.26
+
+### Patch Changes
+
+- Allow any runs to finish after SIGTERM but disable warm starts ([#2316](https://github.com/triggerdotdev/trigger.dev/pull/2316))
+- Switch to profile after successful login ([#2192](https://github.com/triggerdotdev/trigger.dev/pull/2192))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.26`
+  - `@trigger.dev/core@4.0.0-v4-beta.26`
+
+## 4.0.0-v4-beta.25
+
+### Patch Changes
+
+- Gracefully shutdown task run processes using SIGTERM followed by SIGKILL after a 1s timeout. This also prevents cancelled or completed runs from leaving orphaned Ttask run processes behind ([#2299](https://github.com/triggerdotdev/trigger.dev/pull/2299))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.25`
+  - `@trigger.dev/core@4.0.0-v4-beta.25`
+
 ## 4.0.0-v4-beta.24
 
 ### Patch Changes
@@ -811,7 +1162,7 @@
     port: 5432,
     username: "postgres",
     password: "postgres",
-    database: "v3-catalog",
+    database: "hello-world",
     entities: [Photo],
     synchronize: true,
     logging: false,
@@ -1447,7 +1798,7 @@
     port: 5432,
     username: "postgres",
     password: "postgres",
-    database: "v3-catalog",
+    database: "hello-world",
     entities: [Photo],
     synchronize: true,
     logging: false,

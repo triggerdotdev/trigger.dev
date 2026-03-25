@@ -1,7 +1,7 @@
 import { type PrismaClient } from "@trigger.dev/database";
 import { CreateBulkActionSearchParams } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
-import { RunsRepository } from "~/services/runsRepository.server";
+import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { getRunFiltersFromRequest } from "../RunFilters.server";
 import { BasePresenter } from "./basePresenter.server";
 

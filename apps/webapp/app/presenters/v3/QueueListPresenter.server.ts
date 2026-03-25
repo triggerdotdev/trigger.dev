@@ -114,6 +114,9 @@ export class QueueListPresenter extends BasePresenter {
         name: true,
         orderableName: true,
         concurrencyLimit: true,
+        concurrencyLimitBase: true,
+        concurrencyLimitOverriddenAt: true,
+        concurrencyLimitOverriddenBy: true,
         type: true,
         paused: true,
       },
@@ -135,6 +138,17 @@ export class QueueListPresenter extends BasePresenter {
       ),
     ]);
 
+    // Manually "join" the overridden users because there is no way to implement the relationship
+    // in prisma without adding a foreign key constraint
+    const overriddenByIds = queues.map((q) => q.concurrencyLimitOverriddenBy).filter(Boolean);
+    const overriddenByUsers = await this._replica.user.findMany({
+      where: {
+        id: { in: overriddenByIds },
+      },
+    });
+
+    const overriddenByMap = new Map(overriddenByUsers.map((u) => [u.id, u]));
+
     // Transform queues to include running and queued counts
     return queues.map((queue) =>
       toQueueItem({
@@ -144,6 +158,11 @@ export class QueueListPresenter extends BasePresenter {
         running: results[1][queue.name] ?? 0,
         queued: results[0][queue.name] ?? 0,
         concurrencyLimit: queue.concurrencyLimit ?? null,
+        concurrencyLimitBase: queue.concurrencyLimitBase ?? null,
+        concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt ?? null,
+        concurrencyLimitOverriddenBy: queue.concurrencyLimitOverriddenBy
+          ? overriddenByMap.get(queue.concurrencyLimitOverriddenBy) ?? null
+          : null,
         paused: queue.paused,
       })
     );

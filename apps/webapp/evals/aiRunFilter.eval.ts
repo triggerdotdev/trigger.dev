@@ -216,6 +216,37 @@ evalite("AI Run Filter", {
           },
         }),
       },
+      // Time-specific queries with hours
+      {
+        input: "tasks that started around 8am today",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            from: new Date(new Date().toDateString() + " 07:00:00").getTime(),
+            to: new Date(new Date().toDateString() + " 09:00:00").getTime(),
+          },
+        }),
+      },
+      {
+        input: "runs that started at 2pm yesterday",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            from: new Date(new Date(Date.now() - 24*60*60*1000).toDateString() + " 14:00:00").getTime(),
+            to: new Date(new Date(Date.now() - 24*60*60*1000).toDateString() + " 14:59:59").getTime(),
+          },
+        }),
+      },
+      {
+        input: "any runs started this morning",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            from: new Date(new Date().toDateString() + " 06:00:00").getTime(),
+            to: new Date(new Date().toDateString() + " 12:00:00").getTime(),
+          },
+        }),
+      },
       // Ambiguous cases that should return errors
       {
         input: "Show me something",

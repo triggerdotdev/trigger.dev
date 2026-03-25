@@ -8,7 +8,7 @@ All list endpoints in the management API support auto-pagination.
 You can use `for await … of` syntax to iterate through items across all pages:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 async function fetchAllRuns() {
   const allRuns = [];
@@ -24,7 +24,7 @@ async function fetchAllRuns() {
 You can also use helpers on the return value from any `list` method to get the next/previous page of results:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 async function main() {
   let page = await runs.list({ limit: 10 });

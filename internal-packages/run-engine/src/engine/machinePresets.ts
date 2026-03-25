@@ -26,7 +26,7 @@ export function getMachinePreset({
   const parsedConfig = MachineConfig.safeParse(config);
 
   if (!parsedConfig.success) {
-    logger.error("Failed to parse machine config", { config });
+    logger.info("Failed to parse machine config", { config });
 
     return machinePresetFromName(machines, "small-1x");
   }

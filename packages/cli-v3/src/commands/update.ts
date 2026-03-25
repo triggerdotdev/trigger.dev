@@ -1,12 +1,12 @@
 import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
 import { Command } from "commander";
 import { detectPackageManager, installDependencies } from "nypm";
-import { basename, dirname, resolve } from "path";
+import { dirname, join, resolve } from "path";
 import { PackageJson, readPackageJSON, type ResolveOptions, resolvePackageJSON } from "pkg-types";
 import { z } from "zod";
 import { CommonCommandOptions, OutroCommandError, wrapCommandAction } from "../cli/common.js";
 import { chalkError, prettyError, prettyWarning } from "../utilities/cliOutput.js";
-import { removeFile, writeJSONFile } from "../utilities/fileSystem.js";
+import { removeFile, writeJSONFilePreserveOrder } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner, updateCheck } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
@@ -227,7 +227,7 @@ export async function updateTriggerPackages(
 
   // Backup package.json
   const packageJsonBackupPath = `${packageJsonPath}.bak`;
-  await writeJSONFile(packageJsonBackupPath, readonlyPackageJson, true);
+  await writeJSONFilePreserveOrder(packageJsonBackupPath, readonlyPackageJson, true);
 
   const exitHandler = async (sig: any) => {
     log.warn(
@@ -241,10 +241,10 @@ export async function updateTriggerPackages(
 
   // Update package.json
   mutatePackageJsonWithUpdatedPackages(packageJson, mismatches, cliVersion);
-  await writeJSONFile(packageJsonPath, packageJson, true);
+  await writeJSONFilePreserveOrder(packageJsonPath, packageJson, true);
 
   async function revertPackageJsonChanges() {
-    await writeJSONFile(packageJsonPath, readonlyPackageJson, true);
+    await writeJSONFilePreserveOrder(packageJsonPath, readonlyPackageJson, true);
     await removeFile(packageJsonBackupPath);
   }
 
@@ -319,7 +319,7 @@ async function getTriggerDependencies(
         continue;
       }
 
-      const $version = await tryResolveTriggerPackageVersion(name, packageJsonPath);
+      const $version = await tryResolveTriggerPackageVersion(name, dirname(packageJsonPath));
 
       deps.push({ type, name, version: $version ?? version });
     }
@@ -328,13 +328,13 @@ async function getTriggerDependencies(
   return deps;
 }
 
-async function tryResolveTriggerPackageVersion(
+export async function tryResolveTriggerPackageVersion(
   name: string,
-  packageJsonPath: string
+  basedir?: string
 ): Promise<string | undefined> {
   try {
     const resolvedPath = nodeResolve.sync(name, {
-      basedir: dirname(packageJsonPath),
+      basedir,
     });
 
     logger.debug(`Resolved ${name} package version path`, { name, resolvedPath });
@@ -342,11 +342,11 @@ async function tryResolveTriggerPackageVersion(
     const { packageJson } = await getPackageJson(dirname(resolvedPath), {
       test: (filePath) => {
         // We need to skip any type-marker files
-        if (filePath.includes("dist/commonjs")) {
+        if (filePath.includes(join("dist", "commonjs"))) {
           return false;
         }
 
-        if (filePath.includes("dist/esm")) {
+        if (filePath.includes(join("dist", "esm"))) {
           return false;
         }
 

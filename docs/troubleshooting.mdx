@@ -39,7 +39,7 @@ Ensure you have stopped your local dev server then locate the hidden `.trigger` 
 If you see errors like this when running `trigger.dev dev`:
 
 ```
-Could not resolve "@trigger.dev/core/v3"
+Could not resolve "@trigger.dev/core"
 The Yarn Plug'n'Play manifest forbids importing "@trigger.dev/core" here because it's not listed as a dependency of this package
 ```
 
@@ -73,12 +73,16 @@ This happens because Docker Desktop left behind a config file that's still tryin
 
 Usually there will be some useful guidance below this message. If you can't figure out what's going wrong then join [our Discord](https://trigger.dev/discord) and create a Help forum post with a link to your deployment.
 
+### `resource_exhausted`
+
+If you see a `resource_exhausted` error during deploy, the build may have hit resource limits on our build infrastructure. Try our [native builder](https://trigger.dev/changelog/deployments-with-native-builds).
+
 ### `No loader is configured for ".node" files`
 
 This happens because `.node` files are native code and can't be bundled like other packages. To fix this, add your package to [`build.external`](/config/config-file#external) in the `trigger.config.ts` file like this:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -93,6 +97,10 @@ export default defineConfig({
 
 If you see this error, add pino (and any other associated packages) to your `external` build settings in your `trigger.config.ts` file. Learn more about the `external` setting in the [config docs](/config/config-file#external).
 
+### `Failed to index deployment` with `Column must be greater than or equal to 0, got -1`
+
+This can occur when using `runtime: "bun"` during the indexing phase (we load and execute your task files to discover exports). A short-term workaround is to [pnpm patch](https://pnpm.io/cli/patch) the `source-map` package. See [this GitHub issue](https://github.com/triggerdotdev/trigger.dev/issues/3045) for the patch details.
+
 ### `reactDOMServer.renderToPipeableStream is not a function` when using react-email
 
 If you see this error when using `@react-email/render`:
@@ -105,7 +113,7 @@ TypeError: reactDOMServer.renderToPipeableStream is not a function
 This happens because react-email packages have bundling conflicts with our build process. To fix this, add the react-email packages to your `external` build settings in your `trigger.config.ts` file:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -117,7 +125,6 @@ export default defineConfig({
 ```
 
 <CorepackError />
-
 
 ## Project setup issues
 
@@ -152,6 +159,10 @@ Your code is deployed separately from the rest of your app(s) so you need to mak
 
 Prisma uses code generation to create the client from your schema file. This means you need to add a bit of config so we can generate this file before your tasks run: [Read the guide](/config/extensions/prismaExtension).
 
+### Database connection requires IPv4
+
+Trigger.dev currently only supports IPv4 database connections. If your database provider only provides an IPv6 connection string, you'll need to use an IPv4 address instead. [Upvote IPv6 support](https://triggerdev.featurebase.app/p/support-ipv6-database-connections).
+
 ### `Parallel waits are not supported`
 
 In the current version, you can't perform more that one "wait" in parallel.
@@ -172,15 +183,91 @@ The most common situation this happens is if you're using `Promise.all` around s
 
 Make sure that you always use `await` when you call `trigger`, `triggerAndWait`, `batchTrigger`, and `batchTriggerAndWait`. If you don't then it's likely the task(s) won't be triggered because the calling function process can be terminated before the networks calls are sent.
 
+### `COULD_NOT_FIND_EXECUTOR`
+
+If you see a `COULD_NOT_FIND_EXECUTOR` error when triggering a task, it may be caused by dynamically importing the child task. When tasks are dynamically imported, the executor may not be properly registered.
+
+Use a top-level import instead:
+
+```ts
+import { myChildTask } from "~/trigger/my-child-task";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: string) => {
+    await myChildTask.trigger({ payload: "data" });
+  },
+});
+```
+
+Alternatively, use `tasks.trigger()` or `batch.triggerAndWait()` without importing the task:
+
+```ts
+import { batch } from "@trigger.dev/sdk";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: string) => {
+    await batch.triggerAndWait([{ id: "my-child-task", payload: "data" }]);
+  },
+});
+```
+
 ### Rate limit exceeded
 
 <RateLimitHitUseBatchTrigger />
 
 View the [rate limits](/limits) page for more information.
 
+### Runs waiting in queue due to concurrency limits
+
+If runs are staying in the `QUEUED` state for extended periods, check your concurrency usage in the dashboard. Review how many runs are `EXECUTING` or `DEQUEUED` (these count against limits) and check if any runs are stuck in `EXECUTING` state, as they may be blocking new runs.
+
+**Solutions:**
+
+- **Increase concurrency limits** - If you're on a paid plan, increase your environment concurrency limit via the dashboard
+- **Review queue concurrency limits** - Check if individual queues have restrictive `concurrencyLimit` settings
+- **Check for stuck runs** - See if stalled runs are blocking new executions
+
 ### `Crypto is not defined`
 
 This can happen in different situations, for example when using plain strings as idempotency keys. Support for `Crypto` without a special flag was added in Node `v19.0.0`. You will have to upgrade Node - we recommend even-numbered major releases, e.g. `v20` or `v22`. Alternatively, you can switch from plain strings to the `idempotencyKeys.create` SDK function. [Read the guide](/idempotency).
+
+### Task run stalled executing
+
+If you see a `TASK_RUN_STALLED_EXECUTING` error it means that we didn't receive a heartbeat from your task before the stall timeout. We automatically heartbeat runs every 30 seconds, and the heartbeat timeout is 5 minutes.
+
+<Note>
+
+If this was a dev run, then most likely the `trigger.dev dev` CLI was stopped, and it wasn't an issue with your code.
+
+</Note>
+
+These errors can happen when code inside your task is blocking the event loop for too long. The most likely cause would be an accidental infinite loop. It could also be a CPU-heavy operation that's blocking the event loop, like nested loops with very large arrays.
+
+If you use **Prisma 7.x**, query compilation and caching run on the main thread and can block the event loop during heavy or repeated database work. In tasks that do a lot of Prisma calls (e.g. in loops or many sequential queries), add `await heartbeats.yield()` periodically so the event loop can run and send heartbeats.
+
+We recommend reading the [Don't Block the Event Loop](https://nodejs.org/en/learn/asynchronous-work/dont-block-the-event-loop) guide from Node.js for common patterns that can cause this.
+
+If you are doing a continuous CPU-heavy task, then we recommend you try using our `heartbeats.yield` function to automatically yield to the event loop periodically:
+
+```ts
+import { heartbeats } from "@trigger.dev/sdk";
+
+// code inside your task
+for (const row of bigDataset) {
+  await heartbeats.yield(); // safe to call every iteration, we will only actually yield when we need to
+  process(row); // this is a synchronous operation
+}
+```
+
+<Note>
+
+You could also offload the CPU-heavy work to a Node.js worker thread, but this is more complex to setup currently. We are planning on adding support for this in the future.
+
+</Note>
+
+If the above doesn't work, then we recommend you try increasing the machine size of your task. See our [machines guide](/machines) for more information.
 
 ## Framework specific issues
 

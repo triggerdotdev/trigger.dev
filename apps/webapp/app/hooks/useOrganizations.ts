@@ -61,3 +61,29 @@ export function useIsImpersonating(matches?: UIMatch[]) {
   });
   return data?.isImpersonating === true;
 }
+
+export type CustomDashboard = UseDataFunctionReturn<typeof orgLoader>["customDashboards"][number];
+
+export function useCustomDashboards(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof orgLoader>({
+    id: "routes/_app.orgs.$organizationSlug",
+    matches,
+  });
+  return data?.customDashboards ?? [];
+}
+
+export function useDashboardLimits(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof orgLoader>({
+    id: "routes/_app.orgs.$organizationSlug",
+    matches,
+  });
+  return data?.dashboardLimits ?? { used: 0, limit: 3 };
+}
+
+export function useWidgetLimitPerDashboard(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof orgLoader>({
+    id: "routes/_app.orgs.$organizationSlug",
+    matches,
+  });
+  return data?.widgetLimitPerDashboard ?? 16;
+}

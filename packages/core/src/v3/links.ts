@@ -14,6 +14,7 @@ export const links = {
     },
     troubleshooting: {
       concurrentWaits: "https://trigger.dev/docs/troubleshooting#parallel-waits-are-not-supported",
+      stalledExecution: "https://trigger.dev/docs/troubleshooting#task-run-stalled-executing",
     },
     concurrency: {
       recursiveDeadlock:

@@ -37,7 +37,7 @@
     "tailwind-merge": "^2.5.3",
     "tailwindcss-animate": "^1.0.7",
     "uploadthing": "^7.1.0",
-    "zod": "3.23.8"
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^15.0.2",

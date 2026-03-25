@@ -18,6 +18,9 @@ export const loader = createLoaderApiRoute(
           friendlyId: params.batchId,
           runtimeEnvironmentId: auth.environment.id,
         },
+        include: {
+          errors: true,
+        },
       });
     },
     authorization: {
@@ -33,8 +36,21 @@ export const loader = createLoaderApiRoute(
       idempotencyKey: batch.idempotencyKey ?? undefined,
       createdAt: batch.createdAt,
       updatedAt: batch.updatedAt,
+      processingCompletedAt: batch.processingCompletedAt ?? undefined,
       runCount: batch.runCount,
       runs: batch.runIds,
+      processing: {
+        completedAt: batch.processingCompletedAt ?? undefined,
+        errors:
+          batch.errors.length > 0
+            ? batch.errors.map((err) => ({
+                index: err.index,
+                taskIdentifier: err.taskIdentifier,
+                error: err.error,
+                errorCode: err.errorCode ?? undefined,
+              }))
+            : [],
+      },
     });
   }
 );

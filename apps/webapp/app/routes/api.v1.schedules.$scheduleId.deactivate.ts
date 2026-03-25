@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { scheduleUniqWhereClause, scheduleWhereClause } from "~/models/schedules.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 
@@ -33,10 +34,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   try {
     const existingSchedule = await prisma.taskSchedule.findFirst({
-      where: {
-        friendlyId: parsedParams.data.scheduleId,
-        projectId: authenticationResult.environment.projectId,
-      },
+      where: scheduleWhereClause(
+        authenticationResult.environment.projectId,
+        parsedParams.data.scheduleId
+      ),
     });
 
     if (!existingSchedule) {
@@ -44,10 +45,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     await prisma.taskSchedule.update({
-      where: {
-        friendlyId: parsedParams.data.scheduleId,
-        projectId: authenticationResult.environment.projectId,
-      },
+      where: scheduleUniqWhereClause(
+        authenticationResult.environment.projectId,
+        parsedParams.data.scheduleId
+      ),
       data: {
         active: false,
       },

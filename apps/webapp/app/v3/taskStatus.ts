@@ -128,3 +128,7 @@ export function isRestorableRunStatus(status: TaskRunStatus): boolean {
 export function isRestorableAttemptStatus(status: TaskRunAttemptStatus): boolean {
   return RESTORABLE_ATTEMPT_STATUSES.includes(status);
 }
+
+export function shouldIdempotencyKeyBeCleared(status: TaskRunStatus): boolean {
+  return isFailedRunStatus(status) || status === "EXPIRED";
+}

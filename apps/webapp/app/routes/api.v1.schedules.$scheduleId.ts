@@ -3,6 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { ScheduleObject, UpdateScheduleOptions } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { Prisma, prisma } from "~/db.server";
+import { scheduleUniqWhereClause } from "~/models/schedules.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { UpsertSchedule } from "~/v3/schedules";
@@ -36,10 +37,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
     case "DELETE": {
       try {
         const deletedSchedule = await prisma.taskSchedule.delete({
-          where: {
-            friendlyId: parsedParams.data.scheduleId,
-            projectId: authenticationResult.environment.projectId,
-          },
+          where: scheduleUniqWhereClause(
+            authenticationResult.environment.projectId,
+            parsedParams.data.scheduleId
+          ),
         });
 
         return json(

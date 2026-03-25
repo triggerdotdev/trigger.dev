@@ -13,12 +13,14 @@ export const action = createActionWorkerApiRoute(
   async ({
     authenticatedWorker,
     params,
+    runnerId,
   }): Promise<TypedResponse<WorkloadHeartbeatResponseBody>> => {
     const { runFriendlyId, snapshotFriendlyId } = params;
 
     await authenticatedWorker.heartbeatRun({
       runFriendlyId,
       snapshotFriendlyId,
+      runnerId,
     });
 
     return json({ ok: true });

@@ -31,7 +31,7 @@ import {
   type NextRunListItem,
 } from "~/presenters/v3/NextRunListPresenter.server";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
-import { docsPath, v3RunSpanPath, v3TestPath } from "~/utils/pathBuilder";
+import { docsPath, v3RunSpanPath, v3TestPath,v3TestTaskPath } from "~/utils/pathBuilder";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
 import { Spinner } from "../../primitives/Spinner";
@@ -55,6 +55,8 @@ import {
   filterableTaskRunStatuses,
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useSearchParams } from "~/hooks/useSearchParam";
 
 type RunsTableProps = {
   total: number;
@@ -62,9 +64,12 @@ type RunsTableProps = {
   filters: NextRunListAppliedFilters;
   showJob?: boolean;
   runs: NextRunListItem[];
+  rootOnlyDefault?: boolean;
   isLoading?: boolean;
   allowSelection?: boolean;
   variant?: TableVariant;
+  disableAdjacentRows?: boolean;
+  additionalTableState?: Record<string, string>;
 };
 
 export function TaskRunsTable({
@@ -72,15 +77,32 @@ export function TaskRunsTable({
   hasFilters,
   filters,
   runs,
+  rootOnlyDefault,
+  disableAdjacentRows = false,
   isLoading = false,
   allowSelection = false,
   variant = "dimmed",
+  additionalTableState,
 }: RunsTableProps) {
   const organization = useOrganization();
   const project = useProject();
   const checkboxes = useRef<(HTMLInputElement | null)[]>([]);
   const { has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
   const { isManagedCloud } = useFeatures();
+  const { value } = useSearchParams();
+  const location = useOptimisticLocation();
+  const params = new URLSearchParams(location.search || "");
+  if (!value("rootOnly")) {
+    params.set("rootOnly", String(rootOnlyDefault));
+  }
+  if (additionalTableState) {
+    for (const [key, val] of Object.entries(additionalTableState)) {
+      params.set(key, val);
+    }
+  }
+  const search = params.toString();
+  /** TableState has to be encoded as a separate URI component, so it's merged under one, 'tableState' param */
+  const tableStateParam = disableAdjacentRows ? '' : encodeURIComponent(search);
 
   const showCompute = isManagedCloud;
 
@@ -293,16 +315,20 @@ export function TaskRunsTable({
           <BlankState isLoading={isLoading} filters={filters} />
         ) : (
           runs.map((run, index) => {
+            const searchParams = new URLSearchParams();
+            if (tableStateParam) {
+              searchParams.set("tableState", tableStateParam);
+            }
             const path = v3RunSpanPath(organization, project, run.environment, run, {
               spanId: run.spanId,
-            });
+            }, searchParams);
             return (
               <TableRow key={run.id}>
                 {allowSelection && (
                   <TableCell className="pl-3 pr-0">
                     <Checkbox
                       checked={has(run.friendlyId)}
-                      onChange={(element) => {
+                      onChange={() => {
                         toggle(run.friendlyId);
                       }}
                       ref={(r) => {
@@ -565,6 +591,8 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   if (isLoading) return <TableBlankRow colSpan={15}></TableBlankRow>;
 
   const { tasks, from, to, ...otherFilters } = filters;
+  const singleTaskFromFilters = filters.tasks.length === 1 ? filters.tasks[0] : null;
+  const testPath = singleTaskFromFilters ? v3TestTaskPath(organization, project, environment, {taskIdentifier: singleTaskFromFilters}) : v3TestPath(organization, project, environment);
 
   if (
     filters.tasks.length === 1 &&
@@ -579,7 +607,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
         </Paragraph>
         <div className="mt-6 flex items-center justify-center gap-2">
           <LinkButton
-            to={v3TestPath(organization, project, environment)}
+            to={testPath}
             variant="tertiary/medium"
             LeadingIcon={BeakerIcon}
             className="inline-flex"
@@ -620,7 +648,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
           <LinkButton
             LeadingIcon={BeakerIcon}
             variant="tertiary/medium"
-            to={v3TestPath(organization, project, environment)}
+            to={testPath}
           >
             Run a test
           </LinkButton>

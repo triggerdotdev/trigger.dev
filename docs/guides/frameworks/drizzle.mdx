@@ -51,7 +51,7 @@ This is a simple task that will add a new user to your database, we will call it
 
 ```ts /trigger/drizzle-add-new-user.ts
 import { eq } from "drizzle-orm";
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 import { users } from "src/db/schema";
 import { drizzle } from "drizzle-orm/node-postgres";
 
@@ -80,7 +80,7 @@ Next, in your `trigger.config.js` file, add `pg` to the `externals` array. `pg` 
 It is marked as an external to ensure that it is not bundled into the task's bundle, and instead will be installed and loaded from `node_modules` at runtime.
 
 ```js /trigger.config.js
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>", // Your project reference

@@ -41,7 +41,7 @@ This task generates an image from a prompt using Fal.ai.
 
 ```ts trigger/fal-ai-image-from-prompt-realtime.ts
 import * as fal from "@fal-ai/serverless-client";
-import { logger, schemaTask } from "@trigger.dev/sdk/v3";
+import { logger, schemaTask } from "@trigger.dev/sdk";
 import { z } from "zod";
 
 export const FalResult = z.object({

@@ -310,6 +310,84 @@ describe("checkAuthorization", () => {
     });
   });
 
+  describe("Query resource type", () => {
+    it("should grant access with read:query super scope", () => {
+      const entity: AuthorizationEntity = {
+        type: "PUBLIC_JWT",
+        scopes: ["read:query"],
+      };
+      const result = checkAuthorization(
+        entity,
+        "read",
+        { query: "runs" },
+        ["read:query", "read:all", "admin"]
+      );
+      expect(result.authorized).toBe(true);
+    });
+
+    it("should grant access with table-specific query scope", () => {
+      const entity: AuthorizationEntity = {
+        type: "PUBLIC_JWT",
+        scopes: ["read:query:runs"],
+      };
+      const result = checkAuthorization(entity, "read", { query: "runs" });
+      expect(result.authorized).toBe(true);
+    });
+
+    it("should deny access to different table with table-specific scope", () => {
+      const entity: AuthorizationEntity = {
+        type: "PUBLIC_JWT",
+        scopes: ["read:query:runs"],
+      };
+      const result = checkAuthorization(entity, "read", { query: "llm_metrics" });
+      expect(result.authorized).toBe(false);
+    });
+
+    it("should grant access with general read:query scope to any table", () => {
+      const entity: AuthorizationEntity = {
+        type: "PUBLIC_JWT",
+        scopes: ["read:query"],
+      };
+
+      const runsResult = checkAuthorization(entity, "read", { query: "runs" });
+      expect(runsResult.authorized).toBe(true);
+
+      const metricsResult = checkAuthorization(entity, "read", { query: "metrics" });
+      expect(metricsResult.authorized).toBe(true);
+
+      const llmResult = checkAuthorization(entity, "read", { query: "llm_metrics" });
+      expect(llmResult.authorized).toBe(true);
+    });
+
+    it("should grant access to multiple tables when querying with super scope", () => {
+      const entity: AuthorizationEntity = {
+        type: "PUBLIC_JWT",
+        scopes: ["read:query"],
+      };
+      const result = checkAuthorization(
+        entity,
+        "read",
+        { query: ["runs", "llm_metrics"] },
+        ["read:query", "read:all", "admin"]
+      );
+      expect(result.authorized).toBe(true);
+    });
+
+    it("should grant access to schema with read:query scope", () => {
+      const entity: AuthorizationEntity = {
+        type: "PUBLIC_JWT",
+        scopes: ["read:query"],
+      };
+      const result = checkAuthorization(
+        entity,
+        "read",
+        { query: "schema" },
+        ["read:query", "read:all", "admin"]
+      );
+      expect(result.authorized).toBe(true);
+    });
+  });
+
   describe("Without super scope", () => {
     const entityWithoutSuperPermissions: AuthorizationEntity = {
       type: "PUBLIC_JWT",

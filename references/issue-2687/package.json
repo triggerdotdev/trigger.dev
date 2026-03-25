@@ -1,0 +1,19 @@
+{
+  "name": "references-issue-2687",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "trigger.dev": "workspace:*"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "workspace:*",
+    "dotenv": "^16.4.5",
+    "tsx": "^4.0.0"
+  },
+  "scripts": {
+    "dev": "trigger dev",
+    "deploy": "trigger deploy",
+    "repro": "tsx src/repro.ts"
+  }
+}
+

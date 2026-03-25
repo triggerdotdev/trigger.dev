@@ -6,7 +6,18 @@ export const formatNumberCompact = (num: number): string => {
 
 const formatter = Intl.NumberFormat("en");
 
+// Formatter for small decimal values that need more precision
+const preciseFormatter = Intl.NumberFormat("en", {
+  minimumSignificantDigits: 1,
+  maximumSignificantDigits: 6,
+});
+
 export const formatNumber = (num: number): string => {
+  // For very small numbers (between -1 and 1, exclusive), use precise formatting
+  // to avoid rounding 0.000025 to 0
+  if (num !== 0 && Math.abs(num) < 1) {
+    return preciseFormatter.format(num);
+  }
   return formatter.format(num);
 };
 

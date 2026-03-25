@@ -1,25 +1,23 @@
 import { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
 import { RunEngineVersion, TaskRun } from "@trigger.dev/database";
+import { env } from "~/env.server";
 import { IdempotencyKeyConcern } from "~/runEngine/concerns/idempotencyKeys.server";
 import { DefaultPayloadProcessor } from "~/runEngine/concerns/payloads.server";
 import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
-import { DefaultRunNumberIncrementer } from "~/runEngine/concerns/runNumbers.server";
 import { DefaultTraceEventsConcern } from "~/runEngine/concerns/traceEvents.server";
 import { RunEngineTriggerTaskService } from "~/runEngine/services/triggerTask.server";
 import { DefaultTriggerTaskValidator } from "~/runEngine/validators/triggerTaskValidator";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { determineEngineVersion } from "../engineVersion.server";
-import { eventRepository } from "../eventRepository.server";
 import { tracer } from "../tracer.server";
 import { WithRunEngine } from "./baseService.server";
 import { TriggerTaskServiceV1 } from "./triggerTaskV1.server";
-import { env } from "~/env.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
   idempotencyKeyExpiresAt?: Date;
   triggerVersion?: string;
-  traceContext?: Record<string, string | undefined>;
+  traceContext?: Record<string, unknown>;
   spanParentAsLink?: boolean;
   parentAsLinkType?: "replay" | "trigger";
   batchId?: string;
@@ -33,6 +31,10 @@ export type TriggerTaskServiceOptions = {
   queueTimestamp?: Date;
   overrideCreatedAt?: Date;
   replayedFromTaskRunFriendlyId?: string;
+  planType?: string;
+  realtimeStreamsVersion?: "v1" | "v2";
+  triggerSource?: string;
+  triggerAction?: string;
 };
 
 export class OutOfEntitlementError extends Error {
@@ -92,7 +94,7 @@ export class TriggerTaskService extends WithRunEngine {
     body: TriggerTaskRequestBody,
     options: TriggerTaskServiceOptions = {}
   ): Promise<TriggerTaskServiceResult | undefined> {
-    const traceEventConcern = new DefaultTraceEventsConcern(eventRepository);
+    const traceEventConcern = new DefaultTraceEventsConcern();
 
     const service = new RunEngineTriggerTaskService({
       prisma: this._prisma,
@@ -105,7 +107,6 @@ export class TriggerTaskService extends WithRunEngine {
         this._engine,
         traceEventConcern
       ),
-      runNumberIncrementer: new DefaultRunNumberIncrementer(),
       traceEventConcern,
       tracer: tracer,
       metadataMaximumSize: env.TASK_RUN_METADATA_MAXIMUM_SIZE,

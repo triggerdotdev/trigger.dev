@@ -41,11 +41,11 @@ export function startDevOutput(options: DevOutputOptions) {
   const baseUrl = `${dashboardUrl}/projects/v3/${config.project}`;
 
   const rebuildStarted = (...[target]: EventBusEventArgs<"rebuildStarted">) => {
-    logger.log(chalkGrey("○ Rebuilding background worker…"));
+    logger.log(chalkGrey("○ Rebuilding local worker…"));
   };
 
   const buildStarted = (...[target]: EventBusEventArgs<"buildStarted">) => {
-    logger.log(chalkGrey("○ Building background worker…"));
+    logger.log(chalkGrey("○ Building local worker…"));
   };
 
   const buildFailed = (...[target, error]: EventBusEventArgs<"buildFailed">) => {
@@ -89,7 +89,7 @@ export function startDevOutput(options: DevOutputOptions) {
     const runsLink = chalkLink(cliLink("View runs", runsUrl));
 
     const runtime = chalkGrey(`[${worker.build.runtime}]`);
-    const workerStarted = chalkGrey("Background worker ready");
+    const workerStarted = chalkGrey("Local worker ready");
     const workerVersion = chalkWorker(worker.serverWorker!.version);
 
     logParts.push(workerStarted, runtime, arrow, workerVersion);

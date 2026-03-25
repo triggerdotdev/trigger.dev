@@ -15,7 +15,7 @@ const Env = z.object({
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(), // set on the runners
 
   // Workload API settings (coordinator mode) - the workload API is what the run controller connects to
-  TRIGGER_WORKLOAD_API_ENABLED: BoolEnv.default("true"),
+  TRIGGER_WORKLOAD_API_ENABLED: BoolEnv.default(true),
   TRIGGER_WORKLOAD_API_PROTOCOL: z
     .string()
     .transform((s) => z.enum(["http", "https"]).parse(s.toLowerCase()))
@@ -32,11 +32,19 @@ const Env = z.object({
   RUNNER_PRETTY_LOGS: BoolEnv.default(false),
 
   // Dequeue settings (provider mode)
-  TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),
+  TRIGGER_DEQUEUE_ENABLED: BoolEnv.default(true),
   TRIGGER_DEQUEUE_INTERVAL_MS: z.coerce.number().int().default(250),
   TRIGGER_DEQUEUE_IDLE_INTERVAL_MS: z.coerce.number().int().default(1000),
-  TRIGGER_DEQUEUE_MAX_RUN_COUNT: z.coerce.number().int().default(10),
-  TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT: z.coerce.number().int().default(1),
+  TRIGGER_DEQUEUE_MAX_RUN_COUNT: z.coerce.number().int().default(1),
+  TRIGGER_DEQUEUE_MIN_CONSUMER_COUNT: z.coerce.number().int().default(1),
+  TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT: z.coerce.number().int().default(10),
+  TRIGGER_DEQUEUE_SCALING_STRATEGY: z.enum(["none", "smooth", "aggressive"]).default("none"),
+  TRIGGER_DEQUEUE_SCALING_UP_COOLDOWN_MS: z.coerce.number().int().default(5000), // 5 seconds
+  TRIGGER_DEQUEUE_SCALING_DOWN_COOLDOWN_MS: z.coerce.number().int().default(30000), // 30 seconds
+  TRIGGER_DEQUEUE_SCALING_TARGET_RATIO: z.coerce.number().default(1.0), // Target ratio of queue items to consumers (1.0 = 1 item per consumer)
+  TRIGGER_DEQUEUE_SCALING_EWMA_ALPHA: z.coerce.number().min(0).max(1).default(0.3), // Smooths queue length measurements (0=historical, 1=current)
+  TRIGGER_DEQUEUE_SCALING_BATCH_WINDOW_MS: z.coerce.number().int().positive().default(1000), // Batch window for metrics processing (ms)
+  TRIGGER_DEQUEUE_SCALING_DAMPING_FACTOR: z.coerce.number().min(0).max(1).default(0.7), // Smooths consumer count changes after EWMA (0=no scaling, 1=immediate)
 
   // Optional services
   TRIGGER_WARM_START_URL: z.string().optional(),
@@ -49,7 +57,7 @@ const Env = z.object({
   RESOURCE_MONITOR_OVERRIDE_MEMORY_TOTAL_GB: z.coerce.number().optional(),
 
   // Docker settings
-  DOCKER_API_VERSION: z.string().default("v1.41"),
+  DOCKER_API_VERSION: z.string().optional(),
   DOCKER_PLATFORM: z.string().optional(), // e.g. linux/amd64, linux/arm64
   DOCKER_STRIP_IMAGE_DIGEST: BoolEnv.default(true),
   DOCKER_REGISTRY_USERNAME: z.string().optional(),
@@ -76,6 +84,53 @@ const Env = z.object({
   KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
   KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
   KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
+  KUBERNETES_STRIP_IMAGE_DIGEST: BoolEnv.default(false),
+  KUBERNETES_CPU_REQUEST_MIN_CORES: z.coerce.number().min(0).default(0),
+  KUBERNETES_CPU_REQUEST_RATIO: z.coerce.number().min(0).max(1).default(0.75), // Ratio of CPU limit, so 0.75 = 75% of CPU limit
+  KUBERNETES_MEMORY_REQUEST_MIN_GB: z.coerce.number().min(0).default(0),
+  KUBERNETES_MEMORY_REQUEST_RATIO: z.coerce.number().min(0).max(1).default(1), // Ratio of memory limit, so 1 = 100% of memory limit
+
+  // Per-preset overrides of the global KUBERNETES_CPU_REQUEST_RATIO
+  KUBERNETES_CPU_REQUEST_RATIO_MICRO: z.coerce.number().min(0).max(1).optional(),
+  KUBERNETES_CPU_REQUEST_RATIO_SMALL_1X: z.coerce.number().min(0).max(1).optional(),
+  KUBERNETES_CPU_REQUEST_RATIO_SMALL_2X: z.coerce.number().min(0).max(1).optional(),
+  KUBERNETES_CPU_REQUEST_RATIO_MEDIUM_1X: z.coerce.number().min(0).max(1).optional(),
+  KUBERNETES_CPU_REQUEST_RATIO_MEDIUM_2X: z.coerce.number().min(0).max(1).optional(),
+  KUBERNETES_CPU_REQUEST_RATIO_LARGE_1X: z.coerce.number().min(0).max(1).optional(),
+  KUBERNETES_CPU_REQUEST_RATIO_LARGE_2X: z.coerce.number().min(0).max(1).optional(),
+
+  // Per-preset overrides of the global KUBERNETES_MEMORY_REQUEST_RATIO
+  KUBERNETES_MEMORY_REQUEST_RATIO_MICRO: z.coerce.number().min(0).max(1).optional(),
+  KUBERNETES_MEMORY_REQUEST_RATIO_SMALL_1X: z.coerce.number().min(0).max(1).optional(),
+  KUBERNETES_MEMORY_REQUEST_RATIO_SMALL_2X: z.coerce.number().min(0).max(1).optional(),
+  KUBERNETES_MEMORY_REQUEST_RATIO_MEDIUM_1X: z.coerce.number().min(0).max(1).optional(),
+  KUBERNETES_MEMORY_REQUEST_RATIO_MEDIUM_2X: z.coerce.number().min(0).max(1).optional(),
+  KUBERNETES_MEMORY_REQUEST_RATIO_LARGE_1X: z.coerce.number().min(0).max(1).optional(),
+  KUBERNETES_MEMORY_REQUEST_RATIO_LARGE_2X: z.coerce.number().min(0).max(1).optional(),
+
+  KUBERNETES_MEMORY_OVERHEAD_GB: z.coerce.number().min(0).optional(), // Optional memory overhead to add to the limit in GB
+  KUBERNETES_SCHEDULER_NAME: z.string().optional(), // Custom scheduler name for pods
+  // Large machine affinity settings - large-* presets prefer a dedicated pool
+  KUBERNETES_LARGE_MACHINE_AFFINITY_ENABLED: BoolEnv.default(false),
+  KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_KEY: z.string().trim().min(1).default("node.cluster.x-k8s.io/machinepool"),
+  KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_VALUE: z.string().trim().min(1).default("large-machines"),
+  KUBERNETES_LARGE_MACHINE_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(100),
+
+  // Project affinity settings - pods from the same project prefer the same node
+  KUBERNETES_PROJECT_AFFINITY_ENABLED: BoolEnv.default(false),
+  KUBERNETES_PROJECT_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(50),
+  KUBERNETES_PROJECT_AFFINITY_TOPOLOGY_KEY: z.string().trim().min(1).default("kubernetes.io/hostname"),
+
+  // Schedule affinity settings - runs from schedule trees prefer a dedicated pool
+  KUBERNETES_SCHEDULE_AFFINITY_ENABLED: BoolEnv.default(false),
+  KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_KEY: z.string().trim().min(1).default("node.cluster.x-k8s.io/machinepool"),
+  KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_VALUE: z.string().trim().min(1).default("scheduled-runs"),
+  KUBERNETES_SCHEDULE_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(80),
+  KUBERNETES_SCHEDULE_ANTI_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(20),
+
+  // Placement tags settings
+  PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),
+  PLACEMENT_TAGS_PREFIX: z.string().default("node.cluster.x-k8s.io"),
 
   // Metrics
   METRICS_ENABLED: BoolEnv.default(true),

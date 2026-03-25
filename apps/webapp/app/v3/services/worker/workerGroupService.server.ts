@@ -2,7 +2,7 @@ import { WorkerInstanceGroup, WorkerInstanceGroupType } from "@trigger.dev/datab
 import { WithRunEngine } from "../baseService.server";
 import { WorkerGroupTokenService } from "./workerGroupTokenService.server";
 import { logger } from "~/services/logger.server";
-import { FEATURE_FLAG, makeFlags, makeSetFlags } from "~/v3/featureFlags.server";
+import { FEATURE_FLAG, makeFlag, makeSetFlag } from "~/v3/featureFlags.server";
 
 export class WorkerGroupService extends WithRunEngine {
   private readonly defaultNamePrefix = "worker_group";
@@ -47,14 +47,14 @@ export class WorkerGroupService extends WithRunEngine {
         },
       });
 
-      const getFlag = makeFlags(this._prisma);
+      const getFlag = makeFlag(this._prisma);
       const defaultWorkerInstanceGroupId = await getFlag({
         key: FEATURE_FLAG.defaultWorkerInstanceGroupId,
       });
 
       // If there's no global default yet we should set it to the new worker group
       if (!defaultWorkerInstanceGroupId) {
-        const setFlag = makeSetFlags(this._prisma);
+        const setFlag = makeSetFlag(this._prisma);
         await setFlag({
           key: FEATURE_FLAG.defaultWorkerInstanceGroupId,
           value: workerGroup.id,
@@ -166,7 +166,7 @@ export class WorkerGroupService extends WithRunEngine {
   }
 
   async getGlobalDefaultWorkerGroup() {
-    const flags = makeFlags(this._prisma);
+    const flags = makeFlag(this._prisma);
 
     const defaultWorkerInstanceGroupId = await flags({
       key: FEATURE_FLAG.defaultWorkerInstanceGroupId,
@@ -195,10 +195,12 @@ export class WorkerGroupService extends WithRunEngine {
 
   async getDefaultWorkerGroupForProject({
     projectId,
+    regionOverride,
   }: {
     projectId: string;
+    regionOverride?: string;
   }): Promise<WorkerInstanceGroup | undefined> {
-    const project = await this._prisma.project.findUnique({
+    const project = await this._prisma.project.findFirst({
       where: {
         id: projectId,
       },
@@ -208,8 +210,39 @@ export class WorkerGroupService extends WithRunEngine {
     });
 
     if (!project) {
-      logger.error("[WorkerGroupService] Project not found", { projectId });
-      return;
+      throw new Error("Project not found.");
+    }
+
+    // If they've specified a region, we need to check they have access to it
+    if (regionOverride) {
+      const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
+        where: {
+          masterQueue: regionOverride,
+        },
+      });
+
+      if (!workerGroup) {
+        throw new Error(`The region you specified doesn't exist ("${regionOverride}").`);
+      }
+
+      // If they're restricted, check they have access
+      if (project.allowedWorkerQueues.length > 0) {
+        if (project.allowedWorkerQueues.includes(workerGroup.masterQueue)) {
+          return workerGroup;
+        }
+
+        throw new Error(
+          `You don't have access to this region ("${regionOverride}"). You can use the following regions: ${project.allowedWorkerQueues.join(
+            ", "
+          )}.`
+        );
+      }
+
+      if (workerGroup.hidden) {
+        throw new Error(`The region you specified isn't available to you ("${regionOverride}").`);
+      }
+
+      return workerGroup;
     }
 
     if (project.defaultWorkerGroup) {

@@ -244,6 +244,7 @@ export type EventBusEvents = {
         updatedAt: Date;
         createdAt: Date;
         error: TaskRunError;
+        taskEventStore?: string;
       };
       organization: {
         id: string;
@@ -287,6 +288,7 @@ export type EventBusEvents = {
       };
       hasError: boolean;
       blockedRunId: string;
+      cachedRunId?: string;
     },
   ];
   runMetadataUpdated: [

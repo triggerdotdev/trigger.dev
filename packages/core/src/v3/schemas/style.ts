@@ -11,11 +11,12 @@ const AccessoryItem = z.object({
   text: z.string(),
   variant: z.string().optional(),
   url: z.string().optional(),
+  icon: z.string().optional(),
 });
 
 const Accessory = z.object({
   items: z.array(AccessoryItem),
-  style: z.enum(["codepath"]).optional(),
+  style: z.enum(["codepath", "pills"]).optional(),
 });
 
 export type Accessory = z.infer<typeof Accessory>;

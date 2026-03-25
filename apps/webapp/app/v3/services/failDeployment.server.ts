@@ -1,11 +1,12 @@
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
-import { WorkerDeploymentStatus } from "@trigger.dev/database";
-import { FailDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type WorkerDeploymentStatus } from "@trigger.dev/database";
+import { type FailDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { DeploymentService } from "./deployment.server";
 
-const FINAL_DEPLOYMENT_STATUSES: WorkerDeploymentStatus[] = [
+export const FINAL_DEPLOYMENT_STATUSES: WorkerDeploymentStatus[] = [
   "CANCELED",
   "DEPLOYED",
   "FAILED",
@@ -49,6 +50,21 @@ export class FailDeploymentService extends BaseService {
         errorData: params.error,
       },
     });
+
+    const deploymentService = new DeploymentService();
+    await deploymentService
+      .appendToEventLog(authenticatedEnv.project, failedDeployment, [
+        {
+          type: "finalized",
+          data: {
+            result: "failed",
+            message: params.error.message,
+          },
+        },
+      ])
+      .orTee((error) => {
+        logger.error("Failed to append failed deployment event to event log", { error });
+      });
 
     await PerformDeploymentAlertsService.enqueue(failedDeployment.id);
 

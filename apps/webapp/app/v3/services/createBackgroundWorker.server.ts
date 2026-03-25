@@ -2,13 +2,14 @@ import {
   BackgroundWorkerMetadata,
   BackgroundWorkerSourceFileMetadata,
   CreateBackgroundWorkerRequestBody,
+  PromptResource,
   QueueManifest,
   TaskResource,
 } from "@trigger.dev/core/v3";
 import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
 import type { BackgroundWorker, TaskQueue, TaskQueueType } from "@trigger.dev/database";
 import cronstrue from "cronstrue";
-import { Prisma, PrismaClientOrTransaction } from "~/db.server";
+import { $transaction, Prisma, PrismaClientOrTransaction } from "~/db.server";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -77,7 +78,8 @@ export class CreateBackgroundWorkerService extends BaseService {
           version: nextVersion,
           runtimeEnvironmentId: environment.id,
           projectId: project.id,
-          metadata: body.metadata,
+          // body.metadata has an index signature that Prisma doesn't like (from the JSONSchema type) so we are safe to just cast it
+          metadata: body.metadata as Prisma.InputJsonValue,
           contentHash: body.metadata.contentHash,
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,
@@ -215,6 +217,11 @@ export async function createWorkerResources(
 
   // Create the tasks
   await createWorkerTasks(metadata, queues, worker, environment, prisma, tasksToBackgroundFiles);
+
+  // Register prompts
+  if (metadata.prompts && metadata.prompts.length > 0) {
+    await createWorkerPrompts(metadata.prompts, worker, environment, prisma);
+  }
 }
 
 async function createWorkerTasks(
@@ -280,6 +287,7 @@ async function createWorkerTask(
         fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
         maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
         queueId: queue.id,
+        payloadSchema: task.payloadSchema as any,
       },
     });
   } catch (error) {
@@ -357,38 +365,33 @@ async function createWorkerQueue(
 ) {
   let queueName = sanitizeQueueName(queue.name);
 
-  const concurrencyLimit =
+  const baseConcurrencyLimit =
     typeof queue.concurrencyLimit === "number"
-      ? Math.max(
-          Math.min(
-            queue.concurrencyLimit,
-            environment.maximumConcurrencyLimit,
-            environment.organization.maximumConcurrencyLimit
-          ),
-          0
-        )
+      ? Math.max(Math.min(queue.concurrencyLimit, environment.maximumConcurrencyLimit), 0)
       : queue.concurrencyLimit;
 
   const taskQueue = await upsertWorkerQueueRecord(
     queueName,
-    concurrencyLimit ?? null,
+    baseConcurrencyLimit ?? null,
     orderableName,
     queueType,
     worker,
     prisma
   );
 
+  const newConcurrencyLimit = taskQueue.concurrencyLimit;
+
   if (!taskQueue.paused) {
-    if (typeof concurrencyLimit === "number") {
+    if (typeof newConcurrencyLimit === "number") {
       logger.debug("createWorkerQueue: updating concurrency limit", {
         workerId: worker.id,
         taskQueue,
         orgId: environment.organizationId,
         projectId: environment.projectId,
         environmentId: environment.id,
-        concurrencyLimit,
+        concurrencyLimit: newConcurrencyLimit,
       });
-      await updateQueueConcurrencyLimits(environment, taskQueue.name, concurrencyLimit);
+      await updateQueueConcurrencyLimits(environment, taskQueue.name, newConcurrencyLimit);
     } else {
       logger.debug("createWorkerQueue: removing concurrency limit", {
         workerId: worker.id,
@@ -396,7 +399,7 @@ async function createWorkerQueue(
         orgId: environment.organizationId,
         projectId: environment.projectId,
         environmentId: environment.id,
-        concurrencyLimit,
+        concurrencyLimit: newConcurrencyLimit,
       });
       await removeQueueConcurrencyLimits(environment, taskQueue.name);
     }
@@ -453,6 +456,8 @@ async function upsertWorkerQueueRecord(
         },
       });
     } else {
+      const hasOverride = taskQueue.concurrencyLimitOverriddenAt !== null;
+
       taskQueue = await prisma.taskQueue.update({
         where: {
           id: taskQueue.id,
@@ -461,7 +466,9 @@ async function upsertWorkerQueueRecord(
           workers: { connect: { id: worker.id } },
           version: "V2",
           orderableName,
-          concurrencyLimit,
+          // If overridden, keep current limit and update base; otherwise update limit normally
+          concurrencyLimit: hasOverride ? undefined : concurrencyLimit,
+          concurrencyLimitBase: hasOverride ? concurrencyLimit : undefined,
         },
       });
     }
@@ -592,6 +599,7 @@ export async function syncDeclarativeSchedules(
             create: [
               {
                 environmentId: environment.id,
+                projectId: environment.projectId,
               },
             ],
           },
@@ -698,4 +706,134 @@ export async function createBackgroundFiles(
   }
 
   return results;
+}
+
+import { createHash } from "crypto";
+
+function hashContent(content: string): string {
+  return createHash("sha256").update(content).digest("hex").slice(0, 16);
+}
+
+async function createWorkerPrompts(
+  prompts: PromptResource[],
+  worker: BackgroundWorker,
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction
+) {
+  for (const promptResource of prompts) {
+    try {
+      // Upsert the Prompt record (identity + schema)
+      const prompt = await prisma.prompt.upsert({
+        where: {
+          projectId_runtimeEnvironmentId_slug: {
+            projectId: worker.projectId,
+            runtimeEnvironmentId: environment.id,
+            slug: promptResource.id,
+          },
+        },
+        create: {
+          friendlyId: generateFriendlyId("prompt"),
+          organizationId: environment.organizationId,
+          projectId: worker.projectId,
+          runtimeEnvironmentId: environment.id,
+          slug: promptResource.id,
+          description: promptResource.description,
+          filePath: promptResource.filePath,
+          exportName: promptResource.exportName,
+          variableSchema: promptResource.variableSchema as any,
+          defaultModel: promptResource.model,
+          defaultConfig: promptResource.config as any,
+        },
+        update: {
+          description: promptResource.description,
+          filePath: promptResource.filePath,
+          exportName: promptResource.exportName,
+          variableSchema: promptResource.variableSchema as any,
+          defaultModel: promptResource.model,
+          defaultConfig: promptResource.config as any,
+        },
+      });
+
+      // Compute content hash for dedup
+      const contentString = promptResource.content ?? "";
+      const contentHash = hashContent(contentString);
+
+      // Find the latest version overall (for version numbering) and the latest
+      // code-sourced version (for content dedup). We compare against the latest
+      // code version specifically so that dashboard edits don't interfere with
+      // dedup — if the code hasn't changed since the last deploy, we skip even
+      // if a dashboard edit happened in between.
+      const latestVersion = await prisma.promptVersion.findFirst({
+        where: { promptId: prompt.id },
+        orderBy: { version: "desc" },
+      });
+
+      const latestCodeVersion = await prisma.promptVersion.findFirst({
+        where: { promptId: prompt.id, source: "code" },
+        orderBy: { version: "desc" },
+      });
+
+      if (latestCodeVersion?.contentHash === contentHash) {
+        // Code content unchanged since last deploy — skip creating a new version
+        continue;
+      }
+
+      const nextVersion = (latestVersion?.version ?? 0) + 1;
+
+      // Determine labels for the new version.
+      // Deploys always move "current" to the new code version. If a dashboard
+      // override exists, it sits on top via the "override" label and the API
+      // serves that instead — so "current" movement is safe.
+      const labels = ["latest", "current"];
+
+      // Wrap label removal + version creation in a transaction so labels
+      // aren't stripped if the create fails (e.g. concurrent deploy race).
+      await $transaction(prisma, async (tx) => {
+        // Remove "latest" label from all existing versions
+        if (latestVersion) {
+          await tx.$executeRaw`
+            UPDATE "prompt_versions"
+            SET "labels" = array_remove("labels", 'latest')
+            WHERE "promptId" = ${prompt.id} AND 'latest' = ANY("labels")
+          `;
+        }
+
+        // Remove "current" from any existing version
+        await tx.$executeRaw`
+          UPDATE "prompt_versions"
+          SET "labels" = array_remove("labels", 'current')
+          WHERE "promptId" = ${prompt.id} AND 'current' = ANY("labels")
+        `;
+
+        await tx.promptVersion.create({
+          data: {
+            promptId: prompt.id,
+            version: nextVersion,
+            textContent: contentString,
+            model: promptResource.model,
+            config: promptResource.config as any,
+            source: "code",
+            contentHash,
+            labels,
+            workerId: worker.id,
+          },
+        });
+      });
+
+      logger.debug("Registered prompt version", {
+        promptSlug: promptResource.id,
+        version: nextVersion,
+        labels,
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        logger.warn("Prompt version already exists", { prompt: promptResource.id });
+      } else {
+        logger.error("Error creating prompt version", {
+          error: error instanceof Error ? error.message : String(error),
+          prompt: promptResource.id,
+        });
+      }
+    }
+  }
 }

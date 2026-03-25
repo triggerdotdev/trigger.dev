@@ -39,14 +39,14 @@ export function concreteStateFromInput({
   }
   const nodes = concreteStateFromPartialState(tree, state);
 
-  return {
+  return applyFilterToState({
     tree,
     nodes,
     changes: { selectedId },
     filter,
     filteredNodes: nodes,
-    visibleNodeIds: visibleNodes(tree, nodes).map((node) => node.id),
-  };
+    visibleNodeIds: [],
+  });
 }
 
 export function concreteStateFromPartialState<TData>(

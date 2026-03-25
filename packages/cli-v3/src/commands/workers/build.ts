@@ -121,7 +121,7 @@ export function configureWorkersBuildCommand(program: Command) {
     .option("--save-logs", "If provided, will save logs even for successful builds")
     .action(async (path, options) => {
       await handleTelemetry(async () => {
-        await printStandloneInitialBanner(true);
+        await printStandloneInitialBanner(true, options.profile);
         await workersBuildCommand(path, options);
       });
     });
@@ -239,6 +239,7 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
     userId: authorization.userId,
     selfHosted: options.local,
     type: "UNMANAGED",
+    isNativeBuild: false,
   });
 
   if (!deploymentResponse.success) {
@@ -336,6 +337,7 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
     projectRef: resolvedConfig.project,
     apiUrl: projectClient.client.apiURL,
     apiKey: projectClient.client.accessToken!,
+    apiClient: projectClient.client,
     branchName: branch,
     authAccessToken: authorization.auth.accessToken,
     compilationPath: destination.path,

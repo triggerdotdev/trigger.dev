@@ -38,3 +38,16 @@ await wait.until({ date: new Date(date), throwIfInThePast: true });
 ```
 
 You can of course use try/catch if you want to do something special in this case.
+
+## Wait idempotency
+
+You can pass an idempotency key to any wait function, allowing you to skip waits if the same idempotency key is used again. This can be useful if you want to skip waits when retrying a task, for example:
+
+```ts
+// Specify the idempotency key and TTL when waiting until a date:
+await wait.until({
+  date: futureDate,
+  idempotencyKey: "my-idempotency-key",
+  idempotencyKeyTTL: "1h",
+});
+```

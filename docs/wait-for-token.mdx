@@ -1,16 +1,15 @@
 ---
 title: "Wait for token"
-description: "Wait until a token is completed."
-tag: "v4"
+description: "Wait until a token is completed using waitpoint tokens."
 ---
-
-import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
 
 Waitpoint tokens pause task runs until you complete the token. They're commonly used for approval workflows and other scenarios where you need to wait for external confirmation, such as human-in-the-loop processes.
 
 You can complete a token using the SDK or by making a POST request to the token's URL.
 
-<UpgradeToV4Note />
+<Note>
+  If you're waiting for data from an [input stream](/tasks/streams#input-streams), use [`inputStream.wait()`](/tasks/streams#wait--suspend-until-data-arrives) instead — it uses waitpoint tokens internally but provides a simpler API with full type safety from your stream definition.
+</Note>
 
 ## Usage
 
@@ -55,7 +54,7 @@ await wait.completeToken<ApprovalToken>(tokenId, {
 });
 ```
 
-Or you can make an HTTP POST request to the `url` it returns:
+Or you can make an HTTP POST request to the `url` it returns. This is an HTTP callback:
 
 ```ts
 import { wait } from "@trigger.dev/sdk";
@@ -125,7 +124,7 @@ The JSON body of the POST request will be used as the output of the token. If th
 
 <ParamField query="publicAccessToken" type="string">
   A Public Access Token that can be used to complete the token from a client-side application (or
-  another backend). See our [frontend docs](/frontend/overview) for more details.
+  another backend). See our [Realtime docs](/realtime/auth) for more details.
 </ParamField>
 
 ### Example
@@ -182,7 +181,7 @@ You can complete a token using a raw HTTP request or from another language.
 curl -X POST "https://api.trigger.dev/api/v1/waitpoints/tokens/{tokenId}/complete" \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
-  -d '{"output": { "status": "approved"}}'
+  -d '{"data": { "status": "approved"}}'
 ```
 
 ```python python
@@ -191,7 +190,7 @@ import requests
 response = requests.post(
   "https://api.trigger.dev/api/v1/waitpoints/tokens/{tokenId}/complete",
   headers={"Authorization": f"Bearer {token}"},
-  json={"output": { "status": "approved"}}
+  json={"data": { "status": "approved"}}
 )
 ```
 
@@ -204,7 +203,7 @@ http = Net::HTTP.new(uri.host, uri.port)
 request = Net::HTTP::Post.new(uri)
 request["Authorization"] = "Bearer {token}"
 request["Content-Type"] = "application/json"
-request.body = JSON.generate({ output: { status: "approved" } })
+request.body = JSON.generate({ data: { status: "approved" } })
 
 response = http.request(request)
 ```
@@ -223,7 +222,7 @@ func main() {
 	url := "https://api.trigger.dev/api/v1/waitpoints/tokens/{tokenId}/complete"
 
 	payload := map[string]interface{}{
-		"output": map[string]interface{}{
+		"data": map[string]interface{}{
 			"status": "approved",
 		},
 	}
@@ -266,24 +265,6 @@ Wait for a token to be completed.
 
 <ParamField query="token" type="string | { id: string }">
   The token to wait for.
-</ParamField>
-
-<ParamField query="options" type="object" optional>
-  Options for the wait.
-
-  <Expandable title="properties">
-    <ParamField query="releaseConcurrency" type="boolean" optional>
-      If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
-
-      This is useful if you want to allow other runs to execute while waiting
-
-      Note: It's possible that this run will not be able to resume when the waitpoint is complete if this is set to true.
-      It will go back in the queue and will resume once concurrency becomes available.
-
-      The default is `false`.
-    </ParamField>
-
-  </Expandable>
 </ParamField>
 
 ### returns
@@ -495,4 +476,16 @@ import { wait } from "@trigger.dev/sdk";
 const token = await wait.retrieveToken(tokenId);
 
 console.log(token);
+```
+
+## Wait idempotency
+
+You can pass an idempotency key to any wait function, allowing you to skip waits if the same idempotency key is used again. This can be useful if you want to skip waits when retrying a task, for example:
+
+```ts
+// Specify the idempotency key and TTL when creating a wait token
+const token = await wait.createToken({
+  idempotencyKey: "my-idempotency-key",
+  idempotencyKeyTTL: "1h",
+});
 ```

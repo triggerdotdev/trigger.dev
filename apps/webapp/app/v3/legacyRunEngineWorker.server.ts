@@ -5,7 +5,10 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { TaskRunHeartbeatFailedService } from "./taskRunHeartbeatFailed.server";
-import { completeBatchTaskRunItemV3 } from "./services/batchTriggerV3.server";
+import {
+  completeBatchTaskRunItemV3,
+  tryCompleteBatchV3,
+} from "./services/batchTriggerV3.server";
 import { prisma } from "~/db.server";
 import { marqs } from "./marqs/index.server";
 
@@ -50,6 +53,16 @@ function initializeWorker() {
           maxAttempts: 10,
         },
       },
+      tryCompleteBatchV3: {
+        schema: z.object({
+          batchId: z.string(),
+          scheduleResumeOnComplete: z.boolean(),
+        }),
+        visibilityTimeoutMs: 30_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
       scheduleRequeueMessage: {
         schema: z.object({
           messageId: z.string(),
@@ -84,6 +97,9 @@ function initializeWorker() {
           payload.taskRunAttemptId,
           attempt
         );
+      },
+      tryCompleteBatchV3: async ({ payload }) => {
+        await tryCompleteBatchV3(payload.batchId, prisma, payload.scheduleResumeOnComplete);
       },
       scheduleRequeueMessage: async ({ payload }) => {
         await marqs.requeueMessageById(payload.messageId);

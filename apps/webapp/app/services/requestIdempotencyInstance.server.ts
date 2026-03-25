@@ -17,6 +17,6 @@ function createRequestIdempotencyInstance() {
     },
     logLevel: env.REQUEST_IDEMPOTENCY_LOG_LEVEL,
     ttlInMs: env.REQUEST_IDEMPOTENCY_TTL_IN_MS,
-    types: ["batch-trigger", "trigger"],
+    types: ["batch-trigger", "trigger", "create-batch"],
   });
 }

@@ -67,8 +67,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       initContainers:
-        - name: init-shared
-          image: busybox:1.35
+        - name: volume-permissions
+          image: {{ include "trigger-v4.webapp.volumePermissions.image" . }}
+          imagePullPolicy: {{ .Values.webapp.volumePermissions.image.pullPolicy }}
           command: ['sh', '-c', 'mkdir -p /home/node/shared']
           securityContext:
             runAsUser: 1000
@@ -77,7 +78,8 @@ spec:
               mountPath: /home/node/shared
       containers:
         - name: token-syncer
-          image: bitnami/kubectl:1.28
+          image: {{ include "trigger-v4.webapp.tokenSyncer.image" . }}
+          imagePullPolicy: {{ .Values.webapp.tokenSyncer.image.pullPolicy }}
           securityContext:
             runAsUser: 1000
             runAsNonRoot: true
@@ -229,8 +231,6 @@ spec:
               value: {{ include "trigger-v4.s3.url" . | quote }}
             - name: GRACEFUL_SHUTDOWN_TIMEOUT
               value: {{ .Values.webapp.gracefulShutdownTimeout | quote }}
-            - name: TRIGGER_CLI_TAG
-              value: "v4-beta"
             {{- if .Values.webapp.bootstrap.enabled }}
             - name: TRIGGER_BOOTSTRAP_ENABLED
               value: "1"
@@ -263,7 +263,7 @@ spec:
             - name: DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT
               value: {{ .Values.webapp.limits.defaultOrgExecutionConcurrencyLimit | quote }}
             {{- end }}
-            {{- if .Values.secrets.enabled }}
+            {{- if or .Values.secrets.enabled .Values.secrets.existingSecret }}
             - name: SESSION_SECRET
               valueFrom:
                 secretKeyRef:
@@ -420,6 +420,10 @@ spec:
       {{- with .Values.webapp.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webapp.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- tpl (toYaml .) $ | nindent 8 }}
       {{- end }}
 ---
 apiVersion: v1

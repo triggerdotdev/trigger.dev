@@ -1,0 +1,275 @@
+---
+title: "Overview"
+sidebarTitle: "Overview"
+description: "Tools and resources for building Trigger.dev projects with AI coding assistants."
+---
+
+## Quick setup
+
+We provide multiple tools to help AI coding assistants write correct Trigger.dev code. Use one or all of them for the best developer experience.
+
+
+<Steps>
+
+<Step title="Install the MCP Server">
+  Give your AI assistant direct access to Trigger.dev tools — search docs, trigger tasks, deploy projects, and monitor runs. Works with Claude Code, Cursor, Windsurf, VS Code (Copilot), and Zed.
+
+  ```bash
+  npx trigger.dev@latest install-mcp
+  ```
+
+  [Learn more →](/mcp-introduction)
+</Step>
+
+<Step title="Install Skills">
+  Portable instruction sets that teach any AI coding assistant Trigger.dev best practices. Works with Claude Code, Cursor, Windsurf, VS Code (Copilot), and any tool that supports the [Agent Skills standard](https://agentskills.io).
+
+  ```bash
+  npx skills add triggerdotdev/skills
+  ```
+
+  [Learn more →](/skills)
+</Step>
+
+<Step title="Install Agent Rules">
+  Comprehensive rule sets installed directly into your AI client's config files. Works with Cursor, Claude Code, VS Code (Copilot), Windsurf, Gemini CLI, Cline, and more. Claude Code also gets a dedicated subagent for hands-on help.
+
+  ```bash
+  npx trigger.dev@latest install-rules
+  ```
+
+  [Learn more →](/mcp-agent-rules)
+</Step>
+
+</Steps>
+
+## Skills vs Agent Rules vs MCP
+
+Not sure which tool to use? Here's how they compare:
+
+| | **Skills** | **Agent Rules** | **MCP Server** |
+|:--|:-----------|:----------------|:---------------|
+| **What it does** | Drops skill files into your project | Installs rule sets into client config | Runs a live server your AI connects to |
+| **Installs to** | `.claude/skills/`, `.cursor/skills/`, etc. | `.cursor/rules/`, `CLAUDE.md`, `AGENTS.md`, etc. | `mcp.json`, `~/.claude.json`, etc. |
+| **Updates** | Re-run `npx skills add` | Re-run `npx trigger.dev@latest install-rules` or auto-prompted on `trigger dev` | Always latest (uses `@latest`) |
+| **Best for** | Teaching patterns and best practices | Comprehensive code generation guidance | Live project interaction (deploy, trigger, monitor) |
+| **Works offline** | Yes | Yes | No (calls Trigger.dev API) |
+
+**Our recommendation:** Install all three. Skills and Agent Rules teach your AI *how* to write code. The MCP Server lets it *do things* in your project.
+
+## Project-level context snippet
+
+If you prefer a lightweight/passive approach, paste the snippet below into a context file at the root of your project. Different AI tools read different files:
+
+| File | Read by |
+|:-----|:--------|
+| `CLAUDE.md` | Claude Code |
+| `AGENTS.md` | OpenAI Codex, Jules, OpenCode |
+| `.cursor/rules/*.md` | Cursor |
+| `.github/copilot-instructions.md` | GitHub Copilot |
+| `CONVENTIONS.md` | Windsurf, Cline, and others |
+
+Create the file that matches your AI tool (or multiple files if your team uses different tools) and paste the snippet below. This gives the AI essential Trigger.dev context without installing anything.
+
+<Accordion title="Copy the snippet">
+
+````markdown
+# Trigger.dev rules
+
+## Imports
+
+Always import from `@trigger.dev/sdk` — never from `@trigger.dev/sdk/v3` or use the deprecated `client.defineJob` pattern.
+
+## Task pattern
+
+Every task must be exported. Use `task()` from `@trigger.dev/sdk`:
+
+```ts
+import { task } from "@trigger.dev/sdk";
+
+export const myTask = task({
+  id: "my-task",
+  retry: {
+    maxAttempts: 3,
+    factor: 1.8,
+    minTimeoutInMs: 500,
+    maxTimeoutInMs: 30_000,
+  },
+  run: async (payload: { url: string }) => {
+    // No timeouts — runs can take as long as needed
+    return { success: true };
+  },
+});
+```
+
+## Triggering tasks
+
+From your backend (Next.js route, Express handler, etc.):
+
+```ts
+import type { myTask } from "./trigger/my-task";
+import { tasks } from "@trigger.dev/sdk";
+
+// Fire and forget
+const handle = await tasks.trigger<typeof myTask>("my-task", { url: "https://example.com" });
+
+// Batch trigger (up to 1,000 items)
+const batchHandle = await tasks.batchTrigger<typeof myTask>("my-task", [
+  { payload: { url: "https://example.com/1" } },
+  { payload: { url: "https://example.com/2" } },
+]);
+```
+
+### From inside other tasks
+
+```ts
+export const parentTask = task({
+  id: "parent-task",
+  run: async (payload) => {
+    // Fire and forget
+    await childTask.trigger({ data: "value" });
+
+    // Wait for result — returns a Result object, NOT the output directly
+    const result = await childTask.triggerAndWait({ data: "value" });
+    if (result.ok) {
+      console.log(result.output); // The actual return value
+    } else {
+      console.error(result.error);
+    }
+
+    // Or use .unwrap() to get output directly (throws on failure)
+    const output = await childTask.triggerAndWait({ data: "value" }).unwrap();
+  },
+});
+```
+
+> Never wrap `triggerAndWait` or `batchTriggerAndWait` in `Promise.all` — this is not supported.
+
+## Error handling
+
+```ts
+import { task, retry, AbortTaskRunError } from "@trigger.dev/sdk";
+
+export const resilientTask = task({
+  id: "resilient-task",
+  retry: { maxAttempts: 5 },
+  run: async (payload) => {
+    // Permanent error — skip retrying
+    if (!payload.isValid) {
+      throw new AbortTaskRunError("Invalid payload, will not retry");
+    }
+
+    // Retry a specific block (not the whole task)
+    const data = await retry.onThrow(
+      async () => await fetchExternalApi(payload),
+      { maxAttempts: 3 }
+    );
+
+    return data;
+  },
+});
+```
+
+## Schema validation
+
+Use `schemaTask` with Zod for payload validation:
+
+```ts
+import { schemaTask } from "@trigger.dev/sdk";
+import { z } from "zod";
+
+export const processVideo = schemaTask({
+  id: "process-video",
+  schema: z.object({ videoUrl: z.string().url() }),
+  run: async (payload) => {
+    // payload is typed and validated
+  },
+});
+```
+
+## Waits
+
+Use `wait.for` for delays, `wait.until` for dates, and `wait.forToken` for external callbacks:
+
+```ts
+import { wait } from "@trigger.dev/sdk";
+await wait.for({ seconds: 30 });
+await wait.until({ date: new Date("2025-01-01") });
+```
+
+## Configuration
+
+`trigger.config.ts` lives at the project root:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/build";
+
+export default defineConfig({
+  project: "<your-project-ref>",
+  dirs: ["./trigger"],
+});
+```
+
+## Common mistakes
+
+1. **Forgetting to export tasks** — every task must be a named export
+2. **Importing from `@trigger.dev/sdk/v3`** — this is the old v3 path; always use `@trigger.dev/sdk`
+3. **Using `client.defineJob()`** — this is the deprecated v2 API
+4. **Calling `task.trigger()` directly** — use `tasks.trigger<typeof myTask>("task-id", payload)` from your backend
+5. **Using `triggerAndWait` result as output** — it returns a `Result` object; check `result.ok` then access `result.output`, or use `.unwrap()`
+6. **Wrapping waits/triggerAndWait in `Promise.all`** — not supported in Trigger.dev tasks
+7. **Adding timeouts to tasks** — tasks have no built-in timeout; use `maxDuration` in config if needed
+````
+
+</Accordion>
+
+## llms.txt
+
+We also publish machine-readable documentation for LLM consumption:
+
+- [trigger.dev/docs/llms.txt](https://trigger.dev/docs/llms.txt) — concise overview
+- [trigger.dev/docs/llms-full.txt](https://trigger.dev/docs/llms-full.txt) — full documentation
+
+These follow the [llms.txt standard](https://llmstxt.org) and can be fed directly into any LLM context window.
+
+
+## Troubleshooting
+
+<AccordionGroup>
+
+<Accordion title="AI keeps generating old v2/v3 code">
+  Install [Agent Rules](/mcp-agent-rules) or [Skills](/skills) — they override the outdated patterns in the AI's training data. The [context snippet](#project-level-context-snippet) above is a quick alternative.
+</Accordion>
+
+<Accordion title="MCP server won't connect">
+  1. Make sure you've restarted your AI client after adding the config
+  2. Run `npx trigger.dev@latest install-mcp` again — it will detect and fix common issues
+  3. Check that `npx trigger.dev@latest mcp` runs without errors in your terminal
+  4. See the [MCP introduction](/mcp-introduction) for client-specific config details
+</Accordion>
+
+<Accordion title="Which tool should I install?">
+  All three if possible. If you can only pick one:
+  - **Agent Rules** if you want the broadest code generation improvement
+  - **Skills** if you use multiple AI tools and want a single install
+  - **MCP Server** if you need to trigger tasks, deploy, and search docs from your AI
+</Accordion>
+
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="MCP Server" icon="sparkles" href="/mcp-introduction">
+    Install and configure the MCP Server for live project interaction.
+  </Card>
+  <Card title="Skills" icon="wand-magic-sparkles" href="/skills">
+    Portable instruction sets for any AI coding assistant.
+  </Card>
+  <Card title="Agent Rules" icon="scroll" href="/mcp-agent-rules">
+    Comprehensive rule sets installed into your AI client.
+  </Card>
+  <Card title="Writing tasks" icon="code" href="/tasks/overview">
+    Learn the task patterns your AI assistant will follow.
+  </Card>
+</CardGroup>

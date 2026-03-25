@@ -368,6 +368,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
         limiterCache: {
           fresh: 1000, // 1 second
           stale: 2000, // 2 seconds
+          maxItems: 1000,
         },
         limiterConfigOverride: async (authorizationValue) => {
           configOverrideCalls++;

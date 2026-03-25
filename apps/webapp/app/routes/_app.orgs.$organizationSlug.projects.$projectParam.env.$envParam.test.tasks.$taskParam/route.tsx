@@ -54,7 +54,7 @@ import {
   TestTaskPresenter,
 } from "~/presenters/v3/TestTaskPresenter.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { docsPath, v3RunSpanPath, v3TaskParamsSchema, v3TestPath } from "~/utils/pathBuilder";
 import { TestTaskService } from "~/v3/services/testTask.server";
@@ -73,14 +73,20 @@ import { DeleteTaskRunTemplateData, RunTemplateData } from "~/v3/taskRunTemplate
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { DialogClose, DialogDescription } from "@radix-ui/react-dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
+import { $replica } from "~/db.server";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { RegionsPresenter, type Region } from "~/presenters/v3/RegionsPresenter.server";
+import { TestSidebarTabs } from "./TestSidebarTabs";
+import { AIPayloadTabContent } from "./AIPayloadTabContent";
+import { SchemaTabContent } from "./SchemaTabContent";
 
 type FormAction = "create-template" | "delete-template" | "run-scheduled" | "run-standard";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
   const { projectParam, organizationSlug, envParam, taskParam } = v3TaskParamsSchema.parse(params);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) {
     throw new Response(undefined, {
       status: 404,
@@ -88,7 +94,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
   if (!environment) {
     throw new Response(undefined, {
       status: 404,
@@ -96,17 +102,30 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
-  const presenter = new TestTaskPresenter();
+  const presenter = new TestTaskPresenter($replica, clickhouseClient);
   try {
-    const result = await presenter.call({
-      userId,
-      projectId: project.id,
-      taskIdentifier: taskParam,
-      environment: environment,
+    const [result, regionsResult] = await Promise.all([
+      presenter.call({
+        userId: user.id,
+        projectId: project.id,
+        taskIdentifier: taskParam,
+        environment: environment,
+      }),
+      new RegionsPresenter().call({
+        userId: user.id,
+        projectSlug: projectParam,
+        isAdmin: user.admin || user.isImpersonating,
+      }),
+    ]);
+
+    return typedjson({ ...result, regions: regionsResult.regions });
+  } catch (error) {
+    logger.error("Failed to load test page", {
+      taskParam,
+      error: error instanceof Error ? error.message : error,
+      stack: error instanceof Error ? error.stack : undefined,
     });
 
-    return typedjson(result);
-  } catch (error) {
     return redirectWithErrorMessage(
       v3TestPath({ slug: organizationSlug }, { slug: projectParam }, environment),
       request,
@@ -116,15 +135,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export const action: ActionFunction = async ({ request, params }) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
   const { organizationSlug, projectParam, envParam } = v3TaskParamsSchema.parse(params);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) {
     return redirectBackWithErrorMessage(request, "Project not found");
   }
 
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
 
   if (!environment) {
     return redirectBackWithErrorMessage(request, "Environment not found");
@@ -288,6 +307,7 @@ export default function Page() {
           templates={result.taskRunTemplates}
           disableVersionSelection={result.disableVersionSelection}
           allowArbitraryQueues={result.allowArbitraryQueues}
+          regions={result.regions}
         />
       );
     }
@@ -302,6 +322,7 @@ export default function Page() {
           possibleTimezones={result.possibleTimezones}
           disableVersionSelection={result.disableVersionSelection}
           allowArbitraryQueues={result.allowArbitraryQueues}
+          regions={result.regions}
         />
       );
     }
@@ -322,6 +343,7 @@ function StandardTaskForm({
   templates,
   disableVersionSelection,
   allowArbitraryQueues,
+  regions,
 }: {
   task: StandardTaskResult["task"];
   queues: Required<StandardTaskResult>["queue"][];
@@ -330,6 +352,7 @@ function StandardTaskForm({
   templates: RunTemplate[];
   disableVersionSelection: boolean;
   allowArbitraryQueues: boolean;
+  regions: Region[];
 }) {
   const environment = useEnvironment();
   const { value, replace } = useSearchParams();
@@ -371,6 +394,12 @@ function StandardTaskForm({
   );
   const [queueValue, setQueueValue] = useState<string | undefined>(lastRun?.queue);
   const [machineValue, setMachineValue] = useState<string | undefined>(lastRun?.machinePreset);
+  const isDev = environment.type === "DEVELOPMENT";
+  const defaultRegion = regions.find((r) => r.isDefault);
+  const [regionValue, setRegionValue] = useState<string | undefined>(
+    isDev ? undefined : defaultRegion?.name
+  );
+
   const [maxAttemptsValue, setMaxAttemptsValue] = useState<number | undefined>(
     lastRun?.maxAttempts
   );
@@ -378,6 +407,13 @@ function StandardTaskForm({
     lastRun?.maxDurationInSeconds
   );
   const [tagsValue, setTagsValue] = useState<string[]>(lastRun?.runTags ?? []);
+  const [sidebarTab, setSidebarTab] = useState("options");
+
+  const regionItems = regions.map((r) => ({
+    value: r.name,
+    label: r.description ? `${r.name} — ${r.description}` : r.name,
+    isDefault: r.isDefault,
+  }));
 
   const queueItems = queues.map((q) => ({
     value: q.type === "task" ? `task/${q.name}` : q.name,
@@ -407,6 +443,8 @@ function StandardTaskForm({
       tags,
       version,
       machine,
+      region,
+      prioritySeconds,
     },
   ] = useForm({
     id: "test-task",
@@ -519,229 +557,298 @@ function StandardTaskForm({
           </div>
         </ResizablePanel>
         <ResizableHandle id="test-task-handle" />
-        <ResizablePanel id="test-task-options" min="300px" default="300px" max="360px">
-          <div className="h-full overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-            <Fieldset className="px-3 py-3">
-              <Hint>
-                Options enable you to control the execution behavior of your task.{" "}
-                <TextLink to={docsPath("triggering#options")}>Read the docs.</TextLink>
-              </Hint>
-              <InputGroup>
-                <Label htmlFor={machine.id} variant="small">
-                  Machine
-                </Label>
-                <Select
-                  {...conform.select(machine)}
-                  variant="tertiary/small"
-                  placeholder="Select machine type"
-                  dropdownIcon
-                  items={machinePresets}
-                  defaultValue={undefined}
-                  value={machineValue}
-                  setValue={(e) => {
-                    if (Array.isArray(e)) return;
-                    setMachineValue(e);
-                  }}
-                >
-                  {machinePresets.map((machine) => (
-                    <SelectItem key={machine} value={machine}>
-                      {machine}
-                    </SelectItem>
-                  ))}
-                </Select>
-                <Hint>Overrides the machine preset.</Hint>
-                <FormError id={machine.errorId}>{machine.error}</FormError>
-              </InputGroup>
-              <InputGroup>
-                <Label htmlFor={version.id} variant="small">
-                  Version
-                </Label>
-                <Select
-                  {...conform.select(version)}
-                  defaultValue="latest"
-                  variant="tertiary/small"
-                  placeholder="Select version"
-                  dropdownIcon
-                  disabled={disableVersionSelection}
-                >
-                  {versions.map((version, i) => (
-                    <SelectItem key={version} value={i === 0 ? "latest" : version}>
-                      {version} {i === 0 && "(latest)"}
-                    </SelectItem>
-                  ))}
-                </Select>
-                {disableVersionSelection ? (
-                  <Hint>Only the latest version is available in the development environment.</Hint>
-                ) : (
-                  <Hint>Runs task on a specific version.</Hint>
-                )}
-                <FormError id={version.errorId}>{version.error}</FormError>
-              </InputGroup>
-              <InputGroup>
-                <Label htmlFor={queue.id} variant="small">
-                  Queue
-                </Label>
-                {allowArbitraryQueues ? (
-                  <Input
-                    {...conform.input(queue, { type: "text" })}
-                    variant="small"
-                    value={queueValue ?? ""}
-                    onChange={(e) => setQueueValue(e.target.value)}
-                  />
-                ) : (
+        <ResizablePanel id="test-task-options" min="300px" default="380px" max="600px">
+          <TestSidebarTabs
+            activeTab={sidebarTab}
+            onTabChange={setSidebarTab}
+            optionsContent={
+              <Fieldset className="px-3 py-3">
+                <Hint>
+                  Options enable you to control the execution behavior of your task.{" "}
+                  <TextLink to={docsPath("triggering#options")}>Read the docs.</TextLink>
+                </Hint>
+                <InputGroup>
+                  <Label htmlFor={machine.id} variant="small">
+                    Machine
+                  </Label>
                   <Select
-                    name={queue.name}
-                    id={queue.id}
-                    placeholder="Select queue"
-                    heading="Filter queues"
+                    {...conform.select(machine)}
                     variant="tertiary/small"
+                    placeholder="Select machine type"
                     dropdownIcon
-                    items={queueItems}
-                    filter={{ keys: ["label"] }}
-                    value={queueValue}
-                    setValue={setQueueValue}
+                    items={machinePresets}
+                    defaultValue={undefined}
+                    value={machineValue}
+                    setValue={(e) => {
+                      if (Array.isArray(e)) return;
+                      setMachineValue(e);
+                    }}
                   >
-                    {(matches) =>
-                      matches.map((queueItem) => (
-                        <SelectItem
-                          key={queueItem.value}
-                          value={queueItem.value}
-                          className="max-w-[var(--popover-anchor-width)]"
-                          icon={
-                            queueItem.type === "task" ? (
-                              <TaskIcon className="size-4 shrink-0 text-blue-500" />
-                            ) : (
-                              <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
-                            )
-                          }
-                        >
-                          <div className="flex w-full min-w-0 items-center justify-between">
-                            <span className="truncate">{queueItem.label}</span>
-                            {queueItem.paused && (
-                              <Badge variant="extra-small" className="ml-1 text-warning">
-                                Paused
-                              </Badge>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))
-                    }
+                    {machinePresets.map((machine) => (
+                      <SelectItem key={machine} value={machine}>
+                        {machine}
+                      </SelectItem>
+                    ))}
                   </Select>
+                  <Hint>Overrides the machine preset.</Hint>
+                  <FormError id={machine.errorId}>{machine.error}</FormError>
+                </InputGroup>
+                <InputGroup>
+                  <Label htmlFor={version.id} variant="small">
+                    Version
+                  </Label>
+                  <Select
+                    {...conform.select(version)}
+                    defaultValue="latest"
+                    variant="tertiary/small"
+                    placeholder="Select version"
+                    dropdownIcon
+                    disabled={disableVersionSelection}
+                  >
+                    {versions.map((version, i) => (
+                      <SelectItem key={version} value={i === 0 ? "latest" : version}>
+                        {version} {i === 0 && "(latest)"}
+                      </SelectItem>
+                    ))}
+                  </Select>
+                  {disableVersionSelection ? (
+                    <Hint>
+                      Only the latest version is available in the development environment.
+                    </Hint>
+                  ) : (
+                    <Hint>Runs task on a specific version.</Hint>
+                  )}
+                  <FormError id={version.errorId}>{version.error}</FormError>
+                </InputGroup>
+                {regionItems.length > 1 && (
+                  <InputGroup>
+                    <Label htmlFor={region.id} variant="small">
+                      Region
+                    </Label>
+                    {/* Our Select primitive uses Ariakit under the hood, which treats
+                        value={undefined} as uncontrolled, keeping stale internal state when
+                        switching environments. The key forces a remount so it reinitializes
+                        with the correct defaultValue. */}
+                    <Select
+                      key={`region-${environment.id}`}
+                      {...conform.select(region)}
+                      variant="tertiary/small"
+                      placeholder={isDev ? "–" : undefined}
+                      dropdownIcon
+                      items={regionItems}
+                      defaultValue={isDev ? undefined : defaultRegion?.name}
+                      value={isDev ? undefined : regionValue}
+                      setValue={
+                        isDev
+                          ? undefined
+                          : (e) => {
+                              if (Array.isArray(e)) return;
+                              setRegionValue(e);
+                            }
+                      }
+                      disabled={isDev}
+                    >
+                      {regionItems.map((r) => (
+                        <SelectItem key={r.value} value={r.value}>
+                          {r.label}
+                          {r.isDefault ? " (default)" : ""}
+                        </SelectItem>
+                      ))}
+                    </Select>
+                    {isDev ? (
+                      <Hint>Region is not available in the development environment.</Hint>
+                    ) : (
+                      <Hint>Overrides the region for this run.</Hint>
+                    )}
+                    <FormError id={region.errorId}>{region.error}</FormError>
+                  </InputGroup>
                 )}
-                <Hint>Assign run to a specific queue.</Hint>
-                <FormError id={queue.errorId}>{queue.error}</FormError>
-              </InputGroup>
-              <InputGroup>
-                <Label htmlFor={tags.id} variant="small">
-                  Tags
-                </Label>
-                <RunTagInput
-                  name={tags.name}
-                  id={tags.id}
-                  variant="small"
-                  tags={tagsValue}
-                  onTagsChange={setTagsValue}
-                />
-                <Hint>Add tags to easily filter runs.</Hint>
-                <FormError id={tags.errorId}>{tags.error}</FormError>
-              </InputGroup>
-              <InputGroup>
-                <Label htmlFor={maxAttempts.id} variant="small">
-                  Max attempts
-                </Label>
-                <Input
-                  {...conform.input(maxAttempts, { type: "number" })}
-                  className="[&::-webkit-inner-spin-button]:appearance-none"
-                  variant="small"
-                  min={1}
-                  value={maxAttemptsValue}
-                  onChange={(e) =>
-                    setMaxAttemptsValue(e.target.value ? parseInt(e.target.value) : undefined)
-                  }
-                  onKeyDown={(e) => {
-                    // only allow entering integers > 1
-                    if (["-", "+", ".", "e", "E"].includes(e.key)) {
-                      e.preventDefault();
+                <InputGroup>
+                  <Label htmlFor={queue.id} variant="small">
+                    Queue
+                  </Label>
+                  {allowArbitraryQueues ? (
+                    <Input
+                      {...conform.input(queue, { type: "text" })}
+                      variant="small"
+                      value={queueValue ?? ""}
+                      onChange={(e) => setQueueValue(e.target.value)}
+                    />
+                  ) : (
+                    <Select
+                      name={queue.name}
+                      id={queue.id}
+                      placeholder="Select queue"
+                      heading="Filter queues"
+                      variant="tertiary/small"
+                      dropdownIcon
+                      items={queueItems}
+                      filter={{ keys: ["label"] }}
+                      value={queueValue}
+                      setValue={setQueueValue}
+                    >
+                      {(matches) =>
+                        matches.map((queueItem) => (
+                          <SelectItem
+                            key={queueItem.value}
+                            value={queueItem.value}
+                            className="max-w-[var(--popover-anchor-width)]"
+                            icon={
+                              queueItem.type === "task" ? (
+                                <TaskIcon className="size-4 shrink-0 text-blue-500" />
+                              ) : (
+                                <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
+                              )
+                            }
+                          >
+                            <div className="flex w-full min-w-0 items-center justify-between">
+                              <span className="truncate">{queueItem.label}</span>
+                              {queueItem.paused && (
+                                <Badge variant="extra-small" className="ml-1 text-warning">
+                                  Paused
+                                </Badge>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))
+                      }
+                    </Select>
+                  )}
+                  <Hint>Assign run to a specific queue.</Hint>
+                  <FormError id={queue.errorId}>{queue.error}</FormError>
+                </InputGroup>
+                <InputGroup>
+                  <Label htmlFor={tags.id} variant="small">
+                    Tags
+                  </Label>
+                  <RunTagInput
+                    name={tags.name}
+                    id={tags.id}
+                    variant="small"
+                    tags={tagsValue}
+                    onTagsChange={setTagsValue}
+                  />
+                  <Hint>Add tags to easily filter runs.</Hint>
+                  <FormError id={tags.errorId}>{tags.error}</FormError>
+                </InputGroup>
+                <InputGroup>
+                  <Label htmlFor={maxAttempts.id} variant="small">
+                    Max attempts
+                  </Label>
+                  <Input
+                    {...conform.input(maxAttempts, { type: "number" })}
+                    className="[&::-webkit-inner-spin-button]:appearance-none"
+                    variant="small"
+                    min={1}
+                    value={maxAttemptsValue}
+                    onChange={(e) =>
+                      setMaxAttemptsValue(e.target.value ? parseInt(e.target.value) : undefined)
                     }
-                  }}
-                  onBlur={(e) => {
-                    const value = parseInt(e.target.value);
-                    if (value < 1 && e.target.value !== "") {
-                      e.target.value = "1";
-                    }
-                  }}
-                />
-                <Hint>Retries failed runs up to the specified number of attempts.</Hint>
-                <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
-              </InputGroup>
-              <InputGroup>
-                <Label variant="small">Max duration</Label>
-                <DurationPicker
-                  name={maxDurationSeconds.name}
-                  id={maxDurationSeconds.id}
-                  value={maxDurationValue}
-                  onChange={setMaxDurationValue}
-                />
-                <Hint>Overrides the maximum compute time limit for the run.</Hint>
-                <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
-              </InputGroup>
-              <InputGroup>
-                <Label htmlFor={idempotencyKey.id} variant="small">
-                  Idempotency key
-                </Label>
-                <Input {...conform.input(idempotencyKey, { type: "text" })} variant="small" />
-                <FormError id={idempotencyKey.errorId}>{idempotencyKey.error}</FormError>
-                <Hint>
-                  Specify an idempotency key to ensure that a task is only triggered once with the
-                  same key.
-                </Hint>
-              </InputGroup>
-              <InputGroup>
-                <Label variant="small">Idempotency key TTL</Label>
-                <DurationPicker
-                  name={idempotencyKeyTTLSeconds.name}
-                  id={idempotencyKeyTTLSeconds.id}
-                />
-                <Hint>Keys expire after 30 days by default.</Hint>
-                <FormError id={idempotencyKeyTTLSeconds.errorId}>
-                  {idempotencyKeyTTLSeconds.error}
-                </FormError>
-              </InputGroup>
-              <InputGroup>
-                <Label htmlFor={concurrencyKey.id} variant="small">
-                  Concurrency key
-                </Label>
-                <Input
-                  {...conform.input(concurrencyKey, { type: "text" })}
-                  variant="small"
-                  value={concurrencyKeyValue ?? ""}
-                  onChange={(e) => setConcurrencyKeyValue(e.target.value)}
-                />
-                <Hint>
-                  Limits concurrency by creating a separate queue for each value of the key.
-                </Hint>
-                <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
-              </InputGroup>
-              <InputGroup>
-                <Label variant="small">Delay</Label>
-                <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
-                <Hint>Delays run by a specific duration.</Hint>
-                <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
-              </InputGroup>
-              <InputGroup>
-                <Label variant="small">TTL</Label>
-                <DurationPicker
-                  name={ttlSeconds.name}
-                  id={ttlSeconds.id}
-                  value={ttlValue}
-                  onChange={setTtlValue}
-                />
-                <Hint>Expires the run if it hasn't started within the TTL.</Hint>
-                <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
-              </InputGroup>
-              <FormError>{form.error}</FormError>
-            </Fieldset>
-          </div>
+                    onKeyDown={(e) => {
+                      // only allow entering integers > 1
+                      if (["-", "+", ".", "e", "E"].includes(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const value = parseInt(e.target.value);
+                      if (value < 1 && e.target.value !== "") {
+                        e.target.value = "1";
+                      }
+                    }}
+                  />
+                  <Hint>Retries failed runs up to the specified number of attempts.</Hint>
+                  <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
+                </InputGroup>
+                <InputGroup>
+                  <Label variant="small">Max duration</Label>
+                  <DurationPicker
+                    name={maxDurationSeconds.name}
+                    id={maxDurationSeconds.id}
+                    value={maxDurationValue}
+                    onChange={setMaxDurationValue}
+                  />
+                  <Hint>Overrides the maximum compute time limit for the run.</Hint>
+                  <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
+                </InputGroup>
+                <InputGroup>
+                  <Label htmlFor={idempotencyKey.id} variant="small">
+                    Idempotency key
+                  </Label>
+                  <Input {...conform.input(idempotencyKey, { type: "text" })} variant="small" />
+                  <FormError id={idempotencyKey.errorId}>{idempotencyKey.error}</FormError>
+                  <Hint>
+                    Specify an idempotency key to ensure that a task is only triggered once with the
+                    same key.
+                  </Hint>
+                </InputGroup>
+                <InputGroup>
+                  <Label variant="small">Idempotency key TTL</Label>
+                  <DurationPicker
+                    name={idempotencyKeyTTLSeconds.name}
+                    id={idempotencyKeyTTLSeconds.id}
+                  />
+                  <Hint>Keys expire after 30 days by default.</Hint>
+                  <FormError id={idempotencyKeyTTLSeconds.errorId}>
+                    {idempotencyKeyTTLSeconds.error}
+                  </FormError>
+                </InputGroup>
+                <InputGroup>
+                  <Label htmlFor={concurrencyKey.id} variant="small">
+                    Concurrency key
+                  </Label>
+                  <Input
+                    {...conform.input(concurrencyKey, { type: "text" })}
+                    variant="small"
+                    value={concurrencyKeyValue ?? ""}
+                    onChange={(e) => setConcurrencyKeyValue(e.target.value)}
+                  />
+                  <Hint>
+                    Limits concurrency by creating a separate queue for each value of the key.
+                  </Hint>
+                  <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
+                </InputGroup>
+                <InputGroup>
+                  <Label variant="small">Delay</Label>
+                  <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
+                  <Hint>Delays run by a specific duration.</Hint>
+                  <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
+                </InputGroup>
+                <InputGroup>
+                  <Label variant="small">Priority</Label>
+                  <DurationPicker name={prioritySeconds.name} id={prioritySeconds.id} />
+                  <Hint>Sets the priority of the run. Higher values mean higher priority.</Hint>
+                  <FormError id={prioritySeconds.errorId}>{prioritySeconds.error}</FormError>
+                </InputGroup>
+                <InputGroup>
+                  <Label variant="small">TTL</Label>
+                  <DurationPicker
+                    name={ttlSeconds.name}
+                    id={ttlSeconds.id}
+                    value={ttlValue}
+                    onChange={setTtlValue}
+                  />
+                  <Hint>Expires the run if it hasn't started within the TTL.</Hint>
+                  <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
+                </InputGroup>
+                <FormError>{form.error}</FormError>
+              </Fieldset>
+            }
+            aiContent={
+              <AIPayloadTabContent
+                onPayloadGenerated={setPayload}
+                payloadSchema={task.payloadSchema ?? task.inferredPayloadSchema}
+                taskIdentifier={task.taskIdentifier}
+                getCurrentPayload={() => currentPayloadJson.current}
+              />
+            }
+            schemaContent={
+              <SchemaTabContent
+                schema={task.payloadSchema}
+                inferredSchema={task.inferredPayloadSchema}
+              />
+            }
+          />
         </ResizablePanel>
       </ResizablePanelGroup>
       <div className="flex items-center justify-end gap-3 border-t border-grid-bright bg-background-dimmed p-2">
@@ -794,6 +901,7 @@ function ScheduledTaskForm({
   templates,
   disableVersionSelection,
   allowArbitraryQueues,
+  regions,
 }: {
   task: ScheduledTaskResult["task"];
   runs: ScheduledRun[];
@@ -803,6 +911,7 @@ function ScheduledTaskForm({
   templates: RunTemplate[];
   disableVersionSelection: boolean;
   allowArbitraryQueues: boolean;
+  regions: Region[];
 }) {
   const environment = useEnvironment();
 
@@ -824,6 +933,12 @@ function ScheduledTaskForm({
   );
   const [queueValue, setQueueValue] = useState<string | undefined>(lastRun?.queue);
   const [machineValue, setMachineValue] = useState<string | undefined>(lastRun?.machinePreset);
+  const isDev = environment.type === "DEVELOPMENT";
+  const defaultRegion = regions.find((r) => r.isDefault);
+  const [regionValue, setRegionValue] = useState<string | undefined>(
+    isDev ? undefined : defaultRegion?.name
+  );
+
   const [maxAttemptsValue, setMaxAttemptsValue] = useState<number | undefined>(
     lastRun?.maxAttempts
   );
@@ -833,6 +948,12 @@ function ScheduledTaskForm({
   const [tagsValue, setTagsValue] = useState<string[]>(lastRun?.runTags ?? []);
 
   const [showTemplateCreatedSuccessMessage, setShowTemplateCreatedSuccessMessage] = useState(false);
+
+  const regionItems = regions.map((r) => ({
+    value: r.name,
+    label: r.description ? `${r.name} — ${r.description}` : r.name,
+    isDefault: r.isDefault,
+  }));
 
   const queueItems = queues.map((q) => ({
     value: q.type === "task" ? `task/${q.name}` : q.name,
@@ -870,6 +991,8 @@ function ScheduledTaskForm({
       tags,
       version,
       machine,
+      region,
+      prioritySeconds,
     },
   ] = useForm({
     id: "test-task-scheduled",
@@ -1091,6 +1214,49 @@ function ScheduledTaskForm({
             )}
             <FormError id={version.errorId}>{version.error}</FormError>
           </InputGroup>
+          {regionItems.length > 1 && (
+            <InputGroup>
+              <Label htmlFor={region.id} variant="small">
+                Region
+              </Label>
+              {/* Our Select primitive uses Ariakit under the hood, which treats
+                  value={undefined} as uncontrolled, keeping stale internal state when
+                  switching environments. The key forces a remount so it reinitializes
+                  with the correct defaultValue. */}
+              <Select
+                key={`region-${environment.id}`}
+                {...conform.select(region)}
+                variant="tertiary/small"
+                placeholder={isDev ? "–" : undefined}
+                dropdownIcon
+                items={regionItems}
+                defaultValue={isDev ? undefined : defaultRegion?.name}
+                value={isDev ? undefined : regionValue}
+                setValue={
+                  isDev
+                    ? undefined
+                    : (e) => {
+                        if (Array.isArray(e)) return;
+                        setRegionValue(e);
+                      }
+                }
+                disabled={isDev}
+              >
+                {regionItems.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>
+                    {r.label}
+                    {r.isDefault ? " (default)" : ""}
+                  </SelectItem>
+                ))}
+              </Select>
+              {isDev ? (
+                <Hint>Region is not available in the development environment.</Hint>
+              ) : (
+                <Hint>Overrides the region for this run.</Hint>
+              )}
+              <FormError id={region.errorId}>{region.error}</FormError>
+            </InputGroup>
+          )}
           <InputGroup>
             <Label htmlFor={queue.id} variant="small">
               Queue
@@ -1234,6 +1400,14 @@ function ScheduledTaskForm({
             />
             <Hint>Limits concurrency by creating a separate queue for each value of the key.</Hint>
             <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
+          </InputGroup>
+          <InputGroup>
+            <Label htmlFor={prioritySeconds.id} variant="small">
+              Priority
+            </Label>
+            <DurationPicker name={prioritySeconds.name} id={prioritySeconds.id} />
+            <Hint>Sets the priority of the run. Higher values mean higher priority.</Hint>
+            <FormError id={prioritySeconds.errorId}>{prioritySeconds.error}</FormError>
           </InputGroup>
           <InputGroup>
             <Label htmlFor={ttlSeconds.id} variant="small">

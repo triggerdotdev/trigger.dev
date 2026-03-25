@@ -4,7 +4,7 @@ import { RetryOptions } from "../schemas/index.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
 import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors.js";
 
-import { Attributes, context, propagation, Span } from "@opentelemetry/api";
+import { Attributes, context, propagation, Span, trace } from "@opentelemetry/api";
 import { suppressTracing } from "@opentelemetry/core";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import type { TriggerTracer } from "../tracer.js";
@@ -40,7 +40,9 @@ export type ZodFetchOptions<TData = any> = {
 
 export type AnyZodFetchOptions = ZodFetchOptions<any>;
 
-export type ApiRequestOptions = Pick<ZodFetchOptions, "retry">;
+export type ApiRequestOptions = Pick<ZodFetchOptions, "retry"> & {
+  additionalHeaders?: Record<string, string>;
+};
 
 type KeysEnum<T> = { [P in keyof Required<T>]: true };
 
@@ -49,6 +51,7 @@ type KeysEnum<T> = { [P in keyof Required<T>]: true };
 // compiler such that any missing / extraneous keys will cause an error.
 const requestOptionsKeys: KeysEnum<ApiRequestOptions> = {
   retry: true,
+  additionalHeaders: true,
 };
 
 export const isRequestOptions = (obj: unknown): obj is ApiRequestOptions => {
@@ -616,10 +619,6 @@ export function hasOwn(obj: Object, key: string): boolean {
 // and return the new requestInit.
 function injectPropagationHeadersIfInWorker(requestInit?: RequestInit): RequestInit | undefined {
   const headers = new Headers(requestInit?.headers);
-
-  if (headers.get("x-trigger-worker") !== "true") {
-    return requestInit;
-  }
 
   const headersObject = Object.fromEntries(headers.entries());
 

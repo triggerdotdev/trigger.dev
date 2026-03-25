@@ -24,10 +24,11 @@
             "pages": [
               "introduction",
               "quick-start",
+              "manual-setup",
               "video-walkthrough",
               "how-it-works",
               "limits",
-              "upgrade-to-v4"
+              "migrating-from-v3"
             ]
           },
           {
@@ -40,6 +41,18 @@
               "triggering",
               "runs",
               "apikeys"
+            ]
+          },
+          {
+            "group": "Building with AI",
+            "pages": [
+              "building-with-ai",
+              {
+                "group": "MCP Server",
+                "pages": ["mcp-introduction", "mcp-tools"]
+              },
+              "skills",
+              "mcp-agent-rules"
             ]
           },
           {
@@ -57,10 +70,14 @@
               "machines",
               "idempotency",
               "runs/max-duration",
+              "runs/heartbeats",
               "tags",
               "runs/metadata",
+              "tasks/streams",
               "run-usage",
-              "context"
+              "context",
+              "runs/priority",
+              "hidden-tasks"
             ]
           },
           {
@@ -78,6 +95,7 @@
                       "config/extensions/pythonExtension",
                       "config/extensions/playwright",
                       "config/extensions/puppeteer",
+                      "config/extensions/lightpanda",
                       "config/extensions/ffmpeg",
                       "config/extensions/aptGet",
                       "config/extensions/additionalFiles",
@@ -107,33 +125,36 @@
               "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",
-                "pages": ["vercel-integration"]
+                "pages": ["github-integration", "vercel-integration"]
               }
             ]
           },
           {
-            "group": "Frontend usage",
+            "group": "Realtime",
             "pages": [
-              "frontend/overview",
+              "realtime/overview",
+              "realtime/how-it-works",
+              "realtime/run-object",
+              "realtime/auth",
               {
                 "group": "React hooks",
                 "pages": [
-                  "frontend/react-hooks/overview",
-                  "frontend/react-hooks/realtime",
-                  "frontend/react-hooks/triggering"
+                  "realtime/react-hooks/overview",
+                  "realtime/react-hooks/triggering",
+                  "realtime/react-hooks/subscribe",
+                  "realtime/react-hooks/streams",
+                  "realtime/react-hooks/swr",
+                  "realtime/react-hooks/use-wait-token"
+                ]
+              },
+              {
+                "group": "Backend",
+                "pages": [
+                  "realtime/backend/overview",
+                  "realtime/backend/subscribe",
+                  "realtime/backend/streams"
                 ]
               }
-            ]
-          },
-          {
-            "group": "Realtime API",
-            "pages": [
-              "realtime/overview",
-              "realtime/streams",
-              "realtime/react-hooks",
-              "realtime/subscribe-to-run",
-              "realtime/subscribe-to-runs-with-tag",
-              "realtime/subscribe-to-batch"
             ]
           },
           {
@@ -159,6 +180,10 @@
             ]
           },
           {
+            "group": "Observability",
+            "pages": ["observability/query", "observability/dashboards"]
+          },
+          {
             "group": "Using the Dashboard",
             "pages": ["run-tests", "troubleshooting-alerts", "replaying", "bulk-actions"]
           },
@@ -166,6 +191,7 @@
             "group": "Troubleshooting",
             "pages": [
               "troubleshooting",
+              "how-to-reduce-your-spend",
               "troubleshooting-debugging-in-vscode",
               "upgrading-packages",
               "troubleshooting-uptime-status",
@@ -182,14 +208,9 @@
               {
                 "group": "Environment variables",
                 "pages": ["self-hosting/env/webapp", "self-hosting/env/supervisor"]
-              }
-            ],
-            "tags": ["v4"],
-            "tag": "v4"
-          },
-          {
-            "group": "Self-hosting",
-            "pages": ["open-source-self-hosting"]
+              },
+              "open-source-self-hosting"
+            ]
           },
           {
             "group": "Open source",
@@ -218,7 +239,20 @@
           },
           {
             "group": "Tasks API",
-            "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
+            "pages": [
+              "management/tasks/trigger",
+              "management/tasks/batch-trigger",
+              "management/tasks/trigger-batch"
+            ]
+          },
+          {
+            "group": "Batches API",
+            "pages": [
+              "management/batches/create",
+              "management/batches/retrieve",
+              "management/batches/retrieve-results",
+              "management/batches/stream-items"
+            ]
           },
           {
             "group": "Runs API",
@@ -228,7 +262,21 @@
               "management/runs/replay",
               "management/runs/cancel",
               "management/runs/reschedule",
-              "management/runs/update-metadata"
+              "management/runs/update-metadata",
+              "management/runs/add-tags",
+              "management/runs/retrieve-events",
+              "management/runs/retrieve-trace",
+              "management/runs/retrieve-result"
+            ]
+          },
+          {
+            "group": "Queues API",
+            "pages": [
+              "management/queues/list",
+              "management/queues/retrieve",
+              "management/queues/pause",
+              "management/queues/concurrency-override",
+              "management/queues/concurrency-reset"
             ]
           },
           {
@@ -254,6 +302,28 @@
               "management/envvars/update",
               "management/envvars/delete"
             ]
+          },
+          {
+            "group": "Deployments API",
+            "pages": [
+              "management/deployments/retrieve",
+              "management/deployments/get-latest",
+              "management/deployments/promote"
+            ]
+          },
+          {
+            "group": "Waitpoints API",
+            "pages": [
+              "management/waitpoints/create",
+              "management/waitpoints/list",
+              "management/waitpoints/retrieve",
+              "management/waitpoints/complete",
+              "management/waitpoints/complete-callback"
+            ]
+          },
+          {
+            "group": "Query API",
+            "pages": ["management/query/execute"]
           }
         ]
       },
@@ -287,6 +357,7 @@
                 },
                 "pages": [
                   "guides/ai-agents/overview",
+
                   "guides/ai-agents/generate-translate-copy",
                   "guides/ai-agents/route-question",
                   "guides/ai-agents/respond-and-check-content",
@@ -294,7 +365,7 @@
                   "guides/ai-agents/verify-news-article"
                 ]
               },
-              "guides/cursor-rules",
+              "guides/ai-agents/claude-code-trigger",
               "guides/frameworks/drizzle",
               "guides/frameworks/prisma",
               "guides/frameworks/sequin",
@@ -321,24 +392,39 @@
                   "guides/frameworks/webhooks-guides-overview",
                   "guides/frameworks/nextjs-webhooks",
                   "guides/frameworks/remix-webhooks",
-                  "guides/examples/stripe-webhook"
+                  "guides/examples/stripe-webhook",
+                  "guides/examples/hookdeck-webhook"
                 ]
               }
             ]
           },
-
+          {
+            "group": "Use cases",
+            "pages": [
+              "guides/use-cases/overview",
+              "guides/use-cases/data-processing-etl",
+              "guides/use-cases/media-generation",
+              "guides/use-cases/media-processing",
+              "guides/use-cases/marketing"
+            ]
+          },
           {
             "group": "Example projects",
             "pages": [
+              "guides/example-projects/anchor-browser-web-scraper",
               "guides/example-projects/batch-llm-evaluator",
+              "guides/example-projects/claude-changelog-generator",
+              "guides/example-projects/claude-github-wiki",
               "guides/example-projects/claude-thinking-chatbot",
+              "guides/example-projects/cursor-background-agent",
               "guides/example-projects/human-in-the-loop-workflow",
               "guides/example-projects/mastra-agents-with-memory",
               "guides/example-projects/meme-generator-human-in-the-loop",
-              "guides/example-projects/openai-agent-sdk-guardrails",
               "guides/example-projects/openai-agents-sdk-typescript-playground",
+              "guides/example-projects/product-image-generator",
               "guides/example-projects/realtime-csv-importer",
               "guides/example-projects/realtime-fal-ai",
+              "guides/example-projects/smart-spreadsheet",
               "guides/example-projects/turborepo-monorepo-prisma",
               "guides/example-projects/vercel-ai-sdk-deep-research",
               "guides/example-projects/vercel-ai-sdk-image-generator"
@@ -347,6 +433,7 @@
           {
             "group": "Python guides",
             "pages": [
+              "guides/example-projects/openai-agent-sdk-guardrails",
               "guides/python/python-image-processing",
               "guides/python/python-doc-to-markdown",
               "guides/python/python-crawl4ai",
@@ -362,12 +449,14 @@
               "guides/examples/fal-ai-realtime",
               "guides/examples/ffmpeg-video-processing",
               "guides/examples/firecrawl-url-crawl",
+              "guides/examples/lightpanda",
               "guides/examples/libreoffice-pdf-conversion",
               "guides/examples/open-ai-with-retrying",
               "guides/examples/pdf-to-image",
               "guides/examples/puppeteer",
               "guides/examples/react-pdf",
               "guides/examples/react-email",
+              "guides/examples/replicate-image-generation",
               "guides/examples/resend-email-sequence",
               "guides/examples/satori",
               "guides/examples/scrape-hacker-news",
@@ -405,6 +494,11 @@
     "openapi": ["openapi.yml", "v3-openapi.yaml"],
     "playground": {
       "display": "simple"
+    }
+  },
+  "styling": {
+    "codeblocks": {
+      "theme": "css-variables"
     }
   },
   "appearance": {
@@ -549,6 +643,10 @@
       "destination": "/config/config-file"
     },
     {
+      "source": "/guides/frameworks",
+      "destination": "/guides/frameworks/nextjs"
+    },
+    {
       "source": "/guides/frameworks/introduction",
       "destination": "/guides/introduction"
     },
@@ -570,11 +668,71 @@
     },
     {
       "source": "/frontend/react-hooks",
-      "destination": "/frontend/react-hooks/overview"
+      "destination": "/realtime/react-hooks/overview"
+    },
+    {
+      "source": "/frontend/overview",
+      "destination": "/realtime/auth"
+    },
+    {
+      "source": "/frontend/react-hooks/overview",
+      "destination": "/realtime/react-hooks/overview"
+    },
+    {
+      "source": "/frontend/react-hooks/realtime",
+      "destination": "/realtime/react-hooks/realtime"
+    },
+    {
+      "source": "/frontend/react-hooks/triggering",
+      "destination": "/realtime/react-hooks/triggering"
+    },
+    {
+      "source": "/realtime/backend",
+      "destination": "/realtime/backend/overview"
+    },
+    {
+      "source": "/realtime/streams",
+      "destination": "/realtime/backend/streams"
+    },
+    {
+      "source": "/realtime/react-hooks",
+      "destination": "/realtime/react-hooks/overview"
+    },
+    {
+      "source": "/realtime/subscribe-to-run",
+      "destination": "/realtime/backend/subscribe"
+    },
+    {
+      "source": "/realtime/subscribe-to-runs-with-tag",
+      "destination": "/realtime/backend/subscribe"
+    },
+    {
+      "source": "/realtime/subscribe-to-batch",
+      "destination": "/realtime/backend/subscribe"
     },
     {
       "source": "/management/projects/runs",
       "destination": "/management/overview"
+    },
+    {
+      "source": "/guides/cursor-rules",
+      "destination": "/mcp-agent-rules"
+    },
+    {
+      "source": "/agents/rules/overview",
+      "destination": "/mcp-agent-rules"
+    },
+    {
+      "source": "/upgrade-to-v4",
+      "destination": "/migrating-from-v3"
+    },
+    {
+      "source": "/insights/query",
+      "destination": "/observability/query"
+    },
+    {
+      "source": "/insights/metrics",
+      "destination": "/observability/dashboards"
     }
   ]
 }

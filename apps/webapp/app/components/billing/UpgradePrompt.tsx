@@ -30,8 +30,8 @@ export function UpgradePrompt() {
         <Icon icon={ExclamationCircleIcon} className="h-5 w-5 text-error" />
         <Paragraph variant="small" className="text-error">
           You have exceeded the monthly $
-          {(plan.v3Subscription?.plan?.limits.includedUsage ?? 500) / 100} free credits. No runs
-          will execute in Prod until{" "}
+          {(plan.v3Subscription?.plan?.limits.includedUsage ?? 500) / 100} free credits. Existing
+          runs will be queued and new runs won't be created until{" "}
           <DateTime date={nextMonth} includeTime={false} timeZone="utc" />, or you upgrade.
         </Paragraph>
       </div>

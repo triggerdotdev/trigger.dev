@@ -44,7 +44,7 @@ export function configureWorkersRunCommand(program: Command) {
       .option("--network <mode>", "The networking mode for the container", "host")
       .action(async (path, options) => {
         await handleTelemetry(async () => {
-          await printStandloneInitialBanner(true);
+          await printStandloneInitialBanner(true, options.profile);
           await workersRunCommand(path, options);
         });
       })

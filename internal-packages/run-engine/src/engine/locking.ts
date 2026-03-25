@@ -15,6 +15,7 @@ import {
   Attributes,
   Histogram,
 } from "@internal/tracing";
+import { ServiceValidationError } from "./errors.js";
 
 const SemanticAttributes = {
   LOCK_TYPE: "run_engine.lock.type",
@@ -144,7 +145,12 @@ export class RunLocker {
   }
 
   /** Locks resources using RedLock. It won't lock again if we're already inside a lock with the same resources. */
-  async lock<T>(name: string, resources: string[], routine: () => Promise<T>): Promise<T> {
+  async lock<T>(
+    name: string,
+    resources: string[],
+    routine: () => Promise<T>,
+    attributes?: Attributes
+  ): Promise<T> {
     const currentContext = this.asyncLocalStorage.getStore();
     const joinedResources = [...resources].sort().join(",");
 
@@ -169,6 +175,10 @@ export class RunLocker {
         );
 
         if (error) {
+          if (error instanceof ServiceValidationError) {
+            throw error;
+          }
+
           // Record failed lock acquisition
           const lockDuration = performance.now() - lockStartTime;
           this.lockDurationHistogram.record(lockDuration, {
@@ -181,13 +191,14 @@ export class RunLocker {
             resources,
             duration: this.duration,
           });
+
           throw error;
         }
 
         return result;
       },
       {
-        attributes: { name, resources, timeout: this.duration },
+        attributes: { name, resources, timeout: this.duration, ...attributes },
       }
     );
   }
@@ -217,7 +228,16 @@ export class RunLocker {
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= maxAttempts; attempt++) {
-      const [error, acquiredLock] = await tryCatch(this.redlock.acquire(sortedResources, duration));
+      const [error, acquiredLock] = await tryCatch(
+        startSpan(this.tracer, "RunLocker.acquireLock", async (span) => {
+          span.setAttributes({
+            resources: joinedResources,
+            attempt,
+            totalWaitTime,
+          });
+          return await this.redlock.acquire(sortedResources, duration);
+        })
+      );
 
       if (!error && acquiredLock) {
         lock = acquiredLock;
@@ -390,7 +410,15 @@ export class RunLocker {
       this.#cleanupExtension(manualContext);
 
       // Release the lock using tryCatch
-      const [releaseError] = await tryCatch(lock.release());
+      const [releaseError] = await tryCatch(
+        startSpan(this.tracer, "RunLocker.releaseLock", async (span) => {
+          span.setAttributes({
+            resources: joinedResources,
+            lockValue: lock.value,
+          });
+          return await lock.release();
+        })
+      );
       if (releaseError) {
         this.logger.warn("[RunLocker] Error releasing lock", {
           error: releaseError,

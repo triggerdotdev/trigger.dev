@@ -16,6 +16,8 @@
 **/dist
 **/node_modules
 
+**/generated/prisma
+
 apps/webapp/build
 apps/webapp/public/build
 

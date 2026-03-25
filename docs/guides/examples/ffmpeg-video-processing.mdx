@@ -17,7 +17,7 @@ To use these example tasks, you'll first need to add our FFmpeg extension to you
 
 ```ts trigger.config.ts
 import { ffmpeg } from "@trigger.dev/build/extensions/core";
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -52,7 +52,7 @@ This task demonstrates how to use FFmpeg to compress a video, reducing its file 
 
 ```ts trigger/ffmpeg-compress-video.ts
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs/promises";
 import fetch from "node-fetch";
@@ -164,7 +164,7 @@ This task demonstrates how to use FFmpeg to extract audio from a video, convert 
 
 ```ts trigger/ffmpeg-extract-audio.ts
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs/promises";
 import fetch from "node-fetch";
@@ -277,7 +277,7 @@ This task demonstrates how to use FFmpeg to generate a thumbnail from a video at
 
 ```ts trigger/ffmpeg-generate-thumbnail.ts
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs/promises";
 import fetch from "node-fetch";

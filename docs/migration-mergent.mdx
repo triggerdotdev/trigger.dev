@@ -48,7 +48,7 @@ This is typically called by Mergent via HTTP POST, and you’d register the endp
 #### The same task in Trigger.dev
 
 ```ts trigger/processVideo.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 export const processVideoTask = task({
   id: "process-video",
@@ -83,7 +83,7 @@ export async function dailyReportTask(req) {
 **Trigger.dev scheduled task:**
 
 ```ts trigger/dailyReport.ts
-import { schedules } from "@trigger.dev/sdk/v3";
+import { schedules } from "@trigger.dev/sdk";
 
 export const dailyReportTask = schedules.task({
   id: "daily-report",

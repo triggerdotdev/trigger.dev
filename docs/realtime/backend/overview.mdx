@@ -1,0 +1,45 @@
+---
+title: "Subscribe to tasks from your backend"
+sidebarTitle: Overview
+description: "Subscribe to run progress, stream AI output, and react to task status changes from your backend code or other tasks."
+---
+
+import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
+
+**Subscribe to runs from your server-side code or other tasks using async iterators.** Get status updates, metadata changes, and streamed data without polling.
+
+## What's available
+
+| Category | What it does | Guide |
+|---|---|---|
+| **Run updates** | Subscribe to run status, metadata, and tag changes | [Run updates](/realtime/backend/subscribe) |
+| **Streaming** | Read AI output, file chunks, or any continuous data from tasks | [Streaming](/realtime/backend/streams) |
+
+<Note>
+  To learn how to emit streams from your tasks, see [Streaming data from tasks](/tasks/streams).
+</Note>
+
+## Authentication
+
+All backend functions support both server-side and client-side authentication:
+
+- **Server-side**: Use your API key (automatically handled in tasks)
+- **Client-side**: Generate a Public Access Token with appropriate scopes
+
+See our [authentication guide](/realtime/auth) for detailed information on creating and using tokens.
+
+## Quick example
+
+Subscribe to a run:
+
+```ts
+import { runs, tasks } from "@trigger.dev/sdk";
+
+// Trigger a task
+const handle = await tasks.trigger("my-task", { some: "data" });
+
+// Subscribe to real-time updates
+for await (const run of runs.subscribeToRun(handle.id)) {
+  console.log(`Run ${run.id} status: ${run.status}`);
+}
+```

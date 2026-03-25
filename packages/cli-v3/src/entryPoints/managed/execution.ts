@@ -76,6 +76,9 @@ export class RunExecution {
   private isShuttingDown = false;
   private shutdownReason?: string;
 
+  private isCompletingRun = false;
+  private ignoreSnapshotChanges = false;
+
   private supervisorSocket: SupervisorSocket;
   private notifier?: RunNotifier;
   private metadataClient?: MetadataClient;
@@ -235,6 +238,16 @@ export class RunExecution {
       completedWaitpoints: completedWaitpoints.length,
     };
 
+    if (this.ignoreSnapshotChanges) {
+      this.sendDebugLog("processSnapshotChange: ignoring snapshot change", {
+        incomingSnapshotId: snapshot.friendlyId,
+        completedWaitpoints: completedWaitpoints.length,
+        currentAttemptNumber: this.currentAttemptNumber,
+        newAttemptNumber: run.attemptNumber,
+      });
+      return;
+    }
+
     if (!this.snapshotManager) {
       this.sendDebugLog("handleSnapshotChange: missing snapshot manager", snapshotMetadata);
       return;
@@ -292,7 +305,13 @@ export class RunExecution {
       case "FINISHED": {
         this.sendDebugLog("run is finished", snapshotMetadata);
 
-        // This can sometimes be called before the handleCompletionResult, so we don't need to do anything here
+        // We are finishing the run in handleCompletionResult, so we don't need to do anything here
+        if (this.isCompletingRun) {
+          this.sendDebugLog("run is finished but we're completing it, skipping", snapshotMetadata);
+          return;
+        }
+
+        await this.exitTaskRunProcessWithoutFailingRun({ flush: true, reason: "already-finished" });
         return;
       }
       case "QUEUED_EXECUTING":
@@ -353,9 +372,10 @@ export class RunExecution {
 
         return;
       }
-      case "RUN_CREATED": {
+      case "RUN_CREATED":
+      case "DELAYED": {
         this.sendDebugLog(
-          "aborting execution: invalid status change: RUN_CREATED",
+          "aborting execution: invalid status change: RUN_CREATED or DELAYED",
           snapshotMetadata
         );
 
@@ -376,6 +396,9 @@ export class RunExecution {
     if (!this.runFriendlyId || !this.snapshotManager) {
       throw new Error("Cannot start attempt: missing run or snapshot manager");
     }
+
+    // Reset this for the new attempt
+    this.isCompletingRun = false;
 
     this.sendDebugLog("starting attempt", { isWarmStart: String(isWarmStart) });
 
@@ -655,6 +678,8 @@ export class RunExecution {
       throw new Error("cannot complete run: missing run or snapshot manager");
     }
 
+    this.isCompletingRun = true;
+
     const completionResult = await this.httpClient.completeRunAttempt(
       this.runFriendlyId,
       this.snapshotManager.snapshotId,
@@ -795,7 +820,9 @@ export class RunExecution {
     }
 
     // Start and execute next attempt
-    const [startError, start] = await tryCatch(this.startAttempt({ isWarmStart: true }));
+    const [startError, start] = await tryCatch(
+      this.enableIgnoreSnapshotChanges(() => this.startAttempt({ isWarmStart: true }))
+    );
 
     if (startError) {
       this.sendDebugLog("failed to start attempt for retry", { error: startError.message });
@@ -813,6 +840,15 @@ export class RunExecution {
 
       this.shutdownExecution("retryImmediately: failed to execute run");
       return;
+    }
+  }
+
+  private async enableIgnoreSnapshotChanges<T>(fn: () => Promise<T>): Promise<T> {
+    this.ignoreSnapshotChanges = true;
+    try {
+      return await fn();
+    } finally {
+      this.ignoreSnapshotChanges = false;
     }
   }
 
@@ -838,7 +874,23 @@ export class RunExecution {
     );
 
     if (!continuationResult.success) {
-      throw new Error(continuationResult.error);
+      // Check if we need to refresh metadata due to connection error
+      if (continuationResult.isConnectionError) {
+        this.sendDebugLog("restore: connection error detected, refreshing metadata");
+        await this.processEnvOverrides("restore connection error");
+
+        // Retry the continuation after refreshing metadata
+        const retryResult = await this.httpClient.continueRunExecution(
+          this.runFriendlyId,
+          this.snapshotManager.snapshotId
+        );
+
+        if (!retryResult.success) {
+          throw new Error(retryResult.error);
+        }
+      } else {
+        throw new Error(continuationResult.error);
+      }
     }
 
     // Track restore count
@@ -861,10 +913,20 @@ export class RunExecution {
   /**
    * Processes env overrides from the metadata service. Generally called when we're resuming from a suspended state.
    */
-  public async processEnvOverrides(reason?: string): Promise<{ overrides: Metadata } | null> {
+  public async processEnvOverrides(
+    reason?: string,
+    shouldPollForSnapshotChanges?: boolean
+  ): Promise<{
+    overrides: Metadata;
+    runnerIdChanged?: boolean;
+    supervisorChanged?: boolean;
+  } | null> {
     if (!this.metadataClient) {
       return null;
     }
+
+    const previousRunnerId = this.env.TRIGGER_RUNNER_ID;
+    const previousSupervisorUrl = this.env.TRIGGER_SUPERVISOR_API_URL;
 
     const [error, overrides] = await this.metadataClient.getEnvOverrides();
 
@@ -893,6 +955,14 @@ export class RunExecution {
     // Override the env with the new values
     this.env.override(overrides);
 
+    // Check if runner ID changed
+    const newRunnerId = this.env.TRIGGER_RUNNER_ID;
+    const runnerIdChanged = previousRunnerId !== newRunnerId;
+
+    // Check if supervisor URL changed
+    const newSupervisorUrl = this.env.TRIGGER_SUPERVISOR_API_URL;
+    const supervisorChanged = previousSupervisorUrl !== newSupervisorUrl;
+
     // Update services with new values
     if (overrides.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS) {
       this.snapshotPoller?.updateInterval(this.env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS * 1000);
@@ -908,8 +978,16 @@ export class RunExecution {
       this.httpClient.updateRunnerId(this.env.TRIGGER_RUNNER_ID);
     }
 
+    // Poll for snapshot changes immediately
+    if (shouldPollForSnapshotChanges) {
+      this.sendDebugLog("[override] polling for snapshot changes", { reason });
+      this.fetchAndProcessSnapshotChanges("restore").catch(() => {});
+    }
+
     return {
       overrides,
+      runnerIdChanged,
+      supervisorChanged,
     };
   }
 
@@ -933,6 +1011,12 @@ export class RunExecution {
 
     if (!response.success) {
       this.sendDebugLog("heartbeat: failed", { error: response.error });
+
+      // Check if we need to refresh metadata due to connection error
+      if (response.isConnectionError) {
+        this.sendDebugLog("heartbeat: connection error detected, refreshing metadata");
+        await this.processEnvOverrides("heartbeat connection error");
+      }
     }
 
     this.lastHeartbeat = new Date();
@@ -1148,6 +1232,14 @@ export class RunExecution {
         error: response.error,
       });
 
+      if (response.isConnectionError) {
+        // Log this separately to make it more visible
+        this.sendDebugLog(
+          "fetchAndProcessSnapshotChanges: connection error detected, refreshing metadata"
+        );
+      }
+
+      // Always trigger metadata refresh on snapshot fetch errors
       await this.processEnvOverrides("snapshots since error");
       return;
     }

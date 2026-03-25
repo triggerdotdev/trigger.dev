@@ -9,7 +9,6 @@ export type TraceEvent = Pick<
   | "spanId"
   | "parentId"
   | "runId"
-  | "idempotencyKey"
   | "message"
   | "style"
   | "startTime"
@@ -19,8 +18,28 @@ export type TraceEvent = Pick<
   | "isCancelled"
   | "level"
   | "events"
-  | "environmentType"
   | "kind"
+  | "attemptNumber"
+>;
+
+export type DetailedTraceEvent = Pick<
+  TaskEvent,
+  | "spanId"
+  | "parentId"
+  | "runId"
+  | "message"
+  | "style"
+  | "startTime"
+  | "duration"
+  | "isError"
+  | "isPartial"
+  | "isCancelled"
+  | "level"
+  | "events"
+  | "kind"
+  | "taskSlug"
+  | "properties"
+  | "attemptNumber"
 >;
 
 export type TaskEventStoreTable = "taskEvent" | "taskEventPartitioned";
@@ -151,7 +170,6 @@ export class TaskEventStore {
           "spanId",
           "parentId",
           "runId",
-          "idempotencyKey",
           LEFT(message, 256) as message,
           style,
           "startTime",
@@ -161,8 +179,8 @@ export class TaskEventStore {
           "isCancelled",
           level,
           events,
-          "environmentType",
-          "kind"
+          "kind",
+          "attemptNumber"
         FROM "TaskEventPartitioned"
         WHERE
           "traceId" = ${traceId}
@@ -183,7 +201,6 @@ export class TaskEventStore {
           "spanId",
           "parentId",
           "runId",
-          "idempotencyKey",
           LEFT(message, 256) as message,
           style,
           "startTime",
@@ -193,8 +210,8 @@ export class TaskEventStore {
           "isCancelled",
           level,
           events,
-          "environmentType",
-          "kind"
+          "kind",
+          "attemptNumber"
         FROM "TaskEvent"
         WHERE "traceId" = ${traceId}
           ${
@@ -204,6 +221,85 @@ export class TaskEventStore {
           }
         ORDER BY "startTime" ASC
         LIMIT ${env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT}
+      `;
+    }
+  }
+
+  async findDetailedTraceEvents(
+    table: TaskEventStoreTable,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
+  ) {
+    const filterDebug =
+      options?.includeDebugLogs === false || options?.includeDebugLogs === undefined;
+
+    if (table === "taskEventPartitioned") {
+      const createdAtBufferInMillis = env.TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS * 1000;
+      const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - createdAtBufferInMillis);
+      const $endCreatedAt = endCreatedAt ?? new Date();
+      const endCreatedAtWithBuffer = new Date($endCreatedAt.getTime() + createdAtBufferInMillis);
+
+      return await this.readReplica.$queryRaw<DetailedTraceEvent[]>`
+        SELECT
+          "spanId",
+          "parentId",
+          "runId",
+          message,
+          style,
+          "startTime",
+          duration,
+          "isError",
+          "isPartial",
+          "isCancelled",
+          level,
+          events,
+          "kind",
+          "taskSlug",
+          properties,
+          "attemptNumber"
+        FROM "TaskEventPartitioned"
+        WHERE
+          "traceId" = ${traceId}
+          AND "createdAt" >= ${startCreatedAtWithBuffer.toISOString()}::timestamp
+          AND "createdAt" < ${endCreatedAtWithBuffer.toISOString()}::timestamp
+          ${
+            filterDebug
+              ? Prisma.sql`AND \"kind\" <> CAST('LOG'::text AS "public"."TaskEventKind")`
+              : Prisma.empty
+          }
+        ORDER BY "startTime" ASC
+        LIMIT ${env.MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT}
+      `;
+    } else {
+      return await this.readReplica.$queryRaw<DetailedTraceEvent[]>`
+        SELECT
+          "spanId",
+          "parentId",
+          "runId",
+          message,
+          style,
+          "startTime",
+          duration,
+          "isError",
+          "isPartial",
+          "isCancelled",
+          level,
+          events,
+          "kind",
+          "taskSlug",
+          properties,
+          "attemptNumber"
+        FROM "TaskEvent"
+        WHERE "traceId" = ${traceId}
+          ${
+            filterDebug
+              ? Prisma.sql`AND \"kind\" <> CAST('LOG'::text AS "public"."TaskEventKind")`
+              : Prisma.empty
+          }
+        ORDER BY "startTime" ASC
+        LIMIT ${env.MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT}
       `;
     }
   }

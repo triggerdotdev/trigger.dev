@@ -6,9 +6,25 @@ export const EnvironmentVariableKey = z
   .nonempty("Key is required")
   .regex(/^\w+$/, "Keys can only use alphanumeric characters and underscores");
 
+export const EnvironmentVariableUpdaterSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("user"),
+    userId: z.string(),
+  }),
+  z.object({
+    type: z.literal("integration"),
+    integration: z.string(),
+  }),
+]);
+export type EnvironmentVariableUpdater = z.infer<typeof EnvironmentVariableUpdaterSchema>;
+
 export const CreateEnvironmentVariables = z.object({
+  override: z.boolean(),
   environmentIds: z.array(z.string()),
+  isSecret: z.boolean().optional(),
+  parentEnvironmentId: z.string().optional(),
   variables: z.array(z.object({ key: EnvironmentVariableKey, value: z.string() })),
+  lastUpdatedBy: EnvironmentVariableUpdaterSchema.optional(),
 });
 
 export type CreateEnvironmentVariables = z.infer<typeof CreateEnvironmentVariables>;
@@ -32,6 +48,7 @@ export const EditEnvironmentVariable = z.object({
     })
   ),
   keepEmptyValues: z.boolean().optional(),
+  lastUpdatedBy: EnvironmentVariableUpdaterSchema.optional(),
 });
 export type EditEnvironmentVariable = z.infer<typeof EditEnvironmentVariable>;
 
@@ -51,6 +68,7 @@ export const EditEnvironmentVariableValue = z.object({
   id: z.string(),
   environmentId: z.string(),
   value: z.string(),
+  lastUpdatedBy: EnvironmentVariableUpdaterSchema.optional(),
 });
 export type EditEnvironmentVariableValue = z.infer<typeof EditEnvironmentVariableValue>;
 

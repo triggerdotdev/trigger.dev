@@ -5,12 +5,13 @@ import {
   ApiRequestOptions,
   mergeRequestOptions,
   RetrieveBatchResponse,
+  RetrieveBatchV2Response,
 } from "@trigger.dev/core/v3";
 import {
+  batchTriggerAndWaitTasks,
   batchTriggerById,
   batchTriggerByIdAndWait,
   batchTriggerTasks,
-  batchTriggerAndWaitTasks,
 } from "./shared.js";
 import { tracer } from "./tracer.js";
 
@@ -42,7 +43,7 @@ export const batch = {
 function retrieveBatch(
   batchId: string,
   requestOptions?: ApiRequestOptions
-): ApiPromise<RetrieveBatchResponse> {
+): ApiPromise<RetrieveBatchV2Response> {
   const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(

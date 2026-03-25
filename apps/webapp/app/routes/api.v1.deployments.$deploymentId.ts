@@ -1,4 +1,5 @@
-import { LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { type GetDeploymentResponseBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
@@ -38,6 +39,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           tasks: true,
         },
       },
+      integrationDeployments: true,
     },
   });
 
@@ -52,7 +54,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     shortCode: deployment.shortCode,
     version: deployment.version,
     imageReference: deployment.imageReference,
-    errorData: deployment.errorData,
+    imagePlatform: deployment.imagePlatform,
+    commitSHA: deployment.commitSHA,
+    externalBuildData:
+      deployment.externalBuildData as GetDeploymentResponseBody["externalBuildData"],
+    errorData: deployment.errorData as GetDeploymentResponseBody["errorData"],
     worker: deployment.worker
       ? {
           id: deployment.worker.friendlyId,
@@ -65,5 +71,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           })),
         }
       : undefined,
-  });
+    integrationDeployments:
+      deployment.integrationDeployments.length > 0
+        ? deployment.integrationDeployments.map((id) => ({
+            id: id.id,
+            integrationName: id.integrationName,
+            integrationDeploymentId: id.integrationDeploymentId,
+            commitSHA: id.commitSHA,
+            createdAt: id.createdAt,
+          }))
+        : undefined,
+  } satisfies GetDeploymentResponseBody);
 }

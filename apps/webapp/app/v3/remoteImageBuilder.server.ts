@@ -1,20 +1,36 @@
 import { depot } from "@depot/sdk-node";
-import { Project } from "@trigger.dev/database";
+import { type ExternalBuildData } from "@trigger.dev/core/v3";
+import { type Project } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import pRetry from "p-retry";
+import { logger } from "~/services/logger.server";
 
-export async function createRemoteImageBuild(project: Project) {
+export async function createRemoteImageBuild(
+  project: Project
+): Promise<ExternalBuildData | undefined> {
   if (!remoteBuildsEnabled()) {
     return;
   }
 
   const builderProjectId = await createBuilderProjectIfNotExists(project);
 
-  const result = await depot.build.v1.BuildService.createBuild(
-    { projectId: builderProjectId },
+  const result = await pRetry(
+    () =>
+      depot.build.v1.BuildService.createBuild(
+        { projectId: builderProjectId },
+        {
+          headers: {
+            Authorization: `Bearer ${env.DEPOT_TOKEN}`,
+          },
+        }
+      ),
     {
-      headers: {
-        Authorization: `Bearer ${env.DEPOT_TOKEN}`,
+      retries: 3,
+      minTimeout: 200,
+      maxTimeout: 2000,
+      onFailedAttempt: (error) => {
+        logger.error("Failed attempt to create remote Depot build", { error });
       },
     }
   );

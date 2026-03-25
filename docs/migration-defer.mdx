@@ -204,7 +204,7 @@ In Trigger.dev it looks like this:
 
 ```ts /trigger/someTasks.ts
 import { performLongRunningTask } from "@/utils/performLongRunningTask";
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 //named export
 export const longRunningTask = task({
@@ -259,7 +259,7 @@ export default defer.cron(sendMondayNewletter, "0 0 * * 1");
 In Trigger.dev the task looks like this:
 
 ```ts
-import { schedules } from "@trigger.dev/sdk/v3";
+import { schedules } from "@trigger.dev/sdk";
 
 //this task will run when any of the attached schedules trigger
 export const sendMondayNewletter = schedules.task({

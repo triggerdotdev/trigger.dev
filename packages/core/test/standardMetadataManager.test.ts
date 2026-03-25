@@ -32,7 +32,7 @@ describe("StandardMetadataManager", () => {
 
     const apiClient = new ApiClient(server.http.url().origin, "tr-123");
 
-    manager = new StandardMetadataManager(apiClient, server.http.url().origin);
+    manager = new StandardMetadataManager(apiClient);
     manager.runId = runId;
   });
 

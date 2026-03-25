@@ -1,6 +1,7 @@
 import { batch, logger, task, tasks, timeout, wait } from "@trigger.dev/sdk";
 import { setTimeout } from "timers/promises";
 import { ResourceMonitor } from "../resourceMonitor.js";
+import { fixedLengthTask } from "./batches.js";
 
 export const helloWorldTask = task({
   id: "hello-world",
@@ -14,12 +15,12 @@ export const helloWorldTask = task({
     logger.info("Hello, world from the onStart hook", { payload, init });
   },
   run: async (payload: any, { ctx }) => {
-    logger.info("Hello, world from the init", { ctx, payload });
+    logger.info("Hello, world froms the init", { ctx, payload });
     logger.info("env vars", {
       env: process.env,
     });
 
-    logger.debug("debug: Hello, world!", { payload });
+    logger.debug("debug: Hello, worlds!", { payload });
     logger.info("info: Hello, world!", { payload });
     logger.log("log: Hello, world!", { payload });
     logger.warn("warn: Hello, world!", { payload });
@@ -29,7 +30,7 @@ export const helloWorldTask = task({
       logger.debug("some log", { span });
     });
 
-    await setTimeout(payload.sleepFor ?? 180_000);
+    await setTimeout(payload.sleepFor ?? 5_000);
 
     if (payload.throwError) {
       throw new Error("Forced error to cause a retry");
@@ -57,8 +58,8 @@ export const parentTask = task({
   id: "parent",
   machine: "medium-1x",
   run: async (payload: any, { ctx }) => {
-    logger.log("Hello, world from the parent", { payload });
-    await childTask.triggerAndWait({ message: "Hello, world!" });
+    logger.log("Hello, world from the parent", { payload, ctx });
+    await childTask.triggerAndWait({ message: "Hello, world!", aReallyBigInt: BigInt(10000) });
   },
 });
 
@@ -103,10 +104,11 @@ export const childTask = task({
       message,
       failureChance = 0.3,
       duration = 3_000,
-    }: { message?: string; failureChance?: number; duration?: number },
+      aReallyBigInt,
+    }: { message?: string; failureChance?: number; duration?: number; aReallyBigInt?: bigint },
     { ctx }
   ) => {
-    logger.info("Hello, world from the child", { message, failureChance });
+    logger.info("Hello, world from the child", { ctx, failureChance, aReallyBigInt });
 
     if (Math.random() < failureChance) {
       throw new Error("Random error at start");
@@ -371,4 +373,159 @@ export const largeAttributesTask = task({
       promisePending: Promise.resolve("Hello, world!"),
     });
   },
+});
+
+export const lotsOfLogsParentTask = task({
+  id: "lots-of-logs-parent",
+  run: async (payload: { count: number }, { ctx }) => {
+    logger.info("Hello, world from the lots of logs parent task", { count: payload.count });
+    await lotsOfLogsTask.batchTriggerAndWait(
+      Array.from({ length: 20 }, (_, i) => ({
+        payload: { count: payload.count },
+      }))
+    );
+  },
+});
+
+export const lotsOfLogsTask = task({
+  id: "lots-of-logs",
+  run: async (payload: { count: number }, { ctx }) => {
+    logger.info("Hello, world from the lots of logs task", { count: payload.count });
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+  },
+});
+
+export const throwErrorInOnSuccessHookTask = task({
+  id: "throw-error-in-on-success-hook",
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the throw error in on success hook task", {
+      message: payload.message,
+    });
+  },
+  onSuccess: async ({ payload, output, ctx }) => {
+    logger.info("Hello, world from the on success hook", { payload, output });
+    throw new Error("Forced error to cause a retry");
+  },
+});
+
+export const throwErrorInOnStartHookTask = task({
+  id: "throw-error-in-on-start-hook",
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the throw error in on start hook task", {
+      message: payload.message,
+    });
+  },
+  onStart: async ({ payload, ctx }) => {
+    logger.info("Hello, world from the on start hook", { payload });
+    throw new Error("Forced error to cause a retry");
+  },
+});
+
+export const throwErrorInOnCompleteHookTask = task({
+  id: "throw-error-in-on-complete-hook",
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the throw error in on complete hook task", {
+      message: payload.message,
+    });
+  },
+  onComplete: async ({ payload, result, ctx }) => {
+    logger.info("Hello, world from the on complete hook", { payload, result });
+    throw new Error("Forced error to cause a retry");
+  },
+});
+
+export const throwErrorInOnFailureHookTask = task({
+  id: "throw-error-in-on-failure-hook",
+  retry: {
+    maxAttempts: 1,
+  },
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the throw error in on failure hook task", {
+      message: payload.message,
+    });
+    throw new Error("Forced error to cause a retry");
+  },
+  onFailure: async ({ payload, error, ctx }) => {
+    logger.info("Hello, world from the on failure hook", { payload, error });
+    throw new Error("Forced error to cause a retry in on failure hook");
+  },
+});
+
+export const throwErrorInInitHookTask = task({
+  id: "throw-error-in-init-hook",
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the throw error in init hook task", {
+      message: payload.message,
+    });
+  },
+  init: async ({ payload, ctx }) => {
+    logger.info("Hello, world from the init hook", { payload });
+    throw new Error("Forced error to cause a retry");
+  },
+});
+
+export const testStartAttemptHookTask = task({
+  id: "test-start-attempt-hook",
+  retry: {
+    maxAttempts: 3,
+  },
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the test start attempt hook task", { message: payload.message });
+
+    if (ctx.attempt.number === 1) {
+      throw new Error("Forced error to cause a retry so we can test the onStartAttempt hook");
+    }
+  },
+  onStartAttempt: async ({ payload, ctx }) => {
+    console.log(`onStartAttempt hook called ${ctx.attempt.number}`);
+  },
+});
+
+tasks.onStartAttempt(({ payload, ctx }) => {
+  console.log(`global onStartAttempt hook called ${ctx.attempt.number}`);
 });

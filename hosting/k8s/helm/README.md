@@ -52,7 +52,7 @@ Dashboard: http://localhost:3040/
 
 ```bash
 # The --push arg is required when testing locally
-npx trigger.dev@v4-beta deploy --push
+npx trigger.dev@latest deploy --push
 ```
 
 ## ⚠️ Security Requirements
@@ -537,7 +537,7 @@ kubectl port-forward svc/trigger.dev-webapp 3040:3030 --address 0.0.0.0
 2. **Database connection**: Check PostgreSQL is ready before webapp starts
 3. **Resource limits**: Increase limits for ClickHouse in constrained environments
 4. **Config not applying**: Use the pod restart technique above to force config reload
-5. **Image pull errors**: When testing locally, deploy with `npx trigger.dev@v4-beta deploy --push`
+5. **Image pull errors**: When testing locally, deploy with `npx trigger.dev@latest deploy --push`
 
 ## Examples
 
@@ -656,14 +656,16 @@ helm upgrade --install trigger . \
           cpu: 250m
           memory: 512Mi
   
+  # ClickHouse can be very resource intensive, so we recommend setting limits and requests accordingly
+  # Note: not doing this can cause OOM crashes which will cause issues across many different features
   clickhouse:
     resources:
       limits:
-        cpu: 1000m
-        memory: 2Gi
+        cpu: 4000m
+        memory: 16Gi
       requests:
-        cpu: 500m
-        memory: 1Gi
+        cpu: 2000m
+        memory: 8Gi
   
   supervisor:
     resources:

@@ -8,8 +8,6 @@ type VariableRule =
 const blacklistedVariables: VariableRule[] = [
   { type: "exact", key: "TRIGGER_SECRET_KEY" },
   { type: "exact", key: "TRIGGER_API_URL" },
-  { type: "prefix", prefix: "OTEL_" },
-  { type: "whitelist", key: "OTEL_LOG_LEVEL" },
 ];
 
 export function removeBlacklistedVariables(

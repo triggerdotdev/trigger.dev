@@ -2,9 +2,9 @@ import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { authenticateRequest } from "~/services/apiAuth.server";
 import { ArchiveBranchService } from "~/services/archiveBranch.server";
 import { logger } from "~/services/logger.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -21,7 +21,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   logger.info("Archive branch", { url: request.url, params });
 
-  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
+  const authenticationResult = await authenticateRequest(request, {
+    personalAccessToken: true,
+    organizationAccessToken: true,
+    apiKey: false,
+  });
+
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
   }
@@ -50,13 +55,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
       archivedAt: true,
     },
     where: {
-      organization: {
-        members: {
-          some: {
-            userId: authenticationResult.userId,
-          },
-        },
-      },
+      organization:
+        authenticationResult.type === "organizationAccessToken"
+          ? { id: authenticationResult.result.organizationId }
+          : {
+              members: {
+                some: {
+                  userId: authenticationResult.result.userId,
+                },
+              },
+            },
       project: {
         externalRef: projectRef,
       },
@@ -74,9 +82,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   const service = new ArchiveBranchService();
-  const result = await service.call(authenticationResult.userId, {
-    environmentId: environment.id,
-  });
+  const result = await service.call(
+    authenticationResult.type === "organizationAccessToken"
+      ? { type: "orgId", organizationId: authenticationResult.result.organizationId }
+      : { type: "userMembership", userId: authenticationResult.result.userId },
+    {
+      environmentId: environment.id,
+    }
+  );
 
   if (result.success) {
     return json(result);

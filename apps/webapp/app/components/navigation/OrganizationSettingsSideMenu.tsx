@@ -1,17 +1,23 @@
 import {
+  BellAlertIcon,
   ChartBarIcon,
   Cog8ToothIcon,
   CreditCardIcon,
   UserGroupIcon,
 } from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import { SlackIcon } from "@trigger.dev/companyicons";
+import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
 import {
   organizationSettingsPath,
+  organizationSlackIntegrationPath,
   organizationTeamPath,
+  organizationVercelIntegrationPath,
   rootPath,
+  v3BillingAlertsPath,
   v3BillingPath,
   v3UsagePath,
 } from "~/utils/pathBuilder";
@@ -23,6 +29,7 @@ import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { Paragraph } from "../primitives/Paragraph";
 import { Badge } from "../primitives/Badge";
 import { useHasAdminAccess } from "~/hooks/useUser";
+import { AskAI } from "../AskAI";
 
 export type BuildInfo = {
   appVersion: string | undefined;
@@ -67,27 +74,34 @@ export function OrganizationSettingsSideMenu({
             <SideMenuHeader title="Organization" />
           </div>
           {isManagedCloud && (
-            <SideMenuItem
-              name="Usage"
-              icon={ChartBarIcon}
-              activeIconColor="text-indigo-500"
-              to={v3UsagePath(organization)}
-              data-action="usage"
-            />
-          )}
-          {isManagedCloud && (
-            <SideMenuItem
-              name="Billing"
-              icon={CreditCardIcon}
-              activeIconColor="text-emerald-500"
-              to={v3BillingPath(organization)}
-              data-action="billing"
-              badge={
-                currentPlan?.v3Subscription?.isPaying ? (
-                  <Badge variant="extra-small">{currentPlan?.v3Subscription?.plan?.title}</Badge>
-                ) : undefined
-              }
-            />
+            <>
+              <SideMenuItem
+                name="Usage"
+                icon={ChartBarIcon}
+                activeIconColor="text-indigo-500"
+                to={v3UsagePath(organization)}
+                data-action="usage"
+              />
+              <SideMenuItem
+                name="Billing"
+                icon={CreditCardIcon}
+                activeIconColor="text-emerald-500"
+                to={v3BillingPath(organization)}
+                data-action="billing"
+                badge={
+                  currentPlan?.v3Subscription?.isPaying ? (
+                    <Badge variant="extra-small">{currentPlan?.v3Subscription?.plan?.title}</Badge>
+                  ) : undefined
+                }
+              />
+              <SideMenuItem
+                name="Billing alerts"
+                icon={BellAlertIcon}
+                activeIconColor="text-rose-500"
+                to={v3BillingAlertsPath(organization)}
+                data-action="billing-alerts"
+              />
+            </>
           )}
           <SideMenuItem
             name="Team"
@@ -102,6 +116,25 @@ export function OrganizationSettingsSideMenu({
             activeIconColor="text-orgSettings"
             to={organizationSettingsPath(organization)}
             data-action="settings"
+          />
+        </div>
+        <div className="flex flex-col">
+          <div className="mb-1">
+            <SideMenuHeader title="Integrations" />
+          </div>
+          <SideMenuItem
+            name="Vercel"
+            icon={VercelLogo}
+            activeIconColor="text-white"
+            to={organizationVercelIntegrationPath(organization)}
+            data-action="integrations"
+          />
+          <SideMenuItem
+            name="Slack"
+            icon={SlackIcon}
+            activeIconColor="text-white"
+            to={organizationSlackIntegrationPath(organization)}
+            data-action="integrations"
           />
         </div>
         <div className="flex flex-col gap-1">
@@ -122,7 +155,14 @@ export function OrganizationSettingsSideMenu({
           <div className="flex flex-col gap-1">
             <SideMenuHeader title="Git ref" />
             <Paragraph variant="extra-small" className="px-2 text-text-dimmed">
-              {buildInfo.gitRefName}
+              <a
+                href={`https://github.com/triggerdotdev/trigger.dev/tree/${buildInfo.gitRefName}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition hover:text-text-bright"
+              >
+                {buildInfo.gitRefName}
+              </a>
             </Paragraph>
           </div>
         )}
@@ -130,13 +170,21 @@ export function OrganizationSettingsSideMenu({
           <div className="flex flex-col gap-1">
             <SideMenuHeader title="Git sha" />
             <Paragraph variant="extra-small" className="px-2 text-text-dimmed">
-              {buildInfo.gitSha.slice(0, 9)}
+              <a
+                href={`https://github.com/triggerdotdev/trigger.dev/commit/${buildInfo.gitSha}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition hover:text-text-bright"
+              >
+                {buildInfo.gitSha.slice(0, 9)}
+              </a>
             </Paragraph>
           </div>
         )}
       </div>
-      <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
+      <div className="flex w-full items-center justify-between border-t border-grid-bright p-1">
         <HelpAndFeedback />
+        <AskAI />
       </div>
     </div>
   );

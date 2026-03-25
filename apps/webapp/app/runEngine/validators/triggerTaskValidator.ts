@@ -3,15 +3,16 @@ import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { MAX_ATTEMPTS, OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
-import { EngineServiceValidationError } from "../concerns/errors";
-import {
+import type {
   EntitlementValidationParams,
+  EntitlementValidationResult,
   MaxAttemptsValidationParams,
   ParentRunValidationParams,
   TagValidationParams,
   TriggerTaskValidator,
   ValidationResult,
 } from "../types";
+import { ServiceValidationError } from "~/v3/services/common.server";
 
 export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
   validateTags(params: TagValidationParams): ValidationResult {
@@ -28,7 +29,7 @@ export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
     if (tags.length > MAX_TAGS_PER_RUN) {
       return {
         ok: false,
-        error: new EngineServiceValidationError(
+        error: new ServiceValidationError(
           `Runs can only have ${MAX_TAGS_PER_RUN} tags, you're trying to set ${tags.length}.`
         ),
       };
@@ -37,7 +38,9 @@ export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
     return { ok: true };
   }
 
-  async validateEntitlement(params: EntitlementValidationParams): Promise<ValidationResult> {
+  async validateEntitlement(
+    params: EntitlementValidationParams
+  ): Promise<EntitlementValidationResult> {
     const { environment } = params;
 
     if (environment.type === "DEVELOPMENT") {
@@ -53,7 +56,7 @@ export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
       };
     }
 
-    return { ok: true };
+    return { ok: true, plan: result?.plan };
   }
 
   validateMaxAttempts(params: MaxAttemptsValidationParams): ValidationResult {
@@ -62,7 +65,7 @@ export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
     if (attempt > MAX_ATTEMPTS) {
       return {
         ok: false,
-        error: new EngineServiceValidationError(
+        error: new ServiceValidationError(
           `Failed to trigger ${taskId} after ${MAX_ATTEMPTS} attempts.`
         ),
       };
@@ -92,7 +95,7 @@ export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
 
       return {
         ok: false,
-        error: new EngineServiceValidationError(
+        error: new ServiceValidationError(
           `Cannot trigger ${taskId} as the parent run has a status of ${parentRun.status}`
         ),
       };

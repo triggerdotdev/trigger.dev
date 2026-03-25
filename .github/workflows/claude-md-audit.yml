@@ -1,0 +1,69 @@
+name: 📝 CLAUDE.md Audit
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, synchronize]
+    paths-ignore:
+      - "docs/**"
+      - ".changeset/**"
+      - ".server-changes/**"
+      - "**/*.md"
+      - "references/**"
+
+concurrency:
+  group: claude-md-audit-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          use_sticky_comment: true
+
+          claude_args: |
+            --max-turns 15
+            --allowedTools "Read,Glob,Grep,Bash(git diff:*)"
+
+          prompt: |
+            You are reviewing a PR to check whether any CLAUDE.md files or .claude/rules/ files need updating.
+
+            ## Your task
+
+            1. Run `git diff origin/main...HEAD --name-only` to see which files changed in this PR.
+            2. For each changed directory, check if there's a CLAUDE.md in that directory or a parent directory.
+            3. Determine if any CLAUDE.md or .claude/rules/ file should be updated based on the changes. Consider:
+               - New files/directories that aren't covered by existing documentation
+               - Changed architecture or patterns that contradict current CLAUDE.md guidance
+               - New dependencies, services, or infrastructure that Claude should know about
+               - Renamed or moved files that are referenced in CLAUDE.md
+               - Changes to build commands, test patterns, or development workflows
+
+            ## Response format
+
+            If NO updates are needed, respond with exactly:
+            ✅ CLAUDE.md files look current for this PR.
+
+            If updates ARE needed, respond with a short list:
+            📝 **CLAUDE.md updates suggested:**
+            - `path/to/CLAUDE.md`: [what should be added/changed]
+            - `.claude/rules/file.md`: [what should be added/changed]
+
+            Keep suggestions specific and brief. Only flag things that would actually mislead Claude in future sessions.
+            Do NOT suggest updates for trivial changes (bug fixes, small refactors within existing patterns).
+            Do NOT suggest creating new CLAUDE.md files - only updates to existing ones.

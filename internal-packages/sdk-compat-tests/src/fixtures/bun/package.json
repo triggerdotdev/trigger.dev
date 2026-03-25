@@ -1,0 +1,5 @@
+{
+  "name": "bun-fixture",
+  "private": true,
+  "type": "module"
+}

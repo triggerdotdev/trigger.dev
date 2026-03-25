@@ -1,43 +1,35 @@
 import { dequal } from "dequal/lite";
 import { DeserializedJson } from "../../schemas/json.js";
 import { ApiClient } from "../apiClient/index.js";
-import { FlushedRunMetadata, RunMetadataChangeOperation } from "../schemas/common.js";
-import { ApiRequestOptions } from "../zodfetch.js";
-import { MetadataStream } from "./metadataStream.js";
-import { applyMetadataOperations, collapseOperations } from "./operations.js";
-import { RunMetadataManager, RunMetadataUpdater } from "./types.js";
+import { realtimeStreams } from "../realtime-streams-api.js";
+import { RunMetadataChangeOperation } from "../schemas/common.js";
 import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { IOPacket, stringifyIO } from "../utils/ioSerialization.js";
-
-const MAXIMUM_ACTIVE_STREAMS = 5;
-const MAXIMUM_TOTAL_STREAMS = 10;
+import { ApiRequestOptions } from "../zodfetch.js";
+import { applyMetadataOperations, collapseOperations } from "./operations.js";
+import type { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 
 export class StandardMetadataManager implements RunMetadataManager {
   private flushTimeoutId: NodeJS.Timeout | null = null;
   private isFlushing: boolean = false;
   private store: Record<string, DeserializedJson> | undefined;
-  // Add a Map to track active streams
-  private activeStreams = new Map<string, MetadataStream<any>>();
 
   private queuedOperations: Set<RunMetadataChangeOperation> = new Set();
   private queuedParentOperations: Set<RunMetadataChangeOperation> = new Set();
   private queuedRootOperations: Set<RunMetadataChangeOperation> = new Set();
 
   public runId: string | undefined;
+  public runIdIsRoot: boolean = false;
 
-  constructor(
-    private apiClient: ApiClient,
-    private streamsBaseUrl: string,
-    private streamsVersion: "v1" | "v2" = "v1"
-  ) {}
+  constructor(private apiClient: ApiClient) {}
 
   reset(): void {
     this.queuedOperations.clear();
     this.queuedParentOperations.clear();
     this.queuedRootOperations.clear();
-    this.activeStreams.clear();
     this.store = undefined;
     this.runId = undefined;
+    this.runIdIsRoot = false;
 
     if (this.flushTimeoutId) {
       clearTimeout(this.flushTimeoutId);
@@ -54,34 +46,76 @@ export class StandardMetadataManager implements RunMetadataManager {
     // Create the updater object and store it in a local variable
     const parentUpdater: RunMetadataUpdater = {
       set: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.set(key, value);
+        }
+
         self.queuedParentOperations.add({ type: "set", key, value });
         return parentUpdater;
       },
       del: (key) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.del(key);
+        }
+
         self.queuedParentOperations.add({ type: "delete", key });
         return parentUpdater;
       },
       append: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.append(key, value);
+        }
+
         self.queuedParentOperations.add({ type: "append", key, value });
         return parentUpdater;
       },
       remove: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.remove(key, value);
+        }
+
         self.queuedParentOperations.add({ type: "remove", key, value });
         return parentUpdater;
       },
       increment: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.increment(key, value);
+        }
+
         self.queuedParentOperations.add({ type: "increment", key, value });
         return parentUpdater;
       },
       decrement: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.decrement(key, value);
+        }
+
         self.queuedParentOperations.add({ type: "increment", key, value: -Math.abs(value) });
         return parentUpdater;
       },
       update: (value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.update(value);
+        }
+
         self.queuedParentOperations.add({ type: "update", value });
         return parentUpdater;
       },
-      stream: (key, value, signal) => self.doStream(key, value, "parent", parentUpdater, signal),
+      stream: (key, value, signal) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.doStream(key, value, "self", parentUpdater, signal);
+        }
+
+        return self.doStream(key, value, "parent", parentUpdater, signal);
+      },
     };
 
     return parentUpdater;
@@ -94,34 +128,76 @@ export class StandardMetadataManager implements RunMetadataManager {
     // Create the updater object and store it in a local variable
     const rootUpdater: RunMetadataUpdater = {
       set: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.set(key, value);
+        }
+
         self.queuedRootOperations.add({ type: "set", key, value });
         return rootUpdater;
       },
       del: (key) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.del(key);
+        }
+
         self.queuedRootOperations.add({ type: "delete", key });
         return rootUpdater;
       },
       append: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.append(key, value);
+        }
+
         self.queuedRootOperations.add({ type: "append", key, value });
         return rootUpdater;
       },
       remove: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.remove(key, value);
+        }
+
         self.queuedRootOperations.add({ type: "remove", key, value });
         return rootUpdater;
       },
       increment: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.increment(key, value);
+        }
+
         self.queuedRootOperations.add({ type: "increment", key, value });
         return rootUpdater;
       },
       decrement: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.decrement(key, value);
+        }
+
         self.queuedRootOperations.add({ type: "increment", key, value: -Math.abs(value) });
         return rootUpdater;
       },
       update: (value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.update(value);
+        }
+
         self.queuedRootOperations.add({ type: "update", value });
         return rootUpdater;
       },
-      stream: (key, value, signal) => self.doStream(key, value, "root", rootUpdater, signal),
+      stream: (key, value, signal) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.doStream(key, value, "self", rootUpdater, signal);
+        }
+
+        return self.doStream(key, value, "root", rootUpdater, signal);
+      },
     };
 
     return rootUpdater;
@@ -228,14 +304,14 @@ export class StandardMetadataManager implements RunMetadataManager {
 
   public async fetchStream<T>(key: string, signal?: AbortSignal): Promise<AsyncIterableStream<T>> {
     if (!this.runId) {
-      throw new Error("Run ID is required to fetch metadata streams.");
+      throw new Error("Run ID is not set. fetchStream() can only be used inside a task.");
     }
 
-    const baseUrl = this.getKey("$$streamsBaseUrl");
-
-    const $baseUrl = typeof baseUrl === "string" ? baseUrl : this.streamsBaseUrl;
-
-    return this.apiClient.fetchStream<T>(this.runId, key, { baseUrl: $baseUrl, signal });
+    return await this.apiClient.fetchStream(this.runId, key, {
+      signal,
+      timeoutInSeconds: 60,
+      lastEventId: undefined,
+    });
   }
 
   private async doStream<T>(
@@ -251,84 +327,12 @@ export class StandardMetadataManager implements RunMetadataManager {
       return $value;
     }
 
-    // Check to make sure we haven't exceeded the max number of active streams
-    if (this.activeStreams.size >= MAXIMUM_ACTIVE_STREAMS) {
-      console.warn(
-        `Exceeded the maximum number of active streams (${MAXIMUM_ACTIVE_STREAMS}). The "${key}" stream will be ignored.`
-      );
-      return $value;
-    }
+    const streamInstance = realtimeStreams.pipe(key, value, {
+      signal,
+      target,
+    });
 
-    // Check to make sure we haven't exceeded the max number of total streams
-    const streams = (this.store?.$$streams ?? []) as string[];
-
-    if (streams.length >= MAXIMUM_TOTAL_STREAMS) {
-      console.warn(
-        `Exceeded the maximum number of total streams (${MAXIMUM_TOTAL_STREAMS}). The "${key}" stream will be ignored.`
-      );
-      return $value;
-    }
-
-    try {
-      const streamInstance = new MetadataStream({
-        key,
-        runId: this.runId,
-        source: $value,
-        baseUrl: this.streamsBaseUrl,
-        headers: this.apiClient.getHeaders(),
-        signal,
-        version: this.streamsVersion,
-        target,
-      });
-
-      this.activeStreams.set(key, streamInstance);
-
-      // Clean up when stream completes
-      streamInstance.wait().finally(() => this.activeStreams.delete(key));
-
-      // Add the key to the special stream metadata object
-      updater
-        .append(`$$streams`, key)
-        .set("$$streamsVersion", this.streamsVersion)
-        .set("$$streamsBaseUrl", this.streamsBaseUrl);
-
-      await this.flush();
-
-      return streamInstance;
-    } catch (error) {
-      // Clean up metadata key if stream creation fails
-      updater.remove(`$$streams`, key);
-      throw error;
-    }
-  }
-
-  public hasActiveStreams(): boolean {
-    return this.activeStreams.size > 0;
-  }
-
-  // Waits for all the streams to finish
-  public async waitForAllStreams(timeout: number = 60_000): Promise<void> {
-    if (this.activeStreams.size === 0) {
-      return;
-    }
-
-    const promises = Array.from(this.activeStreams.values()).map((stream) => stream.wait());
-
-    try {
-      await Promise.race([
-        Promise.allSettled(promises),
-        new Promise<void>((resolve, _) => setTimeout(() => resolve(), timeout)),
-      ]);
-    } catch (error) {
-      console.error("Error waiting for streams to finish:", error);
-
-      // If we time out, abort all remaining streams
-      for (const [key, promise] of this.activeStreams.entries()) {
-        // We can add abort logic here if needed
-        this.activeStreams.delete(key);
-      }
-      throw error;
-    }
+    return streamInstance.stream;
   }
 
   public async refresh(requestOptions?: ApiRequestOptions): Promise<void> {

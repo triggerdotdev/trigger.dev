@@ -18,7 +18,7 @@ export function configureLogoutCommand(program: Command) {
   return commonOptions(program.command("logout").description("Logout of Trigger.dev")).action(
     async (options) => {
       await handleTelemetry(async () => {
-        await printInitialBanner(false);
+        await printInitialBanner(false, options.profile);
         await logoutCommand(options);
       });
     }

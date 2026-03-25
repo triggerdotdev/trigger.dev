@@ -1,5 +1,202 @@
 # @trigger.dev/react-hooks
 
+## 4.4.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.3`
+
+## 4.4.2
+
+### Patch Changes
+
+- Add input streams for bidirectional communication with running tasks. Define typed input streams with `streams.input<T>({ id })`, then consume inside tasks via `.wait()` (suspends the process), `.once()` (waits for next message), or `.on()` (subscribes to a continuous stream). Send data from backends with `.send(runId, data)` or from frontends with the new `useInputStreamSend` React hook. ([#3146](https://github.com/triggerdotdev/trigger.dev/pull/3146))
+
+  Upgrade S2 SDK from 0.17 to 0.22 with support for custom endpoints (s2-lite) via the new `endpoints` configuration, `AppendRecord.string()` API, and `maxInflightBytes` session option.
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.2`
+
+## 4.4.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.1`
+
+## 4.4.0
+
+### Patch Changes
+
+- Fix `onComplete` callback firing prematurely when the realtime stream disconnects before the run finishes. ([#2929](https://github.com/triggerdotdev/trigger.dev/pull/2929))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.0`
+
+## 4.3.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.3`
+
+## 4.3.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.2`
+
+## 4.3.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.1`
+
+## 4.3.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.0`
+
+## 4.2.0
+
+### Patch Changes
+
+- fix: prevent infinite useEffect when passing an array of tags to useRealtimeRunsWithTag ([#2705](https://github.com/triggerdotdev/trigger.dev/pull/2705))
+- Updated dependencies:
+  - `@trigger.dev/core@4.2.0`
+
+## 4.1.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.1.2`
+
+## 4.1.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.1.1`
+
+## 4.1.0
+
+### Minor Changes
+
+- Realtime streams v2 ([#2632](https://github.com/triggerdotdev/trigger.dev/pull/2632))
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.1.0`
+
+## 4.0.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.7`
+
+## 4.0.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.6`
+
+## 4.0.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.5`
+
+## 4.0.4
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.4`
+
+## 4.0.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.3`
+
+## 4.0.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.2`
+
+## 4.0.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.1`
+
+## 4.0.0
+
+### Major Changes
+
+- Trigger.dev v4 release. Please see our upgrade to v4 docs to view the full changelog: https://trigger.dev/docs/upgrade-to-v4 ([#1869](https://github.com/triggerdotdev/trigger.dev/pull/1869))
+
+### Patch Changes
+
+- Run Engine 2.0 (alpha) ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575))
+- Added the ability to specify a "createdAt" filter when subscribing to tags in our useRealtime hooks: ([#2158](https://github.com/triggerdotdev/trigger.dev/pull/2158))
+
+  ```tsx
+  // Only subscribe to runs created in the last 10 hours
+  useRealtimeRunWithTags("my-tag", { createdAt: "10h" });
+  ```
+
+  You can also now choose to skip subscribing to specific columns by specifying the `skipColumns` option:
+
+  ```tsx
+  useRealtimeRun(run.id, { skipColumns: ["usageDurationMs"] });
+  ```
+
+- Fixes an issue with realtime when re-subscribing to a run, that would temporarily display stale data and the changes. Now when re-subscribing to a run only the latest changes will be vended ([#2162](https://github.com/triggerdotdev/trigger.dev/pull/2162))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0`
+
+## 4.0.0-v4-beta.28
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.28`
+
+## 4.0.0-v4-beta.27
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.27`
+
+## 4.0.0-v4-beta.26
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.26`
+
+## 4.0.0-v4-beta.25
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.25`
+
 ## 4.0.0-v4-beta.24
 
 ### Patch Changes

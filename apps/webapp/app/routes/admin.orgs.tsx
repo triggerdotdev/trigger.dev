@@ -117,6 +117,11 @@ export default function AdminDashboardRoute() {
                         to={`/@/orgs/${org.slug}`}
                         className="mr-2"
                         variant="tertiary/small"
+                        shortcut={
+                          organizations.length === 1
+                            ? { modifiers: ["mod"], key: "enter", enabledOnInputElements: true }
+                            : undefined
+                        }
                       >
                         Impersonate
                       </LinkButton>

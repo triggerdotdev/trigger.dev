@@ -5,6 +5,7 @@ import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
+import { sanitizeTriggerSource } from "~/utils/triggerSource";
 
 const ParamsSchema = z.object({
   /* This is the run friendly ID */
@@ -41,8 +42,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Run not found" }, { status: 404 });
     }
 
+    const triggerSource =
+      sanitizeTriggerSource(request.headers.get("x-trigger-source")) ?? "api";
+
     const service = new ReplayTaskRunService();
-    const newRun = await service.call(taskRun);
+    const newRun = await service.call(taskRun, { triggerSource });
 
     if (!newRun) {
       return json({ error: "Failed to create new run" }, { status: 400 });

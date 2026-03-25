@@ -11,12 +11,14 @@ import { BaseService } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
 import { type RunOptionsData } from "../testTask";
 import { replaceSuperJsonPayload } from "@trigger.dev/core/v3/utils/ioSerialization";
+import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
 
 type OverrideOptions = {
   environmentId?: string;
   payload?: string;
   metadata?: unknown;
   bulkActionId?: string;
+  triggerSource?: string;
 } & RunOptionsData;
 
 export class ReplayTaskRunService extends BaseService {
@@ -37,6 +39,16 @@ export class ReplayTaskRunService extends BaseService {
       taskRunFriendlyId: existingTaskRun.friendlyId,
     });
 
+    const existingEnvironment = await this._prisma.runtimeEnvironment.findFirstOrThrow({
+      where: {
+        id: existingTaskRun.runtimeEnvironmentId,
+      },
+      select: {
+        id: true,
+        type: true,
+      },
+    });
+
     const payloadPacket = await this.overrideExistingPayloadPacket(
       existingTaskRun,
       overrideOptions.payload
@@ -48,6 +60,12 @@ export class ReplayTaskRunService extends BaseService {
     const payloadType = payloadPacket.dataType;
     const metadata = overrideOptions.metadata ?? (await this.getExistingMetadata(existingTaskRun));
     const tags = overrideOptions.tags ?? existingTaskRun.runTags;
+    // Only use the region from the existing run if V2 engine and neither environment is dev
+    const ignoreRegion =
+      existingTaskRun.engine === "V1" ||
+      existingEnvironment.type === "DEVELOPMENT" ||
+      authenticatedEnvironment.type === "DEVELOPMENT";
+    const region = ignoreRegion ? undefined : overrideOptions.region ?? existingTaskRun.workerQueue;
 
     try {
       const taskQueue = await this._prisma.taskQueue.findFirst({
@@ -92,6 +110,8 @@ export class ReplayTaskRunService extends BaseService {
             lockToVersion:
               overrideOptions.version === "latest" ? undefined : overrideOptions.version,
             bulkActionId: overrideOptions?.bulkActionId,
+            region,
+            priority: overrideOptions.prioritySeconds,
           },
         },
         {
@@ -101,6 +121,11 @@ export class ReplayTaskRunService extends BaseService {
           traceContext: {
             traceparent: `00-${existingTaskRun.traceId}-${existingTaskRun.spanId}-01`,
           },
+          realtimeStreamsVersion: determineRealtimeStreamsVersion(
+            existingTaskRun.realtimeStreamsVersion
+          ),
+          triggerSource: overrideOptions.triggerSource ?? "api",
+          triggerAction: "replay",
         }
       );
 

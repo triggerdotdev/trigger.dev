@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { ExportResult, ExportResultCode, hrTimeToMicroseconds } from "@opentelemetry/core";
-import { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
+import { type ExportResult, ExportResultCode, hrTimeToMicroseconds } from "@opentelemetry/core";
+import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
 
 export class LoggerSpanExporter implements SpanExporter {
   /**
@@ -47,11 +47,13 @@ export class LoggerSpanExporter implements SpanExporter {
    * @param span
    */
   private _exportInfo(span: ReadableSpan) {
+    const parentSpanId = span.parentSpanContext?.spanId;
+
     return {
       traceId: span.spanContext().traceId,
       parentId:
-        span.parentSpanId && span.parentSpanId !== "" && span.parentSpanId !== "0000000000000000"
-          ? span.parentSpanId
+        parentSpanId && parentSpanId !== "" && parentSpanId !== "0000000000000000"
+          ? parentSpanId
           : undefined,
       traceState: span.spanContext().traceState?.serialize(),
       message: span.name,

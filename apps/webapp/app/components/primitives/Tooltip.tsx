@@ -64,6 +64,8 @@ function SimpleTooltip({
   buttonStyle,
   asChild = false,
   sideOffset,
+  open,
+  onOpenChange,
 }: {
   button: React.ReactNode;
   content: React.ReactNode;
@@ -76,13 +78,16 @@ function SimpleTooltip({
   buttonStyle?: React.CSSProperties;
   asChild?: boolean;
   sideOffset?: number;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   return (
     <TooltipProvider disableHoverableContent={disableHoverableContent}>
-      <Tooltip>
+      <Tooltip open={open} onOpenChange={onOpenChange}>
         <TooltipTrigger
+          type="button"
           tabIndex={-1}
-          className={cn("h-fit", buttonClassName)}
+          className={cn(!asChild && "h-fit", buttonClassName)}
           style={buttonStyle}
           asChild={asChild}
         >
@@ -107,20 +112,28 @@ export function InfoIconTooltip({
   buttonClassName,
   contentClassName,
   variant = "basic",
+  disableHoverableContent = false,
+  enabled = true,
 }: {
   content: React.ReactNode;
   buttonClassName?: string;
   contentClassName?: string;
   variant?: Variant;
+  disableHoverableContent?: boolean;
+  enabled?: boolean;
 }) {
+  const icon = (
+    <InformationCircleIcon className={cn("size-3.5 text-text-dimmed flex-0", buttonClassName)} />
+  );
+
+  if (!enabled) return icon;
   return (
     <SimpleTooltip
-      button={
-        <InformationCircleIcon className={cn("size-3.5 text-text-dimmed", buttonClassName)} />
-      }
+      button={icon}
       content={content}
       variant={variant}
       className={contentClassName}
+      disableHoverableContent={disableHoverableContent}
     />
   );
 }

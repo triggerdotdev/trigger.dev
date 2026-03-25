@@ -9,7 +9,7 @@ description: Handling errors and retries with the Trigger.dev management API
 When the SDK method is unable to connect to the API server, or the API server returns a non-successful response, the SDK will throw an `ApiError` that you can catch and handle:
 
 ```ts
-import { runs, APIError } from "@trigger.dev/sdk/v3";
+import { runs, APIError } from "@trigger.dev/sdk";
 
 async function main() {
   try {
@@ -31,7 +31,7 @@ The SDK will automatically retry requests that fail due to network errors or ser
 You can customize the retry behavior by passing a `requestOptions` option to the `configure` function:
 
 ```ts
-import { configure } from "@trigger.dev/sdk/v3";
+import { configure } from "@trigger.dev/sdk";
 
 configure({
   requestOptions: {
@@ -49,7 +49,7 @@ configure({
 All SDK functions also take a `requestOptions` parameter as the last argument, which can be used to customize the request options. You can use this to disable retries for a specific request:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 async function main() {
   const run = await runs.retrieve("run_1234", {

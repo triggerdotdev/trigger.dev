@@ -175,6 +175,21 @@ export class AIRunFilterService {
   - "using large machine" → machines: ["large-1x", "large-2x"]
   - "root only" → rootOnly: true
   
+  Time-specific patterns:
+  - "around 8am today" → from/to: 7am-9am today (1-2 hour window around the time)
+  - "at 2pm yesterday" → from/to: 2pm-2:59pm yesterday (exact hour)
+  - "this morning" → from/to: 6am-12pm today
+  - "this afternoon" → from/to: 12pm-6pm today
+  - "this evening" → from/to: 6pm-10pm today
+  - "started around X" / "that started at X" → same as time filtering (treat "started" as temporal filter)
+  - "began around X" / "ran at X" → same as time filtering
+  
+  When handling specific times:
+  - "around" adds ±1 hour buffer (e.g., "around 8am" = 7am-9am)
+  - "at" means exact hour (e.g., "at 2pm" = 2pm-2:59pm)
+  - For relative days: "today" = current date, "yesterday" = current date - 1 day
+  - Convert times to ISO format for from/to filters
+  
   Use the available tools to look up actual tags, versions, queues, and tasks in the environment when the user mentions them. This will help you provide accurate filter values.
   
   Unless they specify they only want root runs, set rootOnly to false.

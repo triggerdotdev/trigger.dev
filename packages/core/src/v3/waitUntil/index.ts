@@ -8,7 +8,7 @@ class NoopManager implements WaitUntilManager {
     // noop
   }
 
-  blockUntilSettled(timeout: number): Promise<void> {
+  blockUntilSettled(): Promise<void> {
     return Promise.resolve();
   }
 
@@ -44,8 +44,8 @@ export class WaitUntilAPI implements WaitUntilManager {
     return this.#getManager().register(promise);
   }
 
-  blockUntilSettled(timeout: number): Promise<void> {
-    return this.#getManager().blockUntilSettled(timeout);
+  blockUntilSettled(): Promise<void> {
+    return this.#getManager().blockUntilSettled();
   }
 
   requiresResolving(): boolean {

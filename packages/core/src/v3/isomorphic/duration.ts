@@ -1,5 +1,15 @@
-export function parseNaturalLanguageDuration(duration: string): Date | undefined {
-  // Handle Code scanning alert #44 (https://github.com/triggerdotdev/trigger.dev/security/code-scanning/44) by limiting the length of the input string
+/**
+ * Parses a natural language duration string into milliseconds.
+ *
+ * @param duration - Duration string like "1s", "5m", "2h", "1d", "1w"
+ * @returns The duration in milliseconds, or undefined if invalid
+ *
+ * @example
+ * parseNaturalLanguageDurationInMs("30m") // 1800000
+ * parseNaturalLanguageDurationInMs("2h") // 7200000
+ */
+export function parseNaturalLanguageDurationInMs(duration: string): number | undefined {
+  // Handle Code scanning alert #44 by limiting the length of the input string
   if (duration.length > 100) {
     return undefined;
   }
@@ -60,11 +70,12 @@ export function parseNaturalLanguageDuration(duration: string): Date | undefined
     }
   }
 
-  if (hasMatch) {
-    return new Date(Date.now() + totalMilliseconds);
-  }
+  return hasMatch ? totalMilliseconds : undefined;
+}
 
-  return undefined;
+export function parseNaturalLanguageDuration(duration: string): Date | undefined {
+  const ms = parseNaturalLanguageDurationInMs(duration);
+  return ms !== undefined ? new Date(Date.now() + ms) : undefined;
 }
 
 export function safeParseNaturalLanguageDuration(duration: string): Date | undefined {

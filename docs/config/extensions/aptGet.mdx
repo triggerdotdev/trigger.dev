@@ -7,7 +7,7 @@ description: "Use the aptGet build extension to install system packages into the
 You can install system packages into the deployed image using the `aptGet` extension:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { aptGet } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
@@ -22,7 +22,7 @@ export default defineConfig({
 If you want to install a specific version of a package, you can specify the version like this:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",

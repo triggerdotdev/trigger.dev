@@ -1,5 +1,5 @@
-import { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { socketIo } from "../handleSocketIo.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
@@ -9,6 +9,9 @@ import { ChangeCurrentDeploymentService } from "./changeCurrentDeployment.server
 import { projectPubSub } from "./projectPubSub.server";
 import { FailDeploymentService } from "./failDeployment.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { DeploymentService } from "./deployment.server";
+import { engine } from "../runEngine.server";
+import { tryCatch } from "@trigger.dev/core";
 
 export class FinalizeDeploymentService extends BaseService {
   public async call(
@@ -75,6 +78,20 @@ export class FinalizeDeploymentService extends BaseService {
       },
     });
 
+    const deploymentService = new DeploymentService();
+    await deploymentService
+      .appendToEventLog(authenticatedEnv.project, finalizedDeployment, [
+        {
+          type: "finalized",
+          data: {
+            result: "succeeded",
+          },
+        },
+      ])
+      .orTee((error) => {
+        logger.error("Failed to append finalized deployment event to event log", { error });
+      });
+
     await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
 
     if (typeof body.skipPromotion === "undefined" || !body.skipPromotion) {
@@ -114,6 +131,18 @@ export class FinalizeDeploymentService extends BaseService {
         orgId: authenticatedEnv.organizationId,
         projectId: finalizedDeployment.projectId,
       });
+    }
+
+    if (deployment.worker.engine === "V2") {
+      const [schedulePendingVersionsError] = await tryCatch(
+        engine.scheduleEnqueueRunsForBackgroundWorker(deployment.worker.id)
+      );
+
+      if (schedulePendingVersionsError) {
+        logger.error("Error scheduling pending versions", {
+          error: schedulePendingVersionsError,
+        });
+      }
     }
 
     await PerformDeploymentAlertsService.enqueue(deployment.id);

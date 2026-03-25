@@ -1,21 +1,28 @@
-import {
-  createReadableStreamFromReadable,
-  type DataFunctionArgs,
-  type EntryContext,
-} from "@remix-run/node"; // or cloudflare/deno
+import { createReadableStreamFromReadable, type EntryContext } from "@remix-run/node"; // or cloudflare/deno
 import { RemixServer } from "@remix-run/react";
+import { wrapHandleErrorWithSentry } from "@sentry/remix";
 import { parseAcceptLanguage } from "intl-parse-accept-language";
 import isbot from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
 import { PassThrough } from "stream";
 import * as Worker from "~/services/worker.server";
+import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import {
   OperatingSystemContextProvider,
   OperatingSystemPlatform,
 } from "./components/primitives/OperatingSystemProvider";
+import { Prisma } from "./db.server";
+import { env } from "./env.server";
+import { eventLoopMonitor } from "./eventLoopMonitor.server";
+import { logger } from "./services/logger.server";
+import { resourceMonitor } from "./services/resourceMonitor.server";
 import { singleton } from "./utils/singleton";
-import { bootstrap } from "./bootstrap";
+import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
+import {
+  registerRunEngineEventBusHandlers,
+  setupBatchQueueCallbacks,
+} from "./v3/runEngineHandlers.server";
 
 const ABORT_DELAY = 30000;
 
@@ -170,9 +177,21 @@ function handleBrowserRequest(
   });
 }
 
-export function handleError(error: unknown, { request, params, context }: DataFunctionArgs) {
-  logError(error, request);
-}
+export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
+  if (request instanceof Request) {
+    logger.debug("Error in handleError", {
+      error,
+      request: {
+        url: request.url,
+        method: request.method,
+      },
+    });
+  } else {
+    logger.debug("Error in handleError", {
+      error,
+    });
+  }
+});
 
 Worker.init().catch((error) => {
   logError(error);
@@ -215,18 +234,13 @@ process.on("uncaughtException", (error, origin) => {
 });
 
 singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);
+singleton("SetupBatchQueueCallbacks", setupBatchQueueCallbacks);
 
 export { apiRateLimiter } from "./services/apiRateLimit.server";
 export { engineRateLimiter } from "./services/engineRateLimit.server";
+export { runWithHttpContext } from "./services/httpAsyncStorage.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { wss } from "./v3/handleWebsockets.server";
-export { runWithHttpContext } from "./services/httpAsyncStorage.server";
-import { eventLoopMonitor } from "./eventLoopMonitor.server";
-import { env } from "./env.server";
-import { logger } from "./services/logger.server";
-import { Prisma } from "./db.server";
-import { registerRunEngineEventBusHandlers } from "./v3/runEngineHandlers.server";
-import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
 
 if (env.EVENT_LOOP_MONITOR_ENABLED === "1") {
   eventLoopMonitor.enable();
@@ -236,4 +250,8 @@ if (remoteBuildsEnabled()) {
   console.log("🏗️  Remote builds enabled");
 } else {
   console.log("🏗️  Local builds enabled");
+}
+
+if (env.RESOURCE_MONITOR_ENABLED === "1") {
+  resourceMonitor.startMonitoring(1000);
 }

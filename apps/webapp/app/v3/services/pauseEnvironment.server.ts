@@ -27,6 +27,25 @@ export class PauseEnvironmentService extends WithRunEngine {
     action: PauseStatus
   ): Promise<PauseEnvironmentResult> {
     try {
+      const org = await this._prisma.organization.findFirst({
+        where: {
+          id: environment.organizationId,
+        },
+        select: {
+          runsEnabled: true,
+        },
+      });
+
+      if (!org) {
+        throw new Error("Organization not found");
+      }
+
+      if (!org.runsEnabled && action === "resumed") {
+        throw new Error(
+          "Runs are disabled for this organization. Your free plan has probably been exceeded. If not please contact support."
+        );
+      }
+
       await this._prisma.runtimeEnvironment.update({
         where: {
           id: environment.id,

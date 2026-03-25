@@ -79,6 +79,7 @@ describe("Schedule Recovery", () => {
           data: {
             taskScheduleId: taskSchedule.id,
             environmentId: environment.id,
+            projectId: project.id,
             active: true,
           },
         });
@@ -184,6 +185,7 @@ describe("Schedule Recovery", () => {
           data: {
             taskScheduleId: taskSchedule.id,
             environmentId: environment.id,
+            projectId: project.id,
             active: true,
           },
         });
@@ -293,6 +295,7 @@ describe("Schedule Recovery", () => {
             data: {
               taskScheduleId: taskSchedule.id,
               environmentId: environment.id,
+              projectId: project.id,
               active: true,
             },
           });

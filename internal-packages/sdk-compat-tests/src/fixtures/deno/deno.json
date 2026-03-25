@@ -1,0 +1,6 @@
+{
+  "tasks": {
+    "test": "deno run --allow-read --allow-env --allow-sys test.ts"
+  },
+  "nodeModulesDir": "manual"
+}

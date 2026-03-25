@@ -330,7 +330,7 @@ function TagsDropdown({
   useEffect(() => {
     const searchParams = new URLSearchParams();
     if (searchValue) {
-      searchParams.set("name", encodeURIComponent(searchValue));
+      searchParams.set("name", searchValue);
     }
     fetcher.load(
       `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/waitpoints/tags?${searchParams}`

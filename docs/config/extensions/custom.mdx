@@ -20,7 +20,7 @@ Build extensions allow you to hook into the build system and customize the build
 Build extensions are added to your `trigger.config.ts` file, with a required `name` and optional build hook functions. Here's a simple example of a build extension that just logs a message when the build starts:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "my-project",
@@ -45,7 +45,7 @@ You can also extract that out into a function instead of defining it inline, in 
 </Note>
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { BuildExtension } from "@trigger.dev/build";
 
 export default defineConfig({
@@ -72,7 +72,7 @@ function myExtension(): BuildExtension {
 This allows the extension to add additional dependencies to the list of externals for the build. This is useful for dependencies that are not included in the bundle, but are expected to be available at runtime.
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "my-project",
@@ -94,7 +94,7 @@ export default defineConfig({
 This hook runs before the build starts. It receives the `BuildContext` object as an argument.
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "my-project",
@@ -114,7 +114,7 @@ export default defineConfig({
 If you want to add an esbuild plugin, you must do so in the `onBuildStart` hook. Here's an example of adding a custom esbuild plugin:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "my-project",
@@ -144,7 +144,7 @@ export default defineConfig({
 You can use the `BuildContext.target` property to determine if the build is for `dev` or `deploy`:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "my-project",
@@ -170,7 +170,7 @@ export default defineConfig({
 This hook runs after the build completes. It receives the `BuildContext` object and a `BuildManifest` object as arguments. This is where you can add in one or more `BuildLayer`'s to the context.
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "my-project",

@@ -133,6 +133,80 @@ export function pause(
 }
 
 /**
+ * Overrides the concurrency limit of a queue.
+ *
+ * @param queue - The ID of the queue to override the concurrency limit, or the type and name
+ * @param concurrencyLimit - The concurrency limit to override
+ * @returns The updated queue state
+ */
+export function overrideConcurrencyLimit(
+  queue: RetrieveQueueParam,
+  concurrencyLimit: number,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<QueueItem> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "queues.overrideConcurrencyLimit()",
+      icon: "queue",
+      attributes: {
+        ...flattenAttributes({ queue }),
+        ...accessoryAttributes({
+          items: [
+            {
+              text: typeof queue === "string" ? queue : queue.name,
+              variant: "normal",
+            },
+          ],
+          style: "codepath",
+        }),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.overrideQueueConcurrencyLimit(queue, concurrencyLimit, $requestOptions);
+}
+
+/**
+ * Resets the concurrency limit of a queue to the base value.
+ *
+ * @param queue - The ID of the queue to reset the concurrency limit, or the type and name
+ * @returns The updated queue state
+ */
+export function resetConcurrencyLimit(
+  queue: RetrieveQueueParam,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<QueueItem> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "queues.resetConcurrencyLimit()",
+      icon: "queue",
+      attributes: {
+        ...flattenAttributes({ queue }),
+        ...accessoryAttributes({
+          items: [
+            {
+              text: typeof queue === "string" ? queue : queue.name,
+              variant: "normal",
+            },
+          ],
+          style: "codepath",
+        }),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.resetQueueConcurrencyLimit(queue, $requestOptions);
+}
+
+/**
  * Resumes a paused queue, allowing new runs to be started.
  *
  * @example

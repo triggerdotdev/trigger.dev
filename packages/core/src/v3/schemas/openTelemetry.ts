@@ -28,6 +28,18 @@ export const CancellationSpanEvent = z.object({
 
 export type CancellationSpanEvent = z.infer<typeof CancellationSpanEvent>;
 
+export const AttemptFailedSpanEvent = z.object({
+  name: z.literal("attempt_failed"),
+  time: z.coerce.date(),
+  properties: z.object({
+    exception: ExceptionEventProperties,
+    attemptNumber: z.number(),
+    runId: z.string(),
+  }),
+});
+
+export type AttemptFailedSpanEvent = z.infer<typeof AttemptFailedSpanEvent>;
+
 export const OtherSpanEvent = z.object({
   name: z.string(),
   time: z.coerce.date(),
@@ -36,7 +48,12 @@ export const OtherSpanEvent = z.object({
 
 export type OtherSpanEvent = z.infer<typeof OtherSpanEvent>;
 
-export const SpanEvent = z.union([ExceptionSpanEvent, CancellationSpanEvent, OtherSpanEvent]);
+export const SpanEvent = z.union([
+  ExceptionSpanEvent,
+  CancellationSpanEvent,
+  AttemptFailedSpanEvent,
+  OtherSpanEvent,
+]);
 
 export type SpanEvent = z.infer<typeof SpanEvent>;
 
@@ -50,6 +67,10 @@ export function isExceptionSpanEvent(event: SpanEvent): event is ExceptionSpanEv
 
 export function isCancellationSpanEvent(event: SpanEvent): event is CancellationSpanEvent {
   return event.name === "cancellation";
+}
+
+export function isAttemptFailedSpanEvent(event: SpanEvent): event is AttemptFailedSpanEvent {
+  return event.name === "attempt_failed";
 }
 
 export const SpanMessagingEvent = z.object({

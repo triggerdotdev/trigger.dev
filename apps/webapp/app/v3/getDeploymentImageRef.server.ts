@@ -6,10 +6,14 @@ import {
   type Tag,
   RepositoryNotFoundException,
   GetAuthorizationTokenCommand,
+  PutLifecyclePolicyCommand,
+  PutImageTagMutabilityCommand,
 } from "@aws-sdk/client-ecr";
 import { STSClient, AssumeRoleCommand } from "@aws-sdk/client-sts";
 import { tryCatch } from "@trigger.dev/core";
 import { logger } from "~/services/logger.server";
+import { type RegistryConfig } from "./registryConfig.server";
+import type { EnvironmentType } from "@trigger.dev/core/v3";
 
 // Optional configuration for cross-account access
 export type AssumeRoleConfig = {
@@ -97,30 +101,27 @@ export async function createEcrClient({
 }
 
 export async function getDeploymentImageRef({
-  host,
-  namespace,
+  registry,
   projectRef,
   nextVersion,
-  environmentSlug,
-  registryTags,
-  assumeRole,
+  environmentType,
+  deploymentShortCode,
 }: {
-  host: string;
-  namespace: string;
+  registry: RegistryConfig;
   projectRef: string;
   nextVersion: string;
-  environmentSlug: string;
-  registryTags?: string;
-  assumeRole?: AssumeRoleConfig;
+  environmentType: EnvironmentType;
+  deploymentShortCode: string;
 }): Promise<{
   imageRef: string;
   isEcr: boolean;
   repoCreated: boolean;
 }> {
-  const repositoryName = `${namespace}/${projectRef}`;
-  const imageRef = `${host}/${repositoryName}:${nextVersion}.${environmentSlug}`;
+  const repositoryName = `${registry.namespace}/${projectRef}`;
+  const envType = environmentType.toLowerCase();
+  const imageRef = `${registry.host}/${repositoryName}:${nextVersion}.${envType}.${deploymentShortCode}`;
 
-  if (!isEcrRegistry(host)) {
+  if (!isEcrRegistry(registry.host)) {
     return {
       imageRef,
       isEcr: false,
@@ -131,16 +132,19 @@ export async function getDeploymentImageRef({
   const [ecrRepoError, ecrData] = await tryCatch(
     ensureEcrRepositoryExists({
       repositoryName,
-      registryHost: host,
-      registryTags,
-      assumeRole,
+      registryHost: registry.host,
+      registryTags: registry.ecrTags,
+      assumeRole: {
+        roleArn: registry.ecrAssumeRoleArn,
+        externalId: registry.ecrAssumeRoleExternalId,
+      },
     })
   );
 
   if (ecrRepoError) {
     logger.error("Failed to ensure ECR repository exists", {
       repositoryName,
-      host,
+      host: registry.host,
       ecrRepoError: ecrRepoError.message,
     });
     throw ecrRepoError;
@@ -193,6 +197,22 @@ export function parseRegistryTags(tags: string): Tag[] {
     .filter((tag): tag is Tag => tag !== null);
 }
 
+const untaggedImageExpirationPolicy = JSON.stringify({
+  rules: [
+    {
+      rulePriority: 1,
+      description: "Expire untagged images older than 3 days",
+      selection: {
+        tagStatus: "untagged",
+        countType: "sinceImagePushed",
+        countUnit: "days",
+        countNumber: 3,
+      },
+      action: { type: "expire" },
+    },
+  ],
+});
+
 async function createEcrRepository({
   repositoryName,
   region,
@@ -211,7 +231,14 @@ async function createEcrRepository({
   const result = await ecr.send(
     new CreateRepositoryCommand({
       repositoryName,
-      imageTagMutability: "IMMUTABLE",
+      imageTagMutability: "IMMUTABLE_WITH_EXCLUSION",
+      imageTagMutabilityExclusionFilters: [
+        {
+          // only the `cache` tag will be mutable, all other tags will be immutable
+          filter: "cache",
+          filterType: "WILDCARD",
+        },
+      ],
       encryptionConfiguration: {
         encryptionType: "AES256",
       },
@@ -225,7 +252,66 @@ async function createEcrRepository({
     throw new Error(`Failed to create ECR repository: ${repositoryName}`);
   }
 
+  // When the `cache` tag is mutated, the old cache images are untagged.
+  // This policy matches those images and expires them to avoid bloating the repository.
+  await ecr.send(
+    new PutLifecyclePolicyCommand({
+      repositoryName: result.repository.repositoryName,
+      registryId: result.repository.registryId,
+      lifecyclePolicyText: untaggedImageExpirationPolicy,
+    })
+  );
+
   return result.repository;
+}
+
+async function updateEcrRepositoryCacheSettings({
+  repositoryName,
+  region,
+  accountId,
+  assumeRole,
+}: {
+  repositoryName: string;
+  region: string;
+  accountId?: string;
+  assumeRole?: AssumeRoleConfig;
+}): Promise<void> {
+  logger.debug("Updating ECR repository tag mutability to IMMUTABLE_WITH_EXCLUSION", {
+    repositoryName,
+    region,
+  });
+
+  const ecr = await createEcrClient({ region, assumeRole });
+
+  await ecr.send(
+    new PutImageTagMutabilityCommand({
+      repositoryName,
+      registryId: accountId,
+      imageTagMutability: "IMMUTABLE_WITH_EXCLUSION",
+      imageTagMutabilityExclusionFilters: [
+        {
+          // only the `cache` tag will be mutable, all other tags will be immutable
+          filter: "cache",
+          filterType: "WILDCARD",
+        },
+      ],
+    })
+  );
+
+  // When the `cache` tag is mutated, the old cache images are untagged.
+  // This policy matches those images and expires them to avoid bloating the repository.
+  await ecr.send(
+    new PutLifecyclePolicyCommand({
+      repositoryName,
+      registryId: accountId,
+      lifecyclePolicyText: untaggedImageExpirationPolicy,
+    })
+  );
+
+  logger.debug("Successfully updated ECR repository to IMMUTABLE_WITH_EXCLUSION", {
+    repositoryName,
+    region,
+  });
 }
 
 async function getEcrRepository({
@@ -256,7 +342,10 @@ async function getEcrRepository({
 
     return result.repositories[0];
   } catch (error) {
-    if (error instanceof RepositoryNotFoundException) {
+    if (
+      error instanceof RepositoryNotFoundException ||
+      (error instanceof Error && error.message?.includes("does not exist"))
+    ) {
       logger.debug("ECR repository not found: RepositoryNotFoundException", {
         repositoryName,
         region,
@@ -316,6 +405,22 @@ async function ensureEcrRepositoryExists({
 
   if (existingRepo) {
     logger.debug("ECR repository already exists", { repositoryName, region, existingRepo });
+
+    // check if the repository is missing the cache settings
+    if (existingRepo.imageTagMutability === "IMMUTABLE") {
+      const [updateError] = await tryCatch(
+        updateEcrRepositoryCacheSettings({ repositoryName, region, accountId, assumeRole })
+      );
+
+      if (updateError) {
+        logger.error("Failed to update ECR repository cache settings", {
+          repositoryName,
+          region,
+          updateError,
+        });
+      }
+    }
+
     return {
       repo: existingRepo,
       repoCreated: false,

@@ -13,6 +13,7 @@ import {
   OnSuccessHookFunction,
   OnWaitHookFunction,
   OnCancelHookFunction,
+  OnStartAttemptHookFunction,
 } from "../lifecycleHooks/types.js";
 import { RunTags } from "../schemas/api.js";
 import {
@@ -20,6 +21,7 @@ import {
   MachineMemory,
   MachinePresetName,
   RetryOptions,
+  PromptMetadata,
   TaskMetadata,
   TaskRunContext,
 } from "../schemas/index.js";
@@ -28,6 +30,7 @@ import { QueueOptions } from "./queues.js";
 import { AnySchemaParseFn, inferSchemaIn, inferSchemaOut, Schema } from "./schemas.js";
 import { inferToolParameters, ToolTaskParameters } from "./tools.js";
 import { Prettify } from "./utils.js";
+import { JSONSchema } from "./jsonSchema.js";
 
 export type Queue = QueueOptions;
 export type TaskSchema = Schema;
@@ -107,6 +110,13 @@ export type InitFnParams = Prettify<{
 }>;
 
 export type StartFnParams = Prettify<{
+  ctx: Context;
+  init?: InitOutput;
+  /** Abort signal that is aborted when a task run exceeds it's maxDuration or if the task run is cancelled. Can be used to automatically cancel downstream requests */
+  signal: AbortSignal;
+}>;
+
+export type StartAttemptFnParams = Prettify<{
   ctx: Context;
   init?: InitOutput;
   /** Abort signal that is aborted when a task run exceeds it's maxDuration or if the task run is cancelled. Can be used to automatically cancel downstream requests */
@@ -327,8 +337,17 @@ type CommonTaskOptions<
 
   /**
    * onStart is called the first time a task is executed in a run (not before every retry)
+   *
+   * @deprecated Use onStartAttempt instead
    */
   onStart?: OnStartHookFunction<TPayload, TInitOutput>;
+
+  /**
+   * onStartAttempt is called before each attempt of a task is executed.
+   *
+   * You can detect the first attempt by checking `ctx.attempt.number === 1`.
+   */
+  onStartAttempt?: OnStartAttemptHookFunction<TPayload>;
 
   /**
    * onSuccess is called after the run function has successfully completed.
@@ -339,6 +358,12 @@ type CommonTaskOptions<
    * onFailure is called after a task run has failed (meaning the run function threw an error and won't be retried anymore)
    */
   onFailure?: OnFailureHookFunction<TPayload, TInitOutput>;
+
+  /**
+   * JSON Schema for the task payload. This will be synced to the server during indexing.
+   * Should be a valid JSON Schema Draft 7 object.
+   */
+  jsonSchema?: JSONSchema;
 };
 
 export type TaskOptions<
@@ -347,6 +372,15 @@ export type TaskOptions<
   TOutput = unknown,
   TInitOutput extends InitOutput = any,
 > = CommonTaskOptions<TIdentifier, TPayload, TOutput, TInitOutput>;
+
+// Task options when payloadSchema is provided - payload should be any
+export type TaskOptionsWithSchema<
+  TIdentifier extends string,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+> = CommonTaskOptions<TIdentifier, any, TOutput, TInitOutput> & {
+  jsonSchema: JSONSchema;
+};
 
 export type TaskWithSchemaOptions<
   TIdentifier extends string,
@@ -531,6 +565,8 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
 
   description?: string;
 
+  jsonSchema?: JSONSchema;
+
   /**
    * Trigger a task with the given payload, and continue without waiting for the result. If you want to wait for the result, use `triggerAndWait`. Returns the id of the triggered task run.
    * @param payload
@@ -546,13 +582,16 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
 
   /**
    * Batch trigger multiple task runs with the given payloads, and continue without waiting for the results. If you want to wait for the results, use `batchTriggerAndWait`. Returns the id of the triggered batch.
-   * @param items
+   * @param items - Array, AsyncIterable, or ReadableStream of batch items
    * @returns InvokeBatchHandle
    * - `batchId` - The id of the triggered batch.
    * - `runs` - The ids of the triggered task runs.
    */
   batchTrigger: (
-    items: Array<BatchItem<TInput>>,
+    items:
+      | Array<BatchItem<TInput>>
+      | AsyncIterable<BatchItem<TInput>>
+      | ReadableStream<BatchItem<TInput>>,
     options?: BatchTriggerOptions,
     requestOptions?: TriggerApiRequestOptions
   ) => Promise<BatchRunHandle<TIdentifier, TInput, TOutput>>;
@@ -575,12 +614,13 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    */
   triggerAndWait: (
     payload: TInput,
-    options?: TriggerAndWaitOptions
+    options?: TriggerAndWaitOptions,
+    requestOptions?: TriggerApiRequestOptions
   ) => TaskRunPromise<TIdentifier, TOutput>;
 
   /**
    * Batch trigger multiple task runs with the given payloads, and wait for the results. Returns the results of the task runs.
-   * @param items
+   * @param items - Array, AsyncIterable, or ReadableStream of batch items
    * @returns BatchResult
    * @example
    * ```
@@ -599,7 +639,10 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    * ```
    */
   batchTriggerAndWait: (
-    items: Array<BatchTriggerAndWaitItem<TInput>>,
+    items:
+      | Array<BatchTriggerAndWaitItem<TInput>>
+      | AsyncIterable<BatchTriggerAndWaitItem<TInput>>
+      | ReadableStream<BatchTriggerAndWaitItem<TInput>>,
     options?: BatchTriggerAndWaitOptions
   ) => Promise<BatchResult<TIdentifier, TOutput>>;
 }
@@ -839,6 +882,87 @@ export type TriggerOptions = {
    * to the same version as the parent task that is triggering the child tasks.
    */
   version?: string;
+
+  /**
+   * Specify the region to run the task in. This overrides the default region set for your project in the dashboard.
+   *
+   * Check the Regions page in the dashboard for regions that are available to you.
+   *
+   * In DEV this won't do anything, so it's fine to set it in your code.
+   *
+   * @example
+   *
+   * ```ts
+   * await myTask.trigger({ foo: "bar" }, { region: "us-east-1" });
+   * ```
+   */
+  region?: string;
+
+  /**
+   * Debounce settings for consolidating multiple trigger calls into a single delayed run.
+   *
+   * When a run with the same debounce key already exists in the delayed state, subsequent triggers
+   * "push" the existing run's execution time later rather than creating new runs.
+   *
+   * The debounce key is scoped to the task identifier, so different tasks can use the same key without conflicts.
+   *
+   * @example
+   *
+   * ```ts
+   * // Leading mode (default): executes with the FIRST payload
+   * await myTask.trigger({ some: "data1" }, { debounce: { key: "user-123", delay: "5s" } });
+   * await myTask.trigger({ some: "data2" }, { debounce: { key: "user-123", delay: "5s" } });
+   * // After 5 seconds, runs with { some: "data1" }
+   *
+   * // Trailing mode: executes with the LAST payload
+   * await myTask.trigger({ some: "data1" }, { debounce: { key: "user-123", delay: "5s", mode: "trailing" } });
+   * await myTask.trigger({ some: "data2" }, { debounce: { key: "user-123", delay: "5s", mode: "trailing" } });
+   * // After 5 seconds, runs with { some: "data2" }
+   * ```
+   */
+  debounce?: {
+    /**
+     * Unique key scoped to the task identifier. Runs with the same key will be debounced together.
+     * Maximum length is 512 characters.
+     */
+    key: string;
+    /**
+     * Duration string specifying how long to delay the run. If another trigger with the same key
+     * occurs within this duration, the delay is extended.
+     *
+     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` (hours),
+     * `{number}d` (days), `{number}w` (weeks). Minimum delay is 1 second.
+     *
+     * @example "1s", "5s", "1m", "30m", "1h"
+     */
+    delay: string;
+    /**
+     * Controls which trigger's data is used when the debounced run finally executes.
+     *
+     * - `"leading"` (default): Use data from the first trigger (payload, metadata, tags, etc.)
+     * - `"trailing"`: Use data from the last trigger. Each subsequent trigger updates the run's
+     *   payload, metadata, tags, maxAttempts, maxDuration, and machine preset.
+     *
+     * @default "leading"
+     */
+    mode?: "leading" | "trailing";
+    /**
+     * Maximum total delay before the run must execute, regardless of subsequent triggers.
+     * This prevents indefinite delays when continuous triggers keep pushing the execution time.
+     *
+     * When specified, if a new trigger would push the execution time beyond this limit
+     * (measured from the first trigger), the current debounced run will be allowed to execute
+     * and a new run will be created for subsequent triggers.
+     *
+     * If not specified, falls back to the server's default maximum (typically 1 hour).
+     *
+     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` (hours),
+     * `{number}d` (days), `{number}w` (weeks).
+     *
+     * @example "30m", "2h", "1d"
+     */
+    maxDelay?: string;
+  };
 };
 
 export type TriggerAndWaitOptions = Omit<TriggerOptions, "version">;
@@ -879,8 +1003,17 @@ export type TaskMetadataWithFunctions = TaskMetadata & {
     onSuccess?: (payload: any, output: any, params: SuccessFnParams<any>) => Promise<void>;
     onFailure?: (payload: any, error: unknown, params: FailureFnParams<any>) => Promise<void>;
     onStart?: (payload: any, params: StartFnParams) => Promise<void>;
+    onStartAttempt?: (payload: any, params: StartAttemptFnParams) => Promise<void>;
     parsePayload?: AnySchemaParseFn;
   };
+  schema?: TaskSchema;
+};
+
+export type PromptMetadataWithFunctions = PromptMetadata & {
+  fns: {
+    resolve: (variables: Record<string, unknown>) => Promise<unknown>;
+  };
+  schema?: TaskSchema;
 };
 
 export type RunTypes<TTaskIdentifier extends string, TPayload, TOutput> = {

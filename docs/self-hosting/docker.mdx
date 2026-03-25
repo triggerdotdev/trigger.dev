@@ -14,6 +14,7 @@ Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cl
 ## What's new?
 
 Goodbye v3, hello v4! We made quite a few changes:
+
 - **Much simpler setup.** The provider and coordinator are now combined into a single supervisor. No more startup scripts, just `docker compose up`.
 - **Automatic container cleanup.** The supervisor will automatically clean up containers that are no longer needed.
 - **Support for multiple worker machines.** This is a big one, and we're very excited about it! You can now scale your workers horizontally as needed.
@@ -102,18 +103,8 @@ docker compose logs -f webapp
 6. (optional) To initialize a new project, run the following command:
 
 ```bash
-npx trigger.dev@v4-beta init -p <project-ref> -a http://localhost:8030
+npx trigger.dev@latest init -p <project-ref> -a http://localhost:8030
 ```
-
-<Warning>
-The commands displayed in the webapp are incorrect while v4 is in beta. You should always use the `v4-beta` tag and not `latest`.
-</Warning>
-
-{/* 7. Bonus: Add traefik as a reverse proxy
-
-```bash
-docker compose -f docker-compose.yml -f ../docker-compose.traefik.yml up -d
-``` */}
 
 ### Worker
 
@@ -156,13 +147,6 @@ If you want to run the webapp and worker on the same machine, just replace the `
 docker compose -f webapp/docker-compose.yml -f worker/docker-compose.yml up -d
 ```
 
-{/* And optionally add traefik as a reverse proxy:
-
-```bash
-# Run this from the /hosting/docker directory
-docker compose -f webapp/docker-compose.yml -f worker/docker-compose.yml -f docker-compose.traefik.yml up -d
-``` */}
-
 ## Worker token
 
 When running the combined stack, worker bootstrap is handled automatically. When running the webapp and worker separately, you will need to manually set the worker token.
@@ -199,6 +183,30 @@ Don't forget to restart the worker container for the changes to take effect:
 docker compose down
 docker compose up -d
 ```
+
+### Creating additional worker groups
+
+To create additional worker groups beyond the bootstrap group, use the admin API endpoint. This requires admin privileges.
+
+**Making a user admin:**
+- **New users**: Set `ADMIN_EMAILS` environment variable (regex pattern) before user creation.
+- **Existing users**: Set `admin = true` in the `user` table in your database.
+
+**Creating a worker group:**
+
+```bash
+api_url=http://localhost:8030
+wg_name=my-worker
+admin_pat=tr_pat_...
+
+curl -X POST \
+  "$api_url/admin/api/v1/workers" \
+  -H "Authorization: Bearer $admin_pat" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\": \"$wg_name\"}"
+```
+
+The response includes a `token` field if the worker group is newly created.
 
 ## Registry setup
 
@@ -245,7 +253,7 @@ You should change these before deploying to production, especially the password.
 ### Setup
 
 <Note>
-The `packets` bucket is created by default. In case this doesn't work, you can create it manually.
+  The `packets` bucket is created by default. In case this doesn't work, you can create it manually.
 </Note>
 
 1. Login to the dashboard: `http://localhost:9001`
@@ -315,7 +323,7 @@ All email addresses can sign up and log in this way. If you would like to restri
 
 ```bash
 # every email that does not match this regex will be rejected
-WHITELISTED_EMAILS="authorized@yahoo\.com|authorized@gmail\.com"
+WHITELISTED_EMAILS="^(authorized@yahoo\.com|authorized@gmail\.com)$"
 ```
 
 This will apply to all auth methods including magic link and GitHub OAuth.
@@ -323,13 +331,14 @@ This will apply to all auth methods including magic link and GitHub OAuth.
 ## Version locking
 
 There are several reasons to lock the version of your Docker images:
+
 - **Backwards compatibility.** We try our best to maintain compatibility with older CLI versions, but it's not always possible. If you don't want to update your CLI, you can lock your Docker images to that specific version.
 - **Ensuring full feature support.** Sometimes, new CLI releases will also require new or updated platform features. Running unlocked images can make any issues difficult to debug. Using a specific tag can help here as well.
 
-By default, the images will point at the latest versioned release via the `v4-beta` tag. You can override this by specifying a different tag in your `.env` file. For example:
+By default, the images will point at the latest versioned release via the `latest` tag. You can override this by specifying a different tag in your `.env` file. For example:
 
 ```bash
-TRIGGER_IMAGE_TAG=v4.0.0-v4-beta.21
+TRIGGER_IMAGE_TAG=v4.0.0
 ```
 
 ## Troubleshooting
@@ -345,20 +354,24 @@ TRIGGER_IMAGE_TAG=v4.0.0-v4-beta.21
   docker compose logs -f webapp
   ```
 
+- **Deploy fails with `ERROR: schema "graphile_worker" does not exist`.** This error occurs when Graphile Worker migrations fail to run during webapp startup. Check the webapp logs for certificate-related errors like `self-signed certificate in certificate chain`. This is often caused by PostgreSQL SSL certificate issues when using an external PostgreSQL instance with SSL enabled. Ensure that both the webapp and supervisor containers have access to the same CA certificate used by your PostgreSQL instance. You can configure this by mounting the certificate file and setting the `NODE_EXTRA_CA_CERTS` environment variable to point to the certificate path. Once the certificate issue is resolved, the migrations will complete and create the required `graphile_worker` schema.
+
+- **ClickHouse migrations say "no migrations to run" but schema is missing.** The goose migration tracker is out of sync. Exec into the webapp container, set the GOOSE env vars (from webapp startup logs), and run `goose reset && goose up`.
+
+  <Warning>
+    **Data Loss Warning:** The `goose reset` command is destructive and will drop the entire schema. Make sure to backup your data and confirm you are running this in a non-production environment before executing this command.
+  </Warning>
+
 ## CLI usage
 
 This section highlights some of the CLI commands and options that are useful when self-hosting. Please check the [CLI reference](/cli-introduction) for more in-depth documentation.
-
-<Warning>
-While v4 is in beta, always use `@v4-beta` instead of `@latest`. For example: `npx trigger.dev@v4-beta dev`
-</Warning>
 
 ### Login
 
 To avoid being redirected to [Trigger.dev Cloud](https://cloud.trigger.dev) when using the CLI, you need to specify the URL of your self-hosted instance with the `--api-url` or `-a` flag. For example:
 
 ```bash
-npx trigger.dev@v4-beta login -a http://trigger.example.com
+npx trigger.dev@latest login -a http://trigger.example.com
 ```
 
 Once you've logged in, you shouldn't have to specify the URL again with other commands.
@@ -368,7 +381,7 @@ Once you've logged in, you shouldn't have to specify the URL again with other co
 You can specify a profile when logging in. This allows you to easily use the CLI with multiple instances of Trigger.dev. For example:
 
 ```bash
-npx trigger.dev@v4-beta login -a http://trigger.example.com \
+npx trigger.dev@latest login -a http://trigger.example.com \
     --profile self-hosted
 ```
 
@@ -377,29 +390,29 @@ Logging in with a new profile will also make it the new default profile.
 To use a specific profile, you can use the `--profile` flag with other commands:
 
 ```bash
-npx trigger.dev@v4-beta dev --profile self-hosted
+npx trigger.dev@latest dev --profile self-hosted
 ```
 
 To list all your profiles, use the `list-profiles` command:
 
 ```bash
-npx trigger.dev@v4-beta list-profiles
+npx trigger.dev@latest list-profiles
 ```
 
 To remove a profile, use the `logout` command:
 
 ```bash
-npx trigger.dev@v4-beta logout --profile self-hosted
+npx trigger.dev@latest logout --profile self-hosted
 ```
 
 To switch to a different profile, use the `switch` command:
 
 ```bash
 # To run interactively
-npx trigger.dev@v4-beta switch
+npx trigger.dev@latest switch
 
 # To switch to a specific profile
-npx trigger.dev@v4-beta switch self-hosted
+npx trigger.dev@latest switch self-hosted
 ```
 
 ### Whoami
@@ -407,12 +420,12 @@ npx trigger.dev@v4-beta switch self-hosted
 It can be useful to check you are logged into the correct instance. Running this will also show the API URL:
 
 ```bash
-npx trigger.dev@v4-beta whoami
+npx trigger.dev@latest whoami
 ```
 
 ## CI / GitHub Actions
 
-When running the CLI in a CI environment, your login profiles won't be available. Instead, you can use the `TRIGGER_API_URL` and `TRIGGER_ACCESS_TOKEN` environment 
+When running the CLI in a CI environment, your login profiles won't be available. Instead, you can use the `TRIGGER_API_URL` and `TRIGGER_ACCESS_TOKEN` environment
 variables to point at your self-hosted instance and authenticate.
 
 For more detailed instructions, see the [GitHub Actions guide](/github-actions).

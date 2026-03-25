@@ -9,7 +9,7 @@ import { type Direction } from "~/components/ListPagination";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
-import { RunsRepository } from "~/services/runsRepository.server";
+import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
@@ -33,6 +33,7 @@ export type RunListOptions = {
   runId?: string[];
   queues?: string[];
   machines?: MachinePresetName[];
+  errorId?: string;
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -70,6 +71,7 @@ export class NextRunListPresenter {
       runId,
       queues,
       machines,
+      errorId,
       from,
       to,
       direction = "forward",
@@ -97,6 +99,7 @@ export class NextRunListPresenter {
       (runId !== undefined && runId.length > 0) ||
       (queues !== undefined && queues.length > 0) ||
       (machines !== undefined && machines.length > 0) ||
+      (errorId !== undefined && errorId !== "") ||
       typeof isTest === "boolean" ||
       rootOnly === true ||
       !time.isDefault;
@@ -182,6 +185,7 @@ export class NextRunListPresenter {
       bulkId,
       queues,
       machines,
+      errorId,
       page: {
         size: pageSize,
         cursor,

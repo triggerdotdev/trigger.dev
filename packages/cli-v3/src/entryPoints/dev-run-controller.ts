@@ -4,6 +4,7 @@ import {
   IntervalService,
   LogLevel,
   RunExecutionData,
+  SuspendedProcessError,
   TaskRunExecution,
   TaskRunExecutionMetrics,
   TaskRunExecutionResult,
@@ -26,7 +27,6 @@ type DevRunControllerOptions = {
   worker: BackgroundWorker;
   httpClient: CliApiClient;
   logLevel: LogLevel;
-  heartbeatIntervalSeconds?: number;
   taskRunProcessPool: TaskRunProcessPool;
   onSubscribeToRunNotifications: (run: Run, snapshot: Snapshot) => void;
   onUnsubscribeFromRunNotifications: (run: Run, snapshot: Snapshot) => void;
@@ -47,11 +47,11 @@ export class DevRunController {
   private taskRunProcess?: TaskRunProcess;
   private readonly worker: BackgroundWorker;
   private readonly httpClient: CliApiClient;
-  private readonly runHeartbeat: IntervalService;
-  private readonly heartbeatIntervalSeconds: number;
   private readonly snapshotPoller: IntervalService;
   private readonly snapshotPollIntervalSeconds: number;
   private readonly cwd?: string;
+  private isCompletingRun = false;
+  private isShuttingDown = false;
 
   private state:
     | {
@@ -67,7 +67,6 @@ export class DevRunController {
     this.onExitRunPhase(run);
     this.state = { phase: "RUN", run, snapshot };
 
-    this.runHeartbeat.start();
     this.snapshotPoller.start();
   }
 
@@ -77,7 +76,6 @@ export class DevRunController {
     });
 
     this.worker = opts.worker;
-    this.heartbeatIntervalSeconds = opts.heartbeatIntervalSeconds || 20;
     this.snapshotPollIntervalSeconds = 5;
     this.cwd = opts.cwd;
     this.httpClient = opts.httpClient;
@@ -124,43 +122,8 @@ export class DevRunController {
         logger.debug("[DevRunController] Failed to poll for snapshot", { error });
       },
     });
-
-    this.runHeartbeat = new IntervalService({
-      onInterval: async () => {
-        if (!this.runFriendlyId || !this.snapshotFriendlyId) {
-          logger.debug("[DevRunController] Skipping heartbeat, no run ID or snapshot ID");
-          return;
-        }
-
-        logger.debug("[DevRunController] Sending heartbeat");
-
-        const response = await this.httpClient.dev.heartbeatRun(
-          this.runFriendlyId,
-          this.snapshotFriendlyId,
-          {
-            cpu: 0,
-            memory: 0,
-          }
-        );
-
-        if (!response.success) {
-          logger.debug("[DevRunController] Heartbeat failed", { error: response.error });
-        }
-      },
-      intervalMs: this.heartbeatIntervalSeconds * 1000,
-      leadingEdge: false,
-      onError: async (error) => {
-        logger.debug("[DevRunController] Failed to send heartbeat", { error });
-      },
-    });
-
-    process.on("SIGTERM", this.sigterm);
   }
 
-  private async sigterm() {
-    logger.debug("[DevRunController] Received SIGTERM, stopping worker");
-    await this.stop();
-  }
 
   // This should only be used when we're already executing a run. Attempt number changes are not allowed.
   private updateRunPhase(run: Run, snapshot: Snapshot) {
@@ -245,7 +208,6 @@ export class DevRunController {
 
     logger.debug("onExitRunPhase: Exiting run phase", { newRun });
 
-    this.runHeartbeat.stop();
     this.snapshotPoller.stop();
 
     const { run, snapshot } = this.state;
@@ -389,7 +351,15 @@ export class DevRunController {
           return;
         }
         case "FINISHED": {
-          logger.debug("Run is finished, nothing to do");
+          if (this.isCompletingRun) {
+            logger.debug("Run is finished but we're completing it, skipping");
+            return;
+          }
+
+          await this.exitTaskRunProcessWithoutFailingRun({
+            flush: true,
+            reason: "already-finished",
+          });
           return;
         }
         case "EXECUTING_WITH_WAITPOINTS": {
@@ -458,7 +428,8 @@ export class DevRunController {
         }
         case "RUN_CREATED":
         case "QUEUED_EXECUTING":
-        case "QUEUED": {
+        case "QUEUED":
+        case "DELAYED": {
           logger.debug("Status change not handled", { status: snapshot.executionStatus });
           return;
         }
@@ -549,6 +520,12 @@ export class DevRunController {
         error,
       });
 
+      if (error instanceof SuspendedProcessError) {
+        logger.debug("Attempt execution suspended", { error });
+        this.runFinished();
+        return;
+      }
+
       logger.debug("Submitting attempt completion", {
         runId: run.friendlyId,
         snapshotId: snapshot.friendlyId,
@@ -613,11 +590,13 @@ export class DevRunController {
       build: this.opts.worker.build,
     });
 
+    this.isCompletingRun = false;
+
     // Get process from pool instead of creating new one
     const { taskRunProcess, isReused } = await this.opts.taskRunProcessPool.getProcess(
       this.opts.worker.manifest,
       {
-        id: "unmanaged",
+        id: this.opts.worker.serverWorker.id,
         contentHash: this.opts.worker.build.contentHash,
         version: this.opts.worker.serverWorker?.version,
         engine: "V2",
@@ -632,6 +611,30 @@ export class DevRunController {
     );
 
     this.taskRunProcess = taskRunProcess;
+
+    taskRunProcess.unsafeDetachEvtHandlers();
+
+    taskRunProcess.onTaskRunHeartbeat.attach(async (runId) => {
+      if (!this.runFriendlyId || !this.snapshotFriendlyId) {
+        logger.debug("[DevRunController] Skipping heartbeat, no run ID or snapshot ID");
+        return;
+      }
+
+      logger.debug("[DevRunController] Sending heartbeat");
+
+      const response = await this.httpClient.dev.heartbeatRun(
+        this.runFriendlyId,
+        this.snapshotFriendlyId,
+        {
+          cpu: 0,
+          memory: 0,
+        }
+      );
+
+      if (!response.success) {
+        logger.debug("[DevRunController] Heartbeat failed", { error: response.error });
+      }
+    });
 
     // Update the process environment for this specific run
     // Note: We may need to enhance TaskRunProcess to support updating env vars
@@ -658,6 +661,8 @@ export class DevRunController {
     );
 
     logger.debug("Completed run", completion);
+
+    this.isCompletingRun = true;
 
     // Return process to pool instead of killing it
     try {
@@ -779,6 +784,37 @@ export class DevRunController {
     assertExhaustive(attemptStatus);
   }
 
+  private async exitTaskRunProcessWithoutFailingRun({
+    flush,
+    reason,
+  }: {
+    flush: boolean;
+    reason: string;
+  }) {
+    await this.taskRunProcess?.suspend({ flush });
+
+    // No services should be left running after this line - let's make sure of it
+    this.shutdownExecution(`exitTaskRunProcessWithoutFailingRun: ${reason}`);
+  }
+
+  private shutdownExecution(reason: string) {
+    if (this.isShuttingDown) {
+      logger.debug(`[shutdown] ${reason} (already shutting down)`, {
+        newReason: reason,
+      });
+      return;
+    }
+
+    logger.debug(`[shutdown] ${reason}`);
+
+    this.isShuttingDown = true;
+
+    this.snapshotPoller.stop();
+
+    this.opts.onFinished();
+    this.taskRunProcess?.unsafeDetachEvtHandlers();
+  }
+
   private async runFinished() {
     // Return the process to the pool instead of killing it directly
     if (this.taskRunProcess) {
@@ -791,7 +827,6 @@ export class DevRunController {
       }
     }
 
-    this.runHeartbeat.stop();
     this.snapshotPoller.stop();
 
     this.opts.onFinished();
@@ -816,8 +851,6 @@ export class DevRunController {
   async stop() {
     logger.debug("[DevRunController] Shutting down");
 
-    process.off("SIGTERM", this.sigterm);
-
     if (this.taskRunProcess && !this.taskRunProcess.isBeingKilled) {
       try {
         const version = this.opts.worker.serverWorker?.version || "unknown";
@@ -828,7 +861,6 @@ export class DevRunController {
       }
     }
 
-    this.runHeartbeat.stop();
     this.snapshotPoller.stop();
   }
 

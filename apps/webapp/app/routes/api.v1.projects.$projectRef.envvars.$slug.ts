@@ -2,8 +2,9 @@ import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-
 import { CreateEnvironmentVariableRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import {
-  authenticateProjectApiKeyOrPersonalAccessToken,
+  authenticateRequest,
   authenticatedEnvironmentForAuthentication,
+  branchNameFromRequest,
 } from "~/services/apiAuth.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
@@ -19,7 +20,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  const authenticationResult = await authenticateProjectApiKeyOrPersonalAccessToken(request);
+  const authenticationResult = await authenticateRequest(request);
 
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
@@ -28,7 +29,8 @@ export async function action({ params, request }: ActionFunctionArgs) {
   const environment = await authenticatedEnvironmentForAuthentication(
     authenticationResult,
     parsedParams.data.projectRef,
-    parsedParams.data.slug
+    parsedParams.data.slug,
+    branchNameFromRequest(request)
   );
 
   const jsonBody = await request.json();
@@ -66,7 +68,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  const authenticationResult = await authenticateProjectApiKeyOrPersonalAccessToken(request);
+  const authenticationResult = await authenticateRequest(request);
 
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
@@ -75,7 +77,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const environment = await authenticatedEnvironmentForAuthentication(
     authenticationResult,
     parsedParams.data.projectRef,
-    parsedParams.data.slug
+    parsedParams.data.slug,
+    branchNameFromRequest(request)
   );
 
   const repository = new EnvironmentVariablesRepository();

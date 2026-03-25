@@ -21,7 +21,7 @@ This task processes and watermarks an image using the Sharp library, and then up
 To use this example, you'll first need to add these build settings to your `trigger.config.ts` file:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -49,7 +49,7 @@ export default defineConfig({
 ```ts trigger/sharp-image-processing.ts
 import { S3Client } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";

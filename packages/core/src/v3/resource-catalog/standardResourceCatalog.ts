@@ -1,17 +1,24 @@
 import {
+  PromptManifest,
+  PromptMetadata,
   TaskFileMetadata,
   TaskMetadata,
   TaskManifest,
   WorkerManifest,
   QueueManifest,
 } from "../schemas/index.js";
-import { TaskMetadataWithFunctions } from "../types/index.js";
+import { PromptMetadataWithFunctions, TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
 import { ResourceCatalog } from "./catalog.js";
 
 export class StandardResourceCatalog implements ResourceCatalog {
+  private _taskSchemas: Map<string, TaskSchema> = new Map();
   private _taskMetadata: Map<string, TaskMetadata> = new Map();
   private _taskFunctions: Map<string, TaskMetadataWithFunctions["fns"]> = new Map();
   private _taskFileMetadata: Map<string, TaskFileMetadata> = new Map();
+  private _promptMetadata: Map<string, PromptMetadata> = new Map();
+  private _promptFunctions: Map<string, PromptMetadataWithFunctions["fns"]> = new Map();
+  private _promptFileMetadata: Map<string, TaskFileMetadata> = new Map();
+  private _promptSchemas: Map<string, TaskSchema> = new Map();
   private _currentFileContext?: Omit<TaskFileMetadata, "exportName">;
   private _queueMetadata: Map<string, QueueManifest> = new Map();
 
@@ -60,7 +67,7 @@ export class StandardResourceCatalog implements ResourceCatalog {
       return;
     }
 
-    const { fns, ...metadata } = task;
+    const { fns, schema, ...metadata } = task;
 
     if (!task.id) {
       return;
@@ -72,6 +79,10 @@ export class StandardResourceCatalog implements ResourceCatalog {
 
     this._taskMetadata.set(task.id, metadata);
     this._taskFunctions.set(task.id, fns);
+
+    if (schema) {
+      this._taskSchemas.set(task.id, schema);
+    }
   }
 
   updateTaskMetadata(id: string, updates: Partial<TaskMetadataWithFunctions>): void {
@@ -107,13 +118,19 @@ export class StandardResourceCatalog implements ResourceCatalog {
         continue;
       }
 
-      result.push({
+      const taskManifest = {
         ...metadata,
         ...fileMetadata,
-      });
+      };
+
+      result.push(taskManifest);
     }
 
     return result;
+  }
+
+  getTaskSchema(id: string): TaskSchema | undefined {
+    return this._taskSchemas.get(id);
   }
 
   listQueueManifests(): Array<QueueManifest> {
@@ -152,6 +169,68 @@ export class StandardResourceCatalog implements ResourceCatalog {
 
   taskExists(id: string): boolean {
     return this._taskMetadata.has(id);
+  }
+
+  registerPromptMetadata(prompt: PromptMetadataWithFunctions): void {
+    if (!this._currentFileContext) {
+      return;
+    }
+
+    const { fns, schema, ...metadata } = prompt;
+
+    if (!prompt.id) {
+      return;
+    }
+
+    this._promptFileMetadata.set(prompt.id, {
+      ...this._currentFileContext,
+    });
+
+    this._promptMetadata.set(prompt.id, metadata);
+    this._promptFunctions.set(prompt.id, fns);
+
+    if (schema) {
+      this._promptSchemas.set(prompt.id, schema);
+    }
+  }
+
+  getPromptSchema(id: string): TaskSchema | undefined {
+    return this._promptSchemas.get(id);
+  }
+
+  listPromptManifests(): Array<PromptManifest> {
+    const result: Array<PromptManifest> = [];
+
+    for (const [id, metadata] of this._promptMetadata) {
+      const fileMetadata = this._promptFileMetadata.get(id);
+
+      if (!fileMetadata) {
+        continue;
+      }
+
+      result.push({
+        ...metadata,
+        ...fileMetadata,
+      });
+    }
+
+    return result;
+  }
+
+  getPrompt(id: string): PromptMetadataWithFunctions | undefined {
+    const metadata = this._promptMetadata.get(id);
+    const fileMetadata = this._promptFileMetadata.get(id);
+    const fns = this._promptFunctions.get(id);
+
+    if (!metadata || !fns || !fileMetadata) {
+      return undefined;
+    }
+
+    return {
+      ...metadata,
+      ...fileMetadata,
+      fns,
+    };
   }
 
   disable() {

@@ -19,6 +19,7 @@ export const action = createActionWorkerApiRoute(
     authenticatedWorker,
     params,
     body,
+    runnerId,
   }): Promise<TypedResponse<WorkerApiSuspendRunResponseBody>> => {
     const { runFriendlyId, snapshotFriendlyId } = params;
 
@@ -39,6 +40,7 @@ export const action = createActionWorkerApiRoute(
         runFriendlyId,
         snapshotFriendlyId,
         checkpoint: body.checkpoint,
+        runnerId,
       });
 
       return json({ ok: true });

@@ -101,7 +101,9 @@ mode: "wide"
 | `TASK_PAYLOAD_MAXIMUM_SIZE`                      | No       | 3145728 (3MB)         | Max task payload size.                                                                                    |
 | `BATCH_TASK_PAYLOAD_MAXIMUM_SIZE`                | No       | 1000000 (1MB)         | Max batch payload size.                                                                                   |
 | `TASK_RUN_METADATA_MAXIMUM_SIZE`                 | No       | 262144 (256KB)        | Max metadata size.                                                                                        |
-| `MAX_BATCH_V2_TRIGGER_ITEMS`                     | No       | 500                   | Max batch size.                                                                                           |
+| `MAX_BATCH_V2_TRIGGER_ITEMS`                     | No       | 500                   | Max batch size (legacy v2 API).                                                                           |
+| `STREAMING_BATCH_MAX_ITEMS`                      | No       | 1000                  | Max items in streaming batch (v3 API, requires SDK 4.3.1+).                                               |
+| `STREAMING_BATCH_ITEM_MAXIMUM_SIZE`              | No       | 3145728 (3MB)         | Max size per item in streaming batch.                                                                     |
 | `MAXIMUM_DEV_QUEUE_SIZE`                         | No       | —                     | Max dev queue size.                                                                                       |
 | `MAXIMUM_DEPLOYED_QUEUE_SIZE`                    | No       | —                     | Max deployed queue size.                                                                                  |
 | **OTel limits**                                  |          |                       |                                                                                                           |
@@ -134,11 +136,14 @@ mode: "wide"
 | `RUN_ENGINE_RATE_LIMIT_REQUEST_LOGS_ENABLED`     | No       | 0                     | Run engine rate limit request logs.                                                                       |
 | `RUN_ENGINE_RATE_LIMIT_REJECTION_LOGS_ENABLED`   | No       | 1                     | Run engine rate limit rejection logs.                                                                     |
 | `RUN_ENGINE_RATE_LIMIT_LIMITER_LOGS_ENABLED`     | No       | 0                     | Run engine rate limit limiter logs.                                                                       |
+| `RUN_ENGINE_DEFAULT_MAX_TTL`                     | No       | —                     | Maximum TTL for all runs (e.g. "14d"). Runs without a TTL use this as default; runs with a larger TTL are clamped. |
+| `MAXIMUM_DEV_QUEUE_SIZE`                         | No       | —                     | Maximum queued runs per queue in development environments.                                                |
+| `MAXIMUM_DEPLOYED_QUEUE_SIZE`                    | No       | —                     | Maximum queued runs per queue in deployed (staging/prod) environments.                                   |
 | **Misc**                                         |          |                       |                                                                                                           |
 | `TRIGGER_TELEMETRY_DISABLED`                     | No       | —                     | Disable telemetry.                                                                                        |
 | `NODE_MAX_OLD_SPACE_SIZE`                        | No       | 8192                  | Maximum memory allocation for Node.js heap in MiB (e.g. "4096" for 4GB).                                  |
 | `OPENAI_API_KEY`                                 | No       | —                     | OpenAI API key.                                                                                           |
 | `MACHINE_PRESETS_OVERRIDE_PATH`                  | No       | —                     | Path to machine presets override file. See [machine overrides](/self-hosting/overview#machine-overrides). |
 | `APP_ENV`                                        | No       | `NODE_ENV`            | App environment. Used for things like the title tag.                                                      |
-| `ADMIN_EMAILS`                                   | No       | —                     | Regex of user emails to automatically promote to admin.                                                   |
+| `ADMIN_EMAILS`                                   | No       | —                     | Regex of user emails to automatically promote to admin on signup. Does not apply to existing users.     |
 | `EVENT_LOOP_MONITOR_ENABLED`                     | No       | 1                     | Node.js event loop lag monitor.                                                                           |

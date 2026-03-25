@@ -7,8 +7,14 @@ export interface UsageMeasurement {
   sample(): UsageSample;
 }
 
+export type InitialUsageState = {
+  cpuTime: number;
+  costInCents: number;
+};
+
 export interface UsageManager {
   disable(): void;
+  getInitialState(): InitialUsageState;
   start(): UsageMeasurement;
   stop(measurement: UsageMeasurement): UsageSample;
   sample(): UsageSample | undefined;

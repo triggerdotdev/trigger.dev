@@ -3,14 +3,17 @@ title: "Scheduled tasks (cron)"
 description: "A task that is triggered on a recurring schedule using cron syntax."
 ---
 
-<Note>Scheduled tasks are only for recurring tasks. If you want to trigger a one-off task at a future time, you should [use the delay option](/triggering#delay).</Note>
+<Note>
+  Scheduled tasks are only for recurring tasks. If you want to trigger a one-off task at a future
+  time, you should [use the delay option](/triggering#delay).
+</Note>
 
 ## Defining a scheduled task
 
 This task will run when any of the attached schedules trigger. They have a predefined payload with some useful properties:
 
 ```ts
-import { schedules } from "@trigger.dev/sdk/v3";
+import { schedules } from "@trigger.dev/sdk";
 
 export const firstScheduledTask = schedules.task({
   id: "first-scheduled-task",
@@ -104,6 +107,9 @@ export const secondScheduledTask = schedules.task({
     //5am every day Tokyo time
     pattern: "0 5 * * *",
     timezone: "Asia/Tokyo",
+    //optional, defaults to all environments
+    //possible values are "PRODUCTION", "STAGING", "PREVIEW" and "DEVELOPMENT"
+    environments: ["PRODUCTION", "STAGING"],
   },
   run: async (payload) => {},
 });
@@ -227,7 +233,7 @@ By using the `externalId` you can have schedules for your users. This is useful 
 A reminder task:
 
 ```ts /trigger/reminder.ts
-import { schedules } from "@trigger.dev/sdk/v3";
+import { schedules } from "@trigger.dev/sdk";
 
 //this task will run when any of the attached schedules trigger
 export const reminderTask = schedules.task({

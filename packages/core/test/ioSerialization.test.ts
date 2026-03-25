@@ -1,4 +1,4 @@
-import { replaceSuperJsonPayload } from "../src/v3/utils/ioSerialization.js";
+import { replaceSuperJsonPayload, prettyPrintPacket } from "../src/v3/utils/ioSerialization.js";
 
 describe("ioSerialization", () => {
   describe("replaceSuperJsonPayload", () => {
@@ -186,6 +186,162 @@ describe("ioSerialization", () => {
       const invalidPayload = "{ invalid json }";
 
       await expect(replaceSuperJsonPayload(originalSerialized, invalidPayload)).rejects.toThrow();
+    });
+  });
+
+  describe("prettyPrintPacket", () => {
+    it("should return empty string for undefined data", async () => {
+      const result = await prettyPrintPacket(undefined);
+      expect(result).toBe("");
+    });
+
+    it("should return string data as-is", async () => {
+      const result = await prettyPrintPacket("Hello, World!");
+      expect(result).toBe("Hello, World!");
+    });
+
+    it("should pretty print JSON data with default options", async () => {
+      const data = { name: "John", age: 30, nested: { value: true } };
+      const result = await prettyPrintPacket(data, "application/json");
+
+      expect(result).toBe(JSON.stringify(data, null, 2));
+    });
+
+    it("should handle JSON data as string", async () => {
+      const data = { name: "John", age: 30 };
+      const jsonString = JSON.stringify(data);
+      const result = await prettyPrintPacket(jsonString, "application/json");
+
+      expect(result).toBe(JSON.stringify(data, null, 2));
+    });
+
+    it("should pretty print SuperJSON data", async () => {
+      const data = {
+        name: "John",
+        date: new Date("2023-01-01"),
+        bigInt: BigInt(123),
+        set: new Set(["a", "b"]),
+        map: new Map([["key", "value"]]),
+      };
+
+      const superjson = await import("superjson");
+      const serialized = superjson.stringify(data);
+
+      const result = await prettyPrintPacket(serialized, "application/super+json");
+
+      // Should deserialize and pretty print the data
+      expect(result).toContain('"name": "John"');
+      expect(result).toContain('"date": "2023-01-01T00:00:00.000Z"');
+      expect(result).toContain('"bigInt": "123"');
+      expect(result).toContain('"set": [\n    "a",\n    "b"\n  ]');
+      expect(result).toContain('"map": {\n    "key": "value"\n  }');
+    });
+
+    it("should handle circular references", async () => {
+      const data: any = { name: "John" };
+      data.self = data; // Create circular reference
+
+      // Create a SuperJSON serialized version to test the circular reference detection
+      const superjson = await import("superjson");
+      const serialized = superjson.stringify(data);
+
+      const result = await prettyPrintPacket(serialized, "application/super+json");
+
+      expect(result).toContain('"name": "John"');
+      expect(result).toContain('"self": "[Circular]"');
+    });
+
+    it("should handle regular non-circular references", async () => {
+      const person = { name: "John" };
+
+      const data: any = { person1: person, person2: person };
+
+      // Create a SuperJSON serialized version to test the circular reference detection
+      const superjson = await import("superjson");
+      const serialized = superjson.stringify(data);
+
+      const result = await prettyPrintPacket(serialized, "application/super+json");
+
+      expect(result).toContain('"person1": {');
+      expect(result).toContain('"person2": {');
+    });
+
+    it("should filter out specified keys", async () => {
+      const data = { name: "John", password: "secret", age: 30 };
+      const result = await prettyPrintPacket(data, "application/json", {
+        filteredKeys: ["password"],
+      });
+
+      expect(result).toContain('"name": "John"');
+      expect(result).toContain('"age": 30');
+      expect(result).not.toContain('"password"');
+    });
+
+    it("should handle BigInt values", async () => {
+      const data = { id: BigInt(123456789), name: "John" };
+      const result = await prettyPrintPacket(data, "application/json");
+
+      expect(result).toContain('"id": "123456789"');
+      expect(result).toContain('"name": "John"');
+    });
+
+    it("should handle RegExp values", async () => {
+      const data = { pattern: /test/gi, name: "John" };
+      const result = await prettyPrintPacket(data, "application/json");
+
+      expect(result).toContain('"pattern": "/test/gi"');
+      expect(result).toContain('"name": "John"');
+    });
+
+    it("should handle Set values", async () => {
+      const data = { tags: new Set(["tag1", "tag2"]), name: "John" };
+      const result = await prettyPrintPacket(data, "application/json");
+
+      expect(result).toContain('"tags": [\n    "tag1",\n    "tag2"\n  ]');
+      expect(result).toContain('"name": "John"');
+    });
+
+    it("should handle Map values", async () => {
+      const data = { mapping: new Map([["key1", "value1"]]), name: "John" };
+      const result = await prettyPrintPacket(data, "application/json");
+
+      expect(result).toContain('"mapping": {\n    "key1": "value1"\n  }');
+      expect(result).toContain('"name": "John"');
+    });
+
+    it("should handle complex nested data", async () => {
+      const data = {
+        user: {
+          id: BigInt(123),
+          createdAt: new Date("2023-01-01"),
+          settings: {
+            theme: "dark",
+            tags: new Set(["admin", "user"]),
+            config: new Map([["timeout", "30s"]]),
+          },
+        },
+        metadata: {
+          version: 1,
+          pattern: /^test$/,
+        },
+      };
+
+      const result = await prettyPrintPacket(data, "application/json");
+
+      expect(result).toContain('"id": "123"');
+      expect(result).toContain('"createdAt": "2023-01-01T00:00:00.000Z"');
+      expect(result).toContain('"theme": "dark"');
+      expect(result).toContain('"tags": [\n        "admin",\n        "user"\n      ]');
+      expect(result).toContain('"config": {\n        "timeout": "30s"\n      }');
+      expect(result).toContain('"version": 1');
+      expect(result).toContain('"pattern": "/^test$/"');
+    });
+
+    it("should handle data without dataType parameter", async () => {
+      const data = { name: "John", age: 30 };
+      const result = await prettyPrintPacket(data);
+
+      expect(result).toBe(JSON.stringify(data, null, 2));
     });
   });
 });

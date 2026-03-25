@@ -17,7 +17,7 @@ Transcribe audio using [Deepgram's](https://developers.deepgram.com/docs/introdu
 
 ```ts trigger/deepgramTranscription.ts
 import { createClient } from "@deepgram/sdk";
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 
 // Initialize the Deepgram client, using your Deepgram API key (you can find this in your Deepgram account settings).
 const deepgram = createClient(process.env.DEEPGRAM_SECRET_KEY);

@@ -13,7 +13,7 @@ This repository is a pnpm monorepo managed with Turbo. It contains multiple apps
 See `ai/references/repo.md` for a more complete explanation of the workspaces.
 
 ## Development setup
-1. Install dependencies with `pnpm i` (pnpm `8.15.5` and Node.js `20.11.1` are required).
+1. Install dependencies with `pnpm i` (pnpm `10.23.0` and Node.js `20.20.0` are required).
 2. Copy `.env.example` to `.env` and generate a random 16 byte hex string for `ENCRYPTION_KEY` (`openssl rand -hex 16`). Update other secrets if needed.
 3. Start the local services with Docker:
    ```bash

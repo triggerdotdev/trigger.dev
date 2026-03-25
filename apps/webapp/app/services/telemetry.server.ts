@@ -28,18 +28,32 @@ class Telemetry {
   }
 
   user = {
-    identify: ({ user, isNewUser }: { user: User; isNewUser: boolean }) => {
+    identify: ({
+      user,
+      isNewUser,
+      referralSource,
+    }: {
+      user: User;
+      isNewUser: boolean;
+      referralSource?: string;
+    }) => {
       if (this.#posthogClient) {
+        const properties: Record<string, any> = {
+          email: user.email,
+          name: user.name,
+          authenticationMethod: user.authenticationMethod,
+          admin: user.admin,
+          createdAt: user.createdAt,
+          isNewUser,
+        };
+        
+        if (referralSource) {
+          properties.referralSource = referralSource;
+        }
+        
         this.#posthogClient.identify({
           distinctId: user.id,
-          properties: {
-            email: user.email,
-            name: user.name,
-            authenticationMethod: user.authenticationMethod,
-            admin: user.admin,
-            createdAt: user.createdAt,
-            isNewUser,
-          },
+          properties,
         });
       }
       if (isNewUser) {

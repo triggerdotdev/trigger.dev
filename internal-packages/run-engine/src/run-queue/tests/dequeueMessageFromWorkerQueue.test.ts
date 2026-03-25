@@ -468,4 +468,91 @@ describe("RunQueue.dequeueMessageFromWorkerQueue", () => {
       }
     }
   );
+
+  redisTest(
+    "should put the queue in a cooloff state when it fails to dequeue after a certain number of consecutive failures",
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        logLevel: "debug",
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        masterQueueCooloffPeriodMs: 10_000,
+        masterQueueCooloffCountThreshold: 1,
+        masterQueueConsumersIntervalMs: 500,
+        masterQueueConsumerDequeueCount: 1,
+        dequeueBlockingTimeoutSeconds: 1,
+      });
+
+      try {
+        // Set queue concurrency limit to 1
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, messageDev.queue, 1);
+
+        // Enqueue two messages
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageDev,
+          workerQueue: "main",
+        });
+
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: { ...messageDev, runId: "r4322" },
+          workerQueue: "main",
+        });
+
+        await setTimeout(1000);
+
+        // Dequeue first message
+        const dequeued1 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        expect(dequeued1).toBeDefined();
+        assertNonNullable(dequeued1);
+
+        // Try to dequeue second message
+        const dequeued2 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        expect(dequeued2).toBeUndefined();
+
+        const queueConcurrency = await queue.currentConcurrencyOfQueue(
+          authenticatedEnvDev,
+          messageDev.queue
+        );
+        expect(queueConcurrency).toBe(1);
+
+        // Now lets ack the first message (and skip dequeue processing so we can test the cooloff state)
+        await queue.acknowledgeMessage(dequeued1.message.orgId, dequeued1.messageId, {
+          skipDequeueProcessing: true,
+        });
+
+        await setTimeout(1000);
+
+        // Try and dequeue the second message again (should still be in the cooloff state)
+        const dequeued3 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        expect(dequeued3).toBeUndefined();
+
+        // Wait for the cooloff period to end
+        await setTimeout(10_000);
+
+        // Try and dequeue the second message again (should be dequeued now)
+        const dequeued4 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        expect(dequeued4).toBeDefined();
+        assertNonNullable(dequeued4);
+        expect(dequeued4.messageId).toEqual("r4322");
+        expect(dequeued4.message.orgId).toEqual(messageDev.orgId);
+        expect(dequeued4.message.version).toEqual("2");
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
 });

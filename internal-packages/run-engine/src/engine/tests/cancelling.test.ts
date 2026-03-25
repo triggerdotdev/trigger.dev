@@ -150,7 +150,7 @@ describe("RunEngine cancelling", () => {
           cancelledEventData.push(result);
         });
 
-        //todo call completeAttempt (this will happen from the worker)
+        // call completeAttempt manually (this will happen from the worker)
         const completeResult = await engine.completeRunAttempt({
           runId: parentRun.id,
           snapshotId: executionData!.snapshot.id,
@@ -288,13 +288,6 @@ describe("RunEngine cancelling", () => {
         },
         prisma
       );
-
-      //dequeue the run
-      await setTimeout(500);
-      const dequeued = await engine.dequeueFromWorkerQueue({
-        consumerId: "test_12345",
-        workerQueue: "main",
-      });
 
       let cancelledEventData: EventBusEventArgs<"runCancelled">[0][] = [];
       engine.eventBus.on("runCancelled", (result) => {

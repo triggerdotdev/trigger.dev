@@ -295,10 +295,29 @@ class PlaywrightExtension implements BuildExtension {
      * We save this output to a file and then parse it to get the download urls for the browsers.
      */
     instructions.push(`RUN npx playwright install --dry-run > /tmp/browser-info.txt`);
+
+    // Determine which browsers to actually install
+    const browsersToInstall = new Set<PlaywrightBrowser | "chromium-headless-shell">();
+
     this.options.browsers.forEach((browser) => {
-      const browserType = browser === "chromium" ? "chromium-headless-shell" : browser;
+      if (browser === "chromium") {
+        if (this.options.headless) {
+          // For headless mode, only install chromium-headless-shell
+          browsersToInstall.add("chromium-headless-shell");
+        } else {
+          // For non-headless mode, install both chromium and chromium-headless-shell
+          // This allows users to easily switch between headless and non-headless mode
+          browsersToInstall.add("chromium");
+          browsersToInstall.add("chromium-headless-shell");
+        }
+      } else {
+        browsersToInstall.add(browser);
+      }
+    });
+
+    Array.from(browsersToInstall).forEach((browser) => {
       instructions.push(
-        `RUN grep -A5 "browser: ${browserType}" /tmp/browser-info.txt > /tmp/${browser}-info.txt`,
+        `RUN grep -A5 -m1 "browser: ${browser}" /tmp/browser-info.txt > /tmp/${browser}-info.txt`,
 
         `RUN INSTALL_DIR=$(grep "Install location:" /tmp/${browser}-info.txt | cut -d':' -f2- | xargs) && \
           DIR_NAME=$(basename "$INSTALL_DIR") && \

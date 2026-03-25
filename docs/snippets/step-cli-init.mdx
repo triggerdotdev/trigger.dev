@@ -20,12 +20,19 @@ yarn dlx trigger.dev@latest init
 
 </CodeGroup>
 
+
 It will do a few things:
 
-1. Log you into the CLI if you're not already logged in.
-2. Create a `trigger.config.ts` file in the root of your project.
-3. Ask where you'd like to create the `/trigger` directory.
-4. Create the `/trigger` directory with an example task, `/trigger/example.[ts/js]`.
+<Tip title="MCP Server">
+  Our [Trigger.dev MCP server](/mcp-introduction) gives your AI assistant direct access to Trigger.dev tools; search docs, trigger tasks, deploy projects, and monitor runs. We recommend installing it for the best developer experience.
+</Tip>
+
+1. Ask if you want to install the [Trigger.dev MCP server](/mcp-introduction) for your AI assistant.
+2. Log you into the CLI if you're not already logged in.
+3. Ask you to select your project.
+4. Install the required SDK packages.
+5. Ask where you'd like to create the `/trigger` directory and create it with an example task.
+6. Create a `trigger.config.ts` file in the root of your project.
 
 Install the "Hello World" example task when prompted. We'll use this task to test the setup.
 

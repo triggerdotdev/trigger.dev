@@ -50,7 +50,7 @@ And we'll be using the following tools and features:
 First up, add these build settings to your `trigger.config.ts` file:
 
 ```tsx trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { puppeteer } from "@trigger.dev/build/extensions/puppeteer";
 
 export default defineConfig({
@@ -79,7 +79,7 @@ RESEND_API_KEY: "<your Resend API key>"
 
 ```ts trigger/scrape-hacker-news.ts
 import { render } from "@react-email/render";
-import { logger, schedules, task, wait } from "@trigger.dev/sdk/v3";
+import { logger, schedules, task, wait } from "@trigger.dev/sdk";
 import { OpenAI } from "openai";
 import puppeteer from "puppeteer-core";
 import { Resend } from "resend";

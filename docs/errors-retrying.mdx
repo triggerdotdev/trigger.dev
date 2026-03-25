@@ -12,6 +12,8 @@ You can configure retrying in two ways:
 1. In your [trigger.config file](/config/config-file) you can set the default retrying behavior for all tasks.
 2. On each task you can set the retrying behavior.
 
+<Note>Task-level retry settings override the defaults in your `trigger.config` file.</Note>
+
 <Note>
   By default when you create your project using the CLI init command we disabled retrying in the DEV
   environment. You can enable it in your [trigger.config file](/config/config-file).
@@ -31,7 +33,7 @@ This task will retry 10 times with exponential backoff.
 One way to gain reliability is to break your work into smaller tasks and [trigger](/triggering) them from each other. Each task can have its own retrying behavior:
 
 ```ts /trigger/multiple-tasks.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -70,7 +72,7 @@ We provide some useful functions that you can use to retry smaller parts of a ta
 You can retry a block of code that can throw an error, with the same retry settings as a task.
 
 ```ts /trigger/retry-on-throw.ts
-import { task, logger, retry } from "@trigger.dev/sdk/v3";
+import { task, logger, retry } from "@trigger.dev/sdk";
 
 export const retryOnThrow = task({
   id: "retry-on-throw",
@@ -106,7 +108,7 @@ You can use `fetch`, `axios`, or any other library in your code.
 But we do provide a convenient function to perform HTTP requests with conditional retrying based on the response:
 
 ```ts /trigger/retry-fetch.ts
-import { task, logger, retry } from "@trigger.dev/sdk/v3";
+import { task, logger, retry } from "@trigger.dev/sdk";
 
 export const taskWithFetchRetries = task({
   id: "task-with-fetch-retries",
@@ -180,7 +182,7 @@ export const taskWithFetchRetries = task({
 
 ## Advanced error handling and retrying
 
-We provide a `handleError` callback on the task and in your `trigger.config` file. This gets called when an uncaught error is thrown in your task.
+We provide a `catchError` callback on the task and in your `trigger.config` file. This gets called when an uncaught error is thrown in your task.
 
 You can
 
@@ -203,7 +205,7 @@ In this complicated example:
 <CodeGroup>
 
 ```ts tasks.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 import { calculateISO8601DurationOpenAIVariantResetAt, openai } from "./openai.js";
 
 export const openaiTask = task({
@@ -219,7 +221,7 @@ export const openaiTask = task({
 
     return chatCompletion.choices[0].message.content;
   },
-  handleError: async (payload, error, { ctx, retryAt }) => {
+  catchError: async ({ payload, error, ctx, retryAt }) => {
     if (error instanceof OpenAI.APIError) {
       if (!error.status) {
         return {
@@ -309,7 +311,7 @@ export function calculateISO8601DurationOpenAIVariantResetAt(
 You can prevent retries by throwing an `AbortTaskRunError`. This will fail the task attempt and disable retrying.
 
 ```ts /trigger/myTasks.ts
-import { task, AbortTaskRunError } from "@trigger.dev/sdk/v3";
+import { task, AbortTaskRunError } from "@trigger.dev/sdk";
 
 export const openaiTask = task({
   id: "openai-task",
@@ -335,7 +337,7 @@ export const openaiTask = task({
 Sometimes you want to catch an error and don't want to retry the task. You can use try/catch as you normally would. In this example we fallback to using Replicate if OpenAI fails.
 
 ```ts /trigger/myTasks.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 export const openaiTask = task({
   id: "openai-task",

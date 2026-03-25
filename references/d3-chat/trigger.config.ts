@@ -3,11 +3,14 @@ import { pythonExtension } from "@trigger.dev/python/extension";
 import { installPlaywrightChromium } from "./src/extensions/playwright";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
+import { UndiciInstrumentation } from "@opentelemetry/instrumentation-undici";
 
 export default defineConfig({
   project: process.env.TRIGGER_PROJECT_REF!,
   dirs: ["./src/trigger"],
   telemetry: {
+    instrumentations: [new HttpInstrumentation(), new UndiciInstrumentation()],
     logExporters: [
       new OTLPLogExporter({
         url: "https://api.axiom.co/v1/logs",

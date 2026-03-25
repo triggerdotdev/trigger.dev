@@ -1,6 +1,6 @@
 import { CalendarDaysIcon, StarIcon } from "@heroicons/react/20/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { type PlanDefinition } from "@trigger.dev/platform/v3";
+import { type PlanDefinition } from "@trigger.dev/platform";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -28,7 +28,7 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
-  await requireUserId(request);
+  const userId = await requireUserId(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
   const { isManagedCloud } = featuresForRequest(request);
@@ -41,8 +41,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404, statusText: "Plans not found" });
   }
 
-  const organization = await prisma.organization.findUnique({
-    where: { slug: organizationSlug },
+  const organization = await prisma.organization.findFirst({
+    where: { slug: organizationSlug, members: { some: { userId } } },
   });
 
   if (!organization) {
@@ -83,6 +83,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 export default function ChoosePlanPage() {
   const {
     plans,
+    addOnPricing,
     v3Subscription,
     organizationSlug,
     periodStart,
@@ -141,6 +142,7 @@ export default function ChoosePlanPage() {
           <div>
             <PricingPlans
               plans={plans}
+              concurrencyAddOnPricing={addOnPricing.concurrency}
               subscription={v3Subscription}
               organizationSlug={organizationSlug}
               hasPromotedPlan={false}

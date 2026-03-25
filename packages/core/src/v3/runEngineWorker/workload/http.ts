@@ -5,7 +5,6 @@ import {
   WorkloadRunAttemptCompleteRequestBody,
   WorkloadRunAttemptCompleteResponseBody,
   WorkloadRunAttemptStartResponseBody,
-  WorkloadRunLatestSnapshotResponseBody,
   WorkloadDequeueFromVersionResponseBody,
   WorkloadRunAttemptStartRequestBody,
   WorkloadSuspendRunResponseBody,
@@ -53,18 +52,58 @@ export class WorkloadHttpClient {
     });
   }
 
+  private isConnectionError(error: string): boolean {
+    const connectionErrors = [
+      "Connection error",
+      "ECONNREFUSED",
+      "ETIMEDOUT",
+      "ENOTFOUND",
+      "ECONNRESET",
+      "EHOSTUNREACH",
+      "ENETUNREACH",
+      "EPIPE",
+      "ECONNABORTED",
+    ];
+    return connectionErrors.some((errType) => error.includes(errType));
+  }
+
+  private async withConnectionErrorDetection<T>(
+    operation: () => Promise<{ success: true; data: T } | { success: false; error: string }>
+  ): Promise<
+    { success: true; data: T } | { success: false; error: string; isConnectionError?: boolean }
+  > {
+    const result = await operation();
+
+    if (result.success) {
+      return result;
+    }
+
+    // Check if this is a connection error
+    if (this.isConnectionError(result.error)) {
+      return {
+        ...result,
+        isConnectionError: true,
+      };
+    }
+
+    return result;
+  }
+
   async heartbeatRun(runId: string, snapshotId: string, body?: WorkloadHeartbeatRequestBody) {
-    return wrapZodFetch(
-      WorkloadHeartbeatResponseBody,
-      `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
-      {
-        method: "POST",
-        headers: {
-          ...this.defaultHeaders(),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body ?? {}),
-      }
+    return this.withConnectionErrorDetection(() =>
+      wrapZodFetch(
+        WorkloadHeartbeatResponseBody,
+        `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
+        {
+          method: "POST",
+          headers: {
+            ...this.defaultHeaders(),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body ?? {}),
+          signal: AbortSignal.timeout(10_000), // 10 second timeout
+        }
+      )
     );
   }
 
@@ -82,15 +121,17 @@ export class WorkloadHttpClient {
   }
 
   async continueRunExecution(runId: string, snapshotId: string) {
-    return wrapZodFetch(
-      WorkloadContinueRunExecutionResponseBody,
-      `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/continue`,
-      {
-        method: "GET",
-        headers: {
-          ...this.defaultHeaders(),
-        },
-      }
+    return this.withConnectionErrorDetection(() =>
+      wrapZodFetch(
+        WorkloadContinueRunExecutionResponseBody,
+        `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/continue`,
+        {
+          method: "GET",
+          headers: {
+            ...this.defaultHeaders(),
+          },
+        }
+      )
     );
   }
 
@@ -130,29 +171,19 @@ export class WorkloadHttpClient {
     );
   }
 
-  async getRunExecutionData(runId: string) {
-    return wrapZodFetch(
-      WorkloadRunLatestSnapshotResponseBody,
-      `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/latest`,
-      {
-        method: "GET",
-        headers: {
-          ...this.defaultHeaders(),
-        },
-      }
-    );
-  }
-
   async getSnapshotsSince(runId: string, snapshotId: string) {
-    return wrapZodFetch(
-      WorkloadRunSnapshotsSinceResponseBody,
-      `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/since/${snapshotId}`,
-      {
-        method: "GET",
-        headers: {
-          ...this.defaultHeaders(),
-        },
-      }
+    return this.withConnectionErrorDetection(() =>
+      wrapZodFetch(
+        WorkloadRunSnapshotsSinceResponseBody,
+        `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/since/${snapshotId}`,
+        {
+          method: "GET",
+          headers: {
+            ...this.defaultHeaders(),
+          },
+          signal: AbortSignal.timeout(10_000), // 10 second timeout
+        }
+      )
     );
   }
 

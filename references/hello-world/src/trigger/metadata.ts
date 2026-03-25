@@ -44,6 +44,8 @@ export const parentTask = task({
     metadata.parent.set("test.parent.set", true);
     metadata.set("test.set", "test");
 
+    logger.info("logging metadata.current()", { current: metadata.current() });
+
     await childTask.triggerAndWait({});
 
     return {

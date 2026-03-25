@@ -50,7 +50,7 @@ Add this code to your `api.hello-world.ts` file which imports your task:
 
 ```ts app/routes/api.hello-world.ts
 import type { helloWorldTask } from "../../src/trigger/example";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 
 export async function loader() {
   const handle = await tasks.trigger<typeof helloWorldTask>("hello-world", "James");
@@ -80,7 +80,7 @@ export async function loader() {
 Before we start, it's important to note that:
 
 - We'll be using a type-only import for the task to ensure compatibility with the edge runtime.
-- The `@trigger.dev/sdk/v3` package supports the edge runtime out of the box.
+- The `@trigger.dev/sdk` package supports the edge runtime out of the box.
 
 There are a few extra steps to follow to deploy your `/api/hello-world` API endpoint to Vercel Edge Functions.
 
@@ -91,7 +91,7 @@ There are a few extra steps to follow to deploy your `/api/hello-world` API endp
 Update your API route to use the `runtime: "edge"` option and change it to an `action()` so we can trigger the task from a curl request later on.
 
 ```ts app/routes/api.hello-world.ts
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import type { helloWorldTask } from "../../src/trigger/example";
 //      👆 **type-only** import
 
@@ -196,6 +196,19 @@ This sends a POST request to your API endpoint with a JSON payload.
 The `vercel-build` script in `package.json` is specific to Remix projects on Vercel, ensuring that static assets are correctly copied to the build output.
 
 The `runtime: "edge"` configuration in the API route allows for better performance on Vercel's Edge Network.
+
+## Realtime updates with React hooks
+
+The `@trigger.dev/react-hooks` package lets you subscribe to task runs from your React components. Show progress bars, stream AI responses, or display run status in real time.
+
+<CardGroup cols={2}>
+  <Card title="React hooks" icon="react" href="/realtime/react-hooks/overview">
+    Hooks for subscribing to runs, streaming data, and triggering tasks from the frontend.
+  </Card>
+  <Card title="Streams" icon="wave-pulse" href="/tasks/streams">
+    Pipe continuous data (like AI completions) from your tasks to the client while they run.
+  </Card>
+</CardGroup>
 
 ## Additional resources for Remix
 

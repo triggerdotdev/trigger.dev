@@ -77,6 +77,10 @@ npx trigger.dev@latest deploy [path]
   Turn off syncing environment variables with the Trigger.dev instance.
 </ParamField>
 
+<ParamField body="Local build" type="--local-build">
+  Force building the deployment image locally using your local Docker. This is automatic when self-hosting.
+</ParamField>
+
 ### Common options
 
 These options are available on most commands.
@@ -85,50 +89,10 @@ These options are available on most commands.
 
 ### Self-hosting
 
-These options are typically used when [self-hosting](/open-source-self-hosting) or for local development.
-
-<ParamField body="Self-hosted (builds locally)" type="--self-hosted">
-  Builds and loads the image using your local docker. Use the `--registry` option to specify the
-  registry to push the image to when using `--self-hosted`, or just use `--push` to push to the
-  default registry.
-</ParamField>
-
-<ParamField body="Skip deploying the image" type="--skip-deploy | -D">
-  Load the built image into your local docker.
-</ParamField>
-
-<ParamField body="Load image" type="--load-image">
-  Loads the image into your local docker after building it.
-</ParamField>
-
-<ParamField body="Registry" type="--registry">
-  Specify the registry to push the image to when using `--self-hosted`. Will automatically enable
-  `--push`.
-</ParamField>
-
-<ParamField body="Push image" type="--push">
-  When using the `--self-hosted` flag, push the image to the registry.
-</ParamField>
-
-<ParamField body="Namespace" type="--namespace">
-  The namespace to use when pushing the image to the registry. For example, if pushing to Docker
-  Hub, the namespace is your Docker Hub username.
-</ParamField>
-
-<ParamField body="Network" type="--network">
-  The networking mode for RUN instructions when using `--self-hosted`.
-</ParamField>
-
-## Examples
-
-### Push to Docker Hub (self-hosted)
-
-An example of deploying to Docker Hub when using a self-hosted setup:
+When [self-hosting](/self-hosting/overview), builds are performed locally by default. Once you've logged in to your self-hosted instance using the CLI, you can deploy with:
 
 ```bash
-npx trigger.dev@latest deploy \
-  --self-hosted \
-  --load-image \
-  --registry docker.io \
-  --namespace mydockerhubusername
+npx trigger.dev@latest deploy
 ```
+
+For CI/CD environments, set `TRIGGER_ACCESS_TOKEN` and `TRIGGER_API_URL` environment variables. See the [GitHub Actions guide](/github-actions#self-hosting) for more details.

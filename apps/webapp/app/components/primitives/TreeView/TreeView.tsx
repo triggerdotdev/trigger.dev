@@ -423,6 +423,10 @@ export function useTree<TData, TFilterValue>({
           }
           case "Left":
           case "ArrowLeft": {
+            if (e.metaKey) {
+              return;
+            }
+
             e.preventDefault();
 
             const selected = selectedIdFromState(state.nodes);
@@ -523,6 +527,7 @@ export function useTree<TData, TFilterValue>({
 /** An actual tree structure with custom data */
 export type Tree<TData> = {
   id: string;
+  runId?: string;
   children?: Tree<TData>[];
   data: TData;
 };
@@ -531,6 +536,7 @@ export type Tree<TData> = {
 export type FlatTreeItem<TData> = {
   id: string;
   parentId?: string | undefined;
+  runId?: string;
   children: string[];
   hasChildren: boolean;
   /** The indentation level, the root is 0 */
@@ -548,6 +554,7 @@ export function flattenTree<TData>(tree: Tree<TData>): FlatTree<TData> {
     flatTree.push({
       id: node.id,
       parentId,
+      runId: node.runId,
       children,
       hasChildren: children.length > 0,
       level,
@@ -567,6 +574,7 @@ export function flattenTree<TData>(tree: Tree<TData>): FlatTree<TData> {
 type FlatTreeWithoutChildren<TData> = {
   id: string;
   parentId: string | undefined;
+  runId?: string;
   data: TData;
 };
 
@@ -576,7 +584,7 @@ export function createTreeFromFlatItems<TData>(
 ): Tree<TData> | undefined {
   // Index items by id
   const indexedItems: { [id: string]: Tree<TData> } = withoutChildren.reduce((acc, item) => {
-    acc[item.id] = { id: item.id, data: item.data, children: [] };
+    acc[item.id] = { id: item.id, runId: item.runId, data: item.data, children: [] };
     return acc;
   }, {} as { [id: string]: Tree<TData> });
 

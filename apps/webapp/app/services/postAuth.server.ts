@@ -10,5 +10,8 @@ export async function postAuthentication({
   loginMethod: User["authenticationMethod"];
   isNewUser: boolean;
 }) {
-  telemetry.user.identify({ user, isNewUser });
+  telemetry.user.identify({
+    user,
+    isNewUser,
+  });
 }

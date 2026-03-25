@@ -7,22 +7,38 @@ const DEFAULT_REDIRECT = "/";
  * This should be used any time the redirect path is user-provided
  * (Like the query string on our login/signup pages). This avoids
  * open-redirect vulnerabilities.
- * @param {string} to The redirect destination
+ * @param {string} path The redirect destination
  * @param {string} defaultRedirect The redirect to use if the to is unsafe.
  */
-export function safeRedirect(
-  to: FormDataEntryValue | string | null | undefined,
+export function sanitizeRedirectPath(
+  path: string | undefined | null,
   defaultRedirect: string = DEFAULT_REDIRECT
-) {
-  if (!to || typeof to !== "string") {
+): string {
+  if (!path || typeof path !== "string") {
     return defaultRedirect;
   }
 
-  if (!to.startsWith("/") || to.startsWith("//")) {
+  if (!path.startsWith("/") || path.startsWith("//")) {
     return defaultRedirect;
   }
 
-  return to;
+  try {
+    // should not parse as a full URL
+    new URL(path);
+    return defaultRedirect;
+  } catch {}
+
+  try {
+    // ensure it's a valid relative path
+    const url = new URL(path, "https://example.com");
+    if (url.hostname !== "example.com") {
+      return defaultRedirect;
+    }
+  } catch {
+    return defaultRedirect;
+  }
+
+  return path;
 }
 
 /**

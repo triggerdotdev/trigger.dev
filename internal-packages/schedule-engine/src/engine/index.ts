@@ -497,17 +497,28 @@ export class ScheduleEngine {
 
               span.setAttribute("trigger_success", true);
             } else {
-              this.logger.error("Failed to trigger scheduled task", {
-                instanceId: params.instanceId,
-                taskIdentifier: instance.taskSchedule.taskIdentifier,
-                durationMs: triggerDuration,
-                error: result.error,
-              });
+              const isQueueLimit = result.errorType === "QUEUE_LIMIT";
+
+              if (isQueueLimit) {
+                this.logger.warn("Scheduled task trigger skipped due to queue limit", {
+                  instanceId: params.instanceId,
+                  taskIdentifier: instance.taskSchedule.taskIdentifier,
+                  durationMs: triggerDuration,
+                  error: result.error,
+                });
+              } else {
+                this.logger.error("Failed to trigger scheduled task", {
+                  instanceId: params.instanceId,
+                  taskIdentifier: instance.taskSchedule.taskIdentifier,
+                  durationMs: triggerDuration,
+                  error: result.error,
+                });
+              }
 
               this.scheduleExecutionFailureCounter.add(1, {
                 environment_type: environmentType,
                 schedule_type: scheduleType,
-                error_type: "task_failure",
+                error_type: isQueueLimit ? "queue_limit" : "task_failure",
               });
 
               span.setAttribute("trigger_success", false);

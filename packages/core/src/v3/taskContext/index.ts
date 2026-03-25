@@ -1,13 +1,14 @@
 import { Attributes } from "@opentelemetry/api";
 import { ServerBackgroundWorker, TaskRunContext } from "../schemas/index.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
-import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
+import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { TaskContext } from "./types.js";
 
 const API_NAME = "task-context";
 
 export class TaskContextAPI {
   private static _instance?: TaskContextAPI;
+  private _runDisabled = false;
 
   private constructor() {}
 
@@ -21,6 +22,10 @@ export class TaskContextAPI {
 
   get isInsideTask(): boolean {
     return this.#getTaskContext() !== undefined;
+  }
+
+  get isRunDisabled(): boolean {
+    return this._runDisabled;
   }
 
   get ctx(): TaskRunContext | undefined {
@@ -82,11 +87,9 @@ export class TaskContextAPI {
   get contextAttributes(): Attributes {
     if (this.ctx) {
       return {
-        [SemanticInternalAttributes.ATTEMPT_ID]: this.ctx.attempt.id,
         [SemanticInternalAttributes.ATTEMPT_NUMBER]: this.ctx.attempt.number,
         [SemanticInternalAttributes.TASK_SLUG]: this.ctx.task.id,
         [SemanticInternalAttributes.TASK_PATH]: this.ctx.task.filePath,
-        [SemanticInternalAttributes.TASK_EXPORT_NAME]: this.ctx.task.exportName,
         [SemanticInternalAttributes.QUEUE_NAME]: this.ctx.queue.name,
         [SemanticInternalAttributes.QUEUE_ID]: this.ctx.queue.id,
         [SemanticInternalAttributes.RUN_ID]: this.ctx.run.id,
@@ -100,11 +103,12 @@ export class TaskContextAPI {
   }
 
   public disable() {
-    unregisterGlobal(API_NAME);
+    this._runDisabled = true;
   }
 
   public setGlobalTaskContext(taskContext: TaskContext): boolean {
-    return registerGlobal(API_NAME, taskContext);
+    this._runDisabled = false;
+    return registerGlobal(API_NAME, taskContext, true);
   }
 
   #getTaskContext(): TaskContext | undefined {

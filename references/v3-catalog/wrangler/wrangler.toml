@@ -1,7 +1,0 @@
-name = "proxy"
-main = "src/index.ts"
-compatibility_date = "2023-10-30"
-compatibility_flags = ["nodejs_compat"]
-
-[env.staging]
-[env.prod]

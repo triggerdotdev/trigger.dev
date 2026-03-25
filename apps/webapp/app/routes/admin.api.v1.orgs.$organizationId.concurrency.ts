@@ -74,6 +74,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         limit = body.development;
         break;
       }
+      case "PREVIEW":
       case "STAGING": {
         limit = body.staging;
         break;

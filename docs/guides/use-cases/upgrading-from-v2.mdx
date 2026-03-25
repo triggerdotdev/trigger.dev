@@ -59,7 +59,7 @@ client.defineJob({
 In v3 it looks like this:
 
 ```ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 import { db } from "@/lib/db";
 export const getCreatorVideosFromTikTok = task({
   id: "my-job-id",
@@ -136,7 +136,7 @@ export const openaiJob = task({
 So don't use the `@trigger.dev/openai` package in v3, use the official OpenAI SDK.
 Bear in mind that the syntax for the latest official SDK will probably be different from the @trigger.dev integration SDK. You will need to adapt the code accordingly.
 3. The most critical difference is that inside the `run` function you do NOT need to wrap everything in `io.runTask`. So anything inside there can be extracted out and be used in the main body of the function without wrapping it.
-4. The import for `task` in v3 is `import { task } from "@trigger.dev/sdk/v3";`
+4. The import for `task` in v3 is `import { task } from "@trigger.dev/sdk";`
 5. You can trigger jobs from other jobs. In v2 this was typically done by either calling `io.sendEvent()` or by calling `yourOtherTask.invoke()`. In v3 you call `.trigger()` on the other task, there are no events in v3.
 v2:
 
@@ -258,7 +258,7 @@ client.defineJob({
 In v3 we eliminate a lot of code mainly because we don't need tricks to try avoid timeouts. Here's the equivalent v3 code:
 
 ```ts v3 OpenAI task
-import { logger, task, wait } from "@trigger.dev/sdk/v3";
+import { logger, task, wait } from "@trigger.dev/sdk";
 
 //1. Official OpenAI SDK
 import OpenAI from "openai";

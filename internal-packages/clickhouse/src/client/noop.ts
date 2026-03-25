@@ -1,10 +1,15 @@
 import { Result } from "@trigger.dev/core/v3";
 import { InsertError, QueryError } from "./errors.js";
-import { ClickhouseQueryBuilderFunction, ClickhouseWriter } from "./types.js";
-import { ClickhouseReader } from "./types.js";
+import {
+  ClickhouseQueryBuilderFastFunction,
+  ClickhouseQueryBuilderFunction,
+  ClickhouseReader,
+  ClickhouseWriter,
+  QueryResultWithStats,
+} from "./types.js";
 import { z } from "zod";
 import { ClickHouseSettings, InsertResult } from "@clickhouse/client";
-import { ClickhouseQueryBuilder } from "./queryBuilder.js";
+import { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
 
 export class NoopClient implements ClickhouseReader, ClickhouseWriter {
   public async close() {
@@ -21,6 +26,16 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
       new ClickhouseQueryBuilder(req.name, req.baseQuery, this, req.schema, req.settings);
   }
 
+  public queryBuilderFast<TOut extends Record<string, any>>(req: {
+    name: string;
+    table: string;
+    columns: string[];
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryBuilderFastFunction<TOut> {
+    return () =>
+      new ClickhouseQueryFastBuilder(req.name, req.table, req.columns, this, req.settings);
+  }
+
   public query<TIn extends z.ZodSchema<any>, TOut extends z.ZodSchema<any>>(req: {
     query: string;
     params?: TIn;
@@ -33,6 +48,49 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
         return [new QueryError(`Bad params: ${validParams.error.message}`, { query: "" }), null];
       }
 
+      return [null, []];
+    };
+  }
+
+  public queryWithStats<TIn extends z.ZodSchema<any>, TOut extends z.ZodSchema<any>>(req: {
+    query: string;
+    params?: TIn;
+    schema: TOut;
+  }): (params: z.input<TIn>) => Promise<Result<QueryResultWithStats<z.output<TOut>>, QueryError>> {
+    return async (params: z.input<TIn>) => {
+      const validParams = req.params?.safeParse(params);
+
+      if (validParams?.error) {
+        return [new QueryError(`Bad params: ${validParams.error.message}`, { query: "" }), null];
+      }
+
+      return [
+        null,
+        {
+          rows: [],
+          stats: {
+            read_rows: "0",
+            read_bytes: "0",
+            written_rows: "0",
+            written_bytes: "0",
+            total_rows_to_read: "0",
+            result_rows: "0",
+            result_bytes: "0",
+            elapsed_ns: "0",
+            byte_seconds: "0",
+          },
+        },
+      ];
+    };
+  }
+
+  public queryFast<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
+    name: string;
+    query: string;
+    columns: string[];
+    settings?: ClickHouseSettings;
+  }): (params: TParams) => Promise<Result<TOut[], QueryError>> {
+    return async (params: TParams) => {
       return [null, []];
     };
   }
@@ -54,6 +112,90 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
         return [new InsertError(v.error.message), null];
       }
 
+      return [
+        null,
+        {
+          executed: true,
+          query_id: "noop",
+          summary: {
+            read_rows: "0",
+            read_bytes: "0",
+            written_rows: "0",
+            written_bytes: "0",
+            total_rows_to_read: "0",
+            result_rows: "0",
+            result_bytes: "0",
+            elapsed_ns: "0",
+          },
+          response_headers: {},
+        },
+      ];
+    };
+  }
+
+  public insertUnsafe<TRecord extends Record<string, any>>(req: {
+    name: string;
+    table: string;
+    settings?: ClickHouseSettings;
+  }): (events: TRecord | TRecord[]) => Promise<Result<InsertResult, InsertError>> {
+    return async (events: TRecord | TRecord[]) => {
+      return [
+        null,
+        {
+          executed: true,
+          query_id: "noop",
+          summary: {
+            read_rows: "0",
+            read_bytes: "0",
+            written_rows: "0",
+            written_bytes: "0",
+            total_rows_to_read: "0",
+            result_rows: "0",
+            result_bytes: "0",
+            elapsed_ns: "0",
+          },
+          response_headers: {},
+        },
+      ];
+    };
+  }
+
+  public insertCompact<TRecord extends Record<string, any>>(req: {
+    name: string;
+    table: string;
+    columns: readonly string[];
+    toArray: (record: TRecord) => any[];
+    settings?: ClickHouseSettings;
+  }): (events: TRecord | TRecord[]) => Promise<Result<InsertResult, InsertError>> {
+    return async (events: TRecord | TRecord[]) => {
+      return [
+        null,
+        {
+          executed: true,
+          query_id: "noop",
+          summary: {
+            read_rows: "0",
+            read_bytes: "0",
+            written_rows: "0",
+            written_bytes: "0",
+            total_rows_to_read: "0",
+            result_rows: "0",
+            result_bytes: "0",
+            elapsed_ns: "0",
+          },
+          response_headers: {},
+        },
+      ];
+    };
+  }
+
+  public insertCompactRaw(req: {
+    name: string;
+    table: string;
+    columns: readonly string[];
+    settings?: ClickHouseSettings;
+  }): (events: readonly any[][] | any[]) => Promise<Result<InsertResult, InsertError>> {
+    return async (events: readonly any[][] | any[]) => {
       return [
         null,
         {

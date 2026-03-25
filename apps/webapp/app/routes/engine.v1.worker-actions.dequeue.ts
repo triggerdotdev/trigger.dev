@@ -9,7 +9,10 @@ export const action = createActionWorkerApiRoute(
   {
     body: WorkerApiDequeueRequestBody, // Even though we don't use it, we need to keep it for backwards compatibility
   },
-  async ({ authenticatedWorker }): Promise<TypedResponse<WorkerApiDequeueResponseBody>> => {
-    return json(await authenticatedWorker.dequeue());
+  async ({
+    authenticatedWorker,
+    runnerId,
+  }): Promise<TypedResponse<WorkerApiDequeueResponseBody>> => {
+    return json(await authenticatedWorker.dequeue({ runnerId }));
   }
 );

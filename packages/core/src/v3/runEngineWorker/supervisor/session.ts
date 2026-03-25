@@ -1,7 +1,7 @@
 import { SupervisorHttpClient } from "./http.js";
 import { PreDequeueFn, PreSkipFn, SupervisorClientCommonOptions } from "./types.js";
 import { WorkerApiDequeueResponseBody, WorkerApiHeartbeatRequestBody } from "./schemas.js";
-import { RunQueueConsumer } from "./queueConsumer.js";
+import { RunQueueConsumerPool, ScalingOptions } from "./consumerPool.js";
 import { WorkerEvents } from "./events.js";
 import EventEmitter from "events";
 import { VERSION } from "../../../version.js";
@@ -10,6 +10,7 @@ import { WorkerClientToServerEvents, WorkerServerToClientEvents } from "../types
 import { getDefaultWorkerHeaders } from "./util.js";
 import { IntervalService } from "../../utils/interval.js";
 import { SimpleStructuredLogger } from "../../utils/structuredLogger.js";
+import type { Registry } from "prom-client";
 
 type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   queueConsumerEnabled?: boolean;
@@ -20,8 +21,9 @@ type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   preDequeue?: PreDequeueFn;
   preSkip?: PreSkipFn;
   maxRunCount?: number;
-  maxConsumerCount?: number;
   sendRunDebugLogs?: boolean;
+  scaling: ScalingOptions;
+  metricsRegistry?: Registry;
 };
 
 export class SupervisorSession extends EventEmitter<WorkerEvents> {
@@ -33,7 +35,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   private runNotificationsSocket?: Socket<WorkerServerToClientEvents, WorkerClientToServerEvents>;
 
   private readonly queueConsumerEnabled: boolean;
-  private readonly queueConsumers: RunQueueConsumer[];
+  private readonly consumerPool: RunQueueConsumerPool;
 
   private readonly heartbeat: IntervalService;
 
@@ -44,8 +46,9 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     this.queueConsumerEnabled = opts.queueConsumerEnabled ?? true;
 
     this.httpClient = new SupervisorHttpClient(opts);
-    this.queueConsumers = Array.from({ length: opts.maxConsumerCount ?? 1 }, () => {
-      return new RunQueueConsumer({
+
+    this.consumerPool = new RunQueueConsumerPool({
+      consumer: {
         client: this.httpClient,
         preDequeue: opts.preDequeue,
         preSkip: opts.preSkip,
@@ -53,7 +56,9 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
         intervalMs: opts.dequeueIntervalMs,
         idleIntervalMs: opts.dequeueIdleIntervalMs,
         maxRunCount: opts.maxRunCount,
-      });
+      },
+      scaling: opts.scaling,
+      metricsRegistry: opts.metricsRegistry,
     });
 
     this.heartbeat = new IntervalService({
@@ -179,8 +184,13 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     });
 
     if (this.queueConsumerEnabled) {
-      this.logger.log("Queue consumer enabled");
-      await Promise.allSettled(this.queueConsumers.map(async (q) => q.start()));
+      this.logger.log("Queue consumer enabled", {
+        scalingStrategy: this.consumerPool["scalingStrategy"],
+        minConsumers: this.consumerPool["minConsumerCount"],
+        maxConsumers: this.consumerPool["maxConsumerCount"],
+      });
+
+      await this.consumerPool.start();
       this.heartbeat.start();
     } else {
       this.logger.warn("Queue consumer disabled");
@@ -195,7 +205,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   }
 
   async stop() {
-    await Promise.allSettled(this.queueConsumers.map(async (q) => q.stop()));
+    await this.consumerPool.stop();
     this.heartbeat.stop();
     this.runNotificationsSocket?.disconnect();
   }

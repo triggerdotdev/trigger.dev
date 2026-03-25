@@ -14,7 +14,6 @@ import UsefulNextSteps from "/snippets/useful-next-steps.mdx";
 import TriggerTaskNextjs from "/snippets/trigger-tasks-nextjs.mdx";
 import NextjsTroubleshootingMissingApiKey from "/snippets/nextjs-missing-api-key.mdx";
 import NextjsTroubleshootingButtonSyntax from "/snippets/nextjs-button-syntax.mdx";
-import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to-start.mdx";
 import SupabaseDocsCards from "/snippets/supabase-docs-cards.mdx";
 
 import SupabaseAuthInfo from "/snippets/supabase-auth-info.mdx";
@@ -78,7 +77,7 @@ Replace the placeholder code in your `edge-function-trigger/index.ts` file with 
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // Import the Trigger.dev SDK - replace "<your-sdk-version>" with the version of the SDK you are using, e.g. "3.0.0". You can find this in your package.json file.
-import { tasks } from "npm:@trigger.dev/sdk@3.0.0/v3";
+import { tasks } from "npm:@trigger.dev/sdk@3.0.0";
 // Import your task type from your /trigger folder
 import type { helloWorldTask } from "../../../src/trigger/example.ts";
 //     👆 **type-only** import
@@ -192,5 +191,25 @@ Check your [cloud.trigger.dev](http://cloud.trigger.dev) dashboard and you shoul
 
 </Step>
 </Steps>
+
+### If you see a runtime error when calling tasks.trigger()
+
+If you see `TypeError: Cannot read properties of undefined (reading 'toString')` when calling `tasks.trigger()` from your edge function, the SDK is hitting a dependency that expects Node-style APIs not available in the Supabase Edge (Deno) runtime. Use the [Tasks API](/management/tasks/trigger) with `fetch` instead of the SDK—that avoids loading the SDK in Deno:
+
+```ts
+const response = await fetch(
+  `https://api.trigger.dev/api/v1/tasks/your-task-id/trigger`,
+  {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${Deno.env.get("TRIGGER_SECRET_KEY")}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ payload: { your: "payload" } }),
+  }
+);
+```
+
+See [Trigger task via API](/management/tasks/trigger) for full request/response details and optional fields (e.g. `delay`, `idempotencyKey`).
 
 <SupabaseDocsCards />

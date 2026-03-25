@@ -1,6 +1,6 @@
 import { LockClosedIcon, ShieldCheckIcon, UserCircleIcon } from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { type User } from "@trigger.dev/database";
+import type { User } from "@trigger.dev/database";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
@@ -8,10 +8,11 @@ import {
   personalAccessTokensPath,
   rootPath,
 } from "~/utils/pathBuilder";
+import { AskAI } from "../AskAI";
 import { LinkButton } from "../primitives/Buttons";
+import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
-import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 
 export function AccountSideMenu({ user }: { user: User }) {
   return (
@@ -55,8 +56,9 @@ export function AccountSideMenu({ user }: { user: User }) {
           data-action="security"
         />
       </div>
-      <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
+      <div className="flex w-full items-center justify-between border-t border-grid-bright p-1">
         <HelpAndFeedback />
+        <AskAI />
       </div>
     </div>
   );

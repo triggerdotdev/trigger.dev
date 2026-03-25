@@ -54,6 +54,7 @@ export const usage = {
    */
   getCurrent: (): CurrentUsage => {
     const sample = usageApi.sample();
+    const initialState = usageApi.getInitialState();
     const machine = taskContext.ctx?.machine;
     const run = taskContext.ctx?.run;
 
@@ -65,12 +66,12 @@ export const usage = {
             durationMs: 0,
           },
           total: {
-            costInCents: run?.costInCents ?? 0,
-            durationMs: run?.durationMs ?? 0,
+            costInCents: initialState.costInCents,
+            durationMs: initialState.cpuTime,
           },
         },
         baseCostInCents: run?.baseCostInCents ?? 0,
-        totalCostInCents: (run?.costInCents ?? 0) + (run?.baseCostInCents ?? 0),
+        totalCostInCents: initialState.costInCents + (run?.baseCostInCents ?? 0),
       };
     }
 
@@ -83,12 +84,12 @@ export const usage = {
           durationMs: sample.cpuTime,
         },
         total: {
-          costInCents: (run?.costInCents ?? 0) + currentCostInCents,
-          durationMs: (run?.durationMs ?? 0) + sample.cpuTime,
+          costInCents: currentCostInCents + initialState.costInCents,
+          durationMs: sample.cpuTime + initialState.cpuTime,
         },
       },
       baseCostInCents: run?.baseCostInCents ?? 0,
-      totalCostInCents: (run?.costInCents ?? 0) + currentCostInCents + (run?.baseCostInCents ?? 0),
+      totalCostInCents: currentCostInCents + (run?.baseCostInCents ?? 0) + initialState.costInCents,
     };
   },
   /**

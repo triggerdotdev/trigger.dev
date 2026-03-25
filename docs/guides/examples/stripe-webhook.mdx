@@ -32,7 +32,7 @@ Here are examples of how you can set up a handler using different frameworks:
 ```ts Next.js
 // app/api/stripe-webhook/route.ts
 import { NextResponse } from "next/server";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import Stripe from "stripe";
 import type { stripeCheckoutCompleted } from "@/trigger/stripe-checkout-completed";
 //     👆 **type-only** import
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
 import { type ActionFunctionArgs, json } from "@remix-run/node";
 import type { stripeCheckoutCompleted } from "src/trigger/stripe-webhook";
 //     👆 **type-only** import
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import Stripe from "stripe";
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -127,7 +127,7 @@ export async function action({ request }: ActionFunctionArgs) {
 This task is triggered when a `checkout.session.completed` event is received from Stripe.
 
 ```ts trigger/stripe-checkout-completed.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 import type stripe from "stripe";
 
 export const stripeCheckoutCompleted = task({

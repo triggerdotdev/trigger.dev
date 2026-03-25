@@ -1,10 +1,11 @@
 import {
   Prisma,
   PrismaClient,
-  PrismaClientOrTransaction,
-  PrismaReplicaClient,
-  PrismaTransactionClient,
-  PrismaTransactionOptions,
+  $transaction as transac,
+  type PrismaClientOrTransaction,
+  type PrismaReplicaClient,
+  type PrismaTransactionClient,
+  type PrismaTransactionOptions,
 } from "@trigger.dev/database";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -12,9 +13,9 @@ import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";
 import { singleton } from "./utils/singleton";
-import { $transaction as transac } from "@trigger.dev/database";
 import { startActiveSpan } from "./v3/tracer.server";
 import { Span } from "@opentelemetry/api";
+import { queryPerformanceMonitor } from "./utils/queryPerformanceMonitor.server";
 
 export type {
   PrismaTransactionClient,
@@ -122,28 +123,99 @@ function getClient() {
         url: databaseUrl.href,
       },
     },
-    // @ts-expect-error
     log: [
+      // events
       {
-        emit: "stdout",
+        emit: "event",
         level: "error",
       },
       {
-        emit: "stdout",
+        emit: "event",
         level: "info",
       },
       {
-        emit: "stdout",
+        emit: "event",
         level: "warn",
       },
-    ].concat(
-      process.env.VERBOSE_PRISMA_LOGS === "1"
+      // stdout
+      ...((process.env.PRISMA_LOG_TO_STDOUT === "1"
         ? [
-            { emit: "event", level: "query" },
-            { emit: "stdout", level: "query" },
+            {
+              emit: "stdout",
+              level: "error",
+            },
+            {
+              emit: "stdout",
+              level: "info",
+            },
+            {
+              emit: "stdout",
+              level: "warn",
+            },
           ]
-        : []
-    ),
+        : []) satisfies Prisma.LogDefinition[]),
+      // Query performance monitoring
+      ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
+      process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
+        ? [
+            {
+              emit: "event",
+              level: "query",
+            },
+          ]
+        : []) satisfies Prisma.LogDefinition[]),
+      // verbose
+      ...((process.env.VERBOSE_PRISMA_LOGS === "1"
+        ? [
+            {
+              emit: "stdout",
+              level: "query",
+            },
+          ]
+        : []) satisfies Prisma.LogDefinition[]),
+    ],
+  });
+
+  // Only use structured logging if we're not already logging to stdout
+  if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
+    client.$on("info", (log) => {
+      logger.info("PrismaClient info", {
+        clientType: "writer",
+        event: {
+          timestamp: log.timestamp,
+          message: log.message,
+          target: log.target,
+        },
+      });
+    });
+
+    client.$on("warn", (log) => {
+      logger.warn("PrismaClient warn", {
+        clientType: "writer",
+        event: {
+          timestamp: log.timestamp,
+          message: log.message,
+          target: log.target,
+        },
+      });
+    });
+
+    client.$on("error", (log) => {
+      logger.error("PrismaClient error", {
+        clientType: "writer",
+        event: {
+          timestamp: log.timestamp,
+          message: log.message,
+          target: log.target,
+        },
+        ignoreError: true,
+      });
+    });
+  }
+
+  // Add query performance monitoring
+  client.$on("query", (log) => {
+    queryPerformanceMonitor.onQuery("writer", log);
   });
 
   // connect eagerly
@@ -174,28 +246,98 @@ function getReplicaClient() {
         url: replicaUrl.href,
       },
     },
-    // @ts-expect-error
     log: [
+      // events
       {
-        emit: "stdout",
+        emit: "event",
         level: "error",
       },
       {
-        emit: "stdout",
+        emit: "event",
         level: "info",
       },
       {
-        emit: "stdout",
+        emit: "event",
         level: "warn",
       },
-    ].concat(
-      process.env.VERBOSE_PRISMA_LOGS === "1"
+      // stdout
+      ...((process.env.PRISMA_LOG_TO_STDOUT === "1"
         ? [
-            { emit: "event", level: "query" },
-            { emit: "stdout", level: "query" },
+            {
+              emit: "stdout",
+              level: "error",
+            },
+            {
+              emit: "stdout",
+              level: "info",
+            },
+            {
+              emit: "stdout",
+              level: "warn",
+            },
           ]
-        : []
-    ),
+        : []) satisfies Prisma.LogDefinition[]),
+      // Query performance monitoring
+      ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
+      process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
+        ? [
+            {
+              emit: "event",
+              level: "query",
+            },
+          ]
+        : []) satisfies Prisma.LogDefinition[]),
+      // verbose
+      ...((process.env.VERBOSE_PRISMA_LOGS === "1"
+        ? [
+            {
+              emit: "stdout",
+              level: "query",
+            },
+          ]
+        : []) satisfies Prisma.LogDefinition[]),
+    ],
+  });
+
+  // Only use structured logging if we're not already logging to stdout
+  if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
+    replicaClient.$on("info", (log) => {
+      logger.info("PrismaClient info", {
+        clientType: "reader",
+        event: {
+          timestamp: log.timestamp,
+          message: log.message,
+          target: log.target,
+        },
+      });
+    });
+
+    replicaClient.$on("warn", (log) => {
+      logger.warn("PrismaClient warn", {
+        clientType: "reader",
+        event: {
+          timestamp: log.timestamp,
+          message: log.message,
+          target: log.target,
+        },
+      });
+    });
+
+    replicaClient.$on("error", (log) => {
+      logger.error("PrismaClient error", {
+        clientType: "reader",
+        event: {
+          timestamp: log.timestamp,
+          message: log.message,
+          target: log.target,
+        },
+      });
+    });
+  }
+
+  // Add query performance monitoring for replica client
+  replicaClient.$on("query", (log) => {
+    queryPerformanceMonitor.onQuery("replica", log);
   });
 
   // connect eagerly

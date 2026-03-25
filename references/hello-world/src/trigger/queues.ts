@@ -1,4 +1,4 @@
-import { batch, logger, queue, queues, task, tasks } from "@trigger.dev/sdk/v3";
+import { batch, logger, queue, queues, runs, task, tasks } from "@trigger.dev/sdk/v3";
 
 export const queuesTester = task({
   id: "queues-tester",
@@ -37,6 +37,22 @@ export const queuesTester = task({
       name: "queues-tester",
     });
     logger.log("Resumed queue", { resumedQueue });
+
+    const overriddenQueue = await queues.overrideConcurrencyLimit(
+      {
+        type: "task",
+        name: "queues-tester",
+      },
+      10
+    );
+    logger.log("Overridden queue", { overriddenQueue });
+
+    const resetQueue = await queues.resetConcurrencyLimit({
+      type: "task",
+      name: "queues-tester",
+    });
+
+    logger.log("Reset queue", { resetQueue });
   },
 });
 
@@ -260,5 +276,58 @@ export const lockedTaskIdentifierTask = task({
 
     await tasks.trigger("task_does_not_exist", {});
     await tasks.triggerAndWait("task_does_not_exist", {});
+  },
+});
+
+export const testQueuesConcurrencyOverrideTask = task({
+  id: "test-queues-concurrency-override-task",
+  run: async (payload: any) => {
+    logger.log("Test queues concurrency override task", { payload });
+
+    const handle1 = await testQueuesConcurrencyOverrideChildTask.trigger({});
+    const handle2 = await testQueuesConcurrencyOverrideChildTask.trigger({});
+
+    const result1 = await runs.poll(handle1.id);
+    const result2 = await runs.poll(handle2.id);
+
+    logger.log("Test queues concurrency override task results", { result1, result2 });
+
+    const handle3 = await testQueuesConcurrencyOverrideChildTask.trigger({});
+    const handle4 = await testQueuesConcurrencyOverrideChildTask.trigger({});
+
+    const overriddenQueue = await queues.overrideConcurrencyLimit(
+      {
+        type: "custom",
+        name: "test-queues-concurrency-override-queue",
+      },
+      2
+    );
+
+    logger.log("Overridden queue", { overriddenQueue });
+
+    const result3 = await runs.poll(handle3.id);
+    const result4 = await runs.poll(handle4.id);
+
+    logger.log("Test queues concurrency override task results", { result3, result4 });
+
+    const resetQueue = await queues.resetConcurrencyLimit({
+      type: "custom",
+      name: "test-queues-concurrency-override-queue",
+    });
+
+    logger.log("Reset queue", { resetQueue });
+  },
+});
+
+export const testQueuesConcurrencyOverrideChildTask = task({
+  id: "test-queues-concurrency-override-child-task",
+  queue: {
+    name: "test-queues-concurrency-override-queue",
+    concurrencyLimit: 1,
+  },
+  run: async (payload: any) => {
+    logger.log("Test queues concurrency override child task", { payload });
+
+    await setTimeout(10000);
   },
 });

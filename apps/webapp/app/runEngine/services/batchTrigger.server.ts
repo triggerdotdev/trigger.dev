@@ -1,25 +1,26 @@
 import {
-  BatchTriggerTaskV2RequestBody,
-  BatchTriggerTaskV3RequestBody,
-  BatchTriggerTaskV3Response,
-  IOPacket,
+  type BatchTriggerTaskV2RequestBody,
+  type BatchTriggerTaskV3RequestBody,
+  type BatchTriggerTaskV3Response,
+  type IOPacket,
   packetRequiresOffloading,
   parsePacket,
+  TaskRunErrorCodes,
 } from "@trigger.dev/core/v3";
 import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
-import { BatchTaskRun, Prisma } from "@trigger.dev/database";
+import { type BatchTaskRun, Prisma } from "@trigger.dev/database";
 import { Evt } from "evt";
 import { z } from "zod";
-import { prisma, PrismaClientOrTransaction } from "~/db.server";
+import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { getEntitlement } from "~/services/platform.v3.server";
 import { batchTriggerWorker } from "~/v3/batchTriggerWorker.server";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../../v3/r2.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
-import { OutOfEntitlementError, TriggerTaskService } from "../../v3/services/triggerTask.server";
+import { TriggerTaskService } from "../../v3/services/triggerTask.server";
 import { startActiveSpan } from "../../v3/tracer.server";
+import { TriggerFailedTaskService } from "./triggerFailedTask.server";
 
 const PROCESSING_BATCH_SIZE = 50;
 const ASYNC_BATCH_PROCESS_SIZE_THRESHOLD = 20;
@@ -36,15 +37,19 @@ export const BatchProcessingOptions = z.object({
   strategy: BatchProcessingStrategy,
   parentRunId: z.string().optional(),
   resumeParentOnCompletion: z.boolean().optional(),
+  planType: z.string().optional(),
 });
 
 export type BatchProcessingOptions = z.infer<typeof BatchProcessingOptions>;
 
 export type BatchTriggerTaskServiceOptions = {
   triggerVersion?: string;
-  traceContext?: Record<string, string | undefined>;
+  traceContext?: Record<string, string | undefined | Record<string, string | undefined>>;
   spanParentAsLink?: boolean;
   oneTimeUseToken?: string;
+  realtimeStreamsVersion?: "v1" | "v2";
+  triggerSource?: string;
+  triggerAction?: string;
 };
 
 /**
@@ -79,13 +84,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
           const { id, friendlyId } = BatchId.generate();
 
           span.setAttribute("batchId", friendlyId);
-
-          if (environment.type !== "DEVELOPMENT") {
-            const result = await getEntitlement(environment.organizationId);
-            if (result && result.hasAccess === false) {
-              throw new OutOfEntitlementError();
-            }
-          }
 
           // Upload to object store
           const payloadPacket = await this.#handlePayloadPacket(
@@ -530,7 +528,14 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
     let runIds: string[] = [];
 
+    const triggerFailedTaskService = new TriggerFailedTaskService({
+      prisma: this._prisma,
+      engine: this._engine,
+    });
+
     for (const item of itemsToProcess) {
+      let runFriendlyId: string | null = null;
+
       try {
         const run = await this.#processBatchTaskRunItem({
           batch,
@@ -542,31 +547,56 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
           resumeParentOnCompletion,
         });
 
-        if (!run) {
-          logger.error("[RunEngineBatchTrigger][processBatchTaskRun] Failed to process item", {
+        if (run) {
+          runFriendlyId = run.friendlyId;
+        }
+      } catch (error) {
+        // Trigger failed - will try to create pre-failed run below
+        runFriendlyId = null;
+      }
+
+      if (!runFriendlyId) {
+        const errorMessage =
+          "Trigger failed for batch item (queue limit, entitlement, or validation error)";
+        logger.debug("[RunEngineBatchTrigger][processBatchTaskRun] Item trigger failed, creating pre-failed run", {
+          batchId: batch.friendlyId,
+          currentIndex: workingIndex,
+          task: item.task,
+        });
+
+        const failedRunId = await triggerFailedTaskService.call({
+          taskId: item.task,
+          environment,
+          payload: item.payload,
+          payloadType: item.options?.payloadType,
+          errorMessage,
+          parentRunId,
+          resumeParentOnCompletion,
+          batch: { id: batch.id, index: workingIndex },
+          options: item.options as Record<string, unknown>,
+          traceContext: options?.traceContext as Record<string, unknown> | undefined,
+          spanParentAsLink: options?.spanParentAsLink,
+          errorCode: TaskRunErrorCodes.BATCH_ITEM_COULD_NOT_TRIGGER,
+        });
+
+        if (failedRunId) {
+          runFriendlyId = failedRunId;
+        } else {
+          logger.error("[RunEngineBatchTrigger][processBatchTaskRun] Failed to create pre-failed run", {
             batchId: batch.friendlyId,
             currentIndex: workingIndex,
           });
 
-          throw new Error("[RunEngineBatchTrigger][processBatchTaskRun] Failed to process item");
+          return {
+            status: "ERROR",
+            error: "Could not trigger item and could not create pre-failed run",
+            workingIndex,
+          };
         }
-
-        runIds.push(run.friendlyId);
-
-        workingIndex++;
-      } catch (error) {
-        logger.error("[RunEngineBatchTrigger][processBatchTaskRun] Failed to process item", {
-          batchId: batch.friendlyId,
-          currentIndex: workingIndex,
-          error,
-        });
-
-        return {
-          status: "ERROR",
-          error: error instanceof Error ? error.message : String(error),
-          workingIndex,
-        };
       }
+
+      runIds.push(runFriendlyId);
+      workingIndex++;
     }
 
     //add the run ids to the batch
@@ -649,6 +679,9 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         spanParentAsLink: options?.spanParentAsLink,
         batchId: batch.id,
         batchIndex: currentIndex,
+        realtimeStreamsVersion: options?.realtimeStreamsVersion,
+        triggerSource: options?.triggerSource ?? "api",
+        triggerAction: options?.triggerAction ?? "trigger",
       },
       "V2"
     );

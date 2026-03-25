@@ -28,7 +28,13 @@ services:
     # Only needed for bootstrap
     command: sh -c "chown -R node:node /home/node/shared && exec ./scripts/entrypoint.sh"
     healthcheck:
-      test: ["CMD", "node", "-e", "http.get('http://localhost:3000/healthcheck', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "http.get('http://localhost:3000/healthcheck', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))",
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -50,6 +56,7 @@ services:
       APP_LOG_LEVEL: info
       DEV_OTEL_EXPORTER_OTLP_ENDPOINT: ${DEV_OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:8030/otel}
       DEPLOY_REGISTRY_HOST: ${DOCKER_REGISTRY_URL:-localhost:5000}
+      DEPLOY_REGISTRY_NAMESPACE: ${DOCKER_REGISTRY_NAMESPACE:-trigger}
       OBJECT_STORE_BASE_URL: ${OBJECT_STORE_BASE_URL:-http://minio:9000}
       OBJECT_STORE_ACCESS_KEY_ID: ${OBJECT_STORE_ACCESS_KEY_ID}
       OBJECT_STORE_SECRET_ACCESS_KEY: ${OBJECT_STORE_SECRET_ACCESS_KEY}
@@ -76,7 +83,6 @@ services:
       # DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: 100
       # Internal OTEL configuration
       INTERNAL_OTEL_TRACE_LOGGING_ENABLED: ${INTERNAL_OTEL_TRACE_LOGGING_ENABLED:-0}
-      TRIGGER_CLI_TAG: ${TRIGGER_CLI_TAG:-v4-beta}
 
   postgres:
     image: postgres:${POSTGRES_IMAGE_TAG:-14}
@@ -120,7 +126,7 @@ services:
       start_period: 10s
 
   electric:
-    image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.0.24}
+    image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.2.4}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     depends_on:
@@ -139,7 +145,7 @@ services:
       start_period: 10s
 
   clickhouse:
-    image: bitnami/clickhouse:${CLICKHOUSE_IMAGE_TAG:-latest}
+    image: bitnamilegacy/clickhouse:${CLICKHOUSE_IMAGE_TAG:-latest}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     ports:
@@ -154,7 +160,21 @@ services:
     networks:
       - webapp
     healthcheck:
-      test: ["CMD", "clickhouse-client", "--host", "localhost", "--port", "9000", "--user", "default", "--password", "password", "--query", "SELECT 1"]
+      test:
+        [
+          "CMD",
+          "clickhouse-client",
+          "--host",
+          "localhost",
+          "--port",
+          "9000",
+          "--user",
+          "${CLICKHOUSE_USER:-default}",
+          "--password",
+          "${CLICKHOUSE_PASSWORD:-password}",
+          "--query",
+          "SELECT 1",
+        ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -183,7 +203,7 @@ services:
       start_period: 10s
 
   minio:
-    image: bitnami/minio:${MINIO_IMAGE_TAG:-latest}
+    image: bitnamilegacy/minio:${MINIO_IMAGE_TAG:-latest}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     ports:

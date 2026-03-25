@@ -1,9 +1,9 @@
-import ProjectPathArg from '/snippets/cli-args-project-path.mdx';
-import CommonOptions from '/snippets/cli-options-common.mdx';
-import ProjectRefOption from '/snippets/cli-options-project-ref.mdx';
-import EnvFileOption from '/snippets/cli-options-env-file.mdx';
-import ConfigFileOption from '/snippets/cli-options-config-file.mdx';
-import SkipUpdateCheckOption from '/snippets/cli-options-skip-update-check.mdx';
+import ProjectPathArg from "/snippets/cli-args-project-path.mdx";
+import CommonOptions from "/snippets/cli-options-common.mdx";
+import ProjectRefOption from "/snippets/cli-options-project-ref.mdx";
+import EnvFileOption from "/snippets/cli-options-env-file.mdx";
+import ConfigFileOption from "/snippets/cli-options-config-file.mdx";
+import SkipUpdateCheckOption from "/snippets/cli-options-skip-update-check.mdx";
 
 This runs a server on your machine that can execute Trigger.dev tasks:
 
@@ -38,6 +38,11 @@ It is worth noting that each task runs in a separate Node process. This means th
 <EnvFileOption />
 
 <SkipUpdateCheckOption />
+
+<ParamField body="Analyze build output" type="--analyze">
+  Analyzes the build output and displays detailed import timings. This is useful for debugging the
+  start times for your runs which can be caused by importing lots of code or heavy packages.
+</ParamField>
 
 ### Common options
 

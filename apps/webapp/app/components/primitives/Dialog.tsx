@@ -38,14 +38,18 @@ const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     showCloseButton?: boolean;
+    fullscreen?: boolean;
   }
->(({ className, children, showCloseButton = true, ...props }, ref) => (
+>(({ className, children, showCloseButton = true, fullscreen = false, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed z-50 grid w-full gap-4 rounded-b-lg border bg-background-dimmed px-4 pb-4 pt-2.5 shadow-lg animate-in data-[state=open]:fade-in-90 data-[state=open]:slide-in-from-bottom-10 sm:max-w-lg sm:rounded-lg sm:zoom-in-90 data-[state=open]:sm:slide-in-from-bottom-0",
+        "fixed z-50 grid gap-4 border bg-background-dimmed shadow-lg animate-in data-[state=open]:fade-in-90",
+        fullscreen
+          ? "inset-6 rounded-lg pt-2.5 px-4 pb-4"
+          : "w-full rounded-b-lg px-4 pb-4 pt-2.5 data-[state=open]:slide-in-from-bottom-10 sm:max-w-lg sm:rounded-lg sm:zoom-in-90 data-[state=open]:sm:slide-in-from-bottom-0",
         className
       )}
       {...props}
@@ -117,4 +121,6 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
+  DialogPortal,
+  DialogOverlay
 };

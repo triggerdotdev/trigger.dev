@@ -3,8 +3,8 @@ import { parse } from "@conform-to/zod";
 import { BookOpenIcon, ShieldCheckIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, MetaFunction, useActionData, useFetcher } from "@remix-run/react";
-import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { Form, type MetaFunction, useActionData, useFetcher } from "@remix-run/react";
+import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -16,7 +16,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
-import { Header2 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -36,8 +35,8 @@ import {
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import {
-  CreatedPersonalAccessToken,
-  ObfuscatedPersonalAccessToken,
+  type CreatedPersonalAccessToken,
+  type ObfuscatedPersonalAccessToken,
   createPersonalAccessToken,
   getValidPersonalAccessTokens,
   revokePersonalAccessToken,
@@ -53,7 +52,7 @@ export const meta: MetaFunction = () => {
   ];
 };
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+export const loader = async ({ request }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
 
   try {
@@ -113,7 +112,7 @@ export const action: ActionFunction = async ({ request }) => {
     }
     case "revoke": {
       try {
-        await revokePersonalAccessToken(submission.value.tokenId);
+        await revokePersonalAccessToken(submission.value.tokenId, userId);
 
         return redirectWithSuccessMessage(
           personalAccessTokensPath(),
@@ -125,6 +124,7 @@ export const action: ActionFunction = async ({ request }) => {
       }
     }
     default: {
+      submission.value satisfies never;
       return json({ errors: { body: "Invalid action" } }, { status: 400 });
     }
   }

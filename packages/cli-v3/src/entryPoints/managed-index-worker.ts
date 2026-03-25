@@ -3,6 +3,7 @@ import {
   type HandleErrorFunction,
   indexerToWorkerMessages,
   resourceCatalog,
+  type PromptManifest,
   type TaskManifest,
   TriggerConfig,
 } from "@trigger.dev/core/v3";
@@ -18,6 +19,7 @@ import { registerResources } from "../indexing/registerResources.js";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { detectRuntimeVersion } from "@trigger.dev/core/v3/build";
+import { schemaToJsonSchema } from "@trigger.dev/schema-to-json";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -100,7 +102,7 @@ async function bootstrap() {
 
 const { buildManifest, importErrors, config, timings } = await bootstrap();
 
-let tasks = resourceCatalog.listTaskManifests();
+let tasks = await convertSchemasToJsonSchemas(resourceCatalog.listTaskManifests());
 
 // If the config has retry defaults, we need to apply them to all tasks that don't have any retry settings
 if (config.retries?.default) {
@@ -146,12 +148,15 @@ if (typeof config.machine === "string") {
   });
 }
 
+const processKeepAlive = config.processKeepAlive ?? config.experimental_processKeepAlive;
+
 await sendMessageInCatalog(
   indexerToWorkerMessages,
   "INDEX_COMPLETE",
   {
     manifest: {
       tasks,
+      prompts: convertPromptSchemasToJsonSchemas(resourceCatalog.listPromptManifests()),
       queues: resourceCatalog.listQueueManifests(),
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
@@ -162,10 +167,10 @@ await sendMessageInCatalog(
       customConditions: buildManifest.customConditions,
       initEntryPoint: buildManifest.initEntryPoint,
       processKeepAlive:
-        typeof config.experimental_processKeepAlive === "object"
-          ? config.experimental_processKeepAlive
-          : typeof config.experimental_processKeepAlive === "boolean"
-          ? { enabled: config.experimental_processKeepAlive }
+        typeof processKeepAlive === "object"
+          ? processKeepAlive
+          : typeof processKeepAlive === "boolean"
+          ? { enabled: processKeepAlive }
           : undefined,
       timings,
     },
@@ -196,3 +201,39 @@ await new Promise<void>((resolve) => {
     resolve();
   }, 10);
 });
+
+function convertPromptSchemasToJsonSchemas(prompts: PromptManifest[]): PromptManifest[] {
+  return prompts.map((prompt) => {
+    const schema = resourceCatalog.getPromptSchema(prompt.id);
+
+    if (schema) {
+      try {
+        const result = schemaToJsonSchema(schema);
+        return { ...prompt, variableSchema: result?.jsonSchema };
+      } catch {
+        return prompt;
+      }
+    }
+
+    return prompt;
+  });
+}
+
+async function convertSchemasToJsonSchemas(tasks: TaskManifest[]): Promise<TaskManifest[]> {
+  const convertedTasks = tasks.map((task) => {
+    const schema = resourceCatalog.getTaskSchema(task.id);
+
+    if (schema) {
+      try {
+        const result = schemaToJsonSchema(schema);
+        return { ...task, payloadSchema: result?.jsonSchema };
+      } catch {
+        return task;
+      }
+    }
+
+    return task;
+  });
+
+  return convertedTasks;
+}

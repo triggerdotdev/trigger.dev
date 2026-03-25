@@ -1,11 +1,8 @@
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import { CliApiClient } from "../apiClient.js";
 import { readAuthConfigProfile } from "./configFiles.js";
-import { getTracer } from "../telemetry/tracing.js";
 import { logger } from "./logger.js";
 import { GitMeta } from "@trigger.dev/core/v3";
-
-const tracer = getTracer();
 
 export type LoginResultOk = {
   ok: true;
@@ -16,6 +13,7 @@ export type LoginResultOk = {
   auth: {
     apiUrl: string;
     accessToken: string;
+    tokenType: "personal" | "organization";
   };
 };
 
@@ -27,67 +25,51 @@ export type LoginResult =
       auth?: {
         apiUrl: string;
         accessToken: string;
+        tokenType: "personal" | "organization";
       };
     };
 
 export async function isLoggedIn(profile: string = "default"): Promise<LoginResult> {
-  return await tracer.startActiveSpan("isLoggedIn", async (span) => {
-    try {
-      const config = readAuthConfigProfile(profile);
+  try {
+    const config = readAuthConfigProfile(profile);
 
-      if (!config?.accessToken || !config?.apiUrl) {
-        span.recordException(new Error("You must login first"));
-        span.end();
-        return { ok: false as const, error: "You must login first" };
-      }
+    if (!config?.accessToken || !config?.apiUrl) {
+      return { ok: false as const, error: "You must login first" };
+    }
 
-      const apiClient = new CliApiClient(config.apiUrl, config.accessToken);
-      const userData = await apiClient.whoAmI();
+    const apiClient = new CliApiClient(config.apiUrl, config.accessToken);
+    const userData = await apiClient.whoAmI();
 
-      if (!userData.success) {
-        recordSpanException(span, userData.error);
-        span.end();
-
-        return {
-          ok: false as const,
-          error: userData.error,
-          auth: {
-            apiUrl: config.apiUrl,
-            accessToken: config.accessToken,
-          },
-        };
-      }
-
-      span.setAttributes({
-        "login.userId": userData.data.userId,
-        "login.email": userData.data.email,
-        "login.dashboardUrl": userData.data.dashboardUrl,
-        "login.profile": profile,
-      });
-
-      span.end();
-
+    if (!userData.success) {
       return {
-        ok: true as const,
-        profile,
-        userId: userData.data.userId,
-        email: userData.data.email,
-        dashboardUrl: userData.data.dashboardUrl,
+        ok: false as const,
+        error: userData.error,
         auth: {
           apiUrl: config.apiUrl,
           accessToken: config.accessToken,
+          tokenType: "personal",
         },
       };
-    } catch (e) {
-      recordSpanException(span, e);
-      span.end();
-
-      return {
-        ok: false as const,
-        error: e instanceof Error ? e.message : "Unknown error",
-      };
     }
-  });
+
+    return {
+      ok: true as const,
+      profile,
+      userId: userData.data.userId,
+      email: userData.data.email,
+      dashboardUrl: userData.data.dashboardUrl,
+      auth: {
+        apiUrl: config.apiUrl,
+        accessToken: config.accessToken,
+        tokenType: "personal",
+      },
+    };
+  } catch (e) {
+    return {
+      ok: false as const,
+      error: e instanceof Error ? e.message : "Unknown error",
+    };
+  }
 }
 
 export type GetEnvOptions = {

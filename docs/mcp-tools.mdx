@@ -1,0 +1,133 @@
+---
+title: "MCP Tools"
+sidebarTitle: "Tools"
+description: "Learn about how to use the tools available in the Trigger.dev MCP Server"
+---
+
+## Documentation and Search Tools
+
+### search_docs
+
+Search the Trigger.dev documentation for guides, examples, and API references.
+
+**Example usage:**
+- `"How do I create a scheduled task?"`
+- `"Show me webhook examples"`
+- `"What are the deployment options?"`
+
+## Project Management Tools
+
+### list_orgs
+
+List all organizations you have access to.
+
+**Example usage:**
+- `"What organizations do I have?"`
+- `"Show me my orgs"`
+
+### list_projects
+
+List all projects in your Trigger.dev account.
+
+**Example usage:**
+- `"What projects do I have?"`
+- `"List my Trigger.dev projects"`
+
+### create_project_in_org
+
+Create a new project in an organization.
+
+**Example usage:**
+- `"Create a new project called 'my-app'"`
+- `"Set up a new Trigger.dev project"`
+
+### initialize_project
+
+Initialize Trigger.dev in your project with automatic setup and configuration.
+
+**Example usage:**
+- `"Set up Trigger.dev in this project"`
+- `"Add Trigger.dev to my app"`
+
+## Task Management Tools
+
+### get_current_worker
+
+Get the current worker for a project, including the worker version, SDK version, and registered tasks with their payload schemas.
+
+**Example usage:**
+- `"What tasks are available?"`
+- `"Show me the tasks in dev"`
+
+### trigger_task
+
+Trigger a task to run with a specific payload. You can add a delay, set tags, configure retries, choose a machine size, set a TTL, or use an idempotency key.
+
+**Example usage:**
+- `"Run the email-notification task"`
+- `"Trigger my-task with userId 123"`
+- `"Execute the sync task in production"`
+
+## Run Monitoring Tools
+
+### get_run_details
+
+Get detailed information about a specific task run, including logs and status. Enable debug mode to get the full trace with all logs and spans.
+
+**Example usage:**
+- `"Show me details for run run_abc123"`
+- `"Why did this run fail?"`
+
+### list_runs
+
+List runs for a project. Filter by status, task, tags, version, machine size, or time period.
+
+**Example usage:**
+- `"Show me recent runs"`
+- `"List failed runs from the last 7 days"`
+- `"What runs are currently executing?"`
+
+### wait_for_run_to_complete
+
+Wait for a specific run to finish and return the result.
+
+**Example usage:**
+- `"Wait for run run_abc123 to complete"`
+
+### cancel_run
+
+Cancel a running or queued run.
+
+**Example usage:**
+- `"Cancel run run_abc123"`
+- `"Stop that task"`
+
+## Deployment Tools
+
+### deploy
+
+Deploy your project to staging or production.
+
+**Example usage:**
+- `"Deploy to production"`
+- `"Deploy to staging"`
+
+### list_deploys
+
+List deployments for a project. Filter by status or time period.
+
+**Example usage:**
+- `"Show me recent deployments"`
+- `"What's deployed to production?"`
+
+### list_preview_branches
+
+List all preview branches in the project.
+
+**Example usage:**
+- `"What preview branches exist?"`
+- `"Show me preview deployments"`
+
+<Callout type="warning">
+  The deploy and list_preview_branches tools are not available when the MCP server is running with the `--dev-only` flag.
+</Callout>

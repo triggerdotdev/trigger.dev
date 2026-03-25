@@ -35,4 +35,5 @@ export type {
   TaskCancelHookParams,
   OnCancelHookFunction,
   AnyOnCancelHookFunction,
+  AnyOnStartAttemptHookFunction,
 } from "./lifecycleHooks/types.js";

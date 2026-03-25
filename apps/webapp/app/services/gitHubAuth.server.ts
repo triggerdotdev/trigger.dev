@@ -20,7 +20,7 @@ export function addGitHubStrategy(
     async ({ extraParams, profile }) => {
       const emails = profile.emails;
 
-      if (!emails) {
+      if (!emails?.length) {
         throw new Error("GitHub login requires an email address");
       }
 

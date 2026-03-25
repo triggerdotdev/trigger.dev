@@ -1,105 +1,160 @@
-import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
+import { trace, Tracer } from "@opentelemetry/api";
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
 import {
   AnyValue,
   ExportLogsServiceRequest,
   ExportLogsServiceResponse,
+  ExportMetricsServiceRequest,
+  ExportMetricsServiceResponse,
   ExportTraceServiceRequest,
   ExportTraceServiceResponse,
   KeyValue,
   ResourceLogs,
+  ResourceMetrics,
   ResourceSpans,
   SeverityNumber,
   Span,
   Span_Event,
-  Span_Link,
   Span_SpanKind,
   Status_StatusCode,
 } from "@trigger.dev/otlp-importer";
+import type { MetricsV1Input } from "@internal/clickhouse";
+import { logger } from "~/services/logger.server";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
+import { ClickhouseEventRepository } from "./eventRepository/clickhouseEventRepository.server";
 import {
+  clickhouseEventRepository,
+  clickhouseEventRepositoryV2,
+} from "./eventRepository/clickhouseEventRepositoryInstance.server";
+import { generateSpanId } from "./eventRepository/common.server";
+import { EventRepository, eventRepository } from "./eventRepository/eventRepository.server";
+import type {
   CreatableEventKind,
   CreatableEventStatus,
-  EventRepository,
-  eventRepository,
-  type CreatableEvent,
-  CreatableEventEnvironmentType,
-} from "./eventRepository.server";
-import { logger } from "~/services/logger.server";
-import { trace, Tracer } from "@opentelemetry/api";
+  CreateEventInput,
+  IEventRepository,
+} from "./eventRepository/eventRepository.types";
 import { startSpan } from "./tracing.server";
 import { enrichCreatableEvents } from "./utils/enrichCreatableEvents.server";
-
-export type OTLPExporterConfig = {
-  batchSize: number;
-  batchInterval: number;
-};
+import { waitForLlmPricingReady } from "./llmPricingRegistry.server";
+import { env } from "~/env.server";
+import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
+import { singleton } from "~/utils/singleton";
 
 class OTLPExporter {
   private _tracer: Tracer;
 
   constructor(
     private readonly _eventRepository: EventRepository,
+    private readonly _clickhouseEventRepository: ClickhouseEventRepository,
+    private readonly _clickhouseEventRepositoryV2: ClickhouseEventRepository,
+    private readonly _metricsFlushScheduler: DynamicFlushScheduler<MetricsV1Input>,
     private readonly _verbose: boolean,
     private readonly _spanAttributeValueLengthLimit: number
   ) {
     this._tracer = trace.getTracer("otlp-exporter");
   }
 
-  async exportTraces(
-    request: ExportTraceServiceRequest,
-    immediate: boolean = false
-  ): Promise<ExportTraceServiceResponse> {
+  async exportTraces(request: ExportTraceServiceRequest): Promise<ExportTraceServiceResponse> {
     return await startSpan(this._tracer, "exportTraces", async (span) => {
       this.#logExportTracesVerbose(request);
 
-      const events = this.#filterResourceSpans(request.resourceSpans).flatMap((resourceSpan) => {
-        return convertSpansToCreateableEvents(resourceSpan, this._spanAttributeValueLengthLimit);
-      });
+      const eventsWithStores = this.#filterResourceSpans(request.resourceSpans).flatMap(
+        (resourceSpan) => {
+          return convertSpansToCreateableEvents(resourceSpan, this._spanAttributeValueLengthLimit);
+        }
+      );
 
-      const enrichedEvents = enrichCreatableEvents(events);
+      const eventCount = await this.#exportEvents(eventsWithStores);
 
-      this.#logEventsVerbose(enrichedEvents, "exportTraces");
-
-      span.setAttribute("event_count", enrichedEvents.length);
-
-      if (immediate) {
-        await this._eventRepository.insertManyImmediate(enrichedEvents);
-      } else {
-        await this._eventRepository.insertMany(enrichedEvents);
-      }
+      span.setAttribute("event_count", eventCount);
 
       return ExportTraceServiceResponse.create();
     });
   }
 
-  async exportLogs(
-    request: ExportLogsServiceRequest,
-    immediate: boolean = false
-  ): Promise<ExportLogsServiceResponse> {
+  async exportMetrics(
+    request: ExportMetricsServiceRequest
+  ): Promise<ExportMetricsServiceResponse> {
+    return await startSpan(this._tracer, "exportMetrics", async (span) => {
+      const rows = this.#filterResourceMetrics(request.resourceMetrics).flatMap(
+        (resourceMetrics) => {
+          return convertMetricsToClickhouseRows(
+            resourceMetrics,
+            this._spanAttributeValueLengthLimit
+          );
+        }
+      );
+
+      span.setAttribute("metric_row_count", rows.length);
+
+      if (rows.length > 0) {
+        this._metricsFlushScheduler.addToBatch(rows);
+      }
+
+      return ExportMetricsServiceResponse.create();
+    });
+  }
+
+  async exportLogs(request: ExportLogsServiceRequest): Promise<ExportLogsServiceResponse> {
     return await startSpan(this._tracer, "exportLogs", async (span) => {
       this.#logExportLogsVerbose(request);
 
-      const events = this.#filterResourceLogs(request.resourceLogs).flatMap((resourceLog) => {
-        return convertLogsToCreateableEvents(resourceLog, this._spanAttributeValueLengthLimit);
-      });
+      const eventsWithStores = this.#filterResourceLogs(request.resourceLogs).flatMap(
+        (resourceLog) => {
+          return convertLogsToCreateableEvents(resourceLog, this._spanAttributeValueLengthLimit);
+        }
+      );
 
-      const enrichedEvents = enrichCreatableEvents(events);
+      const eventCount = await this.#exportEvents(eventsWithStores);
 
-      this.#logEventsVerbose(enrichedEvents, "exportLogs");
-
-      span.setAttribute("event_count", enrichedEvents.length);
-
-      if (immediate) {
-        await this._eventRepository.insertManyImmediate(enrichedEvents);
-      } else {
-        await this._eventRepository.insertMany(enrichedEvents);
-      }
+      span.setAttribute("event_count", eventCount);
 
       return ExportLogsServiceResponse.create();
     });
   }
 
-  #logEventsVerbose(events: CreatableEvent[], prefix: string) {
+  async #exportEvents(
+    eventsWithStores: { events: Array<CreateEventInput>; taskEventStore: string }[]
+  ) {
+    const eventsGroupedByStore = eventsWithStores.reduce((acc, { events, taskEventStore }) => {
+      acc[taskEventStore] = acc[taskEventStore] || [];
+      acc[taskEventStore].push(...events);
+      return acc;
+    }, {} as Record<string, Array<CreateEventInput>>);
+
+    let eventCount = 0;
+
+    for (const [store, events] of Object.entries(eventsGroupedByStore)) {
+      const eventRepository = this.#getEventRepositoryForStore(store);
+
+      await waitForLlmPricingReady();
+      const enrichedEvents = enrichCreatableEvents(events);
+
+      this.#logEventsVerbose(enrichedEvents, `exportEvents ${store}`);
+
+      eventCount += enrichedEvents.length;
+
+      await eventRepository.insertMany(enrichedEvents);
+    }
+
+    return eventCount;
+  }
+
+  #getEventRepositoryForStore(store: string): IEventRepository {
+    if (store === "clickhouse") {
+      return this._clickhouseEventRepository;
+    }
+
+    if (store === "clickhouse_v2") {
+      return this._clickhouseEventRepositoryV2;
+    }
+
+    return this._eventRepository;
+  }
+
+  #logEventsVerbose(events: CreateEventInput[], prefix: string) {
     if (!this._verbose) return;
 
     events.forEach((event) => {
@@ -179,17 +234,51 @@ class OTLPExporter {
       return isBoolValue(attribute.value) ? attribute.value.boolValue : false;
     });
   }
+
+  #filterResourceMetrics(resourceMetrics: ResourceMetrics[]): ResourceMetrics[] {
+    return resourceMetrics.filter((rm) => {
+      const triggerAttribute = rm.resource?.attributes.find(
+        (attribute) => attribute.key === SemanticInternalAttributes.TRIGGER
+      );
+
+      if (!triggerAttribute) return false;
+
+      return isBoolValue(triggerAttribute.value) ? triggerAttribute.value.boolValue : false;
+    });
+  }
 }
 
 function convertLogsToCreateableEvents(
   resourceLog: ResourceLogs,
   spanAttributeValueLengthLimit: number
-): Array<CreatableEvent> {
+): { events: Array<CreateEventInput>; taskEventStore: string } {
   const resourceAttributes = resourceLog.resource?.attributes ?? [];
 
   const resourceProperties = extractEventProperties(resourceAttributes);
 
-  return resourceLog.scopeLogs.flatMap((scopeLog) => {
+  const userDefinedResourceAttributes = truncateAttributes(
+    convertKeyValueItemsToMap(resourceAttributes ?? [], [], undefined, [
+      SemanticInternalAttributes.USAGE,
+      SemanticInternalAttributes.SPAN,
+      SemanticInternalAttributes.METADATA,
+      SemanticInternalAttributes.STYLE,
+      SemanticInternalAttributes.METRIC_EVENTS,
+      SemanticInternalAttributes.TRIGGER,
+      "process",
+      "sdk",
+      "service",
+      "ctx",
+      "cli",
+      "cloud",
+    ]),
+    spanAttributeValueLengthLimit
+  );
+
+  const taskEventStore =
+    extractStringAttribute(resourceAttributes, [SemanticInternalAttributes.TASK_EVENT_STORE]) ??
+    env.EVENT_REPOSITORY_DEFAULT_STORE;
+
+  const events = resourceLog.scopeLogs.flatMap((scopeLog) => {
     return scopeLog.logRecords
       .map((log) => {
         const logLevel = logLevelToEventLevel(log.severityNumber);
@@ -203,9 +292,22 @@ function convertLogsToCreateableEvents(
           SemanticInternalAttributes.METADATA
         );
 
+        const properties =
+          truncateAttributes(
+            convertKeyValueItemsToMap(log.attributes ?? [], [], undefined, [
+              SemanticInternalAttributes.USAGE,
+              SemanticInternalAttributes.SPAN,
+              SemanticInternalAttributes.METADATA,
+              SemanticInternalAttributes.STYLE,
+              SemanticInternalAttributes.METRIC_EVENTS,
+              SemanticInternalAttributes.TRIGGER,
+            ]),
+            spanAttributeValueLengthLimit
+          ) ?? {};
+
         return {
           traceId: binaryToHex(log.traceId),
-          spanId: eventRepository.generateSpanId(),
+          spanId: generateSpanId(),
           parentId: binaryToHex(log.spanId),
           message: isStringValue(log.body)
             ? log.body.stringValue.slice(0, 4096)
@@ -216,64 +318,22 @@ function convertLogsToCreateableEvents(
           isError: logLevel === "ERROR",
           status: logLevelToEventStatus(log.severityNumber),
           startTime: log.timeUnixNano,
-          properties: {
-            ...convertKeyValueItemsToMap(
-              truncateAttributes(log.attributes ?? [], spanAttributeValueLengthLimit),
-              [SemanticInternalAttributes.SPAN_ID, SemanticInternalAttributes.SPAN_PARTIAL]
-            ),
-          },
+          properties,
+          resourceProperties: userDefinedResourceAttributes,
           style: convertKeyValueItemsToMap(
             pickAttributes(log.attributes ?? [], SemanticInternalAttributes.STYLE),
             []
           ),
-          output: detectPrimitiveValue(
-            convertKeyValueItemsToMap(
-              pickAttributes(log.attributes ?? [], SemanticInternalAttributes.OUTPUT),
-              []
-            ),
-            SemanticInternalAttributes.OUTPUT
-          ),
-          payload: detectPrimitiveValue(
-            convertKeyValueItemsToMap(
-              pickAttributes(log.attributes ?? [], SemanticInternalAttributes.PAYLOAD),
-              []
-            ),
-            SemanticInternalAttributes.PAYLOAD
-          ),
-          metadata: logProperties.metadata ?? resourceProperties.metadata,
-          serviceName: logProperties.serviceName ?? resourceProperties.serviceName ?? "unknown",
-          serviceNamespace:
-            logProperties.serviceNamespace ?? resourceProperties.serviceNamespace ?? "unknown",
+          metadata: logProperties.metadata ?? resourceProperties.metadata ?? {},
           environmentId:
             logProperties.environmentId ?? resourceProperties.environmentId ?? "unknown",
-          environmentType:
-            logProperties.environmentType ?? resourceProperties.environmentType ?? "DEVELOPMENT",
+          environmentType: "DEVELOPMENT" as const, // We've deprecated this but we need to keep it for backwards compatibility
           organizationId:
             logProperties.organizationId ?? resourceProperties.organizationId ?? "unknown",
           projectId: logProperties.projectId ?? resourceProperties.projectId ?? "unknown",
-          projectRef: logProperties.projectRef ?? resourceProperties.projectRef ?? "unknown",
           runId: logProperties.runId ?? resourceProperties.runId ?? "unknown",
-          runIsTest: logProperties.runIsTest ?? resourceProperties.runIsTest ?? false,
           taskSlug: logProperties.taskSlug ?? resourceProperties.taskSlug ?? "unknown",
-          taskPath: logProperties.taskPath ?? resourceProperties.taskPath ?? "unknown",
-          workerId: logProperties.workerId ?? resourceProperties.workerId ?? "unknown",
-          workerVersion:
-            logProperties.workerVersion ?? resourceProperties.workerVersion ?? "unknown",
-          queueId: logProperties.queueId ?? resourceProperties.queueId ?? "unknown",
-          queueName: logProperties.queueName ?? resourceProperties.queueName ?? "unknown",
-          batchId: logProperties.batchId ?? resourceProperties.batchId,
-          idempotencyKey: logProperties.idempotencyKey ?? resourceProperties.idempotencyKey,
-          machinePreset: logProperties.machinePreset ?? resourceProperties.machinePreset,
-          machinePresetCpu: logProperties.machinePresetCpu ?? resourceProperties.machinePresetCpu,
-          machinePresetMemory:
-            logProperties.machinePresetMemory ?? resourceProperties.machinePresetMemory,
-          machinePresetCentsPerMs:
-            logProperties.machinePresetCentsPerMs ?? resourceProperties.machinePresetCentsPerMs,
-          attemptId:
-            extractStringAttribute(
-              log.attributes ?? [],
-              [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_ID].join(".")
-            ) ?? resourceProperties.attemptId,
+          machineId: logProperties.machineId ?? resourceProperties.machineId,
           attemptNumber:
             extractNumberAttribute(
               log.attributes ?? [],
@@ -285,17 +345,41 @@ function convertLogsToCreateableEvents(
       })
       .filter(Boolean);
   });
+
+  return { events, taskEventStore };
 }
 
 function convertSpansToCreateableEvents(
   resourceSpan: ResourceSpans,
   spanAttributeValueLengthLimit: number
-): Array<CreatableEvent> {
+): { events: Array<CreateEventInput>; taskEventStore: string } {
   const resourceAttributes = resourceSpan.resource?.attributes ?? [];
 
   const resourceProperties = extractEventProperties(resourceAttributes);
 
-  return resourceSpan.scopeSpans.flatMap((scopeSpan) => {
+  const userDefinedResourceAttributes = truncateAttributes(
+    convertKeyValueItemsToMap(resourceAttributes ?? [], [], undefined, [
+      SemanticInternalAttributes.USAGE,
+      SemanticInternalAttributes.SPAN,
+      SemanticInternalAttributes.METADATA,
+      SemanticInternalAttributes.STYLE,
+      SemanticInternalAttributes.METRIC_EVENTS,
+      SemanticInternalAttributes.TRIGGER,
+      "process",
+      "sdk",
+      "service",
+      "ctx",
+      "cli",
+      "cloud",
+    ]),
+    spanAttributeValueLengthLimit
+  );
+
+  const taskEventStore =
+    extractStringAttribute(resourceAttributes, [SemanticInternalAttributes.TASK_EVENT_STORE]) ??
+    env.EVENT_REPOSITORY_DEFAULT_STORE;
+
+  const events = resourceSpan.scopeSpans.flatMap((scopeSpan) => {
     return scopeSpan.spans
       .map((span) => {
         const isPartial = isPartialSpan(span);
@@ -308,6 +392,21 @@ function convertSpansToCreateableEvents(
           span.attributes ?? [],
           SemanticInternalAttributes.METADATA
         );
+
+        const runTags = extractArrayAttribute(span.attributes ?? [], SemanticInternalAttributes.RUN_TAGS);
+
+        const properties =
+          truncateAttributes(
+            convertKeyValueItemsToMap(span.attributes ?? [], [], undefined, [
+              SemanticInternalAttributes.USAGE,
+              SemanticInternalAttributes.SPAN,
+              SemanticInternalAttributes.METADATA,
+              SemanticInternalAttributes.STYLE,
+              SemanticInternalAttributes.METRIC_EVENTS,
+              SemanticInternalAttributes.TRIGGER,
+            ]),
+            spanAttributeValueLengthLimit
+          ) ?? {};
 
         return {
           traceId: binaryToHex(span.traceId),
@@ -326,76 +425,25 @@ function convertSpansToCreateableEvents(
           level: "TRACE" as const,
           status: spanStatusToEventStatus(span.status),
           startTime: span.startTimeUnixNano,
-          links: spanLinksToEventLinks(span.links ?? []),
           events: spanEventsToEventEvents(span.events ?? []),
           duration: span.endTimeUnixNano - span.startTimeUnixNano,
-          properties: {
-            ...convertKeyValueItemsToMap(
-              truncateAttributes(span.attributes ?? [], spanAttributeValueLengthLimit),
-              [SemanticInternalAttributes.SPAN_ID, SemanticInternalAttributes.SPAN_PARTIAL]
-            ),
-          },
+          properties,
+          resourceProperties: userDefinedResourceAttributes,
           style: convertKeyValueItemsToMap(
             pickAttributes(span.attributes ?? [], SemanticInternalAttributes.STYLE),
             []
           ),
-          output: detectPrimitiveValue(
-            convertKeyValueItemsToMap(
-              pickAttributes(span.attributes ?? [], SemanticInternalAttributes.OUTPUT),
-              []
-            ),
-            SemanticInternalAttributes.OUTPUT
-          ),
-          outputType: pickAttributeStringValue(
-            span.attributes ?? [],
-            SemanticInternalAttributes.OUTPUT_TYPE
-          ),
-          payload: detectPrimitiveValue(
-            convertKeyValueItemsToMap(
-              pickAttributes(span.attributes ?? [], SemanticInternalAttributes.PAYLOAD),
-              []
-            ),
-            SemanticInternalAttributes.PAYLOAD
-          ),
-          payloadType:
-            pickAttributeStringValue(
-              span.attributes ?? [],
-              SemanticInternalAttributes.PAYLOAD_TYPE
-            ) ?? "application/json",
-          metadata: spanProperties.metadata ?? resourceProperties.metadata,
-          serviceName: spanProperties.serviceName ?? resourceProperties.serviceName ?? "unknown",
-          serviceNamespace:
-            spanProperties.serviceNamespace ?? resourceProperties.serviceNamespace ?? "unknown",
+          metadata: spanProperties.metadata ?? resourceProperties.metadata ?? {},
           environmentId:
             spanProperties.environmentId ?? resourceProperties.environmentId ?? "unknown",
-          environmentType:
-            spanProperties.environmentType ?? resourceProperties.environmentType ?? "DEVELOPMENT",
+          environmentType: "DEVELOPMENT" as const,
           organizationId:
             spanProperties.organizationId ?? resourceProperties.organizationId ?? "unknown",
           projectId: spanProperties.projectId ?? resourceProperties.projectId ?? "unknown",
-          projectRef: spanProperties.projectRef ?? resourceProperties.projectRef ?? "unknown",
           runId: spanProperties.runId ?? resourceProperties.runId ?? "unknown",
-          runIsTest: spanProperties.runIsTest ?? resourceProperties.runIsTest ?? false,
           taskSlug: spanProperties.taskSlug ?? resourceProperties.taskSlug ?? "unknown",
-          taskPath: spanProperties.taskPath ?? resourceProperties.taskPath ?? "unknown",
-          workerId: spanProperties.workerId ?? resourceProperties.workerId ?? "unknown",
-          workerVersion:
-            spanProperties.workerVersion ?? resourceProperties.workerVersion ?? "unknown",
-          queueId: spanProperties.queueId ?? resourceProperties.queueId ?? "unknown",
-          queueName: spanProperties.queueName ?? resourceProperties.queueName ?? "unknown",
-          batchId: spanProperties.batchId ?? resourceProperties.batchId,
-          idempotencyKey: spanProperties.idempotencyKey ?? resourceProperties.idempotencyKey,
-          machinePreset: spanProperties.machinePreset ?? resourceProperties.machinePreset,
-          machinePresetCpu: spanProperties.machinePresetCpu ?? resourceProperties.machinePresetCpu,
-          machinePresetMemory:
-            spanProperties.machinePresetMemory ?? resourceProperties.machinePresetMemory,
-          machinePresetCentsPerMs:
-            spanProperties.machinePresetCentsPerMs ?? resourceProperties.machinePresetCentsPerMs,
-          attemptId:
-            extractStringAttribute(
-              span.attributes ?? [],
-              [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_ID].join(".")
-            ) ?? resourceProperties.attemptId,
+          machineId: spanProperties.machineId ?? resourceProperties.machineId,
+          runTags,
           attemptNumber:
             extractNumberAttribute(
               span.attributes ?? [],
@@ -403,96 +451,221 @@ function convertSpansToCreateableEvents(
                 "."
               )
             ) ?? resourceProperties.attemptNumber,
-          usageDurationMs:
-            extractDoubleAttribute(
-              span.attributes ?? [],
-              SemanticInternalAttributes.USAGE_DURATION_MS
-            ) ??
-            extractNumberAttribute(
-              span.attributes ?? [],
-              SemanticInternalAttributes.USAGE_DURATION_MS
-            ),
-          usageCostInCents: extractDoubleAttribute(
-            span.attributes ?? [],
-            SemanticInternalAttributes.USAGE_COST_IN_CENTS
-          ),
         };
       })
       .filter(Boolean);
   });
+
+  return { events, taskEventStore };
+}
+
+function floorToTenSecondBucket(timeUnixNano: bigint | number): string {
+  const epochMs = Number(BigInt(timeUnixNano) / BigInt(1_000_000));
+  const flooredMs = Math.floor(epochMs / 10_000) * 10_000;
+  const date = new Date(flooredMs);
+  // Format as ClickHouse DateTime: YYYY-MM-DD HH:MM:SS
+  return date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, "");
+}
+
+function convertMetricsToClickhouseRows(
+  resourceMetrics: ResourceMetrics,
+  spanAttributeValueLengthLimit: number
+): MetricsV1Input[] {
+  const resourceAttributes = resourceMetrics.resource?.attributes ?? [];
+  const resourceProperties = extractEventProperties(resourceAttributes);
+
+  const organizationId = resourceProperties.organizationId ?? "unknown";
+  const projectId = resourceProperties.projectId ?? "unknown";
+  const environmentId = resourceProperties.environmentId ?? "unknown";
+  const resourceCtx = {
+    taskSlug: resourceProperties.taskSlug,
+    runId: resourceProperties.runId,
+    attemptNumber: resourceProperties.attemptNumber,
+    machineId: extractStringAttribute(resourceAttributes, SemanticInternalAttributes.MACHINE_ID),
+    workerId: extractStringAttribute(resourceAttributes, SemanticInternalAttributes.WORKER_ID),
+    workerVersion: extractStringAttribute(
+      resourceAttributes,
+      SemanticInternalAttributes.WORKER_VERSION
+    ),
+  };
+
+  const rows: MetricsV1Input[] = [];
+
+  for (const scopeMetrics of resourceMetrics.scopeMetrics) {
+    for (const metric of scopeMetrics.metrics) {
+      const metricName = metric.name;
+
+      // Process gauge data points
+      if (metric.gauge) {
+        for (const dp of metric.gauge.dataPoints) {
+          const value: number =
+            dp.asDouble !== undefined ? dp.asDouble : dp.asInt !== undefined ? Number(dp.asInt) : 0;
+          const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
+
+          rows.push({
+            organization_id: organizationId,
+            project_id: projectId,
+            environment_id: environmentId,
+            metric_name: metricName,
+            metric_type: "gauge",
+            metric_subject: resolved.machineId ?? "unknown",
+            bucket_start: floorToTenSecondBucket(dp.timeUnixNano),
+            value,
+            attributes: resolved.attributes,
+          });
+        }
+      }
+
+      // Process sum data points
+      if (metric.sum) {
+        for (const dp of metric.sum.dataPoints) {
+          const value: number =
+            dp.asDouble !== undefined ? dp.asDouble : dp.asInt !== undefined ? Number(dp.asInt) : 0;
+          const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
+
+          rows.push({
+            organization_id: organizationId,
+            project_id: projectId,
+            environment_id: environmentId,
+            metric_name: metricName,
+            metric_type: "sum",
+            metric_subject: resolved.machineId ?? "unknown",
+            bucket_start: floorToTenSecondBucket(dp.timeUnixNano),
+            value,
+            attributes: resolved.attributes,
+          });
+        }
+      }
+
+      // Process histogram data points
+      if (metric.histogram) {
+        for (const dp of metric.histogram.dataPoints) {
+          const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
+          const count = Number(dp.count);
+          const sum = dp.sum ?? 0;
+
+          rows.push({
+            organization_id: organizationId,
+            project_id: projectId,
+            environment_id: environmentId,
+            metric_name: metricName,
+            metric_type: "histogram",
+            metric_subject: resolved.machineId ?? "unknown",
+            bucket_start: floorToTenSecondBucket(dp.timeUnixNano),
+            value: count > 0 ? sum / count : 0,
+            attributes: resolved.attributes,
+          });
+        }
+      }
+    }
+  }
+
+  return rows;
+}
+
+// Prefixes injected by TaskContextMetricExporter — these are extracted into
+// the nested `trigger` key and should not appear as top-level user attributes.
+const INTERNAL_METRIC_ATTRIBUTE_PREFIXES = ["ctx.", "worker."];
+
+interface ResourceContext {
+  taskSlug: string | undefined;
+  runId: string | undefined;
+  attemptNumber: number | undefined;
+  machineId: string | undefined;
+  workerId: string | undefined;
+  workerVersion: string | undefined;
+}
+
+function resolveDataPointContext(
+  dpAttributes: KeyValue[],
+  resourceCtx: ResourceContext
+): {
+  machineId: string | undefined;
+  attributes: Record<string, unknown>;
+} {
+  const runId =
+    resourceCtx.runId ??
+    extractStringAttribute(dpAttributes, SemanticInternalAttributes.RUN_ID);
+  const taskSlug =
+    resourceCtx.taskSlug ??
+    extractStringAttribute(dpAttributes, SemanticInternalAttributes.TASK_SLUG);
+  const attemptNumber =
+    resourceCtx.attemptNumber ??
+    extractNumberAttribute(dpAttributes, SemanticInternalAttributes.ATTEMPT_NUMBER);
+  const machineId =
+    resourceCtx.machineId ??
+    extractStringAttribute(dpAttributes, SemanticInternalAttributes.MACHINE_ID);
+  const workerId =
+    resourceCtx.workerId ??
+    extractStringAttribute(dpAttributes, SemanticInternalAttributes.WORKER_ID);
+  const workerVersion =
+    resourceCtx.workerVersion ??
+    extractStringAttribute(dpAttributes, SemanticInternalAttributes.WORKER_VERSION);
+  const machineName = extractStringAttribute(
+    dpAttributes,
+    SemanticInternalAttributes.MACHINE_PRESET_NAME
+  );
+  const environmentType = extractStringAttribute(
+    dpAttributes,
+    SemanticInternalAttributes.ENVIRONMENT_TYPE
+  );
+
+  // Build the trigger context object with only defined values
+  const trigger: Record<string, string | number> = {};
+  if (runId) trigger.run_id = runId;
+  if (taskSlug) trigger.task_slug = taskSlug;
+  if (attemptNumber !== undefined) trigger.attempt_number = attemptNumber;
+  if (machineId) trigger.machine_id = machineId;
+  if (machineName) trigger.machine_name = machineName;
+  if (workerId) trigger.worker_id = workerId;
+  if (workerVersion) trigger.worker_version = workerVersion;
+  if (environmentType) trigger.environment_type = environmentType;
+
+  // Build user attributes, filtering out internal ctx/worker keys
+  const result: Record<string, unknown> = {};
+
+  if (Object.keys(trigger).length > 0) {
+    result.trigger = trigger;
+  }
+
+  for (const attr of dpAttributes) {
+    if (INTERNAL_METRIC_ATTRIBUTE_PREFIXES.some((prefix) => attr.key.startsWith(prefix))) {
+      continue;
+    }
+
+    if (isStringValue(attr.value)) {
+      result[attr.key] = attr.value.stringValue;
+    } else if (isIntValue(attr.value)) {
+      result[attr.key] = Number(attr.value.intValue);
+    } else if (isDoubleValue(attr.value)) {
+      result[attr.key] = attr.value.doubleValue;
+    } else if (isBoolValue(attr.value)) {
+      result[attr.key] = attr.value.boolValue;
+    }
+  }
+
+  return { machineId, attributes: result };
 }
 
 function extractEventProperties(attributes: KeyValue[], prefix?: string) {
   return {
-    metadata: convertKeyValueItemsToMap(attributes, [SemanticInternalAttributes.TRIGGER]),
-    serviceName: extractStringAttribute(attributes, SemanticResourceAttributes.SERVICE_NAME),
-    serviceNamespace: extractStringAttribute(
-      attributes,
-      SemanticResourceAttributes.SERVICE_NAMESPACE
-    ),
+    metadata: convertSelectedKeyValueItemsToMap(attributes, [SemanticInternalAttributes.METADATA]),
     environmentId: extractStringAttribute(attributes, [
       prefix,
       SemanticInternalAttributes.ENVIRONMENT_ID,
     ]),
-    environmentType: extractStringAttribute(attributes, [
-      prefix,
-      SemanticInternalAttributes.ENVIRONMENT_TYPE,
-    ]) as CreatableEventEnvironmentType,
     organizationId: extractStringAttribute(attributes, [
       prefix,
       SemanticInternalAttributes.ORGANIZATION_ID,
     ]),
     projectId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.PROJECT_ID]),
-    projectRef: extractStringAttribute(attributes, [
-      prefix,
-      SemanticInternalAttributes.PROJECT_REF,
-    ]),
     runId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.RUN_ID]),
-    runIsTest: extractBooleanAttribute(
-      attributes,
-      [prefix, SemanticInternalAttributes.RUN_IS_TEST],
-      false
-    ),
-    attemptId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.ATTEMPT_ID]),
     attemptNumber: extractNumberAttribute(attributes, [
       prefix,
       SemanticInternalAttributes.ATTEMPT_NUMBER,
     ]),
     taskSlug: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.TASK_SLUG]),
-    taskPath: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.TASK_PATH]),
-    taskExportName: "@deprecated",
-    workerId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.WORKER_ID]),
-    workerVersion: extractStringAttribute(attributes, [
-      prefix,
-      SemanticInternalAttributes.WORKER_VERSION,
-    ]),
-    queueId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.QUEUE_ID]),
-    queueName: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.QUEUE_NAME]),
-    batchId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.BATCH_ID]),
-    idempotencyKey: extractStringAttribute(attributes, [
-      prefix,
-      SemanticInternalAttributes.IDEMPOTENCY_KEY,
-    ]),
-    machinePreset: extractStringAttribute(attributes, [
-      prefix,
-      SemanticInternalAttributes.MACHINE_PRESET_NAME,
-    ]),
-    machinePresetCpu:
-      extractDoubleAttribute(attributes, [prefix, SemanticInternalAttributes.MACHINE_PRESET_CPU]) ??
-      extractNumberAttribute(attributes, [prefix, SemanticInternalAttributes.MACHINE_PRESET_CPU]),
-    machinePresetMemory:
-      extractDoubleAttribute(attributes, [
-        prefix,
-        SemanticInternalAttributes.MACHINE_PRESET_MEMORY,
-      ]) ??
-      extractNumberAttribute(attributes, [
-        prefix,
-        SemanticInternalAttributes.MACHINE_PRESET_MEMORY,
-      ]),
-    machinePresetCentsPerMs: extractDoubleAttribute(attributes, [
-      prefix,
-      SemanticInternalAttributes.MACHINE_PRESET_CENTS_PER_MS,
-    ]),
+    machineId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.MACHINE_ID]),
   };
 }
 
@@ -507,25 +680,24 @@ function pickAttributes(attributes: KeyValue[], prefix: string): KeyValue[] {
     });
 }
 
-function pickAttributeStringValue(attributes: KeyValue[], key: string): string | undefined {
-  const attribute = attributes.find((attribute) => attribute.key === key);
-
-  if (!attribute) return undefined;
-
-  return isStringValue(attribute.value) ? attribute.value.stringValue : undefined;
-}
-
 function convertKeyValueItemsToMap(
   attributes: KeyValue[],
   filteredKeys: string[] = [],
-  prefix?: string
+  prefix?: string,
+  filteredPrefixes: string[] = []
 ): Record<string, string | number | boolean | undefined> | undefined {
   if (!attributes) return;
   if (!attributes.length) return;
 
-  const filteredAttributes = attributes.filter(
-    (attribute) => !filteredKeys.includes(attribute.key)
-  );
+  let filteredAttributes = attributes.filter((attribute) => !filteredKeys.includes(attribute.key));
+
+  if (!filteredAttributes.length) return;
+
+  if (filteredPrefixes.length) {
+    filteredAttributes = filteredAttributes.filter(
+      (attribute) => !filteredPrefixes.some((prefix) => attribute.key.startsWith(prefix))
+    );
+  }
 
   if (!filteredAttributes.length) return;
 
@@ -541,6 +713,46 @@ function convertKeyValueItemsToMap(
         ? attribute.value.boolValue
         : isBytesValue(attribute.value)
         ? binaryToHex(attribute.value.bytesValue)
+        : isArrayValue(attribute.value)
+        ? serializeArrayValue(attribute.value.arrayValue!.values)
+        : undefined;
+
+      return map;
+    },
+    {}
+  );
+
+  return result;
+}
+
+function convertSelectedKeyValueItemsToMap(
+  attributes: KeyValue[],
+  selectedPrefixes: string[] = [],
+  prefix?: string
+): Record<string, string | number | boolean | undefined> | undefined {
+  if (!attributes) return;
+  if (!attributes.length) return;
+
+  let selectedAttributes = attributes.filter((attribute) =>
+    selectedPrefixes.some((prefix) => attribute.key.startsWith(prefix))
+  );
+
+  if (!selectedAttributes.length) return;
+
+  const result = selectedAttributes.reduce(
+    (map: Record<string, string | number | boolean | undefined>, attribute) => {
+      map[`${prefix ? `${prefix}.` : ""}${attribute.key}`] = isStringValue(attribute.value)
+        ? attribute.value.stringValue
+        : isIntValue(attribute.value)
+        ? Number(attribute.value.intValue)
+        : isDoubleValue(attribute.value)
+        ? attribute.value.doubleValue
+        : isBoolValue(attribute.value)
+        ? attribute.value.boolValue
+        : isBytesValue(attribute.value)
+        ? binaryToHex(attribute.value.bytesValue)
+        : isArrayValue(attribute.value)
+        ? serializeArrayValue(attribute.value.arrayValue!.values)
         : undefined;
 
       return map;
@@ -564,18 +776,7 @@ function detectPrimitiveValue(
   return attributes;
 }
 
-function spanLinksToEventLinks(links: Span_Link[]): CreatableEvent["links"] {
-  return links.map((link) => {
-    return {
-      traceId: binaryToHex(link.traceId),
-      spanId: binaryToHex(link.spanId),
-      tracestate: link.traceState,
-      properties: convertKeyValueItemsToMap(link.attributes ?? []),
-    };
-  });
-}
-
-function spanEventsToEventEvents(events: Span_Event[]): CreatableEvent["events"] {
+function spanEventsToEventEvents(events: Span_Event[]): CreateEventInput["events"] {
   return events.map((event) => {
     return {
       name: event.name,
@@ -624,7 +825,7 @@ function spanKindToEventKind(kind: Span["kind"]): CreatableEventKind {
   }
 }
 
-function logLevelToEventLevel(level: SeverityNumber): CreatableEvent["level"] {
+function logLevelToEventLevel(level: SeverityNumber): CreateEventInput["level"] {
   switch (level) {
     case SeverityNumber.TRACE:
     case SeverityNumber.TRACE2:
@@ -808,6 +1009,21 @@ function extractBooleanAttribute(
   return isBoolValue(attribute?.value) ? attribute.value.boolValue : fallback;
 }
 
+function extractArrayAttribute(
+  attributes: KeyValue[],
+  name: string | Array<string | undefined>
+): string[] | undefined {
+  const key = Array.isArray(name) ? name.filter(Boolean).join(".") : name;
+
+  const attribute = attributes.find((attribute) => attribute.key === key);
+
+  if (!attribute?.value?.arrayValue?.values) return undefined;
+
+  return attribute.value.arrayValue.values
+    .filter((v): v is { stringValue: string } => isStringValue(v))
+    .map((v) => v.stringValue);
+}
+
 function isPartialSpan(span: Span): boolean {
   if (!span.attributes) return false;
 
@@ -850,6 +1066,31 @@ function isBytesValue(value: AnyValue | undefined): value is { bytesValue: Buffe
   return Buffer.isBuffer(value.bytesValue);
 }
 
+function isArrayValue(
+  value: AnyValue | undefined
+): value is { arrayValue: { values: AnyValue[] } } {
+  if (!value) return false;
+
+  return value.arrayValue != null && Array.isArray(value.arrayValue.values);
+}
+
+/**
+ * Serialize an OTEL array value into a JSON string.
+ * For arrays of strings, produces a JSON array: `["item1","item2"]`
+ * For mixed types, extracts primitives and serializes.
+ */
+function serializeArrayValue(values: AnyValue[]): string {
+  const items = values.map((v) => {
+    if (isStringValue(v)) return v.stringValue;
+    if (isIntValue(v)) return Number(v.intValue);
+    if (isDoubleValue(v)) return v.doubleValue;
+    if (isBoolValue(v)) return v.boolValue;
+    return null;
+  });
+
+  return JSON.stringify(items);
+}
+
 function binaryToHex(buffer: Buffer | string): string;
 function binaryToHex(buffer: Buffer | string | undefined): string | undefined;
 function binaryToHex(buffer: Buffer | string | undefined): string | undefined {
@@ -859,23 +1100,98 @@ function binaryToHex(buffer: Buffer | string | undefined): string | undefined {
   return Buffer.from(Array.from(buffer)).toString("hex");
 }
 
-function truncateAttributes(attributes: KeyValue[], maximumLength: number = 1024): KeyValue[] {
-  return attributes.map((attribute) => {
-    return isStringValue(attribute.value)
-      ? {
-          key: attribute.key,
-          value: {
-            stringValue: attribute.value.stringValue.slice(0, maximumLength),
-          },
-        }
-      : attribute;
-  });
+function truncateAttributes(
+  attributes: Record<string, string | number | boolean | undefined> | undefined,
+  maximumLength: number = 1024
+): Record<string, string | number | boolean | undefined> | undefined {
+  if (!attributes) return undefined;
+
+  const truncatedAttributes: Record<string, string | number | boolean | undefined> = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    if (!key) continue;
+
+    if (typeof value === "string") {
+      truncatedAttributes[key] = truncateAndDetectUnpairedSurrogate(value, maximumLength);
+    } else {
+      truncatedAttributes[key] = value;
+    }
+  }
+
+  return truncatedAttributes;
 }
 
-export const otlpExporter = new OTLPExporter(
-  eventRepository,
-  process.env.OTLP_EXPORTER_VERBOSE === "1",
-  process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
-    ? parseInt(process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT, 10)
-    : 8192
-);
+function truncateAndDetectUnpairedSurrogate(str: string, maximumLength: number): string {
+  const truncatedString = smartTruncateString(str, maximumLength);
+
+  if (hasUnpairedSurrogateAtEnd(truncatedString)) {
+    return smartTruncateString(truncatedString, [...truncatedString].length - 1);
+  }
+
+  return truncatedString;
+}
+
+const ASCII_ONLY_REGEX = /^[\p{ASCII}]*$/u;
+
+function smartTruncateString(str: string, maximumLength: number): string {
+  if (!str) return "";
+  if (str.length <= maximumLength) return str;
+
+  const checkLength = Math.min(str.length, maximumLength * 2 + 2);
+
+  if (ASCII_ONLY_REGEX.test(str.slice(0, checkLength))) {
+    return str.slice(0, maximumLength);
+  }
+
+  return [...str.slice(0, checkLength)].slice(0, maximumLength).join("");
+}
+
+function hasUnpairedSurrogateAtEnd(str: string): boolean {
+  if (str.length === 0) return false;
+
+  const lastCode = str.charCodeAt(str.length - 1);
+
+  // Check if last character is an unpaired high surrogate
+  if (lastCode >= 0xd800 && lastCode <= 0xdbff) {
+    return true; // High surrogate at end = unpaired
+  }
+
+  // Check if last character is an unpaired low surrogate
+  if (lastCode >= 0xdc00 && lastCode <= 0xdfff) {
+    // Low surrogate is only valid if preceded by high surrogate
+    if (str.length === 1) return true; // Single low surrogate
+
+    const secondLastCode = str.charCodeAt(str.length - 2);
+    if (secondLastCode < 0xd800 || secondLastCode > 0xdbff) {
+      return true; // Low surrogate not preceded by high surrogate
+    }
+  }
+
+  return false;
+}
+
+export const otlpExporter = singleton("otlpExporter", initializeOTLPExporter);
+
+function initializeOTLPExporter() {
+  const metricsFlushScheduler = new DynamicFlushScheduler<MetricsV1Input>({
+    batchSize: env.METRICS_CLICKHOUSE_BATCH_SIZE,
+    flushInterval: env.METRICS_CLICKHOUSE_FLUSH_INTERVAL_MS,
+    callback: async (_flushId, batch) => {
+      await clickhouseClient.metrics.insert(batch);
+    },
+    minConcurrency: 1,
+    maxConcurrency: env.METRICS_CLICKHOUSE_MAX_CONCURRENCY,
+    loadSheddingEnabled: false,
+  });
+
+  return new OTLPExporter(
+    eventRepository,
+    clickhouseEventRepository,
+    clickhouseEventRepositoryV2,
+    metricsFlushScheduler,
+    process.env.OTLP_EXPORTER_VERBOSE === "1",
+    process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
+      ? parseInt(process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT, 10)
+      : 8192
+  );
+}

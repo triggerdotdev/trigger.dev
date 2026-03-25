@@ -1,5 +1,6 @@
 import {
   onStart,
+  onStartAttempt,
   onFailure,
   onSuccess,
   onComplete,
@@ -18,7 +19,6 @@ import {
   createToolTask,
   SubtaskUnwrapError,
   trigger,
-  triggerAndPoll,
   triggerAndWait,
 } from "./shared.js";
 
@@ -39,6 +39,10 @@ import type {
   TriggerOptions,
   TaskRunResult,
   TaskFromIdentifier,
+  TaskWithSchemaOptions,
+  TaskSchema,
+  TaskWithSchema,
+  TaskOptionsWithSchema,
 } from "./shared.js";
 
 export type {
@@ -56,6 +60,10 @@ export type {
   TriggerOptions,
   TaskRunResult,
   TaskFromIdentifier,
+  TaskWithSchemaOptions,
+  TaskSchema,
+  TaskWithSchema,
+  TaskOptionsWithSchema,
 };
 
 export type * from "./hooks.js";
@@ -86,11 +94,12 @@ export const toolTask = createToolTask;
 
 export const tasks = {
   trigger,
-  triggerAndPoll,
   batchTrigger,
   triggerAndWait,
   batchTriggerAndWait,
+  /** @deprecated Use onStartAttempt instead */
   onStart,
+  onStartAttempt,
   onFailure,
   onSuccess,
   onComplete,

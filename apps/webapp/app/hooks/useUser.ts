@@ -1,9 +1,11 @@
-import { UIMatch } from "@remix-run/react";
-import type { User } from "~/models/user.server";
-import { loader } from "~/root";
+import { type UIMatch } from "@remix-run/react";
+import type { UserWithDashboardPreferences } from "~/models/user.server";
+import { type loader } from "~/root";
 import { useChanged } from "./useChanged";
 import { useTypedMatchesData } from "./useTypedMatchData";
 import { useIsImpersonating } from "./useOrganizations";
+
+export type User = UserWithDashboardPreferences;
 
 export function useOptionalUser(matches?: UIMatch[]): User | undefined {
   const routeMatch = useTypedMatchesData<typeof loader>({

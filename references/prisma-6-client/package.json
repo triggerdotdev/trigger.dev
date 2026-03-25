@@ -1,0 +1,20 @@
+{
+  "name": "references-prisma-6-client",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "trigger.dev": "workspace:*",
+    "prisma": "6.16.0"
+  },
+  "dependencies": {
+    "@trigger.dev/build": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "@prisma/client": "6.16.0",
+    "@prisma/adapter-pg": "6.16.0"
+  },
+  "scripts": {
+    "dev": "trigger dev",
+    "deploy": "trigger deploy",
+    "prisma:generate": "prisma generate"
+  }
+}

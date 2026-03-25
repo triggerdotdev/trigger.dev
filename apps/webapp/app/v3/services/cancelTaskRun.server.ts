@@ -1,8 +1,5 @@
 import { RunEngineVersion, type TaskRun } from "@trigger.dev/database";
-import { logger } from "~/services/logger.server";
-import { eventRepository } from "../eventRepository.server";
 import { engine } from "../runEngine.server";
-import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 import { BaseService } from "./baseService.server";
 import { CancelTaskRunServiceV1 } from "./cancelTaskRunV1.server";
 
@@ -11,6 +8,8 @@ export type CancelTaskRunServiceOptions = {
   cancelAttempts?: boolean;
   cancelledAt?: Date;
   bulkActionId?: string;
+  /** Skip PENDING_CANCEL and finalize immediately (use when the worker is known to be dead). */
+  finalizeRun?: boolean;
 };
 
 type CancelTaskRunServiceResult = {
@@ -60,6 +59,7 @@ export class CancelTaskRunService extends BaseService {
       runId: taskRun.id,
       completedAt: options?.cancelledAt,
       reason: options?.reason,
+      finalizeRun: options?.finalizeRun,
       bulkActionId: options?.bulkActionId,
       tx: this._prisma,
     });

@@ -25,7 +25,16 @@ export type {
   ObservableResult,
 } from "@opentelemetry/api";
 
-import { trace, context, propagation, SpanKind, metrics, ValueType } from "@opentelemetry/api";
+import {
+  trace,
+  context,
+  propagation,
+  SpanKind,
+  metrics,
+  ValueType,
+  ROOT_CONTEXT,
+} from "@opentelemetry/api";
+import type { Context } from "@opentelemetry/api";
 export {
   trace,
   context,
@@ -36,6 +45,8 @@ export {
   SpanStatusCode,
   metrics,
   ValueType,
+  ROOT_CONTEXT,
+  type Context,
 };
 
 export function getTracer(name: string): Tracer {

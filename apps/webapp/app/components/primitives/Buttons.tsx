@@ -1,10 +1,18 @@
 import { Link, type LinkProps, NavLink, type NavLinkProps } from "@remix-run/react";
-import React, { forwardRef, type ReactNode, useImperativeHandle, useRef } from "react";
+import React, {
+  forwardRef,
+  type ReactNode,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 import { Icon, type RenderIcon } from "./Icon";
+import { Spinner } from "./Spinner";
 
 const sizes = {
   small: {
@@ -163,6 +171,8 @@ const allVariants = {
   variant: variant,
 };
 
+export type ButtonVariant = keyof typeof variant;
+
 export type ButtonContentPropsType = {
   children?: React.ReactNode;
   LeadingIcon?: RenderIcon;
@@ -173,11 +183,12 @@ export type ButtonContentPropsType = {
   textAlignLeft?: boolean;
   className?: string;
   shortcut?: ShortcutDefinition;
-  variant: keyof typeof variant;
+  variant: ButtonVariant;
   shortcutPosition?: "before-trailing-icon" | "after-trailing-icon";
   tooltip?: ReactNode;
   iconSpacing?: string;
   hideShortcutKey?: boolean;
+  isLoading?: boolean;
 };
 
 export function ButtonContent(props: ButtonContentPropsType) {
@@ -194,7 +205,19 @@ export function ButtonContent(props: ButtonContentPropsType) {
     tooltip,
     iconSpacing,
     hideShortcutKey,
+    isLoading,
   } = props;
+
+  const [showSpinner, setShowSpinner] = useState(false);
+  useEffect(() => {
+    if (!isLoading) {
+      setShowSpinner(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowSpinner(true), 200);
+    return () => clearTimeout(timer);
+  }, [isLoading]);
+
   const variation = allVariants.variant[props.variant];
 
   const btnClassName = cn(allVariants.$all, variation.button);
@@ -215,56 +238,64 @@ export function ButtonContent(props: ButtonContentPropsType) {
 
   const buttonContent = (
     <div className={cn("flex", fullWidth ? "" : "w-fit text-xxs", btnClassName, className)}>
-      <div
-        className={cn(
-          textAlignLeft ? "text-left" : "justify-center",
-          "flex w-full items-center",
-          iconSpacingClassName,
-          iconSpacing
+      <div className={cn("relative", "flex w-full items-center")}>
+        <div
+          className={cn(
+            textAlignLeft ? "text-left" : "justify-center",
+            "flex w-full items-center",
+            iconSpacingClassName,
+            iconSpacing,
+            showSpinner && "invisible"
+          )}
+        >
+          {LeadingIcon && (
+            <Icon
+              icon={LeadingIcon}
+              className={cn(
+                iconClassName,
+                variation.icon,
+                leadingIconClassName,
+                "shrink-0 justify-start"
+              )}
+            />
+          )}
+
+          {text &&
+            (typeof text === "string" ? (
+              <span className={cn("mx-auto grow self-center truncate", textColorClassName)}>
+                {text}
+              </span>
+            ) : (
+              <>{text}</>
+            ))}
+
+          {shortcut &&
+            !tooltip &&
+            props.shortcutPosition === "before-trailing-icon" &&
+            renderShortcutKey()}
+
+          {TrailingIcon && (
+            <Icon
+              icon={TrailingIcon}
+              className={cn(
+                iconClassName,
+                variation.icon,
+                trailingIconClassName,
+                "shrink-0 justify-end"
+              )}
+            />
+          )}
+
+          {shortcut &&
+            !tooltip &&
+            (!props.shortcutPosition || props.shortcutPosition === "after-trailing-icon") &&
+            renderShortcutKey()}
+        </div>
+        {showSpinner && (
+          <span className="absolute inset-0 flex items-center justify-center">
+            <Spinner className="size-3.5" color="white" />
+          </span>
         )}
-      >
-        {LeadingIcon && (
-          <Icon
-            icon={LeadingIcon}
-            className={cn(
-              iconClassName,
-              variation.icon,
-              leadingIconClassName,
-              "shrink-0 justify-start"
-            )}
-          />
-        )}
-
-        {text &&
-          (typeof text === "string" ? (
-            <span className={cn("mx-auto grow self-center truncate", textColorClassName)}>
-              {text}
-            </span>
-          ) : (
-            <>{text}</>
-          ))}
-
-        {shortcut &&
-          !tooltip &&
-          props.shortcutPosition === "before-trailing-icon" &&
-          renderShortcutKey()}
-
-        {TrailingIcon && (
-          <Icon
-            icon={TrailingIcon}
-            className={cn(
-              iconClassName,
-              variation.icon,
-              trailingIconClassName,
-              "shrink-0 justify-end"
-            )}
-          />
-        )}
-
-        {shortcut &&
-          !tooltip &&
-          (!props.shortcutPosition || props.shortcutPosition === "after-trailing-icon") &&
-          renderShortcutKey()}
       </div>
     </div>
   );
@@ -274,7 +305,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>{buttonContent}</TooltipTrigger>
-          <TooltipContent className="text-dimmed flex items-center gap-3 py-1.5 pl-2.5 pr-3 text-xs">
+          <TooltipContent className="flex items-center gap-3 py-1.5 pl-2.5 pr-3 text-xs text-text-bright">
             {tooltip} {shortcut && renderShortcutKey()}
           </TooltipContent>
         </Tooltip>
@@ -296,25 +327,25 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
     const innerRef = useRef<HTMLButtonElement>(null);
     useImperativeHandle(ref, () => innerRef.current as HTMLButtonElement);
 
-    if (props.shortcut) {
-      useShortcutKeys({
-        shortcut: props.shortcut,
-        action: (e) => {
-          if (innerRef.current) {
-            innerRef.current.click();
-            e.preventDefault();
-            e.stopPropagation();
-          }
-        },
-        disabled,
-      });
-    }
+    const isDisabled = disabled || props.isLoading;
+
+    useShortcutKeys({
+      shortcut: props.shortcut,
+      action: (e) => {
+        if (innerRef.current) {
+          innerRef.current.click();
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      },
+      disabled: isDisabled || !props.shortcut,
+    });
 
     return (
       <button
         className={cn("group/button outline-none focus-custom", props.fullWidth ? "w-full" : "")}
         type={type}
-        disabled={disabled}
+        disabled={isDisabled}
         onClick={onClick}
         name={props.name}
         value={props.value}
@@ -331,7 +362,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
 type LinkPropsType = Pick<
   LinkProps,
   "to" | "target" | "onClick" | "onMouseDown" | "onMouseEnter" | "onMouseLeave" | "download"
-> & { disabled?: boolean } & React.ComponentProps<typeof ButtonContent>;
+> & { disabled?: boolean; replace?: boolean } & React.ComponentProps<typeof ButtonContent>;
 export const LinkButton = ({
   to,
   onClick,
@@ -340,19 +371,20 @@ export const LinkButton = ({
   onMouseLeave,
   download,
   disabled = false,
+  replace,
   ...props
 }: LinkPropsType) => {
   const innerRef = useRef<HTMLAnchorElement>(null);
-  if (props.shortcut) {
-    useShortcutKeys({
-      shortcut: props.shortcut,
-      action: () => {
-        if (innerRef.current) {
-          innerRef.current.click();
-        }
-      },
-    });
-  }
+  
+  useShortcutKeys({
+    shortcut: props.shortcut,
+    action: () => {
+      if (innerRef.current) {
+        innerRef.current.click();
+      }
+    },
+    disabled: disabled || !props.shortcut,
+  });
 
   if (disabled) {
     return (
@@ -372,7 +404,7 @@ export const LinkButton = ({
       <ExtLink
         href={to.toString()}
         ref={innerRef}
-        className={cn("group/button focus-custom", props.fullWidth ? "w-full" : "")}
+        className={cn("group/button block focus-custom", props.fullWidth ? "w-full" : "")}
         onClick={onClick}
         onMouseDown={onMouseDown}
         onMouseEnter={onMouseEnter}
@@ -387,7 +419,8 @@ export const LinkButton = ({
       <Link
         to={to}
         ref={innerRef}
-        className={cn("group/button focus-custom", props.fullWidth ? "w-full" : "")}
+        replace={replace}
+        className={cn("group/button block focus-custom", props.fullWidth ? "w-full" : "w-fit")}
         onClick={onClick}
         onMouseDown={onMouseDown}
         onMouseEnter={onMouseEnter}
@@ -408,7 +441,7 @@ export const NavLinkButton = ({ to, className, target, ...props }: NavLinkPropsT
   return (
     <NavLink
       to={to}
-      className={cn("group/button outline-none", props.fullWidth ? "w-full" : "")}
+      className={cn("group/button outline-none block", props.fullWidth ? "w-full" : "")}
       target={target}
     >
       {({ isActive, isPending }) => (

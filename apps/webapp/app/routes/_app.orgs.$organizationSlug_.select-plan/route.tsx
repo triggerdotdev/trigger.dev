@@ -1,6 +1,7 @@
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
-import { MainCenteredContainer } from "~/components/layout/AppLayout";
+import { BackgroundWrapper } from "~/components/BackgroundWrapper";
+import { AppContainer, MainBody, PageBody } from "~/components/layout/AppLayout";
 import { Header1 } from "~/components/primitives/Headers";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
@@ -44,20 +45,29 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 }
 
 export default function ChoosePlanPage() {
-  const { plans, v3Subscription, organizationSlug, periodEnd } =
+  const { plans, v3Subscription, organizationSlug, periodEnd, addOnPricing } =
     useTypedLoaderData<typeof loader>();
 
   return (
-    <MainCenteredContainer className="flex max-w-[80rem] flex-col items-center gap-8 p-3">
-      <Header1 className="text-center">Subscribe for full access</Header1>
-      <PricingPlans
-        plans={plans}
-        subscription={v3Subscription}
-        organizationSlug={organizationSlug}
-        hasPromotedPlan
-        showGithubVerificationBadge
-        periodEnd={periodEnd}
-      />
-    </MainCenteredContainer>
+    <AppContainer>
+      <PageBody className="bg-charcoal-900">
+        <BackgroundWrapper>
+          <div className="mx-auto mt-4 flex h-fit min-h-full max-w-[80rem] flex-col items-center justify-center gap-8 lg:mt-0">
+            <Header1 className="text-center">Subscribe for full access</Header1>
+            <div className="w-full rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+              <PricingPlans
+                plans={plans}
+                concurrencyAddOnPricing={addOnPricing.concurrency}
+                subscription={v3Subscription}
+                organizationSlug={organizationSlug}
+                hasPromotedPlan
+                showGithubVerificationBadge
+                periodEnd={periodEnd}
+              />
+            </div>
+          </div>
+        </BackgroundWrapper>
+      </PageBody>
+    </AppContainer>
   );
 }

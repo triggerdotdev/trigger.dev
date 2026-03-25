@@ -13,7 +13,7 @@ import {
 import { Form, type MetaFunction, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { SlackIcon } from "@trigger.dev/companyicons";
-import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";
+import type { ProjectAlertChannelType, ProjectAlertType } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";

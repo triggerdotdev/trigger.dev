@@ -36,6 +36,7 @@ export interface MarQSKeyProducer {
   envSharedQueueKey(env: MarQSKeyProducerEnv): string;
   sharedQueueKey(): string;
   sharedQueueScanPattern(): string;
+  sharedWorkerQueueKey(): string;
   queueCurrentConcurrencyScanPattern(): string;
   queueConcurrencyLimitKeyFromQueue(queue: string): string;
   queueCurrentConcurrencyKeyFromQueue(queue: string): string;

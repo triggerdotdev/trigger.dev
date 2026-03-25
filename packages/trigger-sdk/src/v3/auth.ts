@@ -62,6 +62,11 @@ type PublicTokenPermissionProperties = {
    * Grant access to specific waitpoints
    */
   waitpoints?: string | string[];
+
+  /**
+   * Grant access to send data to input streams on specific runs
+   */
+  inputStreams?: string | string[];
 };
 
 export type PublicTokenPermissions = {

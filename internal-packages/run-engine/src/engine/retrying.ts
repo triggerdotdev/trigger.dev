@@ -3,6 +3,7 @@ import {
   isOOMRunError,
   RetryOptions,
   sanitizeError,
+  shouldLookupRetrySettings,
   shouldRetryError,
   TaskRunError,
   taskRunErrorEnhancer,
@@ -36,6 +37,10 @@ export type RetryOutcome =
       settings: TaskRunExecutionRetry;
       machine?: string;
       wasOOMError?: boolean;
+      // Current usage values for calculating updated totals
+      usageDurationMs: number;
+      costInCents: number;
+      machinePreset: string | null;
     };
 
 export async function retryOutcomeFromCompletion(
@@ -69,16 +74,17 @@ export async function retryOutcomeFromCompletion(
       machine: oomResult.machine,
       settings: { timestamp: Date.now() + delay, delay },
       wasOOMError: true,
+      usageDurationMs: oomResult.usageDurationMs,
+      costInCents: oomResult.costInCents,
+      machinePreset: oomResult.machinePreset,
     };
   }
 
-  // No retry settings
-  if (!retrySettings) {
-    return { outcome: "fail_run", sanitizedError };
-  }
+  const enhancedError = taskRunErrorEnhancer(error);
 
   // Not a retriable error: fail
-  const retriableError = shouldRetryError(taskRunErrorEnhancer(error));
+  const retriableError = shouldRetryError(enhancedError);
+
   if (!retriableError) {
     return { outcome: "fail_run", sanitizedError };
   }
@@ -88,13 +94,17 @@ export async function retryOutcomeFromCompletion(
     return { outcome: "fail_run", sanitizedError };
   }
 
-  // Get the run settings
+  // Get the run settings and current usage values
   const run = await prisma.taskRun.findFirst({
     where: {
       id: runId,
     },
     select: {
       maxAttempts: true,
+      lockedRetryConfig: true,
+      usageDurationMs: true,
+      costInCents: true,
+      machinePreset: true,
     },
   });
 
@@ -112,17 +122,71 @@ export async function retryOutcomeFromCompletion(
     return { outcome: "fail_run", sanitizedError };
   }
 
+  // No retry settings
+  if (!retrySettings) {
+    const shouldLookup = shouldLookupRetrySettings(enhancedError);
+
+    if (!shouldLookup) {
+      return { outcome: "fail_run", sanitizedError };
+    }
+
+    const retryConfig = run.lockedRetryConfig;
+
+    if (!retryConfig) {
+      return { outcome: "fail_run", sanitizedError };
+    }
+
+    const parsedRetryConfig = RetryOptions.nullish().safeParse(retryConfig);
+
+    if (!parsedRetryConfig.success) {
+      return { outcome: "fail_run", sanitizedError };
+    }
+
+    if (!parsedRetryConfig.data) {
+      return { outcome: "fail_run", sanitizedError };
+    }
+
+    const nextDelay = calculateNextRetryDelay(parsedRetryConfig.data, attemptNumber ?? 1);
+
+    if (!nextDelay) {
+      return { outcome: "fail_run", sanitizedError };
+    }
+
+    const retrySettings = {
+      timestamp: Date.now() + nextDelay,
+      delay: nextDelay,
+    };
+
+    return {
+      outcome: "retry",
+      method: "queue", // we'll always retry on the queue because usually having no settings means something bad happened
+      settings: retrySettings,
+      usageDurationMs: run.usageDurationMs,
+      costInCents: run.costInCents,
+      machinePreset: run.machinePreset,
+    };
+  }
+
   return {
     outcome: "retry",
     method: retryUsingQueue ? "queue" : "immediate",
     settings: retrySettings,
+    usageDurationMs: run.usageDurationMs,
+    costInCents: run.costInCents,
+    machinePreset: run.machinePreset,
   };
 }
 
 async function retryOOMOnMachine(
   prisma: PrismaClientOrTransaction,
   runId: string
-): Promise<{ machine: string; retrySettings: RetryOptions } | undefined> {
+): Promise<{
+  machine: string;
+  retrySettings: RetryOptions;
+  usageDurationMs: number;
+  costInCents: number;
+  machinePreset: string | null;
+} | undefined> {
   try {
     const run = await prisma.taskRun.findFirst({
       where: {
@@ -130,19 +194,17 @@ async function retryOOMOnMachine(
       },
       select: {
         machinePreset: true,
-        lockedBy: {
-          select: {
-            retryConfig: true,
-          },
-        },
+        lockedRetryConfig: true,
+        usageDurationMs: true,
+        costInCents: true,
       },
     });
 
-    if (!run || !run.lockedBy || !run.machinePreset) {
+    if (!run || !run.lockedRetryConfig || !run.machinePreset) {
       return;
     }
 
-    const retryConfig = run.lockedBy?.retryConfig;
+    const retryConfig = run.lockedRetryConfig;
     const parsedRetryConfig = RetryOptions.nullish().safeParse(retryConfig);
 
     if (!parsedRetryConfig.success) {
@@ -163,7 +225,13 @@ async function retryOOMOnMachine(
       return;
     }
 
-    return { machine: retryMachine, retrySettings: parsedRetryConfig.data };
+    return {
+      machine: retryMachine,
+      retrySettings: parsedRetryConfig.data,
+      usageDurationMs: run.usageDurationMs,
+      costInCents: run.costInCents,
+      machinePreset: run.machinePreset,
+    };
   } catch (error) {
     console.error("[FailedTaskRunRetryHelper] Failed to get execution retry", {
       runId,

@@ -9,6 +9,11 @@ import { type Project } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type User } from "~/models/user.server";
 import { processGitMetadata } from "./BranchesPresenter.server";
+import { BranchTrackingConfigSchema, getTrackedBranchForEnvironment } from "~/v3/github";
+import {
+  VercelProjectIntegrationDataSchema,
+  buildVercelDeploymentUrl,
+} from "~/v3/vercel/vercelProjectIntegrationSchema";
 
 const pageSize = 20;
 
@@ -56,6 +61,18 @@ export class DeploymentListPresenter {
             },
           },
         },
+        connectedGithubRepository: {
+          select: {
+            branchTracking: true,
+            previewDeploymentsEnabled: true,
+            repository: {
+              select: {
+                htmlUrl: true,
+                fullName: true,
+              },
+            },
+          },
+        },
       },
       where: {
         slug: projectSlug,
@@ -92,6 +109,51 @@ export class DeploymentListPresenter {
       },
     });
 
+    // Check for Vercel integration before the main query so we can conditionally LEFT JOIN
+    let hasVercelIntegration = false;
+    let vercelTeamSlug: string | undefined;
+    let vercelProjectName: string | undefined;
+
+    const vercelProjectIntegration =
+      await this.#prismaClient.organizationProjectIntegration.findFirst({
+        where: {
+          projectId: project.id,
+          deletedAt: null,
+          organizationIntegration: {
+            service: "VERCEL",
+            deletedAt: null,
+          },
+        },
+        select: {
+          integrationData: true,
+        },
+      });
+
+    if (vercelProjectIntegration) {
+      const parsed = VercelProjectIntegrationDataSchema.safeParse(
+        vercelProjectIntegration.integrationData
+      );
+
+      if (parsed.success && parsed.data.vercelTeamSlug) {
+        hasVercelIntegration = true;
+        vercelTeamSlug = parsed.data.vercelTeamSlug;
+        vercelProjectName = parsed.data.vercelProjectName;
+      }
+    }
+
+    const vercelSelect = hasVercelIntegration
+      ? Prisma.sql`, id_dep."integrationDeploymentId"`
+      : Prisma.sql``;
+    const vercelJoin = hasVercelIntegration
+      ? Prisma.sql`LEFT JOIN LATERAL (
+        SELECT id_inner."integrationDeploymentId"
+        FROM ${sqlDatabaseSchema}."IntegrationDeployment" as id_inner
+        WHERE id_inner."deploymentId" = wd."id" AND id_inner."integrationName" = 'vercel'
+        ORDER BY id_inner."createdAt" DESC
+        LIMIT 1
+      ) id_dep ON true`
+      : Prisma.sql``;
+
     const deployments = await this.#prismaClient.$queryRaw<
       {
         id: string;
@@ -110,6 +172,7 @@ export class DeploymentListPresenter {
         userAvatarUrl: string | null;
         type: WorkerInstanceGroupType;
         git: Prisma.JsonValue | null;
+        integrationDeploymentId: string | null;
       }[]
     >`
     SELECT
@@ -129,10 +192,12 @@ export class DeploymentListPresenter {
   wd."deployedAt",
   wd."type",
   wd."git"
+  ${vercelSelect}
 FROM
   ${sqlDatabaseSchema}."WorkerDeployment" as wd
-INNER JOIN
+LEFT JOIN
   ${sqlDatabaseSchema}."User" as u ON wd."triggeredById" = u."id"
+${vercelJoin}
 WHERE
   wd."projectId" = ${project.id}
   AND wd."environmentId" = ${environment.id}
@@ -140,13 +205,42 @@ ORDER BY
   string_to_array(wd."version", '.')::int[] DESC
 LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
 
+    const { connectedGithubRepository } = project;
+
+    const branchTrackingOrError =
+      connectedGithubRepository &&
+      BranchTrackingConfigSchema.safeParse(connectedGithubRepository.branchTracking);
+    const environmentGitHubBranch =
+      branchTrackingOrError && branchTrackingOrError.success
+        ? getTrackedBranchForEnvironment(
+            branchTrackingOrError.data,
+            connectedGithubRepository.previewDeploymentsEnabled,
+            {
+              type: environment.type,
+              branchName: environment.branchName ?? undefined,
+            }
+          )
+        : undefined;
+
     return {
       currentPage: page,
       totalPages: Math.ceil(totalCount / pageSize),
+      hasVercelIntegration,
+      connectedGithubRepository: project.connectedGithubRepository ?? undefined,
+      environmentGitHubBranch,
       deployments: deployments.map((deployment, index) => {
         const label = labeledDeployments.find(
           (labeledDeployment) => labeledDeployment.deploymentId === deployment.id
         );
+
+        let vercelDeploymentUrl: string | null = null;
+        if (hasVercelIntegration && deployment.integrationDeploymentId && vercelTeamSlug && vercelProjectName) {
+          vercelDeploymentUrl = buildVercelDeploymentUrl(
+            vercelTeamSlug,
+            vercelProjectName,
+            deployment.integrationDeploymentId
+          );
+        }
 
         return {
           id: deployment.id,
@@ -178,6 +272,7 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
               }
             : undefined,
           git: processGitMetadata(deployment.git),
+          vercelDeploymentUrl,
         };
       }),
     };

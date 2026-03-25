@@ -1,5 +1,176 @@
 # internal-platform
 
+## 4.4.3
+
+### Patch Changes
+
+- Auto-cancel in-flight dev runs when the CLI exits, using a detached watchdog process that survives pnpm SIGKILL ([#3191](https://github.com/triggerdotdev/trigger.dev/pull/3191))
+
+## 4.4.2
+
+## 4.4.1
+
+## 4.4.0
+
+### Patch Changes
+
+- Add `maxDelay` option to debounce feature. This allows setting a maximum time limit for how long a debounced run can be delayed, ensuring execution happens within a specified window even with continuous triggers. ([#2984](https://github.com/triggerdotdev/trigger.dev/pull/2984))
+
+  ```typescript
+  await myTask.trigger(payload, {
+    debounce: {
+      key: "my-key",
+      delay: "5s",
+      maxDelay: "30m", // Execute within 30 minutes regardless of continuous triggers
+    },
+  });
+  ```
+
+- Fixed a minor issue in the deployment command on distinguishing between local builds for the cloud vs local builds for self-hosting setups. ([#3070](https://github.com/triggerdotdev/trigger.dev/pull/3070))
+- fix: vendor superjson to fix ESM/CJS compatibility ([#2949](https://github.com/triggerdotdev/trigger.dev/pull/2949))
+
+  Bundle superjson during build to avoid `ERR_REQUIRE_ESM` errors on Node.js versions that don't support `require(ESM)` by default (< 22.12.0) and AWS Lambda which intentionally disables it.
+
+- Add Vercel integration support to API schemas: `commitSHA` and `integrationDeployments` on deployment responses, and `source` field for environment variable imports. ([#2994](https://github.com/triggerdotdev/trigger.dev/pull/2994))
+
+## 4.3.3
+
+### Patch Changes
+
+- Add support for AI SDK v6 (Vercel AI SDK) ([#2919](https://github.com/triggerdotdev/trigger.dev/pull/2919))
+
+  - Updated peer dependency to allow `ai@^6.0.0` alongside v4 and v5
+  - Updated internal code to handle async validation from AI SDK v6's Schema type
+
+- Expose user-provided idempotency key and scope in task context. `ctx.run.idempotencyKey` now returns the original key passed to `idempotencyKeys.create()` instead of the hash, and `ctx.run.idempotencyKeyScope` shows the scope ("run", "attempt", or "global"). ([#2903](https://github.com/triggerdotdev/trigger.dev/pull/2903))
+- Fix batch trigger failing with "ReadableStream is locked" error when network failures occur mid-stream. Added safe stream cancellation that gracefully handles locked streams during retry attempts. ([#2917](https://github.com/triggerdotdev/trigger.dev/pull/2917))
+- Add a maxDepth to flatten/unflattenAttributes to prevent possible issues ([#2890](https://github.com/triggerdotdev/trigger.dev/pull/2890))
+
+## 4.3.2
+
+## 4.3.1
+
+### Patch Changes
+
+- Added support for idempotency reset ([#2777](https://github.com/triggerdotdev/trigger.dev/pull/2777))
+
+## 4.3.0
+
+### Minor Changes
+
+- feat(cli): deterministic image builds for deployments ([#2778](https://github.com/triggerdotdev/trigger.dev/pull/2778))
+
+### Patch Changes
+
+- The new `triggeredVia` field is now populated in deployments via the CLI. ([#2767](https://github.com/triggerdotdev/trigger.dev/pull/2767))
+
+## 4.2.0
+
+### Patch Changes
+
+- fix: prevent ERR_IPC_CHANNEL_CLOSED errors from causing an unhandled exception on TaskRunProcess ([#2743](https://github.com/triggerdotdev/trigger.dev/pull/2743))
+- Added support for native build server builds in the deploy command (`--native-build-server`) ([#2702](https://github.com/triggerdotdev/trigger.dev/pull/2702))
+
+## 4.1.2
+
+## 4.1.1
+
+## 4.1.0
+
+## 4.0.7
+
+## 4.0.6
+
+### Patch Changes
+
+- Added a hint about the `--force-local-build` flag on failed deployments due to upstream provider outages. ([#2646](https://github.com/triggerdotdev/trigger.dev/pull/2646))
+
+## 4.0.5
+
+### Patch Changes
+
+- Move max duration handling into the parent process ([#2637](https://github.com/triggerdotdev/trigger.dev/pull/2637))
+- fix(realtime): Upgrade to @electric-sql/client@1.0.14 to prevent cached 409 Conflict errors from breaking realtime updates ([#2588](https://github.com/triggerdotdev/trigger.dev/pull/2588))
+- Added INSTALLING status to the deployment status enum. ([#2544](https://github.com/triggerdotdev/trigger.dev/pull/2544))
+- Fix SIGTERM handling during warm start long poll ([#2593](https://github.com/triggerdotdev/trigger.dev/pull/2593))
+- Added support for deployments with local builds. ([#2628](https://github.com/triggerdotdev/trigger.dev/pull/2628))
+
+## 4.0.4
+
+## 4.0.3
+
+### Patch Changes
+
+- Attach to existing deployment for deployments triggered in the build server. If `TRIGGER_EXISTING_DEPLOYMENT_ID` env var is set, the `deploy` command now skips the deployment initialization. ([#2501](https://github.com/triggerdotdev/trigger.dev/pull/2501))
+- Reduce restore recovery time and fix deprecated runner false positives ([#2523](https://github.com/triggerdotdev/trigger.dev/pull/2523))
+
+## 4.0.2
+
+## 4.0.1
+
+## 4.0.0
+
+### Major Changes
+
+- Trigger.dev v4 release. Please see our upgrade to v4 docs to view the full changelog: https://trigger.dev/docs/upgrade-to-v4 ([#1869](https://github.com/triggerdotdev/trigger.dev/pull/1869))
+
+### Patch Changes
+
+- The dev command will now use the platform-provided engine URL ([#1949](https://github.com/triggerdotdev/trigger.dev/pull/1949))
+- Run Engine 2.0 (alpha) ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575))
+- Configurable queue consumer count in supervisor session ([#1949](https://github.com/triggerdotdev/trigger.dev/pull/1949))
+- Runtime agnostic SDK config via env vars ([#2132](https://github.com/triggerdotdev/trigger.dev/pull/2132))
+- Add supervisor http client option to disable debug logs ([#2116](https://github.com/triggerdotdev/trigger.dev/pull/2116))
+- Expose esbuild `keepNames` option (experimental) ([#2091](https://github.com/triggerdotdev/trigger.dev/pull/2091))
+- Add `experimental_autoDetectExternal` trigger config option ([#2083](https://github.com/triggerdotdev/trigger.dev/pull/2083))
+- Add project details to the whoami command ([#2231](https://github.com/triggerdotdev/trigger.dev/pull/2231))
+- Add import timings and bundle size analysis, the dev command will now warn about slow imports ([#2114](https://github.com/triggerdotdev/trigger.dev/pull/2114))
+- Improve structured logs ([#2062](https://github.com/triggerdotdev/trigger.dev/pull/2062))
+- - Resolve issue where CLI could get stuck during deploy finalization ([#2138](https://github.com/triggerdotdev/trigger.dev/pull/2138))
+  - Unify local and remote build logic, with multi-platform build support
+  - Improve switch command; now accepts profile name as an argument
+  - Registry configuration is now fully managed by the webapp
+  - The deploy `--self-hosted` flag is no longer required
+  - Enhance deployment error reporting and image digest retrieval
+- - Correctly resolve waitpoints that come in early ([#2006](https://github.com/triggerdotdev/trigger.dev/pull/2006))
+  - Ensure correct state before requesting suspension
+  - Fix race conditions in snapshot processing
+- Add optional placement tags to dequeued messages for targeted scheduling ([#2390](https://github.com/triggerdotdev/trigger.dev/pull/2390))
+- Add verbose structured log level ([#2062](https://github.com/triggerdotdev/trigger.dev/pull/2062))
+- Suppress external instrumentation for fetch calls from ApiClient ([#1788](https://github.com/triggerdotdev/trigger.dev/pull/1788))
+- Add runtime version detection for display in the dashboard ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+- Improve metadata flushing efficiency by collapsing operations ([#2106](https://github.com/triggerdotdev/trigger.dev/pull/2106))
+- fix: Realtime streams: prevent enqueuing into closed ReadableStream ([#1781](https://github.com/triggerdotdev/trigger.dev/pull/1781))
+- Improve usage flushing ([#1931](https://github.com/triggerdotdev/trigger.dev/pull/1931))
+- Prevent large outputs from overwriting each other ([#1971](https://github.com/triggerdotdev/trigger.dev/pull/1971))
+- Fail fast in CI when running deploy with missing `TRIGGER_ACCESS_TOKEN` and add useful error message with link to docs ([#2258](https://github.com/triggerdotdev/trigger.dev/pull/2258))
+- Upgrade to zod 3.25.76 ([#2352](https://github.com/triggerdotdev/trigger.dev/pull/2352))
+- - Fix polling interval reset bug that could create duplicate intervals ([#1987](https://github.com/triggerdotdev/trigger.dev/pull/1987))
+  - Protect against unexpected attempt number changes
+  - Prevent run execution zombies after warm starts
+- Managed run controller performance and reliability improvements ([#1927](https://github.com/triggerdotdev/trigger.dev/pull/1927))
+- v4: New lifecycle hooks ([#1817](https://github.com/triggerdotdev/trigger.dev/pull/1817))
+- Fix QUEUED status snapshot handler ([#1963](https://github.com/triggerdotdev/trigger.dev/pull/1963))
+- Fixes an issue with realtime when re-subscribing to a run, that would temporarily display stale data and the changes. Now when re-subscribing to a run only the latest changes will be vended ([#2162](https://github.com/triggerdotdev/trigger.dev/pull/2162))
+- Expose esbuild `minify` option (experimental) ([#2091](https://github.com/triggerdotdev/trigger.dev/pull/2091))
+- Fix Bun runtime path resolution fallback ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+
+## 4.0.0-v4-beta.28
+
+### Patch Changes
+
+- Add optional placement tags to dequeued messages for targeted scheduling ([#2390](https://github.com/triggerdotdev/trigger.dev/pull/2390))
+
+## 4.0.0-v4-beta.27
+
+### Patch Changes
+
+- Upgrade to zod 3.25.76 ([#2352](https://github.com/triggerdotdev/trigger.dev/pull/2352))
+
+## 4.0.0-v4-beta.26
+
+## 4.0.0-v4-beta.25
+
 ## 4.0.0-v4-beta.24
 
 ## 4.0.0-v4-beta.23
@@ -551,7 +722,7 @@
     port: 5432,
     username: "postgres",
     password: "postgres",
-    database: "v3-catalog",
+    database: "hello-world",
     entities: [Photo],
     synchronize: true,
     logging: false,
@@ -991,7 +1162,7 @@
     port: 5432,
     username: "postgres",
     password: "postgres",
-    database: "v3-catalog",
+    database: "hello-world",
     entities: [Photo],
     synchronize: true,
     logging: false,

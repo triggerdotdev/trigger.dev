@@ -55,9 +55,11 @@ import {
   v3CreateBulkActionPath,
   v3ProjectPath,
   v3TestPath,
+  v3TestTaskPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
 import { CreateBulkActionInspector } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
+import { Callout } from "~/components/primitives/Callout";
 
 export const meta: MetaFunction = () => {
   return [
@@ -149,7 +151,17 @@ export default function Page() {
                 </div>
               }
             >
-              <TypedAwait resolve={data}>
+              <TypedAwait
+                resolve={data}
+                errorElement={
+                  <div className="flex items-center justify-center px-3 py-12">
+                    <Callout variant="error" className="max-w-fit">
+                      Unable to load your task runs. Please refresh the page or try again in a
+                      moment.
+                    </Callout>
+                  </div>
+                }
+              >
                 {(list) => {
                   return (
                     <RunsList
@@ -224,7 +236,13 @@ function RunsList({
               list.possibleTasks.length === 0 ? (
                 <CreateFirstTaskInstructions />
               ) : (
-                <RunTaskInstructions />
+                <RunTaskInstructions
+                  task={
+                    list.filters.tasks.length === 1
+                      ? list.possibleTasks.find((t) => t.slug === list.filters.tasks[0])
+                      : undefined
+                  }
+                />
               )
             ) : (
               <div className={cn("grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden")}>
@@ -280,6 +298,7 @@ function RunsList({
                   runs={list.runs}
                   isLoading={isLoading}
                   allowSelection
+                  rootOnlyDefault={rootOnlyDefault}
                 />
               </div>
             )}
@@ -328,7 +347,7 @@ function CreateFirstTaskInstructions() {
   );
 }
 
-function RunTaskInstructions() {
+function RunTaskInstructions({ task }: { task?: { slug: string } }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -341,7 +360,11 @@ function RunTaskInstructions() {
           Perform a test run with a payload directly from the dashboard.
         </Paragraph>
         <LinkButton
-          to={v3TestPath(organization, project, environment)}
+          to={
+            task
+              ? v3TestTaskPath(organization, project, environment, { taskIdentifier: task.slug })
+              : v3TestPath(organization, project, environment)
+          }
           variant="secondary/medium"
           LeadingIcon={BeakerIcon}
           leadingIconClassName="text-lime-500"

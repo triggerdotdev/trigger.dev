@@ -11,6 +11,7 @@ import {
   CursorPagePromise,
   flattenAttributes,
   ListWaitpointTokensQueryParams,
+  ManualWaitpointPromise,
   mergeRequestOptions,
   runtime,
   SemanticInternalAttributes,
@@ -19,6 +20,7 @@ import {
   WaitpointRetrieveTokenResponse,
   WaitpointTokenStatus,
   WaitpointTokenTypedResult,
+  WaitpointTimeoutError,
 } from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { tracer } from "./tracer.js";
@@ -378,12 +380,7 @@ type WaitPeriod =
       years: number;
     };
 
-export class WaitpointTimeoutError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "WaitpointTimeoutError";
-  }
-}
+export { WaitpointTimeoutError, ManualWaitpointPromise } from "@trigger.dev/core/v3";
 
 const DURATION_WAIT_CHARGE_THRESHOLD_MS = 5000;
 
@@ -391,29 +388,6 @@ function printWaitBelowThreshold() {
   console.warn(
     `Waits of ${DURATION_WAIT_CHARGE_THRESHOLD_MS / 1000}s or less count towards compute usage.`
   );
-}
-
-class ManualWaitpointPromise<TOutput> extends Promise<WaitpointTokenTypedResult<TOutput>> {
-  constructor(
-    executor: (
-      resolve: (
-        value: WaitpointTokenTypedResult<TOutput> | PromiseLike<WaitpointTokenTypedResult<TOutput>>
-      ) => void,
-      reject: (reason?: any) => void
-    ) => void
-  ) {
-    super(executor);
-  }
-
-  unwrap(): Promise<TOutput> {
-    return this.then((result) => {
-      if (result.ok) {
-        return result.output;
-      } else {
-        throw new WaitpointTimeoutError(result.error.message);
-      }
-    });
-  }
 }
 
 export const wait = {

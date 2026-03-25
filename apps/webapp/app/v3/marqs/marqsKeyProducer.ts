@@ -2,6 +2,7 @@ import { MarQSKeyProducer, MarQSKeyProducerEnv, QueueDescriptor } from "./types"
 
 const constants = {
   SHARED_QUEUE: "sharedQueue",
+  SHARED_WORKER_QUEUE: "sharedWorkerQueue",
   CURRENT_CONCURRENCY_PART: "currentConcurrency",
   CONCURRENCY_LIMIT_PART: "concurrency",
   DISABLED_CONCURRENCY_LIMIT_PART: "disabledConcurrency",
@@ -106,6 +107,10 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
 
   sharedQueueKey(): string {
     return constants.SHARED_QUEUE;
+  }
+
+  sharedWorkerQueueKey(): string {
+    return constants.SHARED_WORKER_QUEUE;
   }
 
   queueConcurrencyLimitKeyFromQueue(queue: string) {

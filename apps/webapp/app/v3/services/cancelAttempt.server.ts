@@ -1,11 +1,9 @@
 import { $transaction, type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { eventRepository } from "../eventRepository.server";
 import { isCancellableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
-import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 
 export class CancelAttemptService extends BaseService {
   public async call(
@@ -72,25 +70,6 @@ export class CancelAttemptService extends BaseService {
           error: isCancellable ? { type: "STRING_ERROR", raw: reason } : undefined,
         });
       });
-
-      const inProgressEvents = await eventRepository.queryIncompleteEvents(
-        getTaskEventStoreTableForRun(taskRunAttempt.taskRun),
-        {
-          runId: taskRunAttempt.taskRun.friendlyId,
-        },
-        taskRunAttempt.taskRun.createdAt,
-        taskRunAttempt.taskRun.completedAt ?? undefined
-      );
-
-      logger.debug("Cancelling in-progress events", {
-        inProgressEvents: inProgressEvents.map((event) => event.id),
-      });
-
-      await Promise.all(
-        inProgressEvents.map((event) => {
-          return eventRepository.cancelEvent(event, cancelledAt, reason);
-        })
-      );
     });
   }
 }

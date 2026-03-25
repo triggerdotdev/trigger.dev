@@ -37,7 +37,12 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const archiveBranchService = new ArchiveBranchService();
 
-  const result = await archiveBranchService.call(userId, submission.value);
+  const result = await archiveBranchService.call(
+    { type: "userMembership", userId },
+    {
+      environmentId: submission.value.environmentId,
+    }
+  );
 
   if (result.success) {
     return redirectWithSuccessMessage(
@@ -115,7 +120,7 @@ export function ArchiveButton({
               }
               cancelButton={
                 <DialogClose asChild>
-                  <Button variant="tertiary/medium">Cancel</Button>
+                  <Button variant="secondary/medium">Cancel</Button>
                 </DialogClose>
               }
             />

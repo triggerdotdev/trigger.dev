@@ -28,7 +28,7 @@ In your new file, add the following code:
 
 ```ts /api/webhook-handler.ts
 import type { ActionFunctionArgs } from "@remix-run/node";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import { helloWorldTask } from "src/trigger/example";
 
 export async function action({ request }: ActionFunctionArgs) {

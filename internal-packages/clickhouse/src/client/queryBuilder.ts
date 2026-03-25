@@ -1,13 +1,19 @@
 import { z } from "zod";
-import { ClickhouseQueryFunction, ClickhouseReader } from "./types.js";
+import { ClickhouseQueryFunction, ClickhouseReader, ColumnExpression } from "./types.js";
 import { ClickHouseSettings } from "@clickhouse/client";
 export type QueryParamValue = string | number | boolean | Array<string | number | boolean> | null;
 export type QueryParams = Record<string, QueryParamValue>;
+
+export type WhereCondition = {
+  clause: string;
+  params?: QueryParams;
+};
 
 export class ClickhouseQueryBuilder<TOutput> {
   private name: string;
   private baseQuery: string;
   private whereClauses: string[] = [];
+  private havingClauses: string[] = [];
   private params: QueryParams = {};
   private orderByClause: string | null = null;
   private limitClause: string | null = null;
@@ -30,6 +36,12 @@ export class ClickhouseQueryBuilder<TOutput> {
     this.settings = settings;
   }
 
+  /** Set query parameters without adding a WHERE clause. Use for base queries with inline params. */
+  setParams(params: QueryParams): this {
+    Object.assign(this.params, params);
+    return this;
+  }
+
   where(clause: string, params?: QueryParams): this {
     this.whereClauses.push(clause);
     if (params) {
@@ -45,8 +57,37 @@ export class ClickhouseQueryBuilder<TOutput> {
     return this;
   }
 
+  whereOr(conditions: WhereCondition[]): this {
+    if (conditions.length === 0) {
+      return this;
+    }
+    const combinedClause = conditions.map((c) => `(${c.clause})`).join(" OR ");
+    this.whereClauses.push(`(${combinedClause})`);
+    for (const condition of conditions) {
+      if (condition.params) {
+        Object.assign(this.params, condition.params);
+      }
+    }
+    return this;
+  }
+
   groupBy(clause: string): this {
     this.groupByClause = clause;
+    return this;
+  }
+
+  having(clause: string, params?: QueryParams): this {
+    this.havingClauses.push(clause);
+    if (params) {
+      Object.assign(this.params, params);
+    }
+    return this;
+  }
+
+  havingIf(condition: any, clause: string, params?: QueryParams): this {
+    if (condition) {
+      this.having(clause, params);
+    }
     return this;
   }
 
@@ -82,6 +123,9 @@ export class ClickhouseQueryBuilder<TOutput> {
     if (this.groupByClause) {
       query += ` GROUP BY ${this.groupByClause}`;
     }
+    if (this.havingClauses.length > 0) {
+      query += " HAVING " + this.havingClauses.join(" AND ");
+    }
     if (this.orderByClause) {
       query += ` ORDER BY ${this.orderByClause}`;
     }
@@ -89,5 +133,157 @@ export class ClickhouseQueryBuilder<TOutput> {
       query += ` ${this.limitClause}`;
     }
     return { query, params: this.params };
+  }
+}
+
+export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
+  private name: string;
+  private table: string;
+  private columns: Array<string | ColumnExpression>;
+  private reader: ClickhouseReader;
+  private settings: ClickHouseSettings | undefined;
+  private prewhereClauses: string[] = [];
+  private whereClauses: string[] = [];
+  private havingClauses: string[] = [];
+  private params: QueryParams = {};
+  private orderByClause: string | null = null;
+  private limitClause: string | null = null;
+  private groupByClause: string | null = null;
+
+  constructor(
+    name: string,
+    table: string,
+    columns: Array<string | ColumnExpression>,
+    reader: ClickhouseReader,
+    settings?: ClickHouseSettings
+  ) {
+    this.name = name;
+    this.table = table;
+    this.columns = columns;
+    this.reader = reader;
+    this.settings = settings;
+  }
+
+  /**
+   * Add a PREWHERE clause - filters applied before reading columns.
+   * Use for primary key columns (environment_id, start_time) to reduce I/O.
+   */
+  prewhere(clause: string, params?: QueryParams): this {
+    this.prewhereClauses.push(clause);
+    if (params) {
+      Object.assign(this.params, params);
+    }
+    return this;
+  }
+
+  prewhereIf(condition: any, clause: string, params?: QueryParams): this {
+    if (condition) {
+      this.prewhere(clause, params);
+    }
+    return this;
+  }
+
+  where(clause: string, params?: QueryParams): this {
+    this.whereClauses.push(clause);
+    if (params) {
+      Object.assign(this.params, params);
+    }
+    return this;
+  }
+
+  whereIf(condition: any, clause: string, params?: QueryParams): this {
+    if (condition) {
+      this.where(clause, params);
+    }
+    return this;
+  }
+
+  whereOr(conditions: WhereCondition[]): this {
+    if (conditions.length === 0) {
+      return this;
+    }
+    const combinedClause = conditions.map((c) => `(${c.clause})`).join(" OR ");
+    this.whereClauses.push(`(${combinedClause})`);
+    for (const condition of conditions) {
+      if (condition.params) {
+        Object.assign(this.params, condition.params);
+      }
+    }
+    return this;
+  }
+
+  groupBy(clause: string): this {
+    this.groupByClause = clause;
+    return this;
+  }
+
+  having(clause: string, params?: QueryParams): this {
+    this.havingClauses.push(clause);
+    if (params) {
+      Object.assign(this.params, params);
+    }
+    return this;
+  }
+
+  havingIf(condition: any, clause: string, params?: QueryParams): this {
+    if (condition) {
+      this.having(clause, params);
+    }
+    return this;
+  }
+
+  orderBy(clause: string): this {
+    this.orderByClause = clause;
+    return this;
+  }
+
+  limit(limit: number): this {
+    this.limitClause = `LIMIT ${limit}`;
+    return this;
+  }
+
+  execute(): ReturnType<ClickhouseQueryFunction<void, TOutput>> {
+    const { query, params } = this.build();
+
+    const queryFunction = this.reader.queryFast<TOutput, Record<string, any>>({
+      name: this.name,
+      query,
+      columns: this.columns,
+      settings: this.settings,
+    });
+
+    return queryFunction(params);
+  }
+
+  build(): { query: string; params: QueryParams } {
+    let query = `SELECT ${this.buildColumns().join(", ")} FROM ${this.table}`;
+    if (this.prewhereClauses.length > 0) {
+      query += " PREWHERE " + this.prewhereClauses.join(" AND ");
+    }
+    if (this.whereClauses.length > 0) {
+      query += " WHERE " + this.whereClauses.join(" AND ");
+    }
+    if (this.groupByClause) {
+      query += ` GROUP BY ${this.groupByClause}`;
+    }
+    if (this.havingClauses.length > 0) {
+      query += " HAVING " + this.havingClauses.join(" AND ");
+    }
+    if (this.orderByClause) {
+      query += ` ORDER BY ${this.orderByClause}`;
+    }
+    if (this.limitClause) {
+      query += ` ${this.limitClause}`;
+    }
+    return { query, params: this.params };
+  }
+
+  buildColumns(): string[] {
+    return this.columns.map((column) => {
+      if (typeof column === "string") {
+        return column;
+      }
+      return [column.expression, column.name].join(" AS ");
+    });
   }
 }

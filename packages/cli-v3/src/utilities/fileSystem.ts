@@ -1,8 +1,10 @@
 import fsSync from "fs";
+import stringify from "json-stable-stringify";
 import fsModule, { writeFile } from "fs/promises";
 import fs from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import pathModule from "node:path";
+import { parseJSONC, stringifyJSONC, parseTOML, stringifyTOML } from "confbox";
 
 // Creates a file at the given path, if the directory doesn't exist it will be created
 export async function createFile(
@@ -13,6 +15,77 @@ export async function createFile(
   await fsModule.writeFile(path, contents);
 
   return path;
+}
+
+/**
+ * Sanitizes a hash to be safe for use as a filename.
+ * esbuild's hashes are base64-encoded and may contain `/` and `+` characters.
+ */
+export function sanitizeHashForFilename(hash: string): string {
+  return hash.replace(/\//g, "_").replace(/\+/g, "-");
+}
+
+/**
+ * Creates a file using a content-addressable store for deduplication.
+ * Files are stored by their content hash, so identical content is only stored once.
+ * The build directory gets a hardlink to the stored file.
+ *
+ * @param filePath - The destination path for the file
+ * @param contents - The file contents to write
+ * @param storeDir - The shared store directory for deduplication
+ * @param contentHash - The content hash (e.g., from esbuild's outputFile.hash)
+ * @returns The destination file path
+ */
+export async function createFileWithStore(
+  filePath: string,
+  contents: string | NodeJS.ArrayBufferView,
+  storeDir: string,
+  contentHash: string
+): Promise<string> {
+  // Sanitize hash to be filesystem-safe (base64 can contain / and +)
+  const safeHash = sanitizeHashForFilename(contentHash);
+  // Store files by their content hash for true content-addressable storage
+  const storePath = pathModule.join(storeDir, safeHash);
+
+  // Ensure build directory exists
+  await fsModule.mkdir(pathModule.dirname(filePath), { recursive: true });
+
+  // Remove existing file at destination if it exists (hardlinks fail on existing files)
+  if (fsSync.existsSync(filePath)) {
+    await fsModule.unlink(filePath);
+  }
+
+  // Check if content already exists in store by hash
+  if (fsSync.existsSync(storePath)) {
+    // Create hardlink from build path to store path
+    // Fall back to copy if hardlink fails (e.g., on Windows or cross-device)
+    try {
+      await fsModule.link(storePath, filePath);
+    } catch (linkError) {
+      try {
+        await fsModule.copyFile(storePath, filePath);
+      } catch (copyError) {
+        throw linkError; // Rethrow original error if copy also fails
+      }
+    }
+    return filePath;
+  }
+
+  // Write to store first (using hash as filename)
+  await fsModule.writeFile(storePath, contents);
+  // Create hardlink in build directory (with original filename)
+  // Fall back to copy if hardlink fails (e.g., on Windows or cross-device)
+  try {
+    await fsModule.link(storePath, filePath);
+  } catch (linkError) {
+    try {
+      await fsModule.copyFile(storePath, filePath);
+    } catch (copyError) {
+      throw linkError; // Rethrow original error if copy also fails
+    }
+  }
+
+  return filePath;
 }
 
 export function isDirectory(configPath: string) {
@@ -50,6 +123,22 @@ export async function readFile(path: string) {
   return await fsModule.readFile(path, "utf8");
 }
 
+export function expandTilde(filePath: string) {
+  if (typeof filePath !== "string") {
+    throw new TypeError("Path must be a string");
+  }
+
+  if (filePath === "~") {
+    return homedir();
+  }
+
+  if (filePath.startsWith("~/")) {
+    return pathModule.resolve(homedir(), filePath.slice(2));
+  }
+
+  return pathModule.resolve(filePath);
+}
+
 export async function readJSONFile(path: string) {
   const fileContents = await fsModule.readFile(path, "utf8");
 
@@ -70,8 +159,30 @@ export async function safeReadJSONFile(path: string) {
   }
 }
 
+/**
+ * Use this for deterministic builds. Uses `json-stable-stringify` to sort keys alphabetically.
+ * @param path - The path to the file to write
+ * @param json - The JSON object to write
+ * @param pretty - Whether to pretty print the JSON
+ */
 export async function writeJSONFile(path: string, json: any, pretty = false) {
-  await writeFile(path, JSON.stringify(json, undefined, pretty ? 2 : undefined), "utf8");
+  await safeWriteFile(path, stringify(json, pretty ? { space: 2 } : undefined) ?? "");
+}
+
+/**
+ * Use this when you want to preserve the original key ordering (e.g. user's package.json)
+ * @param path - The path to the file to write
+ * @param json - The JSON object to write
+ * @param pretty - Whether to pretty print the JSON
+ */
+export async function writeJSONFilePreserveOrder(path: string, json: any, pretty = false) {
+  await safeWriteFile(path, JSON.stringify(json, undefined, pretty ? 2 : undefined));
+}
+
+// Will create the directory if it doesn't exist
+export async function safeWriteFile(path: string, contents: string) {
+  await fsModule.mkdir(pathModule.dirname(path), { recursive: true });
+  await fsModule.writeFile(path, contents);
 }
 
 export function readJSONFileSync(path: string) {
@@ -97,4 +208,32 @@ export async function createTempDir(): Promise<string> {
   const directory = await fsModule.mkdtemp(tempDirPath);
 
   return directory;
+}
+
+export async function safeReadTomlFile(path: string) {
+  const fileExists = await pathExists(path);
+
+  if (!fileExists) return;
+
+  const fileContents = await readFile(path);
+
+  return parseTOML(fileContents.replace(/\r\n/g, "\n"));
+}
+
+export async function writeTomlFile(path: string, toml: any) {
+  await safeWriteFile(path, stringifyTOML(toml));
+}
+
+export async function safeReadJSONCFile(path: string) {
+  const fileExists = await pathExists(path);
+
+  if (!fileExists) return;
+
+  const fileContents = await readFile(path);
+
+  return parseJSONC(fileContents.replace(/\r\n/g, "\n"));
+}
+
+export async function writeJSONCFile(path: string, json: any) {
+  await safeWriteFile(path, stringifyJSONC(json));
 }

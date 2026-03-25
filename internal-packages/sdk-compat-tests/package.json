@@ -1,0 +1,20 @@
+{
+  "name": "@internal/sdk-compat-tests",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "test": "vitest",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "execa": "^9.3.0",
+    "typescript": "^5.5.0",
+    "vitest": "3.1.4"
+  }
+}

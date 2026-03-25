@@ -65,13 +65,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
     query: async (search) => {
       const tagPresenter = new RunTagListPresenter();
       const tags = await tagPresenter.call({
+        organizationId: environment.organizationId,
         projectId: environment.projectId,
+        environmentId: environment.id,
         name: search,
         page: 1,
         pageSize: 50,
+        period: "30d",
       });
       return {
-        tags: tags.tags.map((t) => t.name),
+        tags: tags.tags,
       };
     },
   };

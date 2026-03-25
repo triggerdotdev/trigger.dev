@@ -1,5 +1,558 @@
 # @trigger.dev/sdk
 
+## 4.4.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.3`
+
+## 4.4.2
+
+### Patch Changes
+
+- Add input streams for bidirectional communication with running tasks. Define typed input streams with `streams.input<T>({ id })`, then consume inside tasks via `.wait()` (suspends the process), `.once()` (waits for next message), or `.on()` (subscribes to a continuous stream). Send data from backends with `.send(runId, data)` or from frontends with the new `useInputStreamSend` React hook. ([#3146](https://github.com/triggerdotdev/trigger.dev/pull/3146))
+
+  Upgrade S2 SDK from 0.17 to 0.22 with support for custom endpoints (s2-lite) via the new `endpoints` configuration, `AppendRecord.string()` API, and `maxInflightBytes` session option.
+
+- fix(sdk): batch triggerAndWait variants now return correct run.taskIdentifier instead of unknown ([#3080](https://github.com/triggerdotdev/trigger.dev/pull/3080))
+- Add PAYLOAD_TOO_LARGE error to handle graceful recovery of sending batch trigger items with payloads that exceed the maximum payload size ([#3137](https://github.com/triggerdotdev/trigger.dev/pull/3137))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.2`
+
+## 4.4.1
+
+### Patch Changes
+
+- Add OTEL metrics pipeline for task workers. Workers collect process CPU/memory, Node.js runtime metrics (event loop utilization, event loop delay, heap usage), and user-defined custom metrics via `otel.metrics.getMeter()`. Metrics are exported to ClickHouse with 10-second aggregation buckets and 1m/5m rollups, and are queryable through the dashboard query engine with typed attribute columns, `prettyFormat()` for human-readable values, and AI query support. ([#3061](https://github.com/triggerdotdev/trigger.dev/pull/3061))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.1`
+
+## 4.4.0
+
+### Minor Changes
+
+- Added `query.execute()` which lets you query your Trigger.dev data using TRQL (Trigger Query Language) and returns results as typed JSON rows or CSV. It supports configurable scope (environment, project, or organization), time filtering via `period` or `from`/`to` ranges, and a `format` option for JSON or CSV output. ([#3060](https://github.com/triggerdotdev/trigger.dev/pull/3060))
+
+  ```typescript
+  import { query } from "@trigger.dev/sdk";
+  import type { QueryTable } from "@trigger.dev/sdk";
+
+  // Basic untyped query
+  const result = await query.execute("SELECT run_id, status FROM runs LIMIT 10");
+
+  // Type-safe query using QueryTable to pick specific columns
+  const typedResult = await query.execute<QueryTable<"runs", "run_id" | "status" | "triggered_at">>(
+    "SELECT run_id, status, triggered_at FROM runs LIMIT 10"
+  );
+  typedResult.results.forEach((row) => {
+    console.log(row.run_id, row.status); // Fully typed
+  });
+
+  // Aggregation query with inline types
+  const stats = await query.execute<{ status: string; count: number }>(
+    "SELECT status, COUNT(*) as count FROM runs GROUP BY status",
+    { scope: "project", period: "30d" }
+  );
+
+  // CSV export
+  const csv = await query.execute("SELECT run_id, status FROM runs", {
+    format: "csv",
+    period: "7d",
+  });
+  console.log(csv.results); // Raw CSV string
+  ```
+
+### Patch Changes
+
+- Add `maxDelay` option to debounce feature. This allows setting a maximum time limit for how long a debounced run can be delayed, ensuring execution happens within a specified window even with continuous triggers. ([#2984](https://github.com/triggerdotdev/trigger.dev/pull/2984))
+
+  ```typescript
+  await myTask.trigger(payload, {
+    debounce: {
+      key: "my-key",
+      delay: "5s",
+      maxDelay: "30m", // Execute within 30 minutes regardless of continuous triggers
+    },
+  });
+  ```
+
+- Aligned the SDK's `getRunIdForOptions` logic with the Core package to handle semantic targets (`root`, `parent`) in root tasks. ([#2874](https://github.com/triggerdotdev/trigger.dev/pull/2874))
+- Export `AnyOnStartAttemptHookFunction` type to allow defining `onStartAttempt` hooks for individual tasks. ([#2966](https://github.com/triggerdotdev/trigger.dev/pull/2966))
+- Fixed a minor issue in the deployment command on distinguishing between local builds for the cloud vs local builds for self-hosting setups. ([#3070](https://github.com/triggerdotdev/trigger.dev/pull/3070))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.0`
+
+## 4.3.3
+
+### Patch Changes
+
+- Add support for AI SDK v6 (Vercel AI SDK) ([#2919](https://github.com/triggerdotdev/trigger.dev/pull/2919))
+
+  - Updated peer dependency to allow `ai@^6.0.0` alongside v4 and v5
+  - Updated internal code to handle async validation from AI SDK v6's Schema type
+
+- Expose user-provided idempotency key and scope in task context. `ctx.run.idempotencyKey` now returns the original key passed to `idempotencyKeys.create()` instead of the hash, and `ctx.run.idempotencyKeyScope` shows the scope ("run", "attempt", or "global"). ([#2903](https://github.com/triggerdotdev/trigger.dev/pull/2903))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.3`
+
+## 4.3.2
+
+### Patch Changes
+
+- Improve batch trigger error messages, especially when rate limited ([#2837](https://github.com/triggerdotdev/trigger.dev/pull/2837))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.2`
+
+## 4.3.1
+
+### Patch Changes
+
+- feat: Support for new batch trigger system ([#2779](https://github.com/triggerdotdev/trigger.dev/pull/2779))
+- feat(sdk): Support debouncing runs when triggering with new debounce options ([#2794](https://github.com/triggerdotdev/trigger.dev/pull/2794))
+- Added support for idempotency reset ([#2777](https://github.com/triggerdotdev/trigger.dev/pull/2777))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.1`
+
+## 4.3.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.0`
+
+## 4.2.0
+
+### Patch Changes
+
+- fix(sdk): Re-export schemaTask types to prevent the TypeScript error TS2742: The inferred type of 'task' cannot be named without a reference to '@trigger.dev/core/v3'. This is likely not portable. ([#2735](https://github.com/triggerdotdev/trigger.dev/pull/2735))
+- feat: add ability to set custom resource properties through trigger.config.ts or via the OTEL_RESOURCE_ATTRIBUTES env var ([#2704](https://github.com/triggerdotdev/trigger.dev/pull/2704))
+- Updated dependencies:
+  - `@trigger.dev/core@4.2.0`
+
+## 4.1.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.1.2`
+
+## 4.1.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.1.1`
+
+## 4.1.0
+
+### Minor Changes
+
+- Realtime streams v2 ([#2632](https://github.com/triggerdotdev/trigger.dev/pull/2632))
+- Prevent uncaught errors in the `onSuccess`, `onComplete`, and `onFailure` lifecycle hooks from failing attempts/runs. ([#2515](https://github.com/triggerdotdev/trigger.dev/pull/2515))
+
+  Deprecated the `onStart` lifecycle hook (which only fires before the `run` function on the first attempt). Replaced with `onStartAttempt` that fires before the run function on every attempt:
+
+  ```ts
+  export const taskWithOnStartAttempt = task({
+    id: "task-with-on-start-attempt",
+    onStartAttempt: async ({ payload, ctx }) => {
+      //...
+    },
+    run: async (payload: any, { ctx }) => {
+      //...
+    },
+  });
+
+  // Default a global lifecycle hook using tasks
+  tasks.onStartAttempt(({ ctx, payload, task }) => {
+    console.log(
+      `Run ${ctx.run.id} started on task ${task} attempt ${ctx.run.attempt.number}`,
+      ctx.run
+    );
+  });
+  ```
+
+  If you want to execute code before just the first attempt, you can use the `onStartAttempt` function and check `ctx.run.attempt.number === 1`:
+
+  ```ts /trigger/on-start-attempt.ts
+  export const taskWithOnStartAttempt = task({
+    id: "task-with-on-start-attempt",
+    onStartAttempt: async ({ payload, ctx }) => {
+      if (ctx.run.attempt.number === 1) {
+        console.log("Run started on attempt 1", ctx.run);
+      }
+    },
+  });
+  ```
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.1.0`
+
+## 4.0.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.7`
+
+## 4.0.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.6`
+
+## 4.0.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.5`
+
+## 4.0.4
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.4`
+
+## 4.0.3
+
+### Patch Changes
+
+- Added the heartbeats.yield utility to allow tasks that do continuous CPU-heavy work to heartbeat and continue running ([#2489](https://github.com/triggerdotdev/trigger.dev/pull/2489))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.3`
+
+## 4.0.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.2`
+
+## 4.0.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.1`
+
+## 4.0.0
+
+### Major Changes
+
+- Trigger.dev v4 release. Please see our upgrade to v4 docs to view the full changelog: https://trigger.dev/docs/upgrade-to-v4 ([#1869](https://github.com/triggerdotdev/trigger.dev/pull/1869))
+
+### Patch Changes
+
+- fix: importing from runEngine/index.js breaks non-node runtimes ([#2328](https://github.com/triggerdotdev/trigger.dev/pull/2328))
+- Run Engine 2.0 (alpha) ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575))
+- fix: Logging large objects is now much more performant and uses less memory ([#2263](https://github.com/triggerdotdev/trigger.dev/pull/2263))
+- New internal idempotency implementation for trigger and batch trigger to prevent request retries from duplicating work ([#2256](https://github.com/triggerdotdev/trigger.dev/pull/2256))
+- When you create a Waitpoint token using `wait.createToken()` you get a URL back that can be used to complete it by making an HTTP POST request. ([#2025](https://github.com/triggerdotdev/trigger.dev/pull/2025))
+- feat: Support AI SDK 5.0. `ai.tool` now accepts either a schemaTask or a task with a provided jsonSchema ([#2396](https://github.com/triggerdotdev/trigger.dev/pull/2396))
+- External Trace Correlation & OpenTelemetry Package Updates. ([#2334](https://github.com/triggerdotdev/trigger.dev/pull/2334))
+
+  | Package                                   | Previous Version | New Version | Change Type                          |
+  | ----------------------------------------- | ---------------- | ----------- | ------------------------------------ |
+  | `@opentelemetry/api`                      | 1.9.0            | 1.9.0       | No change (stable API)               |
+  | `@opentelemetry/api-logs`                 | 0.52.1           | 0.203.0     | Major update                         |
+  | `@opentelemetry/core`                     | -                | 2.0.1       | New dependency                       |
+  | `@opentelemetry/exporter-logs-otlp-http`  | 0.52.1           | 0.203.0     | Major update                         |
+  | `@opentelemetry/exporter-trace-otlp-http` | 0.52.1           | 0.203.0     | Major update                         |
+  | `@opentelemetry/instrumentation`          | 0.52.1           | 0.203.0     | Major update                         |
+  | `@opentelemetry/instrumentation-fetch`    | 0.52.1           | 0.203.0     | Major update                         |
+  | `@opentelemetry/resources`                | 1.25.1           | 2.0.1       | Major update                         |
+  | `@opentelemetry/sdk-logs`                 | 0.52.1           | 0.203.0     | Major update                         |
+  | `@opentelemetry/sdk-node`                 | 0.52.1           | -           | Removed (functionality consolidated) |
+  | `@opentelemetry/sdk-trace-base`           | 1.25.1           | 2.0.1       | Major update                         |
+  | `@opentelemetry/sdk-trace-node`           | 1.25.1           | 2.0.1       | Major update                         |
+  | `@opentelemetry/semantic-conventions`     | 1.25.1           | 1.36.0      | Minor update                         |
+
+  ### External trace correlation and propagation
+
+  We will now correlate your external traces with trigger.dev traces and logs when using our external exporters:
+
+  ```ts
+  import { defineConfig } from "@trigger.dev/sdk";
+  import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+  import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+
+  export default defineConfig({
+    project: process.env.TRIGGER_PROJECT_REF,
+    dirs: ["./src/trigger"],
+    telemetry: {
+      logExporters: [
+        new OTLPLogExporter({
+          url: "https://api.axiom.co/v1/logs",
+          headers: {
+            Authorization: `Bearer ${process.env.AXIOM_TOKEN}`,
+            "X-Axiom-Dataset": "test",
+          },
+        }),
+      ],
+      exporters: [
+        new OTLPTraceExporter({
+          url: "https://api.axiom.co/v1/traces",
+          headers: {
+            Authorization: `Bearer ${process.env.AXIOM_TOKEN}`,
+            "X-Axiom-Dataset": "test",
+          },
+        }),
+      ],
+    },
+    maxDuration: 3600,
+  });
+  ```
+
+  You can also now propagate your external trace context when calling back into your own backend infra from inside a trigger.dev task:
+
+  ```ts
+  import { otel, task } from "@trigger.dev/sdk";
+  import { context, propagation } from "@opentelemetry/api";
+
+  async function callNextjsApp() {
+    return await otel.withExternalTrace(async () => {
+      const headersObject = {};
+
+      // Now context.active() refers to your external trace context
+      propagation.inject(context.active(), headersObject);
+
+      const result = await fetch("http://localhost:3000/api/demo-call-from-trigger", {
+        headers: new Headers(headersObject),
+        method: "POST",
+        body: JSON.stringify({
+          message: "Hello from Trigger.dev",
+        }),
+      });
+
+      return result.json();
+    });
+  }
+
+  export const myTask = task({
+    id: "my-task",
+    run: async (payload: any) => {
+      await callNextjsApp();
+    },
+  });
+  ```
+
+- Add jsonSchema support when indexing tasks ([#2353](https://github.com/triggerdotdev/trigger.dev/pull/2353))
+- Fixed an issue with realtime streams that timeout and resume streaming dropping chunks ([#1993](https://github.com/triggerdotdev/trigger.dev/pull/1993))
+- Added and cleaned up the run ctx param: ([#2322](https://github.com/triggerdotdev/trigger.dev/pull/2322))
+
+  - New optional properties `ctx.run.parentTaskRunId` and `ctx.run.rootTaskRunId` reference the current run's root/parent ID.
+  - Removed deprecated properties from `ctx`
+  - Added a new `ctx.deployment` object that contains information about the deployment associated with the run.
+
+  We also update `metadata.root` and `metadata.parent` to work even when the run is a "root" run (meaning it doesn't have a parent or a root associated run). This now works:
+
+  ```ts
+  metadata.root.set("foo", "bar");
+  metadata.parent.set("baz", 1);
+  metadata.current().foo; // "bar"
+  metadata.current().baz; // 1
+  ```
+
+- The envvars.list() and retrieve() functions receive isSecret for each value. Secret values are always redacted. ([#1942](https://github.com/triggerdotdev/trigger.dev/pull/1942))
+- Fix issue where realtime streams would cut off after 5 minutes ([#1952](https://github.com/triggerdotdev/trigger.dev/pull/1952))
+- Deprecate toolTask and replace with `ai.tool(mySchemaTask)` ([#1863](https://github.com/triggerdotdev/trigger.dev/pull/1863))
+- Display clickable links in Cursor terminal ([#1998](https://github.com/triggerdotdev/trigger.dev/pull/1998))
+- Removes the `releaseConcurrencyOnWaitpoint` option on queues and the `releaseConcurrency` option on various wait functions. Replaced with the following default behavior: ([#2284](https://github.com/triggerdotdev/trigger.dev/pull/2284))
+
+  - Concurrency is never released when a run is first blocked via a waitpoint, at either the env or queue level.
+  - Concurrency is always released when a run is checkpointed and shutdown, at both the env and queue level.
+
+  Additionally, environment concurrency limits now have a new "Burst Factor", defaulting to 2.0x. The "Burst Factor" allows the environment-wide concurrency limit to be higher than any individual queue's concurrency limit. For example, if you have an environment concurrency limit of 100, and a Burst Factor of 2.0x, then you can execute up to 200 runs concurrently, but any one task/queue can still only execute 100 runs concurrently.
+
+  We've done some work cleaning up the run statuses. The new statuses are:
+
+  - `PENDING_VERSION`: Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.)
+  - `QUEUED`: Task is waiting to be executed by a worker
+  - `DEQUEUED`: Task has been dequeued and is being sent to a worker to start executing.
+  - `EXECUTING`: Task is currently being executed by a worker
+  - `WAITING`: Task has been paused by the system, and will be resumed by the system
+  - `COMPLETED`: Task has been completed successfully
+  - `CANCELED`: Task has been canceled by the user
+  - `FAILED`: Task has failed to complete, due to an error in the system
+  - `CRASHED`: Task has crashed and won't be retried, most likely the worker ran out of resources, e.g. memory or storage
+  - `SYSTEM_FAILURE`: Task has failed to complete, due to an error in the system
+  - `DELAYED`: Task has been scheduled to run at a specific time
+  - `EXPIRED`: Task has expired and won't be executed
+  - `TIMED_OUT`: Task has reached it's maxDuration and has been stopped
+
+  We've removed the following statuses:
+
+  - `WAITING_FOR_DEPLOY`: This is no longer used, and is replaced by `PENDING_VERSION`
+  - `FROZEN`: This is no longer used, and is replaced by `WAITING`
+  - `INTERRUPTED`: This is no longer used
+  - `REATTEMPTING`: This is no longer used, and is replaced by `EXECUTING`
+
+  We've also added "boolean" helpers to runs returned via the API and from Realtime:
+
+  - `isQueued`: Returns true when the status is `QUEUED`, `PENDING_VERSION`, or `DELAYED`
+  - `isExecuting`: Returns true when the status is `EXECUTING`, `DEQUEUED`. These count against your concurrency limits.
+  - `isWaiting`: Returns true when the status is `WAITING`. These do not count against your concurrency limits.
+  - `isCompleted`: Returns true when the status is any of the completed statuses.
+  - `isCanceled`: Returns true when the status is `CANCELED`
+  - `isFailed`: Returns true when the status is any of the failed statuses.
+  - `isSuccess`: Returns true when the status is `COMPLETED`
+
+  This change adds the ability to easily detect which runs are being counted against your concurrency limit by filtering for both `EXECUTING` or `DEQUEUED`.
+
+- Add onCancel lifecycle hook ([#2022](https://github.com/triggerdotdev/trigger.dev/pull/2022))
+- Provide realtime skipColumns option via untamperable public access tokens ([#2201](https://github.com/triggerdotdev/trigger.dev/pull/2201))
+- Removed triggerAndPoll. It was never recommended so it's been removed. ([#2379](https://github.com/triggerdotdev/trigger.dev/pull/2379))
+- Improve metadata flushing efficiency by collapsing operations ([#2106](https://github.com/triggerdotdev/trigger.dev/pull/2106))
+- Upgrade to zod 3.25.76 ([#2352](https://github.com/triggerdotdev/trigger.dev/pull/2352))
+- Specify a region override when triggering a run ([#2366](https://github.com/triggerdotdev/trigger.dev/pull/2366))
+- Added runs.list filtering for queue and machine ([#2277](https://github.com/triggerdotdev/trigger.dev/pull/2277))
+- maintain proper context in metadata.root and parent getters ([#1917](https://github.com/triggerdotdev/trigger.dev/pull/1917))
+- v4: New lifecycle hooks ([#1817](https://github.com/triggerdotdev/trigger.dev/pull/1817))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0`
+
+## 4.0.0-v4-beta.28
+
+### Patch Changes
+
+- feat: Support AI SDK 5.0. `ai.tool` now accepts either a schemaTask or a task with a provided jsonSchema ([#2396](https://github.com/triggerdotdev/trigger.dev/pull/2396))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.28`
+
+## 4.0.0-v4-beta.27
+
+### Patch Changes
+
+- External Trace Correlation & OpenTelemetry Package Updates. ([#2334](https://github.com/triggerdotdev/trigger.dev/pull/2334))
+
+  | Package                                   | Previous Version | New Version | Change Type                          |
+  | ----------------------------------------- | ---------------- | ----------- | ------------------------------------ |
+  | `@opentelemetry/api`                      | 1.9.0            | 1.9.0       | No change (stable API)               |
+  | `@opentelemetry/api-logs`                 | 0.52.1           | 0.203.0     | Major update                         |
+  | `@opentelemetry/core`                     | -                | 2.0.1       | New dependency                       |
+  | `@opentelemetry/exporter-logs-otlp-http`  | 0.52.1           | 0.203.0     | Major update                         |
+  | `@opentelemetry/exporter-trace-otlp-http` | 0.52.1           | 0.203.0     | Major update                         |
+  | `@opentelemetry/instrumentation`          | 0.52.1           | 0.203.0     | Major update                         |
+  | `@opentelemetry/instrumentation-fetch`    | 0.52.1           | 0.203.0     | Major update                         |
+  | `@opentelemetry/resources`                | 1.25.1           | 2.0.1       | Major update                         |
+  | `@opentelemetry/sdk-logs`                 | 0.52.1           | 0.203.0     | Major update                         |
+  | `@opentelemetry/sdk-node`                 | 0.52.1           | -           | Removed (functionality consolidated) |
+  | `@opentelemetry/sdk-trace-base`           | 1.25.1           | 2.0.1       | Major update                         |
+  | `@opentelemetry/sdk-trace-node`           | 1.25.1           | 2.0.1       | Major update                         |
+  | `@opentelemetry/semantic-conventions`     | 1.25.1           | 1.36.0      | Minor update                         |
+
+  ### External trace correlation and propagation
+
+  We will now correlate your external traces with trigger.dev traces and logs when using our external exporters:
+
+  ```ts
+  import { defineConfig } from "@trigger.dev/sdk";
+  import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+  import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+
+  export default defineConfig({
+    project: process.env.TRIGGER_PROJECT_REF,
+    dirs: ["./src/trigger"],
+    telemetry: {
+      logExporters: [
+        new OTLPLogExporter({
+          url: "https://api.axiom.co/v1/logs",
+          headers: {
+            Authorization: `Bearer ${process.env.AXIOM_TOKEN}`,
+            "X-Axiom-Dataset": "test",
+          },
+        }),
+      ],
+      exporters: [
+        new OTLPTraceExporter({
+          url: "https://api.axiom.co/v1/traces",
+          headers: {
+            Authorization: `Bearer ${process.env.AXIOM_TOKEN}`,
+            "X-Axiom-Dataset": "test",
+          },
+        }),
+      ],
+    },
+    maxDuration: 3600,
+  });
+  ```
+
+  You can also now propagate your external trace context when calling back into your own backend infra from inside a trigger.dev task:
+
+  ```ts
+  import { otel, task } from "@trigger.dev/sdk";
+  import { context, propagation } from "@opentelemetry/api";
+
+  async function callNextjsApp() {
+    return await otel.withExternalTrace(async () => {
+      const headersObject = {};
+
+      // Now context.active() refers to your external trace context
+      propagation.inject(context.active(), headersObject);
+
+      const result = await fetch("http://localhost:3000/api/demo-call-from-trigger", {
+        headers: new Headers(headersObject),
+        method: "POST",
+        body: JSON.stringify({
+          message: "Hello from Trigger.dev",
+        }),
+      });
+
+      return result.json();
+    });
+  }
+
+  export const myTask = task({
+    id: "my-task",
+    run: async (payload: any) => {
+      await callNextjsApp();
+    },
+  });
+  ```
+
+- Add jsonSchema support when indexing tasks ([#2353](https://github.com/triggerdotdev/trigger.dev/pull/2353))
+- Removed triggerAndPoll. It was never recommended so it's been removed. ([#2379](https://github.com/triggerdotdev/trigger.dev/pull/2379))
+- Upgrade to zod 3.25.76 ([#2352](https://github.com/triggerdotdev/trigger.dev/pull/2352))
+- Specify a region override when triggering a run ([#2366](https://github.com/triggerdotdev/trigger.dev/pull/2366))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.27`
+
+## 4.0.0-v4-beta.26
+
+### Patch Changes
+
+- fix: importing from runEngine/index.js breaks non-node runtimes ([#2328](https://github.com/triggerdotdev/trigger.dev/pull/2328))
+- Added and cleaned up the run ctx param: ([#2322](https://github.com/triggerdotdev/trigger.dev/pull/2322))
+
+  - New optional properties `ctx.run.parentTaskRunId` and `ctx.run.rootTaskRunId` reference the current run's root/parent ID.
+  - Removed deprecated properties from `ctx`
+  - Added a new `ctx.deployment` object that contains information about the deployment associated with the run.
+
+  We also update `metadata.root` and `metadata.parent` to work even when the run is a "root" run (meaning it doesn't have a parent or a root associated run). This now works:
+
+  ```ts
+  metadata.root.set("foo", "bar");
+  metadata.parent.set("baz", 1);
+  metadata.current().foo; // "bar"
+  metadata.current().baz; // 1
+  ```
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.26`
+
+## 4.0.0-v4-beta.25
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.25`
+
 ## 4.0.0-v4-beta.24
 
 ### Patch Changes

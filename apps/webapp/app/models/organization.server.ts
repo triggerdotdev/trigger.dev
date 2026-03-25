@@ -1,6 +1,7 @@
 import type {
   Organization,
   OrgMember,
+  Prisma,
   Project,
   RuntimeEnvironment,
   User,
@@ -12,7 +13,7 @@ import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { featuresForUrl } from "~/features.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
-
+import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
 export type { Organization };
 
 const nanoid = customAlphabet("1234567890abcdef", 4);
@@ -22,8 +23,12 @@ export async function createOrganization(
     title,
     userId,
     companySize,
+    onboardingData,
+    avatar,
   }: Pick<Organization, "title" | "companySize"> & {
     userId: User["id"];
+    onboardingData?: Prisma.InputJsonValue;
+    avatar?: Prisma.InputJsonValue;
   },
   attemptCount = 0
 ): Promise<Organization> {
@@ -47,6 +52,8 @@ export async function createOrganization(
         title,
         userId,
         companySize,
+        onboardingData,
+        avatar,
       },
       attemptCount + 1
     );
@@ -59,6 +66,8 @@ export async function createOrganization(
       title,
       slug: uniqueOrgSlug,
       companySize,
+      onboardingData: onboardingData ?? undefined,
+      avatar: avatar ?? undefined,
       maximumConcurrencyLimit: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
       members: {
         create: {
@@ -66,7 +75,7 @@ export async function createOrganization(
           role: "ADMIN",
         },
       },
-      v3Enabled: !features.isManagedCloud,
+      v3Enabled: true,
     },
     include: {
       members: true,
@@ -96,6 +105,8 @@ export async function createEnvironment({
   const pkApiKey = createPkApiKeyForEnv(type);
   const shortcode = createShortcode().join("-");
 
+  const limit = await getDefaultEnvironmentConcurrencyLimit(organization.id, type);
+
   return await prismaClient.runtimeEnvironment.create({
     data: {
       slug,
@@ -103,7 +114,7 @@ export async function createEnvironment({
       pkApiKey,
       shortcode,
       autoEnableInternalSources: type !== "DEVELOPMENT",
-      maximumConcurrencyLimit: organization.maximumConcurrencyLimit / 3,
+      maximumConcurrencyLimit: limit,
       organization: {
         connect: {
           id: organization.id,

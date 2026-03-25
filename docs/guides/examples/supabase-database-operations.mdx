@@ -27,7 +27,7 @@ This is a basic task which inserts a new row into a table from a Trigger.dev tas
 
 ```ts trigger/supabase-database-insert.ts
 import { createClient } from "@supabase/supabase-js";
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 import jwt from "jsonwebtoken";
 // Generate the Typescript types using the Supabase CLI: https://supabase.com/docs/guides/api/rest/generating-types
 import { Database } from "database.types";
@@ -117,7 +117,7 @@ This type of task is useful for managing user subscriptions, updating user detai
 
 ```ts trigger/supabase-update-user-subscription.ts
 import { createClient } from "@supabase/supabase-js";
-import { AbortTaskRunError, task } from "@trigger.dev/sdk/v3";
+import { AbortTaskRunError, task } from "@trigger.dev/sdk";
 // Generate the Typescript types using the Supabase CLI: https://supabase.com/docs/guides/api/rest/generating-types
 import { Database } from "database.types";
 

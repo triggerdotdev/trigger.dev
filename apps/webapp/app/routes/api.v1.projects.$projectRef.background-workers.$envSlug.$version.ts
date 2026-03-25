@@ -2,8 +2,9 @@ import { LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import {
-  authenticateProjectApiKeyOrPersonalAccessToken,
+  authenticateRequest,
   authenticatedEnvironmentForAuthentication,
+  branchNameFromRequest,
 } from "~/services/apiAuth.server";
 import zlib from "node:zlib";
 
@@ -20,7 +21,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  const authenticationResult = await authenticateProjectApiKeyOrPersonalAccessToken(request);
+  const authenticationResult = await authenticateRequest(request);
 
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
@@ -29,7 +30,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const environment = await authenticatedEnvironmentForAuthentication(
     authenticationResult,
     parsedParams.data.projectRef,
-    parsedParams.data.envSlug
+    parsedParams.data.envSlug,
+    branchNameFromRequest(request)
   );
 
   // Find the background worker and tasks and files
@@ -82,9 +84,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   });
 }
 
-function decompressContent(compressedBuffer: Buffer): string {
-  // First, we need to decode the base64 Buffer to get the actual compressed data
-  const decodedBuffer = Buffer.from(compressedBuffer.toString("utf-8"), "base64");
+function decompressContent(compressedBuffer: Uint8Array): string {
+  // Convert Uint8Array to Buffer and decode base64 in one step
+  const decodedBuffer = Buffer.from(Buffer.from(compressedBuffer).toString("utf-8"), "base64");
 
   // Decompress the data
   const decompressedData = zlib.inflateSync(decodedBuffer);

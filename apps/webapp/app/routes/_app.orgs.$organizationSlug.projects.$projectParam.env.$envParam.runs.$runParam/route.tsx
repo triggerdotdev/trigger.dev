@@ -11,7 +11,8 @@ import {
   MagnifyingGlassPlusIcon,
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
-import { useLoaderData, useParams, useRevalidator } from "@remix-run/react";
+
+import { useLoaderData, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs, type SerializeFrom, json } from "@remix-run/server-runtime";
 import { type Virtualizer } from "@tanstack/react-virtual";
 import {
@@ -20,12 +21,15 @@ import {
   nanosecondsToMilliseconds,
   tryCatch,
 } from "@trigger.dev/core/v3";
-import { type RuntimeEnvironmentType } from "@trigger.dev/database";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { redirect } from "remix-typedjson";
-import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
+import { ChevronExtraSmallDown } from "~/assets/icons/ChevronExtraSmallDown";
+import { ChevronExtraSmallUp } from "~/assets/icons/ChevronExtraSmallUp";
+import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
+import { MoveUpIcon } from "~/assets/icons/MoveUpIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { DevDisconnectedBanner, useCrossEngineIsConnected } from "~/components/DevPresence";
 import { WarmStartIconWithTooltip } from "~/components/WarmStarts";
@@ -33,6 +37,7 @@ import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTimeShort } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
@@ -46,6 +51,7 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  type ResizableSnapshot,
 } from "~/components/primitives/Resizable";
 import { ShortcutKey, variants } from "~/components/primitives/ShortcutKey";
 import { Slider } from "~/components/primitives/Slider";
@@ -60,6 +66,7 @@ import {
 import { type NodesState } from "~/components/primitives/TreeView/reducer";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
+import { getRunFiltersFromSearchParams } from "~/components/runs/v3/RunFilters";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import {
   SpanTitle,
@@ -67,7 +74,7 @@ import {
   eventBorderClassName,
 } from "~/components/runs/v3/SpanTitle";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
-import { env } from "~/env.server";
+import { $replica } from "~/db.server";
 import { useDebounce } from "~/hooks/useDebounce";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
@@ -75,10 +82,16 @@ import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { type Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useHasAdminAccess } from "~/hooks/useUser";
+import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { RunEnvironmentMismatchError, RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { getImpersonationId } from "~/services/impersonation.server";
+import { logger } from "~/services/logger.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -93,10 +106,9 @@ import {
   v3RunStreamingPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
+import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
-import { useSearchParams } from "~/hooks/useSearchParam";
-import { CopyableText } from "~/components/primitives/CopyableText";
 
 const resizableSettings = {
   parent: {
@@ -108,7 +120,7 @@ const resizableSettings = {
     },
     inspector: {
       id: "inspector",
-      default: "430px" as const,
+      default: "500px" as const,
       min: "50px" as const,
     },
   },
@@ -130,6 +142,106 @@ const resizableSettings = {
 
 type TraceEvent = NonNullable<SerializeFrom<typeof loader>["trace"]>["events"][0];
 
+type RunsListNavigation = {
+  runs: Array<{ friendlyId: string; spanId: string }>;
+  pagination: { next?: string; previous?: string };
+  prevPageLastRun?: { friendlyId: string; spanId: string; cursor: string };
+  nextPageFirstRun?: { friendlyId: string; spanId: string; cursor: string };
+};
+
+async function getRunsListFromTableState({
+  tableStateParam,
+  organizationSlug,
+  projectParam,
+  envParam,
+  runParam,
+  userId,
+}: {
+  tableStateParam: string | null;
+  organizationSlug: string;
+  projectParam: string;
+  envParam: string;
+  runParam: string;
+  userId: string;
+}): Promise<RunsListNavigation | null> {
+  if (!tableStateParam) {
+    return null;
+  }
+
+  try {
+    const tableStateSearchParams = new URLSearchParams(decodeURIComponent(tableStateParam));
+    const filters = getRunFiltersFromSearchParams(tableStateSearchParams);
+
+    const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+    const environment = await findEnvironmentBySlug(project?.id ?? "", envParam, userId);
+
+    if (!project || !environment) {
+      return null;
+    }
+
+    const runsListPresenter = new NextRunListPresenter($replica, clickhouseClient);
+    const currentPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
+      userId,
+      projectId: project.id,
+      ...filters,
+      pageSize: 25, // Load enough runs to provide navigation context
+    });
+
+    const runsList: RunsListNavigation = {
+      runs: currentPageResult.runs,
+      pagination: currentPageResult.pagination,
+    };
+
+    const currentRunIndex = currentPageResult.runs.findIndex((r) => r.friendlyId === runParam);
+
+    if (currentRunIndex === 0 && currentPageResult.pagination.previous) {
+      const prevPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
+        userId,
+        projectId: project.id,
+        ...filters,
+        cursor: currentPageResult.pagination.previous,
+        direction: "backward",
+        pageSize: 1, // We only need the last run from the previous page
+      });
+
+      if (prevPageResult.runs.length > 0) {
+        runsList.prevPageLastRun = {
+          friendlyId: prevPageResult.runs[0].friendlyId,
+          spanId: prevPageResult.runs[0].spanId,
+          cursor: currentPageResult.pagination.previous,
+        };
+      }
+    }
+
+    if (
+      currentRunIndex === currentPageResult.runs.length - 1 &&
+      currentPageResult.pagination.next
+    ) {
+      const nextPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
+        userId,
+        projectId: project.id,
+        ...filters,
+        cursor: currentPageResult.pagination.next,
+        direction: "forward",
+        pageSize: 1, // We only need the first run from the next page
+      });
+
+      if (nextPageResult.runs.length > 0) {
+        runsList.nextPageFirstRun = {
+          friendlyId: nextPageResult.runs[0].friendlyId,
+          spanId: nextPageResult.runs[0].spanId,
+          cursor: currentPageResult.pagination.next,
+        };
+      }
+    }
+
+    return runsList;
+  } catch (error) {
+    logger.error("Error loading runs list from tableState:", { error });
+    return null;
+  }
+}
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const impersonationId = await getImpersonationId(request);
@@ -142,7 +254,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const [error, result] = await tryCatch(
     presenter.call({
       userId,
-      organizationSlug,
       showDeletedLogs: !!impersonationId,
       projectSlug: projectParam,
       runFriendlyId: runParam,
@@ -169,21 +280,32 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const parent = await getResizableSnapshot(request, resizableSettings.parent.autosaveId);
   const tree = await getResizableSnapshot(request, resizableSettings.tree.autosaveId);
 
+  const runsList = await getRunsListFromTableState({
+    tableStateParam: url.searchParams.get("tableState"),
+    organizationSlug,
+    projectParam,
+    envParam,
+    runParam,
+    userId,
+  });
+
   return json({
     run: result.run,
     trace: result.trace,
-    maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
+    maximumLiveReloadingSetting: result.maximumLiveReloadingSetting,
     resizable: {
       parent,
       tree,
     },
+    runsList,
   });
 };
 
 type LoaderData = SerializeFrom<typeof loader>;
 
 export default function Page() {
-  const { run, trace, resizable, maximumLiveReloadingSetting } = useLoaderData<typeof loader>();
+  const { run, trace, maximumLiveReloadingSetting, runsList, resizable } =
+    useLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -191,16 +313,47 @@ export default function Page() {
     logCount: trace?.events.length ?? 0,
     isCompleted: run.completedAt !== null,
   });
+  const { value } = useSearchParams();
+  const tableState = decodeURIComponent(value("tableState") ?? "");
+  const tableStateSearchParams = new URLSearchParams(tableState);
+  const filters = getRunFiltersFromSearchParams(tableStateSearchParams);
+  const tabParam = value("tab") ?? undefined;
+  const spanParam = value("span") ?? undefined;
+
+  const [previousRunPath, nextRunPath] = useAdjacentRunPaths({
+    organization,
+    project,
+    environment,
+    tableState,
+    run,
+    runsList,
+    tabParam,
+    useSpan: !!spanParam,
+  });
 
   return (
     <>
       <NavBar>
         <PageTitle
           backButton={{
-            to: v3RunsPath(organization, project, environment),
+            to: v3RunsPath(organization, project, environment, filters),
             text: "Runs",
           }}
-          title={<CopyableText value={run.friendlyId} />}
+          title={
+            <div className="flex items-center gap-x-0">
+              <CopyableText
+                value={run.friendlyId}
+                variant="text-below"
+                className="-ml-[0.4375rem] h-6 px-1.5 font-mono text-xs hover:text-text-bright"
+              />
+              {tableState && (
+                <div className="flex">
+                  <PreviousRunButton to={previousRunPath} />
+                  <NextRunButton to={nextRunPath} />
+                </div>
+              )}
+            </div>
+          }
         />
         {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
         <PageAccessories>
@@ -279,19 +432,37 @@ export default function Page() {
             resizable={resizable}
           />
         ) : (
-          <NoLogsView
-            run={run}
-            trace={trace}
-            maximumLiveReloadingSetting={maximumLiveReloadingSetting}
-            resizable={resizable}
-          />
+          <NoLogsView run={run} resizable={resizable} />
         )}
       </PageBody>
     </>
   );
 }
 
-function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: LoaderData) {
+function shouldLiveReload({
+  events,
+  maximumLiveReloadingSetting,
+  run,
+}: {
+  events: TraceEvent[];
+  maximumLiveReloadingSetting: number;
+  run: { completedAt: string | null };
+}): boolean {
+  // We don't live reload if there are a ton of spans/logs
+  if (events.length > maximumLiveReloadingSetting) return false;
+
+  // If the run was completed a while ago, we don't need to live reload anymore
+  if (run.completedAt && new Date(run.completedAt).getTime() < Date.now() - 30_000) return false;
+
+  return true;
+}
+
+function TraceView({
+  run,
+  trace,
+  maximumLiveReloadingSetting,
+  resizable,
+}: Pick<LoaderData, "run" | "trace" | "maximumLiveReloadingSetting" | "resizable">) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -302,20 +473,21 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
     return <></>;
   }
 
-  const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt, queuedDuration } =
+  const { events, duration, rootSpanStatus, rootStartedAt, queuedDuration, overridesBySpanId } =
     trace;
-  const shouldLiveReload = events.length <= maximumLiveReloadingSetting;
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
     replaceSearchParam("span", selectedSpan, { replace: true });
   }, 250);
+
+  const isLiveReloading = shouldLiveReload({ events, maximumLiveReloadingSetting, run });
 
   const revalidator = useRevalidator();
   const streamedEvents = useEventSource(
     v3RunStreamingPath(organization, project, environment, run),
     {
       event: "message",
-      disabled: !shouldLiveReload,
+      disabled: !isLiveReloading,
     }
   );
   useEffect(() => {
@@ -325,11 +497,19 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
     // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
   }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const spanOverrides = selectedSpanId ? overridesBySpanId?.[selectedSpanId] : undefined;
+
+  // Get the linked run ID for cached spans (map built during RunPresenter walk)
+  const { linkedRunIdBySpanId } = trace;
+  const selectedSpanLinkedRunId = selectedSpanId
+    ? linkedRunIdBySpanId?.[selectedSpanId]
+    : undefined;
+
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
       <ResizablePanelGroup
         autosaveId={resizableSettings.parent.autosaveId}
-        // snapshot={resizable.parent}
+        snapshot={resizable.parent as ResizableSnapshot}
         className="h-full max-h-full"
       >
         <ResizablePanel
@@ -340,7 +520,6 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
             selectedId={selectedSpanId}
             key={events[0]?.id ?? "-"}
             events={events}
-            parentRunFriendlyId={parentRunFriendlyId}
             onSelectedIdChanged={(selectedSpan) => {
               //instantly close the panel if no span is selected
               if (!selectedSpan) {
@@ -355,10 +534,12 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
             rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
             queuedDuration={queuedDuration}
             environmentType={run.environment.type}
-            shouldLiveReload={shouldLiveReload}
+            shouldLiveReload={isLiveReloading}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
             rootRun={run.rootTaskRun}
+            parentRun={run.parentTaskRun}
             isCompleted={run.completedAt !== null}
+            treeSnapshot={resizable.tree as ResizableSnapshot}
           />
         </ResizablePanel>
         <ResizableHandle id={resizableSettings.parent.handleId} />
@@ -373,7 +554,9 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
             <SpanView
               runParam={run.friendlyId}
               spanId={selectedSpanId}
+              spanOverrides={spanOverrides as SpanOverride | undefined}
               closePanel={() => replaceSearchParam("span")}
+              linkedRunId={selectedSpanLinkedRunId}
             />
           </ResizablePanel>
         )}
@@ -382,7 +565,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
   );
 }
 
-function NoLogsView({ run, resizable }: LoaderData) {
+function NoLogsView({ run, resizable }: Pick<LoaderData, "run" | "resizable">) {
   const plan = useCurrentPlan();
   const organization = useOrganization();
 
@@ -402,7 +585,7 @@ function NoLogsView({ run, resizable }: LoaderData) {
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
       <ResizablePanelGroup
         autosaveId={resizableSettings.parent.autosaveId}
-        // snapshot={resizable.parent}
+        snapshot={resizable.parent as ResizableSnapshot}
         className="h-full max-h-full"
       >
         <ResizablePanel
@@ -476,7 +659,6 @@ function NoLogsView({ run, resizable }: LoaderData) {
 type TasksTreeViewProps = {
   events: TraceEvent[];
   selectedId?: string;
-  parentRunFriendlyId?: string;
   onSelectedIdChanged: (selectedId: string | undefined) => void;
   totalDuration: number;
   rootSpanStatus: "executing" | "completed" | "failed";
@@ -487,16 +669,19 @@ type TasksTreeViewProps = {
   maximumLiveReloadingSetting: number;
   rootRun: {
     friendlyId: string;
-    taskIdentifier: string;
+    spanId: string;
+  } | null;
+  parentRun: {
+    friendlyId: string;
     spanId: string;
   } | null;
   isCompleted: boolean;
+  treeSnapshot?: ResizableSnapshot;
 };
 
 function TasksTreeView({
   events,
   selectedId,
-  parentRunFriendlyId,
   onSelectedIdChanged,
   totalDuration,
   rootSpanStatus,
@@ -506,7 +691,9 @@ function TasksTreeView({
   shouldLiveReload,
   maximumLiveReloadingSetting,
   rootRun,
+  parentRun,
   isCompleted,
+  treeSnapshot,
 }: TasksTreeViewProps) {
   const isAdmin = useHasAdminAccess();
   const [filterText, setFilterText] = useState("");
@@ -590,26 +777,36 @@ function TasksTreeView({
           onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
         />
       </div>
-      <ResizablePanelGroup autosaveId={resizableSettings.tree.autosaveId}>
+      <ResizablePanelGroup autosaveId={resizableSettings.tree.autosaveId} snapshot={treeSnapshot}>
         {/* Tree list */}
         <ResizablePanel
           id={resizableSettings.tree.tree.id}
           default={resizableSettings.tree.tree.default}
           min={resizableSettings.tree.tree.min}
-          className="pl-3"
         >
           <div className="grid h-full grid-rows-[2rem_1fr] overflow-hidden">
-            <div className="flex items-center pr-2">
-              {rootRun ? (
-                <ShowParentLink
-                  runFriendlyId={rootRun.friendlyId}
-                  isRoot={true}
-                  spanId={rootRun.spanId}
+            <div className="flex items-center justify-between pl-1 pr-2">
+              {rootRun || parentRun ? (
+                <ShowParentOrRootLinks
+                  relationships={{
+                    root: rootRun
+                      ? {
+                          friendlyId: rootRun.friendlyId,
+                          spanId: rootRun.spanId,
+                          isParent: parentRun ? rootRun.friendlyId === parentRun.friendlyId : true,
+                        }
+                      : undefined,
+                    parent:
+                      parentRun && rootRun?.friendlyId !== parentRun.friendlyId
+                        ? {
+                            friendlyId: parentRun.friendlyId,
+                            spanId: "",
+                          }
+                        : undefined,
+                  }}
                 />
-              ) : parentRunFriendlyId ? (
-                <ShowParentLink runFriendlyId={parentRunFriendlyId} isRoot={false} />
               ) : (
-                <Paragraph variant="small" className="flex-1 text-charcoal-500">
+                <Paragraph variant="extra-small" className="flex-1 pl-3 text-charcoal-500">
                   This is the root task
                 </Paragraph>
               )}
@@ -628,6 +825,7 @@ function TasksTreeView({
               nodes={nodes}
               getNodeProps={getNodeProps}
               getTreeProps={getTreeProps}
+              parentClassName="pl-3"
               renderNode={({ node, state, index }) => (
                 <>
                   <div
@@ -734,7 +932,7 @@ function TasksTreeView({
       </ResizablePanelGroup>
       <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-4">
         <div className="grow @container">
-          <div className="hidden items-center gap-4 @[42rem]:flex">
+          <div className="hidden items-center gap-4 @[48rem]:flex">
             <KeyboardShortcuts
               expandAllBelowDepth={expandAllBelowDepth}
               collapseAllBelowDepth={collapseAllBelowDepth}
@@ -742,7 +940,7 @@ function TasksTreeView({
               setShowDurations={setShowDurations}
             />
           </div>
-          <div className="@[42rem]:hidden">
+          <div className="@[48rem]:hidden">
             <Popover>
               <PopoverArrowTrigger>Shortcuts</PopoverArrowTrigger>
               <PopoverContent
@@ -803,7 +1001,6 @@ function TimelineView({
   scale,
   rootSpanStatus,
   rootStartedAt,
-  parentRef,
   timelineScrollRef,
   virtualizer,
   events,
@@ -819,6 +1016,7 @@ function TimelineView({
   const initialTimelineDimensions = useInitialDimensions(timelineContainerRef);
   const minTimelineWidth = initialTimelineDimensions?.width ?? 300;
   const maxTimelineWidth = minTimelineWidth * 10;
+  const disableSpansAnimations = rootSpanStatus !== "executing";
 
   //we want to live-update the duration if the root span is still executing
   const [duration, setDuration] = useState(queueAdjustedNs(totalDuration, queuedDuration));
@@ -990,7 +1188,10 @@ function TimelineView({
                                     "-ml-[0.5px] h-[0.5625rem] w-px rounded-none",
                                     eventBackgroundClassName(node.data)
                                   )}
-                                  layoutId={`${node.id}-${event.name}`}
+                                  layoutId={
+                                    disableSpansAnimations ? undefined : `${node.id}-${event.name}`
+                                  }
+                                  animate={disableSpansAnimations ? false : undefined}
                                 />
                               )}
                             </Timeline.Point>
@@ -1008,7 +1209,10 @@ function TimelineView({
                                     "-ml-[0.1562rem] size-[0.3125rem] rounded-full border bg-background-bright",
                                     eventBorderClassName(node.data)
                                   )}
-                                  layoutId={`${node.id}-${event.name}`}
+                                  layoutId={
+                                    disableSpansAnimations ? undefined : `${node.id}-${event.name}`
+                                  }
+                                  animate={disableSpansAnimations ? false : undefined}
                                 />
                               )}
                             </Timeline.Point>
@@ -1027,7 +1231,8 @@ function TimelineView({
                           >
                             <motion.div
                               className={cn("h-px w-full", eventBackgroundClassName(node.data))}
-                              layoutId={`mark-${node.id}`}
+                              layoutId={disableSpansAnimations ? undefined : `mark-${node.id}`}
+                              animate={disableSpansAnimations ? false : undefined}
                             />
                           </Timeline.Span>
                         ) : null}
@@ -1050,6 +1255,7 @@ function TimelineView({
                           }
                           node={node}
                           fadeLeft={isTopSpan && queuedDuration !== undefined}
+                          disableAnimations={disableSpansAnimations}
                         />
                       </>
                     ) : (
@@ -1064,7 +1270,8 @@ function TimelineView({
                               "-ml-0.5 size-3 rounded-full border-2 border-background-bright",
                               eventBackgroundClassName(node.data)
                             )}
-                            layoutId={node.id}
+                            layoutId={disableSpansAnimations ? undefined : node.id}
+                            animate={disableSpansAnimations ? false : undefined}
                           />
                         )}
                       </Timeline.Point>
@@ -1139,60 +1346,108 @@ function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boole
   return <div className={cn("h-8 w-2 border-r border-grid-bright")} />;
 }
 
-function ShowParentLink({
-  runFriendlyId,
-  spanId,
-  isRoot,
+function ShowParentOrRootLinks({
+  relationships,
 }: {
-  runFriendlyId: string;
-  spanId?: string;
-  isRoot: boolean;
+  relationships: {
+    root?: {
+      friendlyId: string;
+      spanId: string;
+      isParent?: boolean;
+    };
+    parent?: {
+      friendlyId: string;
+      spanId: string;
+    };
+  };
 }) {
-  const [mouseOver, setMouseOver] = useState(false);
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { spanParam } = useParams();
 
-  const span = spanId ? spanId : spanParam;
-
-  return (
-    <LinkButton
-      variant="minimal/medium"
-      to={
-        span
-          ? v3RunSpanPath(
-              organization,
-              project,
-              environment,
-              {
-                friendlyId: runFriendlyId,
-              },
-              { spanId: span }
-            )
-          : v3RunPath(organization, project, environment, {
-              friendlyId: runFriendlyId,
-            })
-      }
-      onMouseEnter={() => setMouseOver(true)}
-      onMouseLeave={() => setMouseOver(false)}
-      fullWidth
-      textAlignLeft
-      shortcut={{ key: "p" }}
-      className="flex-1"
-    >
-      {mouseOver ? (
-        <ShowParentIconSelected className="h-4 w-4 text-indigo-500" />
-      ) : (
-        <ShowParentIcon className="h-4 w-4 text-charcoal-650" />
-      )}
-      <Paragraph
-        variant="small"
-        className={cn(mouseOver ? "text-indigo-500" : "text-charcoal-500")}
+  // Case 1: Root is also the parent
+  if (relationships.root?.isParent === true) {
+    return (
+      <LinkButton
+        variant="minimal/small"
+        to={v3RunSpanPath(
+          organization,
+          project,
+          environment,
+          { friendlyId: relationships.root.friendlyId },
+          { spanId: relationships.root.spanId }
+        )}
+        LeadingIcon={MoveToTopIcon}
+        leadingIconClassName="gap-x-2"
+        shortcut={{ key: "p" }}
+        hideShortcutKey
+        tooltip={
+          <div className="-mr-1 flex items-center gap-1">
+            <Paragraph variant="extra-small">Jump to root and parent run</Paragraph>
+            <ShortcutKey shortcut={{ key: "p" }} variant="small" />
+          </div>
+        }
+        className="text-xs"
       >
-        {isRoot ? "Show root run" : "Show parent run"}
-      </Paragraph>
-    </LinkButton>
+        Root/parent
+      </LinkButton>
+    );
+  }
+
+  // Case 2: Root and Parent are different runs
+  return (
+    <div className="flex items-center">
+      {relationships.root && (
+        <LinkButton
+          variant="minimal/small"
+          to={v3RunSpanPath(
+            organization,
+            project,
+            environment,
+            { friendlyId: relationships.root.friendlyId },
+            { spanId: relationships.root.spanId }
+          )}
+          LeadingIcon={MoveToTopIcon}
+          leadingIconClassName="gap-x-2"
+          shortcut={{ key: "t" }}
+          hideShortcutKey
+          tooltip={
+            <div className="-mr-1 flex items-center gap-1">
+              <Paragraph variant="extra-small">Jump to root run</Paragraph>
+              <ShortcutKey shortcut={{ key: "t" }} variant="small" />
+            </div>
+          }
+          className="text-xs"
+        >
+          Root
+        </LinkButton>
+      )}
+      {relationships.parent && (
+        <LinkButton
+          variant="minimal/small"
+          to={v3RunSpanPath(
+            organization,
+            project,
+            environment,
+            { friendlyId: relationships.parent.friendlyId },
+            { spanId: relationships.parent.spanId }
+          )}
+          LeadingIcon={MoveUpIcon}
+          leadingIconClassName="gap-x-2"
+          shortcut={{ key: "p" }}
+          hideShortcutKey
+          tooltip={
+            <div className="-mr-1 flex items-center gap-1">
+              <Paragraph variant="extra-small">Jump to parent run</Paragraph>
+              <ShortcutKey shortcut={{ key: "p" }} variant="small" />
+            </div>
+          }
+          className="text-xs"
+        >
+          Parent
+        </LinkButton>
+      )}
+    </div>
   );
 }
 
@@ -1248,8 +1503,14 @@ function SpanWithDuration({
   showDuration,
   node,
   fadeLeft,
+  disableAnimations,
   ...props
-}: Timeline.SpanProps & { node: TraceEvent; showDuration: boolean; fadeLeft: boolean }) {
+}: Timeline.SpanProps & {
+  node: TraceEvent;
+  showDuration: boolean;
+  fadeLeft: boolean;
+  disableAnimations?: boolean;
+}) {
   return (
     <Timeline.Span {...props}>
       <motion.div
@@ -1259,7 +1520,8 @@ function SpanWithDuration({
           fadeLeft ? "rounded-r-sm bg-gradient-to-r from-black/50 to-transparent" : "rounded-sm"
         )}
         style={{ backgroundSize: "20px 100%", backgroundRepeat: "no-repeat" }}
-        layoutId={node.id}
+        layoutId={disableAnimations ? undefined : node.id}
+        animate={disableAnimations ? false : undefined}
       >
         {node.data.isPartial && (
           <div
@@ -1272,10 +1534,12 @@ function SpanWithDuration({
             "sticky left-0 z-10 transition-opacity group-hover:opacity-100",
             !showDuration && "opacity-0"
           )}
+          animate={disableAnimations ? false : undefined}
         >
           <motion.div
             className="whitespace-nowrap rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom"
-            layout="position"
+            layout={disableAnimations ? undefined : "position"}
+            animate={disableAnimations ? false : undefined}
           >
             {formatDurationMilliseconds(props.durationMs, {
               style: "short",
@@ -1358,16 +1622,16 @@ function KeyboardShortcuts({
   expandAllBelowDepth,
   collapseAllBelowDepth,
   toggleExpandLevel,
-  setShowDurations,
 }: {
   expandAllBelowDepth: (depth: number) => void;
   collapseAllBelowDepth: (depth: number) => void;
   toggleExpandLevel: (depth: number) => void;
-  setShowDurations: (show: (show: boolean) => boolean) => void;
+  setShowDurations?: (show: (show: boolean) => boolean) => void;
 }) {
   return (
     <>
       <ArrowKeyShortcuts />
+      <AdjacentRunsShortcuts />
       <ShortcutWithAction
         shortcut={{ key: "e" }}
         action={() => expandAllBelowDepth(0)}
@@ -1381,6 +1645,18 @@ function KeyboardShortcuts({
       <NumberShortcuts toggleLevel={(number) => toggleExpandLevel(number)} />
       <ShortcutWithAction shortcut={{ key: "Q" }} title="Queue time" action={() => {}} />
     </>
+  );
+}
+
+function AdjacentRunsShortcuts() {
+  return (
+    <div className="flex items-center gap-0.5">
+      <ShortcutKey shortcut={{ key: "[" }} variant="medium" className="ml-0 mr-0 px-1" />
+      <ShortcutKey shortcut={{ key: "]" }} variant="medium" className="ml-0 mr-0 px-1" />
+      <Paragraph variant="extra-small" className="ml-1.5 whitespace-nowrap">
+        Next/previous run
+      </Paragraph>
+    </div>
   );
 }
 
@@ -1430,7 +1706,7 @@ function NumberShortcuts({ toggleLevel }: { toggleLevel: (depth: number) => void
   return (
     <div className="flex items-center gap-0.5">
       <span className={cn(variants.medium, "ml-0 mr-0")}>0</span>
-      <span className="text-[0.75rem] text-text-dimmed">–</span>
+      <span className="text-[0.65rem] text-text-dimmed">–</span>
       <span className={cn(variants.medium, "ml-0 mr-0")}>9</span>
       <Paragraph variant="extra-small" className="ml-1.5 whitespace-nowrap">
         Toggle level
@@ -1460,5 +1736,123 @@ function SearchField({ onChange }: { onChange: (value: string) => void }) {
       value={value}
       onChange={(e) => updateValue(e.target.value)}
     />
+  );
+}
+
+function useAdjacentRunPaths({
+  organization,
+  project,
+  environment,
+  tableState,
+  run,
+  runsList,
+  tabParam,
+  useSpan,
+}: {
+  organization: { slug: string };
+  project: { slug: string };
+  environment: { slug: string };
+  tableState: string;
+  run: { friendlyId: string; spanId: string };
+  runsList: RunsListNavigation | null;
+  tabParam?: string;
+  useSpan?: boolean;
+}): [string | null, string | null] {
+  if (!runsList || runsList.runs.length === 0) {
+    return [null, null];
+  }
+
+  const currentIndex = runsList.runs.findIndex((r) => r.friendlyId === run.friendlyId);
+
+  if (currentIndex === -1) {
+    return [null, null];
+  }
+
+  // Determine previous run: use prevPageLastRun if at first position, otherwise use previous run in list
+  let previousRun: { friendlyId: string; spanId: string } | null = null;
+  const previousRunTableState = new URLSearchParams(tableState);
+  if (currentIndex > 0) {
+    previousRun = runsList.runs[currentIndex - 1];
+  } else if (runsList.prevPageLastRun) {
+    previousRun = runsList.prevPageLastRun;
+    // Update tableState with the new cursor for the previous page
+    previousRunTableState.set("cursor", runsList.prevPageLastRun.cursor);
+    previousRunTableState.set("direction", "backward");
+  }
+
+  // Determine next run: use nextPageFirstRun if at last position, otherwise use next run in list
+  let nextRun: { friendlyId: string; spanId: string } | null = null;
+  const nextRunTableState = new URLSearchParams(tableState);
+  if (currentIndex < runsList.runs.length - 1) {
+    nextRun = runsList.runs[currentIndex + 1];
+  } else if (runsList.nextPageFirstRun) {
+    nextRun = runsList.nextPageFirstRun;
+    // Update tableState with the new cursor for the next page
+    nextRunTableState.set("cursor", runsList.nextPageFirstRun.cursor);
+    nextRunTableState.set("direction", "forward");
+  }
+
+  const previousURLSearchParams = new URLSearchParams();
+  previousURLSearchParams.set("tableState", previousRunTableState.toString());
+  if (previousRun && useSpan) {
+    previousURLSearchParams.set("span", previousRun.spanId);
+  }
+  if (tabParam && useSpan) {
+    previousURLSearchParams.set("tab", tabParam);
+  }
+  const previousRunPath = previousRun
+    ? v3RunPath(organization, project, environment, previousRun, previousURLSearchParams)
+    : null;
+
+  const nextURLSearchParams = new URLSearchParams();
+  nextURLSearchParams.set("tableState", nextRunTableState.toString());
+  if (nextRun && useSpan) {
+    nextURLSearchParams.set("span", nextRun.spanId);
+  }
+  if (tabParam && useSpan) {
+    nextURLSearchParams.set("tab", tabParam);
+  }
+  const nextRunPath = nextRun
+    ? v3RunPath(organization, project, environment, nextRun, nextURLSearchParams)
+    : null;
+
+  return [previousRunPath, nextRunPath];
+}
+
+function PreviousRunButton({ to }: { to: string | null }) {
+  return (
+    <div className={cn("peer/prev order-1", !to && "pointer-events-none")}>
+      <LinkButton
+        to={to ? to : "#"}
+        variant={"minimal/small"}
+        LeadingIcon={ChevronExtraSmallUp}
+        leadingIconClassName="size-3 group-hover/button:text-text-bright transition-colors"
+        className={cn("flex size-6 max-w-6 items-center", !to && "cursor-not-allowed opacity-50")}
+        onClick={(e) => !to && e.preventDefault()}
+        shortcut={{ key: "j" }}
+        tooltip="Previous Run"
+        disabled={!to}
+        replace
+      />
+    </div>
+  );
+}
+
+function NextRunButton({ to }: { to: string | null }) {
+  return (
+    <div className={cn("peer/next order-3", !to && "pointer-events-none")}>
+      <LinkButton
+        to={to ? to : "#"}
+        variant={"minimal/small"}
+        LeadingIcon={ChevronExtraSmallDown}
+        leadingIconClassName="size-3 group-hover/button:text-text-bright transition-colors"
+        className={cn("flex size-6 max-w-6 items-center", !to && "cursor-not-allowed opacity-50")}
+        onClick={(e) => !to && e.preventDefault()}
+        shortcut={{ key: "k" }}
+        tooltip="Next Run"
+        disabled={!to}
+        replace
+      />
+    </div>
   );
 }

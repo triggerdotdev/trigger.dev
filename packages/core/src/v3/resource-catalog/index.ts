@@ -1,7 +1,7 @@
 const API_NAME = "resource-catalog";
 
-import { QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
-import { TaskMetadataWithFunctions } from "../types/index.js";
+import { PromptManifest, QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
+import { PromptMetadataWithFunctions, TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { type ResourceCatalog } from "./catalog.js";
 import { NoopResourceCatalog } from "./noopResourceCatalog.js";
@@ -65,12 +65,32 @@ export class ResourceCatalogAPI {
     return this.#getCatalog().getTask(id);
   }
 
+  public getTaskSchema(id: string): TaskSchema | undefined {
+    return this.#getCatalog().getTaskSchema(id);
+  }
+
   public taskExists(id: string): boolean {
     return this.#getCatalog().taskExists(id);
   }
 
   public listQueueManifests(): Array<QueueManifest> {
     return this.#getCatalog().listQueueManifests();
+  }
+
+  public registerPromptMetadata(prompt: PromptMetadataWithFunctions): void {
+    this.#getCatalog().registerPromptMetadata(prompt);
+  }
+
+  public listPromptManifests(): Array<PromptManifest> {
+    return this.#getCatalog().listPromptManifests();
+  }
+
+  public getPrompt(id: string): PromptMetadataWithFunctions | undefined {
+    return this.#getCatalog().getPrompt(id);
+  }
+
+  public getPromptSchema(id: string): TaskSchema | undefined {
+    return this.#getCatalog().getPromptSchema(id);
   }
 
   #getCatalog(): ResourceCatalog {

@@ -1,5 +1,6 @@
 import { defineConfig } from "@trigger.dev/sdk/v3";
 import { syncEnvVars } from "@trigger.dev/build/extensions/core";
+import { lightpanda } from "@trigger.dev/build/extensions/lightpanda";
 
 export default defineConfig({
   compatibilityFlags: ["run_engine_v2"],
@@ -8,7 +9,7 @@ export default defineConfig({
     enabled: true,
     maxExecutionsPerProcess: 20,
   },
-  logLevel: "log",
+  logLevel: "debug",
   maxDuration: 3600,
   retries: {
     enabledInDev: true,
@@ -23,8 +24,8 @@ export default defineConfig({
   machine: "small-2x",
   build: {
     extensions: [
+      lightpanda(),
       syncEnvVars(async (ctx) => {
-        console.log("syncEnvVars", { environment: ctx.environment, branch: ctx.branch });
         return [
           { name: "SYNC_ENV", value: ctx.environment },
           { name: "BRANCH", value: ctx.branch ?? "NO_BRANCH" },

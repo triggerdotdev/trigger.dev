@@ -4,7 +4,7 @@ import { Fragment } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AppContainer } from "~/components/layout/AppLayout";
 import { env } from "~/env.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 
 const stories: Story[] = [
@@ -23,6 +23,10 @@ const stories: Story[] = [
   {
     name: "Callouts",
     slug: "callout",
+  },
+  {
+    name: "Charts",
+    slug: "charts",
   },
   {
     name: "Checkboxes",
@@ -65,10 +69,6 @@ const stories: Story[] = [
     slug: "loading-bar-divider",
   },
   {
-    name: "NamedIcon",
-    slug: "named-icon",
-  },
-  {
     name: "Page header",
     slug: "page-header",
   },
@@ -83,6 +83,10 @@ const stories: Story[] = [
   {
     name: "Resizable",
     slug: "resizable",
+  },
+  {
+    name: "Run & Span timeline",
+    slug: "run-and-span-timeline",
   },
   {
     name: "Segemented control",
@@ -109,6 +113,10 @@ const stories: Story[] = [
     slug: "tabs",
   },
   {
+    name: "Timeline",
+    slug: "timeline",
+  },
+  {
     name: "Toast",
     slug: "toast",
   },
@@ -121,12 +129,8 @@ const stories: Story[] = [
     slug: "tree-view",
   },
   {
-    name: "Timeline",
-    slug: "timeline",
-  },
-  {
-    name: "Run & Span timeline",
-    slug: "run-and-span-timeline",
+    name: "TSQL Editor",
+    slug: "tsql-editor",
   },
   {
     name: "Typography",
@@ -136,6 +140,7 @@ const stories: Story[] = [
     name: "Usage",
     slug: "usage",
   },
+  // Forms section
   {
     sectionTitle: "Forms",
     name: "Date fields",
@@ -154,15 +159,16 @@ const stories: Story[] = [
     slug: "simple-form",
   },
   {
+    name: "Stepper",
+    slug: "stepper",
+  },
+  {
     name: "Textarea",
     slug: "textarea",
   },
+  // Menus section
   {
     sectionTitle: "Menus",
-    name: "Select",
-    slug: "select",
-  },
-  {
     name: "Filter",
     slug: "filter",
   },
@@ -170,14 +176,16 @@ const stories: Story[] = [
     name: "Popover",
     slug: "popover",
   },
+  {
+    name: "Select",
+    slug: "select",
+  },
 ];
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  await requireUserId(request);
+  const user = await requireUser(request);
 
-  console.log("ENV", env.NODE_ENV);
-
-  if (env.NODE_ENV !== "development") {
+  if (!user.admin) {
     throw redirect("/");
   }
 

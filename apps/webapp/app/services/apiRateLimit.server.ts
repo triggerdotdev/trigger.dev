@@ -22,6 +22,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
   limiterCache: {
     fresh: 60_000 * 10, // Data is fresh for 10 minutes
     stale: 60_000 * 20, // Date is stale after 20 minutes
+    maxItems: 1000,
   },
   limiterConfigOverride: async (authorizationValue) => {
     const authenticatedEnv = await authenticateAuthorizationHeader(authorizationValue, {
@@ -60,6 +61,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     "/api/v1/auth/jwt/claims",
     /^\/api\/v1\/runs\/[^\/]+\/attempts$/, // /api/v1/runs/$runFriendlyId/attempts
     /^\/api\/v1\/waitpoints\/tokens\/[^\/]+\/callback\/[^\/]+$/, // /api/v1/waitpoints/tokens/$waitpointFriendlyId/callback/$hash
+    /^\/api\/v\d+\/deployments/, // /api/v{1,2,3,n}/deployments/*
   ],
   log: {
     rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",

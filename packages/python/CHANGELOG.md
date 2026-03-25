@@ -1,5 +1,225 @@
 # @trigger.dev/python
 
+## 4.4.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.3`
+  - `@trigger.dev/build@4.4.3`
+  - `@trigger.dev/sdk@4.4.3`
+
+## 4.4.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.4.2`
+  - `@trigger.dev/build@4.4.2`
+  - `@trigger.dev/core@4.4.2`
+
+## 4.4.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.4.1`
+  - `@trigger.dev/build@4.4.1`
+  - `@trigger.dev/core@4.4.1`
+
+## 4.4.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.0`
+  - `@trigger.dev/sdk@4.4.0`
+  - `@trigger.dev/build@4.4.0`
+
+## 4.3.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.3.3`
+  - `@trigger.dev/core@4.3.3`
+  - `@trigger.dev/build@4.3.3`
+
+## 4.3.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.3.2`
+  - `@trigger.dev/build@4.3.2`
+  - `@trigger.dev/core@4.3.2`
+
+## 4.3.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.3.1`
+  - `@trigger.dev/core@4.3.1`
+  - `@trigger.dev/build@4.3.1`
+
+## 4.3.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.0`
+  - `@trigger.dev/build@4.3.0`
+  - `@trigger.dev/sdk@4.3.0`
+
+## 4.2.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.2.0`
+  - `@trigger.dev/sdk@4.2.0`
+  - `@trigger.dev/core@4.2.0`
+
+## 4.1.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.1.2`
+  - `@trigger.dev/core@4.1.2`
+  - `@trigger.dev/sdk@4.1.2`
+
+## 4.1.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.1.1`
+  - `@trigger.dev/core@4.1.1`
+  - `@trigger.dev/sdk@4.1.1`
+
+## 4.1.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.1.0`
+  - `@trigger.dev/build@4.1.0`
+  - `@trigger.dev/core@4.1.0`
+
+## 4.0.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.7`
+  - `@trigger.dev/core@4.0.7`
+  - `@trigger.dev/sdk@4.0.7`
+
+## 4.0.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.6`
+  - `@trigger.dev/build@4.0.6`
+  - `@trigger.dev/sdk@4.0.6`
+
+## 4.0.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.5`
+  - `@trigger.dev/build@4.0.5`
+  - `@trigger.dev/sdk@4.0.5`
+
+## 4.0.4
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.4`
+  - `@trigger.dev/core@4.0.4`
+  - `@trigger.dev/sdk@4.0.4`
+
+## 4.0.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.3`
+  - `@trigger.dev/sdk@4.0.3`
+  - `@trigger.dev/build@4.0.3`
+
+## 4.0.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.2`
+  - `@trigger.dev/core@4.0.2`
+  - `@trigger.dev/sdk@4.0.2`
+
+## 4.0.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.1`
+  - `@trigger.dev/core@4.0.1`
+  - `@trigger.dev/sdk@4.0.1`
+
+## 4.0.0
+
+### Major Changes
+
+- Trigger.dev v4 release. Please see our upgrade to v4 docs to view the full changelog: https://trigger.dev/docs/upgrade-to-v4 ([#1869](https://github.com/triggerdotdev/trigger.dev/pull/1869))
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.0.0`
+  - `@trigger.dev/core@4.0.0`
+  - `@trigger.dev/build@4.0.0`
+
+## 4.0.0-v4-beta.28
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.0.0-v4-beta.28`
+  - `@trigger.dev/core@4.0.0-v4-beta.28`
+  - `@trigger.dev/build@4.0.0-v4-beta.28`
+
+## 4.0.0-v4-beta.27
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.0.0-v4-beta.27`
+  - `@trigger.dev/build@4.0.0-v4-beta.27`
+  - `@trigger.dev/core@4.0.0-v4-beta.27`
+
+## 4.0.0-v4-beta.26
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.0.0-v4-beta.26`
+  - `@trigger.dev/build@4.0.0-v4-beta.26`
+  - `@trigger.dev/core@4.0.0-v4-beta.26`
+
+## 4.0.0-v4-beta.25
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.25`
+  - `@trigger.dev/core@4.0.0-v4-beta.25`
+  - `@trigger.dev/sdk@4.0.0-v4-beta.25`
+
 ## 4.0.0-v4-beta.24
 
 ### Patch Changes

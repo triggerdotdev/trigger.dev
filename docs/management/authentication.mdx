@@ -8,14 +8,14 @@ There are two methods of authenticating with the management API: using a secret 
 
 <Note>
   There is a separate authentication strategy when making requests from your frontend application.
-  See the [Frontend guide](/frontend/overview) for more information. This guide is for backend usage
+  See the [Realtime guide](/realtime/overview) for more information. This guide is for backend usage
   only.
 </Note>
 
 Certain API functions work with both authentication methods, but require different arguments depending on the method used. For example, the `runs.list` function can be called using either a `secretKey` or a `personalAccessToken`, but the `projectRef` argument is required when using a `personalAccessToken`:
 
 ```ts
-import { configure, runs } from "@trigger.dev/sdk/v3";
+import { configure, runs } from "@trigger.dev/sdk";
 
 // Using secretKey authentication
 configure({
@@ -82,7 +82,7 @@ A PAT is a token associated with a specific user, and gives access to all the or
 For example, when uploading environment variables using a PAT, you must provide the `projectRef` and `environment` arguments:
 
 ```ts
-import { configure, envvars } from "@trigger.dev/sdk/v3";
+import { configure, envvars } from "@trigger.dev/sdk";
 
 configure({
   secretKey: process.env["TRIGGER_ACCESS_TOKEN"], // starts with tr_pat_
@@ -93,5 +93,68 @@ await envvars.upload("proj_1234", "dev", {
     MY_ENV_VAR: "MY_ENV_VAR_VALUE",
   },
   override: true,
+});
+```
+
+### Preview branch targeting
+
+When working with preview branches, you may need to target a specific branch when making API calls. This is particularly useful for managing environment variables or other resources that are scoped to individual preview branches.
+
+<Tabs>
+  <Tab title="SDK">
+    To target a specific preview branch, include the `previewBranch` option in your SDK configuration:
+
+```ts
+import { configure, envvars } from "@trigger.dev/sdk";
+
+configure({
+  secretKey: process.env["TRIGGER_ACCESS_TOKEN"], // starts with tr_pat_
+  previewBranch: "feature-xyz",
+});
+
+await envvars.update("proj_1234", "preview", "DATABASE_URL", {
+  value: "your_preview_database_url",
+});
+```
+
+  </Tab>
+  <Tab title="cURL">
+    To target a specific preview branch, include the `x-trigger-branch` header in your API requests with the branch name as the value:
+
+```bash
+curl --request PUT \
+  --url https://api.trigger.dev/api/v1/projects/{projectRef}/envvars/preview/DATABASE_URL \
+  --header 'Authorization: Bearer <token>' \
+  --header 'x-trigger-branch: feature-xyz' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "value": "your_preview_database_url"
+  }'
+```
+
+  </Tab>
+</Tabs>
+This will set the `DATABASE_URL` environment variable specifically for the `feature-xyz` preview branch.
+
+<Note>
+  The `x-trigger-branch` header is only relevant when working with the `preview` environment (`{env}
+  ` parameter set to `preview`). It has no effect when working with `dev`, `staging`, or `prod`
+  environments.
+</Note>
+
+#### SDK usage with preview branches
+
+When using the SDK to manage preview branch environment variables, the branch targeting is handled automatically when you're running in a preview environment with the `TRIGGER_PREVIEW_BRANCH` environment variable set. However, you can also specify the branch explicitly:
+
+```ts
+import { configure, envvars } from "@trigger.dev/sdk";
+
+configure({
+  secretKey: process.env["TRIGGER_ACCESS_TOKEN"], // starts with tr_pat_
+  previewBranch: "feature-xyz", // Optional: specify the branch
+});
+
+await envvars.update("proj_1234", "preview", "DATABASE_URL", {
+  value: "your_preview_database_url",
 });
 ```

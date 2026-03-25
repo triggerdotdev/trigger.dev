@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.triggerdotdev/trigger.dev",
+  "description": "Official Trigger.dev MCP server to automate your Trigger.dev projects, write code, help debug runs, and get answers to questions about Trigger.dev",
+  "status": "active",
+  "repository": {
+    "url": "https://github.com/triggerdotdev/trigger.dev",
+    "source": "github",
+    "subfolder": "packages/cli-v3"
+  },
+  "version": "4.0.3",
+  "packages": [
+    {
+      "registry_type": "npm",
+      "registry_base_url": "https://registry.npmjs.org",
+      "identifier": "trigger.dev",
+      "version": "4.0.3",
+      "runtime_hint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "package_arguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ],
+      "environment_variables": []
+    }
+  ]
+}

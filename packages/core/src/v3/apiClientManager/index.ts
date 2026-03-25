@@ -59,15 +59,25 @@ export class APIClientManagerAPI {
       return undefined;
     }
 
-    return new ApiClient(this.baseURL, this.accessToken, this.branchName);
+    const requestOptions = this.#getConfig()?.requestOptions;
+    const futureFlags = this.#getConfig()?.future;
+
+    return new ApiClient(this.baseURL, this.accessToken, this.branchName, requestOptions, futureFlags);
   }
 
-  clientOrThrow(): ApiClient {
-    if (!this.baseURL || !this.accessToken) {
+  clientOrThrow(config?: ApiClientConfiguration): ApiClient {
+    const baseURL = config?.baseURL ?? this.baseURL;
+    const accessToken = config?.accessToken ?? config?.secretKey ?? this.accessToken;
+
+    if (!baseURL || !accessToken) {
       throw new ApiClientMissingError(this.apiClientMissingError());
     }
 
-    return new ApiClient(this.baseURL, this.accessToken, this.branchName);
+    const branchName = config?.previewBranch ?? this.branchName;
+    const requestOptions = config?.requestOptions ?? this.#getConfig()?.requestOptions;
+    const futureFlags = config?.future ?? this.#getConfig()?.future;
+
+    return new ApiClient(baseURL, accessToken, branchName, requestOptions, futureFlags);
   }
 
   runWithConfig<R extends (...args: any[]) => Promise<any>>(
