@@ -1491,7 +1491,7 @@ function GenerationsTab({
                     key={`${gen.run_id}-${gen.span_id}-${i}`}
                     data-generation-item
                     isSelected={isSelected}
-                    className="cursor-pointer"
+                    className="cursor-pointer [&_td]:cursor-pointer"
                     onClick={() => onSelectSpan({ runId: gen.run_id, spanId: gen.span_id })}
                   >
                     <TableCell>
