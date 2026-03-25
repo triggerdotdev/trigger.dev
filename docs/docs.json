@@ -93,6 +93,7 @@
                   "ai-chat/frontend",
                   "ai-chat/features",
                   "ai-chat/compaction",
+                  "ai-chat/pending-messages",
                   "ai-chat/reference"
                 ]
               }

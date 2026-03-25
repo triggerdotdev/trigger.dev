@@ -521,6 +521,33 @@ export function Chat({ chatId, initialMessages, initialSessions }) {
 ```
 </CodeGroup>
 
+### Pending messages (steering)
+
+Users can send messages while the agent is executing tool calls. With `pendingMessages`, these messages are injected between tool-call steps, steering the agent mid-execution:
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  pendingMessages: {
+    shouldInject: ({ steps }) => steps.length > 0,
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      ...chat.toStreamTextOptions({ registry }),
+      messages,
+      tools: { /* ... */ },
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+On the frontend, the `usePendingMessages` hook handles sending, tracking, and rendering injection points.
+
+<Tip>
+  See [Pending Messages](/ai-chat/pending-messages) for the full guide — backend configuration, frontend hook, queuing vs steering, and how injection works with all three chat variants.
+</Tip>
+
 ### prepareMessages
 
 Transform model messages before they're used anywhere — in `run()`, in compaction rebuilds, and in compaction results. Define once, applied everywhere.
