@@ -435,7 +435,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   }
 
   #getNodeAffinityRules(preset: MachinePreset): k8s.V1NodeAffinity | undefined {
-    if (!env.KUBERNETES_LARGE_MACHINE_POOL_LABEL) {
+    if (!env.KUBERNETES_LARGE_MACHINE_AFFINITY_ENABLED) {
       return undefined;
     }
 
@@ -448,9 +448,9 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             preference: {
               matchExpressions: [
                 {
-                  key: "node.cluster.x-k8s.io/machinepool",
+                  key: env.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_KEY,
                   operator: "In",
-                  values: [env.KUBERNETES_LARGE_MACHINE_POOL_LABEL],
+                  values: [env.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_VALUE],
                 },
               ],
             },
@@ -466,9 +466,9 @@ export class KubernetesWorkloadManager implements WorkloadManager {
           {
             matchExpressions: [
               {
-                key: "node.cluster.x-k8s.io/machinepool",
+                key: env.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_KEY,
                 operator: "NotIn",
-                values: [env.KUBERNETES_LARGE_MACHINE_POOL_LABEL],
+                values: [env.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_VALUE],
               },
             ],
           },
