@@ -266,6 +266,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       gen_ai_system: llmMetrics.genAiSystem,
       request_model: llmMetrics.requestModel,
       response_model: llmMetrics.responseModel,
+      base_response_model: llmMetrics.baseResponseModel,
       matched_model_id: llmMetrics.matchedModelId,
       operation_id: llmMetrics.operationId,
       finish_reason: llmMetrics.finishReason,

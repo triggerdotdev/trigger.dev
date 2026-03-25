@@ -859,7 +859,111 @@ export const llmMetricsSchema: TableSchema = {
   },
 };
 
-export const querySchemas: TableSchema[] = [runsSchema, metricsSchema, llmMetricsSchema];
+/**
+ * Schema definition for the llm_models table (trigger_dev.llm_model_aggregates_v1)
+ * Global table — no tenant columns. Contains anonymized cross-tenant model performance data.
+ */
+export const llmModelsSchema: TableSchema = {
+  name: "llm_models",
+  clickhouseName: "trigger_dev.llm_model_aggregates_v1",
+  description:
+    "Cross-tenant model performance aggregates: calls, cost, latency, and throughput per model per minute. No tenant-specific data.",
+  timeConstraint: "minute",
+  // No tenantColumns — this is a global table with anonymized data
+  columns: {
+    response_model: {
+      name: "response_model",
+      ...column("String", {
+        description: "The model name as returned by the provider",
+        example: "gpt-4o-2024-08-06",
+        coreColumn: true,
+      }),
+    },
+    base_response_model: {
+      name: "base_response_model",
+      ...column("String", {
+        description: "The base model name with dated variants grouped",
+        example: "gpt-4o",
+        coreColumn: true,
+      }),
+    },
+    gen_ai_system: {
+      name: "gen_ai_system",
+      ...column("String", {
+        description: "The AI provider system identifier",
+        example: "openai.responses",
+        coreColumn: true,
+      }),
+    },
+    minute: {
+      name: "minute",
+      ...column("DateTime", {
+        description: "Aggregation time bucket (per minute)",
+        coreColumn: true,
+      }),
+    },
+    call_count: {
+      name: "call_count",
+      ...column("UInt64", {
+        description: "Number of LLM calls in this time bucket",
+        coreColumn: true,
+      }),
+    },
+    total_input_tokens: {
+      name: "total_input_tokens",
+      ...column("UInt64", {
+        description: "Total input tokens consumed",
+      }),
+    },
+    total_output_tokens: {
+      name: "total_output_tokens",
+      ...column("UInt64", {
+        description: "Total output tokens generated",
+      }),
+    },
+    total_cost: {
+      name: "total_cost",
+      ...column("Float64", {
+        description: "Total cost in USD",
+        customRenderType: "costInDollars",
+        coreColumn: true,
+      }),
+    },
+    // Aggregate state columns — use quantilesMerge() in queries to extract values
+    // Example: quantilesMerge(0.5)(ttfc_quantiles)[1] AS ttfc_p50
+    ttfc_quantiles: {
+      name: "ttfc_quantiles",
+      ...column("String", {
+        description:
+          "Time to first chunk quantile state. Use quantilesMerge(0.5)(ttfc_quantiles)[1] AS ttfc_p50 in queries.",
+        example: "quantilesMerge(0.5)(ttfc_quantiles)[1]",
+      }),
+    },
+    tps_quantiles: {
+      name: "tps_quantiles",
+      ...column("String", {
+        description:
+          "Tokens per second quantile state. Use quantilesMerge(0.5)(tps_quantiles)[1] AS tps_p50 in queries.",
+        example: "quantilesMerge(0.5)(tps_quantiles)[1]",
+      }),
+    },
+    duration_quantiles: {
+      name: "duration_quantiles",
+      ...column("String", {
+        description:
+          "Duration quantile state. Use quantilesMerge(0.5)(duration_quantiles)[1] AS duration_p50 in queries.",
+        example: "quantilesMerge(0.5)(duration_quantiles)[1]",
+      }),
+    },
+  },
+};
+
+export const querySchemas: TableSchema[] = [
+  runsSchema,
+  metricsSchema,
+  llmMetricsSchema,
+  llmModelsSchema,
+];
 
 /**
  * Default query for the query editor

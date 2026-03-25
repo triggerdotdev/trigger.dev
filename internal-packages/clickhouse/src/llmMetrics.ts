@@ -13,6 +13,7 @@ export const LlmMetricsV1Input = z.object({
   gen_ai_system: z.string(),
   request_model: z.string(),
   response_model: z.string(),
+  base_response_model: z.string(),
   matched_model_id: z.string(),
   operation_id: z.string(),
   finish_reason: z.string(),

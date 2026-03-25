@@ -1,5 +1,5 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { seedLlmPricing } from "@internal/llm-pricing";
+import { seedLlmPricing, syncLlmCatalog } from "@internal/llm-model-catalog";
 import { prisma } from "~/db.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
@@ -15,9 +15,26 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "You must be an admin to perform this action" }, { status: 403 });
   }
 
+  const url = new URL(request.url);
+  const action = url.searchParams.get("action") ?? "seed";
+
+  if (action === "sync") {
+    const result = await syncLlmCatalog(prisma);
+
+    if (llmPricingRegistry) {
+      await llmPricingRegistry.reload();
+    }
+
+    return json({
+      success: true,
+      ...result,
+      message: `Synced ${result.modelsUpdated} models, skipped ${result.modelsSkipped}`,
+    });
+  }
+
+  // Default: seed (creates new + syncs existing)
   const result = await seedLlmPricing(prisma);
 
-  // Reload the in-memory registry after seeding (if enabled)
   if (llmPricingRegistry) {
     await llmPricingRegistry.reload();
   }
@@ -25,6 +42,6 @@ export async function action({ request }: ActionFunctionArgs) {
   return json({
     success: true,
     ...result,
-    message: `Seeded ${result.modelsCreated} models, skipped ${result.modelsSkipped} existing`,
+    message: `Seeded ${result.modelsCreated} created, ${result.modelsSkipped} skipped, ${result.modelsUpdated} updated`,
   });
 }

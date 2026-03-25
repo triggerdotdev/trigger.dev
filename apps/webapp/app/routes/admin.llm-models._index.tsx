@@ -20,7 +20,7 @@ import {
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { createSearchParams } from "~/utils/searchParams";
-import { seedLlmPricing } from "@internal/llm-pricing";
+import { seedLlmPricing, syncLlmCatalog } from "@internal/llm-model-catalog";
 import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
 
 const PAGE_SIZE = 50;
@@ -87,12 +87,24 @@ export async function action({ request }: ActionFunctionArgs) {
   if (_action === "seed") {
     console.log("[admin] seed action started");
     const result = await seedLlmPricing(prisma);
-    console.log(`[admin] seed complete: ${result.modelsCreated} created, ${result.modelsSkipped} skipped`);
+    console.log(`[admin] seed complete: ${result.modelsCreated} created, ${result.modelsSkipped} skipped, ${result.modelsUpdated} updated`);
     await llmPricingRegistry?.reload();
     console.log("[admin] registry reloaded after seed");
     return typedjson({
       success: true,
-      message: `Seeded: ${result.modelsCreated} created, ${result.modelsSkipped} skipped`,
+      message: `Seeded: ${result.modelsCreated} created, ${result.modelsSkipped} skipped, ${result.modelsUpdated} updated`,
+    });
+  }
+
+  if (_action === "sync") {
+    console.log("[admin] sync catalog action started");
+    const result = await syncLlmCatalog(prisma);
+    console.log(`[admin] sync complete: ${result.modelsUpdated} updated, ${result.modelsSkipped} skipped`);
+    await llmPricingRegistry?.reload();
+    console.log("[admin] registry reloaded after sync");
+    return typedjson({
+      success: true,
+      message: `Synced: ${result.modelsUpdated} updated, ${result.modelsSkipped} skipped`,
     });
   }
 
@@ -138,6 +150,7 @@ export default function AdminLlmModelsRoute() {
   const { models, filters, page, pageCount, total } =
     useTypedLoaderData<typeof loader>();
   const seedFetcher = useFetcher();
+  const syncFetcher = useFetcher();
   const reloadFetcher = useFetcher();
   const testFetcher = useFetcher<{
     testResult?: {
@@ -178,6 +191,17 @@ export default function AdminLlmModelsRoute() {
                 {seedFetcher.state !== "idle" ? "Seeding..." : "Seed defaults"}
               </Button>
             </seedFetcher.Form>
+
+            <syncFetcher.Form method="post">
+              <input type="hidden" name="_action" value="sync" />
+              <Button
+                type="submit"
+                variant="tertiary/small"
+                disabled={syncFetcher.state !== "idle"}
+              >
+                {syncFetcher.state !== "idle" ? "Syncing..." : "Sync catalog"}
+              </Button>
+            </syncFetcher.Form>
 
             <reloadFetcher.Form method="post">
               <input type="hidden" name="_action" value="reload" />

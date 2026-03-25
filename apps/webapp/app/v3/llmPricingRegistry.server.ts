@@ -1,4 +1,4 @@
-import { ModelPricingRegistry, seedLlmPricing } from "@internal/llm-pricing";
+import { ModelPricingRegistry, seedLlmPricing } from "@internal/llm-model-catalog";
 import { prisma, $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { signalsEmitter } from "~/services/signals.server";

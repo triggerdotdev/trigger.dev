@@ -41,6 +41,12 @@ const UpdateModelSchema = z.object({
   modelName: z.string().min(1).optional(),
   matchPattern: z.string().min(1).optional(),
   startDate: z.string().nullable().optional(),
+  provider: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  contextWindow: z.number().int().nullable().optional(),
+  maxOutputTokens: z.number().int().nullable().optional(),
+  capabilities: z.array(z.string()).optional(),
+  isHidden: z.boolean().optional(),
   pricingTiers: z
     .array(
       z.object({
@@ -94,7 +100,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid request body", details: parsed.error.issues }, { status: 400 });
   }
 
-  const { modelName, matchPattern, startDate, pricingTiers } = parsed.data;
+  const { modelName, matchPattern, startDate, pricingTiers, provider, description, contextWindow, maxOutputTokens, capabilities, isHidden } = parsed.data;
 
   // Validate regex if provided — strip (?i) POSIX flag since our registry handles it
   if (matchPattern) {
@@ -114,6 +120,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
         ...(modelName !== undefined && { modelName }),
         ...(matchPattern !== undefined && { matchPattern }),
         ...(startDate !== undefined && { startDate: startDate ? new Date(startDate) : null }),
+        ...(provider !== undefined && { provider }),
+        ...(description !== undefined && { description }),
+        ...(contextWindow !== undefined && { contextWindow }),
+        ...(maxOutputTokens !== undefined && { maxOutputTokens }),
+        ...(capabilities !== undefined && { capabilities }),
+        ...(isHidden !== undefined && { isHidden }),
       },
     });
 
