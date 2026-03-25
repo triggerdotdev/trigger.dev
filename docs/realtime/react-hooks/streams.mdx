@@ -436,9 +436,9 @@ For the newer `useRealtimeStream` hook, use the `throttleInMs` option instead (s
 
 Define a typed stream in your task with `streams.define<string>()`, pipe your AI SDK response to it with `.pipe()`, then consume it in your component with `useRealtimeStream`. See [Streaming data from tasks](/tasks/streams) for the task-side setup.
 
-### What's the difference between streaming and subscribing to runs?
+### What's the difference between streaming and run updates?
 
-[Subscribing](/realtime/react-hooks/subscribe) tracks **run state** (status, metadata, tags). Streaming (this page) pipes **continuous data** your task produces. Use subscribing for progress bars and status badges. Use streaming for AI chat output, live logs, or file processing results. You can use both at the same time.
+[Run updates](/realtime/react-hooks/subscribe) track **run state** (status, metadata, tags). Streaming (this page) pipes **continuous data** your task produces. Use run updates for progress bars and status badges. Use streaming for AI chat output, live logs, or file processing results. You can use both at the same time.
 
 ### Can I send data back into a running task from React?
 

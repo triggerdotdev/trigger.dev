@@ -1,12 +1,12 @@
 ---
-title: "Progress and status updates in React"
-sidebarTitle: "Progress & status"
+title: "Run updates in React"
+sidebarTitle: "Run updates"
 description: "Build progress bars, status indicators, and live dashboards by subscribing to background task updates from React components."
 ---
 
 **Subscribe to a run and your component re-renders whenever its status, metadata, or tags change.** Build progress bars, deployment monitors, or any UI that needs to reflect what a background task is doing right now.
 
-For streaming continuous data (AI tokens, file chunks), see [Streaming data](/realtime/react-hooks/streams) instead.
+For streaming continuous data (AI tokens, file chunks), see [Streaming](/realtime/react-hooks/streams) instead.
 
 ## Trigger + subscribe combo hooks
 
@@ -661,9 +661,9 @@ This allows you to change the ID of the subscription based on some state. Passin
 
 Use `metadata.set()` inside your task to update a progress value, then read it with `useRealtimeRun` in your component. The hook re-renders your component on every metadata change. See [Using metadata to show progress](#using-metadata-to-show-progress-in-your-ui) above for a complete example.
 
-### What's the difference between subscribing to runs and streaming data?
+### What's the difference between run updates and streaming?
 
-Subscribing (this page) gives you **run state**: status, metadata, and tags. It's for progress bars, status badges, and dashboards. [Streaming](/realtime/react-hooks/streams) gives you **continuous data** like AI tokens or file chunks. Use subscribing for "how far along is my task?" and streaming for "show me the output as it generates."
+Run updates (this page) give you **run state**: status, metadata, and tags. They're for progress bars, status badges, and dashboards. [Streaming](/realtime/react-hooks/streams) gives you **continuous data** like AI tokens or file chunks. Use run updates for "how far along is my task?" and streaming for "show me the output as it generates."
 
 ### Can I subscribe to multiple runs at once?
 

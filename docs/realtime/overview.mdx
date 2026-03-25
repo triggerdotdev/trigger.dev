@@ -1,66 +1,63 @@
 ---
 title: Realtime overview
 sidebarTitle: Overview
-description: "Subscribe to run state changes (status, metadata, tags) in real time from your frontend or backend."
+description: "Get live run updates and stream data from background tasks to your frontend or backend. No polling."
 ---
 
-**Realtime subscriptions let you watch run state as it changes: status transitions, metadata updates, and tag changes.** You get the full [run object](/realtime/run-object) pushed to your code whenever something changes. No polling.
+**Realtime is the umbrella for everything live in Trigger.dev.** It covers two things: getting notified when a run's state changes, and streaming continuous data (like AI tokens) from a running task to your app.
 
-For streaming continuous data from tasks (AI completions, progress chunks, file data), see [Streams](/tasks/streams). Streams and Realtime work together but solve different problems.
+Both use the same `@trigger.dev/react-hooks` package and the same authentication system. The difference is what they give you.
 
-## How is Realtime different from Streams?
+## Run updates vs Streaming
 
-| | Realtime subscriptions | Streams |
+| | Run updates | Streaming |
 |---|---|---|
-| **What it sends** | Run state (status, metadata, tags) | Arbitrary data you define (AI tokens, progress, files) |
-| **When it updates** | On state changes | Continuously while the task runs |
-| **Typical use case** | Progress bars, status badges, dashboards | AI chat responses, live logs, file processing |
+| **What you get** | Run state: status, metadata, tags | Continuous data you define (AI tokens, file chunks, progress) |
+| **When it fires** | On state changes | While the task runs, as data is produced |
+| **Use case** | Progress bars, status badges, dashboards | AI chat output, live logs, file processing |
 | **React hook** | [`useRealtimeRun`](/realtime/react-hooks/subscribe) | [`useRealtimeStream`](/realtime/react-hooks/streams) |
-| **Define in task code?** | No, automatic | Yes, using `streams.define()` |
+| **Setup in task code?** | No, automatic | Yes, using `streams.define()` |
+| **Infrastructure** | [Electric SQL](/realtime/how-it-works) (PostgreSQL sync) | Streams transport |
 
-You can use both at the same time. Subscribe to a run's status with Realtime while also streaming AI output with Streams.
+You can use both at the same time. Subscribe to a run's status (to show a progress bar) while also streaming AI output (to display tokens as they arrive).
 
-## What you can subscribe to
+## Run updates
+
+Subscribe to a run and your code gets called whenever its status, [metadata](/runs/metadata), or [tags](/tags) change. No setup needed in your task code.
+
+You can subscribe to:
 
 - **Specific runs** by run ID
-- **Runs with specific tags** (e.g., all runs tagged with `user:123`). [More on tags](/tags)
+- **Runs with specific tags** (e.g., all runs tagged with `user:123`)
 - **Batch runs** within a specific batch
 - **Trigger + subscribe combos** that trigger a task and immediately subscribe (frontend only)
 
-Once subscribed, you get updates for:
+→ [React hooks](/realtime/react-hooks/subscribe) | [Backend](/realtime/backend/subscribe)
 
-- **Status changes** like queued, executing, completed, failed
-- **Metadata updates** for custom progress tracking ([React hooks](/realtime/react-hooks/subscribe#using-metadata-to-show-progress-in-your-ui) | [backend](/realtime/backend/subscribe#subscribe-to-metadata-updates-from-your-tasks))
-- **Tag changes** when [tags](/tags) are added or removed
+## Streaming
 
-## Using Realtime in your applications
+Define typed streams in your task, pipe data to them, and read that data from your frontend or backend as it's produced. You need to set up streams in your task code using `streams.define()`.
 
-### Authentication
+→ [How to emit streams from tasks](/tasks/streams) | [React hooks](/realtime/react-hooks/streams) | [Backend](/realtime/backend/streams)
 
-All Realtime subscriptions require authentication. See the [authentication guide](/realtime/auth) for setup.
+## Authentication
 
-### Frontend (React hooks)
-
-Use `@trigger.dev/react-hooks` to build UIs that update as runs execute.
-
-→ **[React hooks guide](/realtime/react-hooks/)**
-
-### Backend
-
-Subscribe to runs from your backend code, other tasks, or serverless functions.
-
-→ **[Backend guide](/realtime/backend)**
+All Realtime hooks and functions require authentication. See the [authentication guide](/realtime/auth) for setup.
 
 ## Frequently asked questions
 
-### What's the difference between Realtime and Streams?
+### How do I show a progress bar for a background task?
 
-Realtime tracks **run state**: status, metadata, and tags. Streams pipe **continuous data** (like AI completions or progress updates) from a running task to your frontend or backend. Use Realtime for "is my task done yet?" and Streams for "show me the AI output as it generates."
+Use [run metadata](/runs/metadata) to store progress data (like a percentage), then subscribe to the run with [`useRealtimeRun`](/realtime/react-hooks/subscribe). Your component re-renders on every metadata update.
 
-### Do I need to set up anything in my task for Realtime?
+### How do I stream AI/LLM responses from a background task?
 
-No. Realtime subscriptions work automatically for any task. Just subscribe by run ID, tag, or batch from your frontend or backend. Streams require you to define them in your task code with `streams.define()`.
+Define a stream in your task with `streams.define()`, pipe your AI SDK response to it, then consume it in React with [`useRealtimeStream`](/realtime/react-hooks/streams). See [Streaming data from tasks](/tasks/streams) for the full guide.
 
-### Can I use Realtime and Streams together?
+### Do I need WebSockets or polling?
 
-Yes. A common pattern is subscribing to a run's status with Realtime (to show a progress indicator) while also streaming AI output with Streams (to display tokens as they arrive).
+No. Run updates are powered by [Electric SQL](/realtime/how-it-works) (HTTP-based PostgreSQL syncing). Streams use their own transport. The hooks handle connections automatically.
+
+### Can I use both run updates and streaming together?
+
+Yes. A common pattern: subscribe to run status with `useRealtimeRun` (progress indicator) while streaming AI output with `useRealtimeStream` (token-by-token display).
