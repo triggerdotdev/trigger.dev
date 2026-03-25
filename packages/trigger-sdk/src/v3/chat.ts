@@ -384,6 +384,51 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     );
   };
 
+  /**
+   * Send a message to the running task via input stream without disrupting
+   * the current streaming response. Use this to send steering/pending messages
+   * while the agent is actively streaming.
+   *
+   * Unlike `sendMessage()` from useChat, this does NOT:
+   * - Add the message to useChat's local message state
+   * - Cancel the active stream subscription
+   * - Start a new response stream
+   *
+   * The message is delivered to the task's `messagesInput.on()` listener
+   * and can be injected between tool-call steps via the `pendingMessages`
+   * configuration.
+   *
+   * @returns `true` if the message was sent, `false` if there's no active session.
+   */
+  sendPendingMessage = async (
+    chatId: string,
+    message: UIMessage,
+    metadata?: Record<string, unknown>,
+  ): Promise<boolean> => {
+    const session = this.sessions.get(chatId);
+    if (!session?.runId) return false;
+
+    const mergedMetadata =
+      this.defaultMetadata || metadata
+        ? { ...(this.defaultMetadata ?? {}), ...(metadata ?? {}) }
+        : undefined;
+
+    const payload = {
+      messages: [message],
+      chatId,
+      trigger: "submit-message" as const,
+      metadata: mergedMetadata,
+    };
+
+    try {
+      const apiClient = new ApiClient(this.baseURL, session.publicAccessToken);
+      await apiClient.sendInputStream(session.runId, CHAT_MESSAGES_STREAM_ID, payload);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   reconnectToStream = async (
     options: {
       chatId: string;

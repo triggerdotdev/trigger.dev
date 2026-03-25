@@ -280,6 +280,15 @@ export const aiChat = chat.task({
       ];
     },
   },
+  pendingMessages: {
+    // Inject user messages between tool-call steps so the agent can adjust
+    shouldInject: ({ steps }) => steps.length > 0,
+    prepare: ({ messages }) => messages.length === 1
+      ? [{ role: "user" as const, content: (messages[0]!.parts?.[0] as any)?.text ?? "" }]
+      : [{ role: "user" as const, content: `The user sent ${messages.length} messages while you were working:\n\n${messages.map((m, i) => `${i + 1}. ${(m.parts?.[0] as any)?.text ?? ""}`).join("\n")}` }],
+    // onReceived/onInjected are optional — the SDK automatically writes
+    // a data-pending-message-injected chunk when injection happens.
+  },
   prepareMessages: ({ messages, reason }) => {
     // Add Anthropic cache breaks to the last message for prompt caching.
     // Applied everywhere — run(), compaction rebuilds, compaction results.
@@ -585,6 +594,14 @@ export const aiChatRaw = task({
           },
         ],
       },
+      pendingMessages: {
+        // Inject with a prefix so the LLM knows these are mid-execution corrections
+        shouldInject: () => true,
+        prepare: ({ messages }) => [{
+          role: "user" as const,
+          content: [{ type: "text" as const, text: `[User sent ${messages.length} message(s) while you were working]:\n${messages.map(m => (m.parts?.[0] as any)?.text ?? "").join("\n")}` }],
+        }],
+      },
     });
 
     for (let turn = 0; turn < 100; turn++) {
@@ -623,6 +640,12 @@ export const aiChatRaw = task({
         });
       }
 
+      // Listen for steering messages during streaming
+      const steeringSub = chat.messages.on(async (msg) => {
+        const lastMsg = msg.messages?.[msg.messages.length - 1];
+        if (lastMsg) await conversation.steerAsync(lastMsg);
+      });
+
       const result = streamText({
         ...chat.toStreamTextOptions({ registry }),
         ...(modelOverride ? { model: getModel(modelOverride) } : {}),
@@ -655,6 +678,8 @@ export const aiChatRaw = task({
         } else {
           throw error;
         }
+      } finally {
+        steeringSub.off();
       }
 
       if (response) {
@@ -743,6 +768,10 @@ export const aiChatSession = task({
           },
           ...uiMessages.slice(-4),
         ],
+      },
+      pendingMessages: {
+        // Always inject in the session variant
+        shouldInject: () => true,
       },
     });
 
