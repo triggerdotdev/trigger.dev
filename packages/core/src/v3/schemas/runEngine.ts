@@ -1,8 +1,28 @@
 import { z } from "zod";
 import { Enum, MachinePreset, RuntimeEnvironmentType, TaskRunExecution } from "./common.js";
 import { EnvironmentType } from "./schemas.js";
-import { RunAnnotations } from "./api.js";
 import type * as DB_TYPES from "@trigger.dev/database";
+
+const anyString = z.custom<string & {}>((v) => typeof v === "string");
+
+export const TriggerSource = z
+  .enum(["sdk", "api", "dashboard", "cli", "mcp", "schedule"])
+  .or(anyString);
+
+export type TriggerSource = z.infer<typeof TriggerSource>;
+
+export const TriggerAction = z.enum(["trigger", "replay", "test"]).or(anyString);
+
+export type TriggerAction = z.infer<typeof TriggerAction>;
+
+export const RunAnnotations = z.object({
+  triggerSource: TriggerSource,
+  triggerAction: TriggerAction,
+  rootTriggerSource: TriggerSource,
+  rootScheduleId: z.string().optional(),
+});
+
+export type RunAnnotations = z.infer<typeof RunAnnotations>;
 
 export const TaskRunExecutionStatus = {
   RUN_CREATED: "RUN_CREATED",
