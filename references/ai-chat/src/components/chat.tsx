@@ -4,6 +4,7 @@ import type { UIMessage } from "ai";
 import { useChat } from "@ai-sdk/react";
 import type { TriggerChatTransport } from "@trigger.dev/sdk/chat";
 import type { CompactionChunkData } from "@trigger.dev/sdk/ai";
+import { usePendingMessages } from "@trigger.dev/sdk/chat/react";
 import { useEffect, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import { MODEL_OPTIONS } from "@/lib/models";
@@ -271,7 +272,7 @@ export function Chat({
   const turnCounter = useRef(0);
   const [ttfbHistory, setTtfbHistory] = useState<TtfbEntry[]>([]);
 
-  const { messages, sendMessage, stop, status, error } = useChat({
+  const { messages, setMessages, sendMessage, stop, status, error } = useChat({
     id: chatId,
     messages: initialMessages,
     transport,
@@ -305,31 +306,96 @@ export function Chat({
     }
   }, [status, messages]);
 
-  // Pending message to send after the current turn completes
-  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  // Pending messages — handles steering messages during streaming
+  const pending = usePendingMessages({
+    transport,
+    chatId,
+    status,
+    messages,
+    setMessages,
+    sendMessage,
+    metadata: { model },
+  });
 
-  // Handle turn completion: persist messages and auto-send pending message
+  // Expose test helpers for automated testing via Chrome DevTools.
+  // All actions go through refs so closures always call the latest version.
+  const stateRef = useRef({ status, messages, pending: pending.pending });
+  stateRef.current = { status, messages, pending: pending.pending };
+
+  const actionsRef = useRef({
+    steer: pending.steer,
+    queue: pending.queue,
+    promote: pending.promoteToSteering,
+    send: (text: string) => {
+      turnCounter.current++;
+      sendTimestamp.current = Date.now();
+      sendMessage({ text }, { metadata: { model } });
+    },
+    stop,
+  });
+  actionsRef.current = {
+    steer: pending.steer,
+    queue: pending.queue,
+    promote: pending.promoteToSteering,
+    send: (text: string) => {
+      turnCounter.current++;
+      sendTimestamp.current = Date.now();
+      sendMessage({ text }, { metadata: { model } });
+    },
+    stop,
+  };
+
+  useEffect(() => {
+    (window as any).__chat = {
+      get status() { return stateRef.current.status; },
+      get messages() { return stateRef.current.messages; },
+      get pending() { return stateRef.current.pending; },
+      get runId() { return transport.getSession(chatId)?.runId ?? session?.runId ?? null; },
+      chatId,
+      steer: (text: string) => actionsRef.current.steer(text),
+      queue: (text: string) => actionsRef.current.queue(text),
+      promote: (id: string) => actionsRef.current.promote(id),
+      send: (text: string) => actionsRef.current.send(text),
+      stop: () => actionsRef.current.stop(),
+      // Wait for a tool call to appear, then steer
+      steerOnToolCall: (text: string) => new Promise<void>((resolve) => {
+        const check = setInterval(() => {
+          const { messages: msgs } = stateRef.current;
+          const lastMsg = msgs[msgs.length - 1];
+          const hasTool = lastMsg?.role === "assistant" && lastMsg.parts?.some(
+            (p: any) => p.type?.startsWith("tool-") || p.type === "dynamic-tool"
+          );
+          if (hasTool) {
+            clearInterval(check);
+            console.log("[__chat] steerOnToolCall: tool detected, steering now. status:", stateRef.current.status);
+            actionsRef.current.steer(text);
+            resolve();
+          }
+        }, 200);
+      }),
+      // Wait for status to become a value
+      waitForStatus: (target: string) => new Promise<void>((resolve) => {
+        const check = setInterval(() => {
+          if (stateRef.current.status === target) { clearInterval(check); resolve(); }
+        }, 100);
+      }),
+      steerAfterDelay: (text: string, ms: number) => new Promise<void>((r) => setTimeout(() => { actionsRef.current.steer(text); r(); }, ms)),
+      queueAfterDelay: (text: string, ms: number) => new Promise<void>((r) => setTimeout(() => { actionsRef.current.queue(text); r(); }, ms)),
+    };
+    return () => { delete (window as any).__chat; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
+
+  // Persist messages when a turn completes
   const prevStatus = useRef(status);
   useEffect(() => {
     const turnCompleted = prevStatus.current === "streaming" && status === "ready";
     prevStatus.current = status;
-
     if (!turnCompleted) return;
-
-    // Persist messages when a turn completes
     if (messages.length > 0) {
       onMessagesChange?.(chatId, messages);
     }
-
-    // Auto-send the pending message
-    if (pendingMessage) {
-      const text = pendingMessage;
-      setPendingMessage(null);
-      turnCounter.current++;
-      sendTimestamp.current = Date.now();
-      sendMessage({ text }, { metadata: { model } });
-    }
-  }, [status, messages, chatId, onMessagesChange, sendMessage, pendingMessage, model]);
+  }, [status, messages, chatId, onMessagesChange]);
 
   return (
     <div className="flex h-full flex-col bg-white">
@@ -443,6 +509,25 @@ export function Chat({
                     return <ToolInvocation key={i} part={part} />;
                   }
 
+                  if (pending.isInjectionPoint(part)) {
+                    const injectedMsgs = pending.getInjectedMessages(part);
+                    if (injectedMsgs.length === 0) return null;
+                    return (
+                      <div key={i} className="my-2 flex justify-end">
+                        <div className="max-w-[60%]">
+                          {injectedMsgs.map((m) => (
+                            <div key={m.id} className="rounded-lg bg-purple-100 px-3 py-1.5 text-sm text-purple-800">
+                              {m.text}
+                            </div>
+                          ))}
+                          <div className="mt-0.5 text-right text-[10px] text-purple-400">
+                            injected mid-response
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   if (part.type.startsWith("data-")) {
                     return (
                       <div
@@ -472,18 +557,31 @@ export function Chat({
           </div>
         )}
 
-        {pendingMessage && (
-          <div className="flex justify-end">
+        {pending.pending.map((msg) => (
+          <div key={msg.id} className="flex justify-end">
             <div className="max-w-[80%]">
-              <div className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white opacity-60">
-                {pendingMessage}
+              <div className={`rounded-lg px-4 py-2 text-sm text-white opacity-75 ${
+                msg.mode === "steering" ? "bg-purple-600" : "bg-gray-500"
+              }`}>
+                {msg.text}
               </div>
-              <div className="mt-1 text-right text-[10px] text-gray-400">
-                Queued — will send when current response finishes
+              <div className="mt-1 flex items-center justify-end gap-2">
+                <span className="text-[10px] text-gray-400">
+                  {msg.mode === "steering" ? "Steering — waiting for injection point" : "Queued for next turn"}
+                </span>
+                {msg.mode === "queued" && status === "streaming" && (
+                  <button
+                    type="button"
+                    onClick={() => pending.promoteToSteering(msg.id)}
+                    className="text-[10px] text-purple-500 hover:text-purple-700 underline"
+                  >
+                    Steer instead
+                  </button>
+                )}
               </div>
             </div>
           </div>
-        )}
+        ))}
       </div>
 
       {error && (
@@ -507,13 +605,11 @@ export function Chat({
         onSubmit={(e) => {
           e.preventDefault();
           if (!input.trim()) return;
-          if (status === "streaming") {
-            setPendingMessage(input);
-          } else {
+          if (status !== "streaming") {
             turnCounter.current++;
             sendTimestamp.current = Date.now();
-            sendMessage({ text: input }, { metadata: { model } });
           }
+          pending.steer(input);
           setInput("");
         }}
         className="shrink-0 border-t border-gray-200 bg-white p-4"
@@ -528,11 +624,25 @@ export function Chat({
           />
           <button
             type="submit"
-            disabled={!input.trim() || !!pendingMessage}
+            disabled={!input.trim()}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {status === "streaming" ? "Queue" : "Send"}
+            Send
           </button>
+          {status === "streaming" && (
+            <button
+              type="button"
+              disabled={!input.trim()}
+              onClick={() => {
+                if (!input.trim()) return;
+                pending.queue(input);
+                setInput("");
+              }}
+              className="rounded-lg bg-gray-500 px-4 py-2 text-sm font-medium text-white hover:bg-gray-600 disabled:opacity-50"
+            >
+              Queue
+            </button>
+          )}
           {status === "streaming" && (
             <button
               type="button"

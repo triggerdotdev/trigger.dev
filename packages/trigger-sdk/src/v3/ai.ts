@@ -600,6 +600,102 @@ export type ChatTaskCompactionOptions = {
 /** @internal */
 const chatTaskCompactionKey = locals.create<ChatTaskCompactionOptions>("chat.taskCompaction");
 
+// ---------------------------------------------------------------------------
+// Pending messages — mid-execution message injection via prepareStep
+// ---------------------------------------------------------------------------
+
+/**
+ * Event passed to `shouldInject` and `prepareMessages` callbacks.
+ */
+export type PendingMessagesBatchEvent = {
+  /** All pending UI messages that arrived during streaming (batch). */
+  messages: UIMessage[];
+  /** Current model messages in the conversation. */
+  modelMessages: ModelMessage[];
+  /** Completed steps so far. */
+  steps: CompactionStep[];
+  /** Current step number (0-indexed). */
+  stepNumber: number;
+  /** Chat session ID. */
+  chatId: string;
+  /** Current turn number (0-indexed). */
+  turn: number;
+  /** Custom data from the frontend. */
+  clientData?: unknown;
+};
+
+/**
+ * Event passed to `onReceived` callback (per-message, as they arrive).
+ */
+export type PendingMessageReceivedEvent = {
+  /** The UI message that arrived during streaming. */
+  message: UIMessage;
+  /** Chat session ID. */
+  chatId: string;
+  /** Current turn number (0-indexed). */
+  turn: number;
+};
+
+/**
+ * Event passed to `onInjected` callback (batch, after injection).
+ */
+export type PendingMessagesInjectedEvent = {
+  /** All UI messages that were injected. */
+  messages: UIMessage[];
+  /** The model messages that were injected. */
+  injectedModelMessages: ModelMessage[];
+  /** Chat session ID. */
+  chatId: string;
+  /** Current turn number (0-indexed). */
+  turn: number;
+  /** Step number where injection occurred. */
+  stepNumber: number;
+};
+
+/**
+ * Options for the `pendingMessages` field on `chat.task()`, `chat.createSession()`,
+ * or `ChatMessageAccumulator`.
+ *
+ * Configures how messages that arrive during streaming are handled. When
+ * `shouldInject` is provided and returns `true`, the full batch of pending
+ * messages is injected between tool-call steps via `prepareStep`.
+ * Otherwise, messages queue for the next turn.
+ */
+export type PendingMessagesOptions = {
+  /**
+   * Decide whether to inject pending messages between tool-call steps.
+   * Called once per step boundary with the full batch of pending messages.
+   * If absent, no injection happens — messages only queue for the next turn.
+   */
+  shouldInject?: (event: PendingMessagesBatchEvent) => boolean | Promise<boolean>;
+  /**
+   * Transform the batch of pending messages before injection.
+   * Return the model messages to inject.
+   * Default: convert each UI message via `convertToModelMessages`.
+   */
+  prepare?: (event: PendingMessagesBatchEvent) => ModelMessage[] | Promise<ModelMessage[]>;
+  /** Called when a message arrives during streaming (per-message). */
+  onReceived?: (event: PendingMessageReceivedEvent) => void | Promise<void>;
+  /** Called after a batch of messages is injected via `prepareStep`. */
+  onInjected?: (event: PendingMessagesInjectedEvent) => void | Promise<void>;
+};
+
+/**
+ * The data part type used to signal that pending messages were injected
+ * between tool-call steps. The frontend can match on this to render
+ * injection points inline in the assistant response.
+ */
+export const PENDING_MESSAGE_INJECTED_TYPE = "data-pending-message-injected" as const;
+
+/** @internal */
+type SteeringQueueEntry = { uiMessage: UIMessage; modelMessages: ModelMessage[] };
+/** @internal */
+const chatPendingMessagesKey = locals.create<PendingMessagesOptions>("chat.pendingMessages");
+/** @internal */
+const chatSteeringQueueKey = locals.create<SteeringQueueEntry[]>("chat.steeringQueue");
+/** @internal — IDs of messages that were successfully injected via prepareStep */
+const chatInjectedMessageIdsKey = locals.create<Set<string>>("chat.injectedMessageIds");
+
 /**
  * Event passed to the `prepareMessages` hook.
  */
@@ -1010,6 +1106,129 @@ function chatCompactionStep(options: CompactionOptions): (args: { messages: Mode
 }
 
 // ---------------------------------------------------------------------------
+// Steering queue drain — shared by toStreamTextOptions, session, accumulator
+// ---------------------------------------------------------------------------
+
+/**
+ * Drain the steering queue as a batch. Calls `shouldInject` once with all
+ * pending messages. If it returns true, calls `prepareMessages` once to
+ * transform the batch, then clears the queue.
+ * Returns the model messages to inject (empty if none).
+ * @internal
+ */
+async function drainSteeringQueue(
+  config: PendingMessagesOptions,
+  messages: ModelMessage[],
+  steps: CompactionStep[],
+  queueOverride?: SteeringQueueEntry[],
+): Promise<ModelMessage[]> {
+  const queue = queueOverride ?? locals.get(chatSteeringQueueKey);
+  if (!queue || queue.length === 0) return [];
+
+  const ctx = locals.get(chatTurnContextKey);
+  const stepNumber = steps.length - 1;
+  const uiMessages = queue.map((e) => e.uiMessage);
+
+  const batchEvent: PendingMessagesBatchEvent = {
+    messages: uiMessages,
+    modelMessages: messages,
+    steps,
+    stepNumber,
+    chatId: ctx?.chatId ?? "",
+    turn: ctx?.turn ?? 0,
+    clientData: ctx?.clientData,
+  };
+
+  // Call shouldInject once for the whole batch
+  const shouldInject = config.shouldInject
+    ? await config.shouldInject(batchEvent)
+    : false;
+
+  if (!shouldInject) return [];
+
+  // Extract message texts for span attributes
+  const messageTexts = uiMessages.map((m) =>
+    (m.parts ?? []).filter((p: any) => p.type === "text").map((p: any) => p.text).join("") || ""
+  );
+  const previewText = messageTexts.length === 1
+    ? messageTexts[0]!.slice(0, 80)
+    : `${queue.length} messages`;
+
+  return tracer.startActiveSpan(
+    "pending message injected",
+    async () => {
+      // Transform the batch — default: concatenate all pre-converted model messages
+      const injected = config.prepare
+        ? await config.prepare(batchEvent)
+        : queue.flatMap((e) => e.modelMessages);
+
+      // Clear the queue and record injected IDs
+      queue.length = 0;
+      const injectedIds = locals.get(chatInjectedMessageIdsKey);
+      if (injectedIds) {
+        for (const m of uiMessages) injectedIds.add(m.id);
+      }
+
+      // Write injection confirmation chunk to the stream so the frontend
+      // knows which messages were injected and where in the response.
+      if (injected.length > 0) {
+        try {
+          const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+            collapsed: true,
+            execute: ({ write }) => {
+              write({
+                type: PENDING_MESSAGE_INJECTED_TYPE,
+                id: generateMessageId(),
+                data: {
+                  messageIds: uiMessages.map((m) => m.id),
+                  messages: uiMessages.map((m, idx) => ({
+                    id: m.id,
+                    text: messageTexts[idx] ?? "",
+                  })),
+                },
+              });
+            },
+          });
+          await waitUntilComplete();
+        } catch { /* non-fatal — stream write failed */ }
+      }
+
+      // Fire onInjected callback
+      if (config.onInjected && injected.length > 0) {
+        try {
+          await config.onInjected({
+            messages: uiMessages,
+            injectedModelMessages: injected,
+            chatId: ctx?.chatId ?? "",
+            turn: ctx?.turn ?? 0,
+            stepNumber,
+          });
+        } catch { /* non-fatal */ }
+      }
+
+      return injected;
+    },
+    {
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "tabler-message-forward",
+        "pending.message_count": uiMessages.length,
+        "pending.step_number": stepNumber,
+        "pending.messages": messageTexts,
+        ...(ctx?.chatId ? { "pending.chat_id": ctx.chatId } : {}),
+        ...(ctx?.turn != null ? { "pending.turn": ctx.turn } : {}),
+        ...accessoryAttributes({
+          items: [
+            { text: `${uiMessages.length} message${uiMessages.length === 1 ? "" : "s"}`, variant: "normal" },
+            { text: `between steps ${stepNumber} and ${stepNumber + 1}`, variant: "normal" },
+          ],
+          style: "codepath",
+        }),
+      },
+    }
+  );
+}
+
+// ---------------------------------------------------------------------------
 // chat.isCompactionSafe — check if it's safe to compact messages
 // ---------------------------------------------------------------------------
 
@@ -1143,29 +1362,50 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
   const telemetry = prompt.toAISDKTelemetry(options?.telemetry);
   Object.assign(result, telemetry);
 
-  // Auto-inject prepareStep when task-level compaction is configured.
-  // We build a custom prepareStep instead of using chatCompactionStep so we
-  // can pass the enriched SummarizeEvent to taskCompaction.summarize.
+  // Auto-inject prepareStep when compaction or pendingMessages is configured.
   const taskCompaction = locals.get(chatTaskCompactionKey);
-  if (taskCompaction) {
+  const taskPendingMessages = locals.get(chatPendingMessagesKey);
+
+  if (taskCompaction || taskPendingMessages) {
     result.prepareStep = async ({ messages, steps }: { messages: ModelMessage[]; steps: CompactionStep[] }) => {
-      const compactResult = await chatCompact(messages, steps, {
-        shouldCompact: taskCompaction.shouldCompact,
-        summarize: (msgs) => {
-          const ctx = locals.get(chatTurnContextKey);
-          const lastStep = steps.at(-1);
-          return taskCompaction.summarize({
-            messages: msgs,
-            usage: lastStep?.usage,
-            source: "inner",
-            stepNumber: steps.length - 1,
-            chatId: ctx?.chatId,
-            turn: ctx?.turn,
-            clientData: ctx?.clientData,
-          });
-        },
-      });
-      return compactResult.type === "skipped" ? undefined : compactResult;
+      let resultMessages: ModelMessage[] | undefined;
+
+      // 1. Compaction
+      if (taskCompaction) {
+        const compactResult = await chatCompact(messages, steps, {
+          shouldCompact: taskCompaction.shouldCompact,
+          summarize: (msgs) => {
+            const ctx = locals.get(chatTurnContextKey);
+            const lastStep = steps.at(-1);
+            return taskCompaction.summarize({
+              messages: msgs,
+              usage: lastStep?.usage,
+              source: "inner",
+              stepNumber: steps.length - 1,
+              chatId: ctx?.chatId,
+              turn: ctx?.turn,
+              clientData: ctx?.clientData,
+            });
+          },
+        });
+        if (compactResult.type !== "skipped") {
+          resultMessages = compactResult.messages;
+        }
+      }
+
+      // 2. Pending message injection (steering)
+      if (taskPendingMessages) {
+        const injected = await drainSteeringQueue(
+          taskPendingMessages,
+          resultMessages ?? messages,
+          steps,
+        );
+        if (injected.length > 0) {
+          resultMessages = [...(resultMessages ?? messages), ...injected];
+        }
+      }
+
+      return resultMessages ? { messages: resultMessages } : undefined;
     };
   }
 
@@ -1590,7 +1830,23 @@ export type ChatTaskOptions<
   compaction?: ChatTaskCompactionOptions;
 
   /**
-   * Called after the stream closes for this turn. Use this to persist the
+   * Configure how messages that arrive during streaming are handled.
+   *
+   * By default, messages queue for the next turn. When `shouldInject` is provided
+   * and returns `true`, messages are injected between tool-call steps via
+   * `prepareStep` — allowing users to steer the agent mid-execution.
+   *
+   * @example
+   * ```ts
+   * pendingMessages: {
+   *   shouldInject: ({ steps }) => steps.length > 0,
+   *   onReceived: ({ message }) => logger.info("Steering message received"),
+   * },
+   * ```
+   */
+  pendingMessages?: PendingMessagesOptions;
+
+  /**
    * conversation to your database after each assistant response.
    *
    * @example
@@ -1756,6 +2012,7 @@ function chatTask<
     onBeforeTurnComplete,
     onCompacted,
     compaction,
+    pendingMessages: pendingMessagesConfig,
     prepareMessages,
     onTurnComplete,
     maxTurns = 100,
@@ -1797,6 +2054,10 @@ function chatTask<
 
       if (compaction) {
         locals.set(chatTaskCompactionKey, compaction);
+      }
+
+      if (pendingMessagesConfig) {
+        locals.set(chatPendingMessagesKey, pendingMessagesConfig);
       }
 
       let currentWirePayload = payload;
@@ -1948,6 +2209,8 @@ function chatTask<
               locals.set(chatPipeCountKey, 0);
               locals.set(chatDeferKey, new Set());
               locals.set(chatCompactionStateKey, undefined);
+              locals.set(chatSteeringQueueKey, []);
+              locals.set(chatInjectedMessageIdsKey, new Set());
 
               // Store chat context for auto-detection by ai.tool subtasks
               locals.set(chatTurnContextKey, {
@@ -1969,7 +2232,39 @@ function chatTask<
 
               // Buffer messages that arrive during streaming
               const pendingMessages: ChatTaskWirePayload[] = [];
-              const msgSub = messagesInput.on((msg) => {
+              const pmConfig = locals.get(chatPendingMessagesKey);
+              const msgSub = messagesInput.on(async (msg) => {
+                // If pendingMessages is configured, route to the steering queue
+                // instead of the wire buffer. The frontend handles re-sending
+                // non-injected messages via sendMessage on turn complete.
+                if (pmConfig) {
+                  const lastUIMessage = msg.messages?.[msg.messages.length - 1];
+                  if (lastUIMessage) {
+                    if (pmConfig.onReceived) {
+                      try {
+                        await pmConfig.onReceived({
+                          message: lastUIMessage,
+                          chatId: currentWirePayload.chatId,
+                          turn,
+                        });
+                      } catch { /* non-fatal */ }
+                    }
+
+                    try {
+                      const queue = locals.get(chatSteeringQueueKey) ?? [];
+                      // Deduplicate by message ID — guards against double-sends
+                      if (lastUIMessage.id && queue.some((e) => e.uiMessage.id === lastUIMessage.id)) {
+                        return;
+                      }
+                      const modelMsgs = await toModelMessages([lastUIMessage]);
+                      queue.push({ uiMessage: lastUIMessage, modelMessages: modelMsgs });
+                      locals.set(chatSteeringQueueKey, queue);
+                    } catch { /* conversion failed — skip steering queue */ }
+                  }
+                  return; // Don't add to wire buffer — frontend handles non-injected case
+                }
+
+                // No pendingMessages config — standard wire buffer for next turn
                 pendingMessages.push(msg);
               });
 
@@ -2508,7 +2803,8 @@ function chatTask<
                 );
               }
 
-              // If messages arrived during streaming, use the first one immediately
+              // If messages arrived during streaming (without pendingMessages config),
+              // use the first one immediately as the next turn.
               if (pendingMessages.length > 0) {
                 currentWirePayload = pendingMessages[0]!;
                 return "continue";
@@ -2909,9 +3205,12 @@ class ChatMessageAccumulator {
   modelMessages: ModelMessage[] = [];
   uiMessages: UIMessage[] = [];
   private _compaction?: ChatTaskCompactionOptions;
+  private _pendingMessages?: PendingMessagesOptions;
+  private _steeringQueue: SteeringQueueEntry[] = [];
 
-  constructor(options?: { compaction?: ChatTaskCompactionOptions }) {
+  constructor(options?: { compaction?: ChatTaskCompactionOptions; pendingMessages?: PendingMessagesOptions }) {
     this._compaction = options?.compaction;
+    this._pendingMessages = options?.pendingMessages;
   }
 
   /**
@@ -2965,19 +3264,73 @@ class ChatMessageAccumulator {
   }
 
   /**
-   * Returns a `prepareStep` function for inner-loop compaction.
-   * Only available when `compaction` was provided to the constructor.
-   * Pass the result to `streamText({ prepareStep: conversation.prepareStep() })`.
+   * Queue a message for injection via `prepareStep`. Call from a
+   * `messagesInput.on()` listener when a message arrives during streaming.
+   */
+  steer(message: UIMessage, modelMessages?: ModelMessage[]): void {
+    if (modelMessages) {
+      this._steeringQueue.push({ uiMessage: message, modelMessages });
+    } else {
+      // Defer conversion — will be done in prepareStep if needed
+      this._steeringQueue.push({ uiMessage: message, modelMessages: [] });
+    }
+  }
+
+  /**
+   * Queue a message for injection, converting to model messages automatically.
+   */
+  async steerAsync(message: UIMessage): Promise<void> {
+    const modelMsgs = await toModelMessages([message]);
+    this._steeringQueue.push({ uiMessage: message, modelMessages: modelMsgs });
+  }
+
+  /**
+   * Get and clear unconsumed steering messages.
+   */
+  drainSteering(): UIMessage[] {
+    const result = this._steeringQueue.map((e) => e.uiMessage);
+    this._steeringQueue = [];
+    return result;
+  }
+
+  /**
+   * Returns a `prepareStep` function that handles both compaction and
+   * pending message injection. Pass to `streamText({ prepareStep: conversation.prepareStep() })`.
    */
   prepareStep(): ((args: { messages: ModelMessage[]; steps: CompactionStep[] }) => Promise<{ messages: ModelMessage[] } | undefined>) | undefined {
-    if (!this._compaction) return undefined;
+    if (!this._compaction && !this._pendingMessages) return undefined;
     const comp = this._compaction;
+    const pm = this._pendingMessages;
+    const queue = this._steeringQueue;
+
     return async ({ messages, steps }) => {
-      const result = await chatCompact(messages, steps, {
-        shouldCompact: comp.shouldCompact,
-        summarize: (msgs) => comp.summarize({ messages: msgs, source: "inner" }),
-      });
-      return result.type === "skipped" ? undefined : result;
+      let resultMessages: ModelMessage[] | undefined;
+
+      // 1. Compaction
+      if (comp) {
+        const result = await chatCompact(messages, steps, {
+          shouldCompact: comp.shouldCompact,
+          summarize: (msgs) => comp.summarize({ messages: msgs, source: "inner" }),
+        });
+        if (result.type !== "skipped") {
+          resultMessages = result.messages;
+        }
+      }
+
+      // 2. Pending message injection
+      if (pm && queue.length > 0) {
+        const injected = await drainSteeringQueue(
+          pm,
+          resultMessages ?? messages,
+          steps,
+          queue,
+        );
+        if (injected.length > 0) {
+          resultMessages = [...(resultMessages ?? messages), ...injected];
+        }
+      }
+
+      return resultMessages ? { messages: resultMessages } : undefined;
     };
   }
 
@@ -3058,6 +3411,8 @@ export type ChatSessionOptions = {
   maxTurns?: number;
   /** Automatic context compaction — same options as `chat.task({ compaction })`. */
   compaction?: ChatTaskCompactionOptions;
+  /** Configure mid-execution message injection — same options as `chat.task({ pendingMessages })`. */
+  pendingMessages?: PendingMessagesOptions;
 };
 
 export type ChatTurn = {
@@ -3108,6 +3463,13 @@ export type ChatTurn = {
    * Use with `chat.pipeAndCapture` when you need control between pipe and done.
    */
   addResponse(response: UIMessage): Promise<void>;
+
+  /**
+   * Returns a `prepareStep` function that handles both compaction and
+   * pending message injection. Pass to `streamText({ prepareStep: turn.prepareStep() })`.
+   * Only needed when not using `chat.toStreamTextOptions()` (which auto-injects it).
+   */
+  prepareStep(): ((args: { messages: ModelMessage[]; steps: CompactionStep[] }) => Promise<{ messages: ModelMessage[] } | undefined>) | undefined;
 };
 
 /**
@@ -3151,6 +3513,7 @@ function createChatSession(
     timeout = "1h",
     maxTurns = 100,
     compaction: sessionCompaction,
+    pendingMessages: sessionPendingMessages,
   } = options;
 
   return {
@@ -3203,6 +3566,45 @@ function createChatSession(
           // Reset stop signal for this turn
           stop.reset();
 
+          // Set up steering queue and pending messages config in locals
+          // so toStreamTextOptions() auto-injects prepareStep for steering
+          const turnSteeringQueue: SteeringQueueEntry[] = [];
+          locals.set(chatSteeringQueueKey, turnSteeringQueue);
+          if (sessionPendingMessages) {
+            locals.set(chatPendingMessagesKey, sessionPendingMessages);
+          }
+          locals.set(chatTurnContextKey, {
+            chatId: currentPayload.chatId,
+            turn,
+            continuation: currentPayload.continuation ?? false,
+            clientData: currentPayload.metadata,
+          });
+
+          // Listen for messages during streaming (steering + next-turn buffer)
+          const sessionPendingWire: ChatTaskWirePayload[] = [];
+          const sessionMsgSub = messagesInput.on(async (msg) => {
+            sessionPendingWire.push(msg);
+
+            if (sessionPendingMessages) {
+              const lastUIMessage = msg.messages?.[msg.messages.length - 1];
+              if (lastUIMessage) {
+                if (sessionPendingMessages.onReceived) {
+                  try {
+                    await sessionPendingMessages.onReceived({
+                      message: lastUIMessage,
+                      chatId: currentPayload.chatId,
+                      turn,
+                    });
+                  } catch { /* non-fatal */ }
+                }
+                try {
+                  const modelMsgs = await toModelMessages([lastUIMessage]);
+                  turnSteeringQueue.push({ uiMessage: lastUIMessage, modelMessages: modelMsgs });
+                } catch { /* non-fatal */ }
+              }
+            }
+          });
+
           // Accumulate messages
           const messages = await accumulator.addIncoming(
             currentPayload.messages,
@@ -3237,6 +3639,7 @@ function createChatSession(
                 if (error instanceof Error && error.name === "AbortError") {
                   if (runSignal.aborted) {
                     // Full cancel — don't accumulate
+                    sessionMsgSub.off();
                     await chatWriteTurnComplete();
                     return undefined;
                   }
@@ -3310,6 +3713,7 @@ function createChatSession(
                 }
               }
 
+              sessionMsgSub.off();
               await chatWriteTurnComplete();
               return response;
             },
@@ -3319,7 +3723,42 @@ function createChatSession(
             },
 
             async done() {
+              sessionMsgSub.off();
               await chatWriteTurnComplete();
+            },
+
+            prepareStep() {
+              const hasCompaction = !!sessionCompaction;
+              const hasPending = !!sessionPendingMessages;
+              if (!hasCompaction && !hasPending) return undefined;
+
+              return async ({ messages: stepMsgs, steps }: { messages: ModelMessage[]; steps: CompactionStep[] }) => {
+                let resultMessages: ModelMessage[] | undefined;
+
+                if (sessionCompaction) {
+                  const compactResult = await chatCompact(stepMsgs, steps, {
+                    shouldCompact: sessionCompaction.shouldCompact,
+                    summarize: (msgs) => sessionCompaction.summarize({ messages: msgs, source: "inner" }),
+                  });
+                  if (compactResult.type !== "skipped") {
+                    resultMessages = compactResult.messages;
+                  }
+                }
+
+                if (sessionPendingMessages) {
+                  const injected = await drainSteeringQueue(
+                    sessionPendingMessages,
+                    resultMessages ?? stepMsgs,
+                    steps,
+                    turnSteeringQueue,
+                  );
+                  if (injected.length > 0) {
+                    resultMessages = [...(resultMessages ?? stepMsgs), ...injected];
+                  }
+                }
+
+                return resultMessages ? { messages: resultMessages } : undefined;
+              };
             },
           };
 
