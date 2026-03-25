@@ -74,6 +74,10 @@ sequenceDiagram
     export async function POST(req: Request) {
       const { userId } = await req.json();
 
+      if (!userId || typeof userId !== "string") {
+        return NextResponse.json({ error: "Missing or invalid userId" }, { status: 400 });
+      }
+
       const response = await fetch("https://api.nango.dev/connect/sessions", {
         method: "POST",
         headers: {
@@ -114,7 +118,8 @@ sequenceDiagram
         const { token } = await sessionRes.json();
 
         const nango = new Nango({ connectSessionToken: token });
-        const result = await nango.auth("github");
+        // Use the exact integration slug from your Nango dashboard
+        const result = await nango.auth("<your-integration-slug>");
 
         // result.connectionId is what you pass to your task
         await fetch("/api/analyze-prs", {
@@ -222,7 +227,6 @@ export const analyzePRs = task({
 Add a route handler that receives the `connectionId` from your frontend and triggers the task:
 
 ```ts app/api/analyze-prs/route.ts
-import { tasks } from "@trigger.dev/sdk";
 import { analyzePRs } from "@/trigger/analyze-prs";
 import { NextResponse } from "next/server";
 
@@ -233,10 +237,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing connectionId or repo" }, { status: 400 });
   }
 
-  const handle = await tasks.trigger<typeof analyzePRs>("analyze-prs", {
-    connectionId,
-    repo,
-  });
+  const handle = await analyzePRs.trigger({ connectionId, repo });
 
   return NextResponse.json(handle);
 }
