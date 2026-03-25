@@ -1,5 +1,5 @@
 import * as Ariakit from "@ariakit/react";
-import { ArrowPathIcon, ChevronUpDownIcon, EyeIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon, ChevronUpDownIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { type MetaFunction, useFetcher } from "@remix-run/react";
 import {
@@ -21,7 +21,7 @@ import { OperationsFilter } from "~/components/metrics/OperationsFilter";
 import { ProvidersFilter } from "~/components/metrics/ProvidersFilter";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Badge } from "~/components/primitives/Badge";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
@@ -31,14 +31,17 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import {
-  Popover,
-  PopoverContent,
-  PopoverMenuItem,
-  PopoverTrigger,
-  PopoverVerticalEllipseTrigger,
-} from "~/components/primitives/Popover";
+import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableCellMenu,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "~/components/primitives/Table";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import {
   ResizableHandle,
@@ -676,7 +679,12 @@ export default function PromptDetailPage() {
                   </div>
 
                   {/* Tab content */}
-                  <div className="min-h-0 overflow-hidden">
+                  <div
+                    className={cn(
+                      "min-h-0 overflow-hidden",
+                      contentTab === "generations" && "bg-background-bright"
+                    )}
+                  >
                     {contentTab === "generations" && (
                       <GenerationsTab
                         promptSlug={prompt.slug}
@@ -1175,49 +1183,6 @@ function PreviewTab({
   );
 }
 
-function GenerationPopoverMenu({
-  isSelected,
-  runPath,
-  onViewDetails,
-}: {
-  isSelected: boolean;
-  runPath: string;
-  onViewDetails: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverVerticalEllipseTrigger onClick={(e) => e.stopPropagation()} className="shrink-0" />
-      <PopoverContent
-        className="min-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-        align="end"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex flex-col gap-1 p-1">
-          <PopoverMenuItem
-            to={runPath}
-            icon={RunsIcon}
-            leadingIconClassName="text-runs"
-            title="Jump to run"
-          />
-          {!isSelected && (
-            <PopoverMenuItem
-              icon={EyeIcon}
-              leadingIconClassName="text-text-dimmed"
-              title="View details"
-              onClick={() => {
-                onViewDetails();
-                setOpen(false);
-              }}
-            />
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 // ─── Generations Tab ─────────────────────────────────────
 
 function GenerationsTab({
@@ -1482,7 +1447,7 @@ function GenerationsTab({
           className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
           {newGenerationCount > 0 && (
-            <div className="sticky top-0 z-10 flex items-center justify-center gap-2 border-b border-grid-dimmed bg-background-bright px-3 py-1.5">
+            <div className="sticky top-0 z-20 flex items-center justify-center gap-2 border-b border-grid-dimmed bg-background-bright px-3 py-1.5">
               <span className="text-xs text-text-dimmed">
                 {newGenerationCount} new {newGenerationCount === 1 ? "generation" : "generations"}
               </span>
@@ -1495,51 +1460,90 @@ function GenerationsTab({
               </Button>
             </div>
           )}
-          {generations.map((gen, i) => {
-            const isSelected = selectedSpan?.spanId === gen.span_id;
-            const runPath = v3RunSpanPath(
-              organization,
-              project,
-              environment,
-              { friendlyId: gen.run_id },
-              { spanId: gen.span_id }
-            );
-            return (
-              <div
-                key={`${gen.run_id}-${gen.span_id}-${i}`}
-                data-generation-item
-                onClick={() => onSelectSpan({ runId: gen.run_id, spanId: gen.span_id })}
-                className={cn(
-                  "group/gen flex cursor-pointer items-center gap-3 border-b border-grid-dimmed px-3 py-3 text-sm transition",
-                  isSelected
-                    ? "bg-indigo-500/10 hover:bg-indigo-500/[0.07]"
-                    : "hover:bg-charcoal-750"
-                )}
-              >
-                <RadioButtonCircle checked={isSelected} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center">
-                    <span className="truncate font-medium text-text-bright">
+          <Table variant="bright" fullWidth showTopBorder={false}>
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell className="w-8" />
+                <TableHeaderCell>Operation</TableHeaderCell>
+                <TableHeaderCell>Version</TableHeaderCell>
+                <TableHeaderCell>Model</TableHeaderCell>
+                <TableHeaderCell>Tokens</TableHeaderCell>
+                <TableHeaderCell>Cost</TableHeaderCell>
+                <TableHeaderCell>Duration</TableHeaderCell>
+                <TableHeaderCell alignment="right">Time</TableHeaderCell>
+                <TableHeaderCell className="w-12" hiddenLabel>
+                  Actions
+                </TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {generations.map((gen, i) => {
+                const isSelected = selectedSpan?.spanId === gen.span_id;
+                const runPath = v3RunSpanPath(
+                  organization,
+                  project,
+                  environment,
+                  { friendlyId: gen.run_id },
+                  { spanId: gen.span_id }
+                );
+                return (
+                  <TableRow
+                    key={`${gen.run_id}-${gen.span_id}-${i}`}
+                    data-generation-item
+                    isSelected={isSelected}
+                    className="cursor-pointer"
+                    onClick={() => onSelectSpan({ runId: gen.run_id, spanId: gen.span_id })}
+                  >
+                    <TableCell>
+                      <RadioButtonCircle checked={isSelected} />
+                    </TableCell>
+                    <TableCell className={cn("font-medium", isSelected && "text-text-bright")}>
                       {gen.operation_id || gen.task_identifier}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-text-dimmed">
-                    <span className="whitespace-nowrap text-charcoal-400">v{gen.prompt_version}</span>
-                    <span className="whitespace-nowrap">{gen.response_model}</span>
-                    <span className="whitespace-nowrap">{gen.input_tokens + gen.output_tokens} tokens</span>
-                    <span className="whitespace-nowrap">{formatCost(gen.total_cost)}</span>
-                    <span className="whitespace-nowrap">{Math.round(gen.duration_ms)}ms</span>
-                  </div>
-                </div>
-                <span className="shrink-0 text-xs text-text-dimmed">{gen.start_time}</span>
-                <GenerationPopoverMenu
-                  isSelected={isSelected}
-                  runPath={runPath}
-                  onViewDetails={() => onSelectSpan({ runId: gen.run_id, spanId: gen.span_id })}
-                />
-              </div>
-            );
-          })}
+                    </TableCell>
+                    <TableCell
+                      className={cn("tabular-nums", isSelected ? "text-text-bright" : "text-charcoal-400")}
+                    >
+                      v{gen.prompt_version}
+                    </TableCell>
+                    <TableCell className={cn(isSelected && "text-text-bright")}>
+                      {gen.response_model}
+                    </TableCell>
+                    <TableCell className={cn("tabular-nums", isSelected && "text-text-bright")}>
+                      {gen.input_tokens + gen.output_tokens}
+                    </TableCell>
+                    <TableCell className={cn("tabular-nums", isSelected && "text-text-bright")}>
+                      {formatCost(gen.total_cost)}
+                    </TableCell>
+                    <TableCell className={cn("tabular-nums", isSelected && "text-text-bright")}>
+                      {Math.round(gen.duration_ms)}ms
+                    </TableCell>
+                    <TableCell
+                      alignment="right"
+                      className={cn("tabular-nums", isSelected && "text-text-bright")}
+                    >
+                      {gen.start_time}
+                    </TableCell>
+                    <TableCellMenu
+                      isSticky
+                      isSelected={isSelected}
+                      hiddenButtons={
+                        <LinkButton
+                          to={runPath}
+                          onClick={(e) => e.stopPropagation()}
+                          variant="minimal/small"
+                          TrailingIcon={RunsIcon}
+                          trailingIconClassName="text-text-bright"
+                          className="h-[1.375rem] pl-1.5 pr-2"
+                        >
+                          <span className="text-[0.6875rem] text-text-bright">View run</span>
+                        </LinkButton>
+                      }
+                    />
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
 
           {/* Infinite scroll sentinel */}
           <div ref={loadMoreRef} className="h-px" />
