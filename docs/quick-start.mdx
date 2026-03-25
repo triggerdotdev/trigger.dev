@@ -40,7 +40,7 @@ If I've already run init and want the MCP server, run: npx trigger.dev@latest in
   import type { myTask } from "./trigger/example";
   import { tasks } from "@trigger.dev/sdk";
 
-  const handle = await tasks.trigger<typeof myTask>("my-task-id", { payload: "data" });
+  const handle = await tasks.trigger<typeof myTask>("hello-world", { message: "Hello from my app!" });
 
 ## When done, point me to
 
