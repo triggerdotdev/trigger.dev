@@ -1,3 +1,9 @@
+---
+name: span-timeline-events
+description: Use when adding, modifying, or debugging OTel span timeline events in the trace view. Covers event structure, ClickHouse storage constraints, rendering in SpanTimeline component, admin visibility, and the step-by-step process for adding new events.
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash
+---
+
 # Span Timeline Events
 
 The trace view's right panel shows a timeline of events for the selected span. These are OTel span events rendered by `app/utils/timelineSpanEvents.ts` and the `SpanTimeline` component.
@@ -22,7 +28,7 @@ The `SpanTimeline` component in `app/components/run/RunTimeline.tsx` renders:
 3. **Duration bar** (thick 7px line) - from "Started" to "Finished"
 4. **"Finished"** marker (thick cap) - at `startTime + duration`
 
-The thin line before "Started" only appears when there are events with timestamps between the span start and the first child span. For the Attempt span this works well (Dequeued → Pod scheduled → Launched → etc. all happen before execution starts). Events all get `lineVariant: "light"` (thin) while the execution bar gets `variant: "normal"` (thick).
+The thin line before "Started" only appears when there are events with timestamps between the span start and the first child span. For the Attempt span this works well (Dequeued -> Pod scheduled -> Launched -> etc. all happen before execution starts). Events all get `lineVariant: "light"` (thin) while the execution bar gets `variant: "normal"` (thick).
 
 ## Trace View Sort Order
 
