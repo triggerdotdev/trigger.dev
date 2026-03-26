@@ -119,7 +119,7 @@ describe("RunsReplicationService (part 1/2)", () => {
           engine: "V2",
           trigger_source: "api",
           root_trigger_source: "dashboard",
-          is_warm_start: true,
+          is_warm_start: 1,
         })
       );
 
