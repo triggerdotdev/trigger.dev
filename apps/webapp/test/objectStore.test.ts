@@ -1,4 +1,4 @@
-import { minioTest } from "@internal/testcontainers";
+import { postgresAndMinioTest } from "@internal/testcontainers";
 import { type IOPacket } from "@trigger.dev/core/v3";
 import { PrismaClient } from "@trigger.dev/database";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -10,7 +10,7 @@ import {
 } from "~/v3/objectStore.server";
 
 // Extend the timeout for container tests
-vi.setConfig({ testTimeout: 30_000 });
+vi.setConfig({ testTimeout: 60_000 });
 
 // Helper to create a test environment
 async function createTestEnvironment(prisma: PrismaClient) {
@@ -54,21 +54,6 @@ async function createTestEnvironment(prisma: PrismaClient) {
 // Mock env module for testing
 const originalEnv = process.env;
 
-// Create extended test with Prisma client
-const minioWithPrismaTest = minioTest.extend<{ prisma: PrismaClient }>({
-  prisma: async ({}, use) => {
-    const prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: process.env.DATABASE_URL,
-        },
-      },
-    });
-    await use(prisma);
-    await prisma.$disconnect();
-  },
-});
-
 describe("Object Storage", () => {
   describe("URI parsing functions", () => {
     it("should parse URI with protocol", () => {
@@ -106,7 +91,7 @@ describe("Object Storage", () => {
     });
   });
 
-  minioWithPrismaTest(
+  postgresAndMinioTest(
     "should upload and download data without protocol (legacy)",
     async ({ minioConfig, prisma }) => {
       // Set up env for default provider
@@ -151,7 +136,7 @@ describe("Object Storage", () => {
     }
   );
 
-  minioWithPrismaTest(
+  postgresAndMinioTest(
     "should upload and download data with protocol prefix",
     async ({ minioConfig, prisma }) => {
       // Set up env for named provider
@@ -197,7 +182,7 @@ describe("Object Storage", () => {
     }
   );
 
-  minioWithPrismaTest(
+  postgresAndMinioTest(
     "should support migration from default provider to named provider",
     async ({ minioConfig, prisma }) => {
       const environment = await createTestEnvironment(prisma);

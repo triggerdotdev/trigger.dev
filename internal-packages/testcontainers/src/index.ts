@@ -292,3 +292,13 @@ export const minioTest = test.extend<MinIOContext>({
   minioContainer,
   minioConfig,
 });
+
+type PostgresAndMinIOContext = NetworkContext & PostgresContext & MinIOContext;
+
+export const postgresAndMinioTest = test.extend<PostgresAndMinIOContext>({
+  network,
+  postgresContainer,
+  prisma,
+  minioContainer,
+  minioConfig,
+});

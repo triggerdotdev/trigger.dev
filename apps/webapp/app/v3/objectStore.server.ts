@@ -293,7 +293,7 @@ export async function uploadDataToObjectStore(
     });
 
     const url = new URL(config.baseUrl);
-    url.pathname = `${prefix}/${filename}`;
+    url.pathname = prefix ? `/${prefix}/${filename}` : `/${filename}`;
 
     logger.debug("Uploading to object store", { url: url.href, protocol: protocol || "default" });
 
