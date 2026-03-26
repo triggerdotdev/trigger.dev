@@ -40,6 +40,7 @@ import { waitForLlmPricingReady } from "./llmPricingRegistry.server";
 import { env } from "~/env.server";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 import { singleton } from "~/utils/singleton";
+import { getClickhouseForOrganization, getEventRepositoryForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
 
 class OTLPExporter {
   private _tracer: Tracer;
@@ -149,9 +150,6 @@ class OTLPExporter {
   async #getEventRepositoryForStoreAndOrg(store: string, orgId: string): Promise<IEventRepository> {
     // For ClickHouse stores with a specific org (not "default"), use org-specific repository
     if ((store === "clickhouse" || store === "clickhouse_v2") && orgId !== "default") {
-      const { getEventRepositoryForOrganization } = await import(
-        "~/services/clickhouse/clickhouseFactory.server"
-      );
       return await getEventRepositoryForOrganization(orgId);
     }
 
@@ -1191,11 +1189,6 @@ export const otlpExporter = singleton("otlpExporter", initializeOTLPExporter);
 
 async function initializeOTLPExporter() {
   // Metrics are written globally (not per-org), use standard clickhouse
-  // We use a dummy org ID since metrics table is global
-  const { getClickhouseForOrganization } = await import(
-    "~/services/clickhouse/clickhouseFactory.server"
-  );
-
   // Use a sentinel org ID for global metrics writes
   // In practice, all orgs currently share the same metrics table/instance
   const metricsClickhouse = await getClickhouseForOrganization("METRICS_GLOBAL", "standard");
