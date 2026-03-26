@@ -86,6 +86,12 @@ describe("RunsReplicationService (part 1/2)", () => {
           organizationId: organization.id,
           environmentType: "DEVELOPMENT",
           engine: "V2",
+          annotations: {
+            triggerSource: "api",
+            triggerAction: "trigger",
+            rootTriggerSource: "dashboard",
+          },
+          isWarmStart: true,
         },
       });
 
@@ -111,6 +117,9 @@ describe("RunsReplicationService (part 1/2)", () => {
           organization_id: organization.id,
           environment_type: "DEVELOPMENT",
           engine: "V2",
+          trigger_source: "api",
+          root_trigger_source: "dashboard",
+          is_warm_start: true,
         })
       );
 
