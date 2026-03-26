@@ -89,7 +89,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { RunEnvironmentMismatchError, RunPresenter } from "~/presenters/v3/RunPresenter.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
@@ -179,7 +179,8 @@ async function getRunsListFromTableState({
       return null;
     }
 
-    const runsListPresenter = new NextRunListPresenter($replica, clickhouseClient);
+    const clickhouse = await getClickhouseForOrganization(project.organizationId, "standard");
+    const runsListPresenter = new NextRunListPresenter($replica, clickhouse);
     const currentPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,
