@@ -66,6 +66,17 @@ containerTest("should use both", async ({ prisma, redisOptions }) => {
 });
 ```
 
+## Code Style
+
+### Imports
+
+**Prefer static imports over dynamic imports.** Only use dynamic `import()` when:
+- Circular dependencies cannot be resolved otherwise
+- Code splitting is genuinely needed for performance
+- The module must be loaded conditionally at runtime
+
+Dynamic imports add unnecessary overhead in hot paths and make code harder to analyze. If you find yourself using `await import()`, ask if a regular `import` statement would work instead.
+
 ## Changesets and Server Changes
 
 When modifying any public package (`packages/*` or `integrations/*`), add a changeset:
