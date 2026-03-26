@@ -207,6 +207,10 @@ export const myChat = chat.task({
   Use `data-*` chunk types (e.g. `data-status`, `data-progress`) for custom data. The AI SDK processes these into `DataUIPart` objects in `message.parts` on the frontend. Writing the same `type` + `id` again updates the existing part instead of creating a new one — useful for live progress.
 </Tip>
 
+<Tip>
+  Inside lifecycle callbacks (`onPreload`, `onChatStart`, `onTurnStart`, `onBeforeTurnComplete`, `onCompacted`), you can use the `writer` parameter instead of `chat.stream.writer()` — it's simpler and avoids the `execute` + `waitUntilComplete` boilerplate. See [ChatWriter](/ai-chat/reference#chatwriter).
+</Tip>
+
 `chat.stream` exposes the full stream API:
 
 | Method | Description |
