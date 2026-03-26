@@ -12,7 +12,7 @@ export class ComputeGatewayClient {
   async createTemplate(
     req: TemplateCreateRequest,
     options?: { signal?: AbortSignal }
-  ): Promise<{ accepted: boolean; templateId?: string }> {
+  ): Promise<{ accepted: boolean }> {
     const url = `${this.opts.gatewayUrl}/api/templates`;
 
     const headers: Record<string, string> = {
@@ -36,11 +36,6 @@ export class ComputeGatewayClient {
       throw new Error(`Gateway template creation failed (${response.status}): ${errorBody}`);
     }
 
-    if (response.status === 202) {
-      return { accepted: true };
-    }
-
-    const result = await response.json();
-    return { accepted: false, templateId: result.template_id };
+    return { accepted: response.status === 202 };
   }
 }
