@@ -101,6 +101,9 @@ export const myChat = chat.task({
 | `runId` | `string` | The Trigger.dev run ID |
 | `chatAccessToken` | `string` | Scoped access token for this run |
 | `clientData` | Typed by `clientDataSchema` | Custom data from the frontend |
+| `writer` | [`ChatWriter`](/ai-chat/reference#chatwriter) | Stream writer for custom chunks |
+
+Every lifecycle callback receives a `writer` — a lazy stream writer that lets you send custom `UIMessageChunk` parts (like `data-*` parts) to the frontend without the ceremony of `chat.stream.writer()`. See [ChatWriter](/ai-chat/reference#chatwriter).
 
 #### onChatStart
 
@@ -145,6 +148,7 @@ Fires at the start of every turn, after message accumulation and `onChatStart` (
 | `continuation` | `boolean` | Whether this run is continuing an existing chat |
 | `preloaded` | `boolean` | Whether this run was preloaded |
 | `clientData` | Typed by `clientDataSchema` | Custom data from the frontend |
+| `writer` | [`ChatWriter`](/ai-chat/reference#chatwriter) | Stream writer for custom chunks |
 
 ```ts
 export const myChat = chat.task({
@@ -170,9 +174,41 @@ export const myChat = chat.task({
   By persisting in `onTurnStart`, the user's message is saved to your database before the AI starts streaming. If the user refreshes mid-stream, the message is already there.
 </Tip>
 
+#### onBeforeTurnComplete
+
+Fires after the response is captured but **before** the stream closes. The `writer` can send custom chunks that appear in the current turn — use this for post-processing indicators, compaction progress, or any data the user should see before the turn ends.
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  onBeforeTurnComplete: async ({ writer, usage, uiMessages }) => {
+    // Write a custom data part while the stream is still open
+    writer.write({
+      type: "data-usage-summary",
+      data: {
+        tokens: usage?.totalTokens,
+        messageCount: uiMessages.length,
+      },
+    });
+
+    // You can also compact messages here and write progress
+    if (usage?.totalTokens && usage.totalTokens > 50_000) {
+      writer.write({ type: "data-compaction", data: { status: "compacting" } });
+      chat.setMessages(compactedMessages);
+      writer.write({ type: "data-compaction", data: { status: "complete" } });
+    }
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+Receives the same fields as [`TurnCompleteEvent`](/ai-chat/reference#turncompleteevent), plus a [`writer`](/ai-chat/reference#chatwriter).
+
 #### onTurnComplete
 
-Fires after each turn completes — after the response is captured, before waiting for the next message. This is the primary hook for persisting the assistant's response.
+Fires after each turn completes — after the response is captured and the stream is closed. This is the primary hook for persisting the assistant's response. Does not include a `writer` since the stream is already closed.
 
 | Field | Type | Description |
 |-------|------|-------------|
