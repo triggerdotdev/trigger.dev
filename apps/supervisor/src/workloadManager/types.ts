@@ -1,4 +1,4 @@
-import type { EnvironmentType, MachinePreset, PlacementTag } from "@trigger.dev/core/v3";
+import type { EnvironmentType, MachinePreset, PlacementTag, RunAnnotations } from "@trigger.dev/core/v3";
 
 export interface WorkloadManagerOptions {
   workloadApiProtocol: "http" | "https";
@@ -41,4 +41,5 @@ export interface WorkloadManagerCreateOptions {
   snapshotFriendlyId: string;
   // Trace context for OTel span emission (W3C format: { traceparent: "00-...", tracestate?: "..." })
   traceContext?: Record<string, unknown>;
+  annotations?: RunAnnotations;
 }

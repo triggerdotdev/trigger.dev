@@ -6,7 +6,7 @@ import { PromptsNone } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { DateTime } from "~/components/primitives/DateTime";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import {
   Table,
   TableBlankRow,
@@ -24,7 +24,9 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema, v3PromptsPath } from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3PromptsPath } from "~/utils/pathBuilder";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { BookOpenIcon } from "@heroicons/react/24/solid";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Prompts | Trigger.dev" }];
@@ -80,6 +82,11 @@ export default function PromptsPage() {
     <PageContainer>
       <NavBar>
         <PageTitle title="Prompts" />
+        <PageAccessories>
+          <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("ai/prompts")}>
+            Prompts docs
+          </LinkButton>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <Table containerClassName="border-t-0">
@@ -108,39 +115,35 @@ export default function PromptsPage() {
                     <TableCell to={path} isTabbableCell>
                       <TruncatedCopyableValue value={prompt.friendlyId} />
                     </TableCell>
-                    <TableCell to={path}>
-                      <span className="text-text-bright">{prompt.slug}</span>
-                    </TableCell>
+                    <TableCell to={path}>{prompt.slug}</TableCell>
                     <TableCell to={path}>
                       {prompt.description ? (
-                        <span className="text-text-dimmed" title={prompt.description.length > 80 ? prompt.description : undefined}>
+                        <span
+                          title={prompt.description.length > 80 ? prompt.description : undefined}
+                        >
                           {prompt.description.length > 80
-                            ? prompt.description.slice(0, 80) + "..."
+                            ? prompt.description.slice(0, 80) + "…"
                             : prompt.description}
                         </span>
                       ) : (
-                        <span className="text-charcoal-500">-</span>
+                        <span>-</span>
                       )}
                     </TableCell>
                     <TableCell to={path}>
-                      <span className="text-text-dimmed">
-                        {prompt.defaultModel ?? <span className="text-charcoal-500">-</span>}
-                      </span>
+                      <span>{prompt.defaultModel ?? <span>-</span>}</span>
                     </TableCell>
                     <TableCell to={path}>
                       {activeVersion ? (
                         <div className="flex items-center gap-1.5">
                           <div
                             className={`size-1.5 rounded-full ${
-                              isOverride ? "bg-amber-400" : "bg-green-500"
+                              isOverride ? "bg-warning" : "bg-success"
                             }`}
                           />
-                          <span className="text-text-bright">
-                            v{activeVersion.version}
-                          </span>
+                          <span>v{activeVersion.version}</span>
                         </div>
                       ) : (
-                        <span className="text-charcoal-500">-</span>
+                        <span>-</span>
                       )}
                     </TableCell>
                     <TableCell to={path}>
@@ -173,12 +176,7 @@ function UsageSparkline({ data }: { data?: number[] }) {
       <div className="h-6 w-16">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 1, right: 0, bottom: 1, left: 0 }}>
-            <Bar
-              dataKey="value"
-              fill="#3b82f6"
-              radius={[1, 1, 0, 0]}
-              isAnimationActive={false}
-            />
+            <Bar dataKey="value" fill="#3b82f6" radius={[1, 1, 0, 0]} isAnimationActive={false} />
           </BarChart>
         </ResponsiveContainer>
       </div>

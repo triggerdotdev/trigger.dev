@@ -551,6 +551,31 @@ export function v3PromptPath(
   return version != null ? `${base}?version=${version}` : base;
 }
 
+export function v3ModelsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/models`;
+}
+
+export function v3ModelDetailPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  modelId: string
+) {
+  return `${v3ModelsPath(organization, project, environment)}/${modelId}`;
+}
+
+export function v3ModelComparePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3ModelsPath(organization, project, environment)}/compare`;
+}
+
 export function v3ErrorsPath(
   organization: OrgForPath,
   project: ProjectForPath,

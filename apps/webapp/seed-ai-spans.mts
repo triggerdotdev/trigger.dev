@@ -11,7 +11,7 @@ import {
   enrichCreatableEvents,
   setLlmPricingRegistry,
 } from "./app/v3/utils/enrichCreatableEvents.server";
-import { ModelPricingRegistry, seedLlmPricing } from "@internal/llm-pricing";
+import { ModelPricingRegistry, seedLlmPricing } from "@internal/llm-model-catalog";
 import { nanoid } from "nanoid";
 import { unflattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
 import type { Attributes } from "@opentelemetry/api";
@@ -138,6 +138,7 @@ function eventToLlmMetricsRow(event: CreateEventInput): LlmMetricsV1Input {
     gen_ai_system: llm.genAiSystem,
     request_model: llm.requestModel,
     response_model: llm.responseModel,
+    base_response_model: llm.baseResponseModel,
     matched_model_id: llm.matchedModelId,
     operation_id: llm.operationId,
     finish_reason: llm.finishReason,
@@ -156,6 +157,8 @@ function eventToLlmMetricsRow(event: CreateEventInput): LlmMetricsV1Input {
     ms_to_first_chunk: llm.msToFirstChunk,
     tokens_per_second: llm.tokensPerSecond,
     metadata: llm.metadata,
+    prompt_slug: llm.promptSlug,
+    prompt_version: llm.promptVersion,
     start_time: formatStartTime(BigInt(event.startTime)),
     duration: formatDuration(event.duration ?? 0),
   };

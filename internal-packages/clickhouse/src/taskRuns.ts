@@ -49,6 +49,9 @@ export const TaskRunV2 = z.object({
   bulk_action_group_ids: z.array(z.string()).default([]),
   worker_queue: z.string().default(""),
   max_duration_in_seconds: z.number().int().nullish(),
+  trigger_source: z.string().default(""),
+  root_trigger_source: z.string().default(""),
+  is_warm_start: z.boolean().nullish(),
   _version: z.string(),
   _is_deleted: z.number().int().default(0),
 });
@@ -105,6 +108,9 @@ export const TASK_RUN_COLUMNS = [
   "bulk_action_group_ids",
   "worker_queue",
   "max_duration_in_seconds",
+  "trigger_source",
+  "root_trigger_source",
+  "is_warm_start",
 ] as const;
 
 export type TaskRunColumnName = (typeof TASK_RUN_COLUMNS)[number];
@@ -168,6 +174,9 @@ export type TaskRunFieldTypes = {
   bulk_action_group_ids: string[];
   worker_queue: string;
   max_duration_in_seconds: number | null;
+  trigger_source: string;
+  root_trigger_source: string;
+  is_warm_start: boolean | null;
 };
 
 /**
@@ -302,6 +311,9 @@ export type TaskRunInsertArray = [
   bulk_action_group_ids: string[],
   worker_queue: string,
   max_duration_in_seconds: number | null,
+  trigger_source: string,
+  root_trigger_source: string,
+  is_warm_start: boolean | null,
 ];
 
 /**

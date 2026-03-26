@@ -24,8 +24,14 @@ export type TriggerScheduledTaskParams = {
   exactScheduleTime?: Date;
 };
 
+export type TriggerScheduledTaskErrorType = "QUEUE_LIMIT" | "SYSTEM_ERROR";
+
 export interface TriggerScheduledTaskCallback {
-  (params: TriggerScheduledTaskParams): Promise<{ success: boolean; error?: string }>;
+  (params: TriggerScheduledTaskParams): Promise<{
+    success: boolean;
+    error?: string;
+    errorType?: TriggerScheduledTaskErrorType;
+  }>;
 }
 
 export interface ScheduleEngineOptions {

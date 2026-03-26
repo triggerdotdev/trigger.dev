@@ -1,7 +1,7 @@
 import type { DefaultModelDefinition } from "./types.js";
 
-// Auto-generated from Langfuse default-model-prices.json — do not edit manually.
-// Run `pnpm run sync-prices` to update from upstream.
+// Auto-generated from default-model-prices.json — do not edit manually.
+// Run `pnpm run sync-prices` to update the JSON, then `pnpm run generate` to regenerate.
 // Source: https://github.com/langfuse/langfuse
 
 export const defaultModelPrices: DefaultModelDefinition[] = [

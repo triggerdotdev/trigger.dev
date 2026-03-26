@@ -36,6 +36,12 @@ export class ClickhouseQueryBuilder<TOutput> {
     this.settings = settings;
   }
 
+  /** Set query parameters without adding a WHERE clause. Use for base queries with inline params. */
+  setParams(params: QueryParams): this {
+    Object.assign(this.params, params);
+    return this;
+  }
+
   where(clause: string, params?: QueryParams): this {
     this.whereClauses.push(clause);
     if (params) {

@@ -36,6 +36,10 @@ export default function Page() {
               label: "LLM Models",
               to: "/admin/llm-models",
             },
+            {
+              label: "Notifications",
+              to: "/admin/notifications",
+            },
           ]}
           layoutId={"admin"}
         />

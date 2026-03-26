@@ -1227,6 +1227,12 @@ const EnvironmentSchema = z
     // Query feature flag
     QUERY_FEATURE_ENABLED: z.string().default("1"),
 
+    // AI features (Prompts, Models, AI Metrics sidebar section)
+    AI_FEATURES_ENABLED: z.string().default("0"),
+
+    // AI Models feature (Models sidebar item within AI section)
+    AI_MODELS_ENABLED: z.string().default("0"),
+
     // Logs page ClickHouse URL (for logs queries)
     LOGS_CLICKHOUSE_URL: z
       .string()

@@ -120,7 +120,11 @@ const Env = z
 
     KUBERNETES_MEMORY_OVERHEAD_GB: z.coerce.number().min(0).optional(), // Optional memory overhead to add to the limit in GB
     KUBERNETES_SCHEDULER_NAME: z.string().optional(), // Custom scheduler name for pods
-    KUBERNETES_LARGE_MACHINE_POOL_LABEL: z.string().optional(), // if set, large-* presets affinity for machinepool=<value>
+    // Large machine affinity settings - large-* presets prefer a dedicated pool
+    KUBERNETES_LARGE_MACHINE_AFFINITY_ENABLED: BoolEnv.default(false),
+    KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_KEY: z.string().trim().min(1).default("node.cluster.x-k8s.io/machinepool"),
+    KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_VALUE: z.string().trim().min(1).default("large-machines"),
+    KUBERNETES_LARGE_MACHINE_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(100),
 
     // Project affinity settings - pods from the same project prefer the same node
     KUBERNETES_PROJECT_AFFINITY_ENABLED: BoolEnv.default(false),
@@ -130,6 +134,13 @@ const Env = z
       .trim()
       .min(1)
       .default("kubernetes.io/hostname"),
+
+    // Schedule affinity settings - runs from schedule trees prefer a dedicated pool
+    KUBERNETES_SCHEDULE_AFFINITY_ENABLED: BoolEnv.default(false),
+    KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_KEY: z.string().trim().min(1).default("node.cluster.x-k8s.io/machinepool"),
+    KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_VALUE: z.string().trim().min(1).default("scheduled-runs"),
+    KUBERNETES_SCHEDULE_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(80),
+    KUBERNETES_SCHEDULE_ANTI_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(20),
 
     // Placement tags settings
     PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),

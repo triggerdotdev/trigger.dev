@@ -264,7 +264,9 @@ export class RunEngineTriggerTaskService {
 
         if (!queueSizeGuard.ok) {
           throw new ServiceValidationError(
-            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
+            undefined,
+            "warn"
           );
         }
       }
