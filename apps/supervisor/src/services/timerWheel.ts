@@ -46,7 +46,7 @@ export class TimerWheel<T> {
     this.cursor = 0;
     this.intervalId = null;
     this.onExpire = opts.onExpire;
-    this.delaySlots = Math.max(1, Math.min(NUM_SLOTS, Math.round(opts.delayMs / TICK_MS)));
+    this.delaySlots = Math.max(1, Math.min(NUM_SLOTS, Math.ceil(opts.delayMs / TICK_MS)));
   }
 
   /** Start the timer wheel. Must be called before submitting items. */
@@ -88,7 +88,7 @@ export class TimerWheel<T> {
    * Clamped to [TICK_MS, 60000ms].
    */
   setDelay(delayMs: number): void {
-    this.delaySlots = Math.max(1, Math.min(NUM_SLOTS, Math.round(delayMs / TICK_MS)));
+    this.delaySlots = Math.max(1, Math.min(NUM_SLOTS, Math.ceil(delayMs / TICK_MS)));
   }
 
   /**

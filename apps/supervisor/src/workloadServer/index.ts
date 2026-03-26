@@ -129,7 +129,15 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     if (this.computeManager && env.COMPUTE_SNAPSHOTS_ENABLED) {
       this.snapshotDelayWheel = new TimerWheel<DelayedSnapshot>({
         delayMs: env.COMPUTE_SNAPSHOT_DELAY_MS,
-        onExpire: (item) => this.dispatchComputeSnapshot(item.data),
+        onExpire: (item) => {
+          this.dispatchComputeSnapshot(item.data).catch((error) => {
+            this.logger.error("Compute snapshot dispatch failed", {
+              runId: item.data.runFriendlyId,
+              runnerId: item.data.runnerId,
+              error,
+            });
+          });
+        },
       });
       this.snapshotDelayWheel.start();
     }
@@ -296,7 +304,14 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 this.logger.error(
                   "TRIGGER_WORKLOAD_API_DOMAIN is not set, cannot create snapshot callback URL"
                 );
-                reply.json({ error: "Snapshot callbacks not configured" }, false, 500);
+                reply.json(
+                  {
+                    ok: false,
+                    error: "Snapshot callbacks not configured",
+                  } satisfies WorkloadSuspendRunResponseBody,
+                  false,
+                  500
+                );
                 return;
               }
 
