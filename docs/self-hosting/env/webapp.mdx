@@ -229,8 +229,10 @@ Keep your existing `OBJECT_STORE_*` variables (R2) as the default provider.
 </Step>
 
 <Step title="Test the configuration">
-  Restart the webapp and verify both providers work: - Old runs (no prefix) should still access R2 -
-  New runs with `s3://` prefix should use S3
+Restart the webapp and verify both providers work:
+
+- Old runs (no prefix) should still access R2
+- New runs with `s3://` prefix should use S3
 </Step>
 
 <Step title="Switch to S3 for new uploads">
@@ -245,7 +247,7 @@ After this change:
 - New data uses `s3://` prefix and goes to S3
 - Old data (no prefix) still uses R2
 - Data with explicit protocol uses the corresponding provider
-  </Step>
+</Step>
 
 <Step title="Optionally decommission R2">
 Once all active runs using R2 data have completed (check your data retention policies), you can remove the R2 credentials. Keep `OBJECT_STORE_DEFAULT_PROTOCOL=s3` to ensure new data continues using S3.
