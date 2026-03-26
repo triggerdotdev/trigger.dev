@@ -147,11 +147,12 @@ function toolFromTask<
       }
 
       return await task
-        .triggerAndWait(input as inferSchemaIn<TTaskSchema>, {
+        .triggerAndSubscribe(input as inferSchemaIn<TTaskSchema>, {
           metadata: {
             [METADATA_KEY]: toolMeta as any,
           },
           tags: options?.toolCallId ? [`toolCallId:${options.toolCallId}`] : undefined,
+          signal: options?.abortSignal,
         })
         .unwrap();
     },

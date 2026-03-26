@@ -642,6 +642,30 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
   ) => TaskRunPromise<TIdentifier, TOutput>;
 
   /**
+   * Trigger a task and subscribe to its updates via realtime. Unlike `triggerAndWait`,
+   * this does NOT suspend the parent run — the parent stays alive and polls for updates.
+   * This enables parallel tool calls and proper abort signal handling.
+   *
+   * @param payload
+   * @param options - Options for the task run, including an optional `signal` to cancel the subscription and child run
+   * @returns TaskRunPromise
+   * @example
+   * ```
+   * const result = await task.triggerAndSubscribe({ foo: "bar" }, { signal: abortSignal });
+   *
+   * if (result.ok) {
+   *   console.log(result.output);
+   * } else {
+   *   console.error(result.error);
+   * }
+   * ```
+   */
+  triggerAndSubscribe: (
+    payload: TInput,
+    options?: TriggerAndSubscribeOptions,
+  ) => TaskRunPromise<TIdentifier, TOutput>;
+
+  /**
    * Batch trigger multiple task runs with the given payloads, and wait for the results. Returns the results of the task runs.
    * @param items - Array, AsyncIterable, or ReadableStream of batch items
    * @returns BatchResult
@@ -989,6 +1013,16 @@ export type TriggerOptions = {
 };
 
 export type TriggerAndWaitOptions = Omit<TriggerOptions, "version">;
+
+export type TriggerAndSubscribeOptions = Omit<TriggerOptions, "version"> & {
+  /** An AbortSignal to cancel the subscription. When fired, the subscription closes and the promise rejects. */
+  signal?: AbortSignal;
+  /**
+   * Whether to cancel the child run when the abort signal fires.
+   * @default true
+   */
+  cancelOnAbort?: boolean;
+};
 export type BatchTriggerOptions = {
   /**
    * If no idempotencyKey is set on an individual item in the batch, it will use this key on each item + the array index.
