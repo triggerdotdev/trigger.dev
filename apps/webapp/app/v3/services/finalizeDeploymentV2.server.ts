@@ -11,10 +11,12 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { env } from "~/env.server";
 import { depot as execDepot } from "@depot/cli";
 import { FinalizeDeploymentService } from "./finalizeDeployment.server";
+import { FailDeploymentService } from "./failDeployment.server";
 import { remoteBuildsEnabled } from "../remoteImageBuilder.server";
 import { getEcrAuthToken, isEcrRegistry } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig, type RegistryConfig } from "../registryConfig.server";
+import { ComputeTemplateCreationService } from "./computeTemplateCreation.server";
 
 export class FinalizeDeploymentV2Service extends BaseService {
   public async call(
@@ -77,7 +79,33 @@ export class FinalizeDeploymentV2Service extends BaseService {
       logger.debug("Skipping push to registry during deployment finalization", {
         deployment,
       });
-      return await finalizeService.call(authenticatedEnv, id, body);
+
+      let templateMode: "required" | "shadow" | "skip" = "skip";
+      if (deployment.imageReference) {
+        templateMode = await this.#handleTemplateCreation({
+          templateService: new ComputeTemplateCreationService(),
+          projectId: deployment.worker.project.id,
+          imageReference: deployment.imageReference,
+          deploymentFriendlyId: id,
+          authenticatedEnv,
+          writer,
+        });
+      }
+
+      const result = await finalizeService.call(authenticatedEnv, id, body);
+
+      if (templateMode === "shadow" && deployment.imageReference) {
+        const shadowService = new ComputeTemplateCreationService();
+        shadowService.createTemplate(deployment.imageReference).catch((error) => {
+          logger.error("Shadow compute template creation failed", {
+            id,
+            imageReference: deployment.imageReference,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+      }
+
+      return result;
     }
 
     const externalBuildData = deployment.externalBuildData
@@ -143,9 +171,82 @@ export class FinalizeDeploymentV2Service extends BaseService {
       pushedImage: pushResult.image,
     });
 
+    const templateMode = await this.#handleTemplateCreation({
+      templateService: new ComputeTemplateCreationService(),
+      projectId: deployment.worker.project.id,
+      imageReference: deployment.imageReference,
+      deploymentFriendlyId: id,
+      authenticatedEnv,
+      writer,
+    });
+
     const finalizedDeployment = await finalizeService.call(authenticatedEnv, id, body);
 
+    // Shadow mode: fire-and-forget template creation after deploy is finalized
+    if (templateMode === "shadow") {
+      const shadowService = new ComputeTemplateCreationService();
+      shadowService.createTemplate(deployment.imageReference).catch((error) => {
+        logger.error("Shadow compute template creation failed", {
+          id,
+          imageReference: deployment.imageReference,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
+
     return finalizedDeployment;
+  }
+
+  async #handleTemplateCreation(options: {
+    templateService: ComputeTemplateCreationService;
+    projectId: string;
+    imageReference: string;
+    deploymentFriendlyId: string;
+    authenticatedEnv: AuthenticatedEnvironment;
+    writer?: WritableStreamDefaultWriter;
+  }): Promise<"required" | "shadow" | "skip"> {
+    const { templateService, projectId, imageReference, deploymentFriendlyId, authenticatedEnv, writer } = options;
+
+    const mode = await templateService.resolveMode(projectId, this._prisma);
+
+    if (mode !== "required") {
+      return mode;
+    }
+
+    if (writer) {
+      await writer.write(
+        `event: log\ndata: ${JSON.stringify({ message: "Building compute template..." })}\n\n`
+      );
+    }
+
+    const templateResult = await templateService.createTemplate(imageReference);
+
+    if (!templateResult.success) {
+      logger.error("Compute template creation failed", {
+        id: deploymentFriendlyId,
+        imageReference,
+        error: templateResult.error,
+      });
+
+      const failService = new FailDeploymentService();
+      await failService.call(authenticatedEnv, deploymentFriendlyId, {
+        error: {
+          name: "TemplateCreationFailed",
+          message: `Failed to create compute template: ${templateResult.error}`,
+        },
+      });
+
+      throw new ServiceValidationError(
+        `Compute template creation failed: ${templateResult.error}`
+      );
+    }
+
+    logger.debug("Compute template created", {
+      id: deploymentFriendlyId,
+      imageReference,
+    });
+
+    return mode;
   }
 }
 
