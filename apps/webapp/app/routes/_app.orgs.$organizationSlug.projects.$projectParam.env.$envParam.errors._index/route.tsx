@@ -25,7 +25,7 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { formatDateTime, RelativeDateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ComboBox,
@@ -188,7 +188,6 @@ export default function Page() {
   });
 
   const location = useOptimisticLocation();
-  const showAlerts = new URLSearchParams(location.search).has("alerts");
   const alertsHref = useMemo(() => {
     const params = new URLSearchParams(location.search);
     params.set("alerts", "true");
@@ -199,13 +198,6 @@ export default function Page() {
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
       <NavBar>
         <PageTitle title="Errors" />
-        <PageAccessories>
-          {!showAlerts && (
-            <LinkButton to={alertsHref} variant="primary/small" LeadingIcon={BellAlertIcon}>
-              Configure alerts
-            </LinkButton>
-          )}
-        </PageAccessories>
       </NavBar>
 
       <PageBody scrollable={false}>
@@ -226,7 +218,11 @@ export default function Page() {
             resolve={data}
             errorElement={
               <div className="grid h-full max-h-full grid-rows-[2.5rem_auto_1fr] overflow-hidden">
-                <FiltersBar defaultPeriod={defaultPeriod} retentionLimitDays={retentionLimitDays} />
+                <FiltersBar
+                  defaultPeriod={defaultPeriod}
+                  retentionLimitDays={retentionLimitDays}
+                  alertsHref={alertsHref}
+                />
                 <div className="flex items-center justify-center px-3 py-12">
                   <Callout variant="error" className="max-w-fit">
                     Unable to load errors. Please refresh the page or try again in a moment.
@@ -242,6 +238,7 @@ export default function Page() {
                     <FiltersBar
                       defaultPeriod={defaultPeriod}
                       retentionLimitDays={retentionLimitDays}
+                      alertsHref={alertsHref}
                     />
                     <div className="flex items-center justify-center px-3 py-12">
                       <Callout variant="error" className="max-w-fit">
@@ -257,6 +254,7 @@ export default function Page() {
                     list={result}
                     defaultPeriod={defaultPeriod}
                     retentionLimitDays={retentionLimitDays}
+                    alertsHref={alertsHref}
                   />
                   <ErrorsList
                     errorGroups={result.errorGroups}
@@ -397,10 +395,12 @@ function FiltersBar({
   list,
   defaultPeriod,
   retentionLimitDays,
+  alertsHref,
 }: {
   list?: ErrorsListData;
   defaultPeriod?: string;
   retentionLimitDays: number;
+  alertsHref: string;
 }) {
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -453,7 +453,17 @@ function FiltersBar({
           </>
         )}
       </div>
-      {list && <ListPagination list={list} />}
+      <div className="flex shrink-0 items-center gap-2">
+        <LinkButton
+          to={alertsHref}
+          variant="secondary/small"
+          LeadingIcon={BellAlertIcon}
+          leadingIconClassName="text-alerts"
+        >
+          Configure alerts
+        </LinkButton>
+        {list && <ListPagination list={list} />}
+      </div>
     </div>
   );
 }

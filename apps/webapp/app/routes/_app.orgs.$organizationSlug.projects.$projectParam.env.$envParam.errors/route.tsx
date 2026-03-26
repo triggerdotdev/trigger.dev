@@ -1,17 +1,14 @@
 import { parse } from "@conform-to/zod";
-import { Outlet } from "@remix-run/react";
+import { Outlet, useNavigate } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { useCallback } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageContainer } from "~/components/layout/AppLayout";
 import {
   ConfigureErrorAlerts,
   ErrorAlertsFormSchema,
 } from "~/components/errors/ConfigureErrorAlerts";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "~/components/primitives/Resizable";
+import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
 import { prisma } from "~/db.server";
 import { ErrorAlertChannelPresenter } from "~/presenters/v3/ErrorAlertChannelPresenter.server";
 import { findProjectBySlug } from "~/models/project.server";
@@ -27,6 +24,7 @@ import {
   type CreateAlertChannelOptions,
   CreateAlertChannelService,
 } from "~/v3/services/alerts/createAlertChannel.server";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -172,26 +170,33 @@ export default function Page() {
   const { alertData, connectToSlackHref, errorsPath } = useTypedLoaderData<typeof loader>();
   const { has } = useSearchParams();
   const showAlerts = has("alerts") ?? false;
+  const navigate = useNavigate();
+  const location = useOptimisticLocation();
+
+  const closeAlerts = useCallback(() => {
+    const params = new URLSearchParams(location.search);
+    params.delete("alerts");
+    const qs = params.toString();
+    navigate(qs ? `?${qs}` : location.pathname, { replace: true });
+  }, [location.search, location.pathname, navigate]);
 
   return (
-    <PageContainer className="grid-rows-[1fr]">
-      <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full overflow-hidden">
-        <ResizablePanel id="errors-main" min="300px">
-          <Outlet />
-        </ResizablePanel>
-        {showAlerts && (
-          <>
-            <ResizableHandle id="errors-alerts-handle" />
-            <ResizablePanel id="errors-alerts" min="320px" default="420px" max="560px">
-              <ConfigureErrorAlerts
-                {...alertData}
-                connectToSlackHref={connectToSlackHref}
-                formAction={errorsPath}
-              />
-            </ResizablePanel>
-          </>
-        )}
-      </ResizablePanelGroup>
+    <PageContainer>
+      <Outlet />
+
+      <Sheet open={showAlerts} onOpenChange={(open) => !open && closeAlerts()}>
+        <SheetContent
+          side="right"
+          className="w-[420px] min-w-[320px] max-w-[560px] p-0 sm:max-w-[560px]"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
+          <ConfigureErrorAlerts
+            {...alertData}
+            connectToSlackHref={connectToSlackHref}
+            formAction={errorsPath}
+          />
+        </SheetContent>
+      </Sheet>
     </PageContainer>
   );
 }

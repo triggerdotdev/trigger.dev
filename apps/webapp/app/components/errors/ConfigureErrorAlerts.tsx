@@ -28,6 +28,7 @@ import type { ErrorAlertChannelData } from "~/presenters/v3/ErrorAlertChannelPre
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { cn } from "~/utils/cn";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { BellAlertIcon } from "@heroicons/react/24/solid";
 
 export const ErrorAlertsFormSchema = z.object({
   emails: z.preprocess((i) => {
@@ -115,7 +116,9 @@ export function ConfigureErrorAlerts({
   return (
     <div className="grid h-full grid-rows-[auto_1fr_auto] overflow-hidden">
       <div className="flex items-center justify-between border-b border-grid-bright px-3 py-2">
-        <Header2>Configure alerts</Header2>
+        <Header2 className="flex items-center gap-2">
+          <BellAlertIcon className="size-5 text-alerts" /> Configure alerts
+        </Header2>
         <LinkButton
           to={closeHref}
           variant="minimal/small"
@@ -128,9 +131,9 @@ export function ConfigureErrorAlerts({
 
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <fetcher.Form method="post" action={formAction} {...form.props}>
-          <Fieldset className="flex flex-col gap-3 p-4">
+          <Fieldset className="flex flex-col gap-4 p-4">
             <div className="flex flex-col">
-              <Paragraph variant="small/dimmed">You'll receive alerts when</Paragraph>
+              <Header3>Receive alerts when</Header3>
               <UnorderedList variant="small/dimmed" className="mt-1">
                 <li>An error is seen for the first time</li>
                 <li>A resolved error re-occurs</li>
@@ -140,10 +143,7 @@ export function ConfigureErrorAlerts({
 
             {/* Email section */}
             <div>
-              <Header3 className="mb-3 flex items-center gap-1.5">
-                <EnvelopeIcon className="size-4 text-text-dimmed" />
-                Email
-              </Header3>
+              <Header3 className="mb-1">Email</Header3>
               {emailAlertsEnabled ? (
                 <InputGroup>
                   {emailFields.map((emailField, index) => (
@@ -176,10 +176,7 @@ export function ConfigureErrorAlerts({
 
             {/* Slack section */}
             <div>
-              <Header3 className="mb-3 flex items-center gap-1.5">
-                <SlackIcon className="size-4" />
-                Slack
-              </Header3>
+              <Header3 className="mb-1">Slack</Header3>
               <InputGroup fullWidth>
                 {slack.status === "READY" ? (
                   <>
@@ -284,10 +281,7 @@ export function ConfigureErrorAlerts({
 
             {/* Webhook section */}
             <div>
-              <Header3 className="mb-3 flex items-center gap-1.5">
-                <GlobeAltIcon className="size-4 text-text-dimmed" />
-                Webhook
-              </Header3>
+              <Header3 className="mb-1">Webhook</Header3>
               <InputGroup>
                 {webhookFields.map((webhookField, index) => (
                   <Fragment key={webhookField.key}>
