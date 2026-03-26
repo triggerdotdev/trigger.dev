@@ -501,6 +501,13 @@ const stopInput = streams.input<{ stop: true; message?: string }>({ id: CHAT_STO
 const chatDeferKey = locals.create<Set<Promise<unknown>>>("chat.defer");
 
 /**
+ * Per-turn background context queue. Messages added via `chat.backgroundWork.inject()`
+ * are drained at the next `prepareStep` boundary and appended to the model messages.
+ * @internal
+ */
+const chatBackgroundQueueKey = locals.create<ModelMessage[]>("chat.backgroundQueue");
+
+/**
  * Run-scoped pipe counter. Stored in locals so concurrent runs in the
  * same worker don't share state.
  * @internal
@@ -1458,11 +1465,11 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
   const telemetry = prompt.toAISDKTelemetry(options?.telemetry);
   Object.assign(result, telemetry);
 
-  // Auto-inject prepareStep when compaction or pendingMessages is configured.
+  // Auto-inject prepareStep for compaction, pending messages, and background context injection.
   const taskCompaction = locals.get(chatTaskCompactionKey);
   const taskPendingMessages = locals.get(chatPendingMessagesKey);
 
-  if (taskCompaction || taskPendingMessages) {
+  {
     result.prepareStep = async ({ messages, steps }: { messages: ModelMessage[]; steps: CompactionStep[] }) => {
       let resultMessages: ModelMessage[] | undefined;
 
@@ -1499,6 +1506,13 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
         if (injected.length > 0) {
           resultMessages = [...(resultMessages ?? messages), ...injected];
         }
+      }
+
+      // 3. Background context injection
+      const bgQueue = locals.get(chatBackgroundQueueKey);
+      if (bgQueue && bgQueue.length > 0) {
+        const injected = bgQueue.splice(0); // drain
+        resultMessages = [...(resultMessages ?? messages), ...injected];
       }
 
       return resultMessages ? { messages: resultMessages } : undefined;
@@ -2324,6 +2338,9 @@ function chatTask<
               locals.set(chatDeferKey, new Set());
               locals.set(chatCompactionStateKey, undefined);
               locals.set(chatSteeringQueueKey, []);
+              // NOTE: chatBackgroundQueueKey is NOT reset here — messages injected
+              // by deferred work from the previous turn's onTurnComplete need to
+              // survive into the next turn. The queue is drained before run().
               locals.set(chatInjectedMessageIdsKey, new Set());
 
               // Store chat context for auto-detection by ai.tool subtasks
@@ -2537,6 +2554,12 @@ function chatTask<
               let runResult: unknown;
 
               try {
+                // Drain any messages injected by background work (e.g. self-review from previous turn)
+                const bgQueue = locals.get(chatBackgroundQueueKey);
+                if (bgQueue && bgQueue.length > 0) {
+                  accumulatedMessages.push(...bgQueue.splice(0));
+                }
+
                 runResult = await userRun({
                   ...restWire,
                   messages: await applyPrepareMessages(accumulatedMessages, "run"),
@@ -2926,6 +2949,12 @@ function chatTask<
                 );
               }
 
+              // NOTE: We intentionally do NOT await deferred work from onTurnComplete here.
+              // Promises deferred in onTurnComplete (e.g. background self-review via
+              // chat.defer + chat.inject) run during the idle wait. If they complete
+              // before the next message, their injected context is picked up in prepareStep.
+              // The pre-onBeforeTurnComplete drain handles promises from onTurnStart/run().
+
               // If messages arrived during streaming (without pendingMessages config),
               // use the first one immediately as the next turn.
               if (pendingMessages.length > 0) {
@@ -3152,6 +3181,43 @@ function chatDefer(promise: Promise<unknown>): void {
   if (promises) {
     promises.add(promise);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Background context injection
+// ---------------------------------------------------------------------------
+
+/**
+ * Queue model messages for injection at the next `prepareStep` boundary.
+ *
+ * Use this to inject context from background work into the agent's conversation.
+ * Messages are appended to the model messages before the next LLM inference call.
+ *
+ * Combine with `chat.defer()` to run background analysis and inject results:
+ *
+ * @example
+ * ```ts
+ * onTurnComplete: async ({ messages }) => {
+ *   chat.defer((async () => {
+ *     const review = await generateObject({
+ *       model: openai("gpt-4o-mini"),
+ *       messages: [...messages, { role: "user", content: "Review the last response." }],
+ *       schema: z.object({ suggestions: z.array(z.string()) }),
+ *     });
+ *     if (review.object.suggestions.length > 0) {
+ *       chat.inject([{
+ *         role: "system",
+ *         content: `Improvements for next response:\n${review.object.suggestions.join("\n")}`,
+ *       }]);
+ *     }
+ *   })());
+ * },
+ * ```
+ */
+function injectBackgroundContext(messages: ModelMessage[]): void {
+  const queue = locals.get(chatBackgroundQueueKey) ?? [];
+  queue.push(...messages);
+  locals.set(chatBackgroundQueueKey, queue);
 }
 
 // ---------------------------------------------------------------------------
@@ -4154,6 +4220,8 @@ export const chat = {
   cleanupAbortedParts,
   /** Register background work that runs in parallel with streaming. See {@link chatDefer}. */
   defer: chatDefer,
+  /** Queue model messages for injection at the next `prepareStep` boundary. See {@link injectBackgroundContext}. */
+  inject: injectBackgroundContext,
   /** Typed chat output stream for writing custom chunks or piping from subtasks. */
   stream: chatStream,
   /** Pre-built input stream for receiving messages from the transport. */
