@@ -276,7 +276,7 @@ function SpanBody({
               className="size-5 min-h-5 min-w-5"
             />
             <Header2 className={cn("overflow-x-hidden")}>
-              <SpanTitle {...span} size="large" hideAccessory />
+              <SpanTitle {...span} size="large" hideAccessory overrideDimmed />
             </Header2>
           </div>
           {runParam && closePanel && (
