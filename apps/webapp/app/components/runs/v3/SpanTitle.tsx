@@ -1,5 +1,5 @@
 import { ChevronRightIcon } from "@heroicons/react/20/solid";
-import { type TaskEventStyle } from "@trigger.dev/core/v3";
+import { TaskEventStyle } from "@trigger.dev/core/v3";
 import type { TaskEventLevel } from "@trigger.dev/database";
 import { Fragment } from "react";
 import { cn } from "~/utils/cn";
@@ -14,12 +14,17 @@ type SpanTitleProps = {
   isPartial: boolean;
   size: "small" | "large";
   hideAccessory?: boolean;
+  overrideDimmed?: boolean;
 };
 
 export function SpanTitle(event: SpanTitleProps) {
+  const textClass = eventTextClassName(event);
+  const finalTextClass =
+    event.overrideDimmed && textClass === "text-text-dimmed" ? "text-text-bright" : textClass;
+
   return (
-    <span className={cn("flex items-center gap-x-2 overflow-x-hidden", eventTextClassName(event))}>
-      <span className="truncate text-text-bright">{event.message}</span>{" "}
+    <span className={cn("flex items-center gap-x-2 overflow-x-hidden", finalTextClass)}>
+      <span className="truncate">{event.message}</span>{" "}
       {!event.hideAccessory && (
         <SpanAccessory accessory={event.style.accessory} size={event.size} />
       )}
