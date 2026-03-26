@@ -317,6 +317,97 @@ export { CHAT_MESSAGES_STREAM_ID, CHAT_STOP_STREAM_ID };
  */
 const chatStream = streams.define<UIMessageChunk>({ id: _CHAT_STREAM_KEY });
 
+// ---------------------------------------------------------------------------
+// ChatWriter — stream writer for callbacks
+// ---------------------------------------------------------------------------
+
+/**
+ * A stream writer passed to chat lifecycle callbacks (`onPreload`, `onChatStart`,
+ * `onTurnStart`, `onTurnComplete`, `onCompacted`).
+ *
+ * Write custom `UIMessageChunk` parts (e.g. `data-*` parts) directly to the chat
+ * stream without the ceremony of `chat.stream.writer({ execute })`.
+ *
+ * The writer is lazy — no stream overhead if you don't call `write()` or `merge()`.
+ *
+ * @example
+ * ```ts
+ * onTurnStart: async ({ writer }) => {
+ *   writer.write({ type: "data-status", data: { loading: true } });
+ * },
+ * onTurnComplete: async ({ writer, uiMessages }) => {
+ *   writer.write({ type: "data-analytics", data: { messageCount: uiMessages.length } });
+ * },
+ * ```
+ */
+export type ChatWriter = {
+  /** Write a single UIMessageChunk to the chat stream. */
+  write(part: UIMessageChunk): void;
+  /** Merge another stream's chunks into the chat stream. */
+  merge(stream: ReadableStream<UIMessageChunk>): void;
+};
+
+/**
+ * Creates a lazy ChatWriter that only opens a realtime stream on first use.
+ * Call `flush()` after the callback returns to await stream completion.
+ * @internal
+ */
+function createLazyChatWriter(): { writer: ChatWriter; flush: () => Promise<void> } {
+  let writeImpl: ((part: UIMessageChunk) => void) | null = null;
+  let mergeImpl: ((stream: ReadableStream<UIMessageChunk>) => void) | null = null;
+  let waitPromise: (() => Promise<unknown>) | null = null;
+  let resolveExecute: (() => void) | null = null;
+
+  function ensureInitialized() {
+    if (writeImpl) return;
+
+    const executePromise = new Promise<void>((resolve) => {
+      resolveExecute = resolve;
+    });
+
+    const { waitUntilComplete } = chatStream.writer({
+      collapsed: true,
+      spanName: "callback writer",
+      execute: ({ write, merge }) => {
+        writeImpl = write;
+        mergeImpl = merge;
+        return executePromise; // Keep execute alive until flush()
+      },
+    });
+    waitPromise = waitUntilComplete;
+  }
+
+  return {
+    writer: {
+      write(part: UIMessageChunk) {
+        ensureInitialized();
+        writeImpl!(part);
+      },
+      merge(stream: ReadableStream<UIMessageChunk>) {
+        ensureInitialized();
+        mergeImpl!(stream);
+      },
+    },
+    async flush() {
+      if (resolveExecute) {
+        resolveExecute(); // Signal execute to complete
+        await waitPromise!(); // Wait for stream to finish piping
+      }
+    },
+  };
+}
+
+/**
+ * Runs a callback with a lazy ChatWriter, flushing the stream after completion.
+ * @internal
+ */
+async function withChatWriter<T>(fn: (writer: ChatWriter) => Promise<T> | T): Promise<T> {
+  const { writer, flush } = createLazyChatWriter();
+  const result = await fn(writer);
+  await flush();
+  return result;
+}
+
 /**
  * The wire payload shape sent by `TriggerChatTransport`.
  * Uses `metadata` to match the AI SDK's `ChatRequestOptions` field name.
@@ -748,6 +839,8 @@ export type CompactedEvent = {
   chatId?: string;
   /** The current turn number (if running inside a chat.task). */
   turn?: number;
+  /** Stream writer — write custom `UIMessageChunk` parts to the chat stream. Lazy: no overhead if unused. */
+  writer: ChatWriter;
 };
 
 /**
@@ -988,7 +1081,7 @@ async function chatCompact(
       const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
         spanName: "stream compaction chunks",
         collapsed: true,
-        execute: async ({ write }) => {
+        execute: async ({ write, merge }) => {
           write({ type: "step-start" });
           write({
             type: "data-compaction",
@@ -1012,7 +1105,8 @@ async function chatCompact(
             { role: "assistant" as const, content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }] },
           ]);
 
-          // Fire onCompacted hook
+          // Fire onCompacted hook — pass the existing writer so the callback
+          // can write custom chunks without creating a separate stream.
           const onCompactedHook = locals.get(chatOnCompactedKey);
           if (onCompactedHook) {
             await onCompactedHook({
@@ -1026,6 +1120,7 @@ async function chatCompact(
               stepNumber,
               chatId: turnCtx?.chatId,
               turn: turnCtx?.turn,
+              writer: { write, merge },
             });
           }
 
@@ -1576,6 +1671,8 @@ export type PreloadEvent<TClientData = unknown> = {
   chatAccessToken: string;
   /** Custom data from the frontend. */
   clientData?: TClientData;
+  /** Stream writer — write custom `UIMessageChunk` parts to the chat stream. Lazy: no overhead if unused. */
+  writer: ChatWriter;
 };
 
 /**
@@ -1598,6 +1695,8 @@ export type ChatStartEvent<TClientData = unknown> = {
   previousRunId?: string;
   /** Whether this run was preloaded before the first message. */
   preloaded: boolean;
+  /** Stream writer — write custom `UIMessageChunk` parts to the chat stream. Lazy: no overhead if unused. */
+  writer: ChatWriter;
 };
 
 /**
@@ -1628,6 +1727,8 @@ export type TurnStartEvent<TClientData = unknown> = {
   previousTurnUsage?: LanguageModelUsage;
   /** Cumulative token usage across all completed turns so far. */
   totalUsage: LanguageModelUsage;
+  /** Stream writer — write custom `UIMessageChunk` parts to the chat stream. Lazy: no overhead if unused. */
+  writer: ChatWriter;
 };
 
 /**
@@ -1683,6 +1784,15 @@ export type TurnCompleteEvent<TClientData = unknown> = {
   usage?: LanguageModelUsage;
   /** Cumulative token usage across all turns in this run (including this turn). */
   totalUsage: LanguageModelUsage;
+};
+
+/**
+ * Event passed to the `onBeforeTurnComplete` callback.
+ * Same as `TurnCompleteEvent` but includes a `writer` since the stream is still open.
+ */
+export type BeforeTurnCompleteEvent<TClientData = unknown> = TurnCompleteEvent<TClientData> & {
+  /** Stream writer — write custom `UIMessageChunk` parts to the chat stream. Lazy: no overhead if unused. */
+  writer: ChatWriter;
 };
 
 export type ChatTaskOptions<
@@ -1774,17 +1884,17 @@ export type ChatTaskOptions<
    *
    * @example
    * ```ts
-   * onBeforeTurnComplete: async ({ messages, uiMessages, usage }) => {
+   * onBeforeTurnComplete: async ({ writer, usage }) => {
    *   if (usage?.inputTokens && usage.inputTokens > 5000) {
-   *     await chat.stream.append({ type: "data-compaction", id: generateId(), data: { status: "compacting" } });
+   *     writer.write({ type: "data-compaction", id: generateId(), data: { status: "compacting" } });
    *     // ... compact messages ...
    *     chat.setMessages(compactedMessages);
-   *     await chat.stream.append({ type: "data-compaction", id: generateId(), data: { status: "complete" } });
+   *     writer.write({ type: "data-compaction", id: generateId(), data: { status: "complete" } });
    *   }
    * }
    * ```
    */
-  onBeforeTurnComplete?: (event: TurnCompleteEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void;
+  onBeforeTurnComplete?: (event: BeforeTurnCompleteEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void;
 
   /**
    * Called when conversation compaction occurs (via `chat.compact()` or
@@ -2120,11 +2230,14 @@ function chatTask<
             await tracer.startActiveSpan(
               "onPreload()",
               async () => {
-                await onPreload({
-                  chatId: payload.chatId,
-                  runId: currentRunId,
-                  chatAccessToken: preloadAccessToken,
-                  clientData: preloadClientData,
+                await withChatWriter(async (writer) => {
+                  await onPreload({
+                    chatId: payload.chatId,
+                    runId: currentRunId,
+                    chatAccessToken: preloadAccessToken,
+                    clientData: preloadClientData,
+                    writer,
+                  });
                 });
               },
               {
@@ -2333,15 +2446,18 @@ function chatTask<
                 await tracer.startActiveSpan(
                   "onChatStart()",
                   async () => {
-                    await onChatStart({
-                      chatId: currentWirePayload.chatId,
-                      messages: accumulatedMessages,
-                      clientData,
-                      runId: currentRunId,
-                      chatAccessToken: turnAccessToken,
-                      continuation,
-                      previousRunId,
-                      preloaded,
+                    await withChatWriter(async (writer) => {
+                      await onChatStart({
+                        chatId: currentWirePayload.chatId,
+                        messages: accumulatedMessages,
+                        clientData,
+                        runId: currentRunId,
+                        chatAccessToken: turnAccessToken,
+                        continuation,
+                        previousRunId,
+                        preloaded,
+                        writer,
+                      });
                     });
                   },
                   {
@@ -2364,19 +2480,22 @@ function chatTask<
                 await tracer.startActiveSpan(
                   "onTurnStart()",
                   async () => {
-                    await onTurnStart({
-                      chatId: currentWirePayload.chatId,
-                      messages: accumulatedMessages,
-                      uiMessages: accumulatedUIMessages,
-                      turn,
-                      runId: currentRunId,
-                      chatAccessToken: turnAccessToken,
-                      clientData,
-                      continuation,
-                      previousRunId,
-                      preloaded,
-                      previousTurnUsage,
-                      totalUsage: cumulativeUsage,
+                    await withChatWriter(async (writer) => {
+                      await onTurnStart({
+                        chatId: currentWirePayload.chatId,
+                        messages: accumulatedMessages,
+                        uiMessages: accumulatedUIMessages,
+                        turn,
+                        runId: currentRunId,
+                        chatAccessToken: turnAccessToken,
+                        clientData,
+                        continuation,
+                        previousRunId,
+                        preloaded,
+                        previousTurnUsage,
+                        totalUsage: cumulativeUsage,
+                        writer,
+                      });
                     });
 
                     // Check if onTurnStart replaced messages (compaction)
@@ -2617,7 +2736,7 @@ function chatTask<
                       const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
                         spanName: "stream compaction chunks",
                         collapsed: true,
-                        execute: async ({ write }) => {
+                        execute: async ({ write, merge }) => {
                           write({
                             type: "data-compaction",
                             id: compactionId,
@@ -2670,6 +2789,7 @@ function chatTask<
                               stepNumber: -1, // outer loop, not a step
                               chatId: currentWirePayload.chatId,
                               turn,
+                              writer: { write, merge },
                             });
                           }
 
@@ -2733,7 +2853,9 @@ function chatTask<
                 await tracer.startActiveSpan(
                   "onBeforeTurnComplete()",
                   async () => {
-                    await onBeforeTurnComplete(turnCompleteEvent);
+                    await withChatWriter(async (writer) => {
+                      await onBeforeTurnComplete({ ...turnCompleteEvent, writer });
+                    });
 
                     // Check if the hook replaced messages (compaction)
                     const override = locals.get(chatOverrideMessagesKey);
