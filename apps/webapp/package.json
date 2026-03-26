@@ -57,6 +57,7 @@
     "@heroicons/react": "^2.0.12",
     "@jsonhero/schema-infer": "^0.1.5",
     "@internal/cache": "workspace:*",
+    "@internal/compute": "workspace:*",
     "@internal/llm-pricing": "workspace:*",
     "@internal/redis": "workspace:*",
     "@internal/run-engine": "workspace:*",

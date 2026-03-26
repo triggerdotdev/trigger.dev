@@ -1,4 +1,4 @@
-import { ComputeGatewayClient } from "@trigger.dev/core/v3/compute";
+import { ComputeGatewayClient } from "@internal/compute";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import type { PrismaClientOrTransaction } from "~/db.server";
