@@ -476,6 +476,14 @@ export function Chat({
                     );
                   }
 
+                  // Transient status parts — hide from rendered output
+                  if (
+                    part.type === "data-turn-status" ||
+                    part.type === "data-background-context-injected"
+                  ) {
+                    return null;
+                  }
+
                   if (part.type === "data-research-progress") {
                     return <ResearchProgress key={i} part={part} />;
                   }
