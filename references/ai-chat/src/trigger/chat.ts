@@ -1,5 +1,5 @@
-import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
-import { logger, task, prompts } from "@trigger.dev/sdk";
+import { ai, chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
+import { logger, schemaTask, task, prompts } from "@trigger.dev/sdk";
 import { streamText, generateText, tool, dynamicTool, stepCountIs, generateId, createProviderRegistry } from "ai";
 import type { LanguageModel, LanguageModelUsage, Tool as AITool, UIMessage } from "ai";
 import { openai } from "@ai-sdk/openai";
@@ -173,28 +173,31 @@ const userToolDefs = chat.local<{
 
 // --------------------------------------------------------------------------
 // Deep research — fetches multiple URLs and synthesizes the results.
-// Plain tool (not a subtask) to avoid parallel wait issues.
+// Runs as a subtask via ai.tool() so it executes in its own container
+// and streams progress back to the parent chat via target: "root".
 // --------------------------------------------------------------------------
-const deepResearch = tool({
+const deepResearchTask = schemaTask({
+  id: "deep-research",
   description:
     "Research a topic by fetching multiple URLs and synthesizing the results. " +
     "Streams progress updates to the chat as it works.",
-  inputSchema: z.object({
+  schema: z.object({
     query: z.string().describe("The research query or topic"),
     urls: z.array(z.string().url()).describe("URLs to fetch and analyze"),
   }),
-  execute: async ({ query, urls }) => {
+  run: async ({ query, urls }) => {
     const partId = generateId();
     const results: { url: string; status: number; snippet: string }[] = [];
 
     for (let i = 0; i < urls.length; i++) {
       const url = urls[i]!;
 
-      // Stream progress — runs in the chat.task process, so no target needed
+      // Stream progress back to the parent chat stream
       const { waitUntilComplete } = chat.stream.writer({
+        target: "root",
         execute: ({ write }) => {
           write({
-            type: "data-research-progress" as any,
+            type: "data-research-progress",
             id: partId,
             data: {
               status: "fetching" as const,
@@ -234,9 +237,10 @@ const deepResearch = tool({
 
     // Final progress — done
     const { waitUntilComplete: waitForDone } = chat.stream.writer({
+      target: "root",
       execute: ({ write }) => {
         write({
-          type: "data-research-progress" as any,
+          type: "data-research-progress",
           id: partId,
           data: {
             status: "done" as const,
@@ -253,6 +257,8 @@ const deepResearch = tool({
     return { query, results };
   },
 });
+
+const deepResearch = ai.tool(deepResearchTask);
 
 export const aiChat = chat.task({
   id: "ai-chat",
