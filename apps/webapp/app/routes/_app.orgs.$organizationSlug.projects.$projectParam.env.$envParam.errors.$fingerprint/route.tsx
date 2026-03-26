@@ -732,7 +732,7 @@ function ErrorStatusDropdown({
         <PopoverArrowTrigger variant="tertiary" disabled={isSubmitting}>
           Mark error as…
         </PopoverArrowTrigger>
-        <PopoverContent className="w-fit min-w-0 p-1" align="end">
+        <PopoverContent className="!min-w-0 inline-flex flex-col p-1" align="end">
           {state.status === "UNRESOLVED" && (
             <>
               <PopoverMenuItem
