@@ -575,7 +575,9 @@ function ErrorGroupRow({
       <CopyableTableCell to={errorPath} className="font-mono" value={errorMessage}>
         {errorMessage.length > 128 ? `${errorMessage.slice(0, 128)}…` : errorMessage}
       </CopyableTableCell>
-      <TableCell to={errorPath}>{errorGroup.count.toLocaleString()}</TableCell>
+      <TableCell to={errorPath}>
+        <span className="tabular-nums">{errorGroup.count.toLocaleString()}</span>
+      </TableCell>
       <TableCell to={errorPath} actionClassName="py-1.5">
         <Suspense fallback={<ErrorActivityBlankState />}>
           <TypedAwait resolve={occurrences} errorElement={<ErrorActivityBlankState />}>
@@ -590,10 +592,10 @@ function ErrorGroupRow({
           </TypedAwait>
         </Suspense>
       </TableCell>
-      <TableCell to={errorPath}>
+      <TableCell to={errorPath} className="tabular-nums">
         <RelativeDateTime date={errorGroup.firstSeen} />
       </TableCell>
-      <TableCell to={errorPath}>
+      <TableCell to={errorPath} className="tabular-nums">
         <RelativeDateTime date={errorGroup.lastSeen} />
       </TableCell>
     </TableRow>
