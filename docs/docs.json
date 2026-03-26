@@ -94,6 +94,7 @@
                   "ai-chat/features",
                   "ai-chat/compaction",
                   "ai-chat/pending-messages",
+                  "ai-chat/background-injection",
                   "ai-chat/reference"
                 ]
               }
