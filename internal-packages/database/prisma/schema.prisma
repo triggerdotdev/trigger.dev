@@ -1280,6 +1280,11 @@ enum WorkerInstanceGroupType {
   UNMANAGED
 }
 
+enum WorkloadType {
+  CONTAINER
+  MICROVM
+}
+
 model WorkerInstanceGroup {
   id   String                  @id @default(cuid())
   type WorkerInstanceGroupType
@@ -1313,6 +1318,8 @@ model WorkerInstanceGroup {
   /// "usa", "europe", etc. Used like a pseudo enum for things like flags
   location      String?
   staticIPs     String?
+
+  workloadType WorkloadType @default(CONTAINER)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
