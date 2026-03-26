@@ -1,6 +1,6 @@
 import { ai, chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
 import { logger, schemaTask, task, prompts } from "@trigger.dev/sdk";
-import { streamText, generateText, tool, dynamicTool, stepCountIs, generateId, createProviderRegistry } from "ai";
+import { streamText, generateText, generateObject, tool, dynamicTool, stepCountIs, generateId, createProviderRegistry } from "ai";
 import type { LanguageModel, LanguageModelUsage, Tool as AITool, UIMessage } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -54,6 +54,20 @@ When the user asks you to research a topic, use the deep research tool with rele
 - Match the user's formality level. If they're casual, be casual back.
 - Use markdown formatting for code blocks, lists, and structured output.
 - Keep responses under a few paragraphs unless the user asks for more.`,
+});
+
+const selfReviewPrompt = prompts.define({
+  id: "ai-chat-self-review",
+  model: "openai:gpt-4o-mini",
+  content: `You are a conversation quality reviewer. Analyze the assistant's most recent response and provide structured feedback.
+
+Focus on:
+- Whether the response actually answered the user's question
+- Missed opportunities to use tools or provide more detail
+- Tone mismatches (too formal, too casual, etc.)
+- Factual claims that should have been verified with tools
+
+Be concise. Only flag issues worth fixing — don't nitpick.`,
 });
 
 const MODELS: Record<string, () => LanguageModel> = {
@@ -437,7 +451,7 @@ export const aiChat = chat.task({
     // Deferred — runs in parallel with streaming, awaited before onTurnComplete.
     chat.defer(prisma.chat.update({ where: { id: chatId }, data: { messages: uiMessages as any } }));
   },
-  onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
+  onTurnComplete: async ({ chatId, uiMessages, messages, runId, chatAccessToken, lastEventId }) => {
     // Persist final messages + assistant response + stream position
     await prisma.chat.update({
       where: { id: chatId },
@@ -459,6 +473,41 @@ export const aiChat = chat.task({
         },
       });
     }
+
+    // Background self-review — a cheap model critiques the response and injects
+    // coaching into the conversation before the next user message arrives.
+    chat.defer((async () => {
+      const resolved = await selfReviewPrompt.resolve({});
+
+      const review = await generateObject({
+        model: registry.languageModel(resolved.model ?? "openai:gpt-4o-mini"),
+        ...resolved.toAISDKTelemetry(),
+        system: resolved.text,
+        prompt: `Here is the conversation to review:\n\n${messages.filter((m) => m.role === "user" || m.role === "assistant").map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : Array.isArray(m.content) ? m.content.filter((p: any) => p.type === "text").map((p: any) => p.text).join("") : ""}`).join("\n\n")}`,
+        schema: z.object({
+          needsImprovement: z.boolean().describe("Whether the response needs improvement"),
+          suggestions: z.array(z.string()).describe("Specific actionable suggestions for the next response"),
+          missedTools: z.array(z.string()).describe("Tool names the assistant should have used but didn't"),
+        }),
+      });
+
+      const parts = [];
+      if (review.object.suggestions.length > 0) {
+        parts.push(`Suggestions:\n${review.object.suggestions.map((s) => `- ${s}`).join("\n")}`);
+      }
+      if (review.object.missedTools.length > 0) {
+        parts.push(`Consider using: ${review.object.missedTools.join(", ")}`);
+      }
+
+      chat.inject([
+        {
+          role: "system" as const,
+          content: review.object.needsImprovement
+            ? `[Self-review of your previous response]\n\n${parts.join("\n\n")}\n\nApply these improvements naturally in your next response.`
+            : `[Self-review of your previous response]\n\nYour previous response was good. No changes needed.`,
+        },
+      ]);
+    })());
   },
   run: async ({ messages, clientData, stopSignal }) => {
     // Track usage
