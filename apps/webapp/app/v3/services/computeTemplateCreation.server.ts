@@ -2,6 +2,7 @@ import { ComputeGatewayClient } from "@internal/compute";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import type { PrismaClientOrTransaction } from "~/db.server";
+import { FEATURE_FLAG, makeFlag } from "~/v3/featureFlags.server";
 
 type TemplateCreationMode = "required" | "shadow" | "skip";
 
@@ -28,6 +29,9 @@ export class ComputeTemplateCreationService {
         defaultWorkerGroup: {
           select: { workloadType: true },
         },
+        organization: {
+          select: { featureFlags: true },
+        },
       },
     });
 
@@ -35,7 +39,16 @@ export class ComputeTemplateCreationService {
       return "required";
     }
 
-    // TODO: check private beta feature flag for org
+    const flag = makeFlag(prisma);
+    const hasComputeAccess = await flag({
+      key: FEATURE_FLAG.hasComputeAccess,
+      defaultValue: false,
+      overrides: (project?.organization?.featureFlags as Record<string, unknown>) ?? {},
+    });
+
+    if (hasComputeAccess) {
+      return "required";
+    }
 
     const rolloutPct = Number(env.COMPUTE_TEMPLATE_SHADOW_ROLLOUT_PCT ?? "0");
     if (rolloutPct > 0 && Math.random() * 100 < rolloutPct) {
