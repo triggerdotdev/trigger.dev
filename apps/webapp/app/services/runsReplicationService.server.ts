@@ -29,6 +29,7 @@ import EventEmitter from "node:events";
 import pLimit from "p-limit";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 import { calculateErrorFingerprint } from "~/utils/errorFingerprinting";
+import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
 
 interface TransactionEvent<T = any> {
   tag: "insert" | "update" | "delete";
@@ -617,51 +618,59 @@ export class RunsReplicationService {
         payloadInserts: payloadInserts.length,
       });
 
-      // Group task runs by organization for routing to correct ClickHouse instance
-      const taskRunsByOrg = new Map<string, TaskRunInsertArray[]>();
-      for (const taskRun of taskRunInserts) {
-        const orgId = getTaskRunField(taskRun, "organization_id");
-        const orgRuns = taskRunsByOrg.get(orgId) || [];
-        orgRuns.push(taskRun);
-        taskRunsByOrg.set(orgId, orgRuns);
-      }
+      // Task runs are already sorted by org (lines 571-576), so we can stream through
+      // and flush when org changes - no grouping overhead, no O(n²) lookups
 
-      // Group payloads by organization (extract from run_id -> task runs mapping)
+      // Build run_id -> org_id index for O(1) payload->org lookups
+      const runIdToOrgId = new Map(
+        taskRunInserts.map(tr => [getTaskRunField(tr, "run_id"), getTaskRunField(tr, "organization_id")])
+      );
+
+      // Group payloads by org using the index (O(n) instead of O(n²))
       const payloadsByOrg = new Map<string, PayloadInsertArray[]>();
       for (const payload of payloadInserts) {
         const runId = getPayloadField(payload, "run_id");
-        // Find the corresponding task run to get its organization
-        const taskRun = taskRunInserts.find((tr) => getTaskRunField(tr, "run_id") === runId);
-        if (taskRun) {
-          const orgId = getTaskRunField(taskRun, "organization_id");
-          const orgPayloads = payloadsByOrg.get(orgId) || [];
-          orgPayloads.push(payload);
-          payloadsByOrg.set(orgId, orgPayloads);
+        const orgId = runIdToOrgId.get(runId);
+        if (orgId) {
+          const orgPayloads = payloadsByOrg.get(orgId);
+          if (orgPayloads) {
+            orgPayloads.push(payload);
+          } else {
+            payloadsByOrg.set(orgId, [payload]);
+          }
         }
       }
 
-      // Insert task runs and payloads with retry logic for connection errors
-      // Process each organization's data in parallel
-      const insertPromises = Array.from(taskRunsByOrg.entries()).map(
-        async ([orgId, orgTaskRuns]) => {
-          const orgPayloads = payloadsByOrg.get(orgId) || [];
+      // Stream through task runs, flushing when org changes
+      const insertPromises: Promise<{ taskRunError: Error | null; payloadError: Error | null; orgId: string }>[] = [];
+      let currentOrgId: string | null = null;
+      let currentOrgTaskRuns: TaskRunInsertArray[] = [];
 
-          const [taskRunError, taskRunResult] = await this.#insertWithRetry(
-            (attempt) => this.#insertTaskRunInserts(orgId, orgTaskRuns, attempt),
-            "task run inserts",
-            flushId
+      for (const taskRun of taskRunInserts) {
+        const orgId = getTaskRunField(taskRun, "organization_id");
+
+        // Org changed? Flush previous org's batch
+        if (currentOrgId !== null && currentOrgId !== orgId) {
+          const orgPayloads = payloadsByOrg.get(currentOrgId) || [];
+          insertPromises.push(
+            this.#insertOrgBatch(currentOrgId, currentOrgTaskRuns, orgPayloads, flushId)
           );
-
-          const [payloadError, payloadResult] = await this.#insertWithRetry(
-            (attempt) => this.#insertPayloadInserts(orgId, orgPayloads, attempt),
-            "payload inserts",
-            flushId
-          );
-
-          return { taskRunError, payloadError, orgId };
+          currentOrgTaskRuns = [];
         }
-      );
 
+        currentOrgId = orgId;
+        currentOrgTaskRuns.push(taskRun);
+      }
+
+      // Flush final org's batch
+      if (currentOrgId !== null && currentOrgTaskRuns.length > 0) {
+        const orgPayloads = payloadsByOrg.get(currentOrgId) || [];
+        insertPromises.push(
+          this.#insertOrgBatch(currentOrgId, currentOrgTaskRuns, orgPayloads, flushId)
+        );
+      }
+
+      // Wait for all org batches to complete (parallel execution)
       const results = await Promise.all(insertPromises);
 
       // Aggregate errors from all organizations
@@ -817,6 +826,27 @@ export class RunsReplicationService {
     };
   }
 
+  async #insertOrgBatch(
+    organizationId: string,
+    taskRunInserts: TaskRunInsertArray[],
+    payloadInserts: PayloadInsertArray[],
+    flushId: string
+  ): Promise<{ taskRunError: Error | null; payloadError: Error | null; orgId: string }> {
+    const [taskRunError] = await this.#insertWithRetry(
+      (attempt) => this.#insertTaskRunInserts(organizationId, taskRunInserts, attempt),
+      "task run inserts",
+      flushId
+    );
+
+    const [payloadError] = await this.#insertWithRetry(
+      (attempt) => this.#insertPayloadInserts(organizationId, payloadInserts, attempt),
+      "payload inserts",
+      flushId
+    );
+
+    return { taskRunError, payloadError, orgId: organizationId };
+  }
+
   async #insertTaskRunInserts(
     organizationId: string,
     taskRunInserts: TaskRunInsertArray[],
@@ -824,9 +854,6 @@ export class RunsReplicationService {
   ) {
     return await startSpan(this._tracer, "insertTaskRunsInserts", async (span) => {
       // Get the appropriate ClickHouse client for this organization
-      const { getClickhouseForOrganization } = await import(
-        "~/services/clickhouse/clickhouseFactory.server"
-      );
       const clickhouse = await getClickhouseForOrganization(organizationId, "replication");
 
       const [insertError, insertResult] = await clickhouse.taskRuns.insertCompactArrays(
@@ -860,9 +887,6 @@ export class RunsReplicationService {
   ) {
     return await startSpan(this._tracer, "insertPayloadInserts", async (span) => {
       // Get the appropriate ClickHouse client for this organization
-      const { getClickhouseForOrganization } = await import(
-        "~/services/clickhouse/clickhouseFactory.server"
-      );
       const clickhouse = await getClickhouseForOrganization(organizationId, "replication");
 
       const [insertError, insertResult] = await clickhouse.taskRuns.insertPayloadsCompactArrays(
