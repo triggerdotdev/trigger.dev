@@ -411,7 +411,10 @@ function ErrorGroupDetail({
         <div className="flex items-start justify-between gap-4">
           <div className="flex flex-col gap-0.5">
             <Header2>{errorGroup.errorMessage}</Header2>
-            <Header3>{formatNumberCompact(errorGroup.count)} total occurrences</Header3>
+            <Header3>
+              <span className="tabular-nums">{formatNumberCompact(errorGroup.count)}</span> total
+              occurrences
+            </Header3>
           </div>
           <ErrorGroupActionButtons
             state={errorGroup.state}
@@ -604,18 +607,20 @@ function IgnoredDetails({
             {state.ignoredUntilOccurrenceRate !== null && state.ignoredUntilOccurrenceRate > 0 && (
               <li>
                 Occurrence rate exceeds{" "}
-                <span className="text-text-bright">{state.ignoredUntilOccurrenceRate}/min</span>
+                <span className="tabular-nums text-text-bright">
+                  {state.ignoredUntilOccurrenceRate}/min
+                </span>
               </li>
             )}
             {state.ignoredUntilTotalOccurrences !== null &&
               state.ignoredUntilTotalOccurrences > 0 && (
                 <li>
                   Total occurrences exceed{" "}
-                  <span className="text-text-bright">
+                  <span className="tabular-nums text-text-bright">
                     {state.ignoredUntilTotalOccurrences.toLocaleString()}
                   </span>
                   {occurrencesSinceIgnore !== null && (
-                    <span className="ml-1 text-text-dimmed">
+                    <span className="ml-1 tabular-nums text-text-dimmed">
                       ({occurrencesSinceIgnore.toLocaleString()} since ignored)
                     </span>
                   )}
