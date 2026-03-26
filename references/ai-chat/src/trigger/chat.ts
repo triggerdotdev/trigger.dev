@@ -424,7 +424,9 @@ export const aiChat = chat.task({
       summaryLength: summary.length,
     });
   },
-  onTurnStart: async ({ chatId, uiMessages }) => {
+  onTurnStart: async ({ chatId, uiMessages, writer }) => {
+    writer.write({ type: "data-turn-status", data: { status: "preparing" } });
+
     // Persist messages so mid-stream refresh still shows the user message.
     // Deferred — runs in parallel with streaming, awaited before onTurnComplete.
     chat.defer(prisma.chat.update({ where: { id: chatId }, data: { messages: uiMessages as any } }));
