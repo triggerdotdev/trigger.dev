@@ -584,6 +584,34 @@ On the frontend, the `usePendingMessages` hook handles sending, tracking, and re
   See [Pending Messages](/ai-chat/pending-messages) for the full guide — backend configuration, frontend hook, queuing vs steering, and how injection works with all three chat variants.
 </Tip>
 
+### Background injection
+
+Inject context from background work into the conversation using `chat.inject()`. Combine with `chat.defer()` to run analysis between turns and inject results before the next response — self-review, RAG augmentation, safety checks, etc.
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  onTurnComplete: async ({ messages }) => {
+    chat.defer((async () => {
+      const review = await generateObject({ /* ... */ });
+      if (review.object.needsImprovement) {
+        chat.inject([{
+          role: "system",
+          content: `[Self-review]\n${review.object.suggestions.join("\n")}`,
+        }]);
+      }
+    })());
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ ...chat.toStreamTextOptions({ registry }), messages, abortSignal: signal });
+  },
+});
+```
+
+<Tip>
+  See [Background Injection](/ai-chat/background-injection) for the full guide — timing, self-review example, and how it differs from pending messages.
+</Tip>
+
 ### prepareMessages
 
 Transform model messages before they're used anywhere — in `run()`, in compaction rebuilds, and in compaction results. Define once, applied everywhere.
