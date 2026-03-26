@@ -74,6 +74,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
     }
 
     const finalizeService = new FinalizeDeploymentService();
+    const templateService = new ComputeTemplateCreationService();
 
     if (body.skipPushToRegistry) {
       logger.debug("Skipping push to registry during deployment finalization", {
@@ -83,7 +84,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
       let templateMode: "required" | "shadow" | "skip" = "skip";
       if (deployment.imageReference) {
         templateMode = await this.#handleTemplateCreation({
-          templateService: new ComputeTemplateCreationService(),
+          templateService,
           projectId: deployment.worker.project.id,
           imageReference: deployment.imageReference,
           deploymentFriendlyId: id,
@@ -95,14 +96,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
       const result = await finalizeService.call(authenticatedEnv, id, body);
 
       if (templateMode === "shadow" && deployment.imageReference) {
-        const shadowService = new ComputeTemplateCreationService();
-        shadowService.createTemplate(deployment.imageReference).catch((error) => {
-          logger.error("Shadow compute template creation failed", {
-            id,
-            imageReference: deployment.imageReference,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        });
+        this.#fireShadowTemplateCreation(templateService, deployment.imageReference, id);
       }
 
       return result;
@@ -172,7 +166,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
     });
 
     const templateMode = await this.#handleTemplateCreation({
-      templateService: new ComputeTemplateCreationService(),
+      templateService,
       projectId: deployment.worker.project.id,
       imageReference: deployment.imageReference,
       deploymentFriendlyId: id,
@@ -184,14 +178,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
 
     // Shadow mode: fire-and-forget template creation after deploy is finalized
     if (templateMode === "shadow") {
-      const shadowService = new ComputeTemplateCreationService();
-      shadowService.createTemplate(deployment.imageReference).catch((error) => {
-        logger.error("Shadow compute template creation failed", {
-          id,
-          imageReference: deployment.imageReference,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
+      this.#fireShadowTemplateCreation(templateService, deployment.imageReference, id);
     }
 
     return finalizedDeployment;
@@ -247,6 +234,20 @@ export class FinalizeDeploymentV2Service extends BaseService {
     });
 
     return mode;
+  }
+
+  #fireShadowTemplateCreation(
+    templateService: ComputeTemplateCreationService,
+    imageReference: string,
+    deploymentFriendlyId: string
+  ) {
+    templateService.createTemplate(imageReference).catch((error) => {
+      logger.error("Shadow compute template creation failed", {
+        id: deploymentFriendlyId,
+        imageReference,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
 }
 
