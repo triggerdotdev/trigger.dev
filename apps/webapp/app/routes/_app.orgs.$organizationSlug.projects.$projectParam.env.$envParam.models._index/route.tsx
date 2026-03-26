@@ -71,7 +71,7 @@ import {
   type PopularModel,
   ModelRegistryPresenter,
 } from "~/presenters/v3/ModelRegistryPresenter.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
 import { requireUserId } from "~/services/session.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -109,7 +109,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Environment not found", { status: 404 });
   }
 
-  const presenter = new ModelRegistryPresenter(clickhouseClient);
+  const clickhouse = await getClickhouseForOrganization(project.organizationId, "standard");
+  const presenter = new ModelRegistryPresenter(clickhouse);
   const catalog = await presenter.getModelCatalog();
 
   const now = new Date();

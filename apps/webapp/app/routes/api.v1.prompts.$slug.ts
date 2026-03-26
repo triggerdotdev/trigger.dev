@@ -2,7 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
 import {
   createActionApiRoute,
   createLoaderApiRoute,
@@ -33,6 +33,13 @@ export const loader = createLoaderApiRoute(
             slug: params.slug,
           },
         },
+        include: {
+          project: {
+            select: {
+              organizationId: true,
+            },
+          },
+        },
       });
     },
     authorization: {
@@ -46,7 +53,8 @@ export const loader = createLoaderApiRoute(
       return json({ error: "Prompt not found" }, { status: 404 });
     }
 
-    const presenter = new PromptPresenter(clickhouseClient);
+    const clickhouse = await getClickhouseForOrganization(prompt.project.organizationId, "standard");
+    const presenter = new PromptPresenter(clickhouse);
     const version = await presenter.resolveVersion(prompt.id, {
       version: searchParams.version,
       label: searchParams.label,
@@ -117,7 +125,8 @@ const { action } = createActionApiRoute(
       return json({ error: "Prompt not found" }, { status: 404 });
     }
 
-    const presenter = new PromptPresenter(clickhouseClient);
+    const clickhouse = await getClickhouseForOrganization(authentication.environment.organizationId, "standard");
+    const presenter = new PromptPresenter(clickhouse);
     const version = await presenter.resolveVersion(prompt.id, {
       version: body.version,
       label: body.label,

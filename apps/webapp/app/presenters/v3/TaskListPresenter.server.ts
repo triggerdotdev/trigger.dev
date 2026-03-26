@@ -4,7 +4,7 @@ import {
   type TaskTriggerSource,
 } from "@trigger.dev/database";
 import { $replica } from "~/db.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
 import {
   type AverageDurations,
   ClickHouseEnvironmentMetricsRepository,
@@ -25,10 +25,7 @@ export type TaskListItem = {
 export type TaskActivity = DailyTaskActivity[string];
 
 export class TaskListPresenter {
-  constructor(
-    private readonly environmentMetricsRepository: EnvironmentMetricsRepository,
-    private readonly _replica: PrismaClientOrTransaction
-  ) {}
+  constructor(private readonly _replica: PrismaClientOrTransaction) {}
 
   public async call({
     organizationId,
@@ -76,9 +73,15 @@ export class TaskListPresenter {
 
     const slugs = tasks.map((t) => t.slug);
 
+    // Create org-specific environment metrics repository
+    const clickhouse = await getClickhouseForOrganization(organizationId, "standard");
+    const environmentMetricsRepository = new ClickHouseEnvironmentMetricsRepository({
+      clickhouse,
+    });
+
     // IMPORTANT: Don't await these, we want to return the promises
     // so we can defer the loading of the data
-    const activity = this.environmentMetricsRepository.getDailyTaskActivity({
+    const activity = environmentMetricsRepository.getDailyTaskActivity({
       organizationId,
       projectId,
       environmentId,
@@ -86,7 +89,7 @@ export class TaskListPresenter {
       tasks: slugs,
     });
 
-    const runningStats = this.environmentMetricsRepository.getCurrentRunningStats({
+    const runningStats = environmentMetricsRepository.getCurrentRunningStats({
       organizationId,
       projectId,
       environmentId,
@@ -94,7 +97,7 @@ export class TaskListPresenter {
       tasks: slugs,
     });
 
-    const durations = this.environmentMetricsRepository.getAverageDurations({
+    const durations = environmentMetricsRepository.getAverageDurations({
       organizationId,
       projectId,
       environmentId,
@@ -109,9 +112,5 @@ export class TaskListPresenter {
 export const taskListPresenter = singleton("taskListPresenter", setupTaskListPresenter);
 
 function setupTaskListPresenter() {
-  const environmentMetricsRepository = new ClickHouseEnvironmentMetricsRepository({
-    clickhouse: clickhouseClient,
-  });
-
-  return new TaskListPresenter(environmentMetricsRepository, $replica);
+  return new TaskListPresenter($replica);
 }
