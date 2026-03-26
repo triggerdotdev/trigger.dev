@@ -4,6 +4,7 @@ import { Form, type MetaFunction, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type ErrorGroupStatus } from "@trigger.dev/database";
 import { IconBugFilled } from "@tabler/icons-react";
+import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { Suspense, useCallback, useMemo, type ReactNode } from "react";
 import {
@@ -382,7 +383,7 @@ function ErrorStatusDropdown({
         <SelectList>
           {filtered.map((item) => (
             <SelectItem key={item.value} value={item.value}>
-              {item.label}
+              <ErrorStatusBadge status={item.value} />
             </SelectItem>
           ))}
         </SelectList>
@@ -569,7 +570,7 @@ function ErrorGroupRow({
         {errorGroup.fingerprint.slice(-8)}
       </CopyableTableCell>
       <TableCell to={errorPath}>
-        <ListStatusBadge status={errorGroup.status} />
+        <ErrorStatusBadge status={errorGroup.status} />
       </TableCell>
       <TableCell to={errorPath}>{errorGroup.taskIdentifier}</TableCell>
       <CopyableTableCell to={errorPath} className="font-mono" value={errorMessage}>
@@ -602,26 +603,6 @@ function ErrorGroupRow({
   );
 }
 
-const LIST_STATUS_STYLES = {
-  UNRESOLVED: "text-error",
-  RESOLVED: "text-success",
-  IGNORED: "text-text-dimmed",
-} as const;
-
-const LIST_STATUS_LABELS = {
-  UNRESOLVED: "Unresolved",
-  RESOLVED: "Resolved",
-  IGNORED: "Ignored",
-} as const;
-
-function ListStatusBadge({ status }: { status: string }) {
-  const s = (status as keyof typeof LIST_STATUS_STYLES) ?? "UNRESOLVED";
-  return (
-    <span className={`text-xs ${LIST_STATUS_STYLES[s] ?? LIST_STATUS_STYLES.UNRESOLVED}`}>
-      {LIST_STATUS_LABELS[s] ?? "Unresolved"}
-    </span>
-  );
-}
 
 function ErrorActivityGraph({ activity }: { activity: ErrorOccurrenceActivity }) {
   const maxCount = Math.max(...activity.map((d) => d.count));

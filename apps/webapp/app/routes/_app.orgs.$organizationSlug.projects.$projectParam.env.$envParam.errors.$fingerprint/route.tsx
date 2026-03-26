@@ -3,6 +3,7 @@ import { type MetaFunction, Form, useFetcher, useNavigation, useSubmit } from "@
 import { BellAlertIcon } from "@heroicons/react/20/solid";
 import { parse } from "@conform-to/zod";
 import { z } from "zod";
+import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { requireUser, requireUserId } from "~/services/session.server";
@@ -543,27 +544,6 @@ function ErrorGroupDetail({
   );
 }
 
-const STATUS_BADGE_STYLES = {
-  UNRESOLVED: "bg-error/10 text-error",
-  RESOLVED: "bg-success/10 text-success",
-  IGNORED: "bg-text-dimmed/10 text-text-dimmed",
-} as const;
-
-const STATUS_LABELS = {
-  UNRESOLVED: "Unresolved",
-  RESOLVED: "Resolved",
-  IGNORED: "Ignored",
-} as const;
-
-function StatusBadge({ status }: { status: ErrorGroupState["status"] }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_STYLES[status]}`}
-    >
-      {STATUS_LABELS[status]}
-    </span>
-  );
-}
 
 function IgnoredDetails({
   state,
@@ -665,7 +645,7 @@ function ErrorGroupActionButtons({
   return (
     <>
       <Form className="flex items-center gap-2">
-        <StatusBadge status={state.status} />
+        <ErrorStatusBadge status={state.status} />
 
         {state.status === "UNRESOLVED" && (
           <>
