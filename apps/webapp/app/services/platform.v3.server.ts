@@ -667,18 +667,18 @@ export async function createPrivateLink(
   organizationId: string,
   body: CreatePrivateLinkConnectionBody
 ): Promise<PrivateLinkConnection | undefined> {
-  if (!client) return undefined;
+  if (!client) throw new Error("Platform client not configured");
 
   const [error, result] = await tryCatch(client.createPrivateLink(organizationId, body));
 
   if (error) {
     logger.error("Error creating private link", { organizationId, error });
-    return undefined;
+    throw error;
   }
 
   if (!result.success) {
     logger.error("Error creating private link - no success", { organizationId, error: result.error });
-    return undefined;
+    throw new Error(result.error ?? "Failed to create private link");
   }
 
   return result;
@@ -688,18 +688,18 @@ export async function deletePrivateLink(
   organizationId: string,
   connectionId: string
 ): Promise<void> {
-  if (!client) return;
+  if (!client) throw new Error("Platform client not configured");
 
   const [error, result] = await tryCatch(client.deletePrivateLink(organizationId, connectionId));
 
   if (error) {
     logger.error("Error deleting private link", { organizationId, connectionId, error });
-    return;
+    throw error;
   }
 
   if (!result.success) {
     logger.error("Error deleting private link - no success", { organizationId, connectionId, error: result.error });
-    return;
+    throw new Error(result.error ?? "Failed to delete private link");
   }
 }
 

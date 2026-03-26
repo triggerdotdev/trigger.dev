@@ -1,7 +1,7 @@
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Form, useFetcher, useRevalidator, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { tryCatch } from "@trigger.dev/core";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
   MainHorizontallyCenteredContainer,
@@ -14,6 +14,7 @@ import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/Page
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
+import { logger } from "~/services/logger.server";
 import { getPrivateLinks } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import {
@@ -58,7 +59,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const [error, connections] = await tryCatch(getPrivateLinks(organization.id));
   if (error) {
-    console.error("Error loading private link connections", error);
+    logger.error("Error loading private link connections", { error, organizationId: organization.id });
   }
 
   return typedjson({

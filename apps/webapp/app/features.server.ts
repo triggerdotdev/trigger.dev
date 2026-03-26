@@ -1,3 +1,4 @@
+import { env } from "./env.server";
 import { requestUrl } from "./utils/requestUrl.server";
 
 export type TriggerFeatures = {
@@ -15,7 +16,7 @@ function isManagedCloud(host: string): boolean {
 }
 
 function hasPrivateConnections(host: string): boolean {
-  if (process.env.PRIVATE_CONNECTIONS_ENABLED === "1") {
+  if (env.PRIVATE_CONNECTIONS_ENABLED === "1") {
     return isManagedCloud(host);
   }
   return false;

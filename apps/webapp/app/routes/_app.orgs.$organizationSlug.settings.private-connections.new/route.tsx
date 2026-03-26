@@ -2,7 +2,7 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { Form, useActionData, useParams, type MetaFunction } from "@remix-run/react";
 import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { tryCatch } from "@trigger.dev/core";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -23,11 +23,13 @@ import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { featuresForRequest } from "~/features.server";
 import {
   redirectWithErrorMessage,
   redirectWithSuccessMessage,
 } from "~/models/message.server";
+import type { CreatePrivateLinkConnectionBody } from "@trigger.dev/platform";
 import {
   createPrivateLink,
   getPrivateLinkRegions,
@@ -69,7 +71,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const [error, regions] = await tryCatch(getPrivateLinkRegions(organization.id));
 
-  const awsAccountIds = process.env.PRIVATE_CONNECTIONS_AWS_ACCOUNT_IDS?.split(",").filter(Boolean) ?? [];
+  const awsAccountIds = env.PRIVATE_CONNECTIONS_AWS_ACCOUNT_IDS?.split(",").filter(Boolean) ?? [];
 
   return typedjson({
     availableRegions: regions?.availableRegions ?? ["us-east-1", "eu-central-1"],
@@ -128,7 +130,10 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   const [error] = await tryCatch(
-    createPrivateLink(organization.id, { ...rest, targetRegion: selectedRegion })
+    createPrivateLink(organization.id, {
+      ...rest,
+      targetRegion: selectedRegion as CreatePrivateLinkConnectionBody["targetRegion"],
+    })
   );
 
   if (error) {
