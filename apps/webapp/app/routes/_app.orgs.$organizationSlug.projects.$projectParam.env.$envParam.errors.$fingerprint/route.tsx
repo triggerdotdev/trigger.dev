@@ -1,6 +1,11 @@
 import { type LoaderFunctionArgs, type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { type MetaFunction, Form, useFetcher, useNavigation, useSubmit } from "@remix-run/react";
-import { BellAlertIcon } from "@heroicons/react/20/solid";
+import { type MetaFunction, useFetcher, useNavigation, useSubmit } from "@remix-run/react";
+import { BellAlertIcon, CheckIcon } from "@heroicons/react/20/solid";
+import { IconAlarmSnooze as IconAlarmSnoozeBase } from "@tabler/icons-react";
+
+const AlarmSnoozeIcon = ({ className }: { className?: string }) => (
+  <IconAlarmSnoozeBase className={className} size={18} />
+);
 import { parse } from "@conform-to/zod";
 import { z } from "zod";
 import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
@@ -26,15 +31,21 @@ import {
 import { type NextRunList } from "~/presenters/v3/NextRunListPresenter.server";
 import { $replica } from "~/db.server";
 import { logsClickhouseClient, clickhouseClient } from "~/services/clickhouseInstance.server";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PageBody } from "~/components/layout/AppLayout";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "~/components/primitives/Resizable";
+import { AnimatePresence, motion } from "framer-motion";
 import { Suspense, useMemo, useState } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Callout } from "~/components/primitives/Callout";
-import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { formatDistanceToNow, isPast } from "date-fns";
-import { formatNumberCompact } from "~/utils/numberFormatter";
+
 import * as Property from "~/components/primitives/PropertyTable";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
@@ -52,6 +63,7 @@ import { RunsIcon } from "~/assets/icons/RunsIcon";
 import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { CopyableText } from "~/components/primitives/CopyableText";
+import { cn } from "~/utils/cn";
 import { LogsVersionFilter } from "~/components/logs/LogsVersionFilter";
 import { getSeriesColor } from "~/components/code/chartColors";
 import {
@@ -299,11 +311,6 @@ export default function Page() {
           }}
           title={<span className="font-mono text-xs">{ErrorId.toFriendlyId(fingerprint)}</span>}
         />
-        <PageAccessories>
-          <LinkButton to={alertsHref} variant="primary/small" LeadingIcon={BellAlertIcon}>
-            Configure alerts
-          </LinkButton>
-        </PageAccessories>
       </NavBar>
 
       <PageBody scrollable={false}>
@@ -346,6 +353,7 @@ export default function Page() {
                   projectParam={projectParam}
                   envParam={envParam}
                   fingerprint={fingerprint}
+                  alertsHref={alertsHref}
                 />
               );
             }}
@@ -364,6 +372,7 @@ function ErrorGroupDetail({
   projectParam,
   envParam,
   fingerprint,
+  alertsHref,
 }: {
   errorGroup: ErrorGroupSummary | undefined;
   runList: NextRunList | undefined;
@@ -372,6 +381,7 @@ function ErrorGroupDetail({
   projectParam: string;
   envParam: string;
   fingerprint: string;
+  alertsHref: string;
 }) {
   const { value, values } = useSearchParams();
   const organization = useOrganization();
@@ -405,26 +415,160 @@ function ErrorGroupDetail({
   };
 
   return (
-    <div className="grid h-full grid-rows-[auto_12rem_1fr] overflow-hidden">
-      {/* Error Summary */}
-      <div className="flex flex-col gap-2 border-b border-grid-bright bg-background-bright p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-col gap-0.5">
-            <Header2>{errorGroup.errorMessage}</Header2>
-            <Header3>
-              <span className="tabular-nums">{formatNumberCompact(errorGroup.count)}</span> total
-              occurrences
-            </Header3>
-          </div>
-          <ErrorGroupActionButtons
-            state={errorGroup.state}
-            taskIdentifier={errorGroup.taskIdentifier}
-            fingerprint={fingerprint}
-          />
-        </div>
+    <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+      {/* Main content: chart + runs */}
+      <ResizablePanel id="error-main" min="300px">
+        <div className="grid h-full grid-rows-[12rem_1fr] overflow-hidden">
+          {/* Activity chart */}
+          <div className="flex flex-col gap-3 overflow-hidden border-b border-grid-bright bg-background-bright px-4 py-3">
+            <div className="flex items-center gap-1">
+              <TimeFilter defaultPeriod="7d" labelName="Occurred" />
+              <LogsVersionFilter />
+            </div>
 
-        <div className="grid grid-cols-[auto_auto_auto_1fr] gap-x-12 gap-y-0.5">
+            <Suspense fallback={<ActivityChartBlankState />}>
+              <TypedAwait resolve={activity} errorElement={<ActivityChartBlankState />}>
+                {(result) => {
+                  if (result.data.length > 0 && result.versions.length > 0) {
+                    return <ActivityChart activity={result.data} versions={result.versions} />;
+                  }
+                  return <ActivityChartBlankState />;
+                }}
+              </TypedAwait>
+            </Suspense>
+          </div>
+
+          {/* Runs Table */}
+          <div className="flex flex-col gap-1 overflow-y-hidden">
+            <div className="flex items-center justify-between px-4">
+              <Header3 className="mb-1 mt-2">Runs</Header3>
+              {runList && (
+                <div className="flex items-center gap-2">
+                  <LinkButton
+                    variant="secondary/small"
+                    to={v3RunsPath(organization, project, environment, filters)}
+                    LeadingIcon={RunsIcon}
+                  >
+                    View all runs
+                  </LinkButton>
+                  <LinkButton
+                    variant="secondary/small"
+                    to={v3CreateBulkActionPath(
+                      organization,
+                      project,
+                      environment,
+                      filters,
+                      "filter",
+                      "replay"
+                    )}
+                    LeadingIcon={ListCheckedIcon}
+                  >
+                    Bulk replay…
+                  </LinkButton>
+                  <ListPagination list={runList} />
+                </div>
+              )}
+            </div>
+            {runList ? (
+              <TaskRunsTable
+                total={runList.runs.length}
+                hasFilters={selectedVersions.length > 0}
+                filters={{
+                  tasks: [],
+                  versions: selectedVersions,
+                  statuses: [],
+                  from: undefined,
+                  to: undefined,
+                }}
+                runs={runList.runs}
+                isLoading={false}
+                variant="dimmed"
+                additionalTableState={{ errorId: ErrorId.toFriendlyId(fingerprint) }}
+              />
+            ) : (
+              <Paragraph variant="small" className="p-4 text-text-dimmed">
+                No runs found for this error.
+              </Paragraph>
+            )}
+          </div>
+        </div>
+      </ResizablePanel>
+
+      {/* Right-hand detail sidebar */}
+      <ResizableHandle id="error-detail-handle" />
+      <ResizablePanel id="error-detail" min="280px" default="380px" max="500px" isStaticAtRest>
+        <ErrorDetailSidebar errorGroup={errorGroup} fingerprint={fingerprint} alertsHref={alertsHref} />
+      </ResizablePanel>
+    </ResizablePanelGroup>
+  );
+}
+
+function ErrorDetailSidebar({
+  errorGroup,
+  fingerprint,
+  alertsHref,
+}: {
+  errorGroup: ErrorGroupSummary;
+  fingerprint: string;
+  alertsHref: string;
+}) {
+  return (
+    <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
+      <div className="flex items-center justify-between border-b border-grid-dimmed py-2 pl-3 pr-2">
+        <Header2 className="truncate">Details</Header2>
+        <LinkButton
+          to={alertsHref}
+          variant="secondary/small"
+          LeadingIcon={BellAlertIcon}
+          leadingIconClassName="text-alerts"
+        >
+          Configure alerts
+        </LinkButton>
+      </div>
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="flex flex-col gap-4">
           <Property.Table>
+            {/* Status */}
+            <Property.Item>
+              <Property.Label>Error status</Property.Label>
+              <Property.Value>
+                <div className="flex items-center justify-between">
+                  <ErrorStatusBadge status={errorGroup.state.status} className="w-fit" />
+                  <ErrorStatusDropdown
+                    state={errorGroup.state}
+                    taskIdentifier={errorGroup.taskIdentifier}
+                  />
+                </div>
+
+                <AnimatePresence>
+                  {errorGroup.state.status === "IGNORED" && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.15, ease: "easeInOut" }}
+                      className="overflow-hidden"
+                    >
+                      <IgnoredDetails
+                        className="mt-2"
+                        state={errorGroup.state}
+                        totalOccurrences={errorGroup.count}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </Property.Value>
+            </Property.Item>
+
+            {/* Error message */}
+            <Property.Item>
+              <Property.Label>Error</Property.Label>
+              <Property.Value>
+                <Paragraph variant="small" className="break-words font-mono">
+                  {errorGroup.errorMessage}
+                </Paragraph>
+              </Property.Value>
+            </Property.Item>
             <Property.Item>
               <Property.Label>ID</Property.Label>
               <Property.Value>
@@ -437,9 +581,12 @@ function ErrorGroupDetail({
                 <CopyableText value={errorGroup.taskIdentifier} />
               </Property.Value>
             </Property.Item>
-          </Property.Table>
-
-          <Property.Table>
+            <Property.Item>
+              <Property.Label>Occurrences</Property.Label>
+              <Property.Value>
+                <span className="tabular-nums">{errorGroup.count.toLocaleString()}</span>
+              </Property.Value>
+            </Property.Item>
             <Property.Item>
               <Property.Label>First seen</Property.Label>
               <Property.Value>
@@ -452,12 +599,9 @@ function ErrorGroupDetail({
                 <RelativeDateTime date={errorGroup.lastSeen} />
               </Property.Value>
             </Property.Item>
-          </Property.Table>
-
-          <Property.Table>
             {errorGroup.affectedVersions.length > 0 && (
               <Property.Item>
-                <Property.Label>Affected versions</Property.Label>
+                <Property.Label>Versions</Property.Label>
                 <Property.Value>
                   <span className="font-mono text-xs">
                     {errorGroup.affectedVersions.join(", ")}
@@ -467,93 +611,19 @@ function ErrorGroupDetail({
             )}
           </Property.Table>
         </div>
-
-        <IgnoredDetails state={errorGroup.state} totalOccurrences={errorGroup.count} />
-      </div>
-
-      {/* Activity chart */}
-      <div className="flex flex-col gap-3 overflow-hidden border-b border-grid-bright px-4 py-3">
-        <div className="flex items-center gap-1">
-          <TimeFilter defaultPeriod="7d" labelName="Occurred" />
-          <LogsVersionFilter />
-        </div>
-
-        <Suspense fallback={<ActivityChartBlankState />}>
-          <TypedAwait resolve={activity} errorElement={<ActivityChartBlankState />}>
-            {(result) => {
-              if (result.data.length > 0 && result.versions.length > 0) {
-                return <ActivityChart activity={result.data} versions={result.versions} />;
-              }
-              return <ActivityChartBlankState />;
-            }}
-          </TypedAwait>
-        </Suspense>
-      </div>
-
-      {/* Runs Table */}
-      <div className="flex flex-col gap-1 overflow-y-hidden">
-        <div className="flex items-center justify-between px-4">
-          <Header3 className="mb-1 mt-2">Runs</Header3>
-          {runList && (
-            <div className="flex items-center gap-2">
-              <LinkButton
-                variant="secondary/small"
-                to={v3RunsPath(organization, project, environment, filters)}
-                LeadingIcon={RunsIcon}
-              >
-                View all runs
-              </LinkButton>
-              <LinkButton
-                variant="secondary/small"
-                to={v3CreateBulkActionPath(
-                  organization,
-                  project,
-                  environment,
-                  filters,
-                  "filter",
-                  "replay"
-                )}
-                LeadingIcon={ListCheckedIcon}
-              >
-                Bulk replay…
-              </LinkButton>
-              <ListPagination list={runList} />
-            </div>
-          )}
-        </div>
-        {runList ? (
-          <TaskRunsTable
-            total={runList.runs.length}
-            hasFilters={selectedVersions.length > 0}
-            filters={{
-              tasks: [],
-              versions: selectedVersions,
-              statuses: [],
-              from: undefined,
-              to: undefined,
-            }}
-            runs={runList.runs}
-            isLoading={false}
-            variant="dimmed"
-            additionalTableState={{ errorId: ErrorId.toFriendlyId(fingerprint) }}
-          />
-        ) : (
-          <Paragraph variant="small" className="p-4 text-text-dimmed">
-            No runs found for this error.
-          </Paragraph>
-        )}
       </div>
     </div>
   );
 }
 
-
 function IgnoredDetails({
   state,
   totalOccurrences,
+  className,
 }: {
   state: ErrorGroupState;
   totalOccurrences: number;
+  className?: string;
 }) {
   if (state.status !== "IGNORED") {
     return null;
@@ -570,7 +640,12 @@ function IgnoredDetails({
       : null;
 
   return (
-    <div className="flex flex-col gap-1.5 rounded border border-text-dimmed/20 bg-text-dimmed/5 px-3 py-2.5 text-sm">
+    <div
+      className={cn(
+        "flex flex-col gap-1.5 rounded border border-text-dimmed/20 bg-text-dimmed/5 px-3 py-2.5 text-sm",
+        className
+      )}
+    >
       <div className="flex items-center gap-2">
         <span className="font-medium text-text-bright">
           {ignoredForever ? "Ignored permanently" : "Ignored with conditions"}
@@ -633,95 +708,92 @@ function IgnoredDetails({
   );
 }
 
-function ErrorGroupActionButtons({
+function ErrorStatusDropdown({
   state,
   taskIdentifier,
-  fingerprint,
 }: {
   state: ErrorGroupState;
   taskIdentifier: string;
-  fingerprint: string;
 }) {
-  const navigation = useNavigation();
   const submit = useSubmit();
+  const navigation = useNavigation();
+  const [popoverOpen, setPopoverOpen] = useState(false);
   const [customIgnoreOpen, setCustomIgnoreOpen] = useState(false);
   const isSubmitting = navigation.state !== "idle";
 
+  const act = (data: Record<string, string>) => {
+    setPopoverOpen(false);
+    submit(data, { method: "post" });
+  };
+
   return (
     <>
-      <Form className="flex items-center gap-2">
-        <ErrorStatusBadge status={state.status} />
+      <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+        <PopoverArrowTrigger variant="tertiary" disabled={isSubmitting}>
+          Mark error as…
+        </PopoverArrowTrigger>
+        <PopoverContent className="w-fit min-w-0 p-1" align="end">
+          {state.status === "UNRESOLVED" && (
+            <>
+              <PopoverMenuItem
+                icon={CheckIcon}
+                leadingIconClassName="text-success"
+                title="Resolved"
+                onClick={() => act({ taskIdentifier, action: "resolve" })}
+              />
+              <PopoverMenuItem
+                icon={AlarmSnoozeIcon}
+                title="Ignored for 1 hour"
+                onClick={() =>
+                  act({
+                    taskIdentifier,
+                    action: "ignore",
+                    duration: String(60 * 60 * 1000),
+                  })
+                }
+              />
+              <PopoverMenuItem
+                icon={AlarmSnoozeIcon}
+                title="Ignored for 24 hours"
+                onClick={() =>
+                  act({
+                    taskIdentifier,
+                    action: "ignore",
+                    duration: String(24 * 60 * 60 * 1000),
+                  })
+                }
+              />
+              <PopoverMenuItem
+                icon={AlarmSnoozeIcon}
+                title="Ignored forever"
+                onClick={() => act({ taskIdentifier, action: "ignore" })}
+              />
+              <PopoverMenuItem
+                icon={AlarmSnoozeIcon}
+                title="Ignored with custom condition…"
+                onClick={() => {
+                  setPopoverOpen(false);
+                  setCustomIgnoreOpen(true);
+                }}
+              />
+            </>
+          )}
 
-        {state.status === "UNRESOLVED" && (
-          <>
-            <Button
-              variant="secondary/small"
-              disabled={isSubmitting}
-              onClick={() => submit({ taskIdentifier, action: "resolve" }, { method: "post" })}
-              type="button"
-            >
-              Resolve
-            </Button>
-            <Popover>
-              <PopoverArrowTrigger variant="tertiary">Ignore</PopoverArrowTrigger>
-              <PopoverContent className="w-fit p-1" align="end">
-                <PopoverMenuItem
-                  title="Ignore for 1 hour"
-                  onClick={() =>
-                    submit(
-                      { taskIdentifier, action: "ignore", duration: String(60 * 60 * 1000) },
-                      { method: "post" }
-                    )
-                  }
-                />
-                <PopoverMenuItem
-                  title="Ignore for 24 hours"
-                  onClick={() =>
-                    submit(
-                      {
-                        taskIdentifier,
-                        action: "ignore",
-                        duration: String(24 * 60 * 60 * 1000),
-                      },
-                      { method: "post" }
-                    )
-                  }
-                />
-                <PopoverMenuItem
-                  title="Ignore forever"
-                  onClick={() => submit({ taskIdentifier, action: "ignore" }, { method: "post" })}
-                />
-                <PopoverMenuItem
-                  title="Custom condition..."
-                  onClick={() => setCustomIgnoreOpen(true)}
-                />
-              </PopoverContent>
-            </Popover>
-          </>
-        )}
+          {state.status === "RESOLVED" && (
+            <PopoverMenuItem
+              title="Unresolved"
+              onClick={() => act({ taskIdentifier, action: "unresolve" })}
+            />
+          )}
 
-        {state.status === "RESOLVED" && (
-          <Button
-            variant="secondary/small"
-            disabled={isSubmitting}
-            onClick={() => submit({ taskIdentifier, action: "unresolve" }, { method: "post" })}
-            type="button"
-          >
-            Unresolve
-          </Button>
-        )}
-
-        {state.status === "IGNORED" && (
-          <Button
-            variant="secondary/small"
-            disabled={isSubmitting}
-            onClick={() => submit({ taskIdentifier, action: "unresolve" }, { method: "post" })}
-            type="button"
-          >
-            Unignore
-          </Button>
-        )}
-      </Form>
+          {state.status === "IGNORED" && (
+            <PopoverMenuItem
+              title="Unresolved"
+              onClick={() => act({ taskIdentifier, action: "unresolve" })}
+            />
+          )}
+        </PopoverContent>
+      </Popover>
 
       <Dialog open={customIgnoreOpen} onOpenChange={setCustomIgnoreOpen}>
         <DialogContent>
