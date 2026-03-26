@@ -354,6 +354,12 @@ const EnvironmentSchema = z
     OBJECT_STORE_REGION: z.string().optional(),
     OBJECT_STORE_SERVICE: z.string().default("s3"),
 
+    // Protocol to use for new uploads (e.g., "s3", "r2"). Data without protocol uses default provider above.
+    // If specified, you must configure the corresponding provider using OBJECT_STORE_{PROTOCOL}_* env vars.
+    // Example: OBJECT_STORE_DEFAULT_PROTOCOL=s3 requires OBJECT_STORE_S3_BASE_URL, OBJECT_STORE_S3_ACCESS_KEY_ID, etc.
+    // Enables zero-downtime migration between providers (old data keeps working, new data uses new provider).
+    OBJECT_STORE_DEFAULT_PROTOCOL: z.string().regex(/^[a-z0-9]+$/).optional(),
+
     ARTIFACTS_OBJECT_STORE_BUCKET: z.string().optional(),
     ARTIFACTS_OBJECT_STORE_BASE_URL: z.string().optional(),
     ARTIFACTS_OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),

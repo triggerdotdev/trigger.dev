@@ -16,7 +16,7 @@ import { env } from "~/env.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { batchTriggerWorker } from "~/v3/batchTriggerWorker.server";
-import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../../v3/r2.server";
+import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../../v3/objectStore.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { TriggerTaskService } from "../../v3/services/triggerTask.server";
 import { startActiveSpan } from "../../v3/tracer.server";

@@ -25,7 +25,7 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
 import { marqs } from "../marqs/index.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
-import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../r2.server";
+import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../objectStore.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";

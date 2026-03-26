@@ -3,7 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { generatePresignedUrl } from "~/v3/r2.server";
+import { generatePresignedUrl } from "~/v3/objectStore.server";
 
 const ParamsSchema = z.object({
   "*": z.string(),

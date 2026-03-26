@@ -26,7 +26,7 @@ import { getV3EventRepository } from "../eventRepository/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
-import { uploadPacketToObjectStore } from "../r2.server";
+import { uploadPacketToObjectStore } from "../objectStore.server";
 import { removeQueueConcurrencyLimits, updateQueueConcurrencyLimits } from "../runQueue.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
