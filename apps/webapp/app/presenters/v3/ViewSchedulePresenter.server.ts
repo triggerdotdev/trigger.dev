@@ -1,7 +1,7 @@
 import { ScheduleObject } from "@trigger.dev/core/v3";
 import { PrismaClient, prisma } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
 import { nextScheduledTimestamps } from "~/v3/utils/calculateNextSchedule.server";
 import { NextRunListPresenter } from "./NextRunListPresenter.server";
 import { scheduleWhereClause } from "~/models/schedules.server";
@@ -75,7 +75,8 @@ export class ViewSchedulePresenter {
       ? nextScheduledTimestamps(schedule.generatorExpression, schedule.timezone, new Date(), 5)
       : [];
 
-    const runPresenter = new NextRunListPresenter(this.#prismaClient, clickhouseClient);
+    const clickhouse = await getClickhouseForOrganization(schedule.project.organizationId, "standard");
+    const runPresenter = new NextRunListPresenter(this.#prismaClient, clickhouse);
     const { runs } = await runPresenter.call(schedule.project.organizationId, environmentId, {
       projectId: schedule.project.id,
       scheduleId: schedule.id,

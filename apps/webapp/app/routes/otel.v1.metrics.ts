@@ -7,12 +7,13 @@ import { otlpExporter } from "~/v3/otlpExporter.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   try {
+    const exporter = await otlpExporter;
     const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
 
     if (contentType.startsWith("application/json")) {
       const body = await request.json();
 
-      const exportResponse = await otlpExporter.exportMetrics(
+      const exportResponse = await exporter.exportMetrics(
         body as ExportMetricsServiceRequest
       );
 
@@ -22,7 +23,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
       const exportRequest = ExportMetricsServiceRequest.decode(new Uint8Array(buffer));
 
-      const exportResponse = await otlpExporter.exportMetrics(exportRequest);
+      const exportResponse = await exporter.exportMetrics(exportRequest);
 
       return new Response(ExportMetricsServiceResponse.encode(exportResponse).finish(), {
         status: 200,

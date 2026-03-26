@@ -28,7 +28,7 @@ import type { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ModelRegistryPresenter } from "~/presenters/v3/ModelRegistryPresenter.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
 import { requireUserId } from "~/services/session.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -68,7 +68,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Environment not found", { status: 404 });
   }
 
-  const presenter = new ModelRegistryPresenter(clickhouseClient);
+  const clickhouse = await getClickhouseForOrganization(project.organizationId, "standard");
+  const presenter = new ModelRegistryPresenter(clickhouse);
   const model = await presenter.getModelDetail(modelId);
 
   if (!model) {

@@ -617,18 +617,65 @@ export class RunsReplicationService {
         payloadInserts: payloadInserts.length,
       });
 
+      // Group task runs by organization for routing to correct ClickHouse instance
+      const taskRunsByOrg = new Map<string, TaskRunInsertArray[]>();
+      for (const taskRun of taskRunInserts) {
+        const orgId = getTaskRunField(taskRun, "organization_id");
+        const orgRuns = taskRunsByOrg.get(orgId) || [];
+        orgRuns.push(taskRun);
+        taskRunsByOrg.set(orgId, orgRuns);
+      }
+
+      // Group payloads by organization (extract from run_id -> task runs mapping)
+      const payloadsByOrg = new Map<string, PayloadInsertArray[]>();
+      for (const payload of payloadInserts) {
+        const runId = getPayloadField(payload, "run_id");
+        // Find the corresponding task run to get its organization
+        const taskRun = taskRunInserts.find((tr) => getTaskRunField(tr, "run_id") === runId);
+        if (taskRun) {
+          const orgId = getTaskRunField(taskRun, "organization_id");
+          const orgPayloads = payloadsByOrg.get(orgId) || [];
+          orgPayloads.push(payload);
+          payloadsByOrg.set(orgId, orgPayloads);
+        }
+      }
+
       // Insert task runs and payloads with retry logic for connection errors
-      const [taskRunError, taskRunResult] = await this.#insertWithRetry(
-        (attempt) => this.#insertTaskRunInserts(taskRunInserts, attempt),
-        "task run inserts",
-        flushId
+      // Process each organization's data in parallel
+      const insertPromises = Array.from(taskRunsByOrg.entries()).map(
+        async ([orgId, orgTaskRuns]) => {
+          const orgPayloads = payloadsByOrg.get(orgId) || [];
+
+          const [taskRunError, taskRunResult] = await this.#insertWithRetry(
+            (attempt) => this.#insertTaskRunInserts(orgId, orgTaskRuns, attempt),
+            "task run inserts",
+            flushId
+          );
+
+          const [payloadError, payloadResult] = await this.#insertWithRetry(
+            (attempt) => this.#insertPayloadInserts(orgId, orgPayloads, attempt),
+            "payload inserts",
+            flushId
+          );
+
+          return { taskRunError, payloadError, orgId };
+        }
       );
 
-      const [payloadError, payloadResult] = await this.#insertWithRetry(
-        (attempt) => this.#insertPayloadInserts(payloadInserts, attempt),
-        "payload inserts",
-        flushId
-      );
+      const results = await Promise.all(insertPromises);
+
+      // Aggregate errors from all organizations
+      let taskRunError: Error | null = null;
+      let payloadError: Error | null = null;
+
+      for (const result of results) {
+        if (result.taskRunError) {
+          taskRunError = result.taskRunError;
+        }
+        if (result.payloadError) {
+          payloadError = result.payloadError;
+        }
+      }
 
       // Log any errors that occurred
       if (taskRunError) {
@@ -770,19 +817,32 @@ export class RunsReplicationService {
     };
   }
 
-  async #insertTaskRunInserts(taskRunInserts: TaskRunInsertArray[], attempt: number) {
+  async #insertTaskRunInserts(
+    organizationId: string,
+    taskRunInserts: TaskRunInsertArray[],
+    attempt: number
+  ) {
     return await startSpan(this._tracer, "insertTaskRunsInserts", async (span) => {
-      const [insertError, insertResult] =
-        await this.options.clickhouse.taskRuns.insertCompactArrays(taskRunInserts, {
+      // Get the appropriate ClickHouse client for this organization
+      const { getClickhouseForOrganization } = await import(
+        "~/services/clickhouse/clickhouseFactory.server"
+      );
+      const clickhouse = await getClickhouseForOrganization(organizationId, "replication");
+
+      const [insertError, insertResult] = await clickhouse.taskRuns.insertCompactArrays(
+        taskRunInserts,
+        {
           params: {
             clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
-        });
+        }
+      );
 
       if (insertError) {
         this.logger.error("Error inserting task run inserts attempt", {
           error: insertError,
           attempt,
+          organizationId,
         });
 
         recordSpanError(span, insertError);
@@ -793,19 +853,32 @@ export class RunsReplicationService {
     });
   }
 
-  async #insertPayloadInserts(payloadInserts: PayloadInsertArray[], attempt: number) {
+  async #insertPayloadInserts(
+    organizationId: string,
+    payloadInserts: PayloadInsertArray[],
+    attempt: number
+  ) {
     return await startSpan(this._tracer, "insertPayloadInserts", async (span) => {
-      const [insertError, insertResult] =
-        await this.options.clickhouse.taskRuns.insertPayloadsCompactArrays(payloadInserts, {
+      // Get the appropriate ClickHouse client for this organization
+      const { getClickhouseForOrganization } = await import(
+        "~/services/clickhouse/clickhouseFactory.server"
+      );
+      const clickhouse = await getClickhouseForOrganization(organizationId, "replication");
+
+      const [insertError, insertResult] = await clickhouse.taskRuns.insertPayloadsCompactArrays(
+        payloadInserts,
+        {
           params: {
             clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
-        });
+        }
+      );
 
       if (insertError) {
         this.logger.error("Error inserting payload inserts attempt", {
           error: insertError,
           attempt,
+          organizationId,
         });
 
         recordSpanError(span, insertError);
