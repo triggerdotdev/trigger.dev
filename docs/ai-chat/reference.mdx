@@ -16,8 +16,9 @@ Options for `chat.task()`.
 | `onPreload` | `(event: PreloadEvent) => Promise<void> \| void` | — | Fires on preloaded runs before the first message |
 | `onChatStart` | `(event: ChatStartEvent) => Promise<void> \| void` | — | Fires on turn 0 before `run()` |
 | `onTurnStart` | `(event: TurnStartEvent) => Promise<void> \| void` | — | Fires every turn before `run()` |
-| `onTurnComplete` | `(event: TurnCompleteEvent) => Promise<void> \| void` | — | Fires after each turn completes |
-| `onCompacted` | `(event: CompactedEvent) => Promise<void> \| void` | — | Fires when compaction occurs. See [Compaction](/ai-chat/compaction) |
+| `onBeforeTurnComplete` | `(event: BeforeTurnCompleteEvent) => Promise<void> \| void` | — | Fires after response but before stream closes. Includes `writer`. |
+| `onTurnComplete` | `(event: TurnCompleteEvent) => Promise<void> \| void` | — | Fires after each turn completes (stream closed) |
+| `onCompacted` | `(event: CompactedEvent) => Promise<void> \| void` | — | Fires when compaction occurs. Includes `writer`. See [Compaction](/ai-chat/compaction) |
 | `compaction` | `ChatTaskCompactionOptions` | — | Automatic context compaction. See [Compaction](/ai-chat/compaction) |
 | `pendingMessages` | `PendingMessagesOptions` | — | Mid-execution message injection. See [Pending Messages](/ai-chat/pending-messages) |
 | `prepareMessages` | `(event: PrepareMessagesEvent) => ModelMessage[]` | — | Transform model messages before use (cache breaks, context injection, etc.) |
@@ -57,6 +58,7 @@ Passed to the `onPreload` callback.
 | `runId` | `string` | The Trigger.dev run ID |
 | `chatAccessToken` | `string` | Scoped access token for this run |
 | `clientData` | Typed by `clientDataSchema` | Custom data from the frontend |
+| `writer` | [`ChatWriter`](#chatwriter) | Stream writer for custom chunks. Lazy — no overhead if unused. |
 
 ## ChatStartEvent
 
@@ -72,6 +74,7 @@ Passed to the `onChatStart` callback.
 | `continuation` | `boolean` | Whether this run is continuing an existing chat |
 | `previousRunId` | `string \| undefined` | Previous run ID (only when `continuation` is true) |
 | `preloaded` | `boolean` | Whether this run was preloaded before the first message |
+| `writer` | [`ChatWriter`](#chatwriter) | Stream writer for custom chunks. Lazy — no overhead if unused. |
 
 ## TurnStartEvent
 
@@ -89,6 +92,7 @@ Passed to the `onTurnStart` callback.
 | `continuation` | `boolean` | Whether this run is continuing an existing chat |
 | `previousRunId` | `string \| undefined` | Previous run ID (only when `continuation` is true) |
 | `preloaded` | `boolean` | Whether this run was preloaded |
+| `writer` | [`ChatWriter`](#chatwriter) | Stream writer for custom chunks. Lazy — no overhead if unused. |
 
 ## TurnCompleteEvent
 
@@ -111,6 +115,37 @@ Passed to the `onTurnComplete` callback.
 | `continuation` | `boolean` | Whether this run is continuing an existing chat |
 | `usage` | `LanguageModelUsage \| undefined` | Token usage for this turn |
 | `totalUsage` | `LanguageModelUsage` | Cumulative token usage across all turns |
+
+## BeforeTurnCompleteEvent
+
+Passed to the `onBeforeTurnComplete` callback. Same fields as `TurnCompleteEvent` plus a `writer`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| _(all TurnCompleteEvent fields)_ | | See [TurnCompleteEvent](#turncompleteevent) |
+| `writer` | [`ChatWriter`](#chatwriter) | Stream writer — the stream is still open so chunks appear in the current turn |
+
+## ChatWriter
+
+A stream writer passed to lifecycle callbacks. Write custom `UIMessageChunk` parts (e.g. `data-*` parts) to the chat stream.
+
+The writer is lazy — no stream is opened unless you call `write()` or `merge()`, so there's zero overhead for callbacks that don't use it.
+
+| Method | Type | Description |
+|--------|------|-------------|
+| `write(part)` | `(part: UIMessageChunk) => void` | Write a single chunk to the chat stream |
+| `merge(stream)` | `(stream: ReadableStream<UIMessageChunk>) => void` | Merge another stream's chunks into the chat stream |
+
+```ts
+onTurnStart: async ({ writer }) => {
+  // Write a custom data part — render it on the frontend
+  writer.write({ type: "data-status", data: { loading: true } });
+},
+onBeforeTurnComplete: async ({ writer, usage }) => {
+  // Stream is still open — these chunks arrive before the turn ends
+  writer.write({ type: "data-usage", data: { tokens: usage?.totalTokens } });
+},
+```
 
 ## ChatTaskCompactionOptions
 
@@ -153,6 +188,7 @@ Passed to the `onCompacted` callback.
 | `stepNumber` | `number` | Step number (-1 for outer loop) |
 | `chatId` | `string \| undefined` | Chat session ID |
 | `turn` | `number \| undefined` | Current turn |
+| `writer` | [`ChatWriter`](#chatwriter) | Stream writer for custom chunks during compaction |
 
 ## PendingMessagesOptions
 
