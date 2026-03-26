@@ -52,7 +52,8 @@
       "./v3/runEngineWorker": "./src/v3/runEngineWorker/index.ts",
       "./v3/machines": "./src/v3/machines/index.ts",
       "./v3/serverOnly": "./src/v3/serverOnly/index.ts",
-      "./v3/isomorphic": "./src/v3/isomorphic/index.ts"
+      "./v3/isomorphic": "./src/v3/isomorphic/index.ts",
+      "./v3/compute": "./src/v3/compute/index.ts"
     },
     "sourceDialects": [
       "@triggerdotdev/source"
@@ -576,6 +577,17 @@
       "require": {
         "types": "./dist/commonjs/v3/isomorphic/index.d.ts",
         "default": "./dist/commonjs/v3/isomorphic/index.js"
+      }
+    },
+    "./v3/compute": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/compute/index.ts",
+        "types": "./dist/esm/v3/compute/index.d.ts",
+        "default": "./dist/esm/v3/compute/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/compute/index.d.ts",
+        "default": "./dist/commonjs/v3/compute/index.js"
       }
     }
   },
