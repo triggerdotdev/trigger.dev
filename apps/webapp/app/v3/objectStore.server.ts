@@ -145,8 +145,9 @@ function getObjectStoreClient(protocol?: string): AwsClient | undefined {
 }
 
 export function hasObjectStoreClient(): boolean {
-  return getObjectStoreClient() !== undefined;
+  return getObjectStoreClient() !== undefined || getObjectStoreClient(env.OBJECT_STORE_DEFAULT_PROTOCOL) !== undefined;
 }
+
 
 export async function uploadPacketToObjectStore(
   filename: string,
