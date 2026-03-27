@@ -1,4 +1,4 @@
-import { ComputeGatewayClient } from "@internal/compute";
+import { ComputeClient } from "@internal/compute";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import type { PrismaClientOrTransaction } from "~/db.server";
@@ -10,11 +10,11 @@ import { FailDeploymentService } from "./failDeployment.server";
 type TemplateCreationMode = "required" | "shadow" | "skip";
 
 export class ComputeTemplateCreationService {
-  private client: ComputeGatewayClient | undefined;
+  private client: ComputeClient | undefined;
 
   constructor() {
     if (env.COMPUTE_GATEWAY_URL) {
-      this.client = new ComputeGatewayClient({
+      this.client = new ComputeClient({
         gatewayUrl: env.COMPUTE_GATEWAY_URL,
         authToken: env.COMPUTE_GATEWAY_AUTH_TOKEN,
         timeoutMs: 5 * 60 * 1000, // 5 minutes
@@ -158,7 +158,7 @@ export class ComputeTemplateCreationService {
     }
 
     try {
-      await this.client.createTemplate({
+      await this.client.templates.create({
         image: imageReference,
         cpu: 0.5,
         memory_mb: 512,

@@ -6,6 +6,7 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
+import { ComputeClient } from "@internal/compute";
 import { env } from "../env.js";
 import { getRunnerId } from "../util.js";
 import { buildOtlpTracePayload } from "../otlpPayload.js";
@@ -20,6 +21,7 @@ type ComputeWorkloadManagerOptions = WorkloadManagerOptions & {
 
 export class ComputeWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("compute-workload-manager");
+  private readonly compute: ComputeClient;
 
   constructor(private opts: ComputeWorkloadManagerOptions) {
     if (opts.workloadApiDomain) {
@@ -27,6 +29,12 @@ export class ComputeWorkloadManager implements WorkloadManager {
         domain: opts.workloadApiDomain,
       });
     }
+
+    this.compute = new ComputeClient({
+      gatewayUrl: opts.gatewayUrl,
+      authToken: opts.gatewayAuthToken,
+      timeoutMs: opts.gatewayTimeoutMs,
+    });
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
@@ -73,18 +81,8 @@ export class ComputeWorkloadManager implements WorkloadManager {
       Object.assign(envVars, this.opts.additionalEnvVars);
     }
 
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-
-    if (this.opts.gatewayAuthToken) {
-      headers["Authorization"] = `Bearer ${this.opts.gatewayAuthToken}`;
-    }
-
-    // Strip image digest — resolve by tag, not digest
+    // Strip image digest - resolve by tag, not digest
     const imageRef = opts.image.split("@")[0]!;
-
-    const url = `${this.opts.gatewayUrl}/api/instances`;
 
     // Wide event: single canonical log line emitted in finally
     const event: Record<string, unknown> = {
@@ -105,58 +103,34 @@ export class ComputeWorkloadManager implements WorkloadManager {
       warmStartCheckMs: opts.warmStartCheckMs,
       // Request
       image: imageRef,
-      url,
     };
 
     const startMs = performance.now();
 
     try {
-      const [fetchError, response] = await tryCatch(
-        fetch(url, {
-          method: "POST",
-          headers,
-          signal: AbortSignal.timeout(this.opts.gatewayTimeoutMs),
-          body: JSON.stringify({
-            name: runnerId,
-            image: imageRef,
-            env: envVars,
-            cpu: opts.machine.cpu,
-            memory_gb: opts.machine.memory,
-            metadata: {
-              runId: opts.runFriendlyId,
-              envId: opts.envId,
-              envType: opts.envType,
-              orgId: opts.orgId,
-              projectId: opts.projectId,
-              deploymentVersion: opts.deploymentVersion,
-              machine: opts.machine.name,
-            },
-          }),
+      const [error, data] = await tryCatch(
+        this.compute.instances.create({
+          name: runnerId,
+          image: imageRef,
+          env: envVars,
+          cpu: opts.machine.cpu,
+          memory_gb: opts.machine.memory,
+          metadata: {
+            runId: opts.runFriendlyId,
+            envId: opts.envId,
+            envType: opts.envType,
+            orgId: opts.orgId,
+            projectId: opts.projectId,
+            deploymentVersion: opts.deploymentVersion,
+            machine: opts.machine.name,
+          },
         })
       );
 
-      if (fetchError) {
-        event.error = fetchError instanceof Error ? fetchError.message : String(fetchError);
+      if (error) {
+        event.error = error instanceof Error ? error.message : String(error);
         event.errorType =
-          fetchError instanceof DOMException && fetchError.name === "TimeoutError"
-            ? "timeout"
-            : "fetch";
-        return;
-      }
-
-      event.status = response.status;
-
-      if (!response.ok) {
-        const [bodyError, body] = await tryCatch(response.text());
-        event.responseBody = bodyError ? undefined : body;
-        return;
-      }
-
-      const [parseError, data] = await tryCatch(response.json());
-
-      if (parseError) {
-        event.error = parseError instanceof Error ? parseError.message : String(parseError);
-        event.errorType = "parse";
+          error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "fetch";
         return;
       }
 
@@ -176,34 +150,17 @@ export class ComputeWorkloadManager implements WorkloadManager {
     }
   }
 
-  private get authHeaders(): Record<string, string> {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (this.opts.gatewayAuthToken) {
-      headers["Authorization"] = `Bearer ${this.opts.gatewayAuthToken}`;
-    }
-    return headers;
-  }
-
   async snapshot(opts: {
     runnerId: string;
     callbackUrl: string;
     metadata: Record<string, string>;
   }): Promise<boolean> {
-    const url = `${this.opts.gatewayUrl}/api/instances/${opts.runnerId}/snapshot`;
-
-    const [error, response] = await tryCatch(
-      fetch(url, {
-        method: "POST",
-        headers: this.authHeaders,
-        signal: AbortSignal.timeout(this.opts.gatewayTimeoutMs),
-        body: JSON.stringify({
-          callback: {
-            url: opts.callbackUrl,
-            metadata: opts.metadata,
-          },
-        }),
+    const [error] = await tryCatch(
+      this.compute.instances.snapshot(opts.runnerId, {
+        callback: {
+          url: opts.callbackUrl,
+          metadata: opts.metadata,
+        },
       })
     );
 
@@ -215,41 +172,17 @@ export class ComputeWorkloadManager implements WorkloadManager {
       return false;
     }
 
-    if (response.status !== 202) {
-      this.logger.error("snapshot request rejected", {
-        runnerId: opts.runnerId,
-        status: response.status,
-      });
-      return false;
-    }
-
     this.logger.debug("snapshot request accepted", { runnerId: opts.runnerId });
     return true;
   }
 
   async deleteInstance(runnerId: string): Promise<boolean> {
-    const url = `${this.opts.gatewayUrl}/api/instances/${runnerId}`;
-
-    const [error, response] = await tryCatch(
-      fetch(url, {
-        method: "DELETE",
-        headers: this.authHeaders,
-        signal: AbortSignal.timeout(this.opts.gatewayTimeoutMs),
-      })
-    );
+    const [error] = await tryCatch(this.compute.instances.delete(runnerId));
 
     if (error) {
       this.logger.error("delete instance failed", {
         runnerId,
         error: error instanceof Error ? error.message : String(error),
-      });
-      return false;
-    }
-
-    if (!response.ok) {
-      this.logger.error("delete instance rejected", {
-        runnerId,
-        status: response.status,
       });
       return false;
     }
@@ -329,8 +262,6 @@ export class ComputeWorkloadManager implements WorkloadManager {
     projectId?: string;
     dequeuedAt?: Date;
   }): Promise<boolean> {
-    const url = `${this.opts.gatewayUrl}/api/snapshots/${opts.snapshotId}/restore`;
-
     const metadata: Record<string, string> = {
       TRIGGER_RUNNER_ID: opts.runnerId,
       TRIGGER_RUN_ID: opts.runFriendlyId,
@@ -341,23 +272,19 @@ export class ComputeWorkloadManager implements WorkloadManager {
       TRIGGER_WORKER_INSTANCE_NAME: env.TRIGGER_WORKER_INSTANCE_NAME,
     };
 
-    const body = {
-      name: opts.runnerId,
-      metadata,
-      cpu: opts.machine.cpu,
-      memory_mb: opts.machine.memory * 1024,
-    };
-
-    this.logger.verbose("restore request body", { url, body });
+    this.logger.verbose("restore request body", {
+      snapshotId: opts.snapshotId,
+      runnerId: opts.runnerId,
+    });
 
     const startMs = performance.now();
 
-    const [error, response] = await tryCatch(
-      fetch(url, {
-        method: "POST",
-        headers: this.authHeaders,
-        signal: AbortSignal.timeout(this.opts.gatewayTimeoutMs),
-        body: JSON.stringify(body),
+    const [error] = await tryCatch(
+      this.compute.snapshots.restore(opts.snapshotId, {
+        name: opts.runnerId,
+        metadata,
+        cpu: opts.machine.cpu,
+        memory_mb: opts.machine.memory * 1024,
       })
     );
 
@@ -368,16 +295,6 @@ export class ComputeWorkloadManager implements WorkloadManager {
         snapshotId: opts.snapshotId,
         runnerId: opts.runnerId,
         error: error instanceof Error ? error.message : String(error),
-        durationMs,
-      });
-      return false;
-    }
-
-    if (!response.ok) {
-      this.logger.error("restore request rejected", {
-        snapshotId: opts.snapshotId,
-        runnerId: opts.runnerId,
-        status: response.status,
         durationMs,
       });
       return false;
@@ -448,4 +365,3 @@ export class ComputeWorkloadManager implements WorkloadManager {
     sendOtlpTrace(payload);
   }
 }
-
