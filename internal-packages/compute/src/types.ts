@@ -28,32 +28,36 @@ export type TemplateCallbackPayload = z.infer<typeof TemplateCallbackPayloadSche
 
 // ── Instances ────────────────────────────────────────────────────────────────
 
-export type InstanceCreateRequest = {
-  name: string;
-  image: string;
-  env: Record<string, string>;
-  cpu: number;
-  memory_gb: number;
-  metadata?: Record<string, unknown>;
-};
+export const InstanceCreateRequestSchema = z.object({
+  name: z.string(),
+  image: z.string(),
+  env: z.record(z.string()),
+  cpu: z.number(),
+  memory_gb: z.number(),
+  metadata: z.record(z.unknown()).optional(),
+});
+export type InstanceCreateRequest = z.infer<typeof InstanceCreateRequestSchema>;
 
-export type InstanceCreateResponse = {
-  id: string;
-  _timing?: unknown;
-};
+export const InstanceCreateResponseSchema = z.object({
+  id: z.string(),
+  _timing: z.unknown().optional(),
+});
+export type InstanceCreateResponse = z.infer<typeof InstanceCreateResponseSchema>;
 
-export type InstanceSnapshotRequest = {
-  callback: {
-    url: string;
-    metadata: Record<string, string>;
-  };
-};
+export const InstanceSnapshotRequestSchema = z.object({
+  callback: z.object({
+    url: z.string(),
+    metadata: z.record(z.string()),
+  }),
+});
+export type InstanceSnapshotRequest = z.infer<typeof InstanceSnapshotRequestSchema>;
 
 // ── Snapshots ────────────────────────────────────────────────────────────────
 
-export type SnapshotRestoreRequest = {
-  name: string;
-  metadata: Record<string, string>;
-  cpu: number;
-  memory_mb: number;
-};
+export const SnapshotRestoreRequestSchema = z.object({
+  name: z.string(),
+  metadata: z.record(z.string()),
+  cpu: z.number(),
+  memory_mb: z.number(),
+});
+export type SnapshotRestoreRequest = z.infer<typeof SnapshotRestoreRequestSchema>;
