@@ -14,7 +14,7 @@ import {
   IOPacket,
   parsePacket,
 } from "../utils/ioSerialization.js";
-import { ApiError } from "./errors.js";
+import { ApiError, isTriggerRealtimeAuthError } from "./errors.js";
 import { ApiClient } from "./index.js";
 import { zodShapeStream } from "./stream.js";
 
@@ -341,6 +341,12 @@ export class SSEStreamSubscription implements StreamSubscription {
         // Don't retry if aborted
         controller.close();
         this.options.onComplete?.();
+        return;
+      }
+
+      if (isTriggerRealtimeAuthError(error)) {
+        this.options.onError?.(error as Error);
+        controller.error(error as Error);
         return;
       }
 

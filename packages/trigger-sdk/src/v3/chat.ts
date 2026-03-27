@@ -15,7 +15,7 @@
  *   const { messages, sendMessage, status } = useChat({
  *     transport: new TriggerChatTransport({
  *       task: "my-chat-task",
- *       accessToken,
+ *       accessToken: ({ chatId }) => mintTriggerToken(chatId),
  *     }),
  *   });
  * }
@@ -24,13 +24,46 @@
 
 import type { ChatTransport, UIMessage, UIMessageChunk, ChatRequestOptions } from "ai";
 import { ApiClient, SSEStreamSubscription } from "@trigger.dev/core/v3";
+
+/**
+ * Detect 401/403 from realtime/input-stream calls without relying on `instanceof`
+ * (Vitest can load duplicate `@trigger.dev/core` copies, which breaks subclass checks).
+ */
+function isRunPatAuthError(error: unknown): boolean {
+  if (error === null || typeof error !== "object") {
+    return false;
+  }
+  const e = error as { name?: string; status?: number };
+  return e.name === "TriggerApiError" && (e.status === 401 || e.status === 403);
+}
 import { CHAT_MESSAGES_STREAM_ID, CHAT_STOP_STREAM_ID } from "./chat-constants.js";
 
 const DEFAULT_STREAM_KEY = "chat";
 const DEFAULT_BASE_URL = "https://api.trigger.dev";
 const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
 
+/**
+ * Arguments passed to {@link TriggerChatTransportOptions.renewRunAccessToken}.
+ */
+export type RenewRunAccessTokenParams = {
+  /** Same `chatId` passed to `sendMessages` / `useChat` — your app’s conversation id. */
+  chatId: string;
+  /** The durable Trigger.dev run backing this chat session. */
+  runId: string;
+};
 
+/**
+ * Arguments passed when resolving {@link TriggerChatTransportOptions.accessToken} as a function.
+ */
+export type ResolveChatAccessTokenParams = {
+  /** Conversation id for this trigger or preload. */
+  chatId: string;
+  /**
+   * `trigger` — token used to call `triggerTask` from `sendMessages` (new run or after session ended).
+   * `preload` — same, but from `preload()`.
+   */
+  purpose: "trigger" | "preload";
+};
 
 /**
  * Options for creating a TriggerChatTransport.
@@ -52,8 +85,9 @@ export type TriggerChatTransportOptions<TClientData = unknown> = {
    *
    * Can also be a function that returns a token string (sync or async),
    * useful for dynamic token refresh or passing a Next.js server action directly.
+   * The function receives `chatId` and `purpose` (`trigger` vs `preload`) so you can mint or log per conversation.
    */
-  accessToken: string | (() => string | Promise<string>);
+  accessToken: string | ((params: ResolveChatAccessTokenParams) => string | Promise<string>);
 
   /**
    * Base URL for the Trigger.dev API.
@@ -100,7 +134,6 @@ export type TriggerChatTransportOptions<TClientData = unknown> = {
    * ```
    */
   clientData?: TClientData extends Record<string, unknown> ? TClientData : Record<string, unknown>;
-
 
   /**
    * Restore active chat sessions from external storage (e.g. localStorage).
@@ -179,11 +212,31 @@ export type TriggerChatTransportOptions<TClientData = unknown> = {
     /** Maximum retry attempts. */
     maxAttempts?: number;
     /** Machine preset for the run. */
-    machine?: "micro" | "small-1x" | "small-2x" | "medium-1x" | "medium-2x" | "large-1x" | "large-2x";
+    machine?:
+      | "micro"
+      | "small-1x"
+      | "small-2x"
+      | "medium-1x"
+      | "medium-2x"
+      | "large-1x"
+      | "large-2x";
     /** Priority (lower = higher priority). */
     priority?: number;
   };
 
+  /**
+   * Mint a fresh run-scoped public access token for an existing run (same shape as `x-trigger-jwt`
+   * after trigger). Call from your server with `auth.createPublicToken` using `TRIGGER_ACCESS_KEY`
+   * and scopes `read:runs:<runId>` and `write:inputStreams:<runId>`.
+   *
+   * When the stored PAT expires, the transport invokes this once and retries the failing realtime
+   * or input-stream request. If renewal fails or is omitted, auth errors are surfaced to the caller.
+   *
+   * Receives `chatId` and `runId` so your server action can persist the new PAT keyed by conversation.
+   */
+  renewRunAccessToken?: (
+    params: RenewRunAccessTokenParams
+  ) => string | undefined | null | Promise<string | undefined | null>;
 };
 
 /**
@@ -215,11 +268,11 @@ type ChatSessionState = {
  * import { useChat } from "@ai-sdk/react";
  * import { TriggerChatTransport } from "@trigger.dev/sdk/chat";
  *
- * function Chat({ accessToken }: { accessToken: string }) {
+ * function Chat() {
  *   const { messages, sendMessage, stop, status } = useChat({
  *     transport: new TriggerChatTransport({
  *       task: "my-chat-task",
- *       accessToken,
+ *       accessToken: ({ chatId }) => fetchTriggerToken(chatId),
  *     }),
  *   });
  *
@@ -229,7 +282,10 @@ type ChatSessionState = {
  */
 export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly taskId: string;
-  private readonly resolveAccessToken: () => string | Promise<string>;
+  private readonly staticAccessToken: string | undefined;
+  private readonly resolveAccessTokenFn:
+    | ((params: ResolveChatAccessTokenParams) => string | Promise<string>)
+    | undefined;
   private readonly baseURL: string;
   private readonly streamKey: string;
   private readonly extraHeaders: Record<string, string>;
@@ -243,15 +299,20 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       ) => void)
     | undefined;
 
+  private renewRunAccessToken: TriggerChatTransportOptions["renewRunAccessToken"] | undefined;
+
   private sessions: Map<string, ChatSessionState> = new Map();
   private activeStreams: Map<string, AbortController> = new Map();
 
   constructor(options: TriggerChatTransportOptions) {
     this.taskId = options.task;
-    this.resolveAccessToken =
-      typeof options.accessToken === "function"
-        ? options.accessToken
-        : () => options.accessToken as string;
+    if (typeof options.accessToken === "function") {
+      this.staticAccessToken = undefined;
+      this.resolveAccessTokenFn = options.accessToken;
+    } else {
+      this.staticAccessToken = options.accessToken;
+      this.resolveAccessTokenFn = undefined;
+    }
     this.baseURL = options.baseURL ?? DEFAULT_BASE_URL;
     this.streamKey = options.streamKey ?? DEFAULT_STREAM_KEY;
     this.extraHeaders = options.headers ?? {};
@@ -259,6 +320,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.defaultMetadata = options.clientData;
     this.triggerOptions = options.triggerOptions;
     this._onSessionChange = options.onSessionChange;
+    this.renewRunAccessToken = options.renewRunAccessToken;
 
     // Restore sessions from external storage
     if (options.sessions) {
@@ -303,20 +365,50 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // If we have an existing run, send the message via input stream
     // to resume the conversation in the same run.
     if (session?.runId) {
-      try {
-        // Keep wire payloads minimal — the backend accumulates the full history.
-        // For submit-message: only send the new user message (always the last one).
-        // For regenerate-message: send full history so the backend can reset its accumulator.
-        const minimalPayload = {
-          ...payload,
-          messages: trigger === "submit-message" ? messages.slice(-1) : messages,
-        };
+      const minimalPayload = {
+        ...payload,
+        messages: trigger === "submit-message" ? messages.slice(-1) : messages,
+      };
 
-        const apiClient = new ApiClient(this.baseURL, session.publicAccessToken);
+      const sendChatMessages = async (token: string) => {
+        const apiClient = new ApiClient(this.baseURL, token);
         await apiClient.sendInputStream(session.runId, CHAT_MESSAGES_STREAM_ID, minimalPayload);
+      };
 
-        // Cancel any active reconnect stream for this chatId before
-        // opening a new subscription for the new turn.
+      let inputSendOk = false;
+
+      try {
+        await sendChatMessages(session.publicAccessToken);
+        inputSendOk = true;
+      } catch (err) {
+        if (isRunPatAuthError(err) && this.renewRunAccessToken) {
+          const newToken = await this.renewRunPatForSession(chatId, session.runId);
+          if (newToken) {
+            try {
+              await sendChatMessages(newToken);
+              inputSendOk = true;
+            } catch (err2) {
+              throw err2;
+            }
+          } else {
+            throw err;
+          }
+        } else if (isRunPatAuthError(err)) {
+          throw err;
+        } else {
+          previousRunId = session.runId;
+          this.sessions.delete(chatId);
+          this.notifySessionChange(chatId, null);
+          isContinuation = true;
+        }
+      }
+
+      if (inputSendOk) {
+        const currentSession = this.sessions.get(chatId);
+        if (!currentSession?.runId) {
+          throw new Error("TriggerChatTransport: session missing after input stream send");
+        }
+
         const activeStream = this.activeStreams.get(chatId);
         if (activeStream) {
           activeStream.abort();
@@ -324,23 +416,16 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         }
 
         return this.subscribeToStream(
-          session.runId,
-          session.publicAccessToken,
+          currentSession.runId,
+          currentSession.publicAccessToken,
           abortSignal,
           chatId
         );
-      } catch {
-        // If sending fails (run died, etc.), fall through to trigger a new run.
-        // Mark as continuation so the task knows this chat already existed.
-        previousRunId = session.runId;
-        this.sessions.delete(chatId);
-        this.notifySessionChange(chatId, null);
-        isContinuation = true;
       }
     }
 
     // First message or run has ended — trigger a new run
-    const currentToken = await this.resolveAccessToken();
+    const currentToken = await this.resolveAccessToken({ chatId, purpose: "trigger" });
     const apiClient = new ApiClient(this.baseURL, currentToken);
 
     // Auto-tag with chatId; merge with user-provided tags (API limit: 5 tags)
@@ -376,12 +461,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     };
     this.sessions.set(chatId, newSession);
     this.notifySessionChange(chatId, newSession);
-    return this.subscribeToStream(
-      runId,
-      publicAccessToken ?? currentToken,
-      abortSignal,
-      chatId
-    );
+    return this.subscribeToStream(runId, publicAccessToken ?? currentToken, abortSignal, chatId);
   };
 
   /**
@@ -403,7 +483,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   sendPendingMessage = async (
     chatId: string,
     message: UIMessage,
-    metadata?: Record<string, unknown>,
+    metadata?: Record<string, unknown>
   ): Promise<boolean> => {
     const session = this.sessions.get(chatId);
     if (!session?.runId) return false;
@@ -420,11 +500,30 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       metadata: mergedMetadata,
     };
 
-    try {
-      const apiClient = new ApiClient(this.baseURL, session.publicAccessToken);
+    const sendPending = async (token: string) => {
+      const apiClient = new ApiClient(this.baseURL, token);
       await apiClient.sendInputStream(session.runId, CHAT_MESSAGES_STREAM_ID, payload);
+    };
+
+    try {
+      await sendPending(session.publicAccessToken);
       return true;
-    } catch {
+    } catch (err) {
+      if (isRunPatAuthError(err) && this.renewRunAccessToken) {
+        const newToken = await this.renewRunPatForSession(chatId, session.runId);
+        if (newToken) {
+          try {
+            await sendPending(newToken);
+            return true;
+          } catch (err2) {
+            throw err2;
+          }
+        }
+        throw err;
+      }
+      if (isRunPatAuthError(err)) {
+        throw err;
+      }
       return false;
     }
   };
@@ -472,7 +571,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
    * }
    * ```
    */
-  getSession = (chatId: string): { runId: string; publicAccessToken: string; lastEventId?: string } | undefined => {
+  getSession = (
+    chatId: string
+  ): { runId: string; publicAccessToken: string; lastEventId?: string } | undefined => {
     const session = this.sessions.get(chatId);
     if (!session) return undefined;
     return {
@@ -495,6 +596,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       | undefined
   ): void {
     this._onSessionChange = callback;
+  }
+
+  /**
+   * Update the run PAT renewal callback without recreating the transport.
+   */
+  setRenewRunAccessToken(fn: TriggerChatTransportOptions["renewRunAccessToken"] | undefined): void {
+    this.renewRunAccessToken = fn;
   }
 
   /**
@@ -523,7 +631,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         : {}),
     };
 
-    const currentToken = await this.resolveAccessToken();
+    const currentToken = await this.resolveAccessToken({ chatId, purpose: "preload" });
     const apiClient = new ApiClient(this.baseURL, currentToken);
 
     const autoTags = [`chat:${chatId}`, "preload:true"];
@@ -556,10 +664,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.notifySessionChange(chatId, newSession);
   }
 
-  private notifySessionChange(
-    chatId: string,
-    session: ChatSessionState | null
-  ): void {
+  private async resolveAccessToken(params: ResolveChatAccessTokenParams): Promise<string> {
+    if (this.staticAccessToken !== undefined) {
+      return this.staticAccessToken;
+    }
+    return await this.resolveAccessTokenFn!(params);
+  }
+
+  private notifySessionChange(chatId: string, session: ChatSessionState | null): void {
     if (!this._onSessionChange) return;
     if (session) {
       this._onSessionChange(chatId, {
@@ -572,6 +684,31 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     }
   }
 
+  private async renewRunPatForSession(chatId: string, runId: string): Promise<string | undefined> {
+    const renew = this.renewRunAccessToken;
+    if (!renew) {
+      return undefined;
+    }
+
+    try {
+      const token = await renew({ chatId, runId });
+      if (typeof token !== "string" || token.length === 0) {
+        return undefined;
+      }
+
+      const session = this.sessions.get(chatId);
+      if (!session || session.runId !== runId) {
+        return undefined;
+      }
+
+      session.publicAccessToken = token;
+      this.notifySessionChange(chatId, session);
+      return token;
+    } catch {
+      return undefined;
+    }
+  }
+
   private subscribeToStream(
     runId: string,
     accessToken: string,
@@ -579,11 +716,6 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     chatId?: string,
     options?: { sendStopOnAbort?: boolean }
   ): ReadableStream<UIMessageChunk> {
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${accessToken}`,
-      ...this.extraHeaders,
-    };
-
     // When resuming a run, skip past previously-seen events
     // so we only receive the new turn's response.
     const session = chatId ? this.sessions.get(chatId) : undefined;
@@ -606,9 +738,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           if (options?.sendStopOnAbort !== false && session) {
             session.skipToTurnComplete = true;
             const api = new ApiClient(this.baseURL, session.publicAccessToken);
-            api
-              .sendInputStream(session.runId, CHAT_STOP_STREAM_ID, { stop: true })
-              .catch(() => {}); // Best-effort
+            api.sendInputStream(session.runId, CHAT_STOP_STREAM_ID, { stop: true }).catch(() => {}); // Best-effort
           }
           internalAbort.abort();
         },
@@ -616,30 +746,89 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       );
     }
 
-    const subscription = new SSEStreamSubscription(
-      `${this.baseURL}/realtime/v1/streams/${runId}/${this.streamKey}`,
-      {
-        headers,
-        signal: combinedSignal,
-        timeoutInSeconds: this.streamTimeoutSeconds,
-        lastEventId: session?.lastEventId,
-      }
-    );
+    const streamUrl = `${this.baseURL}/realtime/v1/streams/${runId}/${this.streamKey}`;
 
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {
-        try {
+        const connectSseOnce = async (token: string) => {
+          const subscription = new SSEStreamSubscription(streamUrl, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              ...this.extraHeaders,
+            },
+            signal: combinedSignal,
+            timeoutInSeconds: this.streamTimeoutSeconds,
+            lastEventId: session?.lastEventId,
+          });
           const sseStream = await subscription.subscribe();
           const reader = sseStream.getReader();
+          try {
+            const first = await reader.read();
+            if (first.done) {
+              reader.releaseLock();
+              return null;
+            }
+            return { reader, primed: first.value };
+          } catch (readErr) {
+            reader.releaseLock();
+            throw readErr;
+          }
+        };
+
+        try {
+          let reader: ReadableStreamDefaultReader<{
+            id: string;
+            chunk: unknown;
+            timestamp: number;
+          }>;
+          let primed: { id: string; chunk: unknown; timestamp: number } | undefined;
+
+          try {
+            const opened = await connectSseOnce(accessToken);
+            if (opened === null) {
+              controller.close();
+              return;
+            }
+            reader = opened.reader;
+            primed = opened.primed;
+          } catch (e) {
+            if (isRunPatAuthError(e) && chatId && this.renewRunAccessToken) {
+              const newToken = await this.renewRunPatForSession(chatId, runId);
+              if (newToken) {
+                const opened = await connectSseOnce(newToken);
+                if (opened === null) {
+                  controller.close();
+                  return;
+                }
+                reader = opened.reader;
+                primed = opened.primed;
+              } else {
+                controller.error(e instanceof Error ? e : new Error(String(e)));
+                return;
+              }
+            } else if (isRunPatAuthError(e)) {
+              controller.error(e instanceof Error ? e : new Error(String(e)));
+              return;
+            } else {
+              throw e;
+            }
+          }
+
           let chunkCount = 0;
 
           try {
             while (true) {
-              const { done, value } = await reader.read();
-
-              if (done) {
-                controller.close();
-                return;
+              let value: { id: string; chunk: unknown; timestamp: number };
+              if (primed !== undefined) {
+                value = primed;
+                primed = undefined;
+              } else {
+                const next = await reader.read();
+                if (next.done) {
+                  controller.close();
+                  return;
+                }
+                value = next.value;
               }
 
               if (combinedSignal.aborted) {
@@ -653,7 +842,6 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               if (value.id && session) {
                 session.lastEventId = value.id;
               }
-
 
               // Guard against heartbeat or malformed SSE events
               if (value.chunk != null && typeof value.chunk === "object") {
