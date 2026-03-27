@@ -20,10 +20,15 @@ import {
 } from "@trigger.dev/otlp-importer";
 import type { MetricsV1Input } from "@internal/clickhouse";
 import { logger } from "~/services/logger.server";
-import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
-import { getEventRepositoryForOrganization } from "./eventRepository/eventRepositoryFactory.server";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
+import { ClickhouseEventRepository } from "./eventRepository/clickhouseEventRepository.server";
+import {
+  clickhouseEventRepository,
+  clickhouseEventRepositoryV2,
+} from "./eventRepository/clickhouseEventRepositoryInstance.server";
 import { generateSpanId } from "./eventRepository/common.server";
+import { EventRepository, eventRepository } from "./eventRepository/eventRepository.server";
 import type {
   CreatableEventKind,
   CreatableEventStatus,
@@ -41,6 +46,9 @@ class OTLPExporter {
   private _tracer: Tracer;
 
   constructor(
+    private readonly _eventRepository: EventRepository,
+    private readonly _clickhouseEventRepository: ClickhouseEventRepository,
+    private readonly _clickhouseEventRepositoryV2: ClickhouseEventRepository,
     private readonly _metricsFlushScheduler: DynamicFlushScheduler<MetricsV1Input>,
     private readonly _verbose: boolean,
     private readonly _spanAttributeValueLengthLimit: number
@@ -66,9 +74,7 @@ class OTLPExporter {
     });
   }
 
-  async exportMetrics(
-    request: ExportMetricsServiceRequest
-  ): Promise<ExportMetricsServiceResponse> {
+  async exportMetrics(request: ExportMetricsServiceRequest): Promise<ExportMetricsServiceResponse> {
     return await startSpan(this._tracer, "exportMetrics", async (span) => {
       const rows = this.#filterResourceMetrics(request.resourceMetrics).flatMap(
         (resourceMetrics) => {
@@ -385,7 +391,10 @@ function convertSpansToCreateableEvents(
           SemanticInternalAttributes.METADATA
         );
 
-        const runTags = extractArrayAttribute(span.attributes ?? [], SemanticInternalAttributes.RUN_TAGS);
+        const runTags = extractArrayAttribute(
+          span.attributes ?? [],
+          SemanticInternalAttributes.RUN_TAGS
+        );
 
         const properties =
           truncateAttributes(
@@ -456,7 +465,10 @@ function floorToTenSecondBucket(timeUnixNano: bigint | number): string {
   const flooredMs = Math.floor(epochMs / 10_000) * 10_000;
   const date = new Date(flooredMs);
   // Format as ClickHouse DateTime: YYYY-MM-DD HH:MM:SS
-  return date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, "");
+  return date
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d{3}Z$/, "");
 }
 
 function convertMetricsToClickhouseRows(
@@ -576,8 +588,7 @@ function resolveDataPointContext(
   attributes: Record<string, unknown>;
 } {
   const runId =
-    resourceCtx.runId ??
-    extractStringAttribute(dpAttributes, SemanticInternalAttributes.RUN_ID);
+    resourceCtx.runId ?? extractStringAttribute(dpAttributes, SemanticInternalAttributes.RUN_ID);
   const taskSlug =
     resourceCtx.taskSlug ??
     extractStringAttribute(dpAttributes, SemanticInternalAttributes.TASK_SLUG);
