@@ -99,13 +99,13 @@ export const myChat = chat.task({
 });
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `chatId` | `string` | Chat session ID |
-| `runId` | `string` | The Trigger.dev run ID |
-| `chatAccessToken` | `string` | Scoped access token for this run |
-| `clientData` | Typed by `clientDataSchema` | Custom data from the frontend |
-| `writer` | [`ChatWriter`](/ai-chat/reference#chatwriter) | Stream writer for custom chunks |
+| Field             | Type                                          | Description                      |
+| ----------------- | --------------------------------------------- | -------------------------------- |
+| `chatId`          | `string`                                      | Chat session ID                  |
+| `runId`           | `string`                                      | The Trigger.dev run ID           |
+| `chatAccessToken` | `string`                                      | Scoped access token for this run |
+| `clientData`      | Typed by `clientDataSchema`                   | Custom data from the frontend    |
+| `writer`          | [`ChatWriter`](/ai-chat/reference#chatwriter) | Stream writer for custom chunks  |
 
 Every lifecycle callback receives a `writer` — a lazy stream writer that lets you send custom `UIMessageChunk` parts (like `data-*` parts) to the frontend without the ceremony of `chat.stream.writer()`. See [ChatWriter](/ai-chat/reference#chatwriter).
 
@@ -134,25 +134,27 @@ export const myChat = chat.task({
 ```
 
 <Tip>
-  `clientData` contains custom data from the frontend — either the `clientData` option on the transport constructor (sent with every message) or the `metadata` option on `sendMessage()` (per-message). See [Client data and metadata](/ai-chat/frontend#client-data-and-metadata).
+  `clientData` contains custom data from the frontend — either the `clientData` option on the
+  transport constructor (sent with every message) or the `metadata` option on `sendMessage()`
+  (per-message). See [Client data and metadata](/ai-chat/frontend#client-data-and-metadata).
 </Tip>
 
 #### onTurnStart
 
 Fires at the start of every turn, after message accumulation and `onChatStart` (turn 0), but **before** `run()` executes. Use it to persist messages before streaming begins — so a mid-stream page refresh still shows the user's message.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `chatId` | `string` | Chat session ID |
-| `messages` | `ModelMessage[]` | Full accumulated conversation (model format) |
-| `uiMessages` | `UIMessage[]` | Full accumulated conversation (UI format) |
-| `turn` | `number` | Turn number (0-indexed) |
-| `runId` | `string` | The Trigger.dev run ID |
-| `chatAccessToken` | `string` | Scoped access token for this run |
-| `continuation` | `boolean` | Whether this run is continuing an existing chat |
-| `preloaded` | `boolean` | Whether this run was preloaded |
-| `clientData` | Typed by `clientDataSchema` | Custom data from the frontend |
-| `writer` | [`ChatWriter`](/ai-chat/reference#chatwriter) | Stream writer for custom chunks |
+| Field             | Type                                          | Description                                     |
+| ----------------- | --------------------------------------------- | ----------------------------------------------- |
+| `chatId`          | `string`                                      | Chat session ID                                 |
+| `messages`        | `ModelMessage[]`                              | Full accumulated conversation (model format)    |
+| `uiMessages`      | `UIMessage[]`                                 | Full accumulated conversation (UI format)       |
+| `turn`            | `number`                                      | Turn number (0-indexed)                         |
+| `runId`           | `string`                                      | The Trigger.dev run ID                          |
+| `chatAccessToken` | `string`                                      | Scoped access token for this run                |
+| `continuation`    | `boolean`                                     | Whether this run is continuing an existing chat |
+| `preloaded`       | `boolean`                                     | Whether this run was preloaded                  |
+| `clientData`      | Typed by `clientDataSchema`                   | Custom data from the frontend                   |
+| `writer`          | [`ChatWriter`](/ai-chat/reference#chatwriter) | Stream writer for custom chunks                 |
 
 ```ts
 export const myChat = chat.task({
@@ -175,7 +177,8 @@ export const myChat = chat.task({
 ```
 
 <Tip>
-  By persisting in `onTurnStart`, the user's message is saved to your database before the AI starts streaming. If the user refreshes mid-stream, the message is already there.
+  By persisting in `onTurnStart`, the user's message is saved to your database before the AI starts
+  streaming. If the user refreshes mid-stream, the message is already there.
 </Tip>
 
 #### onBeforeTurnComplete
@@ -214,20 +217,20 @@ Receives the same fields as [`TurnCompleteEvent`](/ai-chat/reference#turncomplet
 
 Fires after each turn completes — after the response is captured and the stream is closed. This is the primary hook for persisting the assistant's response. Does not include a `writer` since the stream is already closed.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `chatId` | `string` | Chat session ID |
-| `messages` | `ModelMessage[]` | Full accumulated conversation (model format) |
-| `uiMessages` | `UIMessage[]` | Full accumulated conversation (UI format) |
-| `newMessages` | `ModelMessage[]` | Only this turn's messages (model format) |
-| `newUIMessages` | `UIMessage[]` | Only this turn's messages (UI format) |
-| `responseMessage` | `UIMessage \| undefined` | The assistant's response for this turn |
-| `turn` | `number` | Turn number (0-indexed) |
-| `runId` | `string` | The Trigger.dev run ID |
-| `chatAccessToken` | `string` | Scoped access token for this run |
-| `lastEventId` | `string \| undefined` | Stream position for resumption. Persist this with the session. |
-| `stopped` | `boolean` | Whether the user stopped generation during this turn |
-| `continuation` | `boolean` | Whether this run is continuing an existing chat |
+| Field                | Type                     | Description                                                                                  |
+| -------------------- | ------------------------ | -------------------------------------------------------------------------------------------- |
+| `chatId`             | `string`                 | Chat session ID                                                                              |
+| `messages`           | `ModelMessage[]`         | Full accumulated conversation (model format)                                                 |
+| `uiMessages`         | `UIMessage[]`            | Full accumulated conversation (UI format)                                                    |
+| `newMessages`        | `ModelMessage[]`         | Only this turn's messages (model format)                                                     |
+| `newUIMessages`      | `UIMessage[]`            | Only this turn's messages (UI format)                                                        |
+| `responseMessage`    | `UIMessage \| undefined` | The assistant's response for this turn                                                       |
+| `turn`               | `number`                 | Turn number (0-indexed)                                                                      |
+| `runId`              | `string`                 | The Trigger.dev run ID                                                                       |
+| `chatAccessToken`    | `string`                 | Scoped access token for this run                                                             |
+| `lastEventId`        | `string \| undefined`    | Stream position for resumption. Persist this with the session.                               |
+| `stopped`            | `boolean`                | Whether the user stopped generation during this turn                                         |
+| `continuation`       | `boolean`                | Whether this run is continuing an existing chat                                              |
 | `rawResponseMessage` | `UIMessage \| undefined` | The raw assistant response before abort cleanup (same as `responseMessage` when not stopped) |
 
 ```ts
@@ -251,11 +254,13 @@ export const myChat = chat.task({
 ```
 
 <Tip>
-  Use `uiMessages` to overwrite the full conversation each turn (simplest). Use `newUIMessages` if you prefer to store messages individually — for example, one database row per message.
+  Use `uiMessages` to overwrite the full conversation each turn (simplest). Use `newUIMessages` if
+  you prefer to store messages individually — for example, one database row per message.
 </Tip>
 
 <Tip>
-  Persist `lastEventId` alongside the session. When the transport reconnects after a page refresh, it uses this to skip past already-seen events — preventing duplicate messages.
+  Persist `lastEventId` alongside the session. When the transport reconnects after a page refresh,
+  it uses this to skip past already-seen events — preventing duplicate messages.
 </Tip>
 
 ### Using prompts
@@ -300,7 +305,8 @@ export const myChat = chat.task({
 `chat.toStreamTextOptions()` returns an object with `system`, `model` (resolved via the registry), `temperature`, and `experimental_telemetry` — all from the stored prompt. Properties you set after the spread (like a client-selected model) take precedence.
 
 <Tip>
-  See [Prompts](/ai/prompts) for the full guide — defining templates, variable schemas, dashboard overrides, and the management SDK.
+  See [Prompts](/ai/prompts) for the full guide — defining templates, variable schemas, dashboard
+  overrides, and the management SDK.
 </Tip>
 
 ### Stop generation
@@ -313,11 +319,11 @@ Calling `stop()` from `useChat` sends a stop signal to the running task via inpu
 
 The `run` function receives three abort signals:
 
-| Signal | Fires when | Use for |
-|--------|-----------|---------|
-| `signal` | Stop **or** cancel | Pass to `streamText` — handles both cases. **Use this in most cases.** |
-| `stopSignal` | Stop only (per-turn, reset each turn) | Custom logic that should only run on user stop, not cancellation |
-| `cancelSignal` | Run cancel, expire, or maxDuration exceeded | Cleanup that should only happen on full cancellation |
+| Signal         | Fires when                                  | Use for                                                                |
+| -------------- | ------------------------------------------- | ---------------------------------------------------------------------- |
+| `signal`       | Stop **or** cancel                          | Pass to `streamText` — handles both cases. **Use this in most cases.** |
+| `stopSignal`   | Stop only (per-turn, reset each turn)       | Custom logic that should only run on user stop, not cancellation       |
+| `cancelSignal` | Run cancel, expire, or maxDuration exceeded | Cleanup that should only happen on full cancellation                   |
 
 ```ts
 export const myChat = chat.task({
@@ -333,7 +339,8 @@ export const myChat = chat.task({
 ```
 
 <Tip>
-  Use `signal` (the combined signal) in most cases. The separate `stopSignal` and `cancelSignal` are only needed if you want different behavior for stop vs cancel.
+  Use `signal` (the combined signal) in most cases. The separate `stopSignal` and `cancelSignal` are
+  only needed if you want different behavior for stop vs cancel.
 </Tip>
 
 #### Detecting stop in callbacks
@@ -393,7 +400,9 @@ const cleaned = chat.cleanupAbortedParts(rawResponseMessage);
 This removes tool invocation parts stuck in `partial-call` state and marks any `streaming` text or reasoning parts as `done`.
 
 <Note>
-  Stop signal delivery is best-effort. There is a small race window where the model may finish before the stop signal arrives, in which case the turn completes normally with `stopped: false`. This is expected and does not require special handling.
+  Stop signal delivery is best-effort. There is a small race window where the model may finish
+  before the stop signal arrives, in which case the turn completes normally with `stopped: false`.
+  This is expected and does not require special handling.
 </Note>
 
 ### Persistence
@@ -406,7 +415,9 @@ To build a chat app that survives page refreshes, you need to persist two things
 2. **Sessions** — The transport's connection state (`runId`, `publicAccessToken`, `lastEventId`). Persisted **server-side** via `onTurnStart` and `onTurnComplete`.
 
 <Note>
-  Sessions let the transport reconnect to an existing run after a page refresh. Without them, every page load would start a new run — losing the conversation context that was accumulated in the previous run.
+  Sessions let the transport reconnect to an existing run after a page refresh. Without them, every
+  page load would start a new run — losing the conversation context that was accumulated in the
+  previous run.
 </Note>
 
 #### Full persistence example
@@ -470,8 +481,7 @@ import { chat } from "@trigger.dev/sdk/ai";
 import type { myChat } from "@/trigger/chat";
 import { db } from "@/lib/db";
 
-export const getChatToken = () =>
-  chat.createAccessToken<typeof myChat>("my-chat");
+export const getChatToken = () => chat.createAccessToken<typeof myChat>("my-chat");
 
 export async function getChatMessages(chatId: string) {
   const found = await db.chat.findUnique({ where: { id: chatId } });
@@ -480,11 +490,14 @@ export async function getChatMessages(chatId: string) {
 
 export async function getAllSessions() {
   const sessions = await db.chatSession.findMany();
-  const result: Record<string, {
-    runId: string;
-    publicAccessToken: string;
-    lastEventId?: string;
-  }> = {};
+  const result: Record<
+    string,
+    {
+      runId: string;
+      publicAccessToken: string;
+      lastEventId?: string;
+    }
+  > = {};
   for (const s of sessions) {
     result[s.id] = {
       runId: s.runId,
@@ -552,13 +565,16 @@ export function Chat({ chatId, initialMessages, initialSessions }) {
           Send
         </button>
         {status === "streaming" && (
-          <button type="button" onClick={stop}>Stop</button>
+          <button type="button" onClick={stop}>
+            Stop
+          </button>
         )}
       </form>
     </div>
   );
 }
 ```
+
 </CodeGroup>
 
 ### Pending messages (steering)
@@ -575,7 +591,9 @@ export const myChat = chat.task({
     return streamText({
       ...chat.toStreamTextOptions({ registry }),
       messages,
-      tools: { /* ... */ },
+      tools: {
+        /* ... */
+      },
       abortSignal: signal,
     });
   },
@@ -585,7 +603,8 @@ export const myChat = chat.task({
 On the frontend, the `usePendingMessages` hook handles sending, tracking, and rendering injection points.
 
 <Tip>
-  See [Pending Messages](/ai-chat/pending-messages) for the full guide — backend configuration, frontend hook, queuing vs steering, and how injection works with all three chat variants.
+  See [Pending Messages](/ai-chat/pending-messages) for the full guide — backend configuration,
+  frontend hook, queuing vs steering, and how injection works with all three chat variants.
 </Tip>
 
 ### Background injection
@@ -596,15 +615,21 @@ Inject context from background work into the conversation using `chat.inject()`.
 export const myChat = chat.task({
   id: "my-chat",
   onTurnComplete: async ({ messages }) => {
-    chat.defer((async () => {
-      const review = await generateObject({ /* ... */ });
-      if (review.object.needsImprovement) {
-        chat.inject([{
-          role: "system",
-          content: `[Self-review]\n${review.object.suggestions.join("\n")}`,
-        }]);
-      }
-    })());
+    chat.defer(
+      (async () => {
+        const review = await generateObject({
+          /* ... */
+        });
+        if (review.object.needsImprovement) {
+          chat.inject([
+            {
+              role: "system",
+              content: `[Self-review]\n${review.object.suggestions.join("\n")}`,
+            },
+          ]);
+        }
+      })()
+    );
   },
   run: async ({ messages, signal }) => {
     return streamText({ ...chat.toStreamTextOptions({ registry }), messages, abortSignal: signal });
@@ -613,7 +638,8 @@ export const myChat = chat.task({
 ```
 
 <Tip>
-  See [Background Injection](/ai-chat/background-injection) for the full guide — timing, self-review example, and how it differs from pending messages.
+  See [Background Injection](/ai-chat/background-injection) for the full guide — timing, self-review
+  example, and how it differs from pending messages.
 </Tip>
 
 ### prepareMessages
@@ -648,11 +674,11 @@ export const myChat = chat.task({
 
 The `reason` field tells you why messages are being prepared:
 
-| Reason | Description |
-|--------|-------------|
-| `"run"` | Messages being passed to `run()` for `streamText` |
-| `"compaction-rebuild"` | Rebuilding from a previous compaction summary |
-| `"compaction-result"` | Fresh compaction just produced these messages |
+| Reason                 | Description                                       |
+| ---------------------- | ------------------------------------------------- |
+| `"run"`                | Messages being passed to `run()` for `streamText` |
+| `"compaction-rebuild"` | Rebuilding from a previous compaction summary     |
+| `"compaction-result"`  | Fresh compaction just produced these messages     |
 
 ### Runtime configuration
 
@@ -679,7 +705,8 @@ run: async ({ messages, signal }) => {
 ```
 
 <Info>
-  Longer idle timeout means faster responses but more compute usage. Set to `0` to suspend immediately after each turn (minimum latency cost, slight delay on next message).
+  Longer idle timeout means faster responses but more compute usage. Set to `0` to suspend
+  immediately after each turn (minimum latency cost, slight delay on next message).
 </Info>
 
 #### Stream options
@@ -734,8 +761,8 @@ Control which AI SDK features are forwarded to the frontend:
 export const myChat = chat.task({
   id: "my-chat",
   uiMessageStreamOptions: {
-    sendReasoning: true,  // Forward model reasoning (default: true)
-    sendSources: true,    // Forward source citations (default: false)
+    sendReasoning: true, // Forward model reasoning (default: true)
+    sendSources: true, // Forward source citations (default: false)
   },
   run: async ({ messages, signal }) => {
     return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
@@ -762,7 +789,9 @@ run: async ({ messages, clientData, signal }) => {
 See [ChatUIMessageStreamOptions](/ai-chat/reference#chatuimessagestreamoptions) for the full reference.
 
 <Note>
-  `onFinish` is managed internally for response capture and cannot be overridden here. Use `streamText`'s `onFinish` callback for custom finish handling, or use [raw task mode](#raw-task-with-primitives) for full control over `toUIMessageStream()`.
+  `onFinish` is managed internally for response capture and cannot be overridden here. Use
+  `streamText`'s `onFinish` callback for custom finish handling, or use [raw task
+  mode](#raw-task-with-primitives) for full control over `toUIMessageStream()`.
 </Note>
 
 ### Manual mode with task()
@@ -791,7 +820,9 @@ export const manualChat = task({
 ```
 
 <Warning>
-  Manual mode does not get automatic message accumulation or the `onTurnComplete`/`onChatStart` lifecycle hooks. The `responseMessage` field in `onTurnComplete` will be `undefined` when using `chat.pipe()` directly. Use `chat.task()` for the full multi-turn experience.
+  Manual mode does not get automatic message accumulation or the `onTurnComplete`/`onChatStart`
+  lifecycle hooks. The `responseMessage` field in `onTurnComplete` will be `undefined` when using
+  `chat.pipe()` directly. Use `chat.task()` for the full multi-turn experience.
 </Warning>
 
 ---
@@ -843,34 +874,34 @@ export const myChat = task({
 
 ### ChatSessionOptions
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `signal` | `AbortSignal` | required | Run-level cancel signal (from task context) |
-| `idleTimeoutInSeconds` | `number` | `30` | Seconds to stay idle between turns |
-| `timeout` | `string` | `"1h"` | Duration string for suspend timeout |
-| `maxTurns` | `number` | `100` | Max turns before ending |
+| Option                 | Type          | Default  | Description                                 |
+| ---------------------- | ------------- | -------- | ------------------------------------------- |
+| `signal`               | `AbortSignal` | required | Run-level cancel signal (from task context) |
+| `idleTimeoutInSeconds` | `number`      | `30`     | Seconds to stay idle between turns          |
+| `timeout`              | `string`      | `"1h"`   | Duration string for suspend timeout         |
+| `maxTurns`             | `number`      | `100`    | Max turns before ending                     |
 
 ### ChatTurn
 
 Each turn yielded by the iterator provides:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `number` | `number` | Turn number (0-indexed) |
-| `chatId` | `string` | Chat session ID |
-| `trigger` | `string` | What triggered this turn |
-| `clientData` | `unknown` | Client data from the transport |
-| `messages` | `ModelMessage[]` | Full accumulated model messages — pass to `streamText` |
-| `uiMessages` | `UIMessage[]` | Full accumulated UI messages — use for persistence |
-| `signal` | `AbortSignal` | Combined stop+cancel signal (fresh each turn) |
-| `stopped` | `boolean` | Whether the user stopped generation this turn |
-| `continuation` | `boolean` | Whether this is a continuation run |
+| Field          | Type             | Description                                            |
+| -------------- | ---------------- | ------------------------------------------------------ |
+| `number`       | `number`         | Turn number (0-indexed)                                |
+| `chatId`       | `string`         | Chat session ID                                        |
+| `trigger`      | `string`         | What triggered this turn                               |
+| `clientData`   | `unknown`        | Client data from the transport                         |
+| `messages`     | `ModelMessage[]` | Full accumulated model messages — pass to `streamText` |
+| `uiMessages`   | `UIMessage[]`    | Full accumulated UI messages — use for persistence     |
+| `signal`       | `AbortSignal`    | Combined stop+cancel signal (fresh each turn)          |
+| `stopped`      | `boolean`        | Whether the user stopped generation this turn          |
+| `continuation` | `boolean`        | Whether this is a continuation run                     |
 
-| Method | Description |
-|--------|-------------|
-| `turn.complete(source)` | Pipe stream, capture response, accumulate, and signal turn-complete |
-| `turn.done()` | Just signal turn-complete (when you've piped manually) |
-| `turn.addResponse(response)` | Add a response to the accumulator manually |
+| Method                       | Description                                                         |
+| ---------------------------- | ------------------------------------------------------------------- |
+| `turn.complete(source)`      | Pipe stream, capture response, accumulate, and signal turn-complete |
+| `turn.done()`                | Just signal turn-complete (when you've piped manually)              |
+| `turn.addResponse(response)` | Add a response to the accumulator manually                          |
 
 ### turn.complete() vs manual control
 
@@ -912,15 +943,15 @@ Raw task mode also lets you call `.toUIMessageStream()` yourself with any option
 
 ### Primitives
 
-| Primitive | Description |
-|-----------|-------------|
-| `chat.messages` | Input stream for incoming messages — use `.waitWithIdleTimeout()` to wait for the next turn |
-| `chat.createStopSignal()` | Create a managed stop signal wired to the stop input stream |
-| `chat.pipeAndCapture(result)` | Pipe a `StreamTextResult` to the chat stream and capture the response |
-| `chat.writeTurnComplete()` | Signal the frontend that the current turn is complete |
-| `chat.MessageAccumulator` | Accumulates conversation messages across turns |
-| `chat.pipe(stream)` | Pipe a stream to the frontend (no response capture) |
-| `chat.cleanupAbortedParts(msg)` | Clean up incomplete parts from a stopped response |
+| Primitive                       | Description                                                                                 |
+| ------------------------------- | ------------------------------------------------------------------------------------------- |
+| `chat.messages`                 | Input stream for incoming messages — use `.waitWithIdleTimeout()` to wait for the next turn |
+| `chat.createStopSignal()`       | Create a managed stop signal wired to the stop input stream                                 |
+| `chat.pipeAndCapture(result)`   | Pipe a `StreamTextResult` to the chat stream and capture the response                       |
+| `chat.writeTurnComplete()`      | Signal the frontend that the current turn is complete                                       |
+| `chat.MessageAccumulator`       | Accumulates conversation messages across turns                                              |
+| `chat.pipe(stream)`             | Pipe a stream to the frontend (no response capture)                                         |
+| `chat.cleanupAbortedParts(msg)` | Clean up incomplete parts from a stopped response                                           |
 
 ### Example
 
@@ -979,9 +1010,8 @@ export const myChat = task({
       }
 
       if (response) {
-        const cleaned = stop.signal.aborted && !runSignal.aborted
-          ? chat.cleanupAbortedParts(response)
-          : response;
+        const cleaned =
+          stop.signal.aborted && !runSignal.aborted ? chat.cleanupAbortedParts(response) : response;
         await conversation.addResponse(cleaned);
       }
 
@@ -1029,6 +1059,6 @@ const response = await chat.pipeAndCapture(result);
 if (response) await conversation.addResponse(response);
 
 // Access accumulated messages for persistence
-conversation.uiMessages;   // UIMessage[]
+conversation.uiMessages; // UIMessage[]
 conversation.modelMessages; // ModelMessage[]
 ```
