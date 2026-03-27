@@ -20,6 +20,7 @@ import {
 } from "@trigger.dev/otlp-importer";
 import type { MetricsV1Input } from "@internal/clickhouse";
 import { logger } from "~/services/logger.server";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
 import { ClickhouseEventRepository } from "./eventRepository/clickhouseEventRepository.server";
 import {
@@ -40,7 +41,6 @@ import { waitForLlmPricingReady } from "./llmPricingRegistry.server";
 import { env } from "~/env.server";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 import { singleton } from "~/utils/singleton";
-import { getClickhouseForOrganization, getEventRepositoryForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
 
 class OTLPExporter {
   private _tracer: Tracer;
@@ -118,26 +118,21 @@ class OTLPExporter {
   async #exportEvents(
     eventsWithStores: { events: Array<CreateEventInput>; taskEventStore: string }[]
   ) {
-    // Group events by both store and organization for proper routing
-    const eventsGroupedByStoreAndOrg = eventsWithStores.reduce((acc, { events, taskEventStore }) => {
-      for (const event of events) {
-        const orgId = event.organizationId || "default";
-        const key = `${taskEventStore}:${orgId}`;
-        acc[key] = acc[key] || { store: taskEventStore, orgId, events: [] };
-        acc[key].events.push(event);
-      }
+    const eventsGroupedByStore = eventsWithStores.reduce((acc, { events, taskEventStore }) => {
+      acc[taskEventStore] = acc[taskEventStore] || [];
+      acc[taskEventStore].push(...events);
       return acc;
-    }, {} as Record<string, { store: string; orgId: string; events: Array<CreateEventInput> }>);
+    }, {} as Record<string, Array<CreateEventInput>>);
 
     let eventCount = 0;
 
-    for (const { store, orgId, events } of Object.values(eventsGroupedByStoreAndOrg)) {
-      const eventRepository = await this.#getEventRepositoryForStoreAndOrg(store, orgId);
+    for (const [store, events] of Object.entries(eventsGroupedByStore)) {
+      const eventRepository = this.#getEventRepositoryForStore(store);
 
       await waitForLlmPricingReady();
       const enrichedEvents = enrichCreatableEvents(events);
 
-      this.#logEventsVerbose(enrichedEvents, `exportEvents ${store}:${orgId}`);
+      this.#logEventsVerbose(enrichedEvents, `exportEvents ${store}`);
 
       eventCount += enrichedEvents.length;
 
@@ -145,16 +140,6 @@ class OTLPExporter {
     }
 
     return eventCount;
-  }
-
-  async #getEventRepositoryForStoreAndOrg(store: string, orgId: string): Promise<IEventRepository> {
-    // For ClickHouse stores with a specific org (not "default"), use org-specific repository
-    if ((store === "clickhouse" || store === "clickhouse_v2") && orgId !== "default") {
-      return await getEventRepositoryForOrganization(orgId);
-    }
-
-    // Fall back to default repositories for non-ClickHouse stores or default org
-    return this.#getEventRepositoryForStore(store);
   }
 
   #getEventRepositoryForStore(store: string): IEventRepository {
@@ -1187,17 +1172,12 @@ function hasUnpairedSurrogateAtEnd(str: string): boolean {
 
 export const otlpExporter = singleton("otlpExporter", initializeOTLPExporter);
 
-async function initializeOTLPExporter() {
-  // Metrics are written globally (not per-org), use standard clickhouse
-  // Use a sentinel org ID for global metrics writes
-  // In practice, all orgs currently share the same metrics table/instance
-  const metricsClickhouse = await getClickhouseForOrganization("METRICS_GLOBAL", "standard");
-
+function initializeOTLPExporter() {
   const metricsFlushScheduler = new DynamicFlushScheduler<MetricsV1Input>({
     batchSize: env.METRICS_CLICKHOUSE_BATCH_SIZE,
     flushInterval: env.METRICS_CLICKHOUSE_FLUSH_INTERVAL_MS,
     callback: async (_flushId, batch) => {
-      await metricsClickhouse.metrics.insert(batch);
+      await clickhouseClient.metrics.insert(batch);
     },
     minConcurrency: 1,
     maxConcurrency: env.METRICS_CLICKHOUSE_MAX_CONCURRENCY,
