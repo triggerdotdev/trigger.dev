@@ -30,7 +30,23 @@ Options for `chat.task()`.
 | `preloadTimeout`              | `string`                                                    | Same as `turnTimeout`          | Suspend timeout for preloaded runs                                                                  |
 | `uiMessageStreamOptions`      | `ChatUIMessageStreamOptions`                                | —                              | Default options for `toUIMessageStream()`. Per-turn override via `chat.setUIMessageStreamOptions()` |
 
-Plus all standard [TaskOptions](/tasks/overview) — `retry`, `queue`, `machine`, `maxDuration`, etc.
+Plus all standard [TaskOptions](/tasks/overview) — `retry`, `queue`, `machine`, `maxDuration`, **`onWait`**, **`onResume`**, **`onComplete`**, and other lifecycle hooks. Those hooks use the same parameter shapes as on a normal `task()` (including `ctx`).
+
+## Task context (`ctx`)
+
+All **`chat.task`** lifecycle events (**`onPreload`**, **`onChatStart`**, **`onTurnStart`**, **`onBeforeTurnComplete`**, **`onTurnComplete`**, **`onCompacted`**) and the object passed to **`run`** include **`ctx`**: the same **`TaskRunContext`** shape as the `ctx` in `task({ run: (payload, { ctx }) => ... })`.
+
+Use **`ctx`** for run metadata, tags, parent links, or any API that needs the full run record. The chat-specific string **`runId`** on events is always **`ctx.run.id`**; both are provided for convenience.
+
+```ts
+import type { TaskRunContext } from "@trigger.dev/sdk";
+// Equivalent alias (same type):
+import type { Context } from "@trigger.dev/sdk";
+```
+
+<Note>
+  Prefer `import type { TaskRunContext } from "@trigger.dev/sdk"` in application code. Do not depend on `@trigger.dev/core` directly.
+</Note>
 
 ## ChatTaskRunPayload
 
@@ -38,6 +54,7 @@ The payload passed to the `run` function.
 
 | Field          | Type                                       | Description                                                          |
 | -------------- | ------------------------------------------ | -------------------------------------------------------------------- |
+| `ctx`          | `TaskRunContext`                           | Full task run context — same as `task` `run`’s `{ ctx }`             |
 | `messages`     | `ModelMessage[]`                           | Model-ready messages — pass directly to `streamText`                 |
 | `chatId`       | `string`                                   | Unique chat session ID                                               |
 | `trigger`      | `"submit-message" \| "regenerate-message"` | What triggered the request                                           |
@@ -47,6 +64,8 @@ The payload passed to the `run` function.
 | `signal`       | `AbortSignal`                              | Combined stop + cancel signal                                        |
 | `cancelSignal` | `AbortSignal`                              | Cancel-only signal                                                   |
 | `stopSignal`   | `AbortSignal`                              | Stop-only signal (per-turn)                                          |
+| `previousTurnUsage` | `LanguageModelUsage \| undefined`       | Token usage from the previous turn (undefined on turn 0)        |
+| `totalUsage`   | `LanguageModelUsage`                       | Cumulative token usage across completed turns so far              |
 
 ## PreloadEvent
 
@@ -54,6 +73,7 @@ Passed to the `onPreload` callback.
 
 | Field             | Type                        | Description                                                    |
 | ----------------- | --------------------------- | -------------------------------------------------------------- |
+| `ctx`             | `TaskRunContext`            | Full task run context — see [Task context](#task-context-ctx)   |
 | `chatId`          | `string`                    | Chat session ID                                                |
 | `runId`           | `string`                    | The Trigger.dev run ID                                         |
 | `chatAccessToken` | `string`                    | Scoped access token for this run                               |
@@ -66,6 +86,7 @@ Passed to the `onChatStart` callback.
 
 | Field             | Type                        | Description                                                    |
 | ----------------- | --------------------------- | -------------------------------------------------------------- |
+| `ctx`             | `TaskRunContext`            | Full task run context — see [Task context](#task-context-ctx)   |
 | `chatId`          | `string`                    | Chat session ID                                                |
 | `messages`        | `ModelMessage[]`            | Initial model-ready messages                                   |
 | `clientData`      | Typed by `clientDataSchema` | Custom data from the frontend                                  |
@@ -82,6 +103,7 @@ Passed to the `onTurnStart` callback.
 
 | Field             | Type                        | Description                                                    |
 | ----------------- | --------------------------- | -------------------------------------------------------------- |
+| `ctx`             | `TaskRunContext`            | Full task run context — see [Task context](#task-context-ctx)   |
 | `chatId`          | `string`                    | Chat session ID                                                |
 | `messages`        | `ModelMessage[]`            | Full accumulated conversation (model format)                   |
 | `uiMessages`      | `UIMessage[]`               | Full accumulated conversation (UI format)                      |
@@ -100,6 +122,7 @@ Passed to the `onTurnComplete` callback.
 
 | Field                | Type                              | Description                                          |
 | -------------------- | --------------------------------- | ---------------------------------------------------- |
+| `ctx`                | `TaskRunContext`                  | Full task run context — see [Task context](#task-context-ctx) |
 | `chatId`             | `string`                          | Chat session ID                                      |
 | `messages`           | `ModelMessage[]`                  | Full accumulated conversation (model format)         |
 | `uiMessages`         | `UIMessage[]`                     | Full accumulated conversation (UI format)            |
@@ -118,11 +141,11 @@ Passed to the `onTurnComplete` callback.
 
 ## BeforeTurnCompleteEvent
 
-Passed to the `onBeforeTurnComplete` callback. Same fields as `TurnCompleteEvent` plus a `writer`.
+Passed to the `onBeforeTurnComplete` callback. Same fields as `TurnCompleteEvent` (including **`ctx`**) plus a `writer`.
 
 | Field                            | Type                        | Description                                                                   |
 | -------------------------------- | --------------------------- | ----------------------------------------------------------------------------- |
-| _(all TurnCompleteEvent fields)_ |                             | See [TurnCompleteEvent](#turncompleteevent)                                   |
+| _(all TurnCompleteEvent fields)_ |                             | See [TurnCompleteEvent](#turncompleteevent) (includes `ctx`)                  |
 | `writer`                         | [`ChatWriter`](#chatwriter) | Stream writer — the stream is still open so chunks appear in the current turn |
 
 ## ChatWriter
@@ -178,6 +201,7 @@ Passed to the `onCompacted` callback.
 
 | Field          | Type                        | Description                                       |
 | -------------- | --------------------------- | ------------------------------------------------- |
+| `ctx`          | `TaskRunContext`            | Full task run context — see [Task context](#task-context-ctx) |
 | `summary`      | `string`                    | The generated summary text                        |
 | `messages`     | `ModelMessage[]`            | Messages that were compacted (pre-compaction)     |
 | `messageCount` | `number`                    | Number of messages before compaction              |

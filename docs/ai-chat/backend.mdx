@@ -67,6 +67,12 @@ async function runAgentLoop(messages: ModelMessage[]) {
 
 ### Lifecycle hooks
 
+#### Task context (`ctx`)
+
+Every chat lifecycle callback and the **`run`** payload include **`ctx`**: the same run context object as `task({ run: (payload, { ctx }) => ... })`. Import the type with **`import type { TaskRunContext } from "@trigger.dev/sdk"`** (the **`Context`** export is the same type). Use **`ctx`** for tags, metadata, or any API that needs the full run record. The string **`runId`** on chat events is always **`ctx.run.id`** (both are provided for convenience). See [Task context (`ctx`)](/ai-chat/reference#task-context-ctx) in the API reference.
+
+Standard **[task lifecycle hooks](/tasks/overview)** — **`onWait`**, **`onResume`**, **`onComplete`**, **`onFailure`**, etc. — are also available on **`chat.task()`** with the same shapes as on a normal `task()`. For example, tear down an external sandbox **right before the run suspends** waiting for the next message using **`onWait`** when **`wait.type === "token"`**. See the [Code execution sandbox](/ai-chat/patterns/code-sandbox) pattern.
+
 #### onPreload
 
 Fires when a preloaded run starts — before any messages arrive. Use it to eagerly initialize state (DB records, user context) while the user is still typing.
@@ -77,7 +83,7 @@ Preloaded runs are triggered by calling `transport.preload(chatId)` on the front
 export const myChat = chat.task({
   id: "my-chat",
   clientDataSchema: z.object({ userId: z.string() }),
-  onPreload: async ({ chatId, clientData, runId, chatAccessToken }) => {
+  onPreload: async ({ ctx, chatId, clientData, runId, chatAccessToken }) => {
     // Initialize early — before the first message arrives
     const user = await db.user.findUnique({ where: { id: clientData.userId } });
     userContext.init({ name: user.name, plan: user.plan });
@@ -101,6 +107,7 @@ export const myChat = chat.task({
 
 | Field             | Type                                          | Description                      |
 | ----------------- | --------------------------------------------- | -------------------------------- |
+| `ctx`             | `TaskRunContext`                              | Full task run context — [reference](/ai-chat/reference#task-context-ctx) |
 | `chatId`          | `string`                                      | Chat session ID                  |
 | `runId`           | `string`                                      | The Trigger.dev run ID           |
 | `chatAccessToken` | `string`                                      | Scoped access token for this run |
@@ -145,6 +152,7 @@ Fires at the start of every turn, after message accumulation and `onChatStart` (
 
 | Field             | Type                                          | Description                                     |
 | ----------------- | --------------------------------------------- | ----------------------------------------------- |
+| `ctx`             | `TaskRunContext`                              | Full task run context — [reference](/ai-chat/reference#task-context-ctx) |
 | `chatId`          | `string`                                      | Chat session ID                                 |
 | `messages`        | `ModelMessage[]`                              | Full accumulated conversation (model format)    |
 | `uiMessages`      | `UIMessage[]`                                 | Full accumulated conversation (UI format)       |
@@ -219,6 +227,7 @@ Fires after each turn completes — after the response is captured and the strea
 
 | Field                | Type                     | Description                                                                                  |
 | -------------------- | ------------------------ | -------------------------------------------------------------------------------------------- |
+| `ctx`                | `TaskRunContext`         | Full task run context — [reference](/ai-chat/reference#task-context-ctx)                    |
 | `chatId`             | `string`                 | Chat session ID                                                                              |
 | `messages`           | `ModelMessage[]`         | Full accumulated conversation (model format)                                                 |
 | `uiMessages`         | `UIMessage[]`            | Full accumulated conversation (UI format)                                                    |
@@ -261,6 +270,10 @@ export const myChat = chat.task({
 <Tip>
   Persist `lastEventId` alongside the session. When the transport reconnects after a page refresh,
   it uses this to skip past already-seen events — preventing duplicate messages.
+</Tip>
+
+<Tip>
+  For a full **conversation + session** persistence pattern (including preload, continuation, and token renewal), see [Database persistence](/ai-chat/patterns/database-persistence).
 </Tip>
 
 ### Using prompts
