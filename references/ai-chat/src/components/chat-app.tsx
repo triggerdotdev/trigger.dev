@@ -14,6 +14,7 @@ import {
   deleteChat as deleteChatAction,
   updateChatTitle,
   deleteSessionAction,
+  renewRunAccessTokenForChat,
 } from "@/app/actions";
 
 type ChatMeta = {
@@ -72,7 +73,8 @@ export function ChatApp({
 
   const transport = useTriggerChatTransport({
     task: taskMode,
-    accessToken: () => getChatToken(taskMode),
+    accessToken: (params) => getChatToken({ ...params, taskId: taskMode }),
+    renewRunAccessToken: ({ chatId, runId }) => renewRunAccessTokenForChat(chatId, runId),
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
     sessions: initialSessions,
     onSessionChange: handleSessionChange,
