@@ -24,12 +24,13 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  TriggerChatTransport,
-  type TriggerChatTransportOptions,
-} from "./chat.js";
+import { TriggerChatTransport, type TriggerChatTransportOptions } from "./chat.js";
 import type { AnyTask, TaskIdentifier } from "@trigger.dev/core/v3";
-import { PENDING_MESSAGE_INJECTED_TYPE, type InferChatClientData } from "./ai.js";
+import {
+  PENDING_MESSAGE_INJECTED_TYPE,
+  type InferChatClientData,
+  type InferChatUIMessage,
+} from "./ai.js";
 import type { UIMessage, ChatRequestOptions } from "ai";
 
 /**
@@ -47,6 +48,8 @@ export type UseTriggerChatTransportOptions<TTask extends AnyTask = AnyTask> = Om
   /** The task ID. Strongly typed when a task type parameter is provided. */
   task: TaskIdentifier<TTask>;
 };
+
+export type { InferChatUIMessage };
 
 /**
  * React hook that creates and memoizes a `TriggerChatTransport` instance.
@@ -110,7 +113,7 @@ export type PendingMessage = {
 };
 
 /** Options for `usePendingMessages`. */
-export type UsePendingMessagesOptions = {
+export type UsePendingMessagesOptions<TUIMessage extends UIMessage = UIMessage> = {
   /** The chat transport instance. */
   transport: TriggerChatTransport;
   /** The chat session ID. */
@@ -118,9 +121,9 @@ export type UsePendingMessagesOptions = {
   /** The current useChat status. */
   status: string;
   /** The current messages from useChat. */
-  messages: UIMessage[];
+  messages: TUIMessage[];
   /** The setMessages function from useChat. */
-  setMessages: (fn: UIMessage[] | ((prev: UIMessage[]) => UIMessage[])) => void;
+  setMessages: (fn: TUIMessage[] | ((prev: TUIMessage[]) => TUIMessage[])) => void;
   /** The sendMessage function from useChat. */
   sendMessage: (message: { text: string }, options?: ChatRequestOptions) => void;
   /** Metadata to include when sending (e.g. `{ model }` for model selection). */
@@ -187,11 +190,13 @@ export type UsePendingMessagesReturn = {
  * )}
  * ```
  */
-export function usePendingMessages(options: UsePendingMessagesOptions): UsePendingMessagesReturn {
+export function usePendingMessages<TUIMessage extends UIMessage = UIMessage>(
+  options: UsePendingMessagesOptions<TUIMessage>
+): UsePendingMessagesReturn {
   const { transport, chatId, status, messages, setMessages, sendMessage, metadata } = options;
 
   // Internal state: track messages with their mode
-  type InternalMessage = UIMessage & { _mode: "steering" | "queued" };
+  type InternalMessage = TUIMessage & { _mode: "steering" | "queued" };
   const [pendingMsgs, setPendingMsgs] = useState<InternalMessage[]>([]);
   const injectedIdsRef = useRef<Set<string>>(new Set());
   const prevStatusRef = useRef(status);
@@ -234,9 +239,7 @@ export function usePendingMessages(options: UsePendingMessagesOptions): UsePendi
     // Note: steering messages were also sent via sendPendingMessage to
     // the backend's wire buffer, so the backend may already have them.
     // Calling sendMessage here ensures useChat subscribes to the response.
-    const toSend = pendingMsgs.filter(
-      (m) => !injectedIdsRef.current.has(m.id)
-    );
+    const toSend = pendingMsgs.filter((m) => !injectedIdsRef.current.has(m.id));
 
     // Clean up
     setPendingMsgs([]);
@@ -254,12 +257,12 @@ export function usePendingMessages(options: UsePendingMessagesOptions): UsePendi
   const steer = useCallback(
     (text: string) => {
       if (status === "streaming") {
-        const msg: InternalMessage = {
+        const msg = {
           id: crypto.randomUUID(),
-          role: "user",
-          parts: [{ type: "text", text }],
-          _mode: "steering",
-        };
+          role: "user" as const,
+          parts: [{ type: "text" as const, text }],
+          _mode: "steering" as const,
+        } as InternalMessage;
         transport.sendPendingMessage(chatId, msg, metadata);
         setPendingMsgs((prev) => [...prev, msg]);
       } else {
@@ -274,12 +277,12 @@ export function usePendingMessages(options: UsePendingMessagesOptions): UsePendi
   const queue = useCallback(
     (text: string) => {
       if (status === "streaming") {
-        const msg: InternalMessage = {
+        const msg = {
           id: crypto.randomUUID(),
-          role: "user",
-          parts: [{ type: "text", text }],
-          _mode: "queued",
-        };
+          role: "user" as const,
+          parts: [{ type: "text" as const, text }],
+          _mode: "queued" as const,
+        } as InternalMessage;
         setPendingMsgs((prev) => [...prev, msg]);
       } else {
         sendMessage({ text }, metadata ? { metadata } : undefined);
@@ -304,7 +307,7 @@ export function usePendingMessages(options: UsePendingMessagesOptions): UsePendi
         const msg = prev.find((m) => m.id === id);
         if (!msg || msg._mode !== "queued") return prev;
         transport.sendPendingMessage(chatId, msg, metadata);
-        return prev.map((m) => m.id === id ? { ...m, _mode: "steering" as const } : m);
+        return prev.map((m) => (m.id === id ? { ...m, _mode: "steering" as const } : m));
       });
     },
     [transport, chatId, metadata]
@@ -312,7 +315,9 @@ export function usePendingMessages(options: UsePendingMessagesOptions): UsePendi
 
   const isInjectionPoint = useCallback(
     (part: unknown): boolean =>
-      typeof part === "object" && part !== null && (part as any).type === PENDING_MESSAGE_INJECTED_TYPE,
+      typeof part === "object" &&
+      part !== null &&
+      (part as any).type === PENDING_MESSAGE_INJECTED_TYPE,
     []
   );
 
@@ -341,5 +346,13 @@ export function usePendingMessages(options: UsePendingMessagesOptions): UsePendi
     injected: injectedIdsRef.current.has(m.id),
   }));
 
-  return { pending, steer, queue, promoteToSteering, isInjectionPoint, getInjectedMessageIds, getInjectedMessages };
+  return {
+    pending,
+    steer,
+    queue,
+    promoteToSteering,
+    isInjectionPoint,
+    getInjectedMessageIds,
+    getInjectedMessages,
+  };
 }

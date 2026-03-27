@@ -5,6 +5,6 @@ export const MODEL_OPTIONS = [
   "claude-opus-4-6",
 ];
 
-export const DEFAULT_MODEL = "gpt-4o-mini";
+export const DEFAULT_MODEL = "claude-sonnet-4-6";
 
 export const REASONING_MODELS = new Set(["claude-opus-4-6"]);

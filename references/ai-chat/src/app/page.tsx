@@ -1,13 +1,9 @@
 "use client";
 
-import type { UIMessage } from "ai";
+import type { ChatUiMessage } from "@/lib/chat-tools";
 import { useEffect, useState } from "react";
 import { ChatApp } from "@/components/chat-app";
-import {
-  getChatList,
-  getChatMessages,
-  getAllSessions,
-} from "@/app/actions";
+import { getChatList, getChatMessages, getAllSessions } from "@/app/actions";
 
 type ChatMeta = {
   id: string;
@@ -20,7 +16,7 @@ type ChatMeta = {
 export default function Home() {
   const [chatList, setChatList] = useState<ChatMeta[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [initialMessages, setInitialMessages] = useState<UIMessage[]>([]);
+  const [initialMessages, setInitialMessages] = useState<ChatUiMessage[]>([]);
   const [initialSessions, setInitialSessions] = useState<
     Record<string, { runId: string; publicAccessToken: string; lastEventId?: string }>
   >({});
@@ -34,7 +30,7 @@ export default function Home() {
       setInitialSessions(sessions);
 
       let firstChatId: string | null = null;
-      let firstMessages: UIMessage[] = [];
+      let firstMessages: ChatUiMessage[] = [];
       if (list.length > 0) {
         firstChatId = list[0]!.id;
         firstMessages = await getChatMessages(firstChatId);

@@ -1,7 +1,7 @@
 "use client";
 
-import type { UIMessage } from "ai";
 import { useChat } from "@ai-sdk/react";
+import type { ChatUiMessage } from "@/lib/chat-tools";
 import type { TriggerChatTransport } from "@trigger.dev/sdk/chat";
 import type { CompactionChunkData } from "@trigger.dev/sdk/ai";
 import { usePendingMessages } from "@trigger.dev/sdk/chat/react";
@@ -11,12 +11,7 @@ import { MODEL_OPTIONS } from "@/lib/models";
 
 function ToolInvocation({ part }: { part: any }) {
   const [expanded, setExpanded] = useState(false);
-  const toolName =
-    part.type === "dynamic-tool"
-      ? part.toolName ?? "tool"
-      : part.type.startsWith("tool-")
-      ? part.type.slice(5)
-      : "tool";
+  const toolName = part.type.startsWith("tool-") ? part.type.slice(5) : "tool";
   const state = part.state ?? "input-available";
   const args = part.input;
   const result = part.output;
@@ -239,7 +234,7 @@ function Row({
 
 type ChatProps = {
   chatId: string;
-  initialMessages: UIMessage[];
+  initialMessages: ChatUiMessage[];
   transport: TriggerChatTransport;
   resume?: boolean;
   model: string;
@@ -248,7 +243,7 @@ type ChatProps = {
   session?: { runId: string; publicAccessToken: string; lastEventId?: string };
   dashboardUrl?: string;
   onFirstMessage?: (chatId: string, text: string) => void;
-  onMessagesChange?: (chatId: string, messages: UIMessage[]) => void;
+  onMessagesChange?: (chatId: string, messages: ChatUiMessage[]) => void;
 };
 
 export function Chat({
@@ -307,7 +302,7 @@ export function Chat({
   }, [status, messages]);
 
   // Pending messages — handles steering messages during streaming
-  const pending = usePendingMessages({
+  const pending = usePendingMessages<ChatUiMessage>({
     transport,
     chatId,
     status,
@@ -347,10 +342,18 @@ export function Chat({
 
   useEffect(() => {
     (window as any).__chat = {
-      get status() { return stateRef.current.status; },
-      get messages() { return stateRef.current.messages; },
-      get pending() { return stateRef.current.pending; },
-      get runId() { return transport.getSession(chatId)?.runId ?? session?.runId ?? null; },
+      get status() {
+        return stateRef.current.status;
+      },
+      get messages() {
+        return stateRef.current.messages;
+      },
+      get pending() {
+        return stateRef.current.pending;
+      },
+      get runId() {
+        return transport.getSession(chatId)?.runId ?? session?.runId ?? null;
+      },
       chatId,
       steer: (text: string) => actionsRef.current.steer(text),
       queue: (text: string) => actionsRef.current.queue(text),
@@ -358,32 +361,56 @@ export function Chat({
       send: (text: string) => actionsRef.current.send(text),
       stop: () => actionsRef.current.stop(),
       // Wait for a tool call to appear, then steer
-      steerOnToolCall: (text: string) => new Promise<void>((resolve) => {
-        const check = setInterval(() => {
-          const { messages: msgs } = stateRef.current;
-          const lastMsg = msgs[msgs.length - 1];
-          const hasTool = lastMsg?.role === "assistant" && lastMsg.parts?.some(
-            (p: any) => p.type?.startsWith("tool-") || p.type === "dynamic-tool"
-          );
-          if (hasTool) {
-            clearInterval(check);
-            console.log("[__chat] steerOnToolCall: tool detected, steering now. status:", stateRef.current.status);
-            actionsRef.current.steer(text);
-            resolve();
-          }
-        }, 200);
-      }),
+      steerOnToolCall: (text: string) =>
+        new Promise<void>((resolve) => {
+          const check = setInterval(() => {
+            const { messages: msgs } = stateRef.current;
+            const lastMsg = msgs[msgs.length - 1];
+            const hasTool =
+              lastMsg?.role === "assistant" &&
+              lastMsg.parts?.some(
+                (p: any) => p.type?.startsWith("tool-")
+              );
+            if (hasTool) {
+              clearInterval(check);
+              console.log(
+                "[__chat] steerOnToolCall: tool detected, steering now. status:",
+                stateRef.current.status
+              );
+              actionsRef.current.steer(text);
+              resolve();
+            }
+          }, 200);
+        }),
       // Wait for status to become a value
-      waitForStatus: (target: string) => new Promise<void>((resolve) => {
-        const check = setInterval(() => {
-          if (stateRef.current.status === target) { clearInterval(check); resolve(); }
-        }, 100);
-      }),
-      steerAfterDelay: (text: string, ms: number) => new Promise<void>((r) => setTimeout(() => { actionsRef.current.steer(text); r(); }, ms)),
-      queueAfterDelay: (text: string, ms: number) => new Promise<void>((r) => setTimeout(() => { actionsRef.current.queue(text); r(); }, ms)),
+      waitForStatus: (target: string) =>
+        new Promise<void>((resolve) => {
+          const check = setInterval(() => {
+            if (stateRef.current.status === target) {
+              clearInterval(check);
+              resolve();
+            }
+          }, 100);
+        }),
+      steerAfterDelay: (text: string, ms: number) =>
+        new Promise<void>((r) =>
+          setTimeout(() => {
+            actionsRef.current.steer(text);
+            r();
+          }, ms)
+        ),
+      queueAfterDelay: (text: string, ms: number) =>
+        new Promise<void>((r) =>
+          setTimeout(() => {
+            actionsRef.current.queue(text);
+            r();
+          }, ms)
+        ),
     };
-    return () => { delete (window as any).__chat; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      delete (window as any).__chat;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId]);
 
   // Persist messages when a turn completes
@@ -513,7 +540,7 @@ export function Chat({
                     );
                   }
 
-                  if (part.type.startsWith("tool-") || part.type === "dynamic-tool") {
+                  if (part.type.startsWith("tool-")) {
                     return <ToolInvocation key={i} part={part} />;
                   }
 
@@ -524,7 +551,10 @@ export function Chat({
                       <div key={i} className="my-2 flex justify-end">
                         <div className="max-w-[60%]">
                           {injectedMsgs.map((m) => (
-                            <div key={m.id} className="rounded-lg bg-purple-100 px-3 py-1.5 text-sm text-purple-800">
+                            <div
+                              key={m.id}
+                              className="rounded-lg bg-purple-100 px-3 py-1.5 text-sm text-purple-800"
+                            >
                               {m.text}
                             </div>
                           ))}
@@ -568,14 +598,18 @@ export function Chat({
         {pending.pending.map((msg) => (
           <div key={msg.id} className="flex justify-end">
             <div className="max-w-[80%]">
-              <div className={`rounded-lg px-4 py-2 text-sm text-white opacity-75 ${
-                msg.mode === "steering" ? "bg-purple-600" : "bg-gray-500"
-              }`}>
+              <div
+                className={`rounded-lg px-4 py-2 text-sm text-white opacity-75 ${
+                  msg.mode === "steering" ? "bg-purple-600" : "bg-gray-500"
+                }`}
+              >
                 {msg.text}
               </div>
               <div className="mt-1 flex items-center justify-end gap-2">
                 <span className="text-[10px] text-gray-400">
-                  {msg.mode === "steering" ? "Steering — waiting for injection point" : "Queued for next turn"}
+                  {msg.mode === "steering"
+                    ? "Steering — waiting for injection point"
+                    : "Queued for next turn"}
                 </span>
                 {msg.mode === "queued" && status === "streaming" && (
                   <button
