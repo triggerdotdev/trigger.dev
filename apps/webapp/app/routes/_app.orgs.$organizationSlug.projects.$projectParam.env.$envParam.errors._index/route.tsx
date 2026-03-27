@@ -600,18 +600,17 @@ function ErrorGroupRow({
   );
 }
 
-
 function ErrorActivityGraph({ activity }: { activity: ErrorOccurrenceActivity }) {
   const maxCount = Math.max(...activity.map((d) => d.count));
 
   return (
     <div className="flex items-start gap-1.5">
-      <div className="h-6 w-[10.25rem] rounded-sm">
+      <div className="h-6 w-[5.125rem] rounded-sm">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={activity} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
             <YAxis domain={[0, maxCount || 1]} hide />
             <Tooltip
-              cursor={{ fill: "transparent" }}
+              cursor={{ fill: "rgba(255, 255, 255, 0.06)" }}
               content={<ErrorActivityTooltip />}
               allowEscapeViewBox={{ x: true, y: true }}
               wrapperStyle={{ zIndex: 1000 }}
