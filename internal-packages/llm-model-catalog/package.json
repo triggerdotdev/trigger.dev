@@ -10,6 +10,7 @@
     "@trigger.dev/database": "workspace:*"
   },
   "devDependencies": {
+    "@internal/testcontainers": "workspace:*",
     "vitest": "3.1.4"
   },
   "scripts": {

@@ -52,9 +52,9 @@ export async function syncLlmCatalog(prisma: PrismaClient): Promise<{
 
     const catalog = modelCatalog[modelDef.modelName];
 
-    await prisma.$transaction(async (tx) => {
-      await tx.llmModel.update({
-        where: { id: existing.id },
+    const applied = await prisma.$transaction(async (tx) => {
+      const updateResult = await tx.llmModel.updateMany({
+        where: { id: existing.id, source: "default" },
         data: {
           // Update match pattern and start date from Langfuse (may have changed)
           matchPattern: modelDef.matchPattern,
@@ -70,9 +70,16 @@ export async function syncLlmCatalog(prisma: PrismaClient): Promise<{
               : catalog.maxOutputTokens,
           capabilities: catalog?.capabilities ?? existing.capabilities,
           isHidden: catalog?.isHidden ?? existing.isHidden,
-          baseModelName: catalog?.baseModelName ?? existing.baseModelName,
+          baseModelName:
+            catalog?.baseModelName === undefined
+              ? existing.baseModelName
+              : catalog.baseModelName,
         },
       });
+
+      if (updateResult.count !== 1) {
+        return false;
+      }
 
       await tx.llmPricingTier.deleteMany({ where: { modelId: existing.id } });
 
@@ -81,9 +88,13 @@ export async function syncLlmCatalog(prisma: PrismaClient): Promise<{
           data: pricingTierCreateData(existing.id, tier),
         });
       }
+
+      return true;
     });
 
-    modelsUpdated++;
+    if (applied) {
+      modelsUpdated++;
+    }
   }
 
   return { modelsUpdated, modelsSkipped };

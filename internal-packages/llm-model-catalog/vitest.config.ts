@@ -11,5 +11,6 @@ export default defineConfig({
         singleThread: true,
       },
     },
+    testTimeout: 120_000,
   },
 });

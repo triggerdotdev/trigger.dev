@@ -1,121 +1,203 @@
-import { describe, it, expect, vi } from "vitest";
-import { syncLlmCatalog } from "./sync.js";
+import type { PrismaClient } from "@trigger.dev/database";
+import { postgresTest } from "@internal/testcontainers";
+import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import { describe, expect } from "vitest";
 import { defaultModelPrices } from "./defaultPrices.js";
+import { modelCatalog } from "./modelCatalog.js";
+import { syncLlmCatalog } from "./sync.js";
 
-const gpt4oDef = defaultModelPrices.find((m) => m.modelName === "gpt-4o");
-if (!gpt4oDef) {
-  throw new Error("expected gpt-4o in defaultModelPrices");
+function getGpt4oDefinition() {
+  const def = defaultModelPrices.find((m) => m.modelName === "gpt-4o");
+  if (def === undefined) {
+    throw new Error("expected gpt-4o in defaultModelPrices");
+  }
+  return def;
+}
+
+const gpt4oDef = getGpt4oDefinition();
+
+function getGeminiProDefinition() {
+  const def = defaultModelPrices.find((m) => m.modelName === "gemini-pro");
+  if (def === undefined) {
+    throw new Error("expected gemini-pro in defaultModelPrices");
+  }
+  return def;
+}
+
+const geminiProDef = getGeminiProDefinition();
+
+/** If sync used `catalog?.baseModelName ?? existing.baseModelName`, sync would keep this string instead of clearing to null. */
+const STALE_BASE_MODEL_NAME = "wrong-base-model-sentinel";
+
+const STALE_INPUT_PRICE = 0.099;
+const STALE_OUTPUT_PRICE = 0.088;
+
+async function createGpt4oWithStalePricing(
+  prisma: PrismaClient,
+  source: "default" | "admin"
+) {
+  const model = await prisma.llmModel.create({
+    data: {
+      friendlyId: generateFriendlyId("llm_model"),
+      projectId: null,
+      modelName: gpt4oDef.modelName,
+      matchPattern: "^stale-pattern$",
+      startDate: gpt4oDef.startDate ? new Date(gpt4oDef.startDate) : null,
+      source,
+      provider: "stale-provider",
+      description: "stale description",
+      contextWindow: 111,
+      maxOutputTokens: 222,
+      capabilities: ["stale-cap"],
+      isHidden: true,
+      baseModelName: "stale-base",
+    },
+  });
+
+  await prisma.llmPricingTier.create({
+    data: {
+      modelId: model.id,
+      name: "Standard",
+      isDefault: true,
+      priority: 0,
+      conditions: [],
+      prices: {
+        create: [
+          { modelId: model.id, usageType: "input", price: STALE_INPUT_PRICE },
+          { modelId: model.id, usageType: "output", price: STALE_OUTPUT_PRICE },
+        ],
+      },
+    },
+  });
+
+  return model;
+}
+
+async function createGeminiProWithStaleBaseModelName(prisma: PrismaClient) {
+  const catalogEntry = modelCatalog[geminiProDef.modelName];
+  expect(catalogEntry).toBeDefined();
+  expect(catalogEntry.baseModelName).toBeNull();
+
+  const model = await prisma.llmModel.create({
+    data: {
+      friendlyId: generateFriendlyId("llm_model"),
+      projectId: null,
+      modelName: geminiProDef.modelName,
+      matchPattern: "^stale-gemini-pattern$",
+      startDate: geminiProDef.startDate ? new Date(geminiProDef.startDate) : null,
+      source: "default",
+      provider: "stale-provider",
+      description: "stale description",
+      contextWindow: 111,
+      maxOutputTokens: 222,
+      capabilities: ["stale-cap"],
+      isHidden: true,
+      baseModelName: STALE_BASE_MODEL_NAME,
+    },
+  });
+
+  const tier = geminiProDef.pricingTiers[0];
+  await prisma.llmPricingTier.create({
+    data: {
+      modelId: model.id,
+      name: tier.name,
+      isDefault: tier.isDefault,
+      priority: tier.priority,
+      conditions: tier.conditions,
+      prices: {
+        create: Object.entries(tier.prices).map(([usageType, price]) => ({
+          modelId: model.id,
+          usageType,
+          price,
+        })),
+      },
+    },
+  });
+
+  return model;
+}
+
+async function loadGpt4oWithTiers(prisma: PrismaClient) {
+  return prisma.llmModel.findFirst({
+    where: { projectId: null, modelName: gpt4oDef.modelName },
+    include: {
+      pricingTiers: {
+        include: { prices: true },
+        orderBy: { priority: "asc" },
+      },
+    },
+  });
+}
+
+function expectBundledGpt4oPricing(model: NonNullable<Awaited<ReturnType<typeof loadGpt4oWithTiers>>>) {
+  expect(model.matchPattern).toBe(gpt4oDef.matchPattern);
+  expect(model.pricingTiers).toHaveLength(gpt4oDef.pricingTiers.length);
+
+  const dbTier = model.pricingTiers[0];
+  const defTier = gpt4oDef.pricingTiers[0];
+  expect(dbTier.name).toBe(defTier.name);
+  expect(dbTier.isDefault).toBe(defTier.isDefault);
+  expect(dbTier.priority).toBe(defTier.priority);
+
+  const priceByType = new Map(dbTier.prices.map((p) => [p.usageType, Number(p.price)]));
+  for (const [usageType, expected] of Object.entries(defTier.prices)) {
+    expect(priceByType.get(usageType)).toBeCloseTo(expected, 12);
+  }
+  expect(priceByType.size).toBe(Object.keys(defTier.prices).length);
 }
 
 describe("syncLlmCatalog", () => {
-  it("rebuilds pricing tiers and prices for existing default-source models", async () => {
-    const existingId = "existing-gpt4o";
+  postgresTest(
+    "rebuilds gpt-4o pricing tiers from bundled defaults when source is default",
+    async ({ prisma }) => {
+      await createGpt4oWithStalePricing(prisma, "default");
 
-    const llmModelUpdate = vi.fn();
-    const llmPricingTierDeleteMany = vi.fn();
-    const llmPricingTierCreate = vi.fn();
+      const result = await syncLlmCatalog(prisma);
 
-    const prisma = {
-      llmModel: {
-        findFirst: vi.fn(async (args: { where: { modelName: string } }) => {
-          if (args.where.modelName === "gpt-4o") {
-            return {
-              id: existingId,
-              source: "default",
-              provider: "openai",
-              description: "stale description",
-              contextWindow: 999,
-              maxOutputTokens: 888,
-              capabilities: ["legacy"],
-              isHidden: true,
-              baseModelName: "legacy-base",
-            };
-          }
-          return null;
-        }),
-      },
-      $transaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) => {
-        await fn({
-          llmModel: { update: llmModelUpdate },
-          llmPricingTier: {
-            deleteMany: llmPricingTierDeleteMany,
-            create: llmPricingTierCreate,
-          },
-        });
-      }),
-    };
+      expect(result.modelsUpdated).toBe(1);
+      expect(result.modelsSkipped).toBe(defaultModelPrices.length - 1);
 
-    await syncLlmCatalog(prisma as never);
+      const after = await loadGpt4oWithTiers(prisma);
+      expect(after).not.toBeNull();
+      expectBundledGpt4oPricing(after!);
+    }
+  );
 
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  postgresTest(
+    "does not replace pricing tiers when model source is not default",
+    async ({ prisma }) => {
+      await createGpt4oWithStalePricing(prisma, "admin");
 
-    expect(llmModelUpdate).toHaveBeenCalledWith({
-      where: { id: existingId },
-      data: expect.objectContaining({
-        matchPattern: gpt4oDef.matchPattern,
-        startDate: gpt4oDef.startDate ? new Date(gpt4oDef.startDate) : null,
-      }),
-    });
+      const result = await syncLlmCatalog(prisma);
 
-    expect(llmPricingTierDeleteMany).toHaveBeenCalledWith({
-      where: { modelId: existingId },
-    });
+      expect(result.modelsUpdated).toBe(0);
+      expect(result.modelsSkipped).toBeGreaterThanOrEqual(1);
 
-    expect(llmPricingTierCreate).toHaveBeenCalledTimes(gpt4oDef.pricingTiers.length);
+      const after = await loadGpt4oWithTiers(prisma);
+      expect(after).not.toBeNull();
+      expect(after!.matchPattern).toBe("^stale-pattern$");
+      expect(after!.pricingTiers).toHaveLength(1);
+      const prices = after!.pricingTiers[0].prices;
+      const input = prices.find((p) => p.usageType === "input");
+      const output = prices.find((p) => p.usageType === "output");
+      expect(Number(input?.price)).toBeCloseTo(STALE_INPUT_PRICE, 12);
+      expect(Number(output?.price)).toBeCloseTo(STALE_OUTPUT_PRICE, 12);
+      expect(prices).toHaveLength(2);
+    }
+  );
 
-    const firstTier = gpt4oDef.pricingTiers[0];
-    expect(llmPricingTierCreate).toHaveBeenCalledWith({
-      data: {
-        modelId: existingId,
-        name: firstTier.name,
-        isDefault: firstTier.isDefault,
-        priority: firstTier.priority,
-        conditions: firstTier.conditions,
-        prices: {
-          create: expect.arrayContaining(
-            Object.entries(firstTier.prices).map(([usageType, price]) => ({
-              modelId: existingId,
-              usageType,
-              price,
-            }))
-          ),
-        },
-      },
-    });
+  postgresTest(
+    "clears baseModelName when bundled catalog has null (regression for nullish-coalescing merge)",
+    async ({ prisma }) => {
+      await createGeminiProWithStaleBaseModelName(prisma);
 
-    const createCall = llmPricingTierCreate.mock.calls[0][0] as {
-      data: { prices: { create: { usageType: string; price: number; modelId: string }[] } };
-    };
-    expect(createCall.data.prices.create).toHaveLength(Object.keys(firstTier.prices).length);
-  });
+      await syncLlmCatalog(prisma);
 
-  it("does not rebuild pricing for non-default source models", async () => {
-    const prisma = {
-      llmModel: {
-        findFirst: vi.fn(async (args: { where: { modelName: string } }) => {
-          if (args.where.modelName === "gpt-4o") {
-            return {
-              id: "admin-edited",
-              source: "admin",
-              provider: null,
-              description: null,
-              contextWindow: null,
-              maxOutputTokens: null,
-              capabilities: [],
-              isHidden: false,
-              baseModelName: null,
-            };
-          }
-          return null;
-        }),
-      },
-      $transaction: vi.fn(),
-    };
-
-    const result = await syncLlmCatalog(prisma as never);
-
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(result.modelsUpdated).toBe(0);
-    expect(result.modelsSkipped).toBeGreaterThan(0);
-  });
+      const after = await prisma.llmModel.findFirst({
+        where: { projectId: null, modelName: geminiProDef.modelName },
+      });
+      expect(after).not.toBeNull();
+      expect(after!.baseModelName).toBeNull();
+    }
+  );
 });
