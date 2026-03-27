@@ -1,11 +1,10 @@
 import * as Ariakit from "@ariakit/react";
 import { BellAlertIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, useRevalidator } from "@remix-run/react";
+import { Form, useRevalidator, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { type ErrorGroupStatus } from "@trigger.dev/database";
 import { IconBugFilled } from "@tabler/icons-react";
-import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
+import { type ErrorGroupStatus } from "@trigger.dev/database";
 import { Suspense, useCallback, useMemo, type ReactNode } from "react";
 import {
   Bar,
@@ -17,8 +16,9 @@ import {
   type TooltipProps,
 } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
+import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
 import { PageBody } from "~/components/layout/AppLayout";
-import { SearchInput } from "~/components/primitives/SearchInput";
+import { ListPagination } from "~/components/ListPagination";
 import { LogsTaskFilter } from "~/components/logs/LogsTaskFilter";
 import { LogsVersionFilter } from "~/components/logs/LogsVersionFilter";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
@@ -28,6 +28,7 @@ import { formatDateTime, RelativeDateTime } from "~/components/primitives/DateTi
 import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import {
   ComboBox,
   SelectItem,
@@ -42,7 +43,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableCellChevron,
   TableHeader,
   TableHeaderCell,
   TableRow,
@@ -65,7 +65,6 @@ import {
 import { logsClickhouseClient } from "~/services/clickhouseInstance.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUser } from "~/services/session.server";
-import { ListPagination } from "~/components/ListPagination";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import { EnvironmentParamSchema, v3ErrorPath } from "~/utils/pathBuilder";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -484,19 +483,17 @@ function ErrorsList({
 }) {
   if (errorGroups.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="text-center">
-          <Header3 className="mb-2">No errors found</Header3>
-          <Paragraph variant="small">
-            No errors have been recorded in the selected time period.
-          </Paragraph>
-        </div>
+      <div className="flex h-full flex-col items-center justify-center gap-3">
+        <IconBugFilled className="size-16 text-charcoal-650" />
+        <Paragraph className="text-center text-text-dimmed">
+          No errors found for this time period.
+        </Paragraph>
       </div>
     );
   }
 
   return (
-    <Table containerClassName="max-h-full pb-[2.5rem]">
+    <Table containerClassName="max-h-full pb-[2.5rem]" showTopBorder={false}>
       <TableHeader>
         <TableRow>
           <TableHeaderCell>ID</TableHeaderCell>
