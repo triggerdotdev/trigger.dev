@@ -660,19 +660,25 @@ function IgnoredDetails({
         className
       )}
     >
-      <div className="flex flex-col gap-0.5">
-        <div className="flex items-center gap-1.5">
-          <IconAlarmSnoozeBase className="size-4 text-text-dimmed" size={16} />
-          <span className="font-medium text-text-bright">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-1">
+          <IconAlarmSnoozeBase className="size-5 text-text-bright" />
+          <Header3 className="text-text-bright">
             {ignoredForever ? "Ignored permanently" : "Ignored with conditions"}
-          </span>
+          </Header3>
         </div>
         {(state.ignoredByUserDisplayName || state.ignoredAt) && (
-          <span className="text-xs text-text-dimmed">
+          <Paragraph variant="extra-small/dimmed">
             {state.ignoredByUserDisplayName && <>Configured by {state.ignoredByUserDisplayName}</>}
             {state.ignoredByUserDisplayName && state.ignoredAt && " "}
-            {state.ignoredAt && <RelativeDateTime date={state.ignoredAt} capitalize={false} />}
-          </span>
+            {state.ignoredAt && (
+              <RelativeDateTime
+                date={state.ignoredAt}
+                capitalize={false}
+                className="text-text-dimmed"
+              />
+            )}
+          </Paragraph>
         )}
       </div>
 
