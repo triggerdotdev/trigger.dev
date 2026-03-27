@@ -1,10 +1,13 @@
 import { type LoaderFunctionArgs, type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { type MetaFunction, Form, useNavigation, useSubmit } from "@remix-run/react";
 import { BellAlertIcon, CheckIcon } from "@heroicons/react/20/solid";
-import { IconAlarmSnooze as IconAlarmSnoozeBase } from "@tabler/icons-react";
+import { IconAlarmSnooze as IconAlarmSnoozeBase, IconBugOff as IconBugOffBase } from "@tabler/icons-react";
 
 const AlarmSnoozeIcon = ({ className }: { className?: string }) => (
   <IconAlarmSnoozeBase className={className} size={18} />
+);
+const BugOffIcon = ({ className }: { className?: string }) => (
+  <IconBugOffBase className={className} size={18} />
 );
 import { parse } from "@conform-to/zod";
 import { z } from "zod";
@@ -762,6 +765,7 @@ function ErrorStatusDropdown({
               />
               <PopoverMenuItem
                 icon={AlarmSnoozeIcon}
+                leadingIconClassName="text-text-bright"
                 title="Ignored for 1 hour"
                 onClick={() =>
                   act({
@@ -773,6 +777,7 @@ function ErrorStatusDropdown({
               />
               <PopoverMenuItem
                 icon={AlarmSnoozeIcon}
+                leadingIconClassName="text-text-bright"
                 title="Ignored for 24 hours"
                 onClick={() =>
                   act({
@@ -783,12 +788,14 @@ function ErrorStatusDropdown({
                 }
               />
               <PopoverMenuItem
-                icon={AlarmSnoozeIcon}
+                icon={BugOffIcon}
+                leadingIconClassName="text-text-bright"
                 title="Ignored forever"
                 onClick={() => act({ taskIdentifier, action: "ignore" })}
               />
               <PopoverMenuItem
                 icon={AlarmSnoozeIcon}
+                leadingIconClassName="text-text-bright"
                 title="Ignored with custom condition…"
                 onClick={() => {
                   setPopoverOpen(false);
