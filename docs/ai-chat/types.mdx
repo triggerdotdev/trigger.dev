@@ -1,0 +1,137 @@
+---
+title: "Types"
+sidebarTitle: "Types"
+description: "TypeScript types for AI Chat tasks, UI messages, and the frontend transport."
+---
+
+TypeScript patterns for [AI Chat](/ai-chat/overview). This page will expand over time; it currently documents how to pin a custom AI SDK [`UIMessage`](https://sdk.vercel.ai/docs/reference/ai-sdk-core/ui-message) subtype with `chat.withUIMessage` and align types on the client.
+
+## Custom `UIMessage` with `chat.withUIMessage`
+
+`chat.task()` types the wire payload with the base AI SDK `UIMessage`. That is enough for many apps.
+
+When you add **custom `data-*` parts** (via `chat.stream` / `writer`) or a **typed tool map** (e.g. `InferUITools<typeof tools>`), you want a **narrower** `UIMessage` generic so that:
+
+- `onTurnStart`, `onTurnComplete`, and similar hooks expose correctly typed `uiMessages`
+- Stream options like `sendReasoning` align with your message shape
+- The frontend can treat `useChat` messages as the same subtype end-to-end
+
+`chat.withUIMessage<YourUIMessage>(config?)` returns `{ task }`, where `task(...)` accepts the **same options as** [`chat.task()`](/ai-chat/backend#chat-task) but fixes `YourUIMessage` as the UI message type for that chat task.
+
+### Defining a `UIMessage` subtype
+
+Build the type from AI SDK helpers and your tools object:
+
+```ts
+import type { InferUITools, UIDataTypes, UIMessage } from "ai";
+import { tool } from "ai";
+import { z } from "zod";
+
+const myTools = {
+  lookup: tool({
+    description: "Look up a record",
+    inputSchema: z.object({ id: z.string() }),
+    execute: async ({ id }) => ({ id, label: "example" }),
+  }),
+};
+
+type MyChatTools = InferUITools<typeof myTools>;
+
+type MyChatDataTypes = UIDataTypes & {
+  "turn-status": { status: "preparing" | "streaming" | "done" };
+};
+
+export type MyChatUIMessage = UIMessage<unknown, MyChatDataTypes, MyChatTools>;
+```
+
+Task-backed tools should use AI SDK [`tool()`](https://sdk.vercel.ai/docs/ai-sdk-core/tools-and-tool-calling) with `execute: ai.toolExecute(schemaTask)` where needed — see [Task-backed AI tools](/tasks/schemaTask#task-backed-ai-tools).
+
+### Backend: `chat.withUIMessage(...).task(...)`
+
+Call `withUIMessage` **once**, then chain `.task({ ... })` instead of `chat.task({ ... })`:
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText, tool } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+import type { MyChatUIMessage } from "./my-chat-types";
+
+const myTools = {
+  lookup: tool({
+    description: "Look up a record",
+    inputSchema: z.object({ id: z.string() }),
+    execute: async ({ id }) => ({ id, label: "example" }),
+  }),
+};
+
+export const myChat = chat.withUIMessage<MyChatUIMessage>({
+  streamOptions: {
+    sendReasoning: true,
+    onError: (error) =>
+      error instanceof Error ? error.message : "Something went wrong.",
+  },
+}).task({
+  id: "my-chat",
+  clientDataSchema: z.object({ userId: z.string() }),
+  onTurnStart: async ({ uiMessages, writer }) => {
+    // uiMessages is MyChatUIMessage[] — custom data parts are typed
+    writer.write({
+      type: "data-turn-status",
+      data: { status: "preparing" },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: openai("gpt-4o"),
+      messages,
+      tools: myTools,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+### Default stream options
+
+The optional `streamOptions` object becomes the **default** [`uiMessageStreamOptions`](/ai-chat/reference#chat-task-options) for `toUIMessageStream()`.
+
+If you also set `uiMessageStreamOptions` on the inner `.task({ ... })`, the two objects are **shallow-merged** — keys on the **task** win on conflicts. Per-turn overrides via [`chat.setUIMessageStreamOptions()`](/ai-chat/backend#stream-options) still apply on top.
+
+### Frontend: `InferChatUIMessage`
+
+Import the helper type and pass it to `useChat` so `messages` and render logic match the backend:
+
+```tsx
+import { useChat } from "@ai-sdk/react";
+import { useTriggerChatTransport, type InferChatUIMessage } from "@trigger.dev/sdk/chat/react";
+import type { myChat } from "./myChat";
+
+type Msg = InferChatUIMessage<typeof myChat>;
+
+export function Chat() {
+  const transport = useTriggerChatTransport<typeof myChat>({
+    task: "my-chat",
+    accessToken: getChatToken,
+  });
+
+  const { messages } = useChat<Msg>({ transport });
+
+  return messages.map((m) => (
+    <div key={m.id}>{/* m.parts narrowed for your UIMessage subtype */}</div>
+  ));
+}
+```
+
+You can also import `InferChatUIMessage` from `@trigger.dev/sdk/ai` in non-React modules.
+
+### When plain `chat.task()` is enough
+
+If you do not rely on custom `UIMessage` generics (only default text, reasoning, and built-in tool UI types), **`chat.task()` alone is fine** — no need for `withUIMessage`.
+
+## See also
+
+- [Backend — `chat.task()`](/ai-chat/backend#chat-task)
+- [Frontend — transport & `useChat`](/ai-chat/frontend)
+- [API reference — `chat.withUIMessage`](/ai-chat/reference#chat-withuimessage)
+- [Task-backed AI tools — `ai.toolExecute`](/tasks/schemaTask#task-backed-ai-tools)

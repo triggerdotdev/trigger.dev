@@ -31,6 +31,23 @@ The transport is created once on first render and reused across re-renders. Pass
   The hook keeps `onSessionChange` up to date via a ref internally, so you don't need to memoize the callback or worry about stale closures.
 </Tip>
 
+## Typed messages (`chat.withUIMessage`)
+
+If your chat task is defined with [`chat.withUIMessage<YourUIMessage>()`](/ai-chat/types) (custom `data-*` parts, typed tools, etc.), pass the same message type through `useChat` so `messages` and `message.parts` are narrowed on the client:
+
+```tsx
+import { useChat } from "@ai-sdk/react";
+import { useTriggerChatTransport, type InferChatUIMessage } from "@trigger.dev/sdk/chat/react";
+import type { myChat } from "./myChat";
+
+type Msg = InferChatUIMessage<typeof myChat>;
+
+const transport = useTriggerChatTransport<typeof myChat>({ task: "my-chat", accessToken: getChatToken });
+const { messages } = useChat<Msg>({ transport });
+```
+
+See the [Types](/ai-chat/types) guide for defining `YourUIMessage`, default stream options, and backend examples.
+
 ### Dynamic access tokens
 
 For token refresh, pass a function instead of a string. It's called on each `sendMessage`:

@@ -28,6 +28,10 @@ description: "Get a working AI chat in 3 steps — define a task, generate a tok
       },
     });
     ```
+
+    <Tip>
+      For a **custom** [`UIMessage`](https://sdk.vercel.ai/docs/reference/ai-sdk-core/ui-message) subtype (typed `data-*` parts, tool map, etc.), define the task with [`chat.withUIMessage<...>().task({...})`](/ai-chat/types) instead of `chat.task`.
+    </Tip>
   </Step>
 
   <Step title="Generate an access token">
@@ -105,4 +109,5 @@ description: "Get a working AI chat in 3 steps — define a task, generate a tok
 
 - [Backend](/ai-chat/backend) — Lifecycle hooks, persistence, session iterator, raw task primitives
 - [Frontend](/ai-chat/frontend) — Session management, client data, reconnection
+- [Types](/ai-chat/types) — `chat.withUIMessage`, `InferChatUIMessage`, and related typing
 - [Features](/ai-chat/features) — Per-run data, deferred work, streaming, subtasks
