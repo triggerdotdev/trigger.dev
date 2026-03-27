@@ -241,13 +241,11 @@ export class FinalizeDeploymentV2Service extends BaseService {
     imageReference: string,
     deploymentFriendlyId: string
   ) {
-    templateService.createTemplate(imageReference).catch((error) => {
-      logger.error("Shadow compute template creation failed", {
-        id: deploymentFriendlyId,
-        imageReference,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    logger.debug("Shadow compute template creation (background)", {
+      id: deploymentFriendlyId,
+      imageReference,
     });
+    templateService.createTemplateBackground(imageReference);
   }
 }
 

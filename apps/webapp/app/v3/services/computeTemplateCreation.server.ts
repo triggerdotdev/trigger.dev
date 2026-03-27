@@ -83,4 +83,20 @@ export class ComputeTemplateCreationService {
       return { success: false, error: message };
     }
   }
+
+  /**
+   * Fire-and-forget template creation. No HTTP connection held open,
+   * no response awaited. Used for shadow rollout mode.
+   */
+  createTemplateBackground(imageReference: string): void {
+    if (!this.client) {
+      return;
+    }
+
+    this.client.createTemplateBackground({
+      image: imageReference,
+      cpu: 0.5,
+      memory_mb: 512,
+    });
+  }
 }
