@@ -62,7 +62,10 @@ export class ComputeTemplateCreationService {
     return "skip";
   }
 
-  async createTemplate(imageReference: string): Promise<{ success: boolean; error?: string }> {
+  async createTemplate(
+    imageReference: string,
+    options?: { background?: boolean }
+  ): Promise<{ success: boolean; error?: string }> {
     if (!this.client) {
       return { success: false, error: "Compute gateway not configured" };
     }
@@ -72,6 +75,7 @@ export class ComputeTemplateCreationService {
         image: imageReference,
         cpu: 0.5,
         memory_mb: 512,
+        background: options?.background,
       });
       return { success: true };
     } catch (error) {
@@ -82,21 +86,5 @@ export class ComputeTemplateCreationService {
       });
       return { success: false, error: message };
     }
-  }
-
-  /**
-   * Fire-and-forget template creation. No HTTP connection held open,
-   * no response awaited. Used for shadow rollout mode.
-   */
-  createTemplateBackground(imageReference: string): void {
-    if (!this.client) {
-      return;
-    }
-
-    this.client.createTemplateBackground({
-      image: imageReference,
-      cpu: 0.5,
-      memory_mb: 512,
-    });
   }
 }

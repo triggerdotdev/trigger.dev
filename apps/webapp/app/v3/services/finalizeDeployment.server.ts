@@ -191,11 +191,13 @@ export class FinalizeDeploymentService extends BaseService {
 
     // Shadow mode: fire-and-forget template creation after deploy is finalized
     if (templateMode === "shadow" && deployment.imageReference) {
-      logger.debug("Shadow compute template creation (background)", {
-        id,
-        imageReference: deployment.imageReference,
+      templateService.createTemplate(deployment.imageReference, { background: true }).catch((error) => {
+        logger.error("Shadow compute template creation failed", {
+          id,
+          imageReference: deployment.imageReference,
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
-      templateService.createTemplateBackground(deployment.imageReference);
     }
 
     return finalizedDeployment;

@@ -4,6 +4,7 @@ export const TemplateCreateRequestSchema = z.object({
   image: z.string(),
   cpu: z.number(),
   memory_mb: z.number(),
+  background: z.boolean().optional(),
   callback: z
     .object({
       url: z.string(),
