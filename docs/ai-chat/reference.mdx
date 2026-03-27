@@ -298,6 +298,50 @@ All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
 | `chat.cleanupAbortedParts(message)` | Remove incomplete parts from a stopped response message |
 | `chat.stream` | Typed chat output stream — use `.writer()`, `.pipe()`, `.append()`, `.read()` |
 | `chat.MessageAccumulator` | Class that accumulates conversation messages across turns |
+| `chat.withUIMessage(config?).task(options)` | Same as `chat.task`, but fixes a custom `UIMessage` subtype and optional default stream options. See [Types](/ai-chat/types) |
+
+## `chat.withUIMessage`
+
+Returns `{ task }`, where `task` is like [`chat.task`](#chat-namespace) but parameterized on a UI message type `TUIM`.
+
+```ts
+chat.withUIMessage<TUIM>(config?: ChatWithUIMessageConfig<TUIM>): {
+  task: (options: ChatTaskOptions<..., ..., TUIM>) => Task<...>;
+};
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `config.streamOptions` | `ChatUIMessageStreamOptions<TUIM>` | Optional defaults for `toUIMessageStream()`. Shallow-merged with `uiMessageStreamOptions` on the inner `.task({ ... })` (task wins on key conflicts). |
+
+Use this when you need [`InferChatUIMessage`](#inferchatuimessage) / typed `data-*` parts / `InferUITools` to line up across backend hooks and `useChat`. Full guide: [Types](/ai-chat/types).
+
+## `ChatWithUIMessageConfig`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `streamOptions` | `ChatUIMessageStreamOptions<TUIM>` | Default `toUIMessageStream()` options for tasks created via `.task()` |
+
+## `InferChatUIMessage`
+
+Type helper: extracts the `UIMessage` subtype from a chat task’s wire payload.
+
+```ts
+import type { InferChatUIMessage } from "@trigger.dev/sdk/ai";
+// or from "@trigger.dev/sdk/chat/react"
+
+type Msg = InferChatUIMessage<typeof myChat>;
+```
+
+Use with `useChat<Msg>({ transport })` when using [`chat.withUIMessage`](/ai-chat/types). For tasks defined with plain `chat.task()` (no custom generic), this resolves to the base `UIMessage`.
+
+## AI helpers (`ai` from `@trigger.dev/sdk/ai`)
+
+| Export | Status | Description |
+|--------|--------|-------------|
+| `ai.toolExecute(task)` | **Preferred** | Returns the `execute` function for AI SDK `tool()`. Runs the task via `triggerAndSubscribe` and attaches tool/chat metadata (same behavior the deprecated wrapper used internally). |
+| `ai.tool(task, options?)` | **Deprecated** | Wraps `tool()` / `dynamicTool()` and the same execute path. Migrate to `tool({ ..., execute: ai.toolExecute(task) })`. See [Task-backed AI tools](/tasks/schemaTask#task-backed-ai-tools). |
+| `ai.toolCallId`, `ai.chatContext`, `ai.chatContextOrThrow`, `ai.currentToolOptions` | Supported | Work for any task-backed tool execute path, including `ai.toolExecute`. |
 
 ## ChatUIMessageStreamOptions
 

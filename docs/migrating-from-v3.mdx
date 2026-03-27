@@ -34,7 +34,7 @@ We're retiring Trigger.dev v3. **New v3 deploys will stop working from 1 April 2
 | [Hidden tasks](/hidden-tasks)                                        | Create tasks that are not exported from your trigger files but can still be executed.                                                                                                                      |
 | [Middleware & locals](#middleware-and-locals)                        | The middleware system runs at the top level, executing before and after all lifecycle hooks. The locals API allows sharing data between middleware and hooks.                                              |
 | [useWaitToken](/realtime/react-hooks/use-wait-token)                 | Use the useWaitToken hook to complete a wait token from a React component.                                                                                                                                 |
-| [ai.tool](/tasks/schemaTask#ai-tool)                                 | Create an AI tool from an existing `schemaTask` to use with the Vercel [AI SDK](https://vercel.com/docs/ai-sdk).                                                                                           |
+| [Task-backed AI tools](/tasks/schemaTask#task-backed-ai-tools)       | Use `schemaTask` with AI SDK `tool()` and `ai.toolExecute()` (legacy `ai.tool` is deprecated).                                                                                                              |
 
 ## Node.js support
 
@@ -165,7 +165,7 @@ export const myAiTask = schemaTask({
 });
 ```
 
-We've replaced the `toolTask` function with the `ai.tool` function, which creates an AI tool from an existing `schemaTask`. See the [ai.tool](/tasks/schemaTask#ai-tool) page for more details.
+We've replaced the `toolTask` function with `schemaTask` plus AI SDK `tool()` and `ai.toolExecute()` (the older `ai.tool()` wrapper is deprecated). See [Task-backed AI tools](/tasks/schemaTask#task-backed-ai-tools).
 
 ## Breaking changes
 
