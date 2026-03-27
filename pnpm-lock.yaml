@@ -2143,8 +2143,8 @@ importers:
         specifier: ^8.5.3
         version: 8.5.4
       ai:
-        specifier: ^6.0.116
-        version: 6.0.116(zod@3.25.76)
+        specifier: ^6.0.0
+        version: 6.0.3(zod@3.25.76)
       encoding:
         specifier: ^0.1.13
         version: 0.1.13
