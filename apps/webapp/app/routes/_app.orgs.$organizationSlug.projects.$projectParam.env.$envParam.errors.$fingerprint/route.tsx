@@ -430,8 +430,8 @@ function ErrorGroupDetail({
       <ResizablePanel id="error-main" min="300px">
         <div className="grid h-full grid-rows-[12rem_1fr] overflow-hidden">
           {/* Activity chart */}
-          <div className="flex flex-col gap-3 overflow-hidden border-b border-grid-bright bg-background-bright px-4 py-3">
-            <div className="flex items-center gap-1">
+          <div className="flex flex-col gap-3 overflow-hidden border-b border-grid-bright bg-background-bright py-2 pl-2 pr-4">
+            <div className="flex items-center gap-2">
               <TimeFilter defaultPeriod="7d" labelName="Occurred" />
               <LogsVersionFilter />
             </div>
@@ -450,7 +450,7 @@ function ErrorGroupDetail({
 
           {/* Runs Table */}
           <div className="flex flex-col gap-1 overflow-y-hidden">
-            <div className="flex items-center justify-between px-4">
+            <div className="flex items-center justify-between pl-3 pr-2 pt-1">
               <Header3 className="mb-1 mt-2">Runs</Header3>
               {runList && (
                 <div className="flex items-center gap-2">
@@ -507,7 +507,11 @@ function ErrorGroupDetail({
       {/* Right-hand detail sidebar */}
       <ResizableHandle id="error-detail-handle" />
       <ResizablePanel id="error-detail" min="280px" default="380px" max="500px" isStaticAtRest>
-        <ErrorDetailSidebar errorGroup={errorGroup} fingerprint={fingerprint} alertsHref={alertsHref} />
+        <ErrorDetailSidebar
+          errorGroup={errorGroup}
+          fingerprint={fingerprint}
+          alertsHref={alertsHref}
+        />
       </ResizablePanel>
     </ResizablePanelGroup>
   );
@@ -741,7 +745,7 @@ function ErrorStatusDropdown({
         <PopoverArrowTrigger variant="tertiary" disabled={isSubmitting}>
           Mark error as…
         </PopoverArrowTrigger>
-        <PopoverContent className="!min-w-0 inline-flex flex-col p-1" align="end">
+        <PopoverContent className="inline-flex !min-w-0 flex-col p-1" align="end">
           {state.status === "UNRESOLVED" && (
             <>
               <PopoverMenuItem
@@ -904,10 +908,7 @@ function ActivityChart({
   activity: ErrorGroupActivity;
   versions: ErrorGroupActivityVersions;
 }) {
-  const colors = useMemo(
-    () => versions.map((_, i) => getSeriesColor(i)),
-    [versions]
-  );
+  const colors = useMemo(() => versions.map((_, i) => getSeriesColor(i)), [versions]);
 
   const data = useMemo(
     () =>
@@ -1015,10 +1016,7 @@ const ActivityTooltip = ({
             const value = (entry.value as number) ?? 0;
             return (
               <div key={entry.dataKey} className="flex items-center gap-2 text-xs">
-                <div
-                  className="size-2 rounded-[2px]"
-                  style={{ backgroundColor: entry.color }}
-                />
+                <div className="size-2 rounded-[2px]" style={{ backgroundColor: entry.color }} />
                 <span className="text-text-dimmed">{entry.dataKey}</span>
                 <span className="tabular-nums text-text-bright">{value}</span>
               </div>
