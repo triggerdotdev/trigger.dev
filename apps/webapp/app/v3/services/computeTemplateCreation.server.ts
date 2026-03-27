@@ -23,6 +23,10 @@ export class ComputeTemplateCreationService {
     projectId: string,
     prisma: PrismaClientOrTransaction
   ): Promise<TemplateCreationMode> {
+    if (!this.client) {
+      return "skip";
+    }
+
     const project = await prisma.project.findFirst({
       where: { id: projectId },
       select: {
