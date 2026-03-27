@@ -1,10 +1,10 @@
-import { AwsClient } from "aws4fetch";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { startActiveSpan } from "./tracer.server";
 import { IOPacket } from "@trigger.dev/core/v3";
+import { ObjectStoreClient, type ObjectStoreClientConfig } from "./objectStoreClient.server";
 
 /**
  * Parsed storage URI with optional protocol prefix
@@ -49,105 +49,77 @@ export function formatStorageUri(path: string, protocol?: string): string {
 }
 
 /**
- * Object storage client configuration
+ * Get object storage configuration for a given protocol.
+ * Returns a config if baseUrl is set, even without explicit credentials —
+ * in that case the AWS credential chain (ECS task role, EC2 IMDS, etc.) is used,
+ * and OBJECT_STORE_BUCKET must also be set.
  */
-type ObjectStoreConfig = {
-  baseUrl: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-  region?: string;
-  service?: string;
-};
-
-/**
- * Get object storage configuration for a given protocol
- * @param protocol Protocol name (e.g., "s3", "r2"), or undefined for default
- * @returns Configuration object or undefined if not configured
- */
-function getObjectStoreConfig(protocol?: string): ObjectStoreConfig | undefined {
+function getObjectStoreConfig(protocol?: string): ObjectStoreClientConfig | undefined {
   if (protocol) {
     // Named provider (e.g., OBJECT_STORE_S3_*)
     const prefix = `OBJECT_STORE_${protocol.toUpperCase()}_`;
     const baseUrl = process.env[`${prefix}BASE_URL`];
-    const accessKeyId = process.env[`${prefix}ACCESS_KEY_ID`];
-    const secretAccessKey = process.env[`${prefix}SECRET_ACCESS_KEY`];
-    const region = process.env[`${prefix}REGION`];
-    const service = process.env[`${prefix}SERVICE`];
-
-    if (!baseUrl || !accessKeyId || !secretAccessKey) {
-      return undefined;
-    }
+    if (!baseUrl) return undefined;
 
     return {
       baseUrl,
-      accessKeyId,
-      secretAccessKey,
-      region,
-      service,
+      bucket: process.env[`${prefix}BUCKET`] || undefined,
+      accessKeyId: process.env[`${prefix}ACCESS_KEY_ID`] || undefined,
+      secretAccessKey: process.env[`${prefix}SECRET_ACCESS_KEY`] || undefined,
+      region: process.env[`${prefix}REGION`] || undefined,
+      service: process.env[`${prefix}SERVICE`] || undefined,
     };
   }
 
   // Default provider (backward compatible)
-  if (
-    !env.OBJECT_STORE_BASE_URL ||
-    !env.OBJECT_STORE_ACCESS_KEY_ID ||
-    !env.OBJECT_STORE_SECRET_ACCESS_KEY
-  ) {
+  if (!env.OBJECT_STORE_BASE_URL) {
     return undefined;
   }
 
   return {
     baseUrl: env.OBJECT_STORE_BASE_URL,
-    accessKeyId: env.OBJECT_STORE_ACCESS_KEY_ID,
-    secretAccessKey: env.OBJECT_STORE_SECRET_ACCESS_KEY,
-    region: env.OBJECT_STORE_REGION,
-    service: env.OBJECT_STORE_SERVICE,
+    bucket: env.OBJECT_STORE_BUCKET || undefined,
+    accessKeyId: env.OBJECT_STORE_ACCESS_KEY_ID || undefined,
+    secretAccessKey: env.OBJECT_STORE_SECRET_ACCESS_KEY || undefined,
+    region: env.OBJECT_STORE_REGION || undefined,
+    service: env.OBJECT_STORE_SERVICE || undefined,
   };
 }
 
 /**
- * Object storage clients registry
- * Maps protocol name to AwsClient instance
+ * Object storage client registry. Maps protocol name to ObjectStoreClient singleton.
+ * ObjectStoreClient internally uses either aws4fetch (static credentials) or the
+ * AWS SDK S3Client (IAM credential chain), selected at creation time.
  */
 const objectStoreClients = singleton(
   "objectStoreClients",
-  () => new Map<string | undefined, AwsClient>()
+  () => new Map<string, ObjectStoreClient>()
 );
 
-/**
- * Get or create an object storage client for a given protocol
- * @param protocol Protocol name (e.g., "s3", "r2"), or undefined for default
- * @returns AwsClient instance or undefined if not configured
- */
-function getObjectStoreClient(protocol?: string): AwsClient | undefined {
-  const key = protocol;
-
-  if (objectStoreClients.has(key)) {
-    return objectStoreClients.get(key);
-  }
-
+function getObjectStoreClient(protocol?: string): ObjectStoreClient | undefined {
   const config = getObjectStoreConfig(protocol);
-  if (!config) {
-    return undefined;
+  if (!config) return undefined;
+
+  // Key includes baseUrl so that config changes (e.g. different containers in tests)
+  // always produce a fresh client while production usage (stable env) is effectively
+  // a per-protocol singleton.
+  const cacheKey = `${protocol ?? "default"}:${config.baseUrl}`;
+  if (objectStoreClients.has(cacheKey)) {
+    return objectStoreClients.get(cacheKey);
   }
 
-  const client = new AwsClient({
-    accessKeyId: config.accessKeyId,
-    secretAccessKey: config.secretAccessKey,
-    region: config.region,
-    // We now set the default value to "s3" in the schema to enhance interoperability with various S3-compatible services.
-    // Setting this env var to an empty string will restore the previous behavior of not setting a service.
-    service: config.service ? config.service : undefined,
-  });
-
-  objectStoreClients.set(key, client);
+  const client = ObjectStoreClient.create(config);
+  objectStoreClients.set(cacheKey, client);
   return client;
 }
 
 export function hasObjectStoreClient(): boolean {
-  return getObjectStoreClient() !== undefined || getObjectStoreClient(env.OBJECT_STORE_DEFAULT_PROTOCOL) !== undefined;
+  const defaultConfig = getObjectStoreConfig();
+  const protocolConfig = env.OBJECT_STORE_DEFAULT_PROTOCOL
+    ? getObjectStoreConfig(env.OBJECT_STORE_DEFAULT_PROTOCOL)
+    : undefined;
+  return !!(defaultConfig || protocolConfig);
 }
-
 
 export async function uploadPacketToObjectStore(
   filename: string,
@@ -161,39 +133,21 @@ export async function uploadPacketToObjectStore(
     const client = getObjectStoreClient(protocol);
 
     if (!client) {
-      throw new Error(
-        `Object store credentials are not set for protocol: ${protocol || "default"}`
-      );
-    }
-
-    const config = getObjectStoreConfig(protocol);
-    if (!config?.baseUrl) {
-      throw new Error(`Object store base URL is not set for protocol: ${protocol || "default"}`);
+      throw new Error(`Object store is not configured for protocol: ${protocol || "default"}`);
     }
 
     span.setAttributes({
       projectRef: environment.project.externalRef,
       environmentSlug: environment.slug,
-      filename: filename,
+      filename,
       protocol: protocol || "default",
     });
 
-    const url = new URL(config.baseUrl);
-    url.pathname = `/packets/${environment.project.externalRef}/${environment.slug}/${filename}`;
+    const key = `packets/${environment.project.externalRef}/${environment.slug}/${filename}`;
 
-    logger.debug("Uploading to object store", { url: url.href, protocol: protocol || "default" });
+    logger.debug("Uploading to object store", { key, protocol: protocol || "default" });
 
-    const response = await client.fetch(url.toString(), {
-      method: "PUT",
-      headers: {
-        "Content-Type": contentType,
-      },
-      body: data,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to upload output to ${url}: ${response.statusText}`);
-    }
+    await client.putObject(key, data, contentType);
 
     // Return filename with protocol prefix if specified
     return formatStorageUri(filename, protocol);
@@ -222,14 +176,7 @@ export async function downloadPacketFromObjectStore(
     const client = getObjectStoreClient(protocol);
 
     if (!client) {
-      throw new Error(
-        `Object store credentials are not set for protocol: ${protocol || "default"}`
-      );
-    }
-
-    const config = getObjectStoreConfig(protocol);
-    if (!config?.baseUrl) {
-      throw new Error(`Object store base URL is not set for protocol: ${protocol || "default"}`);
+      throw new Error(`Object store is not configured for protocol: ${protocol || "default"}`);
     }
 
     span.setAttributes({
@@ -239,28 +186,13 @@ export async function downloadPacketFromObjectStore(
       protocol: protocol || "default",
     });
 
-    const url = new URL(config.baseUrl);
-    url.pathname = `/packets/${environment.project.externalRef}/${environment.slug}/${path}`;
+    const key = `packets/${environment.project.externalRef}/${environment.slug}/${path}`;
 
-    logger.debug("Downloading from object store", {
-      url: url.href,
-      protocol: protocol || "default",
-    });
+    logger.debug("Downloading from object store", { key, protocol: protocol || "default" });
 
-    const response = await client.fetch(url.toString());
+    const data = await client.getObject(key);
 
-    if (!response.ok) {
-      throw new Error(`Failed to download input from ${url}: ${response.statusText}`);
-    }
-
-    const data = await response.text();
-
-    const rawPacket = {
-      data,
-      dataType: "application/json",
-    };
-
-    return rawPacket;
+    return { data, dataType: "application/json" };
   });
 }
 
@@ -276,15 +208,10 @@ export async function uploadDataToObjectStore(
     const client = getObjectStoreClient(protocol);
 
     if (!client) {
-      throw new Error(
-        `Object store credentials are not set for protocol: ${protocol || "default"}`
-      );
+      throw new Error(`Object store is not configured for protocol: ${protocol || "default"}`);
     }
 
     const config = getObjectStoreConfig(protocol);
-    if (!config?.baseUrl) {
-      throw new Error(`Object store base URL is not set for protocol: ${protocol || "default"}`);
-    }
 
     span.setAttributes({
       prefix,
@@ -292,23 +219,15 @@ export async function uploadDataToObjectStore(
       protocol: protocol || "default",
     });
 
-    const url = new URL(config.baseUrl);
-    url.pathname = prefix ? `/${prefix}/${filename}` : `/${filename}`;
+    const key = prefix ? `${prefix}/${filename}` : filename;
 
-    logger.debug("Uploading to object store", { url: url.href, protocol: protocol || "default" });
+    logger.debug("Uploading to object store", { key, protocol: protocol || "default" });
 
-    const response = await client.fetch(url.toString(), {
-      method: "PUT",
-      headers: {
-        "Content-Type": contentType,
-      },
-      body: data,
-    });
+    await client.putObject(key, data, contentType);
 
-    if (!response.ok) {
-      throw new Error(`Failed to upload data to ${url}: ${response.statusText}`);
-    }
-
+    // Return a full URL for the caller (reconstruct from baseUrl + key)
+    const url = new URL(config!.baseUrl);
+    url.pathname = `/${key}`;
     return url.href;
   });
 }
@@ -334,7 +253,7 @@ export async function generatePresignedRequest(
   if (!config?.baseUrl) {
     return {
       success: false,
-      error: `Object store base URL is not set for protocol: ${protocol || "default"}`,
+      error: `Object store is not configured for protocol: ${protocol || "default"}`,
     };
   }
 
@@ -342,36 +261,33 @@ export async function generatePresignedRequest(
   if (!client) {
     return {
       success: false,
-      error: `Object store client is not initialized for protocol: ${protocol || "default"}`,
+      error: `Object store is not configured for protocol: ${protocol || "default"}`,
     };
   }
 
-  const url = new URL(config.baseUrl);
-  url.pathname = `/packets/${projectRef}/${envSlug}/${path}`;
-  url.searchParams.set("X-Amz-Expires", "300"); // 5 minutes
+  const key = `packets/${projectRef}/${envSlug}/${path}`;
 
-  const signed = await client.sign(
-    new Request(url, {
-      method,
-    }),
-    {
-      aws: { signQuery: true },
-    }
-  );
+  try {
+    const url = await client.presign(key, method, 300); // 5 minutes
 
-  logger.debug("Generated presigned URL", {
-    url: signed.url,
-    headers: Object.fromEntries(signed.headers),
-    projectRef,
-    envSlug,
-    filename,
-    protocol: protocol || "default",
-  });
+    logger.debug("Generated presigned URL", {
+      url,
+      projectRef,
+      envSlug,
+      filename,
+      protocol: protocol || "default",
+    });
 
-  return {
-    success: true,
-    request: signed,
-  };
+    return {
+      success: true,
+      request: new Request(url, { method }),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Failed to generate presigned URL: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
 export async function generatePresignedUrl(
