@@ -1,5 +1,6 @@
 export { ComputeClient, ComputeClientError } from "./client.js";
 export type { ComputeClientOptions } from "./client.js";
+export { stripImageDigest } from "./imageRef.js";
 export {
   TemplateCreateRequestSchema,
   TemplateCallbackPayloadSchema,

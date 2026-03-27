@@ -46,7 +46,7 @@ class HttpTransport {
     return options?.signal ?? AbortSignal.timeout(this.opts.timeoutMs);
   }
 
-  async post<T = unknown>(path: string, body: unknown, options?: RequestOptions): Promise<T> {
+  async post<T = unknown>(path: string, body: unknown, options?: RequestOptions): Promise<T | undefined> {
     const url = `${this.opts.gatewayUrl}${path}`;
 
     const response = await fetch(url, {
@@ -63,7 +63,7 @@ class HttpTransport {
 
     // 202 Accepted or 204 No Content - no body to parse
     if (response.status === 202 || response.status === 204) {
-      return undefined as T;
+      return undefined;
     }
 
     return (await response.json()) as T;
@@ -106,17 +106,8 @@ class TemplatesNamespace {
   async create(
     req: TemplateCreateRequest,
     options?: RequestOptions
-  ): Promise<{ accepted: boolean }> {
-    try {
-      await this.http.post("/api/templates", req, options);
-      // If we get here without error, the request was accepted (202) or succeeded
-      return { accepted: true };
-    } catch (error) {
-      if (error instanceof ComputeClientError && error.status === 202) {
-        return { accepted: true };
-      }
-      throw error;
-    }
+  ): Promise<void> {
+    await this.http.post("/api/templates", req, options);
   }
 }
 
@@ -127,7 +118,11 @@ class InstancesNamespace {
     req: InstanceCreateRequest,
     options?: RequestOptions
   ): Promise<InstanceCreateResponse> {
-    return this.http.post<InstanceCreateResponse>("/api/instances", req, options);
+    const result = await this.http.post<InstanceCreateResponse>("/api/instances", req, options);
+    if (!result) {
+      throw new Error("Compute gateway returned no instance body");
+    }
+    return result;
   }
 
   async delete(runnerId: string, options?: RequestOptions): Promise<void> {

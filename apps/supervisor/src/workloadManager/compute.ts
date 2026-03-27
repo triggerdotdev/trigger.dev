@@ -6,7 +6,7 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
-import { ComputeClient } from "@internal/compute";
+import { ComputeClient, stripImageDigest } from "@internal/compute";
 import { env } from "../env.js";
 import { getRunnerId } from "../util.js";
 import { buildOtlpTracePayload } from "../otlpPayload.js";
@@ -82,7 +82,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
     }
 
     // Strip image digest - resolve by tag, not digest
-    const imageRef = opts.image.split("@")[0]!;
+    const imageRef = stripImageDigest(opts.image);
 
     // Wide event: single canonical log line emitted in finally
     const event: Record<string, unknown> = {

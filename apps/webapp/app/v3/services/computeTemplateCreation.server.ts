@@ -1,4 +1,4 @@
-import { ComputeClient } from "@internal/compute";
+import { ComputeClient, stripImageDigest } from "@internal/compute";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import type { PrismaClientOrTransaction } from "~/db.server";
@@ -159,7 +159,7 @@ export class ComputeTemplateCreationService {
 
     try {
       await this.client.templates.create({
-        image: imageReference,
+        image: stripImageDigest(imageReference),
         cpu: 0.5,
         memory_mb: 512,
         background: options?.background,
