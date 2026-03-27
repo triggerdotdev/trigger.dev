@@ -150,7 +150,7 @@ export const timeSensitiveTask = task({
 });
 ```
 
-You can override this per-trigger by passing `ttl` in the trigger options, or set a project-wide default in your [trigger.config.ts](/config/config-file#ttl). See [Time-to-live (TTL)](/runs#time-to-live-ttl) for more information.
+You can override this per-trigger by passing `ttl` in the trigger options, or set a project-wide default in your [trigger.config.ts](/config/config-file#ttl). Set `ttl: 0` to opt out of a config-level TTL. See [Time-to-live (TTL)](/runs#time-to-live-ttl) for more information.
 
 ## Global lifecycle hooks
 

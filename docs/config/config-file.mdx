@@ -364,7 +364,7 @@ export default defineConfig({
 });
 ```
 
-You can override this on a per-task basis by setting `ttl` on the task definition, or per-trigger by passing `ttl` in the trigger options. See [Time-to-live (TTL)](/runs#time-to-live-ttl) for more information.
+You can override this on a per-task basis by setting `ttl` on the task definition, or per-trigger by passing `ttl` in the trigger options. To opt a specific task out of the config-level TTL, set `ttl: 0` on the task. See [Time-to-live (TTL)](/runs#time-to-live-ttl) for more information.
 
 ## Process keep alive
 
