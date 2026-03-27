@@ -12,7 +12,6 @@ import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { DeploymentService } from "./deployment.server";
 import { engine } from "../runEngine.server";
 import { tryCatch } from "@trigger.dev/core";
-import { ComputeTemplateCreationService } from "./computeTemplateCreation.server";
 
 export class FinalizeDeploymentService extends BaseService {
   public async call(
@@ -65,47 +64,6 @@ export class FinalizeDeploymentService extends BaseService {
     }
 
     const imageDigest = validatedImageDigest(body.imageDigest);
-
-    // Compute template creation (before setting DEPLOYED)
-    const templateService = new ComputeTemplateCreationService();
-    const templateMode = await templateService.resolveMode(
-      authenticatedEnv.projectId,
-      this._prisma
-    );
-
-    if (templateMode === "required" && deployment.imageReference) {
-      logger.info("Creating compute template (required mode)", {
-        id,
-        imageReference: deployment.imageReference,
-      });
-
-      const templateResult = await templateService.createTemplate(deployment.imageReference);
-
-      if (!templateResult.success) {
-        logger.error("Compute template creation failed", {
-          id,
-          imageReference: deployment.imageReference,
-          error: templateResult.error,
-        });
-
-        const failService = new FailDeploymentService();
-        await failService.call(authenticatedEnv, deployment.friendlyId, {
-          error: {
-            name: "TemplateCreationFailed",
-            message: `Failed to create compute template: ${templateResult.error}`,
-          },
-        });
-
-        throw new ServiceValidationError(
-          `Compute template creation failed: ${templateResult.error}`
-        );
-      }
-
-      logger.info("Compute template created", {
-        id,
-        imageReference: deployment.imageReference,
-      });
-    }
 
     // Link the deployment with the background worker
     const finalizedDeployment = await this._prisma.workerDeployment.update({
@@ -188,17 +146,6 @@ export class FinalizeDeploymentService extends BaseService {
     }
 
     await PerformDeploymentAlertsService.enqueue(deployment.id);
-
-    // Shadow mode: fire-and-forget template creation after deploy is finalized
-    if (templateMode === "shadow" && deployment.imageReference) {
-      templateService.createTemplate(deployment.imageReference, { background: true }).catch((error) => {
-        logger.error("Shadow compute template creation failed", {
-          id,
-          imageReference: deployment.imageReference,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
-    }
 
     return finalizedDeployment;
   }

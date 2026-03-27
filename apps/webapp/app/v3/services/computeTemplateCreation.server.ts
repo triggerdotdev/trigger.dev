@@ -3,6 +3,9 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import { FEATURE_FLAG, makeFlag } from "~/v3/featureFlags.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { ServiceValidationError } from "./baseService.server";
+import { FailDeploymentService } from "./failDeployment.server";
 
 type TemplateCreationMode = "required" | "shadow" | "skip";
 
@@ -17,6 +20,80 @@ export class ComputeTemplateCreationService {
         timeoutMs: 5 * 60 * 1000, // 5 minutes
       });
     }
+  }
+
+  /**
+   * Handle template creation for a deployment. Call this before setting DEPLOYED.
+   *
+   * - Required mode: creates template synchronously, fails deployment on error
+   * - Shadow mode: fires background template creation (returns immediately)
+   * - Skip: no-op
+   *
+   * Throws ServiceValidationError if required mode fails (caller should stop finalize).
+   */
+  async handleDeployTemplate(options: {
+    projectId: string;
+    imageReference: string;
+    deploymentFriendlyId: string;
+    authenticatedEnv: AuthenticatedEnvironment;
+    prisma: PrismaClientOrTransaction;
+    writer?: WritableStreamDefaultWriter;
+  }): Promise<void> {
+    const mode = await this.resolveMode(options.projectId, options.prisma);
+
+    if (mode === "skip") {
+      return;
+    }
+
+    if (mode === "shadow") {
+      this.createTemplate(options.imageReference, { background: true }).catch((error) => {
+        logger.error("Shadow compute template creation failed", {
+          id: options.deploymentFriendlyId,
+          imageReference: options.imageReference,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+      return;
+    }
+
+    // Required mode
+    if (options.writer) {
+      await options.writer.write(
+        `event: log\ndata: ${JSON.stringify({ message: "Building compute template..." })}\n\n`
+      );
+    }
+
+    logger.info("Creating compute template (required mode)", {
+      id: options.deploymentFriendlyId,
+      imageReference: options.imageReference,
+    });
+
+    const result = await this.createTemplate(options.imageReference);
+
+    if (!result.success) {
+      logger.error("Compute template creation failed", {
+        id: options.deploymentFriendlyId,
+        imageReference: options.imageReference,
+        error: result.error,
+      });
+
+      const failService = new FailDeploymentService();
+      await failService.call(options.authenticatedEnv, options.deploymentFriendlyId, {
+        error: {
+          name: "TemplateCreationFailed",
+          message: `Failed to create compute template: ${result.error}`,
+        },
+      });
+
+      throw new ServiceValidationError(
+        `Compute template creation failed: ${result.error}`
+      );
+    }
+
+    logger.info("Compute template created", {
+      id: options.deploymentFriendlyId,
+      imageReference: options.imageReference,
+    });
   }
 
   async resolveMode(
