@@ -1,28 +1,58 @@
-import { ai, chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
-import { logger, schemaTask, task, prompts } from "@trigger.dev/sdk";
-import { streamText, generateText, generateObject, tool, dynamicTool, stepCountIs, generateId, createProviderRegistry } from "ai";
-import type { LanguageModel, LanguageModelUsage, Tool as AITool, UIMessage } from "ai";
+import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
+import { logger, task, prompts } from "@trigger.dev/sdk";
+import {
+  streamText,
+  generateText,
+  generateObject,
+  stepCountIs,
+  generateId,
+  createProviderRegistry,
+} from "ai";
+import type { LanguageModel, LanguageModelUsage, UIMessage } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
-import os from "node:os";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../lib/generated/prisma/client";
+import {
+  chatTools,
+  deepResearch,
+  inspectEnvironment,
+  webFetch,
+  type ChatUiMessage,
+} from "@/lib/chat-tools";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
-import TurndownService from "turndown";
+/** Prisma `messages` JSON column — use write-side type for updates (not `JsonValue` from reads). */
+export type ChatMessagesForWrite = NonNullable<
+  Parameters<typeof prisma.chat.update>[0]["data"]
+>["messages"];
+
 import { DEFAULT_MODEL, REASONING_MODELS } from "@/lib/models";
 
-const turndown = new TurndownService();
+function textFromFirstPart(message: UIMessage): string {
+  const p = message.parts?.[0];
+  return p?.type === "text" ? p.text : "";
+}
 const COMPACT_AFTER_TOKENS = Number(process.env.COMPACT_AFTER_TOKENS) || 80_000;
 
 const registry = createProviderRegistry({ openai, anthropic });
 
+type RegistryLanguageModelId = Parameters<typeof registry.languageModel>[0];
+
+function registryLanguageModel(
+  id: string | undefined,
+  fallback: RegistryLanguageModelId
+): LanguageModel {
+  return registry.languageModel((id ?? fallback) as RegistryLanguageModelId);
+}
+
+// #region Managed prompts — versioned, overridable from dashboard
 const compactionPrompt = prompts.define({
   id: "ai-chat-compaction",
-  model: "openai:gpt-4o-mini",
+  model: "openai:gpt-4o-mini" satisfies RegistryLanguageModelId,
   content: `You are a conversation compactor. You will receive a transcript of a multi-turn conversation between a user and an assistant.
 
 Produce a concise summary that captures:
@@ -36,7 +66,7 @@ Keep it under 300 words. Do not include greetings or filler.`,
 
 const systemPrompt = prompts.define({
   id: "ai-chat-system",
-  model: "openai:gpt-4o",
+  model: "openai:gpt-4o" satisfies RegistryLanguageModelId,
   config: { temperature: 0.7 },
   variables: z.object({ name: z.string(), plan: z.string() }),
   content: `You are a helpful AI assistant for {{name}} on the {{plan}} plan.
@@ -58,7 +88,7 @@ When the user asks you to research a topic, use the deep research tool with rele
 
 const selfReviewPrompt = prompts.define({
   id: "ai-chat-self-review",
-  model: "openai:gpt-4o-mini",
+  model: "openai:gpt-4o-mini" satisfies RegistryLanguageModelId,
   content: `You are a conversation quality reviewer. Analyze the assistant's most recent response and provide structured feedback.
 
 Focus on:
@@ -69,7 +99,9 @@ Focus on:
 
 Be concise. Only flag issues worth fixing — don't nitpick.`,
 });
+// #endregion
 
+// #region Models and helpers
 const MODELS: Record<string, () => LanguageModel> = {
   "gpt-4o-mini": () => openai("gpt-4o-mini"),
   "gpt-4o": () => openai("gpt-4o"),
@@ -83,95 +115,25 @@ function getModel(modelId?: string): LanguageModel {
   return factory();
 }
 
-const inspectEnvironment = tool({
-  description:
-    "Inspect the current execution environment. Returns runtime info (Node.js/Bun/Deno version), " +
-    "OS details, CPU architecture, memory usage, environment variables, and platform metadata.",
-  inputSchema: z.object({}),
-  execute: async () => {
-    const memUsage = process.memoryUsage();
+const DEFAULT_REGISTRY_MODEL_ID = "anthropic:claude-sonnet-4-6" as const satisfies RegistryLanguageModelId;
 
-    return {
-      runtime: {
-        name: typeof Bun !== "undefined" ? "bun" : typeof Deno !== "undefined" ? "deno" : "node",
-        version: process.version,
-        versions: {
-          v8: process.versions.v8,
-          openssl: process.versions.openssl,
-          modules: process.versions.modules,
-        },
-      },
-      os: {
-        platform: process.platform,
-        arch: process.arch,
-        release: os.release(),
-        type: os.type(),
-        hostname: os.hostname(),
-        uptime: `${Math.floor(os.uptime())}s`,
-      },
-      cpus: {
-        count: os.cpus().length,
-        model: os.cpus()[0]?.model,
-      },
-      memory: {
-        total: `${Math.round(os.totalmem() / 1024 / 1024)}MB`,
-        free: `${Math.round(os.freemem() / 1024 / 1024)}MB`,
-        process: {
-          rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
-          heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
-          heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`,
-        },
-      },
-      env: {
-        NODE_ENV: process.env.NODE_ENV,
-        TZ: process.env.TZ ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
-        LANG: process.env.LANG,
-      },
-      process: {
-        pid: process.pid,
-        cwd: process.cwd(),
-        execPath: process.execPath,
-        argv: process.argv.slice(0, 3),
-      },
-    };
-  },
-});
+function languageModelForChatTurn(modelOverride: string | null | undefined): LanguageModel {
+  if (modelOverride) {
+    return getModel(modelOverride);
+  }
+  return registryLanguageModel(chat.prompt().model, DEFAULT_REGISTRY_MODEL_ID);
+}
 
-const webFetch = tool({
-  description:
-    "Fetch a URL and return the response as text. " +
-    "Use this to retrieve web pages, APIs, or any HTTP resource.",
-  inputSchema: z.object({
-    url: z.string().url().describe("The URL to fetch"),
-  }),
-  execute: async ({ url }) => {
-    const latency = Number(process.env.WEBFETCH_LATENCY_MS);
-    if (latency > 0) {
-      await new Promise((r) => setTimeout(r, latency));
-    }
+function useExtendedThinking(modelOverride: string | null | undefined): boolean {
+  if (modelOverride && REASONING_MODELS.has(modelOverride)) {
+    return true;
+  }
+  const promptModel = chat.prompt().model;
+  return promptModel != null && promptModel.includes("claude-opus-4-6");
+}
+// #endregion
 
-    const response = await fetch(url);
-    let text = await response.text();
-    const contentType = response.headers.get("content-type") ?? "";
-
-    if (contentType.includes("html")) {
-      text = turndown.turndown(text);
-    }
-
-    return {
-      status: response.status,
-      contentType,
-      body: text.slice(0, 2000),
-      truncated: text.length > 2000,
-    };
-  },
-});
-
-// Silence TS errors for Bun/Deno global checks
-declare const Bun: unknown;
-declare const Deno: unknown;
-
-// Per-run user context — loaded from DB in onChatStart, accessible everywhere
+// #region Per-run state — chat.local persists across turns in the same run
 const userContext = chat.local<{
   userId: string;
   name: string;
@@ -179,396 +141,326 @@ const userContext = chat.local<{
   preferredModel: string | null;
   messageCount: number;
 }>({ id: "userContext" });
+// #endregion
 
-// Per-run dynamic tools — loaded from DB in onPreload/onChatStart
-const userToolDefs = chat.local<{
-  value: Array<{ name: string; description: string; responseTemplate: string }>;
-}>({ id: "userToolDefs" });
+// ============================================================================
+// chat.task — the main chat agent
+// ============================================================================
 
-// --------------------------------------------------------------------------
-// Deep research — fetches multiple URLs and synthesizes the results.
-// Runs as a subtask via ai.tool() so it executes in its own container
-// and streams progress back to the parent chat via target: "root".
-// --------------------------------------------------------------------------
-const deepResearchTask = schemaTask({
-  id: "deep-research",
-  description:
-    "Research a topic by fetching multiple URLs and synthesizing the results. " +
-    "Streams progress updates to the chat as it works.",
-  schema: z.object({
-    query: z.string().describe("The research query or topic"),
-    urls: z.array(z.string().url()).describe("URLs to fetch and analyze"),
-  }),
-  run: async ({ query, urls }) => {
-    const partId = generateId();
-    const results: { url: string; status: number; snippet: string }[] = [];
-
-    for (let i = 0; i < urls.length; i++) {
-      const url = urls[i]!;
-
-      // Stream progress back to the parent chat stream
-      const { waitUntilComplete } = chat.stream.writer({
-        target: "root",
-        execute: ({ write }) => {
-          write({
-            type: "data-research-progress",
-            id: partId,
-            data: {
-              status: "fetching" as const,
-              query,
-              current: i + 1,
-              total: urls.length,
-              currentUrl: url,
-              completedUrls: results.map((r) => r.url),
-            },
-          });
-        },
-      });
-      await waitUntilComplete();
-
-      try {
-        const response = await fetch(url);
-        let text = await response.text();
-        const contentType = response.headers.get("content-type") ?? "";
-
-        if (contentType.includes("html")) {
-          text = turndown.turndown(text);
+export const aiChat = chat
+  .withUIMessage<ChatUiMessage>({
+    streamOptions: {
+      sendReasoning: true,
+      onError: (error) => {
+        logger.error("Stream error", { error });
+        if (error instanceof Error && error.message.includes("rate limit")) {
+          return "Rate limited — please wait a moment and try again.";
         }
-
-        results.push({
-          url,
-          status: response.status,
-          snippet: text.slice(0, 500),
-        });
-      } catch (err) {
-        results.push({
-          url,
-          status: 0,
-          snippet: `Error: ${err instanceof Error ? err.message : String(err)}`,
-        });
-      }
-    }
-
-    // Final progress — done
-    const { waitUntilComplete: waitForDone } = chat.stream.writer({
-      target: "root",
-      execute: ({ write }) => {
-        write({
-          type: "data-research-progress",
-          id: partId,
-          data: {
-            status: "done" as const,
-            query,
-            current: urls.length,
-            total: urls.length,
-            completedUrls: results.map((r) => r.url),
-          },
-        });
+        return "Something went wrong. Please try again.";
       },
-    });
-    await waitForDone();
-
-    return { query, results };
-  },
-});
-
-const deepResearch = ai.tool(deepResearchTask);
-
-export const aiChat = chat.task({
-  id: "ai-chat",
-  clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
-  idleTimeoutInSeconds: 60,
-  chatAccessTokenTTL: "2h",
-  compaction: {
-    shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > COMPACT_AFTER_TOKENS,
-    summarize: async ({ messages }) => {
-      const resolved = await compactionPrompt.resolve({});
-      return generateText({
-        model: registry.languageModel(resolved.model ?? "openai:gpt-4o-mini"),
-        messages: [...messages, { role: "user" as const, content: resolved.text }],
-        ...resolved.toAISDKTelemetry(),
-      }).then((r) => r.text);
     },
-    compactUIMessages: ({ uiMessages, summary }) => {
+  })
+  .task({
+    id: "ai-chat",
+    clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
+    idleTimeoutInSeconds: 60,
+    chatAccessTokenTTL: "2h",
+
+    // #region Compaction — automatic context window management
+    compaction: {
+      shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > COMPACT_AFTER_TOKENS,
+      summarize: async ({ messages }) => {
+        const resolved = await compactionPrompt.resolve({});
+        return generateText({
+          model: registryLanguageModel(resolved.model, "openai:gpt-4o-mini"),
+          messages: [...messages, { role: "user" as const, content: resolved.text }],
+          ...resolved.toAISDKTelemetry(),
+        }).then((r) => r.text);
+      },
+      compactUIMessages: ({ uiMessages, summary }) => {
+        return [
+          {
+            id: generateId(),
+            role: "assistant" as const,
+            parts: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }],
+          },
+          ...uiMessages.slice(-2),
+        ];
+      },
+    },
+    // #endregion
+
+    // #region Pending messages — user can steer the agent mid-response
+    pendingMessages: {
+      shouldInject: ({ steps }) => steps.length > 0,
+      prepare: ({ messages }) =>
+        messages.length === 1
+          ? [{ role: "user" as const, content: textFromFirstPart(messages[0]!) }]
+          : [
+              {
+                role: "user" as const,
+                content: `The user sent ${
+                  messages.length
+                } messages while you were working:\n\n${messages
+                  .map((m, i) => `${i + 1}. ${textFromFirstPart(m)}`)
+                  .join("\n")}`,
+              },
+            ],
+    },
+    // #endregion
+
+    // #region prepareMessages — runs before every LLM call
+    prepareMessages: ({ messages, reason }) => {
+      // Add Anthropic cache breaks to the last message for prompt caching.
+      if (messages.length === 0) return messages;
+      const last = messages[messages.length - 1]!;
       return [
+        ...messages.slice(0, -1),
         {
-          id: generateId(),
-          role: "assistant" as const,
-          parts: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }],
+          ...last,
+          providerOptions: {
+            ...last.providerOptions,
+            anthropic: {
+              ...(last.providerOptions?.anthropic as Record<string, unknown> | undefined),
+              cacheControl: { type: "ephemeral" },
+            },
+          },
         },
-        ...uiMessages.slice(-2),
       ];
     },
-  },
-  pendingMessages: {
-    // Inject user messages between tool-call steps so the agent can adjust
-    shouldInject: ({ steps }) => steps.length > 0,
-    prepare: ({ messages }) => messages.length === 1
-      ? [{ role: "user" as const, content: (messages[0]!.parts?.[0] as any)?.text ?? "" }]
-      : [{ role: "user" as const, content: `The user sent ${messages.length} messages while you were working:\n\n${messages.map((m, i) => `${i + 1}. ${(m.parts?.[0] as any)?.text ?? ""}`).join("\n")}` }],
-    // onReceived/onInjected are optional — the SDK automatically writes
-    // a data-pending-message-injected chunk when injection happens.
-  },
-  prepareMessages: ({ messages, reason }) => {
-    // Add Anthropic cache breaks to the last message for prompt caching.
-    // Applied everywhere — run(), compaction rebuilds, compaction results.
-    if (messages.length === 0) return messages;
-    const last = messages[messages.length - 1]!;
-    return [
-      ...messages.slice(0, -1),
-      {
-        ...last,
-        providerOptions: {
-          ...last.providerOptions,
-          anthropic: {
-            ...(last.providerOptions?.anthropic as Record<string, unknown> | undefined),
-            cacheControl: { type: "ephemeral" },
-          },
-        },
-      },
-    ];
-  },
-  uiMessageStreamOptions: {
-    sendReasoning: true,
-    onError: (error) => {
-      // Log the full error server-side for debugging
-      logger.error("Stream error", { error });
-      // Return a sanitized message — this is what the frontend sees
-      if (error instanceof Error && error.message.includes("rate limit")) {
-        return "Rate limited — please wait a moment and try again.";
-      }
-      return "Something went wrong. Please try again.";
-    },
-  },
-  onPreload: async ({ chatId, runId, chatAccessToken, clientData }) => {
-    if (!clientData) return;
-    // Eagerly initialize before the user's first message arrives
-    const user = await prisma.user.upsert({
-      where: { id: clientData.userId },
-      create: { id: clientData.userId, name: "User" },
-      update: {},
-    });
-    userContext.init({
-      userId: user.id,
-      name: user.name,
-      plan: user.plan as "free" | "pro",
-      preferredModel: user.preferredModel,
-      messageCount: user.messageCount,
-    });
+    // #endregion
 
-    // Load user-specific dynamic tools
-    const tools = await prisma.userTool.findMany({ where: { userId: clientData.userId } });
-    userToolDefs.init({ value: tools });
+    // --- Lifecycle hooks ---
 
-    // Resolve prompt — versioned, overridable from dashboard
-    const resolved = await systemPrompt.resolve({
-      name: user.name,
-      plan: user.plan as string,
-    });
-    chat.prompt.set(resolved);
-
-    // Create chat record and session
-    await prisma.chat.upsert({
-      where: { id: chatId },
-      create: {
-        id: chatId,
-        title: "New chat",
+    // #region onPreload — eagerly initialize before the user's first message
+    onPreload: async ({ chatId, runId, chatAccessToken, clientData }) => {
+      if (!clientData) return;
+      const user = await prisma.user.upsert({
+        where: { id: clientData.userId },
+        create: { id: clientData.userId, name: "User" },
+        update: {},
+      });
+      userContext.init({
         userId: user.id,
-        model: clientData?.model ?? DEFAULT_MODEL,
-      },
-      update: {},
-    });
-    await prisma.chatSession.upsert({
-      where: { id: chatId },
-      create: { id: chatId, runId, publicAccessToken: chatAccessToken },
-      update: { runId, publicAccessToken: chatAccessToken },
-    });
-  },
-  onChatStart: async ({ chatId, runId, chatAccessToken, clientData, continuation, preloaded }) => {
-    if (preloaded) {
-      // Everything was already initialized in onPreload — skip entirely.
-      // The session, chat record, user context, and tools are all set up.
-      return;
-    }
+        name: user.name,
+        plan: user.plan as "free" | "pro",
+        preferredModel: user.preferredModel,
+        messageCount: user.messageCount,
+      });
 
-    // Non-preloaded path: full initialization
-    const user = await prisma.user.upsert({
-      where: { id: clientData.userId },
-      create: { id: clientData.userId, name: "User" },
-      update: {},
-    });
-    userContext.init({
-      userId: user.id,
-      name: user.name,
-      plan: user.plan as "free" | "pro",
-      preferredModel: user.preferredModel,
-      messageCount: user.messageCount,
-    });
+      const resolved = await systemPrompt.resolve({
+        name: user.name,
+        plan: user.plan as string,
+      });
+      chat.prompt.set(resolved);
 
-    // Load user-specific dynamic tools
-    const tools = await prisma.userTool.findMany({ where: { userId: clientData.userId } });
-    userToolDefs.init({ value: tools });
-
-    // Resolve prompt — versioned, overridable from dashboard
-    const resolved = await systemPrompt.resolve({
-      name: user.name,
-      plan: user.plan as string,
-    });
-    chat.prompt.set(resolved);
-
-    if (!continuation) {
       await prisma.chat.upsert({
         where: { id: chatId },
         create: {
           id: chatId,
           title: "New chat",
           userId: user.id,
-          model: clientData.model ?? DEFAULT_MODEL,
+          model: clientData?.model ?? DEFAULT_MODEL,
         },
         update: {},
       });
-    }
+      await prisma.chatSession.upsert({
+        where: { id: chatId },
+        create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+        update: { runId, publicAccessToken: chatAccessToken },
+      });
+    },
+    // #endregion
 
-    await prisma.chatSession.upsert({
-      where: { id: chatId },
-      create: { id: chatId, runId, publicAccessToken: chatAccessToken },
-      update: { runId, publicAccessToken: chatAccessToken },
-    });
-  },
-  onCompacted: async ({ summary, totalTokens, messageCount, chatId, turn }) => {
-    logger.info("Conversation compacted", {
+    // #region onChatStart — fallback init when not preloaded
+    onChatStart: async ({
       chatId,
-      turn,
-      totalTokens,
-      messageCount,
-      summaryLength: summary.length,
-    });
-  },
-  onTurnStart: async ({ chatId, uiMessages, writer }) => {
-    writer.write({ type: "data-turn-status", data: { status: "preparing" } });
+      runId,
+      chatAccessToken,
+      clientData,
+      continuation,
+      preloaded,
+    }) => {
+      if (preloaded) return;
 
-    // Persist messages so mid-stream refresh still shows the user message.
-    // Deferred — runs in parallel with streaming, awaited before onTurnComplete.
-    chat.defer(prisma.chat.update({ where: { id: chatId }, data: { messages: uiMessages as any } }));
-  },
-  onTurnComplete: async ({ chatId, uiMessages, messages, runId, chatAccessToken, lastEventId }) => {
-    // Persist final messages + assistant response + stream position
-    await prisma.chat.update({
-      where: { id: chatId },
-      data: { messages: uiMessages as any },
-    });
-    await prisma.chatSession.upsert({
-      where: { id: chatId },
-      create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
-      update: { runId, publicAccessToken: chatAccessToken, lastEventId },
-    });
-
-    // Persist user context changes (message count, preferred model) if anything changed
-    if (userContext.hasChanged()) {
-      await prisma.user.update({
-        where: { id: userContext.userId },
-        data: {
-          messageCount: userContext.messageCount,
-          preferredModel: userContext.preferredModel,
-        },
+      const user = await prisma.user.upsert({
+        where: { id: clientData.userId },
+        create: { id: clientData.userId, name: "User" },
+        update: {},
       });
-    }
-
-    // Background self-review — a cheap model critiques the response and injects
-    // coaching into the conversation before the next user message arrives.
-    chat.defer((async () => {
-      const resolved = await selfReviewPrompt.resolve({});
-
-      const review = await generateObject({
-        model: registry.languageModel(resolved.model ?? "openai:gpt-4o-mini"),
-        ...resolved.toAISDKTelemetry(),
-        system: resolved.text,
-        prompt: `Here is the conversation to review:\n\n${messages.filter((m) => m.role === "user" || m.role === "assistant").map((m) => `${m.role}: ${typeof m.content === "string" ? m.content : Array.isArray(m.content) ? m.content.filter((p: any) => p.type === "text").map((p: any) => p.text).join("") : ""}`).join("\n\n")}`,
-        schema: z.object({
-          needsImprovement: z.boolean().describe("Whether the response needs improvement"),
-          suggestions: z.array(z.string()).describe("Specific actionable suggestions for the next response"),
-          missedTools: z.array(z.string()).describe("Tool names the assistant should have used but didn't"),
-        }),
+      userContext.init({
+        userId: user.id,
+        name: user.name,
+        plan: user.plan as "free" | "pro",
+        preferredModel: user.preferredModel,
+        messageCount: user.messageCount,
       });
 
-      const parts = [];
-      if (review.object.suggestions.length > 0) {
-        parts.push(`Suggestions:\n${review.object.suggestions.map((s) => `- ${s}`).join("\n")}`);
-      }
-      if (review.object.missedTools.length > 0) {
-        parts.push(`Consider using: ${review.object.missedTools.join(", ")}`);
+      const resolved = await systemPrompt.resolve({
+        name: user.name,
+        plan: user.plan as string,
+      });
+      chat.prompt.set(resolved);
+
+      if (!continuation) {
+        await prisma.chat.upsert({
+          where: { id: chatId },
+          create: {
+            id: chatId,
+            title: "New chat",
+            userId: user.id,
+            model: clientData.model ?? DEFAULT_MODEL,
+          },
+          update: {},
+        });
       }
 
-      chat.inject([
-        {
-          role: "system" as const,
-          content: review.object.needsImprovement
-            ? `[Self-review of your previous response]\n\n${parts.join("\n\n")}\n\nApply these improvements naturally in your next response.`
-            : `[Self-review of your previous response]\n\nYour previous response was good. No changes needed.`,
-        },
-      ]);
-    })());
-  },
-  run: async ({ messages, clientData, stopSignal }) => {
-    // Track usage
-    userContext.messageCount++;
+      await prisma.chatSession.upsert({
+        where: { id: chatId },
+        create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+        update: { runId, publicAccessToken: chatAccessToken },
+      });
+    },
+    // #endregion
 
-    // Remember their model choice
-    if (clientData?.model) {
-      userContext.preferredModel = clientData.model;
-    }
+    // #region onCompacted
+    onCompacted: async ({ summary, totalTokens, messageCount, chatId, turn }) => {
+      logger.info("Conversation compacted", {
+        chatId,
+        turn,
+        totalTokens,
+        messageCount,
+        summaryLength: summary.length,
+      });
+    },
+    // #endregion
 
-    // Client-specified or user-preferred model overrides the prompt default
-    const modelOverride = clientData?.model ?? userContext.preferredModel ?? undefined;
-    const effectiveModel = modelOverride ?? chat.prompt().model ?? DEFAULT_MODEL;
-    const useReasoning = REASONING_MODELS.has(effectiveModel);
+    // #region onTurnStart — persist messages + write status via writer
+    onTurnStart: async ({ chatId, uiMessages, writer }) => {
+      writer.write({ type: "data-turn-status", data: { status: "preparing" } });
+      chat.defer(
+        prisma.chat.update({
+          where: { id: chatId },
+          data: { messages: uiMessages as unknown as ChatMessagesForWrite },
+        })
+      );
+    },
+    // #endregion
 
-    // Build dynamic tools from user's DB-configured tools (loaded in onPreload/onChatStart)
-    const dynamicTools: Record<string, AITool<unknown, unknown>> = {};
-    for (const t of userToolDefs.value ?? []) {
-      dynamicTools[t.name] = dynamicTool({
-        description: t.description,
-        inputSchema: z.object({
-          query: z.string().describe("The query or topic to look up"),
+    // #region onTurnComplete — persist + background self-review via chat.inject()
+    onTurnComplete: async ({
+      chatId,
+      uiMessages,
+      messages,
+      runId,
+      chatAccessToken,
+      lastEventId,
+    }) => {
+      await prisma.chat.update({
+        where: { id: chatId },
+        data: { messages: uiMessages as unknown as ChatMessagesForWrite },
+      });
+      await prisma.chatSession.upsert({
+        where: { id: chatId },
+        create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
+        update: { runId, publicAccessToken: chatAccessToken, lastEventId },
+      });
+
+      // Background self-review — a cheap model critiques the response and
+      // injects coaching into the conversation before the next user message.
+      chat.defer(
+        (async () => {
+          const resolved = await selfReviewPrompt.resolve({});
+
+          const review = await generateObject({
+            model: registryLanguageModel(resolved.model, "openai:gpt-4o-mini"),
+            ...resolved.toAISDKTelemetry(),
+            system: resolved.text,
+            prompt: `Here is the conversation to review:\n\n${messages
+              .filter((m) => m.role === "user" || m.role === "assistant")
+              .map(
+                (m) =>
+                  `${m.role}: ${
+                    typeof m.content === "string"
+                      ? m.content
+                      : Array.isArray(m.content)
+                      ? m.content
+                          .filter((p: any) => p.type === "text")
+                          .map((p: any) => p.text)
+                          .join("")
+                      : ""
+                  }`
+              )
+              .join("\n\n")}`,
+            schema: z.object({
+              needsImprovement: z.boolean().describe("Whether the response needs improvement"),
+              suggestions: z
+                .array(z.string())
+                .describe("Specific actionable suggestions for the next response"),
+              missedTools: z
+                .array(z.string())
+                .describe("Tool names the assistant should have used but didn't"),
+            }),
+          });
+
+          const parts = [];
+          if (review.object.suggestions.length > 0) {
+            parts.push(
+              `Suggestions:\n${review.object.suggestions.map((s) => `- ${s}`).join("\n")}`
+            );
+          }
+          if (review.object.missedTools.length > 0) {
+            parts.push(`Consider using: ${review.object.missedTools.join(", ")}`);
+          }
+
+          chat.inject([
+            {
+              role: "user" as const,
+              content: review.object.needsImprovement
+                ? `[Self-review of your previous response]\n\n${parts.join(
+                    "\n\n"
+                  )}\n\nApply these improvements naturally in your next response.`
+                : `[Self-review of your previous response]\n\nYour previous response was good. No changes needed.`,
+            },
+          ]);
+        })()
+      );
+    },
+    // #endregion
+
+    // #region run — just return streamText(), chat.task handles everything else
+    run: async ({ messages, clientData, stopSignal }) => {
+      userContext.messageCount++;
+      if (clientData?.model) {
+        userContext.preferredModel = clientData.model;
+      }
+
+      const modelOverride = clientData?.model ?? userContext.preferredModel ?? undefined;
+      const useReasoning = useExtendedThinking(modelOverride);
+
+      return streamText({
+        ...chat.toStreamTextOptions({
+          registry,
+          telemetry: clientData?.userId ? { userId: clientData.userId } : undefined,
         }),
-        execute: async (input) => {
-          return { result: t.responseTemplate.replace("{{query}}", (input as any).query) };
+        model: languageModelForChatTurn(modelOverride),
+        messages: messages,
+        tools: chatTools,
+        stopWhen: stepCountIs(10),
+        abortSignal: stopSignal,
+        providerOptions: {
+          openai: { user: clientData?.userId },
+          anthropic: {
+            metadata: { user_id: clientData?.userId },
+            ...(useReasoning ? { thinking: { type: "enabled", budgetTokens: 10000 } } : {}),
+          },
         },
       });
-    }
+    },
+    // #endregion
+  });
 
-    return streamText({
-      // Registry resolves the prompt's model (e.g. "openai:gpt-4o").
-      // Client override takes precedence when provided.
-      ...chat.toStreamTextOptions({
-        registry,
-        telemetry: clientData?.userId ? { userId: clientData.userId } : undefined,
-      }),
-      ...(modelOverride ? { model: getModel(modelOverride) } : {}),
-      messages: messages,
-      tools: {
-        inspectEnvironment,
-        webFetch,
-        deepResearch,
-        ...dynamicTools,
-      },
-      stopWhen: stepCountIs(10),
-      abortSignal: stopSignal,
-      providerOptions: {
-        openai: { user: clientData?.userId },
-        anthropic: {
-          metadata: { user_id: clientData?.userId },
-          ...(useReasoning ? { thinking: { type: "enabled", budgetTokens: 10000 } } : {}),
-        },
-      },
-    });
-  },
-});
-
-// --------------------------------------------------------------------------
-// Raw task version — same functionality using composable primitives
-// --------------------------------------------------------------------------
-
+// #region Raw task variant — same functionality using composable primitives
 async function initUserContext(userId: string, chatId: string, model?: string) {
   const user = await prisma.user.upsert({
     where: { id: userId },
@@ -583,10 +475,6 @@ async function initUserContext(userId: string, chatId: string, model?: string) {
     messageCount: user.messageCount,
   });
 
-  const tools = await prisma.userTool.findMany({ where: { userId } });
-  userToolDefs.init({ value: tools });
-
-  // Resolve prompt for the run
   const resolved = await systemPrompt.resolve({
     name: user.name,
     plan: user.plan as string,
@@ -606,7 +494,6 @@ export const aiChatRaw = task({
     let currentPayload = payload;
     const clientData = payload.metadata as { userId: string; model?: string } | undefined;
 
-    // Handle preload — init early, then wait for first message
     if (currentPayload.trigger === "preload") {
       if (clientData) {
         await initUserContext(clientData.userId, currentPayload.chatId, clientData.model);
@@ -621,13 +508,16 @@ export const aiChatRaw = task({
       currentPayload = result.output;
     }
 
-    // Non-preloaded: init now
     const currentClientData = (currentPayload.metadata ?? clientData) as
       | { userId: string; model?: string }
       | undefined;
 
     if (!userContext.userId && currentClientData) {
-      await initUserContext(currentClientData.userId, currentPayload.chatId, currentClientData.model);
+      await initUserContext(
+        currentClientData.userId,
+        currentPayload.chatId,
+        currentClientData.model
+      );
     }
 
     const stop = chat.createStopSignal();
@@ -637,12 +527,11 @@ export const aiChatRaw = task({
         summarize: async ({ messages: msgs }) => {
           const resolved = await compactionPrompt.resolve({});
           return generateText({
-            model: registry.languageModel(resolved.model ?? "openai:gpt-4o-mini"),
+            model: registryLanguageModel(resolved.model, "openai:gpt-4o-mini"),
             ...resolved.toAISDKTelemetry(),
             messages: [...msgs, { role: "user" as const, content: resolved.text }],
           }).then((r) => r.text);
         },
-        // Flatten to summary only in the raw task variant
         compactUIMessages: ({ summary }) => [
           {
             id: generateId(),
@@ -652,12 +541,20 @@ export const aiChatRaw = task({
         ],
       },
       pendingMessages: {
-        // Inject with a prefix so the LLM knows these are mid-execution corrections
         shouldInject: () => true,
-        prepare: ({ messages }) => [{
-          role: "user" as const,
-          content: [{ type: "text" as const, text: `[User sent ${messages.length} message(s) while you were working]:\n${messages.map(m => (m.parts?.[0] as any)?.text ?? "").join("\n")}` }],
-        }],
+        prepare: ({ messages }) => [
+          {
+            role: "user" as const,
+            content: [
+              {
+                type: "text" as const,
+                text: `[User sent ${messages.length} message(s) while you were working]:\n${messages
+                  .map((m) => textFromFirstPart(m))
+                  .join("\n")}`,
+              },
+            ],
+          },
+        ],
       },
     });
 
@@ -680,24 +577,9 @@ export const aiChatRaw = task({
       }
 
       const modelOverride = turnClientData?.model ?? userContext.preferredModel ?? undefined;
-      const effectiveModel = modelOverride ?? chat.prompt().model ?? DEFAULT_MODEL;
-      const useReasoning = REASONING_MODELS.has(effectiveModel);
+      const useReasoning = useExtendedThinking(modelOverride);
       const combinedSignal = AbortSignal.any([runSignal, stop.signal]);
 
-      const dynamicTools: Record<string, AITool<unknown, unknown>> = {};
-      for (const t of userToolDefs.value ?? []) {
-        dynamicTools[t.name] = dynamicTool({
-          description: t.description,
-          inputSchema: z.object({
-            query: z.string().describe("The query or topic to look up"),
-          }),
-          execute: async (input) => {
-            return { result: t.responseTemplate.replace("{{query}}", (input as any).query) };
-          },
-        });
-      }
-
-      // Listen for steering messages during streaming
       const steeringSub = chat.messages.on(async (msg) => {
         const lastMsg = msg.messages?.[msg.messages.length - 1];
         if (lastMsg) await conversation.steerAsync(lastMsg);
@@ -705,13 +587,12 @@ export const aiChatRaw = task({
 
       const result = streamText({
         ...chat.toStreamTextOptions({ registry }),
-        ...(modelOverride ? { model: getModel(modelOverride) } : {}),
+        model: languageModelForChatTurn(modelOverride),
         messages: messages,
         tools: {
           inspectEnvironment,
           webFetch,
           deepResearch,
-          ...dynamicTools,
         },
         stopWhen: stepCountIs(10),
         abortSignal: combinedSignal,
@@ -731,7 +612,6 @@ export const aiChatRaw = task({
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
           if (runSignal.aborted) break;
-          // Stop — fall through
         } else {
           throw error;
         }
@@ -749,18 +629,20 @@ export const aiChatRaw = task({
 
       if (runSignal.aborted) break;
 
-      // Outer-loop compaction — runs if token threshold exceeded
       let turnUsage: LanguageModelUsage | undefined;
-      try { turnUsage = await result.totalUsage; } catch { /* non-fatal */ }
+      try {
+        turnUsage = await result.totalUsage;
+      } catch {
+        /* non-fatal */
+      }
       await conversation.compactIfNeeded(turnUsage, {
         chatId: currentPayload.chatId,
         turn,
       });
 
-      // Persist messages
       await prisma.chat.update({
         where: { id: currentPayload.chatId },
-        data: { messages: conversation.uiMessages as any },
+        data: { messages: conversation.uiMessages as unknown as ChatMessagesForWrite },
       });
 
       if (userContext.hasChanged()) {
@@ -788,16 +670,11 @@ export const aiChatRaw = task({
   },
 });
 
-// --------------------------------------------------------------------------
-// Session iterator version — middle ground between chat.task and raw task
-// --------------------------------------------------------------------------
-
 export const aiChatSession = task({
   id: "ai-chat-session",
   run: async (payload: ChatTaskWirePayload, { signal }) => {
     const clientData = payload.metadata as { userId: string; model?: string } | undefined;
 
-    // One-time init — just code at the top, no hooks needed
     if (clientData) {
       await initUserContext(clientData.userId, payload.chatId, clientData.model);
     }
@@ -811,12 +688,11 @@ export const aiChatSession = task({
         summarize: async ({ messages: msgs }) => {
           const resolved = await compactionPrompt.resolve({});
           return generateText({
-            model: registry.languageModel(resolved.model ?? "openai:gpt-4o-mini"),
+            model: registryLanguageModel(resolved.model, "openai:gpt-4o-mini"),
             ...resolved.toAISDKTelemetry(),
             messages: [...msgs, { role: "user" as const, content: resolved.text }],
           }).then((r) => r.text);
         },
-        // Keep summary + last 4 messages in the session variant
         compactUIMessages: ({ uiMessages, summary }) => [
           {
             id: generateId(),
@@ -827,7 +703,6 @@ export const aiChatSession = task({
         ],
       },
       pendingMessages: {
-        // Always inject in the session variant
         shouldInject: () => true,
       },
     });
@@ -841,12 +716,11 @@ export const aiChatSession = task({
       if (turnClientData?.model) userContext.preferredModel = turnClientData.model;
 
       const modelOverride = turnClientData?.model ?? userContext.preferredModel ?? undefined;
-      const effectiveModel = modelOverride ?? chat.prompt().model ?? DEFAULT_MODEL;
-      const useReasoning = REASONING_MODELS.has(effectiveModel);
+      const useReasoning = useExtendedThinking(modelOverride);
 
       const result = streamText({
         ...chat.toStreamTextOptions({ registry }),
-        ...(modelOverride ? { model: getModel(modelOverride) } : {}),
+        model: languageModelForChatTurn(modelOverride),
         messages: turn.messages,
         tools: {
           inspectEnvironment,
@@ -866,10 +740,9 @@ export const aiChatSession = task({
 
       await turn.complete(result);
 
-      // Persist after each turn
       await prisma.chat.update({
         where: { id: turn.chatId },
-        data: { messages: turn.uiMessages as any },
+        data: { messages: turn.uiMessages as unknown as ChatMessagesForWrite },
       });
 
       if (userContext.hasChanged()) {
@@ -884,3 +757,4 @@ export const aiChatSession = task({
     }
   },
 });
+// #endregion

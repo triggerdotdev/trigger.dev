@@ -1,11 +1,30 @@
 "use server";
 
 import { chat } from "@trigger.dev/sdk/ai";
-import type { aiChat } from "@/trigger/chat";
+import type { aiChat, aiChatRaw, aiChatSession } from "@/trigger/chat";
+import type { ChatUiMessage } from "@/lib/chat-tools";
 import { prisma } from "@/lib/prisma";
 
-export const getChatToken = async (taskId?: string) =>
-  chat.createAccessToken<typeof aiChat>((taskId ?? "ai-chat") as any);
+export type ChatReferenceTaskId = "ai-chat" | "ai-chat-raw" | "ai-chat-session";
+
+function isChatReferenceTaskId(id: string): id is ChatReferenceTaskId {
+  return id === "ai-chat" || id === "ai-chat-raw" || id === "ai-chat-session";
+}
+
+export async function getChatToken(taskId?: string) {
+  const id = taskId ?? "ai-chat";
+  if (!isChatReferenceTaskId(id)) {
+    return chat.createAccessToken<typeof aiChat>("ai-chat");
+  }
+  switch (id) {
+    case "ai-chat":
+      return chat.createAccessToken<typeof aiChat>(id);
+    case "ai-chat-raw":
+      return chat.createAccessToken<typeof aiChatRaw>(id);
+    case "ai-chat-session":
+      return chat.createAccessToken<typeof aiChatSession>(id);
+  }
+}
 
 export async function getChatList() {
   const chats = await prisma.chat.findMany({
@@ -21,10 +40,10 @@ export async function getChatList() {
   }));
 }
 
-export async function getChatMessages(chatId: string) {
+export async function getChatMessages(chatId: string): Promise<ChatUiMessage[]> {
   const found = await prisma.chat.findUnique({ where: { id: chatId } });
   if (!found) return [];
-  return found.messages as any[];
+  return found.messages as unknown as ChatUiMessage[];
 }
 
 export async function deleteChat(chatId: string) {
@@ -37,9 +56,7 @@ export async function updateChatTitle(chatId: string, title: string) {
 }
 
 export async function updateSessionLastEventId(chatId: string, lastEventId: string) {
-  await prisma.chatSession
-    .update({ where: { id: chatId }, data: { lastEventId } })
-    .catch(() => {});
+  await prisma.chatSession.update({ where: { id: chatId }, data: { lastEventId } }).catch(() => {});
 }
 
 export async function deleteSessionAction(chatId: string) {

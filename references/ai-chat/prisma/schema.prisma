@@ -16,16 +16,6 @@ model User {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   chats          Chat[]
-  tools          UserTool[]
-}
-
-model UserTool {
-  id               String @id @default(cuid())
-  userId           String
-  name             String
-  description      String
-  responseTemplate String @default("")
-  user             User   @relation(fields: [userId], references: [id])
 }
 
 model Chat {

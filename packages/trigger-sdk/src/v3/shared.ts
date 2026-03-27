@@ -280,7 +280,7 @@ export function createTask<
 }
 
 /**
- * @deprecated use ai.tool() instead
+ * @deprecated Use `schemaTask` plus AI SDK `tool()` with `execute: ai.toolExecute(task)` instead.
  */
 export function createToolTask<
   TIdentifier extends string,

@@ -1,9 +1,8 @@
 "use client";
 
-import type { UIMessage } from "ai";
 import { generateId } from "ai";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
-import type { aiChat } from "@/trigger/chat";
+import type { ChatUiMessage } from "@/lib/chat-tools";
 import { useCallback, useEffect, useState } from "react";
 import { Chat } from "@/components/chat";
 import { ChatSidebar } from "@/components/chat-sidebar";
@@ -36,7 +35,7 @@ type ChatAppProps = {
   onTaskModeChange: (mode: string) => void;
   initialChatList: ChatMeta[];
   initialActiveChatId: string | null;
-  initialMessages: UIMessage[];
+  initialMessages: ChatUiMessage[];
   initialSessions: Record<string, SessionInfo>;
 };
 
@@ -50,7 +49,7 @@ export function ChatApp({
 }: ChatAppProps) {
   const [chatList, setChatList] = useState<ChatMeta[]>(initialChatList);
   const [activeChatId, setActiveChatId] = useState<string | null>(initialActiveChatId);
-  const [messages, setMessages] = useState<UIMessage[]>(initialMessages);
+  const [messages, setMessages] = useState<ChatUiMessage[]>(initialMessages);
   const [sessions, setSessions] = useState<Record<string, SessionInfo>>(initialSessions);
 
   // Model for new chats (before first message is sent)
@@ -58,21 +57,18 @@ export function ChatApp({
   const [preloadEnabled, setPreloadEnabled] = useState(true);
   const [idleTimeoutInSeconds, setIdleTimeoutInSeconds] = useState(60);
 
-  const handleSessionChange = useCallback(
-    (chatId: string, session: SessionInfo | null) => {
-      if (session) {
-        setSessions((prev) => ({ ...prev, [chatId]: session }));
-      } else {
-        setSessions((prev) => {
-          const next = { ...prev };
-          delete next[chatId];
-          return next;
-        });
-        deleteSessionAction(chatId);
-      }
-    },
-    []
-  );
+  const handleSessionChange = useCallback((chatId: string, session: SessionInfo | null) => {
+    if (session) {
+      setSessions((prev) => ({ ...prev, [chatId]: session }));
+    } else {
+      setSessions((prev) => {
+        const next = { ...prev };
+        delete next[chatId];
+        return next;
+      });
+      deleteSessionAction(chatId);
+    }
+  }, []);
 
   const transport = useTriggerChatTransport({
     task: taskMode,
@@ -134,7 +130,7 @@ export function ChatApp({
     setChatList(list);
   }, []);
 
-  const handleMessagesChange = useCallback(async (_chatId: string, _messages: UIMessage[]) => {
+  const handleMessagesChange = useCallback(async (_chatId: string, _messages: ChatUiMessage[]) => {
     // Messages are persisted server-side via onTurnComplete.
     // Refresh the chat list to update timestamps.
     const list = await getChatList();
@@ -144,7 +140,7 @@ export function ChatApp({
   // Determine the model for the active chat
   const activeChatMeta = chatList.find((c) => c.id === activeChatId);
   const isNewChat = activeChatId != null && !activeChatMeta;
-  const activeModel = isNewChat ? newChatModel : (activeChatMeta?.model ?? DEFAULT_MODEL);
+  const activeModel = isNewChat ? newChatModel : activeChatMeta?.model ?? DEFAULT_MODEL;
 
   // Get session for the active chat
   const activeSession = activeChatId ? sessions[activeChatId] : undefined;
