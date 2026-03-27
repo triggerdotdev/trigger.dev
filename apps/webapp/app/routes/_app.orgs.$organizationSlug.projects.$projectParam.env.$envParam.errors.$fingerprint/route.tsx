@@ -54,6 +54,9 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
+import { InputGroup } from "~/components/primitives/InputGroup";
+import { Label } from "~/components/primitives/Label";
 import { formatDistanceToNow, isPast } from "date-fns";
 
 import * as Property from "~/components/primitives/PropertyTable";
@@ -685,7 +688,6 @@ function IgnoredDetails({
               <RelativeDateTime
                 date={state.ignoredAt}
                 capitalize={false}
-                className="text-text-dimmed"
               />
             )}
           </Paragraph>
@@ -833,7 +835,7 @@ function ErrorStatusDropdown({
       </Popover>
 
       <Dialog open={customIgnoreOpen} onOpenChange={setCustomIgnoreOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Custom ignore condition</DialogTitle>
           </DialogHeader>
@@ -871,54 +873,51 @@ function CustomIgnoreForm({
       <input type="hidden" name="taskIdentifier" value={taskIdentifier} />
 
       <div className="flex flex-col gap-4 py-4">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="occurrenceRate" className="text-xs text-text-dimmed">
+        <InputGroup fullWidth>
+          <Label htmlFor="occurrenceRate" variant="small">
             Unignore when occurrence rate exceeds (per minute)
-          </label>
-          <input
+          </Label>
+          <Input
             id="occurrenceRate"
             name="occurrenceRate"
             type="number"
             min={1}
-            className="rounded border border-charcoal-700 bg-charcoal-850 px-3 py-1.5 text-sm text-text-bright placeholder:text-text-dimmed focus:border-indigo-500 focus:outline-none"
             placeholder="e.g. 10"
           />
-        </div>
+        </InputGroup>
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="totalOccurrences" className="text-xs text-text-dimmed">
+        <InputGroup fullWidth>
+          <Label htmlFor="totalOccurrences" variant="small">
             Unignore when total occurrences exceed
-          </label>
-          <input
+          </Label>
+          <Input
             id="totalOccurrences"
             name="totalOccurrences"
             type="number"
             min={1}
-            className="rounded border border-charcoal-700 bg-charcoal-850 px-3 py-1.5 text-sm text-text-bright placeholder:text-text-dimmed focus:border-indigo-500 focus:outline-none"
             placeholder="e.g. 100"
           />
-        </div>
+        </InputGroup>
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="reason" className="text-xs text-text-dimmed">
-            Reason (optional)
-          </label>
-          <input
+        <InputGroup fullWidth>
+          <Label htmlFor="reason" variant="small" required={false}>
+            Reason
+          </Label>
+          <Input
             id="reason"
             name="reason"
             type="text"
-            className="rounded border border-charcoal-700 bg-charcoal-850 px-3 py-1.5 text-sm text-text-bright placeholder:text-text-dimmed focus:border-indigo-500 focus:outline-none"
             placeholder="e.g. Known flaky test"
           />
-        </div>
+        </InputGroup>
       </div>
 
       <DialogFooter>
-        <Button variant="tertiary/small" type="button" onClick={onClose}>
+        <Button variant="tertiary/medium" type="button" onClick={onClose}>
           Cancel
         </Button>
-        <Button variant="primary/small" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Ignoring..." : "Ignore error"}
+        <Button variant="primary/medium" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Ignoring…" : "Ignore error"}
         </Button>
       </DialogFooter>
     </Form>
