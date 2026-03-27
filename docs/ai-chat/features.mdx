@@ -8,7 +8,7 @@ description: "Per-run data, deferred work, custom streaming, subtask integration
 
 Use `chat.local` to create typed, run-scoped data that persists across turns and is accessible from anywhere — the run function, tools, nested helpers. Each run gets its own isolated copy, and locals are automatically cleared between runs.
 
-When a subtask is invoked via `ai.tool()`, initialized locals are automatically serialized into the subtask's metadata and hydrated on first access — no extra code needed. Subtask changes to hydrated locals are local to the subtask and don't propagate back to the parent.
+When a subtask is invoked via `ai.toolExecute()` (or the deprecated `ai.tool()`), initialized locals are automatically serialized into the subtask's metadata and hydrated on first access — no extra code needed. Subtask changes to hydrated locals are local to the subtask and don't propagate back to the parent.
 
 ### Declaring and initializing
 
@@ -76,18 +76,18 @@ const premiumTool = tool({
 
 ### Accessing from subtasks
 
-When you use `ai.tool()` to expose a subtask, chat locals are automatically available read-only:
+When you use `ai.toolExecute()` inside AI SDK `tool()` to expose a subtask, chat locals are automatically available read-only:
 
 ```ts
 import { chat, ai } from "@trigger.dev/sdk/ai";
 import { schemaTask } from "@trigger.dev/sdk";
-import { streamText } from "ai";
+import { streamText, tool } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 
 const userContext = chat.local<{ name: string; plan: "free" | "pro" }>({ id: "userContext" });
 
-export const analyzeData = schemaTask({
+export const analyzeDataTask = schemaTask({
   id: "analyze-data",
   schema: z.object({ query: z.string() }),
   run: async ({ query }) => {
@@ -95,6 +95,12 @@ export const analyzeData = schemaTask({
     console.log(`Analyzing for ${userContext.name}`);
     // Changes here are local to this subtask and don't propagate back
   },
+});
+
+const analyzeData = tool({
+  description: analyzeDataTask.description ?? "",
+  inputSchema: analyzeDataTask.schema!,
+  execute: ai.toolExecute(analyzeDataTask),
 });
 
 export const myChat = chat.task({
@@ -106,7 +112,7 @@ export const myChat = chat.task({
     return streamText({
       model: openai("gpt-4o"),
       messages,
-      tools: { analyzeData: ai.tool(analyzeData) },
+      tools: { analyzeData },
       abortSignal: signal,
     });
   },
@@ -227,7 +233,8 @@ When a tool invokes a subtask via `triggerAndWait`, the subtask can stream direc
 ```ts
 import { chat, ai } from "@trigger.dev/sdk/ai";
 import { schemaTask } from "@trigger.dev/sdk";
-import { streamText, generateId } from "ai";
+import { streamText, tool, generateId } from "ai";
+import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 
 // A subtask that streams progress back to the parent chat
@@ -271,7 +278,12 @@ export const researchTask = schemaTask({
   },
 });
 
-// The chat task uses it as a tool via ai.tool()
+const research = tool({
+  description: researchTask.description ?? "",
+  inputSchema: researchTask.schema!,
+  execute: ai.toolExecute(researchTask),
+});
+
 export const myChat = chat.task({
   id: "my-chat",
   run: async ({ messages, signal }) => {
@@ -280,7 +292,7 @@ export const myChat = chat.task({
       messages,
       abortSignal: signal,
       tools: {
-        research: ai.tool(researchTask),
+        research,
       },
     });
   },
@@ -311,9 +323,9 @@ The `target` option accepts:
 
 ---
 
-## ai.tool() — subtask integration
+## Task tool subtasks (`ai.toolExecute`)
 
-When a subtask runs via `ai.tool()`, it can access the tool call context and chat context from the parent:
+When a subtask runs through **`execute: ai.toolExecute(task)`** (or the deprecated `ai.tool()`), it can access the tool call context and chat context from the parent:
 
 ```ts
 import { ai, chat } from "@trigger.dev/sdk/ai";

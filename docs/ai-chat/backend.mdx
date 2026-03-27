@@ -8,6 +8,10 @@ description: "Three approaches to building your chat backend — chat.task(), se
 
 The highest-level approach. Handles message accumulation, stop signals, turn lifecycle, and auto-piping automatically.
 
+<Tip>
+  To fix a **custom** `UIMessage` subtype (typed custom data parts, tool map, etc.), use [`chat.withUIMessage<...>().task({...})`](/ai-chat/types) instead of `chat.task({...})`. Options are the same; defaults for `toUIMessageStream()` can be set on `withUIMessage`.
+</Tip>
+
 ### Simple: return a StreamTextResult
 
 Return the `streamText` result from `run` and it's automatically piped to the frontend:
