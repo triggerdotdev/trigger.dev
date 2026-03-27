@@ -104,6 +104,7 @@ import {
   DialogTrigger,
 } from "~/components/primitives/Dialog";
 import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
+import { FormError } from "~/components/primitives/FormError";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
@@ -112,6 +113,11 @@ export const meta: MetaFunction<typeof loader> = ({ data }) => {
     },
   ];
 };
+
+const emptyStringToUndefined = z.preprocess(
+  (v) => (v === "" ? undefined : v),
+  z.coerce.number().positive().optional()
+);
 
 const actionSchema = z.discriminatedUnion("action", [
   z.object({
@@ -122,10 +128,10 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("ignore"),
     taskIdentifier: z.string().min(1),
-    duration: z.coerce.number().positive().optional(),
-    occurrenceRate: z.coerce.number().positive().optional(),
-    totalOccurrences: z.coerce.number().positive().optional(),
-    reason: z.string().optional(),
+    duration: emptyStringToUndefined,
+    occurrenceRate: emptyStringToUndefined,
+    totalOccurrences: emptyStringToUndefined,
+    reason: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   }),
   z.object({
     action: z.literal("unresolve"),
@@ -684,20 +690,13 @@ function IgnoredDetails({
           <Paragraph variant="extra-small/dimmed">
             {state.ignoredByUserDisplayName && <>Configured by {state.ignoredByUserDisplayName}</>}
             {state.ignoredByUserDisplayName && state.ignoredAt && " "}
-            {state.ignoredAt && (
-              <RelativeDateTime
-                date={state.ignoredAt}
-                capitalize={false}
-              />
-            )}
+            {state.ignoredAt && <RelativeDateTime date={state.ignoredAt} capitalize={false} />}
           </Paragraph>
         )}
       </div>
 
       {state.ignoredReason && (
-        <div className="text-text-dimmed">
-          Reason: <span className="text-text-bright">{state.ignoredReason}</span>
-        </div>
+        <Paragraph variant="extra-small/dimmed">Reason: {state.ignoredReason}</Paragraph>
       )}
 
       {hasConditions && (
@@ -814,16 +813,24 @@ function ErrorStatusDropdown({
             </>
           )}
 
-          {state.status === "RESOLVED" && (
-            <PopoverMenuItem
-              icon={ArrowBackUpIcon}
-              leadingIconClassName="text-error"
-              title="Unresolved"
-              onClick={() => act({ taskIdentifier, action: "unresolve" })}
-            />
+          {state.status === "IGNORED" && (
+            <>
+              <PopoverMenuItem
+                icon={CheckIcon}
+                leadingIconClassName="text-success"
+                title="Resolved"
+                onClick={() => act({ taskIdentifier, action: "resolve" })}
+              />
+              <PopoverMenuItem
+                icon={ArrowBackUpIcon}
+                leadingIconClassName="text-error"
+                title="Unresolved"
+                onClick={() => act({ taskIdentifier, action: "unresolve" })}
+              />
+            </>
           )}
 
-          {state.status === "IGNORED" && (
+          {state.status === "RESOLVED" && (
             <PopoverMenuItem
               icon={ArrowBackUpIcon}
               leadingIconClassName="text-error"
@@ -859,12 +866,23 @@ function CustomIgnoreForm({
   const submit = useSubmit();
   const navigation = useNavigation();
   const isSubmitting = navigation.state !== "idle";
+  const [conditionError, setConditionError] = useState<string | null>(null);
 
   return (
     <Form
       method="post"
       onSubmit={(e) => {
         e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+        const rate = formData.get("occurrenceRate")?.toString().trim();
+        const total = formData.get("totalOccurrences")?.toString().trim();
+
+        if (!rate && !total) {
+          setConditionError("At least one unignore condition is required");
+          return;
+        }
+
+        setConditionError(null);
         submit(e.currentTarget, { method: "post" });
         setTimeout(onClose, 100);
       }}
@@ -883,6 +901,7 @@ function CustomIgnoreForm({
             type="number"
             min={1}
             placeholder="e.g. 10"
+            onChange={() => conditionError && setConditionError(null)}
           />
         </InputGroup>
 
@@ -896,19 +915,17 @@ function CustomIgnoreForm({
             type="number"
             min={1}
             placeholder="e.g. 100"
+            onChange={() => conditionError && setConditionError(null)}
           />
         </InputGroup>
+
+        {conditionError && <FormError>{conditionError}</FormError>}
 
         <InputGroup fullWidth>
           <Label htmlFor="reason" variant="small" required={false}>
             Reason
           </Label>
-          <Input
-            id="reason"
-            name="reason"
-            type="text"
-            placeholder="e.g. Known flaky test"
-          />
+          <Input id="reason" name="reason" type="text" placeholder="e.g. Known flaky test" />
         </InputGroup>
       </div>
 
