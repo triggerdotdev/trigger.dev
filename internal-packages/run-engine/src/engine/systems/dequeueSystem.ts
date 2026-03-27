@@ -495,6 +495,7 @@ export class DequeueSystem {
               const billingResult = await this.options.billingCache.getCurrentPlan(orgId);
 
               let isPaying: boolean;
+              let hasPrivateLink: boolean | undefined;
               if (billingResult.err || !billingResult.val) {
                 // Fallback to stored planType on TaskRun if billing cache fails or returns no value
                 this.$.logger.warn(
@@ -513,6 +514,7 @@ export class DequeueSystem {
                 isPaying = (lockedTaskRun.planType ?? "free") !== "free";
               } else {
                 isPaying = billingResult.val.isPaying;
+                hasPrivateLink = billingResult.val.hasPrivateLink;
               }
 
               const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
@@ -583,6 +585,7 @@ export class DequeueSystem {
                 },
                 organization: {
                   id: orgId,
+                  hasPrivateLink,
                 },
                 project: {
                   id: lockedTaskRun.projectId,
