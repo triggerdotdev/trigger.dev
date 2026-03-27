@@ -1,4 +1,5 @@
 import { ComputeClient, stripImageDigest } from "@internal/compute";
+import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import type { PrismaClientOrTransaction } from "~/db.server";
@@ -158,10 +159,13 @@ export class ComputeTemplateCreationService {
     }
 
     try {
+      // Templates are resource-agnostic - these values don't affect template content.
+      const machine = machinePresetFromName("small-1x");
+
       await this.client.templates.create({
         image: stripImageDigest(imageReference),
-        cpu: 0.5,
-        memory_mb: 512,
+        cpu: machine.cpu,
+        memory_mb: machine.memory * 1024,
         background: options?.background,
       });
       return { success: true };

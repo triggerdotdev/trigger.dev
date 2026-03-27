@@ -113,6 +113,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   >();
 
   private readonly workerClient: SupervisorHttpClient;
+  // Bounded map for trace contexts used by compute snapshot spans.
+  // Entries are added on dequeue and consumed on snapshot callback, which may arrive
+  // hours later after a checkpoint/restore cycle. Using a capped map avoids unbounded
+  // growth while keeping recent contexts available. Oldest entries are evicted first.
+  private static readonly MAX_TRACE_CONTEXTS = 10_000;
   private readonly runTraceContexts = new Map<string, RunTraceContext>();
   private readonly snapshotDelayWheel?: TimerWheel<DelayedSnapshot>;
 
@@ -821,6 +826,14 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   }
 
   registerRunTraceContext(runFriendlyId: string, ctx: RunTraceContext) {
+    // Evict oldest entries if we've hit the cap
+    if (this.runTraceContexts.size >= WorkloadServer.MAX_TRACE_CONTEXTS) {
+      const firstKey = this.runTraceContexts.keys().next().value;
+      if (firstKey) {
+        this.runTraceContexts.delete(firstKey);
+      }
+    }
+
     this.runTraceContexts.set(runFriendlyId, ctx);
   }
 
@@ -829,6 +842,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   }
 
   async stop() {
+    // Intentionally drop pending snapshots rather than dispatching them. The supervisor
+    // is shutting down, so our callback URL will be dead by the time the gateway responds.
+    // Runners detect the supervisor is gone and reconnect to a new instance, which
+    // re-triggers the snapshot workflow. Snapshots are an optimization, not a correctness
+    // requirement - runs continue fine without them.
     const remaining = this.snapshotDelayWheel?.stop() ?? [];
     if (remaining.length > 0) {
       this.logger.info("Snapshot delay wheel stopped, dropped pending snapshots", {

@@ -293,7 +293,7 @@ class ManagedSupervisor {
         return;
       }
 
-      if (env.COMPUTE_TRACE_SPANS_ENABLED) {
+      if (this.isComputeMode && env.COMPUTE_TRACE_SPANS_ENABLED) {
         const traceparent =
           message.run.traceContext &&
           "traceparent" in message.run.traceContext &&
