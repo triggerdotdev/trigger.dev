@@ -247,7 +247,7 @@ import { task, wait } from "@trigger.dev/sdk";
 export const approvalFlow = task({
   id: "approval-flow",
   run: async (payload: { requestId: string; approverEmail: string }) => {
-    // create a token — this generates a URL the external system can POST to
+    // create a token, this generates a URL the external system can POST to
     const token = await wait.createToken({
       timeout: "48h",
       tags: [`request-${payload.requestId}`],
@@ -269,3 +269,72 @@ export const approvalFlow = task({
 ```
 
 ---
+
+## Full example: customer onboarding workflow
+
+Here's how a typical back office onboarding workflow translates from n8n to Trigger.dev.
+
+**The n8n setup:** Webhook Trigger → HTTP Request (provision account) → HTTP Request (send welcome email) → HTTP Request (notify Slack) → Wait node (3 days) → HTTP Request (check activation) → IF node → HTTP Request (send follow-up).
+
+**In Trigger.dev**, the same workflow is plain TypeScript:
+
+```ts trigger/onboard-customer.ts
+import { task, wait } from "@trigger.dev/sdk";
+import { provisionAccount } from "./provision-account";
+import { sendWelcomeEmail } from "./send-welcome-email";
+
+export const onboardCustomer = task({
+  id: "onboard-customer",
+  retry: {
+    maxAttempts: 3,
+  },
+  run: async (payload: {
+    customerId: string;
+    email: string;
+    plan: "starter" | "pro" | "enterprise";
+  }) => {
+    // provision their account, throws if the subtask fails
+    await provisionAccount
+      .triggerAndWait({
+        customerId: payload.customerId,
+        plan: payload.plan,
+      })
+      .unwrap();
+
+    // send welcome email
+    await sendWelcomeEmail
+      .triggerAndWait({
+        customerId: payload.customerId,
+        email: payload.email,
+      })
+      .unwrap();
+
+    // notify the team
+    await notifySlack(`New customer: ${payload.email} on ${payload.plan}`);
+
+    // wait 3 days, then check if they've activated
+    await wait.for({ days: 3 });
+
+    const activated = await checkActivation(payload.customerId);
+    if (!activated) {
+      await sendActivationNudge(payload.email);
+    }
+
+    return { customerId: payload.customerId, activated };
+  },
+});
+```
+
+Trigger the workflow from your app when a new customer signs up:
+
+```ts
+import { onboardCustomer } from "@/trigger/onboard-customer";
+
+await onboardCustomer.trigger({
+  customerId: customer.id,
+  email: customer.email,
+  plan: customer.plan,
+});
+```
+
+Every run is visible in the Trigger.dev dashboard with full logs, retry history, and the ability to replay any run.
