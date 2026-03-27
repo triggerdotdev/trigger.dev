@@ -96,6 +96,13 @@
                   "ai-chat/compaction",
                   "ai-chat/pending-messages",
                   "ai-chat/background-injection",
+                  {
+                    "group": "Patterns",
+                    "pages": [
+                      "ai-chat/patterns/database-persistence",
+                      "ai-chat/patterns/code-sandbox"
+                    ]
+                  },
                   "ai-chat/reference"
                 ]
               }
