@@ -2178,6 +2178,9 @@ importers:
       '@ai-sdk/react':
         specifier: ^3.0.0
         version: 3.0.51(react@19.1.0)(zod@3.25.76)
+      '@e2b/code-interpreter':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@prisma/adapter-pg':
         specifier: ^7.4.2
         version: 7.4.2
@@ -2906,19 +2909,6 @@ importers:
       typescript:
         specifier: 5.5.4
         version: 5.5.4
-
-  references/secure-exec-sandbox:
-    dependencies:
-      '@trigger.dev/sdk':
-        specifier: workspace:*
-        version: link:../../packages/trigger-sdk
-    devDependencies:
-      '@trigger.dev/build':
-        specifier: workspace:*
-        version: link:../../packages/build
-      trigger.dev:
-        specifier: workspace:*
-        version: link:../../packages/cli-v3
 
   references/seed:
     dependencies:
@@ -4158,6 +4148,9 @@ packages:
   '@bufbuild/protobuf@1.10.0':
     resolution: {integrity: sha512-QDdVFLoN93Zjg36NoQPZfsVH9tZew7wKDKyV5qRdj8ntT4wQCOradQjRaTdwMhWUYsgKsvCINKKm87FdEk96Ag==}
 
+  '@bufbuild/protobuf@2.11.0':
+    resolution: {integrity: sha512-sBXGT13cpmPR5BMgHE6UEEfEaShh5Ror6rfN3yEK5si7QVrtZg8LEPQb0VVhiLRUslD2yLnXtnRzG035J/mZXQ==}
+
   '@bufbuild/protobuf@2.2.5':
     resolution: {integrity: sha512-/g5EzJifw5GF8aren8wZ/G5oMuPoGeS6MQD3ca8ddcvdXR5UELUfdTZITCGNhNXynY/AYl3Z4plmxdj/tRl/hQ==}
 
@@ -4417,6 +4410,10 @@ packages:
   '@e2b/code-interpreter@1.1.0':
     resolution: {integrity: sha512-T54U7WS56ou11ytoxlYllBRBM+MYBpOvVZQa1p1qE4KDZBKJd9m1kAA0PqHjy5T6f/tSv4w5wlq4oyExl4QLLA==}
     engines: {node: '>=18'}
+
+  '@e2b/code-interpreter@2.4.0':
+    resolution: {integrity: sha512-6yLi0I2/FBhB6beqtuiFMTajB3PHQw+5+apuI3QdEv1Rx8e2Xp0h37SL0Y6tuVJQ2Frp7P3wWT77Wvy6l6OHPA==}
+    engines: {node: '>=20'}
 
   '@effect/platform@0.63.2':
     resolution: {integrity: sha512-b39pVFw0NGo/tXjGShW7Yg0M+kG7bRrFR6+dQ3aIu99ePTkTp6bGb/kDB7n+dXsFFdIqHsQGYESeYcOQngxdFQ==}
@@ -12136,6 +12133,10 @@ packages:
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
 
+  balanced-match@4.0.4:
+    resolution: {integrity: sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==}
+    engines: {node: 18 || 20 || >=22}
+
   bare-events@2.8.2:
     resolution: {integrity: sha512-riJjyv1/mHLIPX4RwiK+oW9/4c3TEUeORHKefKAKnZ5kyslbN+HXowtbaVEqt4IMUB7OXlfixcs6gsFeo/jhiQ==}
     peerDependencies:
@@ -12252,6 +12253,10 @@ packages:
 
   brace-expansion@2.0.1:
     resolution: {integrity: sha512-XnAIvQ8eM+kC6aULx6wuQiwVsnzsi9d3WxzV3FpWTGA19F621kwdbsAcFKXgKUHZWsy+mY6iL1sHTxWEFCytDA==}
+
+  brace-expansion@5.0.4:
+    resolution: {integrity: sha512-h+DEnpVvxmfVefa4jFbCf5HdH5YMDXRsmKflpf1pILZWRFlTbJpxeU55nJl4Smt5HQaGzg1o6RHFPJaOqnmBDg==}
+    engines: {node: 18 || 20 || >=22}
 
   braces@3.0.3:
     resolution: {integrity: sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA==}
@@ -13389,6 +13394,9 @@ packages:
     resolution: {integrity: sha512-ens7BiayssQz/uAxGzH8zGXCtiV24rRWXdjNha5V4zSOcxmAZsfGVm/PPFbwQdqEkDnhG+SyR9E3zSHUbOKXBQ==}
     engines: {node: '>= 8.0'}
 
+  dockerfile-ast@0.7.1:
+    resolution: {integrity: sha512-oX/A4I0EhSkGqrFv0YuvPkBUSYp1XiY8O8zAKc8Djglx8ocz+JfOr8gP0ryRMC2myqvDLagmnZaU9ot1vG2ijw==}
+
   dockerode@4.0.6:
     resolution: {integrity: sha512-FbVf3Z8fY/kALB9s+P9epCpWhfi/r0N2DgYYcYpsAUlaTxPjdsitsFobnltb+lyCgAIvf9C+4PSWlTnHlJMf1w==}
     engines: {node: '>= 8.0'}
@@ -13476,6 +13484,10 @@ packages:
   e2b@1.2.1:
     resolution: {integrity: sha512-ii/Bw55ecxgORqkArKNbuVTwqLgVZ0rH1X3J/NOe4LMZaVETm3qNpPBjoPkpQAsQjw2ew0Ad2sd54epqm9nLCw==}
     engines: {node: '>=18'}
+
+  e2b@2.10.4:
+    resolution: {integrity: sha512-yLJ/aBpGymfHIsgLIuFwBiNGwUNApzp5Xse86hWmPd/jH3Qjl6Gr7ibQZj9VxP+oFxDCDP1Che7wQyNRTbY2xA==}
+    engines: {node: '>=20'}
 
   eastasianwidth@0.2.0:
     resolution: {integrity: sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==}
@@ -14665,6 +14677,12 @@ packages:
     deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
+  glob@11.1.0:
+    resolution: {integrity: sha512-vuNwKSaKiqm7g0THUBu2x7ckSs3XJLXE+2ssL7/MfTGPLLcrJQ/4Uq1CjPTtO5cCIiRxqvN6Twy1qOwhL0Xjcw==}
+    engines: {node: 20 || >=22}
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+    hasBin: true
+
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
     deprecated: Glob versions prior to v9 are no longer supported
@@ -15378,6 +15396,10 @@ packages:
 
   jackspeak@4.0.1:
     resolution: {integrity: sha512-cub8rahkh0Q/bw1+GxP7aeSe29hHHn2V4m29nnDlvCdlgU+3UGxkZp7Z53jLUdpX3jdTO0nJZUDl3xvbWc2Xog==}
+    engines: {node: 20 || >=22}
+
+  jackspeak@4.1.1:
+    resolution: {integrity: sha512-zptv57P3GpL+O0I7VdMJNBZCu+BPHVQUk55Ft8/QCJjTVxrnJHuVuX/0Bl2A6/+2oyR/ZMEuFKwmzqqZ/U5nPQ==}
     engines: {node: 20 || >=22}
 
   javascript-stringify@2.1.0:
@@ -16428,6 +16450,10 @@ packages:
     resolution: {integrity: sha512-ethXTt3SGGR+95gudmqJ1eNhRO7eGEGIgYA9vnPatK4/etz2MEVDno5GMCibdMTuBMyElzIlgxMna3K94XDIDQ==}
     engines: {node: 20 || >=22}
 
+  minimatch@10.2.4:
+    resolution: {integrity: sha512-oRjTw/97aTBN0RHbYCdtF1MQfvusSIBQM0IZEgzl6426+8jSC0nF1a/GmnVLpfB9yyr6g6FTqWqiZVbxrtaCIg==}
+    engines: {node: 18 || 20 || >=22}
+
   minimatch@3.1.2:
     resolution: {integrity: sha512-J7p63hRiAjw1NDEww1W7i37+ByIrOWO5XQQAzZ3VOcL0PNybwpfmV/N05zFAzwQ9USyEcX6t3UO+K5aqBQOIHw==}
 
@@ -17067,8 +17093,14 @@ packages:
       zod:
         optional: true
 
+  openapi-fetch@0.14.1:
+    resolution: {integrity: sha512-l7RarRHxlEZYjMLd/PR0slfMVse2/vvIAGm75/F7J6MlQ8/b9uUQmUF2kCPrQhJqMXSxmYWObVgeYXbFYzZR+A==}
+
   openapi-fetch@0.9.8:
     resolution: {integrity: sha512-zM6elH0EZStD/gSiNlcPrzXcVQ/pZo3BDvC6CDwRDUt1dDzxlshpmQnpD6cZaJ39THaSmwVCxxRrPKNM1hHrDg==}
+
+  openapi-typescript-helpers@0.0.15:
+    resolution: {integrity: sha512-opyTPaunsklCBpTK8JGef6mfPhLSnyy5a0IN9vKtx3+4aExf+KxEqYwIy3hqkedXIB97u357uLMJsOnm3GVjsw==}
 
   openapi-typescript-helpers@0.0.8:
     resolution: {integrity: sha512-1eNjQtbfNi5Z/kFhagDIaIRj6qqDzhjNJKz8cmMW0CVdGwT6e1GLbAfgI0d28VTJa1A8jz82jm/4dG8qNoNS8g==}
@@ -23323,6 +23355,8 @@ snapshots:
 
   '@bufbuild/protobuf@1.10.0': {}
 
+  '@bufbuild/protobuf@2.11.0': {}
+
   '@bufbuild/protobuf@2.2.5': {}
 
   '@bugsnag/cuid@3.1.1': {}
@@ -23635,6 +23669,11 @@ snapshots:
       '@connectrpc/connect': 1.4.0(@bufbuild/protobuf@1.10.0)
       undici: 5.29.0
 
+  '@connectrpc/connect-web@2.0.0-rc.3(@bufbuild/protobuf@2.11.0)(@connectrpc/connect@2.0.0-rc.3(@bufbuild/protobuf@2.11.0))':
+    dependencies:
+      '@bufbuild/protobuf': 2.11.0
+      '@connectrpc/connect': 2.0.0-rc.3(@bufbuild/protobuf@2.11.0)
+
   '@connectrpc/connect-web@2.0.0-rc.3(@bufbuild/protobuf@2.2.5)(@connectrpc/connect@2.0.0-rc.3(@bufbuild/protobuf@2.2.5))':
     dependencies:
       '@bufbuild/protobuf': 2.2.5
@@ -23643,6 +23682,10 @@ snapshots:
   '@connectrpc/connect@1.4.0(@bufbuild/protobuf@1.10.0)':
     dependencies:
       '@bufbuild/protobuf': 1.10.0
+
+  '@connectrpc/connect@2.0.0-rc.3(@bufbuild/protobuf@2.11.0)':
+    dependencies:
+      '@bufbuild/protobuf': 2.11.0
 
   '@connectrpc/connect@2.0.0-rc.3(@bufbuild/protobuf@2.2.5)':
     dependencies:
@@ -23700,6 +23743,10 @@ snapshots:
   '@e2b/code-interpreter@1.1.0':
     dependencies:
       e2b: 1.2.1
+
+  '@e2b/code-interpreter@2.4.0':
+    dependencies:
+      e2b: 2.10.4
 
   '@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2)':
     dependencies:
@@ -33112,6 +33159,8 @@ snapshots:
 
   balanced-match@1.0.2: {}
 
+  balanced-match@4.0.4: {}
+
   bare-events@2.8.2:
     optional: true
 
@@ -33252,6 +33301,10 @@ snapshots:
   brace-expansion@2.0.1:
     dependencies:
       balanced-match: 1.0.2
+
+  brace-expansion@5.0.4:
+    dependencies:
+      balanced-match: 4.0.4
 
   braces@3.0.3:
     dependencies:
@@ -34390,6 +34443,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  dockerfile-ast@0.7.1:
+    dependencies:
+      vscode-languageserver-textdocument: 1.0.12
+      vscode-languageserver-types: 3.17.5
+
   dockerode@4.0.6:
     dependencies:
       '@balena/dockerignore': 1.0.2
@@ -34491,6 +34549,19 @@ snapshots:
       compare-versions: 6.1.1
       openapi-fetch: 0.9.8
       platform: 1.3.6
+
+  e2b@2.10.4:
+    dependencies:
+      '@bufbuild/protobuf': 2.11.0
+      '@connectrpc/connect': 2.0.0-rc.3(@bufbuild/protobuf@2.11.0)
+      '@connectrpc/connect-web': 2.0.0-rc.3(@bufbuild/protobuf@2.11.0)(@connectrpc/connect@2.0.0-rc.3(@bufbuild/protobuf@2.11.0))
+      chalk: 5.3.0
+      compare-versions: 6.1.1
+      dockerfile-ast: 0.7.1
+      glob: 11.1.0
+      openapi-fetch: 0.14.1
+      platform: 1.3.6
+      tar: 7.5.6
 
   eastasianwidth@0.2.0: {}
 
@@ -36091,7 +36162,7 @@ snapshots:
 
   glob@10.3.10:
     dependencies:
-      foreground-child: 3.1.1
+      foreground-child: 3.3.1
       jackspeak: 2.3.6
       minimatch: 9.0.5
       minipass: 7.1.2
@@ -36099,7 +36170,7 @@ snapshots:
 
   glob@10.3.4:
     dependencies:
-      foreground-child: 3.1.1
+      foreground-child: 3.3.1
       jackspeak: 2.3.6
       minimatch: 9.0.5
       minipass: 7.1.2
@@ -36116,9 +36187,18 @@ snapshots:
 
   glob@11.0.0:
     dependencies:
-      foreground-child: 3.1.1
+      foreground-child: 3.3.1
       jackspeak: 4.0.1
       minimatch: 10.0.1
+      minipass: 7.1.2
+      package-json-from-dist: 1.0.0
+      path-scurry: 2.0.0
+
+  glob@11.1.0:
+    dependencies:
+      foreground-child: 3.3.1
+      jackspeak: 4.1.1
+      minimatch: 10.2.4
       minipass: 7.1.2
       package-json-from-dist: 1.0.0
       path-scurry: 2.0.0
@@ -36922,6 +37002,10 @@ snapshots:
       '@isaacs/cliui': 8.0.2
     optionalDependencies:
       '@pkgjs/parseargs': 0.11.0
+
+  jackspeak@4.1.1:
+    dependencies:
+      '@isaacs/cliui': 8.0.2
 
   javascript-stringify@2.1.0: {}
 
@@ -38285,6 +38369,10 @@ snapshots:
     dependencies:
       brace-expansion: 2.0.1
 
+  minimatch@10.2.4:
+    dependencies:
+      brace-expansion: 5.0.4
+
   minimatch@3.1.2:
     dependencies:
       brace-expansion: 1.1.11
@@ -39005,9 +39093,15 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
+  openapi-fetch@0.14.1:
+    dependencies:
+      openapi-typescript-helpers: 0.0.15
+
   openapi-fetch@0.9.8:
     dependencies:
       openapi-typescript-helpers: 0.0.8
+
+  openapi-typescript-helpers@0.0.15: {}
 
   openapi-typescript-helpers@0.0.8: {}
 

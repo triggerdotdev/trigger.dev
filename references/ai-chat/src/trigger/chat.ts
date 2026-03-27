@@ -21,6 +21,7 @@ import {
   webFetch,
   type ChatUiMessage,
 } from "@/lib/chat-tools";
+import { disposeCodeSandboxForRun, warmCodeSandbox } from "@/lib/code-sandbox";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
@@ -77,7 +78,8 @@ const systemPrompt = prompts.define({
 - If you don't know something, say so — don't make things up.
 
 ## Capabilities
-You can inspect the execution environment, fetch web pages, and perform multi-URL deep research.
+You can inspect the execution environment, fetch web pages, perform multi-URL deep research,
+query PostHog with HogQL, and run short code snippets in an isolated sandbox (e.g. to analyze query results).
 When the user asks you to research a topic, use the deep research tool with relevant URLs.
 
 ## Tone
@@ -335,7 +337,8 @@ export const aiChat = chat
     // #endregion
 
     // #region onTurnStart — persist messages + write status via writer
-    onTurnStart: async ({ chatId, uiMessages, writer }) => {
+    onTurnStart: async ({ chatId, uiMessages, writer, runId }) => {
+      warmCodeSandbox(runId);
       writer.write({ type: "data-turn-status", data: { status: "preparing" } });
       chat.defer(
         prisma.chat.update({
@@ -345,6 +348,22 @@ export const aiChat = chat
       );
     },
     // #endregion
+
+    onWait: async ({ wait, ctx }) => {
+      if (wait.type === "token") {
+        await disposeCodeSandboxForRun(ctx.run.id);
+      }
+    },
+
+    onResume: async ({ wait, ctx }) => {
+      if (wait.type === "token") {
+        logger.debug("Chat resumed after input-stream wait", { runId: ctx.run.id });
+      }
+    },
+
+    onComplete: async ({ ctx }) => {
+      await disposeCodeSandboxForRun(ctx.run.id);
+    },
 
     // #region onTurnComplete — persist + background self-review via chat.inject()
     onTurnComplete: async ({

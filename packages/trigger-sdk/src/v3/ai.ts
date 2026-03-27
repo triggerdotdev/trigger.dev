@@ -13,6 +13,7 @@ import {
   type TaskIdentifier,
   type TaskOptions,
   type TaskSchema,
+  type TaskRunContext,
   type TaskWithSchema,
 } from "@trigger.dev/core/v3";
 import type {
@@ -44,6 +45,9 @@ import type { ResolvedPrompt } from "./prompt.js";
 import { streams } from "./streams.js";
 import { createTask } from "./shared.js";
 import { tracer } from "./tracer.js";
+
+/** Re-export for typing `ctx` in `chat.task` hooks without importing `@trigger.dev/core`. */
+export type { TaskRunContext } from "@trigger.dev/core/v3";
 import {
   CHAT_STREAM_KEY as _CHAT_STREAM_KEY,
   CHAT_MESSAGES_STREAM_ID,
@@ -612,6 +616,11 @@ export type ChatTaskSignals = {
  */
 export type ChatTaskRunPayload<TClientData = unknown> = ChatTaskPayload<TClientData> &
   ChatTaskSignals & {
+    /**
+     * Task run context — same object as the `ctx` passed to a standard `task({ run })` handler’s second argument.
+     * Use for tags, metadata, parent run links, or any API that needs the full run record.
+     */
+    ctx: TaskRunContext;
     /** Token usage from the previous turn. Undefined on turn 0. */
     previousTurnUsage?: LanguageModelUsage;
     /** Cumulative token usage across all completed turns so far. */
@@ -742,6 +751,8 @@ interface CompactionState {
 const chatCompactionStateKey = locals.create<CompactionState>("chat.compaction");
 const chatOnCompactedKey =
   locals.create<(event: CompactedEvent) => Promise<void> | void>("chat.onCompacted");
+/** @internal Full task `ctx` for the active `chat.task` run (for hooks invoked from nested compaction). */
+const chatTaskRunContextKey = locals.create<TaskRunContext>("chat.taskRunContext");
 const chatPrepareMessagesKey =
   locals.create<(event: PrepareMessagesEvent<unknown>) => ModelMessage[] | Promise<ModelMessage[]>>(
     "chat.prepareMessages"
@@ -980,6 +991,8 @@ export type CompactionChunkData = {
  * Event passed to the `onCompacted` callback.
  */
 export type CompactedEvent = {
+  /** Task run context — same as `task` lifecycle hooks and `chat.task` `run({ ctx })`. */
+  ctx: TaskRunContext;
   /** The generated summary text. */
   summary: string;
   /** The messages that were compacted (pre-compaction). */
@@ -1280,6 +1293,7 @@ async function chatCompact(
           const onCompactedHook = locals.get(chatOnCompactedKey);
           if (onCompactedHook) {
             await onCompactedHook({
+              ctx: locals.get(chatTaskRunContextKey)!,
               summary,
               messages,
               messageCount: messages.length,
@@ -1863,6 +1877,8 @@ async function pipeChat(
  * Event passed to the `onPreload` callback.
  */
 export type PreloadEvent<TClientData = unknown> = {
+  /** Task run context — same as `task({ run })` second-argument `ctx`. */
+  ctx: TaskRunContext;
   /** The unique identifier for the chat session. */
   chatId: string;
   /** The Trigger.dev run ID for this conversation. */
@@ -1879,6 +1895,8 @@ export type PreloadEvent<TClientData = unknown> = {
  * Event passed to the `onChatStart` callback.
  */
 export type ChatStartEvent<TClientData = unknown> = {
+  /** Task run context — same as `task({ run })` second-argument `ctx`. */
+  ctx: TaskRunContext;
   /** The unique identifier for the chat session. */
   chatId: string;
   /** The initial model-ready messages for this conversation. */
@@ -1903,6 +1921,8 @@ export type ChatStartEvent<TClientData = unknown> = {
  * Event passed to the `onTurnStart` callback.
  */
 export type TurnStartEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> = {
+  /** Task run context — same as `task({ run })` second-argument `ctx`. */
+  ctx: TaskRunContext;
   /** The unique identifier for the chat session. */
   chatId: string;
   /** The accumulated model-ready messages (all turns so far, including new user message). */
@@ -1935,6 +1955,8 @@ export type TurnStartEvent<TClientData = unknown, TUIM extends UIMessage = UIMes
  * Event passed to the `onTurnComplete` callback.
  */
 export type TurnCompleteEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> = {
+  /** Task run context — same as `task({ run })` second-argument `ctx`. */
+  ctx: TaskRunContext;
   /** The unique identifier for the chat session. */
   chatId: string;
   /** The full accumulated conversation in model format (all turns so far). */
@@ -2022,8 +2044,9 @@ export type ChatTaskOptions<
    * chat.task({
    *   id: "my-chat",
    *   clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
-   *   run: async ({ messages, clientData, signal }) => {
+   *   run: async ({ messages, clientData, ctx, signal }) => {
    *     // clientData is typed as { model?: string; userId: string }
+   *     // ctx is the same TaskRunContext as in task({ run: (payload, { ctx }) => ... })
    *   },
    * });
    * ```
@@ -2034,7 +2057,8 @@ export type ChatTaskOptions<
    * The run function for the chat task.
    *
    * Receives a `ChatTaskRunPayload` with the conversation messages, chat session ID,
-   * trigger type, and abort signals (`signal`, `cancelSignal`, `stopSignal`).
+   * trigger type, task `ctx` (same as `task({ run })`’s second argument), and abort signals
+   * (`signal`, `cancelSignal`, `stopSignal`).
    *
    * **Auto-piping:** If this function returns a value with `.toUIMessageStream()`,
    * the stream is automatically piped to the frontend.
@@ -2049,7 +2073,7 @@ export type ChatTaskOptions<
    *
    * @example
    * ```ts
-   * onPreload: async ({ chatId, clientData }) => {
+   * onPreload: async ({ ctx, chatId, clientData }) => {
    *   await db.chat.create({ data: { id: chatId } });
    *   userContext.init(await loadUser(clientData.userId));
    * }
@@ -2064,7 +2088,7 @@ export type ChatTaskOptions<
    *
    * @example
    * ```ts
-   * onChatStart: async ({ chatId, messages, clientData }) => {
+   * onChatStart: async ({ ctx, chatId, messages, clientData }) => {
    *   await db.chat.create({ data: { id: chatId, userId: clientData.userId } });
    * }
    * ```
@@ -2080,7 +2104,7 @@ export type ChatTaskOptions<
    *
    * @example
    * ```ts
-   * onTurnStart: async ({ chatId, uiMessages }) => {
+   * onTurnStart: async ({ ctx, chatId, uiMessages }) => {
    *   await db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } });
    * }
    * ```
@@ -2097,7 +2121,7 @@ export type ChatTaskOptions<
    *
    * @example
    * ```ts
-   * onBeforeTurnComplete: async ({ writer, usage }) => {
+   * onBeforeTurnComplete: async ({ ctx, writer, usage }) => {
    *   if (usage?.inputTokens && usage.inputTokens > 5000) {
    *     writer.write({ type: "data-compaction", id: generateId(), data: { status: "compacting" } });
    *     // ... compact messages ...
@@ -2117,7 +2141,7 @@ export type ChatTaskOptions<
    *
    * @example
    * ```ts
-   * onCompacted: async ({ summary, totalTokens, chatId }) => {
+   * onCompacted: async ({ ctx, summary, totalTokens, chatId }) => {
    *   logger.info("Compacted", { totalTokens, chatId });
    *   await db.compactionLog.create({ data: { chatId, summary } });
    * }
@@ -2177,7 +2201,7 @@ export type ChatTaskOptions<
    *
    * @example
    * ```ts
-   * onTurnComplete: async ({ chatId, messages }) => {
+   * onTurnComplete: async ({ ctx, chatId, messages }) => {
    *   await db.chat.update({ where: { id: chatId }, data: { messages } });
    * }
    * ```
@@ -2366,8 +2390,10 @@ function chatTask<
     ...restOptions,
     run: async (
       payload: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
-      { signal: runSignal }
+      { signal: runSignal, ctx }
     ) => {
+      locals.set(chatTaskRunContextKey, ctx);
+
       // Set gen_ai.conversation.id on the run-level span for dashboard context
       const activeSpan = trace.getActiveSpan();
       if (activeSpan) {
@@ -2433,7 +2459,7 @@ function chatTask<
             activeSpan.setAttribute("chat.preloaded", true);
           }
 
-          const currentRunId = taskContext.ctx?.run.id ?? "";
+          const currentRunId = ctx.run.id;
           let preloadAccessToken = "";
           if (currentRunId) {
             try {
@@ -2461,6 +2487,7 @@ function chatTask<
               async () => {
                 await withChatWriter(async (writer) => {
                   await onPreload({
+                    ctx,
                     chatId: payload.chatId,
                     runId: currentRunId,
                     chatAccessToken: preloadAccessToken,
@@ -2671,7 +2698,7 @@ function chatTask<
 
               // Mint a scoped public access token once per turn, reused for
               // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
-              const currentRunId = taskContext.ctx?.run.id ?? "";
+              const currentRunId = ctx.run.id;
               let turnAccessToken = "";
               if (currentRunId) {
                 try {
@@ -2694,6 +2721,7 @@ function chatTask<
                   async () => {
                     await withChatWriter(async (writer) => {
                       await onChatStart({
+                        ctx,
                         chatId: currentWirePayload.chatId,
                         messages: accumulatedMessages,
                         clientData,
@@ -2728,6 +2756,7 @@ function chatTask<
                   async () => {
                     await withChatWriter(async (writer) => {
                       await onTurnStart({
+                        ctx,
                         chatId: currentWirePayload.chatId,
                         messages: accumulatedMessages,
                         uiMessages: accumulatedUIMessages,
@@ -2799,6 +2828,7 @@ function chatTask<
                   preloaded,
                   previousTurnUsage,
                   totalUsage: cumulativeUsage,
+                  ctx,
                   signal: combinedSignal,
                   cancelSignal,
                   stopSignal,
@@ -3057,6 +3087,7 @@ function chatTask<
                           const onCompactedHook = locals.get(chatOnCompactedKey);
                           if (onCompactedHook) {
                             await onCompactedHook({
+                              ctx,
                               summary,
                               messages: accumulatedMessages,
                               messageCount: accumulatedMessages.length,
@@ -3108,6 +3139,7 @@ function chatTask<
               }
 
               const turnCompleteEvent = {
+                ctx,
                 chatId: currentWirePayload.chatId,
                 messages: accumulatedMessages,
                 uiMessages: accumulatedUIMessages,
