@@ -78,7 +78,7 @@ class AwsSdkClient implements IObjectStoreClient {
 
   constructor(private readonly config: AwsSdkConfig) {
     this.s3Client = new S3Client({
-      ...(config.baseUrl ? { endpoint: config.baseUrl } : {}),
+      ...(config.baseUrl ? { endpoint: config.baseUrl, forcePathStyle: true } : {}),
       ...(config.region ? { region: config.region } : {}),
     });
   }
