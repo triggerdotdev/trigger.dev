@@ -340,7 +340,6 @@ function StatusFilter() {
 function ErrorStatusDropdown({
   trigger,
   clearSearchValue,
-  searchValue,
   onClose,
 }: {
   trigger: ReactNode;
@@ -359,12 +358,6 @@ function ErrorStatusDropdown({
     });
   };
 
-  const filtered = useMemo(() => {
-    return errorStatusOptions.filter((item) =>
-      item.label.toLowerCase().includes(searchValue.toLowerCase())
-    );
-  }, [searchValue]);
-
   return (
     <SelectProvider value={values("status")} setValue={handleChange} virtualFocus={true}>
       {trigger}
@@ -378,9 +371,8 @@ function ErrorStatusDropdown({
           return true;
         }}
       >
-        <ComboBox placeholder="Filter by status..." value={searchValue} />
         <SelectList>
-          {filtered.map((item) => (
+          {errorStatusOptions.map((item) => (
             <SelectItem key={item.value} value={item.value}>
               <ErrorStatusBadge status={item.value} />
             </SelectItem>
