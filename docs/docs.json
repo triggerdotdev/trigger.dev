@@ -137,7 +137,7 @@
               "realtime/run-object",
               "realtime/auth",
               {
-                "group": "React hooks (frontend)",
+                "group": "React hooks",
                 "pages": [
                   "realtime/react-hooks/overview",
                   "realtime/react-hooks/triggering",
@@ -641,6 +641,10 @@
     {
       "source": "/trigger-config",
       "destination": "/config/config-file"
+    },
+    {
+      "source": "/guides/frameworks",
+      "destination": "/guides/frameworks/nextjs"
     },
     {
       "source": "/guides/frameworks/introduction",

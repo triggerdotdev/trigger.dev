@@ -58,10 +58,14 @@ export type CustomDashboard = {
   defaultPeriod: string;
 };
 
+export type BuiltInDashboardFilter = "tasks" | "queues" | "models" | "prompts" | "operations" | "providers";
+
 export type BuiltInDashboard = {
   key: string;
   title: string;
   layout: DashboardLayout;
+  /** Which filters to show in the toolbar. Defaults to ["tasks", "queues"] if not specified. */
+  filters?: BuiltInDashboardFilter[];
 };
 
 /** Returns the dashboard layout */

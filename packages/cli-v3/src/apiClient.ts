@@ -58,18 +58,48 @@ import { z } from "zod";
 import { logger } from "./utilities/logger.js";
 import { VERSION } from "./version.js";
 
+const CliPlatformNotificationResponseSchema = z.object({
+  notification: z
+    .object({
+      id: z.string(),
+      payload: z.object({
+        version: z.string(),
+        data: z.object({
+          type: z.enum(["info", "warn", "error", "success"]),
+          title: z.string(),
+          description: z.string(),
+          actionLabel: z.string().optional(),
+          actionUrl: z.string().optional(),
+          discovery: z
+            .object({
+              filePatterns: z.array(z.string()),
+              contentPattern: z.string().optional(),
+              matchBehavior: z.enum(["show-if-found", "show-if-not-found"]),
+            })
+            .optional(),
+        }),
+      }),
+      showCount: z.number(),
+      firstSeenAt: z.string(),
+    })
+    .nullable(),
+});
+
 export class CliApiClient {
   private engineURL: string;
+  private source: "cli" | "mcp";
 
   constructor(
     public readonly apiURL: string,
     // TODO: consider making this required
     public readonly accessToken?: string,
-    public readonly branch?: string
+    public readonly branch?: string,
+    options?: { source?: "cli" | "mcp" }
   ) {
     this.apiURL = apiURL.replace(/\/$/, "");
     this.engineURL = this.apiURL;
     this.branch = branch;
+    this.source = options?.source ?? "cli";
   }
 
   async createAuthorizationCode() {
@@ -537,6 +567,25 @@ export class CliApiClient {
     );
   }
 
+  async getCliPlatformNotification(projectRef?: string, signal?: AbortSignal) {
+    if (!this.accessToken) {
+      return { success: true as const, data: { notification: null } };
+    }
+
+    const url = new URL("/api/v1/platform-notifications", this.apiURL);
+    if (projectRef) {
+      url.searchParams.set("projectRef", projectRef);
+    }
+
+    return wrapZodFetch(CliPlatformNotificationResponseSchema, url.href, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      signal,
+    });
+  }
+
   async triggerTaskRun(taskId: string, body?: TriggerTaskRequestBody) {
     if (!this.accessToken) {
       throw new Error("triggerTaskRun: No access token");
@@ -819,6 +868,7 @@ export class CliApiClient {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.accessToken}`,
       "Content-Type": "application/json",
+      "x-trigger-source": this.source,
     };
 
     if (this.branch) {

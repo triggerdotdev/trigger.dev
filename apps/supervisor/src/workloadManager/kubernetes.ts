@@ -120,7 +120,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
           },
           spec: {
             ...this.addPlacementTags(this.#defaultPodSpec, opts.placementTags),
-            affinity: this.#getAffinity(opts.machine, opts.projectId),
+            affinity: this.#getAffinity(opts),
             terminationGracePeriodSeconds: 60 * 60,
             containers: [
               {
@@ -335,6 +335,10 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     };
   }
 
+  #isScheduledRun(opts: WorkloadManagerCreateOptions): boolean {
+    return opts.annotations?.rootTriggerSource === "schedule";
+  }
+
   #getSharedLabels(opts: WorkloadManagerCreateOptions): Record<string, string> {
     return {
       env: opts.envId,
@@ -342,6 +346,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       org: opts.orgId,
       project: opts.projectId,
       machine: opts.machine.name,
+      // We intentionally use a boolean label rather than exposing the full trigger source
+      // (e.g. sdk, api, cli, mcp, schedule) to keep label cardinality low in metrics.
+      // The schedule vs non-schedule distinction is all we need for the current metrics
+      // and pool-level scheduling decisions; finer-grained source breakdowns live in run annotations.
+      scheduled: String(this.#isScheduledRun(opts)),
     };
   }
 
@@ -390,22 +399,43 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     return preset.name.startsWith("large-");
   }
 
-  #getAffinity(preset: MachinePreset, projectId: string): k8s.V1Affinity | undefined {
-    const nodeAffinity = this.#getNodeAffinityRules(preset);
-    const podAffinity = this.#getProjectPodAffinity(projectId);
+  #getAffinity(opts: WorkloadManagerCreateOptions): k8s.V1Affinity | undefined {
+    const largeNodeAffinity = this.#getNodeAffinityRules(opts.machine);
+    const scheduleNodeAffinity = this.#getScheduleNodeAffinityRules(this.#isScheduledRun(opts));
+    const podAffinity = this.#getProjectPodAffinity(opts.projectId);
 
-    if (!nodeAffinity && !podAffinity) {
+    // Merge node affinity rules from multiple sources
+    const preferred = [
+      ...(largeNodeAffinity?.preferredDuringSchedulingIgnoredDuringExecution ?? []),
+      ...(scheduleNodeAffinity?.preferredDuringSchedulingIgnoredDuringExecution ?? []),
+    ];
+    // Only large machine affinity produces hard requirements (non-large runs must stay off the large pool).
+    // Schedule affinity is soft both ways.
+    const required = [
+      ...(largeNodeAffinity?.requiredDuringSchedulingIgnoredDuringExecution?.nodeSelectorTerms ?? []),
+    ];
+
+    const hasNodeAffinity = preferred.length > 0 || required.length > 0;
+
+    if (!hasNodeAffinity && !podAffinity) {
       return undefined;
     }
 
     return {
-      ...(nodeAffinity && { nodeAffinity }),
+      ...(hasNodeAffinity && {
+        nodeAffinity: {
+          ...(preferred.length > 0 && { preferredDuringSchedulingIgnoredDuringExecution: preferred }),
+          ...(required.length > 0 && {
+            requiredDuringSchedulingIgnoredDuringExecution: { nodeSelectorTerms: required },
+          }),
+        },
+      }),
       ...(podAffinity && { podAffinity }),
     };
   }
 
   #getNodeAffinityRules(preset: MachinePreset): k8s.V1NodeAffinity | undefined {
-    if (!env.KUBERNETES_LARGE_MACHINE_POOL_LABEL) {
+    if (!env.KUBERNETES_LARGE_MACHINE_AFFINITY_ENABLED) {
       return undefined;
     }
 
@@ -414,13 +444,13 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       return {
         preferredDuringSchedulingIgnoredDuringExecution: [
           {
-            weight: 100,
+            weight: env.KUBERNETES_LARGE_MACHINE_AFFINITY_WEIGHT,
             preference: {
               matchExpressions: [
                 {
-                  key: "node.cluster.x-k8s.io/machinepool",
+                  key: env.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_KEY,
                   operator: "In",
-                  values: [env.KUBERNETES_LARGE_MACHINE_POOL_LABEL],
+                  values: [env.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_VALUE],
                 },
               ],
             },
@@ -436,14 +466,58 @@ export class KubernetesWorkloadManager implements WorkloadManager {
           {
             matchExpressions: [
               {
-                key: "node.cluster.x-k8s.io/machinepool",
+                key: env.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_KEY,
                 operator: "NotIn",
-                values: [env.KUBERNETES_LARGE_MACHINE_POOL_LABEL],
+                values: [env.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_VALUE],
               },
             ],
           },
         ],
       },
+    };
+  }
+
+  #getScheduleNodeAffinityRules(isScheduledRun: boolean): k8s.V1NodeAffinity | undefined {
+    if (!env.KUBERNETES_SCHEDULE_AFFINITY_ENABLED || !env.KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_VALUE) {
+      return undefined;
+    }
+
+    if (isScheduledRun) {
+      // soft preference for the schedule pool
+      return {
+        preferredDuringSchedulingIgnoredDuringExecution: [
+          {
+            weight: env.KUBERNETES_SCHEDULE_AFFINITY_WEIGHT,
+            preference: {
+              matchExpressions: [
+                {
+                  key: env.KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_KEY,
+                  operator: "In",
+                  values: [env.KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_VALUE],
+                },
+              ],
+            },
+          },
+        ],
+      };
+    }
+
+    // soft anti-affinity: non-schedule runs prefer to avoid the schedule pool
+    return {
+      preferredDuringSchedulingIgnoredDuringExecution: [
+        {
+          weight: env.KUBERNETES_SCHEDULE_ANTI_AFFINITY_WEIGHT,
+          preference: {
+            matchExpressions: [
+              {
+                key: env.KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_KEY,
+                operator: "NotIn",
+                values: [env.KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_VALUE],
+              },
+            ],
+          },
+        },
+      ],
     };
   }
 

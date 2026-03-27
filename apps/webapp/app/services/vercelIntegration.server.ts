@@ -413,7 +413,7 @@ export class VercelIntegrationService {
       });
 
       if (upsertResult.isErr()) {
-        logger.error("Failed to sync staging TRIGGER_SECRET_KEY to custom environment", {
+        logger.warn("Failed to sync staging TRIGGER_SECRET_KEY to custom environment", {
           projectId,
           newCustomEnvironmentId,
           error: upsertResult.error.message,
@@ -526,6 +526,7 @@ export class VercelIntegrationService {
       atomicBuilds?: EnvSlug[] | null;
       discoverEnvVars?: EnvSlug[] | null;
       syncEnvVarsMapping?: SyncEnvVarsMapping;
+      origin?: "marketplace" | "dashboard";
     }
   ): Promise<VercelProjectIntegrationWithParsedData | null> {
     const existing = await this.getVercelProjectIntegration(projectId);
@@ -544,8 +545,9 @@ export class VercelIntegrationService {
         vercelStagingEnvironment: params.vercelStagingEnvironment ?? null,
       },
       //This is intentionally not updated here, in case of resetting the onboarding it should not override the existing mapping with an empty one
-      syncEnvVarsMapping: existing.parsedIntegrationData.syncEnvVarsMapping, 
+      syncEnvVarsMapping: existing.parsedIntegrationData.syncEnvVarsMapping,
       onboardingCompleted: true,
+      onboardingOrigin: params.origin ?? existing.parsedIntegrationData.onboardingOrigin,
     };
 
     const updated = await this.#prismaClient.organizationProjectIntegration.update({

@@ -29,11 +29,29 @@ export const BackgroundWorkerSourceFileMetadata = z.object({
 
 export type BackgroundWorkerSourceFileMetadata = z.infer<typeof BackgroundWorkerSourceFileMetadata>;
 
+export const PromptResource = z.object({
+  id: z.string(),
+  description: z.string().optional(),
+  filePath: z.string(),
+  exportName: z.string().optional(),
+  /** The default template content */
+  content: z.string().optional(),
+  /** Default model identifier */
+  model: z.string().optional(),
+  /** Default model config (temperature, maxTokens, etc.) */
+  config: z.record(z.unknown()).optional(),
+  /** JSONSchema7 for template variables */
+  variableSchema: z.unknown().optional(),
+});
+
+export type PromptResource = z.infer<typeof PromptResource>;
+
 export const BackgroundWorkerMetadata = z.object({
   packageVersion: z.string(),
   contentHash: z.string(),
   cliPackageVersion: z.string().optional(),
   tasks: z.array(TaskResource),
+  prompts: z.array(PromptResource).optional(),
   queues: z.array(QueueManifest).optional(),
   sourceFiles: z.array(BackgroundWorkerSourceFileMetadata).optional(),
   runtime: z.string().optional(),

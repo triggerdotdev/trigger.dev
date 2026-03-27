@@ -21,6 +21,7 @@ import {
   MachineMemory,
   MachinePresetName,
   RetryOptions,
+  PromptMetadata,
   TaskMetadata,
   TaskRunContext,
 } from "../schemas/index.js";
@@ -1027,6 +1028,13 @@ export type TaskMetadataWithFunctions = TaskMetadata & {
     onStart?: (payload: any, params: StartFnParams) => Promise<void>;
     onStartAttempt?: (payload: any, params: StartAttemptFnParams) => Promise<void>;
     parsePayload?: AnySchemaParseFn;
+  };
+  schema?: TaskSchema;
+};
+
+export type PromptMetadataWithFunctions = PromptMetadata & {
+  fns: {
+    resolve: (variables: Record<string, unknown>) => Promise<unknown>;
   };
   schema?: TaskSchema;
 };

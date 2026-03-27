@@ -210,7 +210,11 @@ export class OrganizationsPresenter {
     })[];
   }) {
     if (environmentSlug) {
-      const env = environments.find((e) => e.slug === environmentSlug);
+      const env = environments.find(
+        (e) =>
+          e.slug === environmentSlug &&
+          (e.type !== "DEVELOPMENT" || e.orgMember?.userId === user.id)
+      );
       if (env) {
         return env;
       }

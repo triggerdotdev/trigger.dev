@@ -18,8 +18,9 @@
  *   WATCHDOG_PID_FILE      - Path to write the watchdog PID file
  */
 
-import { readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
+// @crumbs - watchdog runs as detached process, trail imported directly
 
 const POLL_INTERVAL_MS = 1000;
 
@@ -32,6 +33,7 @@ const apiUrl = process.env.WATCHDOG_API_URL!;
 const apiKey = process.env.WATCHDOG_API_KEY!;
 const activeRunsPath = process.env.WATCHDOG_ACTIVE_RUNS!;
 const pidFilePath = process.env.WATCHDOG_PID_FILE!;
+const tmpDir = process.env.WATCHDOG_TMP_DIR;
 
 if (!parentPid || !apiUrl || !apiKey || !activeRunsPath || !pidFilePath) {
   process.exit(1);
@@ -73,6 +75,15 @@ function cleanup() {
   try {
     unlinkSync(activeRunsPath);
   } catch {}
+}
+
+function cleanupTmpDir() {
+  if (!tmpDir) return;
+  try {
+    rmSync(tmpDir, { recursive: true, force: true });
+  } catch {
+    // Best effort — may fail on Windows with EBUSY
+  }
 }
 
 function isParentAlive(): boolean {
@@ -130,6 +141,7 @@ async function onParentDied(): Promise<void> {
     }
   }
 
+  cleanupTmpDir();
   cleanup();
   process.exit(0);
 }

@@ -1209,9 +1209,19 @@ function createYAxisFormatter(
       formatDurationMilliseconds(value * 1000, { style: "short" });
   }
 
+  if (format === "durationNs") {
+    return (value: number): string =>
+      formatDurationMilliseconds(value / 1_000_000, { style: "short" });
+  }
+
   if (format === "costInDollars" || format === "cost") {
     return (value: number): string => {
       const dollars = format === "cost" ? value / 100 : value;
+      if (dollars === 0) return "$0";
+      if (Math.abs(dollars) >= 1000) return `$${(dollars / 1000).toFixed(1)}K`;
+      if (Math.abs(dollars) >= 1) return `$${dollars.toFixed(2)}`;
+      if (Math.abs(dollars) >= 0.01) return `$${dollars.toFixed(4)}`;
+      if (Math.abs(dollars) >= 0.0001) return `$${dollars.toFixed(6)}`;
       return formatCurrencyAccurate(dollars);
     };
   }

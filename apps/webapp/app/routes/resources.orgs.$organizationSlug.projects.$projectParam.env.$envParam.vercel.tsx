@@ -113,6 +113,7 @@ const CompleteOnboardingFormSchema = z.object({
   syncEnvVarsMapping: z.string().optional(),
   next: z.string().optional(),
   skipRedirect: z.string().optional().transform((val) => val === "true"),
+  origin: z.string().optional(),
 });
 
 const SkipOnboardingFormSchema = z.object({
@@ -292,6 +293,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         syncEnvVarsMapping,
         next,
         skipRedirect,
+        origin,
       } = submission.value;
 
       const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
@@ -305,6 +307,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         atomicBuilds,
         discoverEnvVars,
         syncEnvVarsMapping: parsedSyncEnvVarsMapping,
+        origin: origin === "marketplace" ? "marketplace" : "dashboard",
       });
 
       if (result) {

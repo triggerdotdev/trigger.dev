@@ -69,7 +69,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const parsed = VercelConnectSchema.safeParse(Object.fromEntries(url.searchParams));
   if (!parsed.success) {
-    logger.error("Invalid Vercel connect params", { error: parsed.error });
+    logger.warn("Invalid Vercel connect params", { error: parsed.error });
     throw new Response("Invalid parameters", { status: 400 });
   }
 
@@ -77,7 +77,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const validationResult = await validateVercelOAuthState(state);
   if (!validationResult.ok) {
-    logger.error("Invalid Vercel OAuth state JWT", { error: validationResult.error });
+    logger.warn("Invalid Vercel OAuth state JWT", { error: validationResult.error });
 
     if (
       validationResult.error?.includes("expired") ||
@@ -109,7 +109,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   });
 
   if (!project) {
-    logger.error("Project not found or access denied", {
+    logger.warn("Project not found or access denied", {
       projectId: stateData.projectId,
       userId,
     });
@@ -132,7 +132,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   });
 
   if (!environment) {
-    logger.error("Environment not found", {
+    logger.warn("Environment not found", {
       projectId: project.id,
       environmentSlug: stateData.environmentSlug,
     });

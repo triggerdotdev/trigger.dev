@@ -85,6 +85,10 @@
 }
 
 @layer utilities {
+  .scrollbar-gutter-stable {
+    scrollbar-gutter: stable;
+  }
+
   .animated-gradient-glow {
     position: relative;
     overflow: visible;

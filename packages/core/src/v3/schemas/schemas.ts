@@ -221,6 +221,26 @@ export const TaskManifest = z.object({
 
 export type TaskManifest = z.infer<typeof TaskManifest>;
 
+const promptMetadata = {
+  id: z.string(),
+  description: z.string().optional(),
+  content: z.string().optional(),
+  model: z.string().optional(),
+  config: z.record(z.unknown()).optional(),
+  variableSchema: z.unknown().optional(),
+};
+
+export const PromptMetadata = z.object(promptMetadata);
+
+export type PromptMetadata = z.infer<typeof PromptMetadata>;
+
+export const PromptManifest = z.object({
+  ...promptMetadata,
+  ...taskFileMetadata,
+});
+
+export type PromptManifest = z.infer<typeof PromptManifest>;
+
 export const PostStartCauses = z.enum(["index", "create", "restore"]);
 export type PostStartCauses = z.infer<typeof PostStartCauses>;
 

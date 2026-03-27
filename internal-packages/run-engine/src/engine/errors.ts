@@ -69,11 +69,14 @@ export function runStatusFromError(
   }
 }
 
+export type ServiceValidationErrorLevel = "error" | "warn" | "info";
+
 export class ServiceValidationError extends Error {
   constructor(
     message: string,
     public status?: number,
-    public metadata?: Record<string, unknown>
+    public metadata?: Record<string, unknown>,
+    public logLevel?: ServiceValidationErrorLevel
   ) {
     super(message);
     this.name = "ServiceValidationError";

@@ -22,6 +22,7 @@ import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { unsafeExtractIdempotencyKeyScope, unsafeExtractIdempotencyKeyUser } from "@trigger.dev/core/v3/serverOnly";
+import { RunAnnotations } from "@trigger.dev/core/v3";
 import { type TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import EventEmitter from "node:events";
@@ -528,7 +529,7 @@ export class RunsReplicationService {
     this._lastAcknowledgedAt = now;
     this._lastAcknowledgedLsn = this._latestCommitEndLsn;
 
-    this.logger.info("acknowledge_latest_transaction", {
+    this.logger.debug("acknowledge_latest_transaction", {
       commitEndLsn: this._latestCommitEndLsn,
       lastAcknowledgedAt: this._lastAcknowledgedAt,
     });
@@ -866,6 +867,8 @@ export class RunsReplicationService {
       ? calculateErrorFingerprint(run.error)
       : '';
 
+    const annotations = this.#parseAnnotations(run.annotations);
+
     // Return array matching TASK_RUN_COLUMNS order
     return [
       run.runtimeEnvironmentId, // environment_id
@@ -916,7 +919,14 @@ export class RunsReplicationService {
       run.bulkActionGroupIds ?? [], // bulk_action_group_ids
       run.masterQueue ?? "", // worker_queue
       run.maxDurationInSeconds ?? null, // max_duration_in_seconds
+      annotations?.triggerSource ?? "", // trigger_source
+      annotations?.rootTriggerSource ?? "", // root_trigger_source
+      run.isWarmStart ?? null, // is_warm_start
     ];
+  }
+
+  #parseAnnotations(annotations: unknown) {
+    return RunAnnotations.safeParse(annotations).data;
   }
 
   async #preparePayloadInsert(run: TaskRun, _version: bigint): Promise<PayloadInsertArray> {

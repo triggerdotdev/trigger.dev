@@ -51,6 +51,7 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  type ResizableSnapshot,
 } from "~/components/primitives/Resizable";
 import { ShortcutKey, variants } from "~/components/primitives/ShortcutKey";
 import { Slider } from "~/components/primitives/Slider";
@@ -119,7 +120,7 @@ const resizableSettings = {
     },
     inspector: {
       id: "inspector",
-      default: "430px" as const,
+      default: "500px" as const,
       min: "50px" as const,
     },
   },
@@ -303,7 +304,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 type LoaderData = SerializeFrom<typeof loader>;
 
 export default function Page() {
-  const { run, trace, maximumLiveReloadingSetting, runsList } = useLoaderData<typeof loader>();
+  const { run, trace, maximumLiveReloadingSetting, runsList, resizable } =
+    useLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -427,9 +429,10 @@ export default function Page() {
             run={run}
             trace={trace}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
+            resizable={resizable}
           />
         ) : (
-          <NoLogsView run={run} />
+          <NoLogsView run={run} resizable={resizable} />
         )}
       </PageBody>
     </>
@@ -458,7 +461,8 @@ function TraceView({
   run,
   trace,
   maximumLiveReloadingSetting,
-}: Pick<LoaderData, "run" | "trace" | "maximumLiveReloadingSetting">) {
+  resizable,
+}: Pick<LoaderData, "run" | "trace" | "maximumLiveReloadingSetting" | "resizable">) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -505,7 +509,7 @@ function TraceView({
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
       <ResizablePanelGroup
         autosaveId={resizableSettings.parent.autosaveId}
-        // snapshot={resizable.parent}
+        snapshot={resizable.parent as ResizableSnapshot}
         className="h-full max-h-full"
       >
         <ResizablePanel
@@ -535,6 +539,7 @@ function TraceView({
             rootRun={run.rootTaskRun}
             parentRun={run.parentTaskRun}
             isCompleted={run.completedAt !== null}
+            treeSnapshot={resizable.tree as ResizableSnapshot}
           />
         </ResizablePanel>
         <ResizableHandle id={resizableSettings.parent.handleId} />
@@ -560,7 +565,7 @@ function TraceView({
   );
 }
 
-function NoLogsView({ run }: Pick<LoaderData, "run">) {
+function NoLogsView({ run, resizable }: Pick<LoaderData, "run" | "resizable">) {
   const plan = useCurrentPlan();
   const organization = useOrganization();
 
@@ -580,7 +585,7 @@ function NoLogsView({ run }: Pick<LoaderData, "run">) {
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
       <ResizablePanelGroup
         autosaveId={resizableSettings.parent.autosaveId}
-        // snapshot={resizable.parent}
+        snapshot={resizable.parent as ResizableSnapshot}
         className="h-full max-h-full"
       >
         <ResizablePanel
@@ -671,6 +676,7 @@ type TasksTreeViewProps = {
     spanId: string;
   } | null;
   isCompleted: boolean;
+  treeSnapshot?: ResizableSnapshot;
 };
 
 function TasksTreeView({
@@ -687,6 +693,7 @@ function TasksTreeView({
   rootRun,
   parentRun,
   isCompleted,
+  treeSnapshot,
 }: TasksTreeViewProps) {
   const isAdmin = useHasAdminAccess();
   const [filterText, setFilterText] = useState("");
@@ -770,7 +777,7 @@ function TasksTreeView({
           onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
         />
       </div>
-      <ResizablePanelGroup autosaveId={resizableSettings.tree.autosaveId}>
+      <ResizablePanelGroup autosaveId={resizableSettings.tree.autosaveId} snapshot={treeSnapshot}>
         {/* Tree list */}
         <ResizablePanel
           id={resizableSettings.tree.tree.id}

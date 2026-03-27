@@ -34,10 +34,7 @@ function initializeClient() {
       url: process.env.BILLING_API_URL,
       apiKey: process.env.BILLING_API_KEY,
     });
-    console.log(`🤑 Billing client initialized: ${process.env.BILLING_API_URL}`);
     return client;
-  } else {
-    console.log(`🤑 Billing client not initialized`);
   }
 }
 
@@ -409,6 +406,38 @@ export async function setConcurrencyAddOn(organizationId: string, amount: number
   }
 }
 
+export async function setSeatsAddOn(organizationId: string, amount: number) {
+  if (!client) return undefined;
+
+  try {
+    const result = await client.setAddOn(organizationId, { type: "seats", amount });
+    if (!result.success) {
+      logger.error("Error setting seats add on - no success", { error: result.error });
+      return undefined;
+    }
+    return result;
+  } catch (e) {
+    logger.error("Error setting seats add on - caught error", { error: e });
+    return undefined;
+  }
+}
+
+export async function setBranchesAddOn(organizationId: string, amount: number) {
+  if (!client) return undefined;
+
+  try {
+    const result = await client.setAddOn(organizationId, { type: "branches", amount });
+    if (!result.success) {
+      logger.error("Error setting branches add on - no success", { error: result.error });
+      return undefined;
+    }
+    return result;
+  } catch (e) {
+    logger.error("Error setting branches add on - caught error", { error: e });
+    return undefined;
+  }
+}
+
 export async function getUsage(organizationId: string, { from, to }: { from: Date; to: Date }) {
   if (!client) return undefined;
 
@@ -608,6 +637,32 @@ export async function enqueueBuild(
   }
 
   return result;
+}
+
+export async function triggerInitialDeployment(
+  projectId: string,
+  options: { environment: "preview" | "prod" | "staging" }
+): Promise<void> {
+  if (!client) return;
+
+  const [error, result] = await tryCatch(client.triggerInitialDeployment(projectId, options));
+
+  if (error) {
+    logger.warn("Error triggering initial deployment", {
+      projectId,
+      environment: options.environment,
+      error,
+    });
+    return;
+  }
+
+  if (!result.success) {
+    logger.warn("Failed to trigger initial deployment", {
+      projectId,
+      environment: options.environment,
+      error: result.error,
+    });
+  }
 }
 
 function isCloud(): boolean {
