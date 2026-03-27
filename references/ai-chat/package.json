@@ -17,6 +17,7 @@
     "@ai-sdk/react": "^3.0.0",
     "@prisma/adapter-pg": "^7.4.2",
     "@prisma/client": "^7.4.2",
+    "@e2b/code-interpreter": "^2.4.0",
     "@trigger.dev/sdk": "workspace:*",
     "ai": "^6.0.0",
     "next": "15.3.3",

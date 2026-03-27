@@ -2181,6 +2181,9 @@ importers:
       '@ai-sdk/react':
         specifier: ^3.0.0
         version: 3.0.170(react@19.1.0)(zod@3.25.76)
+      '@e2b/code-interpreter':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@prisma/adapter-pg':
         specifier: ^7.4.2
         version: 7.8.0
@@ -4104,6 +4107,9 @@ packages:
   '@bufbuild/protobuf@1.10.0':
     resolution: {integrity: sha512-QDdVFLoN93Zjg36NoQPZfsVH9tZew7wKDKyV5qRdj8ntT4wQCOradQjRaTdwMhWUYsgKsvCINKKm87FdEk96Ag==}
 
+  '@bufbuild/protobuf@2.12.0':
+    resolution: {integrity: sha512-B/XlCaFIP8LOwzo+bz5uFzATYokcwCKQcghqnlfwSmM5eX/qTkvDBnDPs+gXtX/RyjxJ4DRikECcPJbyALA8FA==}
+
   '@bufbuild/protobuf@2.2.5':
     resolution: {integrity: sha512-/g5EzJifw5GF8aren8wZ/G5oMuPoGeS6MQD3ca8ddcvdXR5UELUfdTZITCGNhNXynY/AYl3Z4plmxdj/tRl/hQ==}
 
@@ -4366,6 +4372,10 @@ packages:
   '@e2b/code-interpreter@1.1.0':
     resolution: {integrity: sha512-T54U7WS56ou11ytoxlYllBRBM+MYBpOvVZQa1p1qE4KDZBKJd9m1kAA0PqHjy5T6f/tSv4w5wlq4oyExl4QLLA==}
     engines: {node: '>=18'}
+
+  '@e2b/code-interpreter@2.4.0':
+    resolution: {integrity: sha512-6yLi0I2/FBhB6beqtuiFMTajB3PHQw+5+apuI3QdEv1Rx8e2Xp0h37SL0Y6tuVJQ2Frp7P3wWT77Wvy6l6OHPA==}
+    engines: {node: '>=20'}
 
   '@effect/platform@0.63.2':
     resolution: {integrity: sha512-b39pVFw0NGo/tXjGShW7Yg0M+kG7bRrFR6+dQ3aIu99ePTkTp6bGb/kDB7n+dXsFFdIqHsQGYESeYcOQngxdFQ==}
@@ -5810,6 +5820,10 @@ packages:
   '@isaacs/cliui@8.0.2':
     resolution: {integrity: sha512-O8jcjabXaleOG9DQ0+ARXWZBTfnP4WNAqzuiJK7ll44AmxGKv/J2M4TPjxjY3znBCfvBXFzucm1twdyFybFqEA==}
     engines: {node: '>=12'}
+
+  '@isaacs/cliui@9.0.0':
+    resolution: {integrity: sha512-AokJm4tuBHillT+FpMtxQ60n8ObyXBatq7jD2/JA9dxbDDokKQm8KMht5ibGzLVU9IJDIKK4TPKgMHEYMn3lMg==}
+    engines: {node: '>=18'}
 
   '@isaacs/fs-minipass@4.0.1':
     resolution: {integrity: sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==}
@@ -12037,6 +12051,10 @@ packages:
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
 
+  balanced-match@4.0.4:
+    resolution: {integrity: sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==}
+    engines: {node: 18 || 20 || >=22}
+
   bare-events@2.8.2:
     resolution: {integrity: sha512-riJjyv1/mHLIPX4RwiK+oW9/4c3TEUeORHKefKAKnZ5kyslbN+HXowtbaVEqt4IMUB7OXlfixcs6gsFeo/jhiQ==}
     peerDependencies:
@@ -12156,6 +12174,10 @@ packages:
 
   brace-expansion@2.0.1:
     resolution: {integrity: sha512-XnAIvQ8eM+kC6aULx6wuQiwVsnzsi9d3WxzV3FpWTGA19F621kwdbsAcFKXgKUHZWsy+mY6iL1sHTxWEFCytDA==}
+
+  brace-expansion@5.0.5:
+    resolution: {integrity: sha512-VZznLgtwhn+Mact9tfiwx64fA9erHH/MCXEUfB/0bX/6Fz6ny5EGTXYltMocqg4xFAQZtnO3DHWWXi8RiuN7cQ==}
+    engines: {node: 18 || 20 || >=22}
 
   braces@3.0.3:
     resolution: {integrity: sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA==}
@@ -13335,6 +13357,9 @@ packages:
     resolution: {integrity: sha512-XJgGhoR/CLpqshm4d3L7rzH6t8NgDFUIIpztYlLHIApeJjMZKYJMz2zxPsYxnejq5h3ELYSw/RBsi3t5h7gNTA==}
     engines: {node: '>= 8.0'}
 
+  dockerfile-ast@0.7.1:
+    resolution: {integrity: sha512-oX/A4I0EhSkGqrFv0YuvPkBUSYp1XiY8O8zAKc8Djglx8ocz+JfOr8gP0ryRMC2myqvDLagmnZaU9ot1vG2ijw==}
+
   dockerode@4.0.10:
     resolution: {integrity: sha512-8L/P9JynLBiG7/coiA4FlQXegHltRqS0a+KqI44P1zgQh8QLHTg7FKOwhkBgSJwZTeHsq30WRoVFLuwkfK0YFg==}
     engines: {node: '>= 8.0'}
@@ -13430,6 +13455,10 @@ packages:
   e2b@1.2.1:
     resolution: {integrity: sha512-ii/Bw55ecxgORqkArKNbuVTwqLgVZ0rH1X3J/NOe4LMZaVETm3qNpPBjoPkpQAsQjw2ew0Ad2sd54epqm9nLCw==}
     engines: {node: '>=18'}
+
+  e2b@2.19.1:
+    resolution: {integrity: sha512-xIDDAZMt/QWPmyLGjSF5RWyuhCZzjDl4cXnE8oe/obwJ4sI3yaTlRxIPea9t2QNAsnH5F2lgUw+v4kLkABG03Q==}
+    engines: {node: '>=20'}
 
   eastasianwidth@0.2.0:
     resolution: {integrity: sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==}
@@ -14574,6 +14603,12 @@ packages:
     deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
+  glob@11.1.0:
+    resolution: {integrity: sha512-vuNwKSaKiqm7g0THUBu2x7ckSs3XJLXE+2ssL7/MfTGPLLcrJQ/4Uq1CjPTtO5cCIiRxqvN6Twy1qOwhL0Xjcw==}
+    engines: {node: 20 || >=22}
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+    hasBin: true
+
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
     deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
@@ -15287,6 +15322,10 @@ packages:
 
   jackspeak@4.0.1:
     resolution: {integrity: sha512-cub8rahkh0Q/bw1+GxP7aeSe29hHHn2V4m29nnDlvCdlgU+3UGxkZp7Z53jLUdpX3jdTO0nJZUDl3xvbWc2Xog==}
+    engines: {node: 20 || >=22}
+
+  jackspeak@4.2.3:
+    resolution: {integrity: sha512-ykkVRwrYvFm1nb2AJfKKYPr0emF6IiXDYUaFx4Zn9ZuIH7MrzEZ3sD5RlqGXNRpHtvUHJyOnCEFxOlNDtGo7wg==}
     engines: {node: 20 || >=22}
 
   javascript-stringify@2.1.0:
@@ -16348,6 +16387,10 @@ packages:
     resolution: {integrity: sha512-ethXTt3SGGR+95gudmqJ1eNhRO7eGEGIgYA9vnPatK4/etz2MEVDno5GMCibdMTuBMyElzIlgxMna3K94XDIDQ==}
     engines: {node: 20 || >=22}
 
+  minimatch@10.2.5:
+    resolution: {integrity: sha512-MULkVLfKGYDFYejP07QOurDLLQpcjk7Fw+7jXS2R2czRQzR56yHRveU5NDJEOviH+hETZKSkIk5c+T23GjFUMg==}
+    engines: {node: 18 || 20 || >=22}
+
   minimatch@3.1.5:
     resolution: {integrity: sha512-VgjWUsnnT6n+NUk6eZq77zeFdpW2LWDzP6zFGrCbHXiYNul5Dzqk2HHQ5uFH2DNW5Xbp8+jVzaeNt94ssEEl4w==}
 
@@ -16984,8 +17027,14 @@ packages:
       zod:
         optional: true
 
+  openapi-fetch@0.14.1:
+    resolution: {integrity: sha512-l7RarRHxlEZYjMLd/PR0slfMVse2/vvIAGm75/F7J6MlQ8/b9uUQmUF2kCPrQhJqMXSxmYWObVgeYXbFYzZR+A==}
+
   openapi-fetch@0.9.8:
     resolution: {integrity: sha512-zM6elH0EZStD/gSiNlcPrzXcVQ/pZo3BDvC6CDwRDUt1dDzxlshpmQnpD6cZaJ39THaSmwVCxxRrPKNM1hHrDg==}
+
+  openapi-typescript-helpers@0.0.15:
+    resolution: {integrity: sha512-opyTPaunsklCBpTK8JGef6mfPhLSnyy5a0IN9vKtx3+4aExf+KxEqYwIy3hqkedXIB97u357uLMJsOnm3GVjsw==}
 
   openapi-typescript-helpers@0.0.8:
     resolution: {integrity: sha512-1eNjQtbfNi5Z/kFhagDIaIRj6qqDzhjNJKz8cmMW0CVdGwT6e1GLbAfgI0d28VTJa1A8jz82jm/4dG8qNoNS8g==}
@@ -23198,6 +23247,8 @@ snapshots:
 
   '@bufbuild/protobuf@1.10.0': {}
 
+  '@bufbuild/protobuf@2.12.0': {}
+
   '@bufbuild/protobuf@2.2.5': {}
 
   '@bugsnag/cuid@3.1.1': {}
@@ -23510,6 +23561,11 @@ snapshots:
       '@connectrpc/connect': 1.4.0(@bufbuild/protobuf@1.10.0)
       undici: 5.29.0
 
+  '@connectrpc/connect-web@2.0.0-rc.3(@bufbuild/protobuf@2.12.0)(@connectrpc/connect@2.0.0-rc.3(@bufbuild/protobuf@2.12.0))':
+    dependencies:
+      '@bufbuild/protobuf': 2.12.0
+      '@connectrpc/connect': 2.0.0-rc.3(@bufbuild/protobuf@2.12.0)
+
   '@connectrpc/connect-web@2.0.0-rc.3(@bufbuild/protobuf@2.2.5)(@connectrpc/connect@2.0.0-rc.3(@bufbuild/protobuf@2.2.5))':
     dependencies:
       '@bufbuild/protobuf': 2.2.5
@@ -23518,6 +23574,10 @@ snapshots:
   '@connectrpc/connect@1.4.0(@bufbuild/protobuf@1.10.0)':
     dependencies:
       '@bufbuild/protobuf': 1.10.0
+
+  '@connectrpc/connect@2.0.0-rc.3(@bufbuild/protobuf@2.12.0)':
+    dependencies:
+      '@bufbuild/protobuf': 2.12.0
 
   '@connectrpc/connect@2.0.0-rc.3(@bufbuild/protobuf@2.2.5)':
     dependencies:
@@ -23575,6 +23635,10 @@ snapshots:
   '@e2b/code-interpreter@1.1.0':
     dependencies:
       e2b: 1.2.1
+
+  '@e2b/code-interpreter@2.4.0':
+    dependencies:
+      e2b: 2.19.1
 
   '@effect/platform@0.63.2(@effect/schema@0.72.2(effect@3.7.2))(effect@3.7.2)':
     dependencies:
@@ -24578,6 +24642,8 @@ snapshots:
       strip-ansi-cjs: strip-ansi@6.0.1
       wrap-ansi: 8.1.0
       wrap-ansi-cjs: wrap-ansi@7.0.0
+
+  '@isaacs/cliui@9.0.0': {}
 
   '@isaacs/fs-minipass@4.0.1':
     dependencies:
@@ -32999,6 +33065,8 @@ snapshots:
 
   balanced-match@1.0.2: {}
 
+  balanced-match@4.0.4: {}
+
   bare-events@2.8.2:
     optional: true
 
@@ -33141,6 +33209,10 @@ snapshots:
   brace-expansion@2.0.1:
     dependencies:
       balanced-match: 1.0.2
+
+  brace-expansion@5.0.5:
+    dependencies:
+      balanced-match: 4.0.4
 
   braces@3.0.3:
     dependencies:
@@ -34340,6 +34412,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  dockerfile-ast@0.7.1:
+    dependencies:
+      vscode-languageserver-textdocument: 1.0.12
+      vscode-languageserver-types: 3.17.5
+
   dockerode@4.0.10:
     dependencies:
       '@balena/dockerignore': 1.0.2
@@ -34455,6 +34532,19 @@ snapshots:
       compare-versions: 6.1.1
       openapi-fetch: 0.9.8
       platform: 1.3.6
+
+  e2b@2.19.1:
+    dependencies:
+      '@bufbuild/protobuf': 2.12.0
+      '@connectrpc/connect': 2.0.0-rc.3(@bufbuild/protobuf@2.12.0)
+      '@connectrpc/connect-web': 2.0.0-rc.3(@bufbuild/protobuf@2.12.0)(@connectrpc/connect@2.0.0-rc.3(@bufbuild/protobuf@2.12.0))
+      chalk: 5.3.0
+      compare-versions: 6.1.1
+      dockerfile-ast: 0.7.1
+      glob: 11.1.0
+      openapi-fetch: 0.14.1
+      platform: 1.3.6
+      tar: 7.5.13
 
   eastasianwidth@0.2.0: {}
 
@@ -36035,6 +36125,15 @@ snapshots:
       package-json-from-dist: 1.0.0
       path-scurry: 2.0.0
 
+  glob@11.1.0:
+    dependencies:
+      foreground-child: 3.3.1
+      jackspeak: 4.2.3
+      minimatch: 10.2.5
+      minipass: 7.1.2
+      package-json-from-dist: 1.0.0
+      path-scurry: 2.0.0
+
   glob@7.2.3:
     dependencies:
       fs.realpath: 1.0.0
@@ -36830,6 +36929,10 @@ snapshots:
       '@isaacs/cliui': 8.0.2
     optionalDependencies:
       '@pkgjs/parseargs': 0.11.0
+
+  jackspeak@4.2.3:
+    dependencies:
+      '@isaacs/cliui': 9.0.0
 
   javascript-stringify@2.1.0: {}
 
@@ -38230,6 +38333,10 @@ snapshots:
     dependencies:
       brace-expansion: 2.0.1
 
+  minimatch@10.2.5:
+    dependencies:
+      brace-expansion: 5.0.5
+
   minimatch@3.1.5:
     dependencies:
       brace-expansion: 1.1.11
@@ -38945,9 +39052,15 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
+  openapi-fetch@0.14.1:
+    dependencies:
+      openapi-typescript-helpers: 0.0.15
+
   openapi-fetch@0.9.8:
     dependencies:
       openapi-typescript-helpers: 0.0.8
+
+  openapi-typescript-helpers@0.0.15: {}
 
   openapi-typescript-helpers@0.0.8: {}
 
