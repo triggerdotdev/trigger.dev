@@ -69,9 +69,13 @@ export class ComputeTemplateCreationService {
 
     // Required mode
     if (options.writer) {
-      await options.writer.write(
-        `event: log\ndata: ${JSON.stringify({ message: "Building compute template..." })}\n\n`
-      );
+      try {
+        await options.writer.write(
+          `event: log\ndata: ${JSON.stringify({ message: "Building compute template..." })}\n\n`
+        );
+      } catch {
+        // Stream may be closed if client disconnected - continue with template creation
+      }
     }
 
     logger.info("Creating compute template (required mode)", {
