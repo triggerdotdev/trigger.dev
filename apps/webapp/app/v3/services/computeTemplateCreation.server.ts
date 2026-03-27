@@ -46,13 +46,23 @@ export class ComputeTemplateCreationService {
     }
 
     if (mode === "shadow") {
-      this.createTemplate(options.imageReference, { background: true }).catch((error) => {
-        logger.error("Shadow compute template creation failed", {
-          id: options.deploymentFriendlyId,
-          imageReference: options.imageReference,
-          error: error instanceof Error ? error.message : String(error),
+      this.createTemplate(options.imageReference, { background: true })
+        .then((result) => {
+          if (!result.success) {
+            logger.error("Shadow template creation failed", {
+              id: options.deploymentFriendlyId,
+              imageReference: options.imageReference,
+              error: result.error,
+            });
+          }
+        })
+        .catch((error) => {
+          logger.error("Shadow template creation threw unexpectedly", {
+            id: options.deploymentFriendlyId,
+            imageReference: options.imageReference,
+            error: error instanceof Error ? error.message : String(error),
+          });
         });
-      });
       return;
     }
 
