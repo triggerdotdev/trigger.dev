@@ -195,7 +195,7 @@ export default function Page() {
   }, [location.search]);
 
   return (
-    <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+    <>
       <NavBar>
         <PageTitle title="Errors" />
       </NavBar>
@@ -269,7 +269,7 @@ export default function Page() {
           </TypedAwait>
         </Suspense>
       </PageBody>
-    </div>
+    </>
   );
 }
 
