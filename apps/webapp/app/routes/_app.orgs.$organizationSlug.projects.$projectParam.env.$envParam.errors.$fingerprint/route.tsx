@@ -991,7 +991,7 @@ function ActivityChart({
           dataKey="__timestamp"
           tickFormatter={xAxisFormatter}
           ticks={midnightTicks}
-          height={40}
+          height={24}
           axisLine={false}
           tickLine={false}
           tick={{ fontSize: 11, fill: "#878C99" }}
