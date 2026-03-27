@@ -15,7 +15,7 @@
  * function Chat() {
  *   const transport = useTriggerChatTransport<typeof chat>({
  *     task: "ai-chat",
- *     accessToken: () => fetchToken(),
+ *     accessToken: ({ chatId }) => fetchToken(chatId),
  *   });
  *
  *   const { messages, sendMessage } = useChat({ transport });
@@ -74,7 +74,7 @@ export type { InferChatUIMessage };
  * function Chat() {
  *   const transport = useTriggerChatTransport<typeof chat>({
  *     task: "ai-chat",
- *     accessToken: () => fetchToken(),
+ *     accessToken: ({ chatId }) => fetchToken(chatId),
  *   });
  *
  *   const { messages, sendMessage } = useChat({ transport });
@@ -90,10 +90,14 @@ export function useTriggerChatTransport<TTask extends AnyTask = AnyTask>(
   }
 
   // Keep onSessionChange up to date without recreating the transport
-  const { onSessionChange } = options;
+  const { onSessionChange, renewRunAccessToken } = options;
   useEffect(() => {
     ref.current?.setOnSessionChange(onSessionChange);
   }, [onSessionChange]);
+
+  useEffect(() => {
+    ref.current?.setRenewRunAccessToken(renewRunAccessToken);
+  }, [renewRunAccessToken]);
 
   return ref.current;
 }

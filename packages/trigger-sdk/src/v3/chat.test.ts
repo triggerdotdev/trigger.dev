@@ -92,6 +92,84 @@ describe("TriggerChatTransport", () => {
 
       expect(transport).toBeInstanceOf(TriggerChatTransport);
     });
+
+    it("should pass chatId and purpose to accessToken when triggering a run", async () => {
+      const accessTokenSpy = vi.fn().mockReturnValue("test-token");
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+          return new Response(JSON.stringify({ id: "run_resolve_at" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_tok",
+            },
+          });
+        }
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          return new Response(createSSEStream(sseEncode(sampleChunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: accessTokenSpy,
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-access-resolve",
+        messageId: undefined,
+        messages: [createUserMessage("Hi")],
+        abortSignal: undefined,
+      });
+      const reader = stream.getReader();
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+
+      expect(accessTokenSpy).toHaveBeenCalledWith({
+        chatId: "chat-access-resolve",
+        purpose: "trigger",
+      });
+    });
+
+    it("should pass chatId and purpose preload to accessToken when preloading", async () => {
+      const accessTokenSpy = vi.fn().mockReturnValue("test-token");
+
+      global.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ id: "run_preload_at" }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "x-trigger-jwt": "pub_pre",
+          },
+        })
+      );
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: accessTokenSpy,
+        baseURL: "https://api.test.trigger.dev",
+      });
+
+      await transport.preload("chat-preload-access");
+
+      expect(accessTokenSpy).toHaveBeenCalledWith({
+        chatId: "chat-preload-access",
+        purpose: "preload",
+      });
+    });
   });
 
   describe("sendMessages", () => {
@@ -105,16 +183,13 @@ describe("TriggerChatTransport", () => {
 
         // Handle the task trigger request
         if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
-          return new Response(
-            JSON.stringify({ id: triggerRunId }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": publicToken,
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: triggerRunId }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": publicToken,
+            },
+          });
         }
 
         // Handle the SSE stream request
@@ -171,16 +246,13 @@ describe("TriggerChatTransport", () => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
-          return new Response(
-            JSON.stringify({ id: "run_test" }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "pub_token",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: "run_test" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_token",
+            },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -221,7 +293,8 @@ describe("TriggerChatTransport", () => {
       );
 
       expect(triggerCall).toBeDefined();
-      const triggerUrl = typeof triggerCall![0] === "string" ? triggerCall![0] : triggerCall![0].toString();
+      const triggerUrl =
+        typeof triggerCall![0] === "string" ? triggerCall![0] : triggerCall![0].toString();
       expect(triggerUrl).toContain("/api/v1/tasks/my-chat-task/trigger");
 
       const triggerBody = JSON.parse(triggerCall![1]?.body as string);
@@ -237,16 +310,13 @@ describe("TriggerChatTransport", () => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         if (urlStr.includes("/trigger")) {
-          return new Response(
-            JSON.stringify({ id: "run_custom" }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "token",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: "run_custom" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "token",
+            },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -281,11 +351,14 @@ describe("TriggerChatTransport", () => {
 
       // Verify the stream URL uses the custom stream key
       const streamCall = fetchSpy.mock.calls.find((call: any[]) =>
-        (typeof call[0] === "string" ? call[0] : call[0].toString()).includes("/realtime/v1/streams/")
+        (typeof call[0] === "string" ? call[0] : call[0].toString()).includes(
+          "/realtime/v1/streams/"
+        )
       );
 
       expect(streamCall).toBeDefined();
-      const streamUrl = typeof streamCall![0] === "string" ? streamCall![0] : streamCall![0].toString();
+      const streamUrl =
+        typeof streamCall![0] === "string" ? streamCall![0] : streamCall![0].toString();
       expect(streamUrl).toContain("/realtime/v1/streams/run_custom/my-custom-stream");
     });
 
@@ -294,16 +367,13 @@ describe("TriggerChatTransport", () => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         if (urlStr.includes("/trigger")) {
-          return new Response(
-            JSON.stringify({ id: "run_hdrs" }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "token",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: "run_hdrs" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "token",
+            },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -338,7 +408,9 @@ describe("TriggerChatTransport", () => {
 
       // Verify the stream request includes custom headers
       const streamCall = fetchSpy.mock.calls.find((call: any[]) =>
-        (typeof call[0] === "string" ? call[0] : call[0].toString()).includes("/realtime/v1/streams/")
+        (typeof call[0] === "string" ? call[0] : call[0].toString()).includes(
+          "/realtime/v1/streams/"
+        )
       );
 
       expect(streamCall).toBeDefined();
@@ -369,16 +441,13 @@ describe("TriggerChatTransport", () => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         if (urlStr.includes("/trigger")) {
-          return new Response(
-            JSON.stringify({ id: triggerRunId }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": publicToken,
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: triggerRunId }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": publicToken,
+            },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -435,6 +504,245 @@ describe("TriggerChatTransport", () => {
     });
   });
 
+  describe("renewRunAccessToken", () => {
+    it("reconnects after renewing PAT when SSE returns 401", async () => {
+      const renewSpy = vi.fn().mockResolvedValue("fresh_pat");
+      const streamFetchCountByRun = new Map<string, number>();
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/trigger")) {
+          return new Response(JSON.stringify({ id: "run_renew_sse" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_initial",
+            },
+          });
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          const runMatch = urlStr.match(/\/streams\/([^/]+)\//);
+          const runKey = runMatch?.[1] ?? "unknown";
+          const n = (streamFetchCountByRun.get(runKey) ?? 0) + 1;
+          streamFetchCountByRun.set(runKey, n);
+
+          if (n === 2) {
+            return new Response(null, { status: 401 });
+          }
+          const chunks: UIMessageChunk[] = [
+            { type: "text-start", id: "p1" },
+            { type: "text-end", id: "p1" },
+          ];
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "trigger-token",
+        baseURL: "https://api.test.trigger.dev",
+        renewRunAccessToken: renewSpy,
+      });
+
+      const firstStream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-renew-sse",
+        messageId: undefined,
+        messages: [createUserMessage("Hi")],
+        abortSignal: undefined,
+      });
+      const firstReader = firstStream.getReader();
+      while (true) {
+        const { done } = await firstReader.read();
+        if (done) break;
+      }
+
+      const stream = await transport.reconnectToStream({ chatId: "chat-renew-sse" });
+      expect(stream).toBeInstanceOf(ReadableStream);
+
+      const reader = stream!.getReader();
+      const receivedChunks: UIMessageChunk[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        receivedChunks.push(value);
+      }
+
+      expect(receivedChunks.length).toBeGreaterThan(0);
+      expect(renewSpy).toHaveBeenCalledWith({
+        chatId: "chat-renew-sse",
+        runId: "run_renew_sse",
+      });
+
+      const patStreamCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(
+        (call: unknown[]) => {
+          const u = typeof call[0] === "string" ? call[0] : (call[0] as URL).toString();
+          if (!u.includes("/realtime/v1/streams/")) return false;
+          const h = (call[1] as RequestInit | undefined)?.headers as Record<string, string>;
+          return h?.["Authorization"] === "Bearer fresh_pat";
+        }
+      );
+      expect(patStreamCall).toBeDefined();
+    });
+
+    it("surfaces 401 when renewal returns no token on reconnect", async () => {
+      const renewSpy = vi.fn().mockResolvedValue(undefined);
+      const streamFetchCountByRun = new Map<string, number>();
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (urlStr.includes("/trigger")) {
+          return new Response(JSON.stringify({ id: "run_fail_renew" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_initial",
+            },
+          });
+        }
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          const runMatch = urlStr.match(/\/streams\/([^/]+)\//);
+          const runKey = runMatch?.[1] ?? "unknown";
+          const n = (streamFetchCountByRun.get(runKey) ?? 0) + 1;
+          streamFetchCountByRun.set(runKey, n);
+
+          if (n === 1) {
+            const turnDone = { type: "__trigger_turn_complete", publicAccessToken: "pub_initial" };
+            return new Response(createSSEStream(sseEncode([turnDone])), {
+              status: 200,
+              headers: {
+                "content-type": "text/event-stream",
+                "X-Stream-Version": "v1",
+              },
+            });
+          }
+          return new Response(null, { status: 401 });
+        }
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "trigger-token",
+        baseURL: "https://api.test.trigger.dev",
+        renewRunAccessToken: renewSpy,
+      });
+
+      const firstStream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-fail-renew",
+        messageId: undefined,
+        messages: [createUserMessage("Hi")],
+        abortSignal: undefined,
+      });
+      const fr = firstStream.getReader();
+      while (true) {
+        const { done } = await fr.read();
+        if (done) break;
+      }
+
+      const stream = await transport.reconnectToStream({ chatId: "chat-fail-renew" });
+      const reader = stream!.getReader();
+      await expect(reader.read()).rejects.toMatchObject({ status: 401 });
+      expect(renewSpy).toHaveBeenCalledWith({
+        chatId: "chat-fail-renew",
+        runId: "run_fail_renew",
+      });
+    });
+
+    it("retries sendInputStream after 401 when renewRunAccessToken returns a new PAT", async () => {
+      let inputCalls = 0;
+      const renewSpy = vi.fn().mockResolvedValue("pat_after_renew");
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/trigger")) {
+          return new Response(JSON.stringify({ id: "run_input_renew" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_session",
+            },
+          });
+        }
+
+        if (urlStr.includes("/input/")) {
+          inputCalls++;
+          if (inputCalls === 1) {
+            return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+          }
+          return new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          const completeChunk = { type: "__trigger_turn_complete", publicAccessToken: "pat_hold" };
+          return new Response(createSSEStream(sseEncode([completeChunk])), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "trigger-token",
+        baseURL: "https://api.test.trigger.dev",
+        renewRunAccessToken: renewSpy,
+      });
+
+      const s1 = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-first",
+        messageId: undefined,
+        messages: [createUserMessage("One")],
+        abortSignal: undefined,
+      });
+      const r1 = s1.getReader();
+      while (true) {
+        const { done } = await r1.read();
+        if (done) break;
+      }
+
+      const s2 = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-first",
+        messageId: undefined,
+        messages: [createUserMessage("One"), createUserMessage("Two")],
+        abortSignal: undefined,
+      });
+      const r2 = s2.getReader();
+      while (true) {
+        const { done } = await r2.read();
+        if (done) break;
+      }
+
+      expect(renewSpy).toHaveBeenCalledWith({
+        chatId: "chat-first",
+        runId: "run_input_renew",
+      });
+      expect(inputCalls).toBe(2);
+    });
+  });
+
   describe("createChatTransport", () => {
     it("should create a TriggerChatTransport instance", () => {
       const transport = createChatTransport({
@@ -466,16 +774,13 @@ describe("TriggerChatTransport", () => {
         if (urlStr.includes("/trigger")) {
           // Return with x-trigger-jwt header — this public token should be
           // used for the subsequent stream subscription request.
-          return new Response(
-            JSON.stringify({ id: "run_pat" }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "server-generated-public-token",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: "run_pat" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "server-generated-public-token",
+            },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -524,7 +829,9 @@ describe("TriggerChatTransport", () => {
 
       // Verify the stream subscription used the public token, not the caller token
       const streamCall = fetchSpy.mock.calls.find((call: any[]) =>
-        (typeof call[0] === "string" ? call[0] : call[0].toString()).includes("/realtime/v1/streams/")
+        (typeof call[0] === "string" ? call[0] : call[0].toString()).includes(
+          "/realtime/v1/streams/"
+        )
       );
       expect(streamCall).toBeDefined();
       const streamHeaders = streamCall![1]?.headers as Record<string, string>;
@@ -538,13 +845,10 @@ describe("TriggerChatTransport", () => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         if (urlStr.includes("/trigger")) {
-          return new Response(
-            JSON.stringify({ error: "Task not found" }),
-            {
-              status: 404,
-              headers: { "content-type": "application/json" },
-            }
-          );
+          return new Response(JSON.stringify({ error: "Task not found" }), {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          });
         }
 
         throw new Error(`Unexpected fetch URL: ${urlStr}`);
@@ -579,16 +883,13 @@ describe("TriggerChatTransport", () => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         if (urlStr.includes("/trigger")) {
-          return new Response(
-            JSON.stringify({ id: "run_abort" }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "token",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: "run_abort" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "token",
+            },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -597,7 +898,9 @@ describe("TriggerChatTransport", () => {
             async start(controller) {
               const encoder = new TextEncoder();
               controller.enqueue(
-                encoder.encode(`id: 0\ndata: ${JSON.stringify({ type: "text-start", id: "p1" })}\n\n`)
+                encoder.encode(
+                  `id: 0\ndata: ${JSON.stringify({ type: "text-start", id: "p1" })}\n\n`
+                )
               );
               // Wait for the test to signal it's done
               await streamWait;
@@ -659,16 +962,13 @@ describe("TriggerChatTransport", () => {
 
         if (urlStr.includes("/trigger")) {
           callCount++;
-          return new Response(
-            JSON.stringify({ id: `run_multi_${callCount}` }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": `token_${callCount}`,
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: `run_multi_${callCount}` }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": `token_${callCount}`,
+            },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -732,16 +1032,13 @@ describe("TriggerChatTransport", () => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         if (urlStr.includes("/trigger")) {
-          return new Response(
-            JSON.stringify({ id: `run_dyn_${tokenCallCount}` }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "stream-token",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: `run_dyn_${tokenCallCount}` }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "stream-token",
+            },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -802,16 +1099,13 @@ describe("TriggerChatTransport", () => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         if (urlStr.includes("/trigger")) {
-          return new Response(
-            JSON.stringify({ id: "run_body" }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "token",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: "run_body" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "token",
+            },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -866,16 +1160,13 @@ describe("TriggerChatTransport", () => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         if (urlStr.includes("/trigger")) {
-          return new Response(
-            JSON.stringify({ id: "run_regen" }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "token",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: "run_regen" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "token",
+            },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -936,16 +1227,13 @@ describe("TriggerChatTransport", () => {
 
         if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
           triggerCallCount++;
-          return new Response(
-            JSON.stringify({ id: "run_eid" }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "pub_token_eid",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: "run_eid" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_token_eid",
+            },
+          });
         }
 
         // Handle input stream sends (for second message)
@@ -1005,7 +1293,11 @@ describe("TriggerChatTransport", () => {
         trigger: "submit-message",
         chatId: "chat-eid",
         messageId: undefined,
-        messages: [createUserMessage("Hello"), createAssistantMessage("Hi!"), createUserMessage("What's up?")],
+        messages: [
+          createUserMessage("Hello"),
+          createAssistantMessage("Hi!"),
+          createUserMessage("What's up?"),
+        ],
         abortSignal: undefined,
       });
 
@@ -1032,16 +1324,13 @@ describe("TriggerChatTransport", () => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
-          return new Response(
-            JSON.stringify({ id: "run_minimal" }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "pub_token_minimal",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: "run_minimal" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_token_minimal",
+            },
+          });
         }
 
         // Capture input stream payloads (ApiClient wraps in { data: ... })
@@ -1055,10 +1344,7 @@ describe("TriggerChatTransport", () => {
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
-          const chunks = [
-            ...sampleChunks,
-            turnCompleteChunk,
-          ];
+          const chunks = [...sampleChunks, turnCompleteChunk];
           return new Response(createSSEStream(sseEncode(chunks)), {
             status: 200,
             headers: {
@@ -1119,16 +1405,13 @@ describe("TriggerChatTransport", () => {
 
         if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
           triggerPayload = JSON.parse(init?.body as string);
-          return new Response(
-            JSON.stringify({ id: "run_full" }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "pub_token_full",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: "run_full" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_token_full",
+            },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -1150,7 +1433,11 @@ describe("TriggerChatTransport", () => {
         baseURL: "https://api.test.trigger.dev",
       });
 
-      const messages = [createUserMessage("Hello"), createAssistantMessage("Hi!"), createUserMessage("More")];
+      const messages = [
+        createUserMessage("Hello"),
+        createAssistantMessage("Hi!"),
+        createUserMessage("More"),
+      ];
 
       await transport.sendMessages({
         trigger: "submit-message",
@@ -1175,16 +1462,13 @@ describe("TriggerChatTransport", () => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         if (urlStr.includes("/trigger")) {
-          return new Response(
-            JSON.stringify({ id: "run_abort_cleanup" }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "pub_token",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: "run_abort_cleanup" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_token",
+            },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -1247,16 +1531,13 @@ describe("TriggerChatTransport", () => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         if (urlStr.includes("/trigger")) {
-          return new Response(
-            JSON.stringify({ id: `run_async_${tokenCallCount}` }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "stream-token",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: `run_async_${tokenCallCount}` }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "stream-token",
+            },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -1308,16 +1589,13 @@ describe("TriggerChatTransport", () => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
-          return new Response(
-            JSON.stringify({ id: "run_async_wp" }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "stream-token",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: "run_async_wp" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "stream-token",
+            },
+          });
         }
 
         // Handle input stream sends
@@ -1379,7 +1657,11 @@ describe("TriggerChatTransport", () => {
         trigger: "submit-message",
         chatId: "chat-async-wp",
         messageId: undefined,
-        messages: [createUserMessage("Hello"), createAssistantMessage("Hi!"), createUserMessage("More")],
+        messages: [
+          createUserMessage("Hello"),
+          createAssistantMessage("Hi!"),
+          createUserMessage("More"),
+        ],
         abortSignal: undefined,
       });
 
@@ -1403,16 +1685,13 @@ describe("TriggerChatTransport", () => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         if (urlStr.includes("/trigger")) {
-          return new Response(
-            JSON.stringify({ id: "run_single" }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "pub_token",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: "run_single" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_token",
+            },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -1473,16 +1752,13 @@ describe("TriggerChatTransport", () => {
 
         if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
           triggerCallCount++;
-          return new Response(
-            JSON.stringify({ id: "run_resume" }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "pub_token",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: "run_resume" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_token",
+            },
+          });
         }
 
         // Handle input stream sends
@@ -1541,7 +1817,11 @@ describe("TriggerChatTransport", () => {
         trigger: "submit-message",
         chatId: "chat-resume",
         messageId: undefined,
-        messages: [createUserMessage("Hello"), createAssistantMessage("Hi!"), createUserMessage("How are you?")],
+        messages: [
+          createUserMessage("Hello"),
+          createAssistantMessage("Hi!"),
+          createUserMessage("How are you?"),
+        ],
         abortSignal: undefined,
       });
 
@@ -1566,16 +1846,13 @@ describe("TriggerChatTransport", () => {
 
         if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
           triggerCallCount++;
-          return new Response(
-            JSON.stringify({ id: `run_fallback_${triggerCallCount}` }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "pub_token",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: `run_fallback_${triggerCallCount}` }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_token",
+            },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -1625,7 +1902,11 @@ describe("TriggerChatTransport", () => {
         trigger: "submit-message",
         chatId: "chat-fallback",
         messageId: undefined,
-        messages: [createUserMessage("Hello"), createAssistantMessage("Hi!"), createUserMessage("Again")],
+        messages: [
+          createUserMessage("Hello"),
+          createAssistantMessage("Hi!"),
+          createUserMessage("Again"),
+        ],
         abortSignal: undefined,
       });
 
@@ -1643,27 +1924,21 @@ describe("TriggerChatTransport", () => {
 
         if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
           triggerCallCount++;
-          return new Response(
-            JSON.stringify({ id: `run_fail_${triggerCallCount}` }),
-            {
-              status: 200,
-              headers: {
-                "content-type": "application/json",
-                "x-trigger-jwt": "pub_token",
-              },
-            }
-          );
+          return new Response(JSON.stringify({ id: `run_fail_${triggerCallCount}` }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_token",
+            },
+          });
         }
 
         // Input stream send fails
         if (urlStr.includes("/realtime/v1/streams/") && urlStr.includes("/input/")) {
-          return new Response(
-            JSON.stringify({ error: "Run not found" }),
-            {
-              status: 404,
-              headers: { "content-type": "application/json" },
-            }
-          );
+          return new Response(JSON.stringify({ error: "Run not found" }), {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          });
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
@@ -1713,7 +1988,11 @@ describe("TriggerChatTransport", () => {
         trigger: "submit-message",
         chatId: "chat-fail",
         messageId: undefined,
-        messages: [createUserMessage("Hello"), createAssistantMessage("Hi!"), createUserMessage("Again")],
+        messages: [
+          createUserMessage("Hello"),
+          createAssistantMessage("Hi!"),
+          createUserMessage("Again"),
+        ],
         abortSignal: undefined,
       });
 
@@ -1748,10 +2027,7 @@ describe("TriggerChatTransport", () => {
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
-          const chunks = [
-            ...sampleChunks,
-            { type: "__trigger_turn_complete" },
-          ];
+          const chunks = [...sampleChunks, { type: "__trigger_turn_complete" }];
           return new Response(createSSEStream(sseEncode(chunks)), {
             status: 200,
             headers: {
@@ -1848,9 +2124,12 @@ describe("TriggerChatTransport", () => {
 
       // Session should have been created but NOT deleted — the run stays
       // alive between turns and the session is needed for reconnection.
-      expect(onSessionChange).toHaveBeenCalledWith("chat-end", expect.objectContaining({
-        runId: "run_end",
-      }));
+      expect(onSessionChange).toHaveBeenCalledWith(
+        "chat-end",
+        expect.objectContaining({
+          runId: "run_end",
+        })
+      );
       expect(onSessionChange).not.toHaveBeenCalledWith("chat-end", null);
     });
 
@@ -1872,10 +2151,7 @@ describe("TriggerChatTransport", () => {
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
-          const chunks = [
-            ...sampleChunks,
-            { type: "__trigger_turn_complete" },
-          ];
+          const chunks = [...sampleChunks, { type: "__trigger_turn_complete" }];
           return new Response(createSSEStream(sseEncode(chunks)), {
             status: 200,
             headers: {

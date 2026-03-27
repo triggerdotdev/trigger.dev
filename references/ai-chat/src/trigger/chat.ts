@@ -164,7 +164,7 @@ export const aiChat = chat
     id: "ai-chat",
     clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
     idleTimeoutInSeconds: 60,
-    chatAccessTokenTTL: "2h",
+    chatAccessTokenTTL: "1m",
 
     // #region Compaction — automatic context window management
     compaction: {
@@ -197,15 +197,14 @@ export const aiChat = chat
         messages.length === 1
           ? [{ role: "user" as const, content: textFromFirstPart(messages[0]!) }]
           : [
-              {
-                role: "user" as const,
-                content: `The user sent ${
-                  messages.length
+            {
+              role: "user" as const,
+              content: `The user sent ${messages.length
                 } messages while you were working:\n\n${messages
                   .map((m, i) => `${i + 1}. ${textFromFirstPart(m)}`)
                   .join("\n")}`,
-              },
-            ],
+            },
+          ],
     },
     // #endregion
 
@@ -380,14 +379,13 @@ export const aiChat = chat
               .filter((m) => m.role === "user" || m.role === "assistant")
               .map(
                 (m) =>
-                  `${m.role}: ${
-                    typeof m.content === "string"
+                  `${m.role}: ${typeof m.content === "string"
+                    ? m.content
+                    : Array.isArray(m.content)
                       ? m.content
-                      : Array.isArray(m.content)
-                      ? m.content
-                          .filter((p: any) => p.type === "text")
-                          .map((p: any) => p.text)
-                          .join("")
+                        .filter((p: any) => p.type === "text")
+                        .map((p: any) => p.text)
+                        .join("")
                       : ""
                   }`
               )
@@ -418,8 +416,8 @@ export const aiChat = chat
               role: "user" as const,
               content: review.object.needsImprovement
                 ? `[Self-review of your previous response]\n\n${parts.join(
-                    "\n\n"
-                  )}\n\nApply these improvements naturally in your next response.`
+                  "\n\n"
+                )}\n\nApply these improvements naturally in your next response.`
                 : `[Self-review of your previous response]\n\nYour previous response was good. No changes needed.`,
             },
           ]);
