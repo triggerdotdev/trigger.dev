@@ -5,6 +5,7 @@ import type { InferUITools, UIDataTypes, UIMessage } from "ai";
 import { z } from "zod";
 import os from "node:os";
 import TurndownService from "turndown";
+import { codeSandboxRun, runWithCodeSandbox } from "@/lib/code-sandbox";
 
 const turndown = new TurndownService();
 
@@ -226,12 +227,69 @@ export const posthogQuery = tool({
   },
 });
 
+export const executeCode = tool({
+  description:
+    "Run code in an isolated E2B sandbox (Python by default; other languages supported by E2B). " +
+    "Use for calculations, data analysis, or transforming tool outputs (e.g. PostHog query results). " +
+    "The sandbox persists across turns in the same run until the chat idles and suspends.",
+  inputSchema: z.object({
+    code: z.string().describe("Source code to execute in the sandbox"),
+    language: z
+      .string()
+      .optional()
+      .describe("Language id (e.g. python, javascript). Defaults to python."),
+  }),
+  execute: async function executeCodeExecute({ code, language }) {
+    const runId = codeSandboxRun.runId;
+    if (!runId?.trim()) {
+      return {
+        error:
+          "Code sandbox run id is not set yet (call from the chat task after onTurnStart), or this tool is not wired to that task.",
+      };
+    }
+
+    const out = await runWithCodeSandbox(runId, async function runInSandbox(sandbox) {
+      const execution = await sandbox.runCode(code, {
+        ...(language?.trim() ? { language: language.trim() } : {}),
+        timeoutMs: 60_000,
+      });
+
+      if (execution.error) {
+        return {
+          error: `${execution.error.name}: ${execution.error.value}`,
+          traceback: execution.error.traceback,
+          stdout: execution.logs.stdout.join("\n"),
+          stderr: execution.logs.stderr.join("\n"),
+        };
+      }
+
+      const mainText = execution.text;
+      const resultSnippets = execution.results
+        .map(function mapResult(r) {
+          return r.text ?? r.markdown ?? r.json;
+        })
+        .filter(Boolean)
+        .slice(0, 5);
+
+      return {
+        text: mainText,
+        results: resultSnippets,
+        stdout: execution.logs.stdout.join("\n"),
+        stderr: execution.logs.stderr.join("\n"),
+      };
+    });
+
+    return out;
+  },
+});
+
 /** Tool set passed to `streamText` for the main `chat.task` run (includes PostHog). */
 export const chatTools = {
   inspectEnvironment,
   webFetch,
   deepResearch,
   posthogQuery,
+  executeCode,
 };
 
 type ChatToolSet = typeof chatTools;
