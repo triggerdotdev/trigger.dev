@@ -62,8 +62,12 @@ export async function syncLlmCatalog(prisma: PrismaClient): Promise<{
           // Update catalog metadata
           provider: catalog?.provider ?? existing.provider,
           description: catalog?.description ?? existing.description,
-          contextWindow: catalog?.contextWindow ?? existing.contextWindow,
-          maxOutputTokens: catalog?.maxOutputTokens ?? existing.maxOutputTokens,
+          contextWindow:
+            catalog?.contextWindow === undefined ? existing.contextWindow : catalog.contextWindow,
+          maxOutputTokens:
+            catalog?.maxOutputTokens === undefined
+              ? existing.maxOutputTokens
+              : catalog.maxOutputTokens,
           capabilities: catalog?.capabilities ?? existing.capabilities,
           isHidden: catalog?.isHidden ?? existing.isHidden,
           baseModelName: catalog?.baseModelName ?? existing.baseModelName,
