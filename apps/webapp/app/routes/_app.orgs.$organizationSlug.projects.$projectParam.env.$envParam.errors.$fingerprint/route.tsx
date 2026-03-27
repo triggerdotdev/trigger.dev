@@ -1,10 +1,17 @@
 import { type LoaderFunctionArgs, type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { type MetaFunction, Form, useNavigation, useSubmit } from "@remix-run/react";
 import { BellAlertIcon, CheckIcon } from "@heroicons/react/20/solid";
-import { IconAlarmSnooze as IconAlarmSnoozeBase, IconBugOff as IconBugOffBase } from "@tabler/icons-react";
+import {
+  IconAlarmSnooze as IconAlarmSnoozeBase,
+  IconArrowBackUp as IconArrowBackUpBase,
+  IconBugOff as IconBugOffBase,
+} from "@tabler/icons-react";
 
 const AlarmSnoozeIcon = ({ className }: { className?: string }) => (
   <IconAlarmSnoozeBase className={className} size={18} />
+);
+const ArrowBackUpIcon = ({ className }: { className?: string }) => (
+  <IconArrowBackUpBase className={className} size={18} />
 );
 const BugOffIcon = ({ className }: { className?: string }) => (
   <IconBugOffBase className={className} size={18} />
@@ -546,7 +553,7 @@ function ErrorDetailSidebar({
         <div className="flex flex-col gap-4">
           <Property.Table>
             {/* Status */}
-            <Property.Item>
+            <Property.Item className="gap-1">
               <Property.Label>Error status</Property.Label>
               <Property.Value>
                 <div className="flex items-center justify-between">
@@ -807,6 +814,8 @@ function ErrorStatusDropdown({
 
           {state.status === "RESOLVED" && (
             <PopoverMenuItem
+              icon={ArrowBackUpIcon}
+              leadingIconClassName="text-error"
               title="Unresolved"
               onClick={() => act({ taskIdentifier, action: "unresolve" })}
             />
@@ -814,6 +823,8 @@ function ErrorStatusDropdown({
 
           {state.status === "IGNORED" && (
             <PopoverMenuItem
+              icon={ArrowBackUpIcon}
+              leadingIconClassName="text-error"
               title="Unresolved"
               onClick={() => act({ taskIdentifier, action: "unresolve" })}
             />
