@@ -282,16 +282,18 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         {
           paramsSchema: WorkloadActionParams,
           handler: async ({ reply, params, req }) => {
-            this.logger.debug("Suspend request", { params, headers: req.headers });
-
             const runnerId = this.runnerIdFromRequest(req);
             const deploymentVersion = this.deploymentVersionFromRequest(req);
             const projectRef = this.projectRefFromRequest(req);
 
+            this.logger.debug("Suspend request", { params, runnerId, deploymentVersion, projectRef });
+
             if (!runnerId || !deploymentVersion || !projectRef) {
               this.logger.error("Invalid headers for suspend request", {
                 ...params,
-                headers: req.headers,
+                runnerId,
+                deploymentVersion,
+                projectRef,
               });
               reply.json(
                 {

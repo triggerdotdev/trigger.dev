@@ -220,6 +220,27 @@ class ManagedSupervisor {
 
       const { checkpoint, ...rest } = message;
 
+      // Register trace context early so snapshot spans work for all paths
+      // (cold create, restore, warm start). Re-registration on restore is safe
+      // since dequeue always provides fresh context.
+      if (this.isComputeMode && env.COMPUTE_TRACE_SPANS_ENABLED) {
+        const traceparent =
+          message.run.traceContext &&
+          "traceparent" in message.run.traceContext &&
+          typeof message.run.traceContext.traceparent === "string"
+            ? message.run.traceContext.traceparent
+            : undefined;
+
+        if (traceparent) {
+          this.workloadServer.registerRunTraceContext(message.run.friendlyId, {
+            traceparent,
+            envId: message.environment.id,
+            orgId: message.organization.id,
+            projectId: message.project.id,
+          });
+        }
+      }
+
       if (checkpoint) {
         this.logger.debug("Restoring run", { runId: message.run.id });
 
@@ -291,24 +312,6 @@ class ManagedSupervisor {
       if (didWarmStart) {
         this.logger.debug("Warm start successful", { runId: message.run.id });
         return;
-      }
-
-      if (this.isComputeMode && env.COMPUTE_TRACE_SPANS_ENABLED) {
-        const traceparent =
-          message.run.traceContext &&
-          "traceparent" in message.run.traceContext &&
-          typeof message.run.traceContext.traceparent === "string"
-            ? message.run.traceContext.traceparent
-            : undefined;
-
-        if (traceparent) {
-          this.workloadServer.registerRunTraceContext(message.run.friendlyId, {
-            traceparent,
-            envId: message.environment.id,
-            orgId: message.organization.id,
-            projectId: message.project.id,
-          });
-        }
       }
 
       try {
