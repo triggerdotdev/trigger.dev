@@ -343,6 +343,7 @@ class ManagedSupervisor {
           placementTags: message.placementTags,
           traceContext: message.run.traceContext,
           annotations: message.run.annotations,
+          hasPrivateLink: message.organization.hasPrivateLink,
         });
 
         // Disabled for now

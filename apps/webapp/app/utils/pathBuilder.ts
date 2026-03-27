@@ -663,6 +663,14 @@ export function v3BillingAlertsPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/settings/billing-alerts`;
 }
 
+export function v3PrivateConnectionsPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/settings/private-connections`;
+}
+
+export function v3NewPrivateConnectionPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/settings/private-connections/new`;
+}
+
 export function v3StripePortalPath(organization: OrgForPath) {
   return `/resources/${organization.slug}/subscription/portal`;
 }
