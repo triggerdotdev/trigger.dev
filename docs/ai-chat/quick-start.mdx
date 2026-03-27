@@ -32,20 +32,24 @@ description: "Get a working AI chat in 3 steps — define a task, generate a tok
     <Tip>
       For a **custom** [`UIMessage`](https://sdk.vercel.ai/docs/reference/ai-sdk-core/ui-message) subtype (typed `data-*` parts, tool map, etc.), define the task with [`chat.withUIMessage<...>().task({...})`](/ai-chat/types) instead of `chat.task`.
     </Tip>
+
   </Step>
 
   <Step title="Generate an access token">
-    On your server (e.g. a Next.js server action), create a trigger public token scoped to your chat task:
+    On your server (e.g. a Next.js server action), create a trigger public token scoped to your chat task. The transport calls your function with `chatId` and `purpose` (`"trigger"` or `"preload"`). Import `ResolveChatAccessTokenParams` from `@trigger.dev/sdk/chat` so the signature matches — see [TriggerChatTransport options](/ai-chat/reference#triggerchattransport-options).
 
     ```ts app/actions.ts
     "use server";
 
     import { chat } from "@trigger.dev/sdk/ai";
+    import type { ResolveChatAccessTokenParams } from "@trigger.dev/sdk/chat";
     import type { myChat } from "@/trigger/chat";
 
-    export const getChatToken = () =>
-      chat.createAccessToken<typeof myChat>("my-chat");
+    export async function getChatToken(_input: ResolveChatAccessTokenParams) {
+      return chat.createAccessToken<typeof myChat>("my-chat");
+    }
     ```
+
   </Step>
 
   <Step title="Use in the frontend">
@@ -102,6 +106,7 @@ description: "Get a working AI chat in 3 steps — define a task, generate a tok
       );
     }
     ```
+
   </Step>
 </Steps>
 

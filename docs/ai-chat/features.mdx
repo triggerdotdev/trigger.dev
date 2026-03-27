@@ -400,6 +400,8 @@ export function Chat({ chatId }) {
 
 Preload is a no-op if a session already exists for this chatId.
 
+When the transport needs a trigger token for preload, your `accessToken` callback receives `{ chatId, purpose: "preload" }` (same as for a normal trigger, but `purpose` is `"trigger"` when starting a run from `sendMessages`). See [TriggerChatTransport options](/ai-chat/reference#triggerchattransport-options).
+
 ### Backend
 
 On the backend, the `onPreload` hook fires immediately. The run then waits for the first message. When the user sends a message, `onChatStart` fires with `preloaded: true` — you can skip initialization that was already done in `onPreload`:
