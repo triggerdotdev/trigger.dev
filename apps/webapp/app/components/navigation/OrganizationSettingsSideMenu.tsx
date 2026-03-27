@@ -3,6 +3,7 @@ import {
   ChartBarIcon,
   Cog8ToothIcon,
   CreditCardIcon,
+  LockClosedIcon,
   UserGroupIcon,
 } from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
@@ -19,6 +20,7 @@ import {
   rootPath,
   v3BillingAlertsPath,
   v3BillingPath,
+  v3PrivateConnectionsPath,
   v3UsagePath,
 } from "~/utils/pathBuilder";
 import { LinkButton } from "../primitives/Buttons";
@@ -46,7 +48,7 @@ export function OrganizationSettingsSideMenu({
   organization: MatchedOrganization;
   buildInfo: BuildInfo;
 }) {
-  const { isManagedCloud } = useFeatures();
+  const { isManagedCloud, hasPrivateConnections } = useFeatures();
   const currentPlan = useCurrentPlan();
   const isAdmin = useHasAdminAccess();
   const showBuildInfo = isAdmin || !isManagedCloud;
@@ -102,6 +104,15 @@ export function OrganizationSettingsSideMenu({
                 data-action="billing-alerts"
               />
             </>
+          )}
+          {hasPrivateConnections && (
+            <SideMenuItem
+              name="Private Connections"
+              icon={LockClosedIcon}
+              activeIconColor="text-purple-500"
+              to={v3PrivateConnectionsPath(organization)}
+              data-action="private-connections"
+            />
           )}
           <SideMenuItem
             name="Team"

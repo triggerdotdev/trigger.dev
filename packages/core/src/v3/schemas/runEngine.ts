@@ -288,6 +288,7 @@ export const DequeuedMessage = z.object({
   }),
   organization: z.object({
     id: z.string(),
+    hasPrivateLink: z.boolean().optional(),
   }),
   project: z.object({
     id: z.string(),

@@ -268,6 +268,7 @@ class ManagedSupervisor {
           snapshotFriendlyId: message.snapshot.friendlyId,
           placementTags: message.placementTags,
           annotations: message.run.annotations,
+          hasPrivateLink: message.organization.hasPrivateLink,
         });
 
         // Disabled for now

@@ -10,7 +10,6 @@ const ResizablePanelGroup = ({ className, ...props }: React.ComponentProps<typeo
       "flex w-full overflow-hidden data-[panel-group-direction=vertical]:flex-col",
       className
     )}
-    autosaveStrategy={props.autosaveId ? "cookie" : undefined}
     {...props}
   />
 );
