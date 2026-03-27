@@ -1222,6 +1222,12 @@ const EnvironmentSchema = z
     // Query feature flag
     QUERY_FEATURE_ENABLED: z.string().default("1"),
 
+    // AI features (Prompts, Models, AI Metrics sidebar section)
+    AI_FEATURES_ENABLED: z.string().default("0"),
+
+    // AI Models feature (Models sidebar item within AI section)
+    AI_MODELS_ENABLED: z.string().default("0"),
+
     // Logs page ClickHouse URL (for logs queries)
     LOGS_CLICKHOUSE_URL: z
       .string()
@@ -1246,6 +1252,12 @@ const EnvironmentSchema = z
 
     // Metric widget concurrency limits
     METRIC_WIDGET_DEFAULT_ORG_CONCURRENCY_LIMIT: z.coerce.number().int().default(30),
+
+    // Admin ClickHouse URL (for admin dashboard queries like missing models)
+    ADMIN_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
 
     EVENTS_CLICKHOUSE_URL: z
       .string()
@@ -1276,6 +1288,16 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
     EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
+
+    // LLM cost tracking
+    LLM_COST_TRACKING_ENABLED: BoolEnv.default(true),
+    LLM_PRICING_RELOAD_INTERVAL_MS: z.coerce.number().int().default(5 * 60 * 1000), // 5 minutes
+    LLM_PRICING_SEED_ON_STARTUP: BoolEnv.default(false),
+    LLM_PRICING_READY_TIMEOUT_MS: z.coerce.number().int().default(500),
+    LLM_METRICS_BATCH_SIZE: z.coerce.number().int().default(5000),
+    LLM_METRICS_FLUSH_INTERVAL_MS: z.coerce.number().int().default(2000),
+    LLM_METRICS_MAX_BATCH_SIZE: z.coerce.number().int().default(10000),
+    LLM_METRICS_MAX_CONCURRENCY: z.coerce.number().int().default(2),
 
     // Bootstrap
     TRIGGER_BOOTSTRAP_ENABLED: z.string().default("0"),

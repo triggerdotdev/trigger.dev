@@ -17,6 +17,7 @@ export type CreateBatchServiceOptions = {
   spanParentAsLink?: boolean;
   oneTimeUseToken?: string;
   realtimeStreamsVersion?: "v1" | "v2";
+  triggerSource?: string;
 };
 
 /**
@@ -143,6 +144,7 @@ export class CreateBatchService extends WithRunEngine {
             idempotencyKey: body.idempotencyKey,
             processingConcurrency: config.processingConcurrency,
             planType,
+            triggerSource: options.triggerSource,
           };
 
           await this._engine.initializeBatch(initOptions);

@@ -599,7 +599,371 @@ export const metricsSchema: TableSchema = {
 /**
  * All available schemas for the query editor
  */
-export const querySchemas: TableSchema[] = [runsSchema, metricsSchema];
+/**
+ * Schema definition for the llm_metrics table (trigger_dev.llm_metrics_v1)
+ */
+export const llmMetricsSchema: TableSchema = {
+  name: "llm_metrics",
+  clickhouseName: "trigger_dev.llm_metrics_v1",
+  description: "LLM metrics: token usage, cost, performance, and behavior from GenAI spans",
+  timeConstraint: "start_time",
+  tenantColumns: {
+    organizationId: "organization_id",
+    projectId: "project_id",
+    environmentId: "environment_id",
+  },
+  columns: {
+    environment: {
+      name: "environment",
+      clickhouseName: "environment_id",
+      ...column("String", { description: "The environment slug", example: "prod" }),
+      fieldMapping: "environment",
+      customRenderType: "environment",
+    },
+    project: {
+      name: "project",
+      clickhouseName: "project_id",
+      ...column("String", {
+        description: "The project reference, they always start with `proj_`.",
+        example: "proj_howcnaxbfxdmwmxazktx",
+      }),
+      fieldMapping: "project",
+      customRenderType: "project",
+    },
+    run_id: {
+      name: "run_id",
+      ...column("String", {
+        description: "The run ID",
+        customRenderType: "runId",
+        coreColumn: true,
+      }),
+    },
+    trace_id: {
+      name: "trace_id",
+      ...column("String", {
+        description: "The trace ID",
+      }),
+    },
+    span_id: {
+      name: "span_id",
+      ...column("String", {
+        description: "The span ID",
+      }),
+    },
+    task_identifier: {
+      name: "task_identifier",
+      ...column("LowCardinality(String)", {
+        description: "The task identifier",
+        example: "my-task",
+        coreColumn: true,
+      }),
+    },
+    gen_ai_system: {
+      name: "gen_ai_system",
+      ...column("LowCardinality(String)", {
+        description: "AI provider (e.g. openai, anthropic)",
+        example: "openai",
+        coreColumn: true,
+      }),
+    },
+    request_model: {
+      name: "request_model",
+      ...column("String", {
+        description: "The model name requested",
+        example: "gpt-4o",
+      }),
+    },
+    response_model: {
+      name: "response_model",
+      ...column("String", {
+        description: "The model name returned by the provider",
+        example: "gpt-4o-2024-08-06",
+        coreColumn: true,
+      }),
+    },
+    operation_id: {
+      name: "operation_id",
+      ...column("LowCardinality(String)", {
+        description: "Operation type (e.g. ai.streamText.doStream, ai.generateText.doGenerate)",
+        example: "ai.streamText.doStream",
+      }),
+    },
+    finish_reason: {
+      name: "finish_reason",
+      ...column("LowCardinality(String)", {
+        description: "Why the LLM stopped generating (e.g. stop, tool-calls, length)",
+        example: "stop",
+        coreColumn: true,
+      }),
+    },
+    cost_source: {
+      name: "cost_source",
+      ...column("LowCardinality(String)", {
+        description: "Where cost data came from (registry, gateway, openrouter)",
+        example: "registry",
+      }),
+    },
+    input_tokens: {
+      name: "input_tokens",
+      ...column("UInt64", {
+        description: "Number of input tokens",
+        example: "702",
+      }),
+    },
+    output_tokens: {
+      name: "output_tokens",
+      ...column("UInt64", {
+        description: "Number of output tokens",
+        example: "22",
+      }),
+    },
+    total_tokens: {
+      name: "total_tokens",
+      ...column("UInt64", {
+        description: "Total token count",
+        example: "724",
+      }),
+    },
+    cached_read_tokens: {
+      name: "cached_read_tokens",
+      ...column("UInt64", {
+        description:
+          "Input tokens served from the provider's prompt cache (cheaper than regular input tokens). Supported by Anthropic and OpenAI.",
+        example: "8200",
+      }),
+      expression: "usage_details['input_cached_tokens']",
+    },
+    cache_creation_tokens: {
+      name: "cache_creation_tokens",
+      ...column("UInt64", {
+        description:
+          "Input tokens written to create a new prompt cache entry. Supported by Anthropic.",
+        example: "1751",
+      }),
+      expression: "usage_details['cache_creation_input_tokens']",
+    },
+    reasoning_tokens: {
+      name: "reasoning_tokens",
+      ...column("UInt64", {
+        description:
+          "Tokens used for chain-of-thought reasoning (e.g. OpenAI o-series, DeepSeek R1). These count toward output but are not visible in the response.",
+        example: "512",
+      }),
+      expression: "usage_details['reasoning_tokens']",
+    },
+    input_cost: {
+      name: "input_cost",
+      ...column("Decimal64(12)", {
+        description: "Input cost in USD (from pricing registry)",
+        customRenderType: "costInDollars",
+      }),
+    },
+    output_cost: {
+      name: "output_cost",
+      ...column("Decimal64(12)", {
+        description: "Output cost in USD (from pricing registry)",
+        customRenderType: "costInDollars",
+      }),
+    },
+    total_cost: {
+      name: "total_cost",
+      ...column("Decimal64(12)", {
+        description: "Total cost in USD",
+        customRenderType: "costInDollars",
+        coreColumn: true,
+      }),
+    },
+    cached_read_cost: {
+      name: "cached_read_cost",
+      ...column("Decimal64(12)", {
+        description:
+          "Cost of cached input tokens (discounted vs regular input). Only present when the pricing tier has a separate cached input price.",
+        customRenderType: "costInDollars",
+      }),
+      expression: "cost_details['input_cached_tokens']",
+    },
+    cache_creation_cost: {
+      name: "cache_creation_cost",
+      ...column("Decimal64(12)", {
+        description: "Cost of tokens written to create a prompt cache entry.",
+        customRenderType: "costInDollars",
+      }),
+      expression: "cost_details['cache_creation_input_tokens']",
+    },
+    provider_cost: {
+      name: "provider_cost",
+      ...column("Decimal64(12)", {
+        description: "Provider-reported cost in USD (from gateway or openrouter)",
+        customRenderType: "costInDollars",
+      }),
+    },
+    ms_to_first_chunk: {
+      name: "ms_to_first_chunk",
+      ...column("Float64", {
+        description: "Time to first chunk in milliseconds (TTFC)",
+        example: "245.3",
+        coreColumn: true,
+      }),
+    },
+    tokens_per_second: {
+      name: "tokens_per_second",
+      ...column("Float64", {
+        description: "Average output tokens per second",
+        example: "72.5",
+      }),
+    },
+    pricing_tier_name: {
+      name: "pricing_tier_name",
+      ...column("LowCardinality(String)", {
+        description: "The matched pricing tier name",
+        example: "Standard",
+      }),
+    },
+    start_time: {
+      name: "start_time",
+      ...column("DateTime64(9)", {
+        description: "When the LLM call started",
+        coreColumn: true,
+      }),
+    },
+    duration: {
+      name: "duration",
+      ...column("UInt64", {
+        description: "Span duration in nanoseconds",
+        customRenderType: "durationNs",
+      }),
+    },
+    prompt_slug: {
+      name: "prompt_slug",
+      ...column("LowCardinality(String)", {
+        description: "The managed prompt slug used for this LLM call",
+        example: "customer-support",
+        coreColumn: true,
+      }),
+    },
+    prompt_version: {
+      name: "prompt_version",
+      ...column("UInt32", {
+        description: "The managed prompt version number used for this LLM call",
+        example: "3",
+      }),
+    },
+    metadata: {
+      name: "metadata",
+      ...column("Map(LowCardinality(String), String)", {
+        description:
+          "Key-value metadata from run tags (key:value format) and AI SDK telemetry metadata. Access keys with dot notation (metadata.userId) or bracket syntax (metadata['userId']).",
+        example: "{'userId':'user_123','org':'acme'}",
+      }),
+    },
+  },
+};
+
+/**
+ * Schema definition for the llm_models table (trigger_dev.llm_model_aggregates_v1)
+ * Global table — no tenant columns. Contains anonymized cross-tenant model performance data.
+ */
+export const llmModelsSchema: TableSchema = {
+  name: "llm_models",
+  clickhouseName: "trigger_dev.llm_model_aggregates_v1",
+  description:
+    "Cross-tenant model performance aggregates: calls, cost, latency, and throughput per model per minute. No tenant-specific data.",
+  timeConstraint: "minute",
+  // No tenantColumns — this is a global table with anonymized data
+  columns: {
+    response_model: {
+      name: "response_model",
+      ...column("String", {
+        description: "The model name as returned by the provider",
+        example: "gpt-4o-2024-08-06",
+        coreColumn: true,
+      }),
+    },
+    base_response_model: {
+      name: "base_response_model",
+      ...column("String", {
+        description: "The base model name with dated variants grouped",
+        example: "gpt-4o",
+        coreColumn: true,
+      }),
+    },
+    gen_ai_system: {
+      name: "gen_ai_system",
+      ...column("String", {
+        description: "The AI provider system identifier",
+        example: "openai.responses",
+        coreColumn: true,
+      }),
+    },
+    minute: {
+      name: "minute",
+      ...column("DateTime", {
+        description: "Aggregation time bucket (per minute)",
+        coreColumn: true,
+      }),
+    },
+    call_count: {
+      name: "call_count",
+      ...column("UInt64", {
+        description: "Number of LLM calls in this time bucket",
+        coreColumn: true,
+      }),
+    },
+    total_input_tokens: {
+      name: "total_input_tokens",
+      ...column("UInt64", {
+        description: "Total input tokens consumed",
+      }),
+    },
+    total_output_tokens: {
+      name: "total_output_tokens",
+      ...column("UInt64", {
+        description: "Total output tokens generated",
+      }),
+    },
+    total_cost: {
+      name: "total_cost",
+      ...column("Float64", {
+        description: "Total cost in USD",
+        customRenderType: "costInDollars",
+        coreColumn: true,
+      }),
+    },
+    // Aggregate state columns — use quantilesMerge() in queries to extract values
+    // Example: quantilesMerge(0.5)(ttfc_quantiles)[1] AS ttfc_p50
+    ttfc_quantiles: {
+      name: "ttfc_quantiles",
+      ...column("String", {
+        description:
+          "Time to first chunk quantile state. Use quantilesMerge(0.5)(ttfc_quantiles)[1] AS ttfc_p50 in queries.",
+        example: "quantilesMerge(0.5)(ttfc_quantiles)[1]",
+      }),
+    },
+    tps_quantiles: {
+      name: "tps_quantiles",
+      ...column("String", {
+        description:
+          "Tokens per second quantile state. Use quantilesMerge(0.5)(tps_quantiles)[1] AS tps_p50 in queries.",
+        example: "quantilesMerge(0.5)(tps_quantiles)[1]",
+      }),
+    },
+    duration_quantiles: {
+      name: "duration_quantiles",
+      ...column("String", {
+        description:
+          "Duration quantile state. Use quantilesMerge(0.5)(duration_quantiles)[1] AS duration_p50 in queries.",
+        example: "quantilesMerge(0.5)(duration_quantiles)[1]",
+      }),
+    },
+  },
+};
+
+export const querySchemas: TableSchema[] = [
+  runsSchema,
+  metricsSchema,
+  llmMetricsSchema,
+  llmModelsSchema,
+];
 
 /**
  * Default query for the query editor

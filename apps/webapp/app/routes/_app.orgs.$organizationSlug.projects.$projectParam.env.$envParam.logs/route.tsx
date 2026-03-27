@@ -26,7 +26,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Callout } from "~/components/primitives/Callout";
 import { LogsTable } from "~/components/logs/LogsTable";
 import { LogDetailView } from "~/components/logs/LogDetailView";
-import { LogsSearchInput } from "~/components/logs/LogsSearchInput";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { LogsLevelFilter } from "~/components/logs/LogsLevelFilter";
 import { LogsTaskFilter } from "~/components/logs/LogsTaskFilter";
 import { LogsRunIdFilter } from "~/components/logs/LogsRunIdFilter";
@@ -271,7 +271,7 @@ function FiltersBar({
             <LogsRunIdFilter />
             <TimeFilter defaultPeriod={defaultPeriod} maxPeriodDays={retentionLimitDays} />
             <LogsLevelFilter />
-            <LogsSearchInput />
+            <SearchInput />
             {hasFilters && (
               <Form className="h-6">
                 <Button
@@ -288,7 +288,7 @@ function FiltersBar({
             <LogsRunIdFilter />
             <TimeFilter defaultPeriod={defaultPeriod} maxPeriodDays={retentionLimitDays} />
             <LogsLevelFilter />
-            <LogsSearchInput />
+            <SearchInput />
             {hasFilters && (
               <Form className="h-6">
                 <Button

@@ -57,6 +57,8 @@ export type BatchTriggerTaskServiceOptions = {
   spanParentAsLink?: boolean;
   oneTimeUseToken?: string;
   realtimeStreamsVersion?: "v1" | "v2";
+  triggerSource?: string;
+  triggerAction?: string;
 };
 
 type RunItemData = {
@@ -249,7 +251,9 @@ export class BatchTriggerV3Service extends BaseService {
 
           if (!queueSizeGuard.isWithinLimits) {
             throw new ServiceValidationError(
-              `Cannot trigger ${newRunCount} tasks as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+              `Cannot trigger ${newRunCount} tasks as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
+              undefined,
+              "warn"
             );
           }
 
@@ -853,6 +857,8 @@ export class BatchTriggerV3Service extends BaseService {
         skipChecks: true,
         runFriendlyId: task.runId,
         realtimeStreamsVersion: options?.realtimeStreamsVersion,
+        triggerSource: options?.triggerSource ?? "api",
+        triggerAction: options?.triggerAction ?? "trigger",
       }
     );
 

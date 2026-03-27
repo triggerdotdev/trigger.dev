@@ -79,6 +79,8 @@ export const BatchMeta = z.object({
   processingConcurrency: z.number().optional(),
   /** Plan type for billing (e.g., "free", "paid") - used when skipChecks is enabled */
   planType: z.string().optional(),
+  /** Trigger source for run annotations (e.g., "sdk", "cli", "mcp") */
+  triggerSource: z.string().optional(),
 });
 export type BatchMeta = z.infer<typeof BatchMeta>;
 
@@ -168,6 +170,8 @@ export type InitializeBatchOptions = {
   processingConcurrency?: number;
   /** Plan type for billing (e.g., "free", "paid") - used when skipChecks is enabled */
   planType?: string;
+  /** Trigger source for run annotations (e.g., "sdk", "cli", "mcp") */
+  triggerSource?: string;
 };
 
 /**

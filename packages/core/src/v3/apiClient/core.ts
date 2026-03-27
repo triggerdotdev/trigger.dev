@@ -40,7 +40,9 @@ export type ZodFetchOptions<TData = any> = {
 
 export type AnyZodFetchOptions = ZodFetchOptions<any>;
 
-export type ApiRequestOptions = Pick<ZodFetchOptions, "retry">;
+export type ApiRequestOptions = Pick<ZodFetchOptions, "retry"> & {
+  additionalHeaders?: Record<string, string>;
+};
 
 type KeysEnum<T> = { [P in keyof Required<T>]: true };
 
@@ -49,6 +51,7 @@ type KeysEnum<T> = { [P in keyof Required<T>]: true };
 // compiler such that any missing / extraneous keys will cause an error.
 const requestOptionsKeys: KeysEnum<ApiRequestOptions> = {
   retry: true,
+  additionalHeaders: true,
 };
 
 export const isRequestOptions = (obj: unknown): obj is ApiRequestOptions => {

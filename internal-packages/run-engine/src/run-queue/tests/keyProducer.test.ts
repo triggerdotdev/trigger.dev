@@ -359,4 +359,73 @@ describe("KeyProducer", () => {
       concurrencyKey: "c1234",
     });
   });
+
+  it("ckIndexKeyFromQueue", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const queueKey = keyProducer.queueKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task/task-name",
+      "c1234"
+    );
+    const key = keyProducer.ckIndexKeyFromQueue(queueKey);
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:ckIndex");
+  });
+
+  it("ckIndexKeyFromQueue (from wildcard)", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const key = keyProducer.ckIndexKeyFromQueue(
+      "{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:ck:*"
+    );
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:ckIndex");
+  });
+
+  it("baseQueueKeyFromQueue (with CK)", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const queueKey = keyProducer.queueKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task/task-name",
+      "c1234"
+    );
+    const key = keyProducer.baseQueueKeyFromQueue(queueKey);
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name");
+  });
+
+  it("baseQueueKeyFromQueue (no CK)", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const queueKey = keyProducer.queueKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task/task-name"
+    );
+    const key = keyProducer.baseQueueKeyFromQueue(queueKey);
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name");
+  });
+
+  it("isCkWildcard", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    expect(keyProducer.isCkWildcard("{org:o1234}:proj:p1234:env:e1234:queue:task/foo:ck:*")).toBe(true);
+    expect(keyProducer.isCkWildcard("{org:o1234}:proj:p1234:env:e1234:queue:task/foo:ck:bar")).toBe(false);
+    expect(keyProducer.isCkWildcard("{org:o1234}:proj:p1234:env:e1234:queue:task/foo")).toBe(false);
+  });
+
+  it("toCkWildcard", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    expect(keyProducer.toCkWildcard("{org:o1234}:proj:p1234:env:e1234:queue:task/foo:ck:bar")).toBe(
+      "{org:o1234}:proj:p1234:env:e1234:queue:task/foo:ck:*"
+    );
+  });
 });

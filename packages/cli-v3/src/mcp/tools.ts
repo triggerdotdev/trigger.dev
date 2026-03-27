@@ -7,15 +7,43 @@ import {
   listOrgsTool,
   listProjectsTool,
 } from "./tools/orgs.js";
+import { listDashboardsTool, runDashboardQueryTool } from "./tools/dashboards.js";
+import { startDevServerTool, stopDevServerTool, devServerStatusTool } from "./tools/devServer.js";
 import { listPreviewBranchesTool } from "./tools/previewBranches.js";
+import { listProfilesTool, switchProfileTool, whoamiTool } from "./tools/profiles.js";
+import { getQuerySchemaTool, queryTool } from "./tools/query.js";
 import {
   cancelRunTool,
   getRunDetailsTool,
+  getSpanDetailsTool,
   listRunsTool,
   waitForRunToCompleteTool,
 } from "./tools/runs.js";
-import { getCurrentWorker, triggerTaskTool } from "./tools/tasks.js";
+import { getCurrentWorker, getTaskSchemaTool, triggerTaskTool } from "./tools/tasks.js";
+import {
+  listPromptsTool,
+  getPromptVersionsTool,
+  promotePromptVersionTool,
+  createPromptOverrideTool,
+  updatePromptOverrideTool,
+  removePromptOverrideTool,
+  reactivatePromptOverrideTool,
+} from "./tools/prompts.js";
 import { respondWithError } from "./utils.js";
+
+/** Tool names that perform write/mutating operations. */
+const WRITE_TOOLS = new Set([
+  deployTool.name,
+  triggerTaskTool.name,
+  cancelRunTool.name,
+  createProjectInOrgTool.name,
+  initializeProjectTool.name,
+  promotePromptVersionTool.name,
+  createPromptOverrideTool.name,
+  updatePromptOverrideTool.name,
+  removePromptOverrideTool.name,
+  reactivatePromptOverrideTool.name,
+]);
 
 export function registerTools(context: McpContext) {
   const tools = [
@@ -25,21 +53,51 @@ export function registerTools(context: McpContext) {
     createProjectInOrgTool,
     initializeProjectTool,
     getCurrentWorker,
+    getTaskSchemaTool,
     triggerTaskTool,
     listRunsTool,
     getRunDetailsTool,
+    getSpanDetailsTool,
     waitForRunToCompleteTool,
     cancelRunTool,
     deployTool,
     listDeploysTool,
     listPreviewBranchesTool,
+    getQuerySchemaTool,
+    queryTool,
+    listDashboardsTool,
+    runDashboardQueryTool,
+    whoamiTool,
+    listProfilesTool,
+    switchProfileTool,
+    startDevServerTool,
+    stopDevServerTool,
+    devServerStatusTool,
+    listPromptsTool,
+    getPromptVersionsTool,
+    promotePromptVersionTool,
+    createPromptOverrideTool,
+    updatePromptOverrideTool,
+    removePromptOverrideTool,
+    reactivatePromptOverrideTool,
   ];
 
   for (const tool of tools) {
+    // In readonly mode, skip write tools entirely so the LLM never sees them
+    if (context.options.readonly && WRITE_TOOLS.has(tool.name)) {
+      continue;
+    }
+
+    const isWrite = WRITE_TOOLS.has(tool.name);
+
     context.server.registerTool(
       tool.name,
       {
-        annotations: { title: tool.title },
+        annotations: {
+          title: tool.title,
+          readOnlyHint: !isWrite,
+          destructiveHint: isWrite,
+        },
         description: tool.description,
         inputSchema: tool.inputSchema,
       },

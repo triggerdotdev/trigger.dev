@@ -14,7 +14,7 @@ import {
 } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { PageBody } from "~/components/layout/AppLayout";
-import { LogsSearchInput } from "~/components/logs/LogsSearchInput";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { LogsTaskFilter } from "~/components/logs/LogsTaskFilter";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -255,7 +255,7 @@ function FiltersBar({
               maxPeriodDays={retentionLimitDays}
               labelName="Occurred"
             />
-            <LogsSearchInput placeholder="Search errors..." />
+            <SearchInput placeholder="Search errors…" />
             {hasFilters && (
               <Form className="h-6">
                 <Button
@@ -270,7 +270,7 @@ function FiltersBar({
           <>
             <LogsTaskFilter possibleTasks={[]} />
             <TimeFilter defaultPeriod={defaultPeriod} maxPeriodDays={retentionLimitDays} />
-            <LogsSearchInput placeholder="Search errors..." />
+            <SearchInput placeholder="Search errors…" />
             {hasFilters && (
               <Form className="h-6">
                 <Button

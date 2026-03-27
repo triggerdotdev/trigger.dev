@@ -48,7 +48,7 @@ function flattenArgs(args: Array<Record<string, unknown> | undefined>) {
 }
 export const logger = new Logger(
   "webapp",
-  (process.env.APP_LOG_LEVEL ?? "debug") as LogLevel,
+  (process.env.APP_LOG_LEVEL ?? "info") as LogLevel,
   ["examples", "output", "connectionString", "payload"],
   sensitiveDataReplacer,
   () => {
@@ -60,7 +60,7 @@ export const logger = new Logger(
 
 export const workerLogger = new Logger(
   "worker",
-  (process.env.APP_LOG_LEVEL ?? "debug") as LogLevel,
+  (process.env.APP_LOG_LEVEL ?? "info") as LogLevel,
   ["examples", "output", "connectionString"],
   sensitiveDataReplacer,
   () => {
@@ -71,7 +71,7 @@ export const workerLogger = new Logger(
 
 export const socketLogger = new Logger(
   "socket",
-  (process.env.APP_LOG_LEVEL ?? "debug") as LogLevel,
+  (process.env.APP_LOG_LEVEL ?? "info") as LogLevel,
   [],
   sensitiveDataReplacer,
   () => {

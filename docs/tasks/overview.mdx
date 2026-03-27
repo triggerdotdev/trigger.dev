@@ -64,7 +64,7 @@ Anything you return from the `run` function will be the result of the task. Data
 
 ### `retry` options
 
-A task is retried if an error is thrown, by default we retry 3 times.
+A task is retried if an error is thrown. By default, we retry 3 times.
 
 You can set the number of retries and the delay between retries in the `retry` field:
 
@@ -83,6 +83,16 @@ export const taskWithRetries = task({
   },
 });
 ```
+
+| Option | What it does |
+|---|---|
+| `maxAttempts` | Total number of attempts (including the first). Default: 3 |
+| `factor` | Exponential backoff multiplier. Each retry delay = previous delay x factor. With `factor: 1.8` and `minTimeoutInMs: 500`, retries wait 500ms, 900ms, 1620ms, etc. |
+| `minTimeoutInMs` | Delay before the first retry |
+| `maxTimeoutInMs` | Cap on the delay between retries |
+| `randomize` | Add jitter to retry delays to prevent multiple failing tasks from retrying in lockstep |
+
+<Note>Task-level retry settings override the defaults in your `trigger.config` file.</Note>
 
 For more information read [the retrying guide](/errors-retrying).
 
@@ -161,7 +171,7 @@ You can register global lifecycle hooks that are executed for all runs, regardle
 ```ts
 import { tasks } from "@trigger.dev/sdk";
 
-tasks.onStart(({ ctx, payload, task }) => {
+tasks.onStartAttempt(({ ctx, payload, task }) => {
   console.log("Run started", ctx.run);
 });
 
@@ -176,12 +186,12 @@ tasks.onFailure(({ ctx, error }) => {
 
 ### `init.ts`
 
-If you create a `init.ts` file at the root of your trigger directory, it will be automatically loaded when a task is executed. This is useful if you want to register global lifecycle hooks, or initialize a database connection, etc.
+If you create an `init.ts` file at the root of your trigger directory, it will be automatically loaded when a task is executed. This is useful for registering global lifecycle hooks, initializing a database connection, etc.
 
 ```ts init.ts
 import { tasks } from "@trigger.dev/sdk";
 
-tasks.onStart(({ ctx, payload, task }) => {
+tasks.onStartAttempt(({ ctx, payload, task }) => {
   console.log("Run started", ctx.run);
 });
 ```

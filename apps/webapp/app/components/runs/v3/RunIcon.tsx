@@ -3,10 +3,25 @@ import {
   HandRaisedIcon,
   InformationCircleIcon,
   RectangleStackIcon,
+  SparklesIcon,
   Squares2X2Icon,
   TableCellsIcon,
   TagIcon,
+  WrenchIcon,
 } from "@heroicons/react/20/solid";
+import { AnthropicLogoIcon } from "~/assets/icons/AnthropicLogoIcon";
+import {
+  AnthropicIcon,
+  AzureIcon,
+  CerebrasIcon,
+  DeepseekIcon,
+  GeminiIcon,
+  LlamaIcon,
+  MistralIcon,
+  OpenAIIcon,
+  PerplexityIcon,
+  XAIIcon,
+} from "~/assets/icons/AiProviderIcons";
 import { AttemptIcon } from "~/assets/icons/AttemptIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { cn } from "~/utils/cn";
@@ -112,6 +127,31 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
       return <FunctionIcon className={cn(className, "text-error")} />;
     case "streams":
       return <StreamsIcon className={cn(className, "text-text-dimmed")} />;
+    case "hero-sparkles":
+      return <SparklesIcon className={cn(className, "text-text-dimmed")} />;
+    case "hero-wrench":
+      return <WrenchIcon className={cn(className, "text-text-dimmed")} />;
+    case "tabler-brand-anthropic":
+    case "ai-provider-anthropic":
+      return <AnthropicIcon className={cn(className, "text-text-dimmed")} />;
+    case "ai-provider-openai":
+      return <OpenAIIcon className={cn(className, "text-text-dimmed")} />;
+    case "ai-provider-gemini":
+      return <GeminiIcon className={cn(className, "text-text-dimmed")} />;
+    case "ai-provider-llama":
+      return <LlamaIcon className={cn(className, "text-text-dimmed")} />;
+    case "ai-provider-deepseek":
+      return <DeepseekIcon className={cn(className, "text-text-dimmed")} />;
+    case "ai-provider-xai":
+      return <XAIIcon className={cn(className, "text-text-dimmed")} />;
+    case "ai-provider-perplexity":
+      return <PerplexityIcon className={cn(className, "text-text-dimmed")} />;
+    case "ai-provider-cerebras":
+      return <CerebrasIcon className={cn(className, "text-text-dimmed")} />;
+    case "ai-provider-mistral":
+      return <MistralIcon className={cn(className, "text-text-dimmed")} />;
+    case "ai-provider-azure":
+      return <AzureIcon className={cn(className, "text-text-dimmed")} />;
   }
 
   return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
